@@ -90,3 +90,22 @@ func TestMutationResolver_ImportMasterCardgroup_InfraError_WrapsInternal(t *test
 		t.Fatalf("expected INTERNAL wire error, got %v", err)
 	}
 }
+
+func TestMutationResolver_ImportMasterCardgroup_XORInvariantViolation(t *testing.T) {
+	t.Parallel()
+
+	// A degenerate {Cardgroup:nil, NotFound:false} outcome is a producer-contract
+	// violation; the resolver's defensive guard must surface it as INTERNAL rather
+	// than a nil union or a schema-null. Mirrors the sibling _XORInvariantViolation
+	// tests on the admin role/user outcome-union resolvers.
+	stub := &stubMasterCatalogUC{importOut: usecase.ImportMasterOutcome{}}
+	r := &Resolver{MasterCatalogUC: stub}
+
+	res, err := r.Mutation().ImportMasterCardgroup(context.Background(), "m1")
+	if res != nil {
+		t.Fatalf("expected nil union on invariant violation, got %T", res)
+	}
+	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+		t.Fatalf("expected INTERNAL wire error, got %v", err)
+	}
+}

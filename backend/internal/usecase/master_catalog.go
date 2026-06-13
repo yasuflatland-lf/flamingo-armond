@@ -71,13 +71,21 @@ type MasterCatalogUsecase interface {
 	ImportMaster(ctx context.Context, masterID string) (ImportMasterOutcome, error)
 }
 
-// ImportMasterOutcome is the usecase result of ImportMaster. Exactly one signal is
-// set: Cardgroup on the happy path, or NotFound=true when the master id is unknown
-// or not published. The not-found case is surfaced as data (the MasterNotFoundError
-// union variant) rather than as an error so the resolver can return it in `data`.
+// ImportMasterOutcome is the usecase result of ImportMaster. On the valid paths
+// exactly one signal is set: Cardgroup on the happy path, or NotFound=true when the
+// master id is unknown or not published. The not-found case is surfaced as data (the
+// MasterNotFoundError union variant) rather than as an error so the resolver can
+// return it in `data`. The XOR is a producer contract, not a compile-time guarantee:
+// a degenerate {Cardgroup:nil, NotFound:false} result is treated as INTERNAL by the
+// resolver's defensive guard.
 type ImportMasterOutcome struct {
+	// Cardgroup is the newly created user-owned cardgroup snapshot on the happy
+	// path. Non-nil iff NotFound is false.
 	Cardgroup *domain.Cardgroup
-	NotFound  bool
+	// NotFound is true when the master id is unknown or not published; it subsumes
+	// draft existence so draft ids are indistinguishable from absent ids. True iff
+	// Cardgroup is nil.
+	NotFound bool
 }
 
 type masterCatalogUsecase struct {
@@ -87,9 +95,16 @@ type masterCatalogUsecase struct {
 }
 
 // NewMasterCatalogUsecase constructs a MasterCatalogUsecase backed by the given
-// repository. copyUC is the #398 copy primitive used by ImportMaster. Panics on a
-// nil logger.
+// repository. copyUC is the copy primitive (CopyMasterToUserUsecase) used by
+// ImportMaster. Panics when repo, copyUC, or logger is nil — a nil required
+// dependency is a wiring bug that must fail at startup, not at first use.
 func NewMasterCatalogUsecase(repo MasterCatalogRepository, copyUC CopyMasterToUserUsecase, logger *slog.Logger) MasterCatalogUsecase {
+	if repo == nil {
+		panic("usecase: master catalog: repo is required")
+	}
+	if copyUC == nil {
+		panic("usecase: master catalog: copyUC is required")
+	}
 	if logger == nil {
 		panic("usecase: master catalog: logger is required")
 	}
@@ -301,11 +316,17 @@ func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string
 		if errors.Is(err, repository.ErrNotFound) {
 			return ImportMasterOutcome{NotFound: true}, nil
 		}
+		if isContextDone(err) {
+			return ImportMasterOutcome{}, err
+		}
 		return ImportMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: import: verify published")
 	}
 
 	cg, err := u.copyUC.CopyMasterToUser(ctx, masterID, caller.Sub)
 	if err != nil {
+		if isContextDone(err) {
+			return ImportMasterOutcome{}, err
+		}
 		return ImportMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: import: copy master to user")
 	}
 	return ImportMasterOutcome{Cardgroup: cg}, nil

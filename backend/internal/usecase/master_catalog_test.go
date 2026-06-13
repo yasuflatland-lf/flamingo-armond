@@ -97,13 +97,31 @@ func catalogItem(id string, cardCount int64) *repository.MasterCatalogItem {
 // Constructor
 // ---------------------------------------------------------------------------
 
+func TestNewMasterCatalogUsecase_NilRepoPanics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic on nil repo")
+		}
+	}()
+	NewMasterCatalogUsecase(nil, &mockCopyMasterToUserUC{}, newTestLogger())
+}
+
+func TestNewMasterCatalogUsecase_NilCopyUCPanics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic on nil copyUC")
+		}
+	}()
+	NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, nil, newTestLogger())
+}
+
 func TestNewMasterCatalogUsecase_NilLoggerPanics(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
 			t.Fatal("expected panic on nil logger")
 		}
 	}()
-	NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, nil, nil)
+	NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, nil)
 }
 
 // ---------------------------------------------------------------------------
@@ -111,7 +129,7 @@ func TestNewMasterCatalogUsecase_NilLoggerPanics(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestListPublishedConnection_Unauthenticated(t *testing.T) {
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, nil, newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestLogger())
 
 	_, err := uc.ListPublishedConnection(context.Background(), MasterCatalogConnectionInput{})
 	if !errors.Is(err, ucerr.ErrUnauthenticated) {
@@ -131,7 +149,7 @@ func TestListPublishedConnection_Forward_TrimsExtraRow_SetsHasNext(t *testing.T)
 			catalogItem("a", 10), catalogItem("b", 20), catalogItem("c", 30),
 		},
 	}
-	uc := NewMasterCatalogUsecase(repo, nil, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestLogger())
 
 	out, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
 		First: intPtr(2),
@@ -179,7 +197,7 @@ func TestListPublishedConnection_Forward_NoExtraRow_NoNextPage(t *testing.T) {
 		countResult:    2,
 		findPageResult: []*repository.MasterCatalogItem{catalogItem("a", 1), catalogItem("b", 2)},
 	}
-	uc := NewMasterCatalogUsecase(repo, nil, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestLogger())
 
 	out, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(5)})
 	if err != nil {
@@ -210,7 +228,7 @@ func TestListPublishedConnection_Backward_TrimsLeadingRow_SetsHasPrev(t *testing
 			catalogItem("x", 1), catalogItem("y", 2), catalogItem("w", 3),
 		},
 	}
-	uc := NewMasterCatalogUsecase(repo, nil, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestLogger())
 
 	out, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
 		Last:   intPtr(2),
@@ -249,7 +267,7 @@ func TestListPublishedConnection_Backward_TrimsLeadingRow_SetsHasPrev(t *testing
 
 func TestListPublishedConnection_OrderByName_Desc(t *testing.T) {
 	repo := &mockMasterCatalogRepository{countResult: 0, findPageResult: nil}
-	uc := NewMasterCatalogUsecase(repo, nil, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestLogger())
 
 	ob := MasterCatalogOrderByName
 	dir := SortOrderDesc
@@ -275,7 +293,7 @@ func TestListPublishedConnection_OrderByName_Desc(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestListPublishedConnection_FirstAndLast_Rejected(t *testing.T) {
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, nil, newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestLogger())
 
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
 		First: intPtr(2),
@@ -296,7 +314,7 @@ func TestListPublishedConnection_TotalCountOnlyRequest(t *testing.T) {
 		countResult:    42,
 		findPageResult: []*repository.MasterCatalogItem{},
 	}
-	uc := NewMasterCatalogUsecase(repo, nil, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestLogger())
 
 	// first=0 → no rows fetched, but COUNT still runs.
 	out, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(0)})
@@ -317,7 +335,7 @@ func TestListPublishedConnection_TotalCountOnlyRequest(t *testing.T) {
 
 func TestListPublishedConnection_InvalidCursor(t *testing.T) {
 	repo := &mockMasterCatalogRepository{countResult: 0}
-	uc := NewMasterCatalogUsecase(repo, nil, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestLogger())
 
 	bad := "%%%not-a-cursor"
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
@@ -343,7 +361,7 @@ func TestListPublishedConnection_CursorNotPublished(t *testing.T) {
 			return nil, repository.ErrNotFound
 		},
 	}
-	uc := NewMasterCatalogUsecase(repo, nil, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestLogger())
 
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
 		First: intPtr(2),
@@ -361,7 +379,7 @@ func TestListPublishedConnection_CursorNotPublished(t *testing.T) {
 
 func TestListPublishedConnection_CountError_Wrapped(t *testing.T) {
 	repo := &mockMasterCatalogRepository{countErr: eris.New("db down")}
-	uc := NewMasterCatalogUsecase(repo, nil, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestLogger())
 
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(2)})
 	if err == nil {
@@ -374,7 +392,7 @@ func TestListPublishedConnection_CountError_Wrapped(t *testing.T) {
 
 func TestListPublishedConnection_FindPageError_Wrapped(t *testing.T) {
 	repo := &mockMasterCatalogRepository{countResult: 1, findPageErr: eris.New("db down")}
-	uc := NewMasterCatalogUsecase(repo, nil, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestLogger())
 
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(2)})
 	if err == nil {
@@ -432,7 +450,7 @@ func TestResolveMasterCatalogPageSize_DefaultWhenAbsent(t *testing.T) {
 // ImportMaster
 // ---------------------------------------------------------------------------
 
-// mockCopyMasterToUserUC stubs the #398 copy primitive for ImportMaster tests.
+// mockCopyMasterToUserUC stubs the copy primitive (CopyMasterToUserUsecase) for ImportMaster tests.
 type mockCopyMasterToUserUC struct {
 	fn func(ctx context.Context, masterID, ownerID string) (*domain.Cardgroup, error)
 }
@@ -533,4 +551,41 @@ func TestImportMaster_VerifyPublishedError_Wrapped(t *testing.T) {
 
 	_, err := uc.ImportMaster(authedCtx("u1"), "m1")
 	assertInternalChain(t, err, "usecase: master catalog: import: verify published")
+}
+
+func TestImportMaster_FindPublishedByID_ContextCancelled_PassesThrough(t *testing.T) {
+	// context.Canceled from the published-check must propagate unwrapped so its
+	// identity survives errors.Is at the resolver boundary (FromUsecaseError →
+	// CANCELLED). An eris.Wrap here would break the == identity contract.
+	repo := &mockMasterCatalogRepository{
+		findByIDFn: func(string) (*domain.MasterCardgroup, error) {
+			return nil, context.Canceled
+		},
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestLogger())
+
+	_, err := uc.ImportMaster(authedCtx("u1"), "m1")
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %v", err)
+	}
+}
+
+func TestImportMaster_CopyMasterToUser_ContextCancelled_PassesThrough(t *testing.T) {
+	// context.Canceled surfaced by the copy primitive must propagate unwrapped.
+	repo := &mockMasterCatalogRepository{
+		findByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Deck"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	copyUC := &mockCopyMasterToUserUC{fn: func(context.Context, string, string) (*domain.Cardgroup, error) {
+		return nil, context.Canceled
+	}}
+	uc := NewMasterCatalogUsecase(repo, copyUC, newTestLogger())
+
+	_, err := uc.ImportMaster(authedCtx("u1"), "m1")
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %v", err)
+	}
 }
