@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LEARN_PAGE_LIMIT } from "@/app/learn/queries";
 import { CardContent, type SwipeCardData } from "@/components/learn/swipe-card";
 import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
+import type { LearnDisplayMode } from "@/components/learn/types";
 import {
   HandleSwipeDocument,
   LearnNextDueCardsDocument,
@@ -44,16 +45,19 @@ type SwipeCardStackOnCardSwiped = Parameters<
 
 const capturedOnCardSwiped: SwipeCardStackOnCardSwiped[] = [];
 const capturedCardSnapshots: SwipeCardData[][] = [];
+const capturedDisplayModes: Array<LearnDisplayMode | undefined> = [];
 
 vi.mock("@/components/learn/swipe-card-stack", () => ({
   SwipeCardStack: (props: {
     cards: SwipeCardData[];
+    displayMode?: LearnDisplayMode;
     onCardSwiped: SwipeCardStackOnCardSwiped;
     completedCount?: number;
     ref?: RefObject<SwipeCardStackHandle | null>;
   }) => {
     capturedOnCardSwiped.push(props.onCardSwiped);
     capturedCardSnapshots.push([...props.cards]);
+    capturedDisplayModes.push(props.displayMode);
 
     const activeCardRef = useRef(props.cards[0] ?? null);
     activeCardRef.current = props.cards[0] ?? null;
@@ -83,7 +87,7 @@ vi.mock("@/components/learn/swipe-card-stack", () => ({
     // integration tests can assert the full LearnClient → SwipeCardStack →
     // CardContent → CefrBadge pipeline without the next/dynamic AnimatedCard
     // chunk. CardContent is purely presentational and needs no providers.
-    return <CardContent card={activeCard} />;
+    return <CardContent card={activeCard} revealed={props.displayMode === "ALWAYS_VISIBLE"} />;
   },
 }));
 
@@ -141,6 +145,7 @@ beforeEach(() => {
   // Reset the captured arrays so tests do not bleed into each other.
   capturedOnCardSwiped.length = 0;
   capturedCardSnapshots.length = 0;
+  capturedDisplayModes.length = 0;
 });
 
 afterEach(() => {
@@ -210,7 +215,7 @@ function makeDefaultPrefetchMocks(count = 4) {
       query: LearnNextDueCardsDocument,
       variables: { cardgroupId: CG_ID, limit: LEARN_PAGE_LIMIT },
     },
-    result: { data: { learnNextDueCards: [] } },
+    result: { data: { learnNextDueCards: [], me: null } },
   }));
 }
 
@@ -250,6 +255,7 @@ type RenderLearnClientOptions = {
    * the effect did or did not fire.
    */
   skipDefaultPrefetchMocks?: boolean;
+  displayMode?: LearnDisplayMode;
 };
 
 function renderLearnClient(
@@ -268,7 +274,11 @@ function renderLearnClient(
     : [...mocks, makeDefaultPersistMock(), ...makeDefaultPrefetchMocks()];
   renderWithIntl(
     <MockedProvider mocks={mergedMocks as never}>
-      <LearnClient cardgroupId={CG_ID} initialCards={initialCards} />
+      <LearnClient
+        cardgroupId={CG_ID}
+        initialCards={initialCards}
+        displayMode={options.displayMode ?? "FLIP_TO_REVEAL"}
+      />
     </MockedProvider>,
   );
 }
@@ -302,6 +312,32 @@ function makeSwipeMock(mode: 1 | 2 | 4) {
 }
 
 describe("<LearnClient>", () => {
+  it("forwards ALWAYS_VISIBLE display mode to SwipeCardStack and shows the back immediately", () => {
+    renderLearnClient([], [CARD_1], { displayMode: "ALWAYS_VISIBLE" });
+
+    expect(capturedDisplayModes.at(-1)).toBe("ALWAYS_VISIBLE");
+    expect(screen.getByText("Hola")).toBeInTheDocument();
+  });
+
+  it("forwards FLIP_TO_REVEAL display mode to SwipeCardStack and keeps the back hidden", () => {
+    renderLearnClient([], [CARD_1], { displayMode: "FLIP_TO_REVEAL" });
+
+    expect(capturedDisplayModes.at(-1)).toBe("FLIP_TO_REVEAL");
+    expect(screen.queryByText("Hola")).not.toBeInTheDocument();
+  });
+
+  it("keeps down rating mapped to Hard mode 2", async () => {
+    const user = userEvent.setup();
+    const swipe = makeSwipeMock(2);
+    renderLearnClient([swipe.mock]);
+
+    await user.click(screen.getByRole("button", { name: "Rate as Hard" }));
+
+    await waitFor(() => {
+      expect(swipe.wasCalled()).toBe(true);
+    });
+  });
+
   // handleRate delegates to swipeStackRef.current?.triggerSwipe(direction).
   // The mock SwipeCardStack exposes triggerSwipe via useImperativeHandle and
   // immediately calls onCardSwiped, which fires the mutation. No timer delay
@@ -606,6 +642,7 @@ describe("<LearnClient>", () => {
               cardgroupId: CG_ID,
             },
           ]}
+          displayMode="FLIP_TO_REVEAL"
         />
       </MockedProvider>,
     );
@@ -674,7 +711,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
       <MockedProvider
         mocks={[makePersistMock(CG_ID, mutationCalled), ...makeDefaultPrefetchMocks()]}
       >
-        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} />
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} displayMode="FLIP_TO_REVEAL" />
       </MockedProvider>,
     );
 
@@ -688,7 +725,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
 
     renderWithIntl(
       <MockedProvider mocks={[makePersistMock(CG_ID), ...makeDefaultPrefetchMocks()]} cache={cache}>
-        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} />
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} displayMode="FLIP_TO_REVEAL" />
       </MockedProvider>,
     );
 
@@ -734,7 +771,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
 
     renderWithIntl(
       <MockedProvider mocks={[validationMock, ...makeDefaultPrefetchMocks()]} cache={cache}>
-        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} />
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} displayMode="FLIP_TO_REVEAL" />
       </MockedProvider>,
     );
 
@@ -784,7 +821,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
   ] as const)("swallows %s from the persist mutation without throwing", async (_, mockEntry) => {
     renderWithIntl(
       <MockedProvider mocks={[mockEntry, ...makeDefaultPrefetchMocks()]}>
-        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} />
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} displayMode="FLIP_TO_REVEAL" />
       </MockedProvider>,
     );
 
@@ -972,7 +1009,11 @@ describe("<LearnClient> onSwipe identity stability", () => {
 
     renderWithIntl(
       <MockedProvider mocks={[swipeMock, makeDefaultPersistMock(), ...makeDefaultPrefetchMocks()]}>
-        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1, CARD_2]} />
+        <LearnClient
+          cardgroupId={CG_ID}
+          initialCards={[CARD_1, CARD_2]}
+          displayMode="FLIP_TO_REVEAL"
+        />
       </MockedProvider>,
     );
 
@@ -1041,7 +1082,7 @@ function makePrefetchMock(cards: PrefetchCard[], opts?: { delay?: number }) {
   let calls = 0;
   const mock: {
     request: { query: typeof LearnNextDueCardsDocument; variables: object };
-    result: () => { data: { learnNextDueCards: PrefetchCard[] } };
+    result: () => { data: { learnNextDueCards: PrefetchCard[]; me: null } };
     delay?: number;
   } = {
     request: {
@@ -1050,7 +1091,7 @@ function makePrefetchMock(cards: PrefetchCard[], opts?: { delay?: number }) {
     },
     result: () => {
       calls += 1;
-      return { data: { learnNextDueCards: cards } };
+      return { data: { learnNextDueCards: cards, me: null } };
     },
   };
   if (opts?.delay !== undefined) {

@@ -21,12 +21,14 @@ vi.mock("./learn-client", () => ({
   LearnClient: ({
     cardgroupId,
     initialCards,
+    displayMode,
   }: {
     cardgroupId: string;
     initialCards: unknown[];
+    displayMode: string;
   }) => (
     <div data-testid="learn-client">
-      {cardgroupId}:{initialCards.length}
+      {cardgroupId}:{initialCards.length}:{displayMode}
     </div>
   ),
 }));
@@ -206,6 +208,7 @@ describe("LearnPage", () => {
           cardgroupId: "cg-1",
         },
       ],
+      me: null,
     } as never);
 
     const jsx = await LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) });
@@ -213,13 +216,14 @@ describe("LearnPage", () => {
     const inner = await childType(childProps);
     render(inner as React.ReactElement);
 
-    // Format: cardgroupId:initialCards.length
-    expect(screen.getByTestId("learn-client")).toHaveTextContent("cg-1:1");
+    // Format: cardgroupId:initialCards.length:displayMode
+    expect(screen.getByTestId("learn-client")).toHaveTextContent("cg-1:1:FLIP_TO_REVEAL");
   });
 
   it("server-renders an empty due batch into LearnClient", async () => {
     vi.mocked(gqlFetch).mockResolvedValueOnce({
       learnNextDueCards: [],
+      me: null,
     } as never);
 
     const jsx = await LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) });
@@ -227,6 +231,22 @@ describe("LearnPage", () => {
     const inner = await childType(childProps);
     render(inner as React.ReactElement);
 
-    expect(screen.getByTestId("learn-client")).toHaveTextContent("cg-1:0");
+    expect(screen.getByTestId("learn-client")).toHaveTextContent("cg-1:0:FLIP_TO_REVEAL");
+  });
+
+  it("passes the ride-along learn display mode into LearnClient", async () => {
+    vi.mocked(gqlFetch).mockResolvedValueOnce({
+      learnNextDueCards: [],
+      me: {
+        learnDisplayMode: "ALWAYS_VISIBLE",
+      },
+    } as never);
+
+    const jsx = await LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) });
+    const { childType, childProps } = getSuspenseChild(jsx);
+    const inner = await childType(childProps);
+    render(inner as React.ReactElement);
+
+    expect(screen.getByTestId("learn-client")).toHaveTextContent("cg-1:0:ALWAYS_VISIBLE");
   });
 });

@@ -80,5 +80,11 @@ async function LearnContent({ cardgroupId }: { cardgroupId: string }) {
     throw err;
   }
 
-  return <LearnClient cardgroupId={cardgroupId} initialCards={cardsData.learnNextDueCards} />;
+  return (
+    <LearnClient
+      cardgroupId={cardgroupId}
+      initialCards={cardsData.learnNextDueCards}
+      displayMode={cardsData.me?.learnDisplayMode ?? "FLIP_TO_REVEAL"}
+    />
+  );
 }
