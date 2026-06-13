@@ -194,6 +194,9 @@
             <column ascending="true" name="user_id"/>
             <column ascending="true" name="card_id"/>
          </index>
+         <index name="idx_user_card_fsrs_card_id" unique="false">
+            <column ascending="true" name="card_id"/>
+         </index>
          <index name="idx_user_card_fsrs_user_due" unique="false">
             <column ascending="true" name="user_id"/>
             <column ascending="true" name="due"/>
