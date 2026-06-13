@@ -4,7 +4,7 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
-import { type RefObject, useImperativeHandle, useRef } from "react";
+import { type RefObject, useEffect, useImperativeHandle, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LEARN_PAGE_LIMIT } from "@/app/learn/queries";
 import { CardContent, type SwipeCardData } from "@/components/learn/swipe-card";
@@ -50,8 +50,9 @@ const capturedDisplayModes: Array<LearnDisplayMode | undefined> = [];
 vi.mock("@/components/learn/swipe-card-stack", () => ({
   SwipeCardStack: (props: {
     cards: SwipeCardData[];
-    displayMode?: LearnDisplayMode;
+    displayMode: LearnDisplayMode;
     onCardSwiped: SwipeCardStackOnCardSwiped;
+    onActiveRevealedChange?: (revealed: boolean) => void;
     completedCount?: number;
     ref?: RefObject<SwipeCardStackHandle | null>;
   }) => {
@@ -68,6 +69,23 @@ vi.mock("@/components/learn/swipe-card-stack", () => ({
         if (card) props.onCardSwiped(card, direction);
       },
     }));
+
+    // Mirror the real stack's reveal-notification contract: on mount the active
+    // card is revealed iff ALWAYS_VISIBLE; FLIP_TO_REVEAL starts unrevealed and
+    // becomes revealed when the learner taps the card. The "Reveal answer" test
+    // affordance below simulates that tap so the LearnActionBar disabled-state
+    // integration can be exercised without the real reveal gesture wiring.
+    // Report the active card's initial reveal-state on mount. The LearnClient
+    // integration tests drive the reveal transition via the explicit
+    // "Reveal answer" stub button below (which calls onActiveRevealedChange
+    // directly), so the mount-report is all this mock needs; the real stack's
+    // reset-on-advance is exercised against the real component in
+    // swipe-card-stack.test.tsx.
+    const onActiveRevealedChange = props.onActiveRevealedChange;
+    const displayMode = props.displayMode;
+    useEffect(() => {
+      onActiveRevealedChange?.(displayMode === "ALWAYS_VISIBLE");
+    }, [onActiveRevealedChange, displayMode]);
 
     const activeCard = props.cards[0];
     if (!activeCard) {
@@ -87,7 +105,20 @@ vi.mock("@/components/learn/swipe-card-stack", () => ({
     // integration tests can assert the full LearnClient → SwipeCardStack →
     // CardContent → CefrBadge pipeline without the next/dynamic AnimatedCard
     // chunk. CardContent is purely presentational and needs no providers.
-    return <CardContent card={activeCard} revealed={props.displayMode === "ALWAYS_VISIBLE"} />;
+    return (
+      <>
+        <CardContent card={activeCard} revealed={props.displayMode === "ALWAYS_VISIBLE"} />
+        {props.displayMode === "FLIP_TO_REVEAL" && (
+          <button
+            type="button"
+            data-testid="stub-reveal"
+            onClick={() => props.onActiveRevealedChange?.(true)}
+          >
+            Reveal answer
+          </button>
+        )}
+      </>
+    );
   },
 }));
 
@@ -98,19 +129,25 @@ vi.mock("@/components/learn/learn-action-bar", () => ({
   LearnActionBar: (props: {
     onRate: (d: "left" | "down" | "right") => void;
     disabled: boolean;
-  }) => (
-    <div data-testid="learn-action-bar" data-disabled={String(props.disabled)}>
-      <button type="button" onClick={() => props.onRate("left")} disabled={props.disabled}>
-        Rate as Again
-      </button>
-      <button type="button" onClick={() => props.onRate("down")} disabled={props.disabled}>
-        Rate as Hard
-      </button>
-      <button type="button" onClick={() => props.onRate("right")} disabled={props.disabled}>
-        Rate as Easy
-      </button>
-    </div>
-  ),
+    revealed?: boolean;
+  }) => {
+    // Mirror the real bar: rating buttons are inert while the active card is
+    // unrevealed (front_only) OR the caller-supplied `disabled` flag is set.
+    const ratingDisabled = props.disabled || props.revealed === false;
+    return (
+      <div data-testid="learn-action-bar" data-disabled={String(ratingDisabled)}>
+        <button type="button" onClick={() => props.onRate("left")} disabled={ratingDisabled}>
+          Rate as Again
+        </button>
+        <button type="button" onClick={() => props.onRate("down")} disabled={ratingDisabled}>
+          Rate as Hard
+        </button>
+        <button type="button" onClick={() => props.onRate("right")} disabled={ratingDisabled}>
+          Rate as Easy
+        </button>
+      </div>
+    );
+  },
 }));
 
 // ---------------------------------------------------------------------------
@@ -277,7 +314,11 @@ function renderLearnClient(
       <LearnClient
         cardgroupId={CG_ID}
         initialCards={initialCards}
-        displayMode={options.displayMode ?? "FLIP_TO_REVEAL"}
+        // Default to ALWAYS_VISIBLE so the rating buttons are enabled from mount
+        // for the swipe-mechanics / queue / prefetch tests, which are display-mode
+        // agnostic. Tests that exercise the FLIP_TO_REVEAL reveal gate (back
+        // hidden, buttons disabled until tap) pass `displayMode` explicitly.
+        displayMode={options.displayMode ?? "ALWAYS_VISIBLE"}
       />
     </MockedProvider>,
   );
@@ -928,6 +969,37 @@ describe("<LearnClient> LearnActionBar integration", () => {
       ).toBeInTheDocument();
     });
     expect(screen.queryByRole("button", { name: "Rate as Easy" })).not.toBeInTheDocument();
+  });
+
+  it("disables the rating buttons until the active card is revealed in FLIP_TO_REVEAL mode", async () => {
+    const user = userEvent.setup();
+    renderLearnClient([], [CARD_1], { displayMode: "FLIP_TO_REVEAL" });
+
+    // Front-only: every rating button is inert until the learner reveals.
+    expect(screen.getByRole("button", { name: "Rate as Again" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Rate as Hard" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Rate as Easy" })).toBeDisabled();
+    expect(screen.getByTestId("learn-action-bar")).toHaveAttribute("data-disabled", "true");
+
+    // Reveal the active card (the stub simulates the card tap / Space reveal that
+    // the real SwipeCardStack performs and reports via onActiveRevealedChange).
+    await user.click(screen.getByTestId("stub-reveal"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Rate as Again" })).toBeEnabled();
+    });
+    expect(screen.getByRole("button", { name: "Rate as Hard" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Rate as Easy" })).toBeEnabled();
+    expect(screen.getByTestId("learn-action-bar")).toHaveAttribute("data-disabled", "false");
+  });
+
+  it("enables the rating buttons from the start in ALWAYS_VISIBLE mode", () => {
+    renderLearnClient([], [CARD_1], { displayMode: "ALWAYS_VISIBLE" });
+
+    expect(screen.getByRole("button", { name: "Rate as Again" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Rate as Hard" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Rate as Easy" })).toBeEnabled();
+    expect(screen.getByTestId("learn-action-bar")).toHaveAttribute("data-disabled", "false");
   });
 });
 

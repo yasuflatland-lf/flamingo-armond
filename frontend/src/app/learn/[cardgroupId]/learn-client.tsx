@@ -52,6 +52,14 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
   // (FSRS-safe re-study of today's cards). It is only entered from the
   // AllCaughtUp "Study again" action when the daily learn queue is exhausted.
   const [phase, setPhase] = useState<"learn" | "practice">("learn");
+  // Whether the active card's back is revealed. SwipeCardStack owns the reveal
+  // gesture (card tap / Space) and reports the active card's revealed state up
+  // via onActiveRevealedChange; LearnClient threads it into LearnActionBar so
+  // the rating buttons stay disabled until the learner reveals the answer. In
+  // ALWAYS_VISIBLE the stack reports `true` immediately on mount. Seeded from
+  // displayMode so the very first render (before the stack's mount effect runs)
+  // already disables the buttons in FLIP_TO_REVEAL.
+  const [activeRevealed, setActiveRevealed] = useState(displayMode === "ALWAYS_VISIBLE");
   const swipeStackRef = useRef<SwipeCardStackHandle | null>(null);
 
   const [handleSwipe, { error }] = useMutation(HandleSwipeMutation);
@@ -302,10 +310,11 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
           cards={queue}
           displayMode={displayMode}
           onCardSwiped={onSwipe}
+          onActiveRevealedChange={setActiveRevealed}
           completedCount={completed}
         />
       </div>
-      <LearnActionBar onRate={handleRate} disabled={queue.length === 0} />
+      <LearnActionBar onRate={handleRate} disabled={queue.length === 0} revealed={activeRevealed} />
     </section>
   );
 }

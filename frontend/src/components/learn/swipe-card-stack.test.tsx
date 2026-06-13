@@ -196,6 +196,63 @@ describe("SwipeCardStack — active-card reveal phase", () => {
 
     expect(status).toHaveTextContent("Answer shown");
   });
+
+  it("reports onActiveRevealedChange false on mount, true on reveal, and false again on advance (FLIP_TO_REVEAL)", () => {
+    const onCardSwiped = vi.fn();
+    const onActiveRevealedChange = vi.fn();
+    const ref = createRef<SwipeCardStackHandle | null>();
+
+    const { rerender } = renderWithIntl(
+      <SwipeCardStack
+        cards={[cardA, cardB]}
+        displayMode="FLIP_TO_REVEAL"
+        onCardSwiped={onCardSwiped}
+        onActiveRevealedChange={onActiveRevealedChange}
+        ref={ref}
+      />,
+    );
+
+    // Active card starts front_only — the parent is told the buttons stay disabled.
+    expect(onActiveRevealedChange).toHaveBeenLastCalledWith(false);
+
+    // Revealing the active card flips the reported state to true.
+    fireEvent.click(screen.getByTestId("reveal-card-a"));
+    expect(onActiveRevealedChange).toHaveBeenLastCalledWith(true);
+
+    // Advancing the deck resets the new active card to front_only — reported false.
+    act(() => {
+      ref.current?.triggerSwipe("right");
+    });
+    act(() => {
+      settleFlyOuts();
+    });
+    rerender(
+      <SwipeCardStack
+        cards={[cardB]}
+        displayMode="FLIP_TO_REVEAL"
+        onCardSwiped={onCardSwiped}
+        onActiveRevealedChange={onActiveRevealedChange}
+        ref={ref}
+      />,
+    );
+
+    expect(onActiveRevealedChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("reports onActiveRevealedChange true from mount (ALWAYS_VISIBLE)", () => {
+    const onActiveRevealedChange = vi.fn();
+
+    renderWithIntl(
+      <SwipeCardStack
+        cards={[cardA]}
+        displayMode="ALWAYS_VISIBLE"
+        onCardSwiped={vi.fn()}
+        onActiveRevealedChange={onActiveRevealedChange}
+      />,
+    );
+
+    expect(onActiveRevealedChange).toHaveBeenLastCalledWith(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -205,6 +262,7 @@ describe("SwipeCardStack — active-card reveal phase", () => {
 describe("SwipeCardStack — Session-complete count line", () => {
   const baseProps = {
     cards: [] as Parameters<typeof SwipeCardStack>[0]["cards"],
+    displayMode: "ALWAYS_VISIBLE" as const,
     onCardSwiped: vi.fn(),
   };
 
@@ -244,7 +302,11 @@ describe("SwipeCardStack — keydown listener stability (activeCardRef)", () => 
 
     const onCardSwiped = vi.fn();
     const { rerender, unmount } = renderWithIntl(
-      <SwipeCardStack cards={[cardA, cardB]} onCardSwiped={onCardSwiped} />,
+      <SwipeCardStack
+        cards={[cardA, cardB]}
+        displayMode="ALWAYS_VISIBLE"
+        onCardSwiped={onCardSwiped}
+      />,
     );
 
     // Count only the "keydown" registrations from the initial render.
@@ -252,7 +314,9 @@ describe("SwipeCardStack — keydown listener stability (activeCardRef)", () => 
     expect(addedAfterMount).toBe(1);
 
     // Simulate the parent advancing the deck: cardA was swiped, now cardB is first.
-    rerender(<SwipeCardStack cards={[cardB]} onCardSwiped={onCardSwiped} />);
+    rerender(
+      <SwipeCardStack cards={[cardB]} displayMode="ALWAYS_VISIBLE" onCardSwiped={onCardSwiped} />,
+    );
 
     // The listener must NOT have been removed and re-added (triggerSwipe is stable
     // across activeCard changes because activeCardRef is used inside it).
@@ -269,7 +333,11 @@ describe("SwipeCardStack — keydown listener stability (activeCardRef)", () => 
   it("fires onCardSwiped with the correct card after activeCard advances", () => {
     const onCardSwiped = vi.fn();
     const { rerender } = renderWithIntl(
-      <SwipeCardStack cards={[cardA, cardB]} onCardSwiped={onCardSwiped} />,
+      <SwipeCardStack
+        cards={[cardA, cardB]}
+        displayMode="ALWAYS_VISIBLE"
+        onCardSwiped={onCardSwiped}
+      />,
     );
 
     // First ArrowLeft — activeCard is cardA. triggerSwipe drives the fly-off,
@@ -283,7 +351,9 @@ describe("SwipeCardStack — keydown listener stability (activeCardRef)", () => 
     expect(onCardSwiped).toHaveBeenNthCalledWith(1, cardA, "left");
 
     // Simulate the parent advancing the deck after the first swipe.
-    rerender(<SwipeCardStack cards={[cardB]} onCardSwiped={onCardSwiped} />);
+    rerender(
+      <SwipeCardStack cards={[cardB]} displayMode="ALWAYS_VISIBLE" onCardSwiped={onCardSwiped} />,
+    );
 
     // Second ArrowLeft — activeCardRef must now point to cardB, not cardA.
     fireEvent.keyDown(document, { key: "ArrowLeft" });
@@ -304,7 +374,14 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    renderWithIntl(<SwipeCardStack cards={[cardA, cardB]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(
+      <SwipeCardStack
+        cards={[cardA, cardB]}
+        displayMode="ALWAYS_VISIBLE"
+        onCardSwiped={onCardSwiped}
+        ref={ref}
+      />,
+    );
 
     act(() => {
       ref.current?.triggerSwipe("right");
@@ -323,7 +400,14 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(
+      <SwipeCardStack
+        cards={[cardA]}
+        displayMode="ALWAYS_VISIBLE"
+        onCardSwiped={onCardSwiped}
+        ref={ref}
+      />,
+    );
 
     act(() => {
       ref.current?.triggerSwipe("right");
@@ -341,7 +425,12 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const ref = createRef<SwipeCardStackHandle | null>();
 
     const { unmount } = renderWithIntl(
-      <SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />,
+      <SwipeCardStack
+        cards={[cardA]}
+        displayMode="ALWAYS_VISIBLE"
+        onCardSwiped={onCardSwiped}
+        ref={ref}
+      />,
     );
 
     // Queue a fly-off but do not settle it yet.
@@ -366,7 +455,14 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(
+      <SwipeCardStack
+        cards={[cardA]}
+        displayMode="ALWAYS_VISIBLE"
+        onCardSwiped={onCardSwiped}
+        ref={ref}
+      />,
+    );
 
     act(() => {
       ref.current?.triggerSwipe("right");
@@ -387,7 +483,14 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(
+      <SwipeCardStack
+        cards={[cardA]}
+        displayMode="ALWAYS_VISIBLE"
+        onCardSwiped={onCardSwiped}
+        ref={ref}
+      />,
+    );
 
     act(() => {
       ref.current?.triggerSwipe("left");
@@ -406,7 +509,14 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(
+      <SwipeCardStack
+        cards={[cardA]}
+        displayMode="ALWAYS_VISIBLE"
+        onCardSwiped={onCardSwiped}
+        ref={ref}
+      />,
+    );
 
     act(() => {
       ref.current?.triggerSwipe("down");
@@ -425,7 +535,14 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(
+      <SwipeCardStack
+        cards={[cardA]}
+        displayMode="ALWAYS_VISIBLE"
+        onCardSwiped={onCardSwiped}
+        ref={ref}
+      />,
+    );
 
     const stub = screen.getByTestId("swipe-card-stub");
 
@@ -453,7 +570,14 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    renderWithIntl(<SwipeCardStack cards={[]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(
+      <SwipeCardStack
+        cards={[]}
+        displayMode="ALWAYS_VISIBLE"
+        onCardSwiped={onCardSwiped}
+        ref={ref}
+      />,
+    );
 
     act(() => {
       // Must not throw even when the deck is empty.
@@ -474,7 +598,14 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(
+      <SwipeCardStack
+        cards={[cardA]}
+        displayMode="ALWAYS_VISIBLE"
+        onCardSwiped={onCardSwiped}
+        ref={ref}
+      />,
+    );
 
     act(() => {
       ref.current?.triggerSwipe("right");
@@ -502,7 +633,9 @@ describe("SwipeCardStack — gesture-driven overlay via SwipeCard callbacks", ()
   it("shows the overlay when onSwipeProgress fires right/0.5 (pointer-down), hides it when progress resets", () => {
     const onCardSwiped = vi.fn();
 
-    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} />);
+    renderWithIntl(
+      <SwipeCardStack cards={[cardA]} displayMode="ALWAYS_VISIBLE" onCardSwiped={onCardSwiped} />,
+    );
 
     const stub = screen.getByTestId("swipe-card-stub");
 
@@ -546,7 +679,14 @@ describe("SwipeCardStack — triggerSwipe with reduced motion", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(
+      <SwipeCardStack
+        cards={[cardA]}
+        displayMode="ALWAYS_VISIBLE"
+        onCardSwiped={onCardSwiped}
+        ref={ref}
+      />,
+    );
 
     act(() => {
       ref.current?.triggerSwipe("left");
@@ -578,7 +718,9 @@ describe("SwipeCardStack — keyboard triggers all three directions", () => {
   ] as const)("commits onCardSwiped with direction '%s' → '%s' on spring rest after the key is pressed", (key, expectedDirection) => {
     const onCardSwiped = vi.fn();
 
-    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} />);
+    renderWithIntl(
+      <SwipeCardStack cards={[cardA]} displayMode="ALWAYS_VISIBLE" onCardSwiped={onCardSwiped} />,
+    );
 
     fireEvent.keyDown(document, { key });
     // Commit is deferred to the fly-off spring rest — not yet fired.
@@ -602,7 +744,12 @@ describe("SwipeCardStack — overlay state resets on active card change", () => 
     const ref = createRef<SwipeCardStackHandle | null>();
 
     const { rerender } = renderWithIntl(
-      <SwipeCardStack cards={[cardA, cardB]} onCardSwiped={onCardSwiped} ref={ref} />,
+      <SwipeCardStack
+        cards={[cardA, cardB]}
+        displayMode="ALWAYS_VISIBLE"
+        onCardSwiped={onCardSwiped}
+        ref={ref}
+      />,
     );
 
     // Trigger a swipe — overlay should show.
@@ -618,7 +765,14 @@ describe("SwipeCardStack — overlay state resets on active card change", () => 
 
     // Simulate parent removing the swiped card from the deck.
     act(() => {
-      rerender(<SwipeCardStack cards={[cardB]} onCardSwiped={onCardSwiped} ref={ref} />);
+      rerender(
+        <SwipeCardStack
+          cards={[cardB]}
+          displayMode="ALWAYS_VISIBLE"
+          onCardSwiped={onCardSwiped}
+          ref={ref}
+        />,
+      );
     });
 
     // The overlay should have cleared — no direction label visible.
