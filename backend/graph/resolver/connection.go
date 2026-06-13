@@ -67,6 +67,31 @@ func toCardgroupConnectionModel(ctx context.Context, out *usecase.CardgroupConne
 	}
 }
 
+func toMasterCatalogConnectionModel(ctx context.Context, out *usecase.MasterCatalogConnectionOutput) *model.MasterCatalogConnection {
+	if out == nil {
+		return &model.MasterCatalogConnection{Edges: []*model.MasterCatalogEdge{}, PageInfo: &model.PageInfo{}}
+	}
+	edges := make([]*model.MasterCatalogEdge, 0, len(out.Items))
+	for _, item := range out.Items {
+		mm := toMasterCardgroupModel(item)
+		if mm == nil {
+			slog.WarnContext(ctx, "toMasterCatalogConnectionModel: skipping nil entry")
+			continue
+		}
+		edges = append(edges, &model.MasterCatalogEdge{Cursor: cursor.Encode(item.Cardgroup.ID), Node: mm})
+	}
+	return &model.MasterCatalogConnection{
+		Edges: edges,
+		PageInfo: &model.PageInfo{
+			HasNextPage:     out.HasNext,
+			HasPreviousPage: out.HasPrev,
+			StartCursor:     encodeCursor(out.StartCur),
+			EndCursor:       encodeCursor(out.EndCur),
+		},
+		TotalCount: int(out.TotalCount),
+	}
+}
+
 func toUserConnectionModel(ctx context.Context, uc *usecase.AdminUserConnection) *model.UserConnection {
 	if uc == nil {
 		return &model.UserConnection{Edges: []*model.UserEdge{}, PageInfo: &model.PageInfo{}}

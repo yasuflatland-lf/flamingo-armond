@@ -1,0 +1,69 @@
+"""Publication lifecycle state of a master cardgroup."""
+enum MasterCardgroupStatus {
+  DRAFT
+  PUBLISHED
+}
+
+"""
+A published master cardgroup in the public catalog. This is the read-only
+projection end users see; the admin-managed `master_*` tables are never exposed
+directly. `cardCount` is the number of master cards in the deck.
+"""
+type MasterCardgroup {
+  id: ID!
+  name: String!
+  description: String
+  language: String
+  level: String
+  category: String
+  coverImageUrl: String
+  source: String
+  version: Int!
+  status: MasterCardgroupStatus!
+  isDefaultStarter: Boolean!
+  sortOrder: Int!
+  cardCount: Int!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+"""Field to order the master catalog by in paginated queries."""
+enum MasterCatalogOrderBy {
+  SORT_ORDER
+  CREATED_AT
+  NAME
+}
+
+"""One master cardgroup plus the cursor pointing at it."""
+type MasterCatalogEdge {
+  """Opaque cursor for resuming pagination at this edge. Currently the master cardgroup id."""
+  cursor: ID!
+  node: MasterCardgroup!
+}
+
+"""A page of master cardgroups returned from the catalog query."""
+type MasterCatalogConnection {
+  edges: [MasterCatalogEdge!]!
+  pageInfo: PageInfo!
+  """Total published master cardgroup count matching the filter (independent of paging)."""
+  totalCount: Int!
+}
+
+extend type Query {
+  """
+  Paginated published master cardgroups (the public catalog) for authenticated
+  callers. Only `status = PUBLISHED` decks are ever returned — draft decks never
+  leak. Forward pagination uses (first, after); backward uses (last, before).
+  Cursor is the master cardgroup UUID. Default page size is 20; max is 100.
+  Optional case-insensitive substring search on name.
+  """
+  masterCatalog(
+    first: Int,
+    after: ID,
+    last: Int,
+    before: ID,
+    search: String,
+    orderBy: MasterCatalogOrderBy = SORT_ORDER,
+    orderDirection: SortOrder = ASC
+  ): MasterCatalogConnection!
+}
