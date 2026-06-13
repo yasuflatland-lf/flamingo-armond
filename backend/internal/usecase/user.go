@@ -11,6 +11,7 @@ import (
 
 	"backend/internal/auth"
 	"backend/internal/domain"
+	"backend/internal/logging"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
 )
@@ -47,14 +48,18 @@ type userUsecase struct {
 	repo   UserRepository
 	roles  UserRolesRepository
 	auth   AdminChecker
+	seedUC SeedForNewUserUsecase
 	logger *slog.Logger
 }
 
-func NewUserUsecase(repo UserRepository, roles UserRolesRepository, authSvc AdminChecker, logger *slog.Logger) UserUsecase {
+// NewUserUsecase constructs the user profile usecase. seedUC is optional: a nil
+// value disables master-deck seeding on onboarding completion (the UpdateUser
+// path guards on the nil before invoking it).
+func NewUserUsecase(repo UserRepository, roles UserRolesRepository, authSvc AdminChecker, seedUC SeedForNewUserUsecase, logger *slog.Logger) UserUsecase {
 	if logger == nil {
 		panic("usecase: user: logger is required")
 	}
-	return &userUsecase{repo: repo, roles: roles, auth: authSvc, logger: logger}
+	return &userUsecase{repo: repo, roles: roles, auth: authSvc, seedUC: seedUC, logger: logger}
 }
 
 func (u *userUsecase) Me(ctx context.Context) (*domain.User, error) {
@@ -162,6 +167,28 @@ func (u *userUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (Updat
 	if err != nil {
 		return UpdateProfileOutcome{}, eris.Wrap(err, "usecase: UpdateUser: update user")
 	}
+
+	// Seed the published default-starter master decks into the freshly-onboarded
+	// user's cardgroups. This runs after the profile patch commits and is
+	// best-effort: the seed is attempted on every UpdateUser call, and its own
+	// idempotency guard makes it a no-op once seeding has succeeded; a transient
+	// failure is therefore retried only if and when the user updates their
+	// profile again. Surfacing the error would fail an already-committed profile
+	// update, so it is logged and swallowed — the mutation still succeeds.
+	//
+	// A SeedForNewUser failure is server-side infrastructure (DB, master catalog,
+	// advisory lock, uuid generation), not client-attributable, so per the repo
+	// logging convention (docs/backend/error-wrapping/logging-error-warn-helpers.md:
+	// LogWarn for client-attributable failures, LogError for server-side /
+	// operator-visible ones) it is logged at ERROR level so a systematic failure
+	// is visible to operators.
+	if u.seedUC != nil {
+		if err := u.seedUC.SeedForNewUser(ctx, user.Sub); err != nil {
+			logging.LogError(ctx, u.logger, "usecase: UpdateUser: seed default starters failed", err,
+				slog.String("user_id", user.Sub))
+		}
+	}
+
 	return UpdateProfileOutcome{User: appUser}, nil
 }
 

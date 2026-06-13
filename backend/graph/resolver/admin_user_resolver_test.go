@@ -124,7 +124,7 @@ func newAdminUserSrvWithAuth(adminUC usecase.AdminUserUsecase, isAdmin bool, rol
 	if len(rolesByUser) > 0 && rolesByUser[0] != nil {
 		userRoles = rolesByUser[0]
 	}
-	userUC := usecase.NewUserUsecase(&mockUserRepository{}, &mockRoleByUserIDRepo{byUserID: userRoles}, authSvc, newDiscardLogger())
+	userUC := usecase.NewUserUsecase(&mockUserRepository{}, &mockRoleByUserIDRepo{byUserID: userRoles}, authSvc, nil, newDiscardLogger())
 	r := resolver.NewResolver(userUC, nil, nil, nil, authSvc, nil, adminUC, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
@@ -366,7 +366,7 @@ func TestAdminUserResolver_Roles_SelfIntrospection_Allowed(t *testing.T) {
 	// must skip the IsAdmin check entirely.
 	roleRepo := &mockUserRoleRepository{isAdmin: false}
 	authSvc := auth.NewService(roleRepo)
-	uc := usecase.NewUserUsecase(userMock, rolesRepo, authSvc, newDiscardLogger())
+	uc := usecase.NewUserUsecase(userMock, rolesRepo, authSvc, nil, newDiscardLogger())
 	r := resolver.NewResolver(uc, nil, nil, nil, authSvc, nil, &mockAdminUserUsecase{}, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})

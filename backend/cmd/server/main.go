@@ -272,6 +272,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	masterCardgroupRepo := repository.NewMasterCardgroupRepository(db.GORM)
 	cardRepo := repository.NewCardRepository(db.GORM)
+	masterCardRepo := repository.NewMasterCardRepository(db.GORM)
 	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
@@ -285,7 +286,8 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		return err
 	}
 
-	userUC := usecase.NewUserUsecase(userRepo, userRoleRepo, authSvc, logger)
+	masterDeckUC := usecase.NewMasterDeckUsecase(masterCardgroupRepo, masterCardRepo, cardRepo, cardgroupRepo, db.GORM, logger)
+	userUC := usecase.NewUserUsecase(userRepo, userRoleRepo, authSvc, masterDeckUC, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, authSvc, logger)
 	learnUC := usecase.NewLearnUsecase(cardRepo, cardgroupRepo, service.NewOrderingPolicy(), nil, 0, 0, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)

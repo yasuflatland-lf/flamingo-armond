@@ -136,6 +136,9 @@ func (r *countingCardgroupRepo) FindByIDs(ctx context.Context, ids []string) (ma
 func (r *countingCardgroupRepo) Create(_ context.Context, _ *domain.Cardgroup) error {
 	panic("countingCardgroupRepo.Create not configured")
 }
+func (r *countingCardgroupRepo) CreateTx(_ context.Context, _ *gorm.DB, _ *domain.Cardgroup) error {
+	panic("countingCardgroupRepo.CreateTx not configured")
+}
 func (r *countingCardgroupRepo) EnsureByName(_ context.Context, _, _ string) (*domain.Cardgroup, error) {
 	panic("countingCardgroupRepo.EnsureByName not configured")
 }
