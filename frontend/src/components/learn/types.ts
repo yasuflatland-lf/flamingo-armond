@@ -10,3 +10,13 @@
  * do not depend on the higher-level route client.
  */
 export type SwipeDirection = "left" | "right" | "down";
+
+/** Mirror of the GraphQL LearnDisplayMode enum, in component-local form. */
+export type LearnDisplayMode = "FLIP_TO_REVEAL" | "ALWAYS_VISIBLE";
+
+/**
+ * Reveal phase of the active card.
+ * - "front_only": flip mode, back hidden, rating swipes suppressed, tap reveals.
+ * - "revealed": back shown, rating swipes active. always_visible starts here.
+ */
+export type LearnCardPhase = "front_only" | "revealed";
