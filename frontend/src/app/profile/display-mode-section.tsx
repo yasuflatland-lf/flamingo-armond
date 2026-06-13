@@ -24,7 +24,13 @@ const MODES: readonly LearnDisplayMode[] = ["FLIP_TO_REVEAL", "ALWAYS_VISIBLE"];
  */
 export function DisplayModeSection({ initialMode }: { initialMode: LearnDisplayMode }) {
   const t = useTranslations("Profile");
+  const tCommon = useTranslations("Common");
   const [mode, setMode] = useState<LearnDisplayMode>(initialMode);
+  // Surfaced when a save fails, mirroring ProfileForm's banner approach on this
+  // page: UNAUTHENTICATED maps to the session-expired copy, anything else to the
+  // generic "something went wrong" message. Cleared at the start of each new
+  // selection.
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [updateMode, { loading }] = useMutation(UpdateLearnDisplayModeMutation);
 
   const label: Record<LearnDisplayMode, string> = {
@@ -35,6 +41,7 @@ export function DisplayModeSection({ initialMode }: { initialMode: LearnDisplayM
   async function handleSelect(next: LearnDisplayMode) {
     if (next === mode || loading) return;
     const previous = mode;
+    setSaveError(null);
     setMode(next);
     try {
       await updateMode({ variables: { mode: next } });
@@ -43,6 +50,9 @@ export function DisplayModeSection({ initialMode }: { initialMode: LearnDisplayM
       // UI never shows a value the server rejected.
       setMode(previous);
       const codes = liftGraphQLCodes(err);
+      setSaveError(
+        codes.includes("UNAUTHENTICATED") ? t("sessionExpired") : tCommon("somethingWentWrong"),
+      );
       console.warn("[profile] updateLearnDisplayMode rejected", { codes });
     }
   }
@@ -73,6 +83,15 @@ export function DisplayModeSection({ initialMode }: { initialMode: LearnDisplayM
           );
         })}
       </div>
+      {saveError ? (
+        <p
+          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+          role="alert"
+          data-testid="display-mode-error"
+        >
+          {saveError}
+        </p>
+      ) : null}
     </fieldset>
   );
 }

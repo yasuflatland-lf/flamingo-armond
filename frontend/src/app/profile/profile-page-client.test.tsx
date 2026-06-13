@@ -2,9 +2,11 @@
 import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { GraphQLError } from "graphql";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UpdateLearnDisplayModeDocument, UpdateProfileDocument } from "@/generated/graphql";
 import { renderWithIntl } from "@/test/render-with-intl";
+import { DisplayModeSection } from "./display-mode-section";
 import { ProfilePageClient } from "./profile-page-client";
 
 const mockPush = vi.fn();
@@ -255,5 +257,105 @@ describe("<ProfilePageClient>", () => {
     await waitFor(() => {
       expect(mutationCalled).toHaveBeenCalledOnce();
     });
+  });
+});
+
+describe("<DisplayModeSection> error handling and no-op guard", () => {
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  it("reverts the toggle and shows an inline error when the mutation rejects", async () => {
+    const user = userEvent.setup();
+    const mocks = [
+      {
+        request: {
+          query: UpdateLearnDisplayModeDocument,
+          variables: { mode: "ALWAYS_VISIBLE" },
+        },
+        result: {
+          errors: [new GraphQLError("not signed in", { extensions: { code: "UNAUTHENTICATED" } })],
+        },
+      },
+    ];
+
+    renderWithIntl(
+      <MockedProvider mocks={mocks}>
+        <DisplayModeSection initialMode="FLIP_TO_REVEAL" />
+      </MockedProvider>,
+    );
+
+    const flipOption = screen.getByTestId("display-mode-flip-to-reveal");
+    const alwaysVisibleOption = screen.getByTestId("display-mode-always-visible");
+
+    // FLIP_TO_REVEAL is active on mount.
+    expect(flipOption).toHaveAttribute("aria-pressed", "true");
+    expect(alwaysVisibleOption).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(alwaysVisibleOption);
+
+    // After the rejection the optimistic selection rolls back to FLIP_TO_REVEAL.
+    await waitFor(() => {
+      expect(flipOption).toHaveAttribute("aria-pressed", "true");
+      expect(alwaysVisibleOption).toHaveAttribute("aria-pressed", "false");
+    });
+
+    // An inline error is surfaced to the user.
+    const alert = await screen.findByRole("alert");
+    expect(alert).toBe(screen.getByTestId("display-mode-error"));
+    expect(alert).toHaveTextContent(/.+/);
+
+    // The rejection is logged for operator triage with the lifted codes only.
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "[profile] updateLearnDisplayMode rejected",
+      expect.objectContaining({ codes: expect.arrayContaining(["UNAUTHENTICATED"]) }),
+    );
+  });
+
+  it("does not fire the mutation when the already-active option is clicked", async () => {
+    const user = userEvent.setup();
+    const mutationCalled = vi.fn();
+    // Provide a mock for the active mode; if the no-op guard fails this mock is
+    // consumed and the spy records a call, failing the assertion below.
+    const mocks = [makeUpdateLearnDisplayModeMock("FLIP_TO_REVEAL", mutationCalled)];
+
+    renderWithIntl(
+      <MockedProvider mocks={mocks}>
+        <DisplayModeSection initialMode="FLIP_TO_REVEAL" />
+      </MockedProvider>,
+    );
+
+    const flipOption = screen.getByTestId("display-mode-flip-to-reveal");
+    expect(flipOption).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(flipOption);
+
+    // Give any pending effect a tick to settle, then assert the mutation never fired.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mutationCalled).not.toHaveBeenCalled();
+  });
+
+  it("does not carry optimisticResponse in the updateLearnDisplayMode mutation", () => {
+    // Static assertion: updateLearnDisplayMode can return UNAUTHENTICATED (a typed
+    // GraphQL error). Apollo v3 does not reliably roll back optimistic writes on
+    // typed GraphQL errors — only on network errors. So no `optimisticResponse`
+    // must appear in the mutate call; the component rolls back manually in .catch.
+    // See .claude/rules/pagination.md § "Drop `optimisticResponse` for mutations
+    // that can fail with typed GraphQL errors".
+    //
+    // Strategy: slice the source between the `updateMode({` mutate call and the
+    // `} catch (` that follows it, and assert no `optimisticResponse` key appears.
+    const source = DisplayModeSection.toString();
+
+    const mutateStart = source.indexOf("updateMode({");
+    expect(mutateStart).toBeGreaterThan(-1);
+
+    const catchIdx = source.indexOf("} catch (", mutateStart);
+    expect(catchIdx).toBeGreaterThan(-1);
+
+    const mutateBlock = source.slice(mutateStart, catchIdx);
+    expect(mutateBlock).not.toContain("optimisticResponse");
   });
 });
