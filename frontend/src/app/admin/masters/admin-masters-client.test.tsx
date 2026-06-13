@@ -50,6 +50,14 @@ beforeEach(() => {
   vi.stubGlobal("IntersectionObserver", FakeIO as unknown as typeof IntersectionObserver);
 });
 
+// Mirror the backend opaque cursor envelope (cursor.Encode in Go): "v1:" + base64(id).
+// The list edge cursor is deliberately NOT the raw node id, so a client that resolves
+// edges by `cursor` instead of `node.id` breaks. Encoding the mock cursors keeps the
+// fixture faithful to the real backend and guards the "Master not found." regression.
+function encodeCursor(id: string): string {
+  return `v1:${btoa(id)}`;
+}
+
 function node(id: string, over: Record<string, unknown> = {}) {
   return {
     __typename: "MasterCardgroup" as const,
@@ -71,19 +79,21 @@ function node(id: string, over: Record<string, unknown> = {}) {
 }
 
 function connection(ids: string[], hasNextPage = false) {
+  const first = ids[0];
+  const last = ids[ids.length - 1];
   return {
     __typename: "MasterCatalogConnection" as const,
     edges: ids.map((id) => ({
       __typename: "MasterCatalogEdge" as const,
-      cursor: id,
+      cursor: encodeCursor(id),
       node: node(id),
     })),
     pageInfo: {
       __typename: "PageInfo" as const,
       hasNextPage,
       hasPreviousPage: false,
-      startCursor: ids[0] ?? null,
-      endCursor: ids[ids.length - 1] ?? null,
+      startCursor: first ? encodeCursor(first) : null,
+      endCursor: last ? encodeCursor(last) : null,
     },
     totalCount: ids.length,
   };
@@ -200,6 +210,20 @@ describe("AdminMastersClient", () => {
     // The writeQuery prepend updates the search:null connection the list reads.
     expect(await screen.findByText("Brand New")).toBeInTheDocument();
     expect(sheetClose).toHaveBeenCalled();
+  });
+
+  it("opens the edit drawer resolved by node.id even when the edge cursor is opaque", async () => {
+    // The backend emits an opaque encoded cursor ("v1:...") per edge, which is NOT
+    // the raw master id. The client must resolve the edit target by node.id; resolving
+    // by cursor renders "Master not found." for every master. Regression guard.
+    sheetState = { mode: "edit", id: "m-1" };
+    renderWithIntl(
+      <MockedProvider mocks={[listMock(["m-1"])]}>
+        <AdminMastersClient />
+      </MockedProvider>,
+    );
+    expect(await screen.findByTestId("master-field-name")).toBeInTheDocument();
+    expect(screen.queryByTestId("admin-masters-edit-not-found")).not.toBeInTheDocument();
   });
 
   it("removes the deleted deck from the list", async () => {
