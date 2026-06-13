@@ -61,8 +61,7 @@ These values target a public API on Render. Revisit if the threat model or deplo
 | `PING_TOKEN` | yes | — | Bearer token for `POST /internal/ping`. Server refuses to start if empty. |
 | `NOTION_TOKEN` | no\* | — | Notion integration token used by the internal Notion sync job. |
 | `NOTION_PAGE_IDS` | no\* | — | Comma-separated Notion page IDs to fetch. Empty entries are ignored. |
-| `NOTION_TARGET_OWNER_ID` | no\* | — | Existing `public.users.id`/Supabase auth user UUID that owns the synced cardgroup. Required because cardgroups are user-owned in the current schema. |
-| `NOTION_TARGET_CARDGROUP_NAME` | no\* | — | Destination cardgroup name. The backend finds or creates this cardgroup for `NOTION_TARGET_OWNER_ID`. |
+| `NOTION_MASTER_CARDGROUP_NAME` | no\* | — | Name of the master cardgroup in the `master_cardgroups` table that the sync job targets. |
 | `NOTION_SYNC_TOKEN` | no\* | — | Bearer token for `POST /internal/notion-sync`. |
 | `NOTION_MAX_ATTEMPTS` | no | `5` | Retry attempt cap for Notion 429/5xx responses. Must be positive when set. |
 | `NOTION_MAX_ELAPSED` | no | `2m` | Maximum cumulative Notion retry wait per request. Must be a positive Go duration when set. |
@@ -70,7 +69,7 @@ These values target a public API on Render. Revisit if the threat model or deplo
 
 `PORT`, `SHUTDOWN_TIMEOUT`, `NOTION_MAX_ATTEMPTS`, `NOTION_MAX_ELAPSED`, and `SUPER_USER_EMAILS` are optional with safe defaults. The three `SUPABASE_JWT_*` variables, `SUPABASE_DB_URL`, and `PING_TOKEN` are strictly required — the server refuses to start if any is missing.
 
-\* **Optional as a group.** When any of the five `NOTION_*` sync vars (`NOTION_TOKEN`, `NOTION_PAGE_IDS`, `NOTION_TARGET_OWNER_ID`, `NOTION_TARGET_CARDGROUP_NAME`, `NOTION_SYNC_TOKEN`) is absent or whitespace-only, the `POST /internal/notion-sync` route is disabled and the server still starts — a single `WARN` log line is emitted listing the missing var names (via `OptionalConfigFromEnv` in `run()`). The exception: when the group is otherwise present, `NOTION_PAGE_IDS` must contain at least one non-whitespace ID — a comma/whitespace-only value fails startup.
+\* **Optional as a group.** When any of the four `NOTION_*` sync vars (`NOTION_TOKEN`, `NOTION_PAGE_IDS`, `NOTION_MASTER_CARDGROUP_NAME`, `NOTION_SYNC_TOKEN`) is absent or whitespace-only, the `POST /internal/notion-sync` route is disabled and the server still starts — a single `WARN` log line is emitted listing the missing var names (via `OptionalConfigFromEnv` in `run()`). The exception: when the group is otherwise present, `NOTION_PAGE_IDS` must contain at least one non-whitespace ID — a comma/whitespace-only value fails startup. Note: the Makefile and deployment playbook still push `NOTION_TARGET_OWNER_ID` and `NOTION_TARGET_CARDGROUP_NAME` until an operator follow-up updates those scripts; the backend no longer reads those vars.
 
 ## Testing patterns
 
