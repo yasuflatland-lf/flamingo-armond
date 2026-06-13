@@ -92,6 +92,26 @@ describe("AdminMasterForm", () => {
     await waitFor(() => expect(onDelete).toHaveBeenCalledWith("m-1"));
   });
 
+  it("collapses empty optional fields to null and empty sortOrder to null", async () => {
+    const submit = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderWithIntl(<AdminMasterForm mode="create" submitting={false} submit={submit} />);
+    await user.type(screen.getByTestId("master-field-name"), "Only Name");
+    await user.click(screen.getByTestId("master-form-submit"));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(submit.mock.calls[0]?.[0]).toMatchObject({
+      name: "Only Name",
+      description: null,
+      language: null,
+      level: null,
+      category: null,
+      coverImageUrl: null,
+      source: null,
+      sortOrder: null,
+      isDefaultStarter: false,
+    });
+  });
+
   it("surfaces a field validation error from the parent", () => {
     renderWithIntl(
       <AdminMasterForm

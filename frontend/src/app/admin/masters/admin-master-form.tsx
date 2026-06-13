@@ -2,7 +2,7 @@
 
 import { useForm } from "@tanstack/react-form";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,6 +49,19 @@ type Props = {
 function emptyToNull(s: string): string | null {
   const trimmed = s.trim();
   return trimmed.length === 0 ? null : trimmed;
+}
+
+function DirtyStateBridge({
+  dirty,
+  onDirtyChange,
+}: {
+  dirty: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+  return null;
 }
 
 export function AdminMasterForm({
@@ -108,6 +121,14 @@ export function AdminMasterForm({
     setDeleting(true);
     try {
       await onDelete(master.id);
+    } catch (err) {
+      // Parent (client) owns the user-facing error toast; log here (redacted)
+      // so the rejection is handled and never surfaces as an unhandled rejection
+      // at the async onClick boundary. err.message omitted — may carry content.
+      console.warn("[admin-master-form] delete rejected", {
+        masterId: master.id,
+        name: err instanceof Error ? err.name : "unknown",
+      });
     } finally {
       setDeleting(false);
     }
@@ -127,7 +148,6 @@ export function AdminMasterForm({
         });
       }}
       className="space-y-4"
-      onInput={() => onDirtyChange?.(true)}
     >
       <form.Field
         name="name"
@@ -273,6 +293,10 @@ export function AdminMasterForm({
           </AlertDialog>
         </div>
       ) : null}
+
+      <form.Subscribe selector={(state) => state.isDirty}>
+        {(dirty) => <DirtyStateBridge dirty={dirty} onDirtyChange={onDirtyChange} />}
+      </form.Subscribe>
     </form>
   );
 }
