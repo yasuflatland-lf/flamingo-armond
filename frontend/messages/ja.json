@@ -17,6 +17,7 @@
   },
   "Nav": {
     "cardgroups": "カードグループ",
+    "catalog": "カタログ",
     "profile": "プロフィール",
     "signIn": "ログイン",
     "logout": "ログアウト",
@@ -66,6 +67,26 @@
     "sessionCompleteMessage": "このバッチに期限切れのカードはありません。",
     "reviewedCount": "{count, plural, other {このバッチで#枚のカードを復習しました。}}",
     "refreshCards": "カードを更新"
+  },
+  "Catalog": {
+    "title": "カタログ",
+    "description": "公開されたデッキを閲覧し、自分のカードグループにインポートできます。",
+    "searchPlaceholder": "デッキを検索...",
+    "searchAriaLabel": "カタログのデッキを検索",
+    "import": "インポート",
+    "importing": "インポート中...",
+    "imported": "インポート済み",
+    "cardCount": "{count, plural, other {# 枚のカード}}",
+    "level": "レベル {level}",
+    "noDecks": "利用可能なデッキはまだありません。",
+    "noMatch": "「{query}」に一致するデッキはありません",
+    "loadingMore": "デッキを読み込み中...",
+    "fetchMoreError": "デッキを追加で読み込めませんでした。もう一度お試しください。",
+    "importSuccess": "「{name}」をカードグループに追加しました。",
+    "importNotFound": "このデッキは利用できなくなりました。",
+    "importError": "デッキをインポートできませんでした。もう一度お試しください。",
+    "sessionExpired": "セッションの有効期限が切れました。",
+    "signInAgain": "再度ログイン"
   },
   "Cardgroups": {
     "updatedAt": "{date}に更新",
