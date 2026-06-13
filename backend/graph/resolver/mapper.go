@@ -90,10 +90,18 @@ func toCEFRLevelModel(level domain.CEFRLevel) (model.CEFRLevel, bool) {
 }
 
 func toLearnDisplayModeModel(m domain.LearnDisplayMode) model.LearnDisplayMode {
-	if m == domain.LearnDisplayAlwaysVisible {
+	switch m {
+	case domain.LearnDisplayAlwaysVisible:
 		return model.LearnDisplayModeAlwaysVisible
+	case domain.LearnDisplayFlipToReveal:
+		return model.LearnDisplayModeFlipToReveal
+	default:
+		// Unreachable in production: the DB CHECK constraint and ParseLearnDisplayMode
+		// both prevent unknown values from reaching this path. The flip fallback is a
+		// deliberate fail-safe to keep reads non-fatal during rolling deploys or
+		// unforeseen schema extensions.
+		return model.LearnDisplayModeFlipToReveal
 	}
-	return model.LearnDisplayModeFlipToReveal
 }
 
 func fromLearnDisplayModeModel(m model.LearnDisplayMode) (domain.LearnDisplayMode, error) {
