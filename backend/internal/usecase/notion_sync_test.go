@@ -117,8 +117,8 @@ func TestMasterNotionSyncUsecase_DiffMerge(t *testing.T) {
 	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	out, err := uc.Sync(context.Background(), SyncToMasterInput{
-		PageIDs:       []string{" page-1 ", "page-1"},
-		CardgroupName: "English",
+		PageIDs:             []string{" page-1 ", "page-1"},
+		MasterCardgroupName: "English",
 	})
 	if err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -166,8 +166,8 @@ func TestMasterNotionSyncUsecase_DuplicateFrontLastWins(t *testing.T) {
 	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	out, err := uc.Sync(context.Background(), SyncToMasterInput{
-		PageIDs:       []string{"page-1", "page-2"},
-		CardgroupName: "English",
+		PageIDs:             []string{"page-1", "page-2"},
+		MasterCardgroupName: "English",
 	})
 	if err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -223,8 +223,8 @@ func TestMasterNotionSyncUsecase_DuplicateFrontSamePageLastWins(t *testing.T) {
 	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	out, err := uc.Sync(context.Background(), SyncToMasterInput{
-		PageIDs:       []string{"page-1"},
-		CardgroupName: "English",
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
 	})
 	if err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -272,8 +272,8 @@ func TestMasterNotionSyncUsecase_InputValidation(t *testing.T) {
 		t.Parallel()
 		uc := newMasterValidationUsecase()
 		_, err := uc.Sync(context.Background(), SyncToMasterInput{
-			PageIDs:       []string{"", "  "},
-			CardgroupName: "English",
+			PageIDs:             []string{"", "  "},
+			MasterCardgroupName: "English",
 		})
 		if !errors.Is(err, ErrNotionSyncInvalidInput) {
 			t.Fatalf("err = %v, want ErrNotionSyncInvalidInput", err)
@@ -284,8 +284,8 @@ func TestMasterNotionSyncUsecase_InputValidation(t *testing.T) {
 		t.Parallel()
 		uc := newMasterValidationUsecase()
 		_, err := uc.Sync(context.Background(), SyncToMasterInput{
-			PageIDs:       []string{"page-1"},
-			CardgroupName: " ",
+			PageIDs:             []string{"page-1"},
+			MasterCardgroupName: " ",
 		})
 		if !errors.Is(err, ErrNotionSyncInvalidInput) {
 			t.Fatalf("err = %v, want ErrNotionSyncInvalidInput", err)
@@ -307,8 +307,8 @@ func TestMasterNotionSyncUsecase_InputValidation(t *testing.T) {
 		uc := newMasterValidationUsecase()
 		overCap := strings.Repeat("a", domain.CardgroupNameMax+1)
 		_, err := uc.Sync(context.Background(), SyncToMasterInput{
-			PageIDs:       []string{"page-1"},
-			CardgroupName: overCap,
+			PageIDs:             []string{"page-1"},
+			MasterCardgroupName: overCap,
 		})
 		if !errors.Is(err, ErrNotionSyncInvalidInput) {
 			t.Fatalf("err = %v, want ErrNotionSyncInvalidInput", err)
@@ -354,8 +354,8 @@ func TestMasterNotionSyncUsecase_SoftParseFailure(t *testing.T) {
 	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
-		PageIDs:       []string{"page-1"},
-		CardgroupName: "English",
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
 	})
 	if !errors.Is(err, ErrNotionSyncParse) {
 		t.Fatalf("err = %v, want ErrNotionSyncParse", err)
@@ -385,8 +385,8 @@ func TestMasterNotionSyncUsecase_MixedSkipAndLexerErrorIsNotSkipOnly(t *testing.
 	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
-		PageIDs:       []string{"page-1"},
-		CardgroupName: "English",
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
 	})
 	if !errors.Is(err, ErrNotionSyncParse) {
 		t.Fatalf("err = %v, want ErrNotionSyncParse (mixed skip + lexer error is not skip-only)", err)
@@ -417,8 +417,8 @@ func TestMasterNotionSyncUsecase_LoneFrontDoesNotOverwriteExistingBack(t *testin
 	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	out, err := uc.Sync(context.Background(), SyncToMasterInput{
-		PageIDs:       []string{"page-1"},
-		CardgroupName: "English",
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
 	})
 	if err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -455,8 +455,8 @@ func TestMasterNotionSyncUsecase_FetchErrorSkipsPersistence(t *testing.T) {
 	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
-		PageIDs:       []string{"page-1"},
-		CardgroupName: "English",
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
 	})
 	if !errors.Is(err, ErrNotionSyncFetch) || !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want fetch + boom", err)
@@ -477,8 +477,8 @@ func TestMasterNotionSyncUsecase_PersistError(t *testing.T) {
 	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
-		PageIDs:       []string{"page-1"},
-		CardgroupName: "English",
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
 	})
 	if !errors.Is(err, ErrNotionSyncPersist) || !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want persist + boom", err)
@@ -501,8 +501,8 @@ func TestMasterNotionSyncUsecase_CardgroupEnsureError(t *testing.T) {
 	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
-		PageIDs:       []string{"page-1"},
-		CardgroupName: "English",
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
 	})
 	if !errors.Is(err, ErrNotionSyncPersist) {
 		t.Fatalf("err = %v, want ErrNotionSyncPersist", err)
@@ -539,8 +539,8 @@ func TestMasterNotionSyncUsecase_ListFrontsError(t *testing.T) {
 	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
-		PageIDs:       []string{"page-1"},
-		CardgroupName: "English",
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
 	})
 	if !errors.Is(err, ErrNotionSyncPersist) {
 		t.Fatalf("err = %v, want ErrNotionSyncPersist", err)
@@ -585,8 +585,8 @@ func TestMasterNotionSyncUsecase_SkipOnlyLogFields(t *testing.T) {
 	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, logger)
 
 	out, err := uc.Sync(context.Background(), SyncToMasterInput{
-		PageIDs:       []string{"page-1"},
-		CardgroupName: "English",
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
 	})
 	if err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -710,8 +710,8 @@ func TestMasterNotionSyncUsecase_WarnBranchLogFields(t *testing.T) {
 	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, logger)
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
-		PageIDs:       []string{"page-1"},
-		CardgroupName: "English",
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
 	})
 	if !errors.Is(err, ErrNotionSyncParse) {
 		t.Fatalf("expected ErrNotionSyncParse, got %v", err)
@@ -785,5 +785,141 @@ func TestMasterCardsFromParsedRows_AssignsContiguousPositions(t *testing.T) {
 		if card.MasterCardgroupID != masterCardgroupID {
 			t.Errorf("cards[%d].MasterCardgroupID = %q, want %q", i, card.MasterCardgroupID, masterCardgroupID)
 		}
+	}
+}
+
+// TestMasterNotionSyncUsecase_DeleteError verifies that a failure in
+// DeleteByMasterCardgroupAndFrontsTx (the prune-stale step) surfaces as
+// ErrNotionSyncPersist with the underlying delete error preserved in the
+// chain. UpsertManyTx runs before the delete, so it must have been called
+// exactly once even though the transaction is rolled back on the delete
+// failure.
+func TestMasterNotionSyncUsecase_DeleteError(t *testing.T) {
+	t.Parallel()
+
+	deleteErr := errors.New("delete error")
+	fetcher := &stubNotionFetcher{pages: []notion.Page{
+		{ID: "page-1", Text: "apple " + uniqueBack(1) + "\n"},
+	}}
+	cardgroups := &mockMasterCardgroupRepo{cg: &domain.MasterCardgroup{ID: "mcg-target"}}
+	// "stale" is present in the cardgroup but absent from the Notion payload, so
+	// frontsToDelete yields ["stale"] and the prune-stale delete runs.
+	cards := &mockMasterCardRepo{existingFronts: []string{"apple", "stale"}, deleteErr: deleteErr}
+	tx, txCalls := dictTxRunner()
+	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+
+	_, err := uc.Sync(context.Background(), SyncToMasterInput{
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
+	})
+	if !errors.Is(err, ErrNotionSyncPersist) {
+		t.Fatalf("err = %v, want ErrNotionSyncPersist", err)
+	}
+	if !errors.Is(err, deleteErr) {
+		t.Fatalf("err = %v, want wrapped delete error", err)
+	}
+	if !strings.Contains(err.Error(), "delete error") {
+		t.Fatalf("err.Error() = %q, want it to contain \"delete error\"", err.Error())
+	}
+	// The tx was entered, but must have been rolled back on the delete failure.
+	if *txCalls != 1 {
+		t.Fatalf("tx calls = %d, want 1", *txCalls)
+	}
+	// UpsertManyTx runs before DeleteByMasterCardgroupAndFrontsTx; it must have
+	// run exactly once before the delete failed.
+	if cards.upsertCalls != 1 {
+		t.Fatalf("upsert calls = %d, want 1", cards.upsertCalls)
+	}
+	if cards.deleteCalls != 1 {
+		t.Fatalf("delete calls = %d, want 1 (the stale front triggers the delete)", cards.deleteCalls)
+	}
+}
+
+// TestMasterNotionSyncUsecase_OverCapRejected covers the parsed-row cap gate at
+// the usecase level: a Notion payload that parses to more than
+// cardImportParsedRowCap rows is rejected with ErrNotionSyncInvalidInput before
+// any persistence runs. Mirrors TestCardImportUsecase_PayloadOverCapBadInput on
+// the card-import path.
+func TestMasterNotionSyncUsecase_OverCapRejected(t *testing.T) {
+	t.Parallel()
+
+	const n = cardImportParsedRowCap + 1
+	var b strings.Builder
+	for i := 0; i < n; i++ {
+		b.WriteString(stringFront("front", i))
+		b.WriteString(" ")
+		b.WriteString(uniqueBack(i))
+		b.WriteString("\n")
+	}
+	fetcher := &stubNotionFetcher{pages: []notion.Page{{ID: "page-1", Text: b.String()}}}
+	cardgroups := &mockMasterCardgroupRepo{}
+	cards := &mockMasterCardRepo{}
+	tx, txCalls := dictTxRunner()
+	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+
+	_, err := uc.Sync(context.Background(), SyncToMasterInput{
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
+	})
+	if !errors.Is(err, ErrNotionSyncInvalidInput) {
+		t.Fatalf("err = %v, want ErrNotionSyncInvalidInput (over-cap payload)", err)
+	}
+	// The cap gate runs before EnsureByName and the transaction, so no
+	// persistence may have happened.
+	if cardgroups.calls != 0 {
+		t.Fatalf("EnsureByName calls = %d, want 0 (cap gate precedes persistence)", cardgroups.calls)
+	}
+	if cards.upsertCalls != 0 || cards.listCalls != 0 || cards.deleteCalls != 0 {
+		t.Fatalf("card repo calls (upsert=%d list=%d delete=%d), want all zero",
+			cards.upsertCalls, cards.listCalls, cards.deleteCalls)
+	}
+	if *txCalls != 0 {
+		t.Fatalf("tx calls = %d, want 0 (no tx on over-cap rejection)", *txCalls)
+	}
+}
+
+// TestMasterNotionSyncUsecase_NoDeletions pins the prune "nothing stale" branch:
+// when the Notion fronts exactly match the cardgroup's existing fronts,
+// frontsToDelete is empty, but DeleteByMasterCardgroupAndFrontsTx is still
+// invoked once with an empty slice. The repository's empty-IN guard treats an
+// empty slice as a no-op, so the destructive path stays harmless while the call
+// itself remains unconditional.
+func TestMasterNotionSyncUsecase_NoDeletions(t *testing.T) {
+	t.Parallel()
+
+	fetcher := &stubNotionFetcher{pages: []notion.Page{
+		{ID: "page-1", Text: "apple " + uniqueBack(1) + "\nbanana " + uniqueBack(2) + "\n"},
+	}}
+	cardgroups := &mockMasterCardgroupRepo{cg: &domain.MasterCardgroup{ID: "mcg-target"}}
+	// existingFronts == notionFronts, so nothing is stale.
+	cards := &mockMasterCardRepo{
+		existingFronts: []string{"apple", "banana"},
+		upsertResult:   repository.UpsertManyTxResult{Updated: 2},
+	}
+	tx, txCalls := dictTxRunner()
+	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+
+	out, err := uc.Sync(context.Background(), SyncToMasterInput{
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
+	})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if out.Deleted != 0 {
+		t.Fatalf("out.Deleted = %d, want 0 (nothing stale)", out.Deleted)
+	}
+	if cards.upsertCalls != 1 {
+		t.Fatalf("upsert calls = %d, want 1", cards.upsertCalls)
+	}
+	// The delete is unconditional even with nothing to prune.
+	if cards.deleteCalls != 1 {
+		t.Fatalf("delete calls = %d, want 1 (delete is called unconditionally)", cards.deleteCalls)
+	}
+	if len(cards.deletedFronts) != 0 {
+		t.Fatalf("deletedFronts = %v, want empty slice (nothing stale)", cards.deletedFronts)
+	}
+	if *txCalls != 1 {
+		t.Fatalf("tx calls = %d, want 1", *txCalls)
 	}
 }
