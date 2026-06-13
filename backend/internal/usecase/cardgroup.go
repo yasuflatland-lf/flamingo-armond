@@ -155,7 +155,8 @@ type cardgroupOwnerCounter interface {
 
 // checkCardgroupLimit returns a non-nil *CardgroupLimitInfo when a non-admin
 // owner already holds generalUserCardgroupLimit cardgroups. Admins are exempt
-// (returns nil, nil without counting). Infrastructure failures propagate wrapped.
+// (returns nil, nil without counting). Context cancellation and deadline
+// errors pass through unwrapped; other infrastructure failures propagate wrapped.
 func checkCardgroupLimit(ctx context.Context, counter cardgroupOwnerCounter, admin AdminChecker, ownerID string) (*CardgroupLimitInfo, error) {
 	isAdmin, err := admin.IsAdmin(ctx, ownerID)
 	if err != nil {

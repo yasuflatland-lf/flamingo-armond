@@ -1962,3 +1962,30 @@ func TestCheckCardgroupLimit_CountCancelled_IdentityPreserved(t *testing.T) {
 		t.Fatalf("expected nil LimitInfo on cancellation, got %+v", info)
 	}
 }
+
+// TestCheckCardgroupLimit_CountDeadlineExceeded_IdentityPreserved verifies that
+// a context.DeadlineExceeded returned from CountByOwner passes through
+// checkCardgroupLimit unwrapped: errors.Is matches and err ==
+// context.DeadlineExceeded (bare identity). Mirrors the Canceled case above
+// because isContextDone handles both sentinels.
+func TestCheckCardgroupLimit_CountDeadlineExceeded_IdentityPreserved(t *testing.T) {
+	t.Parallel()
+	counter := &stubCardgroupCounter{err: context.DeadlineExceeded}
+	admin := &stubLimitAdminChecker{isAdmin: false}
+
+	info, err := checkCardgroupLimit(context.Background(), counter, admin, "user-1")
+
+	if err == nil {
+		t.Fatal("expected context.DeadlineExceeded, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected errors.Is(err, context.DeadlineExceeded)=true, got %v (%T)", err, err)
+	}
+	// Identity preserved: the returned error IS context.DeadlineExceeded, not an eris wrap.
+	if err != context.DeadlineExceeded {
+		t.Fatalf("expected the unwrapped context.DeadlineExceeded, got %v (%T)", err, err)
+	}
+	if info != nil {
+		t.Fatalf("expected nil LimitInfo on deadline exceeded, got %+v", info)
+	}
+}
