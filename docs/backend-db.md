@@ -82,6 +82,17 @@ Trigger functions such as the `set_*_updated_at` family are `SECURITY INVOKER` a
 
 The same recipe applies to functions invoked by Supabase GoTrue at JWT mint time (the Custom Access Token Hook). See [`docs/backend/custom-access-token-hook.md`](backend/custom-access-token-hook.md) for the hook-specific design decisions — join-at-mint over sync-trigger, fail-closed on malformed events, stale-claim removal, canonical return shape, and the down-migration operator precondition.
 
+### Index strategy
+
+Every foreign key in the schema has a backing btree index so that `ON DELETE CASCADE` lookups never degrade to a sequential scan. A composite primary key only backs lookups on its left-prefix columns: `PRIMARY KEY (user_id, card_id)` does NOT serve a lookup by `card_id` alone, so `user_card_fsrs.card_id` carries a dedicated `idx_user_card_fsrs_card_id` index (migration `20260616000000_add_user_card_fsrs_card_id_index`).
+
+The following read-path composite indexes are intentionally **not** present. They are pagination tuning whose absence degrades gracefully (a page sorts more rows) and which can be added later with a single migration once load is measured. Add them — preferably with `CREATE INDEX CONCURRENTLY` in a file without `BEGIN/COMMIT` if the target table is already large in production — when the trigger fires:
+
+- `cards (cardgroup_id, id)` — `cardsByCardgroupConnection` defaults to `ORDER BY id` within a `cardgroup_id`, which currently filters via `idx_cards_cardgroup_id` and then sorts. Add when a single cardgroup routinely holds several thousand cards, or when `EXPLAIN (ANALYZE, BUFFERS)` shows a Sort node dominating the page query. `cards` is on the bulk-import (upsert) write path, so this index is not added pre-emptively — it would tax every insert for a read that is not yet slow. If added, also drop the now-redundant `idx_cards_cardgroup_id` (its `cardgroup_id` prefix is covered by the composite).
+- `users (created_at DESC, id ASC)` — the admin user list orders by `(created_at DESC, id ASC)`; no current index supports that mixed-direction order, so each page sorts the table. Add when the admin list is perceptibly slow, or when `users` reaches tens of thousands of rows.
+
+Measure before adding either: `EXPLAIN (ANALYZE, BUFFERS)` on the query plus `pg_stat_user_tables.seq_scan` / `pg_stat_statements` to confirm the index will be used.
+
 ### Postgres upsert: prerequisite UNIQUE / EXCLUSION constraint
 
 `INSERT ... ON CONFLICT (cols) ...` requires the column set to be backed by a UNIQUE constraint, UNIQUE INDEX, or EXCLUSION constraint. Plain (non-unique) indexes and CHECK constraints do not satisfy the requirement — Postgres rejects the statement with SQLSTATE `42P10` "there is no unique or exclusion constraint matching the ON CONFLICT specification". This is checked at planning time, so the failure surfaces immediately, not on a colliding row.
