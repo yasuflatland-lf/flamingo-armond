@@ -205,6 +205,8 @@ The `auth` package exposes two distinct types with different lifetimes and data 
 | `AuthUser` (`auth/user.go`) | Request-scoped | JWT claims (Supabase) | Who is the caller? |
 | `auth.Service` (`auth/role.go`) | Boot-scoped | DB-backed (`UserRoleRepository`) | What can the caller do? |
 
+`AuthUser.Role` carries the Supabase/Postgres database role (`authenticated`, `anon`, or `service_role`) — it is NOT the application-level `admin`/`general` role; the application role lives in `public.user_roles` and is determined by `auth.Service.IsAdmin`, which performs a membership check against `domain.AdminRoleName`.
+
 The split is deliberate: the JWT does not carry roles in this project, so every role check goes through the DB. `auth.Service` is constructed once at boot in `run()` against the `UserRoleRepository` and injected into resolvers/usecases that need to gate on role membership.
 
 `auth.Service.IsAdmin(ctx, userID)` hardcodes the literal `"admin"` role name in the method body — callers cannot pass a role string. This prevents drift to bespoke role names; add a new dedicated method (e.g. `IsModerator`) when a second role is needed rather than parameterising `IsAdmin`. The same `"admin"` literal is exposed to the role-CRUD usecase as `domain.AdminRoleName` (see `internal/domain/role.go`) so the system-role rename / delete guards stay in lockstep with the auth-side check; both move together when a second privileged role is introduced.
@@ -213,7 +215,7 @@ The DB side of the same check is `private.is_admin(uid uuid) RETURNS boolean`, c
 
 ### Admin usecase split: one auth gate, separate business surfaces
 
-`AdminUserUsecase` and `AdminRoleUsecase` share the same `AdminGate.Require` shape (UNAUTHENTICATED → CANCELLED → INTERNAL → FORBIDDEN classification) but hold no business state in common. They live as two structs in `internal/usecase/` and are wired into separate fields on `Resolver`. Two consequences:
+`AdminUserUsecase` and `AdminRoleUsecase` share the same `AdminGate.Require` shape (UNAUTHENTICATED → CANCELLED → INTERNAL → FORBIDDEN classification) but hold no business state in common. They live as two structs in `internal/usecase/` and are wired into separate fields on `Resolver`. There are two distinct admin patterns: `AdminGate.Require` for admin-required gates (non-admin → FORBIDDEN), and injecting an `AdminChecker` bool for admin-exempt business rules where admins bypass a restriction such as the per-user cardgroup cap — see [inject AdminChecker for admin-exempt business rules](backend/library-gotchas/admin-checker-inject-for-admin-exempt-business-logic.md). Two consequences:
 
 - **Query.roles routes through `AdminRoleUC.List`, not `AdminUserUC.ListRoles`.** A `ListRoles` method on the user usecase that ultimately delegates to the role repository duplicates the auth gate and creates a "two truths" problem when the gate evolves. After `AdminRoleUC` exists, the role-list field belongs there; the duplicate method on `AdminUserUC` must be removed in the same change rather than left as dead code.
 - **The narrow consumer interface lists only what the usecase calls.** `adminRoleRepoForCRUD` (in `admin_role.go`) lists `FindByID`, `Create`, `Update`, `Delete`, `ListAll` — five methods. It must not list `AssignToUser` / `RevokeFromUser` even though the concrete `RoleRepository` has them, because the AdminRole CRUD usecase never calls those methods. Adding them forces every test stub to implement assignment plumbing it never exercises and obscures which surface each usecase actually depends on. The pattern is the same one documented in `docs/backend.md` § "Consumer-defined narrow interfaces…", applied per-usecase rather than per-repository.
@@ -233,7 +235,7 @@ Reading the input name instead would force the guard to also know that admin exi
 
 ### Sentinel errors and domain validation
 
-`domain.ParseCardgroupName` returns typed sentinels (`ErrCardgroupNameRequired`, `ErrCardgroupNameTooLong`). The usecase translates them via a dedicated helper (`translateCardgroupNameErr`) to `gqlerr.BadUserInput`. The validation rule itself lives only in the domain's `ParseCardgroupName` constructor; the usecase holds only the domain→GraphQL mapping. Apply this pattern to every new aggregate.
+`domain.ParseCardgroupName` returns typed sentinels (`ErrCardgroupNameRequired`, `ErrCardgroupNameTooLong`). The usecase translates them via a dedicated helper (`translateCardgroupNameErr`) to `gqlerr.BadUserInput`. The validation rule itself lives only in the domain's `ParseCardgroupName` constructor; the usecase holds only the domain→GraphQL mapping. Apply this pattern to every new aggregate. `createCardgroup` returns the `CreateCardgroupResult` union with three variants: `CreateCardgroupSuccess`, `InputValidationError`, and `CardgroupLimitReachedError` (the per-user cap rejection, delivered as errors-as-data rather than a wire error).
 
 ### Validation rules in `usecase.UpdateUser`
 

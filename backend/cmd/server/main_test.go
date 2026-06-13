@@ -54,6 +54,18 @@ import (
 
 var testDBURL string
 
+// stubAdminChecker satisfies usecase.AdminChecker for wiring/smoke tests that
+// do not exercise the cardgroup-limit guard. Passing isAdmin: true short-circuits
+// the limit check and preserves prior test behavior.
+type stubAdminChecker struct {
+	isAdmin bool
+	err     error
+}
+
+func (s stubAdminChecker) IsAdmin(_ context.Context, _ string) (bool, error) {
+	return s.isAdmin, s.err
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(runTests(m))
 }
@@ -148,7 +160,7 @@ func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil), nil, nil, nil, nil, nil, nil, nil, ping.New(nil, "test-token"), nil, nil))
+	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil), nil, nil, nil, nil, nil, nil, nil, ping.New(nil, "test-token"), nil, nil))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -157,19 +169,17 @@ func setNotionSyncEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("NOTION_TOKEN", "notion-test-token")
 	t.Setenv("NOTION_PAGE_IDS", "page-1,page-2")
-	t.Setenv("NOTION_TARGET_OWNER_ID", uuid.NewString())
-	t.Setenv("NOTION_TARGET_CARDGROUP_NAME", "English")
+	t.Setenv("NOTION_MASTER_CARDGROUP_NAME", "English")
 	t.Setenv("NOTION_SYNC_TOKEN", "sync-test-token")
 }
 
-// unsetNotionSyncEnv blanks all five NOTION_* vars so that run() treats
+// unsetNotionSyncEnv blanks all four NOTION_* vars so that run() treats
 // notion-sync as disabled and skips registering /internal/notion-sync.
 func unsetNotionSyncEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("NOTION_TOKEN", "")
 	t.Setenv("NOTION_PAGE_IDS", "")
-	t.Setenv("NOTION_TARGET_OWNER_ID", "")
-	t.Setenv("NOTION_TARGET_CARDGROUP_NAME", "")
+	t.Setenv("NOTION_MASTER_CARDGROUP_NAME", "")
 	t.Setenv("NOTION_SYNC_TOKEN", "")
 }
 
@@ -585,12 +595,12 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	logger := slog.New(slog.DiscardHandler)
 	userUC := usecase.NewUserUsecase(userRepo, userRoleRepo, nil, nil, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
-	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil), userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo, ping.New(pingRecordRepo, "test-token"), nil, swipeRecordRepo)
+	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil), userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo, ping.New(pingRecordRepo, "test-token"), nil, swipeRecordRepo)
 
 	ts := httptest.NewServer(e)
 	t.Cleanup(ts.Close)
@@ -851,7 +861,7 @@ func TestComplexityLimit_Rejects(t *testing.T) {
 
 func newIntrospectionTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newGraphQLServer(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)))
+	ts := httptest.NewServer(newGraphQLServer(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -1748,13 +1758,13 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
 	logger := slog.New(slog.DiscardHandler)
 	userUC := usecase.NewUserUsecase(userRepo, userRoleRepo, nil, nil, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	lastViewedUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	e := newRouter(
-		resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, lastViewedUC, nil, nil),
+		resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, lastViewedUC, nil, nil, nil),
 		mw,
 		auth.NewSuperUserPromoter(nil, "", nil, nil),
 		userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo,
@@ -2501,6 +2511,9 @@ func (panicQueryResolver) AdminUser(_ context.Context, _ string) (*model.User, e
 }
 func (panicQueryResolver) Roles(_ context.Context) ([]*model.Role, error)        { return nil, nil }
 func (panicQueryResolver) Role(_ context.Context, _ string) (*model.Role, error) { return nil, nil }
+func (panicQueryResolver) MasterCatalog(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.MasterCatalogOrderBy, _ *model.SortOrder) (*model.MasterCatalogConnection, error) {
+	return nil, nil
+}
 
 // panicResolverRoot is a generated.ResolverRoot whose Query resolver panics on
 // Health. All other sub-resolvers forward to the real resolver with nil deps
@@ -2510,7 +2523,7 @@ type panicResolverRoot struct {
 }
 
 func newPanicResolverRoot() *panicResolverRoot {
-	return &panicResolverRoot{inner: resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)}
+	return &panicResolverRoot{inner: resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)}
 }
 
 func (p *panicResolverRoot) Card() generated.CardResolver           { return p.inner.Card() }

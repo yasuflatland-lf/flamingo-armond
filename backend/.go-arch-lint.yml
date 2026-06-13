@@ -38,6 +38,7 @@ components:
   cmd_server:          { in: cmd/server }
   cmd_seed:            { in: cmd/seed }
   cmd_schema_lint:     { in: cmd/schema-lint }
+  cmd_migrate_to_master: { in: cmd/migrate-to-master }
 
 commonComponents:
   - graph_generated
@@ -88,4 +89,6 @@ deps:
   cmd_seed:
     anyVendorDeps: true          # CLI must not pull in project/transport deps; vendor ok
   cmd_schema_lint:
+    anyVendorDeps: true          # CLI must not pull in project/transport deps; vendor ok
+  cmd_migrate_to_master:
     anyVendorDeps: true          # CLI must not pull in project/transport deps; vendor ok

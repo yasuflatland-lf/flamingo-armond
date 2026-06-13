@@ -99,7 +99,8 @@
     "addCardButton": "カードを追加 +",
     "addACard": "カードを追加",
     "batchImport": "一括インポート",
-    "nameLabel": "名前"
+    "nameLabel": "名前",
+    "limitReached": "すでに{current}個のカードグループがあります（上限{limit}個）。"
   },
   "Cards": {
     "addSomeCards": "新しいカードを追加して始めましょう。",

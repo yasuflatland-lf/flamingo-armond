@@ -69,6 +69,26 @@ table but leaves the embedded-schema confusion intact when `rows` itself
 embeds a typed row. The flat scan target + explicit `Table` is the smallest
 fix that survives future column additions.
 
-**Reference:** `backend/internal/repository/card.go` — `dueCardRow` (flat) and
-`findDueCardsOn`. The same flat-scan pattern applies to any LEFT JOIN whose
-right side contributes nullable columns to the projection.
+The gotcha is not limited to LEFT JOIN columns. It bites **any** scan target
+that embeds a `TableName()`-carrying row struct to ride an extra projected
+column alongside it — including a **correlated-subquery aggregate**. The
+catalog page query `FindPublishedPage` (`master_cardgroup.go`) projects
+`mcg.*, (SELECT COUNT(*) …) AS card_count` and originally scanned into a
+`gormMasterCatalogRow` that embedded `gormMasterCardgroup`. The `card_count`
+field mapped, but every embedded column (`id`, `name`, `status`, …) scanned to
+its zero value, so the query "returned rows" whose IDs were all `""`. The fix
+is the same flatten: a flat struct listing each `master_cardgroups` column plus
+`card_count`, with a `toGorm()` method that rebuilds `gormMasterCardgroup` so
+the domain conversion stays in one place. Using `.Table("master_cardgroups AS
+mcg")` does **not** save you — the explicit table sets the FROM clause, but the
+column-to-field binding still resolves against the embedded type's schema.
+
+This failure is invisible to usecase unit tests that mock the repository — only
+an integration test against a real Postgres exercises the GORM scan path and
+catches the blanked columns. Pair any new embedded-extra-column scan target with
+a repository integration test that asserts a populated primary key, not just the
+extra column.
+
+**Reference:** `backend/internal/repository/card.go` — `dueCardRow` (flat,
+LEFT JOIN variant) and `findDueCardsOn`; `backend/internal/repository/master_cardgroup.go`
+— `gormMasterCatalogRow` (flat, correlated-COUNT variant) and `FindPublishedPage`.

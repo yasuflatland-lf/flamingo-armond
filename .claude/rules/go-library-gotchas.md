@@ -105,6 +105,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [DataLoader missing-key semantics: `nil data` vs `ErrNotFound` is per-aggregate](../../docs/backend/library-gotchas/dataloader-missing-key-semantics.md)
 - [`ON DELETE` FK action requires an integration test against a real database](../../docs/backend/library-gotchas/fk-action-integration-test.md)
 - [Migration down/up roundtrip test: prove the reverse path preserves data](../../docs/backend/library-gotchas/migration-down-up-roundtrip-test.md)
+- [Shared parallel test DB: isolate no-cursor `first=N` pagination queries via a search predicate or cursor, not `filterByIDs` alone](../../docs/backend/library-gotchas/shared-parallel-db-pagination-test-isolation.md)
 - [RLS `INSERT-own` assertion on a PK-keyed table needs a fixture row that does not exist yet](../../docs/backend/library-gotchas/rls-insert-own-fresh-fixture-row.md)
 - [LSP stale-cache diagnostics during refactor — verify with `go build` before treating as real](../../docs/backend/library-gotchas/lsp-stale-cache-during-refactor.md)
 - [CI bash `rc=$?` is dead code under `set -e` — use `cmd || rc=$?`](../../docs/backend/library-gotchas/ci-bash-rc-capture-under-set-e.md)
@@ -131,6 +132,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Fat repository interface split: CRUD vs membership seam — when and how to split, wiring checklist, context pass-through in validation helpers](../../docs/backend/library-gotchas/fat-repository-interface-split.md)
 - [Codegen two-pass failure mode: schema field drop blocks regen until production code is fixed](../../docs/backend/library-gotchas/codegen-two-pass-schema-field-drop.md)
 - [CI bash glob `for $(ls)` silently passes on zero matches under `set -e` — use `nullglob` array form](../../docs/backend/library-gotchas/ci-bash-glob-nullglob-silent-pass.md)
+- [Inject `AdminChecker` (bool) for admin-exempt business rules, not `AdminGate.Require`](../../docs/backend/library-gotchas/admin-checker-inject-for-admin-exempt-business-logic.md)
 
 ## DDD patterns (on-demand)
 

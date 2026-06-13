@@ -87,7 +87,11 @@ if (payload?.__typename === "InputValidationError") {
   setValidationError({ field: payload.field, message: payload.message });
   return;
 }
-// ... handle Success and unknown-variant fallthrough.
+// `CreateCardgroupResult` has three variants: `CreateCardgroupSuccess`,
+// `InputValidationError`, and `CardgroupLimitReachedError` (carries `limit`
+// and `current` when the per-user cardgroup cap is reached, handled as a
+// distinct `status: "limit"` branch). Any unrecognized `__typename` falls
+// through to a generic error path.
 
 <CardgroupForm mode="create" submit={handleSubmit} validationError={validationError} />
 ```

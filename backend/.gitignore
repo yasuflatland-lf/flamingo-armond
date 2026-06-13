@@ -1,4 +1,5 @@
 /main
+/migrate-to-master
 *.test
 *.out
 coverage.html
