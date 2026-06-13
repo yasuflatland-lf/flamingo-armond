@@ -46,6 +46,13 @@ func (r *mutationResolver) CreateCardgroup(ctx context.Context, input model.NewC
 			Message: outcome.Validation.Message,
 		}, nil
 	}
+	if outcome.LimitReached != nil {
+		return model.CardgroupLimitReachedError{
+			Message: "cardgroup limit reached",
+			Limit:   outcome.LimitReached.Limit,
+			Current: outcome.LimitReached.Current,
+		}, nil
+	}
 	if outcome.Cardgroup == nil {
 		return nil, gqlerr.Internal(ctx,
 			eris.New("resolver: CreateCardgroupOutcome has no variant set"))

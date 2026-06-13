@@ -26,10 +26,22 @@ type CreateCardgroupSuccess {
   cardgroup: Cardgroup!
 }
 
+"""
+Returned by `createCardgroup` when a non-admin caller already owns the maximum
+number of cardgroups. Admins are exempt. `limit` is the cap; `current` is the
+caller's existing count at rejection time so the client can localize the copy.
+"""
+type CardgroupLimitReachedError implements UserError {
+  message: String!
+  limit: Int!
+  current: Int!
+}
+
 """Result of `createCardgroup`. Either the created cardgroup or an input-validation failure."""
 union CreateCardgroupResult =
     CreateCardgroupSuccess
   | InputValidationError
+  | CardgroupLimitReachedError
 
 """Success variant returned by `updateCardgroup` when the cardgroup was updated. Carries the updated `cardgroup` so clients can refresh local state without a follow-up query."""
 type UpdateCardgroupSuccess {
