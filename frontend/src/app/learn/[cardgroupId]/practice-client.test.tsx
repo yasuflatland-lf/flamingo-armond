@@ -49,7 +49,7 @@ vi.mock("@/components/learn/swipe-card-stack", () => ({
 
     const activeCard = props.cards[0];
     if (!activeCard) return <div>Stack empty</div>;
-    return <CardContent card={activeCard} />;
+    return <CardContent card={activeCard} revealed={true} />;
   },
 }));
 

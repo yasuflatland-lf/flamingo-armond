@@ -5,7 +5,7 @@
  * No runtime randomness or dynamic dates are used here.
  */
 
-import type { Role, User } from "@/generated/base-types";
+import { LearnDisplayMode, type Role, type User } from "@/generated/base-types";
 
 // ---------------------------------------------------------------------------
 // Role fixtures
@@ -31,6 +31,7 @@ export const adminUserFixture: User = {
   bio: null,
   avatarUrl: null,
   lastViewedCardgroup: null,
+  learnDisplayMode: LearnDisplayMode.FlipToReveal,
   roles: [adminRoleFixture],
 };
 
@@ -43,6 +44,7 @@ export const generalUserFixture: User = {
   bio: null,
   avatarUrl: null,
   lastViewedCardgroup: null,
+  learnDisplayMode: LearnDisplayMode.FlipToReveal,
   roles: [{ __typename: "Role", id: "role-general", name: "general" }],
 };
 
@@ -55,5 +57,6 @@ export const userWithoutRolesFixture: User = {
   bio: null,
   avatarUrl: null,
   lastViewedCardgroup: null,
+  learnDisplayMode: LearnDisplayMode.FlipToReveal,
   roles: [],
 };
