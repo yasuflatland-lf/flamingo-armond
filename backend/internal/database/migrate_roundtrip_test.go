@@ -49,6 +49,7 @@ func TestMigrateDownUpRoundtrip(t *testing.T) {
 		"users", "roles", "cardgroups", "cards",
 		"user_card_fsrs", "user_preferences",
 		"ping_records", "user_roles", "swipe_records",
+		"master_cardgroups", "master_cards",
 	}
 	for _, table := range want {
 		var count int
