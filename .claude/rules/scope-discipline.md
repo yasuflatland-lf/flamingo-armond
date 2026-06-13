@@ -104,6 +104,22 @@ grep -rn <NewHelperName> backend/ --include='*.go' | grep -v _test.go | grep -v 
 
 A count of `0` means delete the helper. A count below the planned target means investigate why route-through stopped short. A count matching the plan means the helper is wired correctly.
 
+## Render-gating UI props must be wired at the consumer — isolated component tests do not prove reachability
+
+When a shared UI component gains a new prop that **gates which control renders** — a phase/mode/revealed prop that swaps the rendered branch — run the post-flight grep for the prop's non-test production call sites immediately:
+
+```bash
+grep -rn 'revealed\|onReveal\|<ComponentName' frontend/src --include='*.tsx' | grep -v test
+```
+
+A zero-or-stale count means the gated branch is dead in production. Either wire the prop at every consumer or delete the branch. This is the UI-prop variant of the ["Post-flight grep: helpers introduced but never wired"](#post-flight-grep-helpers-introduced-but-never-wired) rule above — the same zero-caller verdict applies.
+
+**Why isolated component tests hide the gap.** An isolated unit test exercises the component by passing the prop explicitly (`revealed={false}`). The test passes, CI is green, and the "Show answer" branch appears covered. But the test tells you nothing about whether any production consumer ever passes the prop. Consumer-level and integration tests (does `LearnClient` actually render the gated branch?) are required to close that gap. This is the narrow-vs-broad testing split described in [`docs/frontend/testing-convention-narrow-vs-broad-page-tests.md`](../../docs/frontend/testing-convention-narrow-vs-broad-page-tests.md): a co-located narrow component test and a consumer-level integration test are different things, and a render-gating prop requires both.
+
+**Worked example (learn-display-mode feature, commit 373e3943 → 0511b3b5).** `LearnActionBar` was made phase-aware with `revealed`/`onReveal` props and a `!revealed` "Show answer" branch (commit 373e3943). The consumer `LearnClient` rendered `<LearnActionBar onRate={...} disabled={...} />` without passing `revealed`/`onReveal`. Because the default is `revealed = true`, the "Show answer" branch was permanently dead in production: in the default `FLIP_TO_REVEAL` mode the rating buttons rendered enabled immediately and silently no-op'd until a tap. The component's isolated `learn-action-bar.test.tsx` exercised the `!revealed` branch (with `revealed={false}` passed explicitly) and passed, masking the wiring gap. Two independent PR-review agents (code-reviewer and silent-failure-hunter) caught it. The fix (commit 0511b3b5) lifted the active-card reveal state from `SwipeCardStack` to `LearnClient` via an `onActiveRevealedChange` callback and threaded `revealed={activeRevealed}` into `<LearnActionBar>`.
+
+**Default values that paper over missing wires are the specific risk.** A prop default of `true` (or any non-null value) means the component compiles and tests pass even when the consumer omits the prop entirely — the "missing wire" failure mode is silent by design. Treat any optional prop that defaults to the "always render controls" state as a wiring obligation, not an optional convenience.
+
 ## Constructor-signature migration: include resolver-layer test files in the pre-flight grep
 
 When a migration changes a usecase constructor signature (e.g. replacing a raw `AdminChecker` interface with a `*AdminGate` wrapper), the pre-flight grep must include `backend/graph/resolver/` in addition to `backend/internal/usecase/`. Resolver test files (`backend/graph/resolver/*_test.go`) instantiate usecase constructors directly to build integration-level harnesses; they are call sites in exactly the same sense as `*_test.go` files under `internal/usecase/`.
