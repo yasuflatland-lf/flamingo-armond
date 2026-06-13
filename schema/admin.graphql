@@ -137,4 +137,14 @@ extend type Mutation {
   updateRole(id: ID!, name: String!): UpdateRoleResult!
   """Admin-only. Delete a role. The system role "admin" cannot be deleted (FORBIDDEN). Returns true on success."""
   deleteRole(id: ID!): Boolean!
+  """
+  Admin-only. Permanently delete a user account and all associated data
+  (cardgroups, cards, learning history, preferences, role assignments) via
+  database cascade. Returns true on success.
+
+  FORBIDDEN when the caller targets their own id (an admin must use
+  `deleteMyAccount` to leave) or when the target is the last remaining admin.
+  Non-admin callers receive FORBIDDEN.
+  """
+  adminDeleteUser(id: ID!): Boolean!
 }

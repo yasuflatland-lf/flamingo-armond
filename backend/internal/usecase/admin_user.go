@@ -101,6 +101,10 @@ type AdminUserUsecase interface {
 	) (*AdminUserConnection, error)
 	Get(ctx context.Context, id string) (*domain.User, error)
 	EditUser(ctx context.Context, id string, input AdminEditUserInput) (AdminEditUserOutcome, error)
+	// DeleteUser permanently deletes the user identified by id and all associated
+	// data. Returns a forbidden error when the caller targets their own id or the
+	// target is the last admin, and a validation error when the user is not found.
+	DeleteUser(ctx context.Context, id string) error
 }
 
 // adminUserRepository is the subset of repository.UserRepository the
@@ -115,6 +119,9 @@ type adminUserRepository interface {
 		first, last int,
 		search *string,
 	) ([]*domain.User, int64, error)
+	// DeleteAuthUser deletes the target's auth.users row, cascading to all
+	// associated data. See repository.UserRepository.DeleteAuthUser for details.
+	DeleteAuthUser(ctx context.Context, id string) error
 }
 
 // adminRoleRepository is the subset of repository.RoleRepository used by the
@@ -126,9 +133,16 @@ type adminRoleRepository interface {
 }
 
 // adminUserRoleRepository is the subset of repository.UserRoleRepository used
-// by the AdminUser usecase (atomic membership replacement).
+// by the AdminUser usecase: atomic membership replacement (EditUser) and the
+// last-admin / target-is-admin checks (DeleteUser).
 type adminUserRoleRepository interface {
 	SetUserRolesTx(ctx context.Context, tx *gorm.DB, userID string, roleIDs []string) error
+	// HasRole reports whether the user holds the named role. Used by DeleteUser
+	// to decide whether the last-admin guard applies to the target.
+	HasRole(ctx context.Context, userID string, roleName domain.RoleName) (bool, error)
+	// CountAdmins returns the number of users holding the admin role. Used by
+	// DeleteUser's last-admin guard.
+	CountAdmins(ctx context.Context) (int64, error)
 }
 
 // adminUserUsecase wires the admin gate, the user repository, the role
@@ -421,6 +435,63 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 		return AdminEditUserOutcome{}, err
 	}
 	return AdminEditUserOutcome{User: user}, nil
+}
+
+// DeleteUser permanently deletes the user identified by id and all associated
+// data. The delete cascades through public.users and every child row via the
+// schema's ON DELETE CASCADE foreign keys; no application-level multi-step
+// delete is needed.
+//
+// Guard order:
+//  1. Admin gate: non-admin / unauthenticated callers are rejected.
+//  2. Self-deletion block: an admin cannot delete their own account from the
+//     admin surface (they must use DeleteMyAccount), preventing an accidental
+//     lockout.
+//  3. Last-admin guard: when the target holds the admin role and is the only
+//     admin, the deletion is refused so the system is never left without an
+//     admin. Best-effort (no row lock) — see DeleteMyAccount for the TOCTOU note.
+//
+// A missing target maps to a validation error on "id" (BAD_USER_INPUT).
+func (u *adminUserUsecase) DeleteUser(ctx context.Context, id string) error {
+	callerID, err := u.adminGate.Require(ctx, "usecase: admin user: check admin")
+	if err != nil {
+		return err
+	}
+	if callerID == id {
+		return ucerr.NewForbiddenError("cannot delete your own account from the admin panel; use deleteMyAccount")
+	}
+
+	// Only consult the global admin count when the target is itself an admin.
+	isAdmin, err := u.userRoles.HasRole(ctx, id, domain.AdminRoleName)
+	if err != nil {
+		if isContextDone(err) {
+			return err
+		}
+		return eris.Wrap(err, "usecase: admin user: delete: check admin role")
+	}
+	if isAdmin {
+		n, err := u.userRoles.CountAdmins(ctx)
+		if err != nil {
+			if isContextDone(err) {
+				return err
+			}
+			return eris.Wrap(err, "usecase: admin user: delete: count admins")
+		}
+		if n <= 1 {
+			return ucerr.NewForbiddenError("cannot delete the last admin account")
+		}
+	}
+
+	if err := u.users.DeleteAuthUser(ctx, id); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ucerr.NewValidationError("id", "user not found")
+		}
+		if isContextDone(err) {
+			return err
+		}
+		return eris.Wrap(err, "usecase: admin user: delete")
+	}
+	return nil
 }
 
 func mapAdminEditMutationError(err error) (*InputValidationInfo, error) {

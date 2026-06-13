@@ -351,6 +351,63 @@ func TestUser_OnDeleteCascade(t *testing.T) {
 	}
 }
 
+func TestDeleteAuthUser_Success(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	id := insertAuthUser(t, ctx)
+	repo := repository.NewUserRepository(testDB.GORM)
+
+	if _, err := repo.FindByID(ctx, id); err != nil {
+		t.Fatalf("precondition FindByID: %v", err)
+	}
+	if err := repo.DeleteAuthUser(ctx, id); err != nil {
+		t.Fatalf("DeleteAuthUser: %v", err)
+	}
+	if _, err := repo.FindByID(ctx, id); !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("want ErrNotFound after delete, got %v", err)
+	}
+}
+
+func TestDeleteAuthUser_NotFound(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewUserRepository(testDB.GORM)
+
+	if err := repo.DeleteAuthUser(ctx, uuid.NewString()); !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("want ErrNotFound for missing auth user, got %v", err)
+	}
+}
+
+// TestDeleteAuthUser_CascadesOwnedCardgroup proves DeleteAuthUser (not a raw
+// SQL statement) drives the ON DELETE CASCADE chain down to a user-owned
+// cardgroup row.
+func TestDeleteAuthUser_CascadesOwnedCardgroup(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	id := insertAuthUser(t, ctx)
+	repo := repository.NewUserRepository(testDB.GORM)
+	sqlDB := sqlDBHandle(t)
+
+	cgID := uuid.NewString()
+	if _, err := sqlDB.ExecContext(ctx,
+		`INSERT INTO cardgroups (id, owner_id, name) VALUES ($1, $2, $3)`,
+		cgID, id, "to-be-cascaded"); err != nil {
+		t.Fatalf("insert cardgroup: %v", err)
+	}
+
+	if err := repo.DeleteAuthUser(ctx, id); err != nil {
+		t.Fatalf("DeleteAuthUser: %v", err)
+	}
+
+	var count int
+	if err := sqlDB.QueryRowContext(ctx, `SELECT count(*) FROM cardgroups WHERE id = $1`, cgID).Scan(&count); err != nil {
+		t.Fatalf("count cardgroups: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("cardgroup row should be cascade-deleted, got count=%d", count)
+	}
+}
+
 func TestUpdate_EmptyPatchReturnsCurrentRow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

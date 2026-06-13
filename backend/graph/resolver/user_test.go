@@ -26,6 +26,7 @@ type mockUserRepository struct {
 	updateResult  *domain.User
 	updateErr     error
 	capturedPatch repository.UserUpdate
+	deleteAuthErr error
 }
 
 func (m *mockUserRepository) FindByID(_ context.Context, _ string) (*domain.User, error) {
@@ -35,6 +36,10 @@ func (m *mockUserRepository) FindByID(_ context.Context, _ string) (*domain.User
 func (m *mockUserRepository) Update(_ context.Context, _ string, patch repository.UserUpdate) (*domain.User, error) {
 	m.capturedPatch = patch
 	return m.updateResult, m.updateErr
+}
+
+func (m *mockUserRepository) DeleteAuthUser(_ context.Context, _ string) error {
+	return m.deleteAuthErr
 }
 
 // ptr returns a pointer to s.
@@ -332,5 +337,64 @@ func TestResolver_UpdateProfile_NilVariant_ReturnsInternal(t *testing.T) {
 	code := errCode(t, resp)
 	if code != "INTERNAL" {
 		t.Fatalf("expected INTERNAL, got %q; response: %v", code, resp)
+	}
+}
+
+// newDeleteMyAccountSrv builds a server whose UserUsecase is wired with the
+// admin-guard dependencies DeleteMyAccount needs: an AuthSvc reporting isAdmin
+// for the caller and a roles repo reporting the global admin count.
+func newDeleteMyAccountSrv(repo *mockUserRepository, isAdmin bool, adminCount int64) *handler.Server {
+	authSvc := auth.NewService(&mockUserRoleRepository{isAdmin: isAdmin})
+	uc := usecase.NewUserUsecase(repo, &mockRoleByUserIDRepo{adminCount: adminCount}, authSvc, newDiscardLogger())
+	r := resolver.NewResolver(uc, nil, nil, nil, authSvc, nil, nil, nil, nil, nil, nil)
+	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
+	srv.AddTransport(transport.POST{})
+	return srv
+}
+
+const deleteMyAccountMutation = `{"query":"mutation { deleteMyAccount }"}`
+
+// TestUserResolver_DeleteMyAccount_Success verifies the mutation returns true
+// when the usecase deletes the caller's account.
+func TestUserResolver_DeleteMyAccount_Success(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockUserRepository{}
+	srv := newDeleteMyAccountSrv(repo, false, 0)
+	resp := gqlRequest(t, srv, authedCtx("u1"), deleteMyAccountMutation)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	if deleted, _ := data["deleteMyAccount"].(bool); !deleted {
+		t.Fatalf("expected data.deleteMyAccount == true, got %v", data["deleteMyAccount"])
+	}
+}
+
+// TestUserResolver_DeleteMyAccount_Unauthenticated verifies an anonymous caller
+// receives UNAUTHENTICATED.
+func TestUserResolver_DeleteMyAccount_Unauthenticated(t *testing.T) {
+	t.Parallel()
+
+	srv := newDeleteMyAccountSrv(&mockUserRepository{}, false, 0)
+	resp := gqlRequest(t, srv, context.Background(), deleteMyAccountMutation)
+
+	if code := errCode(t, resp); code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q; response: %v", code, resp)
+	}
+}
+
+// TestUserResolver_DeleteMyAccount_LastAdminForbidden verifies the sole admin
+// cannot delete their own account via the self-service path.
+func TestUserResolver_DeleteMyAccount_LastAdminForbidden(t *testing.T) {
+	t.Parallel()
+
+	// Caller is an admin and is the only admin (count == 1) → forbidden.
+	srv := newDeleteMyAccountSrv(&mockUserRepository{}, true, 1)
+	resp := gqlRequest(t, srv, authedCtx("u1"), deleteMyAccountMutation)
+
+	if code := errCode(t, resp); code != "FORBIDDEN" {
+		t.Fatalf("expected FORBIDDEN, got %q; response: %v", code, resp)
 	}
 }

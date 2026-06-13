@@ -86,6 +86,20 @@ type UserRepository interface {
 		first, last int,
 		search *string,
 	) (users []*domain.User, total int64, err error)
+
+	// DeleteAuthUser deletes the auth.users row identified by id. The public.users
+	// row and every cascade-linked row (user_roles, cardgroups → cards →
+	// swipe_records / user_card_fsrs, user_preferences) are removed automatically
+	// by the existing ON DELETE CASCADE foreign keys — no application-level
+	// multi-step delete is needed. Returns ErrNotFound when no auth.users row
+	// matches id (RowsAffected == 0).
+	//
+	// The operation requires the connection role to have DELETE privilege on
+	// auth.users; the production DSN connects as the postgres role, which has it
+	// (the same statement is exercised by the repository integration tests). This
+	// is the single isolation point for auth-account deletion: swapping to the
+	// Supabase Admin REST API is a change to this method body alone.
+	DeleteAuthUser(ctx context.Context, id string) error
 }
 
 type userRepo struct{ db *gorm.DB }
@@ -178,6 +192,20 @@ func (r *userRepo) UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string
 		return eris.Wrap(err, "repository: update user tx versioned: probe user")
 	}
 	return ErrConcurrentUpdate
+}
+
+// DeleteAuthUser deletes the auth.users row, cascading to public.users and all
+// child data via the schema's ON DELETE CASCADE foreign keys. See the interface
+// doc for the privilege and isolation rationale.
+func (r *userRepo) DeleteAuthUser(ctx context.Context, id string) error {
+	res := r.db.WithContext(ctx).Exec("DELETE FROM auth.users WHERE id = ?", id)
+	if res.Error != nil {
+		return eris.Wrap(res.Error, "repository: delete auth user")
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func userUpdates(patch UserUpdate) map[string]any {

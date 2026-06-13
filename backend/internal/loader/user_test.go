@@ -275,6 +275,12 @@ func (r *countingRepo) ListPage(
 	panic("countingRepo.ListPage not configured")
 }
 
+// DeleteAuthUser satisfies repository.UserRepository. Loader-layer tests never
+// invoke account deletion; panic if called so accidental coupling is surfaced.
+func (r *countingRepo) DeleteAuthUser(_ context.Context, _ string) error {
+	panic("countingRepo.DeleteAuthUser not configured")
+}
+
 // SetLastViewedCardgroup satisfies repository.UserRepository. Loader-layer
 // tests never invoke this path; panic if called so accidental coupling is
 // surfaced rather than silently no-oped.

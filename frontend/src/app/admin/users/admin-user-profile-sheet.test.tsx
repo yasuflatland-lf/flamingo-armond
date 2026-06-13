@@ -60,6 +60,7 @@ function renderSheet({
   onDismiss = vi.fn(),
   onSaved = vi.fn(),
   onReloadRequested = vi.fn(),
+  onDelete,
 }: {
   user?: AdminUserListItem | null;
   allRoles?: AdminUserRole[];
@@ -67,6 +68,7 @@ function renderSheet({
   onDismiss?: () => void;
   onSaved?: () => void;
   onReloadRequested?: () => void;
+  onDelete?: (id: string) => Promise<void>;
 } = {}) {
   renderWithIntl(
     <MockedProvider mocks={mocks}>
@@ -79,6 +81,7 @@ function renderSheet({
         onDismiss={onDismiss}
         onSaved={onSaved}
         onReloadRequested={onReloadRequested}
+        onDelete={onDelete}
       />
     </MockedProvider>,
   );
@@ -564,5 +567,50 @@ describe("AdminUserProfileSheet", () => {
 
     expect(start).toBeGreaterThanOrEqual(0);
     expect(source.slice(start, end)).not.toContain("optimisticResponse");
+  });
+
+  it("omits the danger-zone delete button when onDelete is not provided", () => {
+    renderSheet();
+    expect(screen.queryByTestId("admin-delete-user-trigger")).not.toBeInTheDocument();
+  });
+
+  it("renders the danger-zone delete button when onDelete is provided", () => {
+    renderSheet({ onDelete: vi.fn() });
+    expect(screen.getByTestId("admin-delete-user-trigger")).toBeInTheDocument();
+  });
+
+  it("confirms deletion and calls onDelete with the user id", async () => {
+    const user = userEvent.setup();
+    const onDelete = vi.fn<(id: string) => Promise<void>>().mockResolvedValue(undefined);
+    renderSheet({ onDelete });
+
+    await user.click(screen.getByTestId("admin-delete-user-trigger"));
+    await user.click(screen.getByTestId("admin-delete-user-confirm"));
+
+    await waitFor(() => {
+      expect(onDelete).toHaveBeenCalledWith("u-1");
+    });
+  });
+
+  it("shows the forbidden copy and keeps the dialog open when onDelete rejects with FORBIDDEN", async () => {
+    const user = userEvent.setup();
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const onDelete = vi
+      .fn<(id: string) => Promise<void>>()
+      .mockRejectedValue(makeCodedError("FORBIDDEN"));
+    renderSheet({ onDelete });
+
+    await user.click(screen.getByTestId("admin-delete-user-trigger"));
+    await user.click(screen.getByTestId("admin-delete-user-confirm"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-delete-user-error")).toHaveTextContent(/cannot be deleted/i);
+    });
+    // The confirm button is still present — the dialog did not auto-close.
+    expect(screen.getByTestId("admin-delete-user-confirm")).toBeInTheDocument();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("adminDeleteUser rejected"),
+      expect.objectContaining({ codes: ["FORBIDDEN"] }),
+    );
   });
 });

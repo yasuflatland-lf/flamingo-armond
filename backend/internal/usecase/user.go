@@ -20,10 +20,16 @@ import (
 type UserRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.User, error)
 	Update(ctx context.Context, id string, patch repository.UserUpdate) (*domain.User, error)
+	// DeleteAuthUser deletes the caller's auth.users row, cascading to all
+	// associated data. See repository.UserRepository.DeleteAuthUser for details.
+	DeleteAuthUser(ctx context.Context, id string) error
 }
 
 type UserRolesRepository interface {
 	ListByUser(ctx context.Context, userID string) ([]*domain.Role, error)
+	// CountAdmins returns the number of users holding the admin role. Used by
+	// DeleteMyAccount's last-admin guard.
+	CountAdmins(ctx context.Context) (int64, error)
 }
 
 // UserUsecase is the authenticated user profile and role-query surface.
@@ -31,6 +37,10 @@ type UserUsecase interface {
 	Me(ctx context.Context) (*domain.User, error)
 	RolesFor(ctx context.Context, targetID string) ([]*domain.Role, error)
 	UpdateUser(ctx context.Context, in UpdateUserInput) (UpdateProfileOutcome, error)
+	// DeleteMyAccount deletes the authenticated caller's own account and all
+	// associated data. Returns ucerr.ErrUnauthenticated when no caller is on the
+	// context, and a forbidden error when the caller is the last admin.
+	DeleteMyAccount(ctx context.Context) error
 }
 
 type userUsecase struct {
@@ -153,4 +163,60 @@ func (u *userUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (Updat
 		return UpdateProfileOutcome{}, eris.Wrap(err, "usecase: UpdateUser: update user")
 	}
 	return UpdateProfileOutcome{User: appUser}, nil
+}
+
+// DeleteMyAccount permanently deletes the authenticated caller's own account.
+// The delete cascades through public.users and every child row via the schema's
+// ON DELETE CASCADE foreign keys; no application-level multi-step delete is
+// needed.
+//
+// Guard order:
+//  1. Authentication: no caller on the context returns ucerr.ErrUnauthenticated.
+//  2. Last-admin guard: if the caller holds the admin role and is the only admin,
+//     return a forbidden error so the system is never left without an admin.
+//     This is best-effort (no row lock): a concurrent admin deletion could race
+//     past the count. At this app's scale the TOCTOU window is acceptable; a
+//     Postgres advisory lock is the upgrade path if it ever matters.
+//
+// A missing auth.users row at delete time is treated as idempotent success — the
+// account is already gone from the system's perspective.
+func (u *userUsecase) DeleteMyAccount(ctx context.Context) error {
+	caller := auth.UserFrom(ctx)
+	if err := requireCallerSub(caller); err != nil {
+		return err
+	}
+
+	if u.auth == nil || u.roles == nil {
+		return eris.New("usecase: user: delete my account: admin guard deps not configured")
+	}
+	isAdmin, err := u.auth.IsAdmin(ctx, caller.Sub)
+	if err != nil {
+		if isContextDone(err) {
+			return err
+		}
+		return eris.Wrap(err, "usecase: user: delete my account: check admin")
+	}
+	if isAdmin {
+		n, err := u.roles.CountAdmins(ctx)
+		if err != nil {
+			if isContextDone(err) {
+				return err
+			}
+			return eris.Wrap(err, "usecase: user: delete my account: count admins")
+		}
+		if n <= 1 {
+			return ucerr.NewForbiddenError("cannot delete the last admin account; promote another admin first")
+		}
+	}
+
+	if err := u.repo.DeleteAuthUser(ctx, caller.Sub); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil
+		}
+		if isContextDone(err) {
+			return err
+		}
+		return eris.Wrap(err, "usecase: user: delete my account")
+	}
+	return nil
 }

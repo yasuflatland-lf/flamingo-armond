@@ -3,6 +3,16 @@
 import { useMutation } from "@apollo/client/react";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
@@ -18,6 +28,12 @@ type Props = {
   onDismiss: () => void;
   onSaved: () => void;
   onReloadRequested?: () => void;
+  /**
+   * Deletes the user by id. Resolves on success (the parent closes the sheet and
+   * surfaces a toast); rejects with a GraphQL error on failure so the danger
+   * zone can render the reason. Absent when deletion is not available.
+   */
+  onDelete?: (id: string) => Promise<void>;
 };
 
 const DISPLAY_NAME_MAX = 50;
@@ -40,6 +56,7 @@ export function AdminUserProfileSheet({
   onDismiss,
   onSaved,
   onReloadRequested,
+  onDelete,
 }: Props) {
   const t = useTranslations("Admin");
   const tCommon = useTranslations("Common");
@@ -206,6 +223,7 @@ export function AdminUserProfileSheet({
         }}
         onRoleToggle={toggleRole}
         onSave={handleSave}
+        onDelete={onDelete}
       />
     </FormSheet>
   );
@@ -226,6 +244,7 @@ function AdminUserProfileSheetBody({
   onDisplayNameChange,
   onRoleToggle,
   onSave,
+  onDelete,
 }: {
   allRoles: AdminUserRole[];
   bio: string;
@@ -241,11 +260,40 @@ function AdminUserProfileSheetBody({
   onDisplayNameChange: (displayName: string) => void;
   onRoleToggle: (roleId: string) => void;
   onSave: () => void;
+  onDelete?: (id: string) => Promise<void>;
 }) {
   const t = useTranslations("Admin");
   const tNav = useTranslations("Nav");
   const tCommon = useTranslations("Common");
   const close = useFormSheetClose();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  async function handleConfirmDelete() {
+    if (!user || !onDelete) return;
+    setDeleteError("");
+    setDeleting(true);
+    try {
+      await onDelete(user.id);
+      // Success: the parent closes the sheet and shows a toast; this component
+      // unmounts, so no further state updates are needed here.
+    } catch (err) {
+      const codes = liftGraphQLCodes(err);
+      console.warn("[admin/users] adminDeleteUser rejected", {
+        userId: user.id,
+        codes,
+      });
+      setDeleteError(
+        codes.includes("FORBIDDEN")
+          ? t("deleteUserForbidden")
+          : codes.includes("UNAUTHENTICATED")
+            ? t("unauthenticated")
+            : t("deleteUserFailed"),
+      );
+      setDeleting(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -351,6 +399,63 @@ function AdminUserProfileSheetBody({
               {tCommon("cancel")}
             </Button>
           </div>
+
+          {onDelete && (
+            <div className="space-y-3 border-t border-destructive/30 pt-6">
+              <div>
+                <h3 className="text-sm font-semibold text-destructive">{t("deleteUserHeading")}</h3>
+                <p className="text-xs text-muted-foreground">{t("deleteUserDescription")}</p>
+              </div>
+
+              {deleteError && (
+                <div
+                  className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+                  role="alert"
+                  data-testid="admin-delete-user-error"
+                >
+                  {deleteError}
+                </div>
+              )}
+
+              <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    data-testid="admin-delete-user-trigger"
+                  >
+                    {t("deleteUserButton")}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>{t("deleteUserDialogTitle")}</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {t("deleteUserDialogDescription")}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={deleting}>{tCommon("cancel")}</AlertDialogCancel>
+                    {/*
+                      A plain destructive Button (not AlertDialogAction) drives the
+                      confirm so the dialog stays open during the async mutation and
+                      while a FORBIDDEN error is shown. AlertDialogAction auto-closes
+                      the dialog on click, which would hide the in-progress / error UI.
+                    */}
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={handleConfirmDelete}
+                      disabled={deleting}
+                      data-testid="admin-delete-user-confirm"
+                    >
+                      {deleting ? t("deleteUserDeleting") : t("deleteUserConfirmButton")}
+                    </Button>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          )}
         </>
       )}
     </div>
