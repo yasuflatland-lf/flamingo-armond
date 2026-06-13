@@ -94,6 +94,59 @@ The repository's two upsert call sites are deliberately asymmetric. `cards (card
 
 The flip side is that the conflict key MUST be unique within the input batch. If two rows in the same `INSERT ... VALUES (...), (...)` collide on the conflict target, Postgres raises SQLSTATE `21000` ("ON CONFLICT DO UPDATE command cannot affect row a second time") and aborts the whole statement — Postgres deliberately does not silently merge intra-batch duplicates because either-row-wins is non-deterministic. The application layer must dedup by conflict key before issuing the SQL; the dictionary usecase keeps the *last* occurrence and reports earlier ones as soft errors.
 
+### One-time master-catalog migration CLI (`cmd/migrate-to-master`)
+
+`backend/cmd/migrate-to-master` copies an owner's existing personal deck
+(`public.cardgroups` / `public.cards`) into the admin-curated master catalog
+tables (`public.master_cardgroups` / `public.master_cards`). The personal rows
+are **kept** — the tool never deletes them, so the owner's FSRS history
+(`public.user_card_fsrs`, keyed by card id) is preserved. Each personal
+cardgroup is snapshotted as a published default starter deck
+(`status='published'`, `is_default_starter=true`, `source='notion'`,
+`version=1`, `sort_order=0`); the source primary key is preserved, so re-runs
+converge via `ON CONFLICT (id) DO UPDATE` (idempotent).
+
+The tool is built like the other single-purpose CLIs — raw `database/sql` +
+the pgx stdlib driver, validate the DSN before `sql.Open`, explicit
+`rows.Close()` after each loop in addition to `defer` (see
+[`docs/backend/library-gotchas/raw-sql-cli-pgx-stdlib.md`](backend/library-gotchas/raw-sql-cli-pgx-stdlib.md)).
+It requires the **superuser DSN** because resolving `--owner-email` reads
+`auth.users`, which is owned by `supabase_auth_admin` and not readable by the
+application role.
+
+Two subcommands:
+
+```bash
+# Read-only parity report: master_cardgroups/master_cards vs the owner's deck.
+go run ./cmd/migrate-to-master verify --db-url "$SUPERUSER_DSN" --owner-email owner@example.com
+
+# Copy the deck into the master tables (one all-or-nothing transaction).
+go run ./cmd/migrate-to-master run    --db-url "$SUPERUSER_DSN" --owner-email owner@example.com
+```
+
+**Runbook — running against production is a destructive DB action and requires
+explicit operator confirmation at execution time:**
+
+1. **Staging verify** — run `verify` against staging to confirm the master
+   tables exist and read access works. It exits non-zero until the deck has
+   been copied, which is expected pre-`run`.
+2. **Snapshot** — take a production database backup/snapshot before any write.
+3. **Prod run** — run `run` against production. The upserts are wrapped in a
+   single transaction; a failure rolls back with no partial copy.
+4. **Prod verify** — run `verify` against production. Parity (`personal == master`
+   for the owner's row ids) confirms the copy landed.
+5. **Rollback** — because `run` only inserts/updates master rows keyed by the
+   source ids (and never touches `public.cardgroups` / `public.cards`),
+   rollback is `DELETE FROM public.master_cards WHERE id = ANY(<copied card ids>)`
+   followed by `DELETE FROM public.master_cardgroups WHERE id = ANY(<copied cardgroup ids>)`
+   (the `master_cards` FK is `ON DELETE CASCADE`, so deleting the cardgroups
+   alone also removes their cards). Restoring the pre-`run` snapshot is the
+   coarser fallback.
+
+A throwaway-DB `run`-then-`verify` parity test (`cmd/migrate-to-master/main_test.go`,
+testcontainers) asserts the copy lands, is idempotent, and leaves the personal
+rows untouched; full integration runs against a real Supabase instance go to CI.
+
 ### `user_preferences` — per-user UI continuity
 
 `public.user_preferences` is a sibling aggregate of `public.users`, keyed 1:1 by `user_id`. It carries presentation state that is **about** the user but not **part of** their identity (currently `last_viewed_cardgroup_id`; future fields like `theme`, `default_mode`, ... extend cleanly on this table). The extraction rationale and structural signals are documented in [`docs/backend/library-gotchas/sibling-aggregate-extraction.md`](backend/library-gotchas/sibling-aggregate-extraction.md).

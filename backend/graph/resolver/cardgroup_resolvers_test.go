@@ -74,10 +74,31 @@ func (m *mockCardgroupRepoForResolver) Delete(_ context.Context, _ string) error
 	return nil
 }
 
+// stubAdminCheckerForResolver satisfies usecase.AdminChecker for resolver-level
+// unit tests. Most tests pass isAdmin: true to bypass the cardgroup-limit guard
+// and preserve prior behavior; the limit-reached test passes isAdmin: false.
+type stubAdminCheckerForResolver struct {
+	isAdmin bool
+	err     error
+}
+
+func (s stubAdminCheckerForResolver) IsAdmin(_ context.Context, _ string) (bool, error) {
+	return s.isAdmin, s.err
+}
+
 // newCardgroupSrv builds a gqlgen handler.Server backed by a real
-// CardgroupUsecase wired to the supplied mock repository.
+// CardgroupUsecase wired to the supplied mock repository. The admin stub
+// returns isAdmin: true so the cardgroup-limit guard is bypassed for all
+// tests that do not specifically exercise the limit path.
 func newCardgroupSrv(repo usecase.CardgroupRepository) *handler.Server {
-	cgUC := usecase.NewCardgroupUsecase(repo, newDiscardLogger())
+	return newCardgroupSrvWithAdmin(repo, stubAdminCheckerForResolver{isAdmin: true})
+}
+
+// newCardgroupSrvWithAdmin builds a gqlgen handler.Server allowing the caller
+// to supply a custom AdminChecker stub. Use this when a test needs to exercise
+// the cardgroup-limit code path (isAdmin: false).
+func newCardgroupSrvWithAdmin(repo usecase.CardgroupRepository, admin usecase.AdminChecker) *handler.Server {
+	cgUC := usecase.NewCardgroupUsecase(repo, admin, newDiscardLogger())
 	r := resolver.NewResolver(nil, cgUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
@@ -417,6 +438,46 @@ func TestResolver_CreateCardgroup_ValidationError_EmptyName(t *testing.T) {
 	}
 	if payload["field"] != "name" {
 		t.Fatalf("expected field=name, got %v; response: %v", payload["field"], resp)
+	}
+}
+
+// createCardgroupBodyWithLimit returns a mutation body that selects all three
+// union variants of CreateCardgroupResult, including CardgroupLimitReachedError.
+func createCardgroupBodyWithLimit(name string) string {
+	return `{"query":"mutation { createCardgroup(input: {name: \"` + name + `\"}) { __typename ... on CreateCardgroupSuccess { cardgroup { id name } } ... on InputValidationError { field message } ... on CardgroupLimitReachedError { message limit current } } }"}`
+}
+
+// TestResolver_CreateCardgroup_LimitReached verifies that a non-admin caller
+// who already owns generalUserCardgroupLimit (5) cardgroups receives the
+// CardgroupLimitReachedError union variant with the correct Limit and Current
+// fields rather than a GraphQL protocol error.
+func TestResolver_CreateCardgroup_LimitReached(t *testing.T) {
+	t.Parallel()
+
+	// CountByOwner returns 5 — the non-admin caller is at the limit.
+	repo := &mockCardgroupRepoForResolver{countResult: 5}
+	// isAdmin: false so the limit check is not bypassed.
+	srv := newCardgroupSrvWithAdmin(repo, stubAdminCheckerForResolver{isAdmin: false})
+	resp := gqlRequest(t, srv, authedCtx("u1"), createCardgroupBodyWithLimit("Over Limit"))
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected protocol errors (limit should come as data): %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["createCardgroup"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.createCardgroup, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "CardgroupLimitReachedError" {
+		t.Fatalf("expected CardgroupLimitReachedError, got %v; response: %v", payload["__typename"], resp)
+	}
+	limit, _ := payload["limit"].(float64)
+	if int(limit) != 5 {
+		t.Fatalf("expected limit=5, got %v; response: %v", limit, resp)
+	}
+	current, _ := payload["current"].(float64)
+	if int(current) != 5 {
+		t.Fatalf("expected current=5, got %v; response: %v", current, resp)
 	}
 }
 

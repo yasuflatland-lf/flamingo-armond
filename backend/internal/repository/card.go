@@ -124,7 +124,7 @@ type CardWriteRepository interface {
 	// DeleteByCardgroupAndFrontsTx hard-deletes cards by the scoped
 	// (cardgroup_id, front) natural key. Scoping is by cardgroup_id only —
 	// callers must verify the cardgroup is reachable by the calling owner
-	// before invoking this method (NotionSyncUsecase is the canonical caller).
+	// before invoking this method.
 	//
 	// Empty fronts short-circuits to (0, nil) without touching the DB. With an
 	// empty slice GORM v2 omits the `WHERE front IN (?)` clause altogether,

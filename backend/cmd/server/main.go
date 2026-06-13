@@ -286,7 +286,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 
 	userUC := usecase.NewUserUsecase(userRepo, userRoleRepo, authSvc, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, authSvc, logger)
 	learnUC := usecase.NewLearnUsecase(cardRepo, cardgroupRepo, service.NewOrderingPolicy(), nil, 0, 0, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	cardImportUC := usecase.NewCardImportUsecase(cardgroupRepo, cardRepo, db.GORM, logger)
@@ -305,7 +305,9 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		notionFetcher := notion.NewFetcher(notionEnv.NotionToken, retryCfg)
 		notionWriter := notion.NewWriter(notionEnv.NotionToken, retryCfg)
 		cardObserver = notion.NewCardWritebacker(notionWriter, notionEnv.HandlerConfig.PageIDs[0], logger)
-		notionSyncUC := usecase.NewNotionSyncUsecase(notionFetcher, cardgroupRepo, cardRepo, db.GORM, logger)
+		masterCardgroupRepo := repository.NewMasterCardgroupRepository(db.GORM)
+		masterCardRepo := repository.NewMasterCardRepository(db.GORM)
+		notionSyncUC := usecase.NewMasterNotionSyncUsecase(notionFetcher, masterCardgroupRepo, masterCardRepo, db.GORM, logger)
 		notionSyncHandler = notionsync.New(notionSyncUC, notionEnv.HandlerConfig)
 	}
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, cardObserver, logger)
@@ -380,7 +382,7 @@ func main() {
 
 	// Load .env.local for local dev. Overload (not Load) so .env.local wins
 	// over inherited shell env: mise auto-exports the root .env (production
-	// template, with empty placeholders for keys like NOTION_TARGET_OWNER_ID),
+	// template, with empty placeholders for keys like NOTION_MASTER_CARDGROUP_NAME),
 	// which would otherwise mask the local-dev values written by
 	// `make notion-local-setup`. Production (Render) is unaffected because
 	// .env.local is gitignored and never deployed.

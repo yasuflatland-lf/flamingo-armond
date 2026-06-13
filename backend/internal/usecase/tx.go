@@ -10,5 +10,5 @@ import (
 // transaction. The composition root (cmd/server) wires the real
 // *gorm.DB.Transaction-backed implementation; unit tests pass a fake that
 // invokes fn with a sentinel *gorm.DB. Used by CardUsecase, SwipeUsecase,
-// cardImportUsecase, and NotionSyncUsecase.
+// cardImportUsecase, and MasterNotionSyncUsecase.
 type txRunner func(ctx context.Context, fn func(tx *gorm.DB) error) error

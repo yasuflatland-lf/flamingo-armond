@@ -54,6 +54,18 @@ import (
 
 var testDBURL string
 
+// stubAdminChecker satisfies usecase.AdminChecker for wiring/smoke tests that
+// do not exercise the cardgroup-limit guard. Passing isAdmin: true short-circuits
+// the limit check and preserves prior test behavior.
+type stubAdminChecker struct {
+	isAdmin bool
+	err     error
+}
+
+func (s stubAdminChecker) IsAdmin(_ context.Context, _ string) (bool, error) {
+	return s.isAdmin, s.err
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(runTests(m))
 }
@@ -157,19 +169,17 @@ func setNotionSyncEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("NOTION_TOKEN", "notion-test-token")
 	t.Setenv("NOTION_PAGE_IDS", "page-1,page-2")
-	t.Setenv("NOTION_TARGET_OWNER_ID", uuid.NewString())
-	t.Setenv("NOTION_TARGET_CARDGROUP_NAME", "English")
+	t.Setenv("NOTION_MASTER_CARDGROUP_NAME", "English")
 	t.Setenv("NOTION_SYNC_TOKEN", "sync-test-token")
 }
 
-// unsetNotionSyncEnv blanks all five NOTION_* vars so that run() treats
+// unsetNotionSyncEnv blanks all four NOTION_* vars so that run() treats
 // notion-sync as disabled and skips registering /internal/notion-sync.
 func unsetNotionSyncEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("NOTION_TOKEN", "")
 	t.Setenv("NOTION_PAGE_IDS", "")
-	t.Setenv("NOTION_TARGET_OWNER_ID", "")
-	t.Setenv("NOTION_TARGET_CARDGROUP_NAME", "")
+	t.Setenv("NOTION_MASTER_CARDGROUP_NAME", "")
 	t.Setenv("NOTION_SYNC_TOKEN", "")
 }
 
@@ -585,7 +595,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	logger := slog.New(slog.DiscardHandler)
 	userUC := usecase.NewUserUsecase(userRepo, userRoleRepo, nil, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
@@ -1748,7 +1758,7 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
 	logger := slog.New(slog.DiscardHandler)
 	userUC := usecase.NewUserUsecase(userRepo, userRoleRepo, nil, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	lastViewedUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
