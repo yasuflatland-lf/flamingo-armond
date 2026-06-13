@@ -27,7 +27,7 @@ type masterDeckCardRepo interface {
 }
 
 // masterDeckUserCardRepo is the subset of repository.CardRepository the master
-// deck usecase consumes: bulk-insert the copied cards inside the seed/import
+// deck usecase consumes: bulk-insert the copied cards inside the caller's
 // transaction.
 type masterDeckUserCardRepo interface {
 	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (repository.UpsertManyTxResult, error)
@@ -38,7 +38,7 @@ type masterDeckUserCardRepo interface {
 // catalog). CountByOwner backs the idempotency guard: a user who already owns at
 // least one cardgroup is not re-seeded on the next call. CreateTx inserts the
 // snapshot cardgroup using the caller's transaction handle so the insert
-// participates in the seed/import transaction.
+// participates in the caller's transaction.
 type masterDeckUserCardgroupRepo interface {
 	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
 	CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Cardgroup) error

@@ -573,6 +573,29 @@ func TestCopyMasterToUser_ListCardsError_ReturnsInternalChain(t *testing.T) {
 	assert.Empty(t, user.captured)
 }
 
+func TestCopyMasterToUser_CreateCGError_PropagatesChain(t *testing.T) {
+	t.Parallel()
+
+	const masterID = "m-createerr"
+	cg := &fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Deck")}}
+	card := &fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
+		masterID: {masterCard("mc1", masterID, "f1", "b1", 0)},
+	}}
+	user := &fakeUserCardRepo{}
+	userCG := &fakeUserCG{createErr: errors.New("db constraint violation")}
+
+	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
+
+	got, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-createerr")
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assertInternalChain(t, err, "usecase: master deck: copy master to user")
+	// CreateTx was attempted once before failing.
+	assert.Equal(t, 1, userCG.createCalls, "CreateTx was attempted")
+	// No cards are inserted when the cardgroup creation fails.
+	assert.Empty(t, user.captured, "no cards persisted when cardgroup creation fails")
+}
+
 func TestCopyMasterToUser_UpsertCardsError_PropagatesChain(t *testing.T) {
 	t.Parallel()
 
