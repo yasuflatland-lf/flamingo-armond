@@ -80,5 +80,15 @@ async function LearnContent({ cardgroupId }: { cardgroupId: string }) {
     throw err;
   }
 
-  return <LearnClient cardgroupId={cardgroupId} initialCards={cardsData.learnNextDueCards} />;
+  if (cardsData.me == null) {
+    console.warn("[learn] me.learnDisplayMode unavailable; defaulting to FLIP_TO_REVEAL");
+  }
+
+  return (
+    <LearnClient
+      cardgroupId={cardgroupId}
+      initialCards={cardsData.learnNextDueCards}
+      displayMode={cardsData.me?.learnDisplayMode ?? "FLIP_TO_REVEAL"}
+    />
+  );
 }

@@ -16,6 +16,9 @@ export const LearnNextDueCardsQuery = graphql(`
       }
       cardgroupId
     }
+    me {
+      learnDisplayMode
+    }
   }
 `);
 
@@ -84,6 +87,15 @@ export const SetLastViewedCardgroupMutation = graphql(`
         field
         message
       }
+    }
+  }
+`);
+
+export const UpdateLearnDisplayModeMutation = graphql(`
+  mutation UpdateLearnDisplayMode($mode: LearnDisplayMode!) {
+    updateLearnDisplayMode(mode: $mode) {
+      id
+      learnDisplayMode
     }
   }
 `);

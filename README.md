@@ -9,11 +9,13 @@
 
 ## Why Flamingo Armond?
 
-When my child was about one year old, we were playing make-believe, and they handed me a pretend drink. I asked, "What is this drink called?" and without missing a beat, she answered, "Flamingo Armond." The name stuck. It came up again during bath time and kept popping up in our play over the next few years. I loved how it sounded, and I promised myself that if I ever built my own app, I would use that name. This is that app.
+When my child was about one, we were playing make-believe and she handed me a pretend drink. I asked, "What is this drink called?" She immediately replied, "It’s Flamingo Armond!" That name stayed with me. It popped up again during bath time and kept coming up in our games for years. I loved the way it sounded, and I always thought I’d use it if I ever created my own app.
 
 ## Architecture
 
 ![Production architecture](docs/images/architecture.png)
+
+The live database **entity-relationship diagram** — auto-generated from the production schema by SchemaSpy whenever migrations change — is published to GitHub Pages: <https://yasuflatland-lf.github.io/flamingo-armond/er-chart/>. See [`docs/ci.md` § "ER-chart workflow"](docs/ci.md#er-chart-workflow) for how it is generated.
 
 ## Pre-conditions
 

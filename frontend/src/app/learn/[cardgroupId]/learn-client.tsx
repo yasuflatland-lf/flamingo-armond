@@ -13,7 +13,7 @@ import { AllCaughtUp } from "@/components/learn/all-caught-up";
 import { LearnActionBar } from "@/components/learn/learn-action-bar";
 import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
-import type { SwipeDirection } from "@/components/learn/types";
+import type { LearnDisplayMode, SwipeDirection } from "@/components/learn/types";
 import type { LearnNextDueCardsQuery } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
@@ -41,9 +41,10 @@ function modeFromDirection(direction: SwipeDirection): 1 | 2 | 4 {
 type Props = {
   cardgroupId: string;
   initialCards: LearnCard[];
+  displayMode: LearnDisplayMode;
 };
 
-export function LearnClient({ cardgroupId, initialCards }: Props) {
+export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
   const [completed, setCompleted] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -51,6 +52,14 @@ export function LearnClient({ cardgroupId, initialCards }: Props) {
   // (FSRS-safe re-study of today's cards). It is only entered from the
   // AllCaughtUp "Study again" action when the daily learn queue is exhausted.
   const [phase, setPhase] = useState<"learn" | "practice">("learn");
+  // Whether the active card's back is revealed. SwipeCardStack owns the reveal
+  // gesture (card tap / Space) and reports the active card's revealed state up
+  // via onActiveRevealedChange; LearnClient threads it into LearnActionBar so
+  // the rating buttons stay disabled until the learner reveals the answer. In
+  // ALWAYS_VISIBLE the stack reports `true` immediately on mount. Seeded from
+  // displayMode so the very first render (before the stack's mount effect runs)
+  // already disables the buttons in FLIP_TO_REVEAL.
+  const [activeRevealed, setActiveRevealed] = useState(displayMode === "ALWAYS_VISIBLE");
   const swipeStackRef = useRef<SwipeCardStackHandle | null>(null);
 
   const [handleSwipe, { error }] = useMutation(HandleSwipeMutation);
@@ -299,11 +308,13 @@ export function LearnClient({ cardgroupId, initialCards }: Props) {
         <SwipeCardStack
           ref={swipeStackRef}
           cards={queue}
+          displayMode={displayMode}
           onCardSwiped={onSwipe}
+          onActiveRevealedChange={setActiveRevealed}
           completedCount={completed}
         />
       </div>
-      <LearnActionBar onRate={handleRate} disabled={queue.length === 0} />
+      <LearnActionBar onRate={handleRate} disabled={queue.length === 0} revealed={activeRevealed} />
     </section>
   );
 }

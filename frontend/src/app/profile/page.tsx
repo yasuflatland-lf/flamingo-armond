@@ -17,6 +17,7 @@ const MeQuery = graphql(`
       displayName
       bio
       avatarUrl
+      learnDisplayMode
     }
   }
 `);
@@ -46,6 +47,7 @@ export default async function ProfilePage() {
         displayName: data.me.displayName ?? "",
         bio: data.me.bio ?? "",
       }}
+      displayMode={data.me.learnDisplayMode}
     />
   );
 }

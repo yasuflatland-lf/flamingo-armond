@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"backend/internal/domain"
 )
 
 func TestClassifyUserPreferenceCardgroupFKError_NotAFKViolation(t *testing.T) {
@@ -62,5 +64,24 @@ func TestClassifyUserPreferenceCardgroupFKError_UnknownConstraint(t *testing.T) 
 	}
 	if got := classifyUserPreferenceCardgroupFKError(pgErr); got != nil {
 		t.Fatalf("expected nil for unknown FK constraint, got %v", got)
+	}
+}
+
+// TestToDomainUserPreference_LearnDisplayMode verifies that toDomainUserPreference
+// maps a stored learn_display_mode string to the correct domain constant, and that
+// an empty or unknown column value falls back to DefaultLearnDisplayMode.
+// No live DB required — only the mapping function is exercised.
+func TestToDomainUserPreference_LearnDisplayMode(t *testing.T) {
+	t.Parallel()
+	got := toDomainUserPreference(gormUserPreference{
+		UserID:           "u1",
+		LearnDisplayMode: "always_visible",
+	})
+	if got.LearnDisplayMode != domain.LearnDisplayAlwaysVisible {
+		t.Fatalf("got %q, want always_visible", got.LearnDisplayMode)
+	}
+	gotEmpty := toDomainUserPreference(gormUserPreference{UserID: "u1"})
+	if gotEmpty.LearnDisplayMode != domain.DefaultLearnDisplayMode {
+		t.Fatalf("empty column: got %q, want default", gotEmpty.LearnDisplayMode)
 	}
 }

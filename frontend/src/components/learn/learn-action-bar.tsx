@@ -6,6 +6,13 @@ import { cn } from "@/lib/utils";
 import type { SwipeDirection } from "./types";
 
 type Props = {
+  /**
+   * Whether the active card's back is revealed. While `false` (the front_only
+   * phase of FLIP_TO_REVEAL mode) the rating buttons render but are disabled —
+   * the learner reveals the answer by tapping the card / pressing Space, not via
+   * this bar. Defaults to `true` for ALWAYS_VISIBLE and practice contexts.
+   */
+  revealed?: boolean;
   onRate: (direction: SwipeDirection) => void;
   disabled?: boolean;
 };
@@ -37,8 +44,15 @@ const DIRECTIONS = [
   },
 ] as const;
 
-export function LearnActionBar({ onRate, disabled = false }: Props) {
+export function LearnActionBar({ revealed = true, onRate, disabled = false }: Props) {
   const t = useTranslations("Learn");
+  // While the active card is unrevealed (front_only phase), the rating buttons
+  // are inert: the learner must reveal the answer by tapping the card / Space.
+  // They stay disabled when the caller's own `disabled` flag is set (e.g. the
+  // queue has emptied). Combining both keeps the buttons non-interactive and
+  // announced as disabled to assistive tech.
+  const ratingDisabled = disabled || !revealed;
+
   return (
     <div className="pointer-events-none z-40 flex justify-center px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
       <div className="pointer-events-auto flex items-center gap-4">
@@ -48,7 +62,8 @@ export function LearnActionBar({ onRate, disabled = false }: Props) {
             type="button"
             aria-label={t("rateAs", { label: t(labelKey) })}
             aria-keyshortcuts={shortcut}
-            disabled={disabled}
+            disabled={ratingDisabled}
+            aria-disabled={ratingDisabled}
             onClick={() => onRate(direction)}
             className={cn(
               "inline-flex h-14 w-14 items-center justify-center rounded-full border-2 bg-transparent transition active:scale-95",

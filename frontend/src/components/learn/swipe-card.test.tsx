@@ -17,14 +17,21 @@ const CARD: SwipeCardData = {
 
 describe("<CardContent>", () => {
   it("renders the card front and back", () => {
-    render(<CardContent card={CARD} />);
+    render(<CardContent card={CARD} revealed={true} />);
 
     expect(screen.getByText("Hello")).toBeInTheDocument();
     expect(screen.getByText("Hola")).toBeInTheDocument();
   });
 
+  it("hides the back until the card is revealed", () => {
+    render(<CardContent card={CARD} revealed={false} />);
+
+    expect(screen.getByText("Hello")).toBeInTheDocument();
+    expect(screen.queryByText("Hola")).not.toBeInTheDocument();
+  });
+
   it("does not render rating buttons inside the card", () => {
-    render(<CardContent card={CARD} />);
+    render(<CardContent card={CARD} revealed={true} />);
 
     expect(screen.queryByRole("button", { name: "Again" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Hard" })).not.toBeInTheDocument();
@@ -32,7 +39,7 @@ describe("<CardContent>", () => {
   });
 
   it("renders the CEFR badge alongside the front/back when the card has a level", () => {
-    render(<CardContent card={{ ...CARD, cefrLevel: "B1" }} />);
+    render(<CardContent card={{ ...CARD, cefrLevel: "B1" }} revealed={true} />);
 
     expect(screen.getByLabelText("CEFR level B1")).toBeInTheDocument();
     expect(screen.getByText("Hello")).toBeInTheDocument();
@@ -40,7 +47,7 @@ describe("<CardContent>", () => {
   });
 
   it("renders no CEFR badge when the level is null, but still shows the front/back", () => {
-    render(<CardContent card={{ ...CARD, cefrLevel: null }} />);
+    render(<CardContent card={{ ...CARD, cefrLevel: null }} revealed={true} />);
 
     expect(screen.queryByLabelText(/CEFR level/)).toBeNull();
     expect(screen.getByText("Hello")).toBeInTheDocument();
@@ -52,7 +59,7 @@ describe("<CardContent>", () => {
     // the centered content block must carry the horizontal-padding utility that
     // keeps a pathological single-token `front` clear of the right-pinned badge.
     const longFront = "Pneumonoultramicroscopicsilicovolcanoconiosis";
-    render(<CardContent card={{ ...CARD, front: longFront, cefrLevel: "C1" }} />);
+    render(<CardContent card={{ ...CARD, front: longFront, cefrLevel: "C1" }} revealed={true} />);
 
     // Both the long front term and the badge render.
     const frontEl = screen.getByText(longFront);

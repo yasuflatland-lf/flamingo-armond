@@ -6,18 +6,19 @@ import (
 )
 
 type Resolver struct {
-	UserUC                usecase.UserUsecase
-	CardgroupUC           usecase.CardgroupUsecase
-	CardUC                usecase.CardUsecase
-	LearnUC               usecase.LearnUsecase
-	SwipeUC               usecase.SwipeUsecase
-	AuthSvc               *auth.Service
-	CardImportUC          usecase.CardImportUsecase
-	AdminUserUC           usecase.AdminUserUsecase
-	AdminRoleUC           usecase.AdminRoleUsecase
-	LastViewedCardgroupUC usecase.LastViewedCardgroupUsecase
-	CEFRUC                usecase.CEFRClassifier
-	MasterCatalogUC       usecase.MasterCatalogUsecase
+	UserUC                   usecase.UserUsecase
+	CardgroupUC              usecase.CardgroupUsecase
+	CardUC                   usecase.CardUsecase
+	LearnUC                  usecase.LearnUsecase
+	SwipeUC                  usecase.SwipeUsecase
+	AuthSvc                  *auth.Service
+	CardImportUC             usecase.CardImportUsecase
+	AdminUserUC              usecase.AdminUserUsecase
+	AdminRoleUC              usecase.AdminRoleUsecase
+	LastViewedCardgroupUC    usecase.LastViewedCardgroupUsecase
+	UpdateLearnDisplayModeUC usecase.UpdateLearnDisplayModeUsecase
+	CEFRUC                   usecase.CEFRClassifier
+	MasterCatalogUC          usecase.MasterCatalogUsecase
 }
 
 // NewResolver wires every Resolver dependency. Tests may pass nil for unused
@@ -32,22 +33,24 @@ func NewResolver(
 	adminUserUC usecase.AdminUserUsecase,
 	adminRoleUC usecase.AdminRoleUsecase,
 	lastViewedCardgroupUC usecase.LastViewedCardgroupUsecase,
+	updateLearnDisplayModeUC usecase.UpdateLearnDisplayModeUsecase,
 	learnUC usecase.LearnUsecase,
 	cefrUC usecase.CEFRClassifier,
 	masterCatalogUC usecase.MasterCatalogUsecase,
 ) *Resolver {
 	return &Resolver{
-		UserUC:                user,
-		CardgroupUC:           cardgroupUC,
-		CardUC:                cardUC,
-		SwipeUC:               swipeUC,
-		AuthSvc:               authSvc,
-		CardImportUC:          cardImportUC,
-		AdminUserUC:           adminUserUC,
-		AdminRoleUC:           adminRoleUC,
-		LastViewedCardgroupUC: lastViewedCardgroupUC,
-		LearnUC:               learnUC,
-		CEFRUC:                cefrUC,
-		MasterCatalogUC:       masterCatalogUC,
+		UserUC:                   user,
+		CardgroupUC:              cardgroupUC,
+		CardUC:                   cardUC,
+		SwipeUC:                  swipeUC,
+		AuthSvc:                  authSvc,
+		CardImportUC:             cardImportUC,
+		AdminUserUC:              adminUserUC,
+		AdminRoleUC:              adminRoleUC,
+		LastViewedCardgroupUC:    lastViewedCardgroupUC,
+		UpdateLearnDisplayModeUC: updateLearnDisplayModeUC,
+		LearnUC:                  learnUC,
+		CEFRUC:                   cefrUC,
+		MasterCatalogUC:          masterCatalogUC,
 	}
 }

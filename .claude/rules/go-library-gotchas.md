@@ -77,6 +77,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [gqlgen wraps deleted-field resolvers in a `// !!! WARNING !!!` block — they are not auto-removed](../../docs/backend/library-gotchas/gqlgen-warning-block-on-deleted-resolver.md)
 - [gqlgen `follow-schema` layout orphans the old resolver file when a schema FILE is renamed](../../docs/backend/library-gotchas/gqlgen-schema-file-rename-orphans-resolver.md)
 - [gqlgen acronym enum: TYPE keeps the acronym (`CEFRLevel`), METHOD lowercases its tail (`CefrLevel`)](../../docs/backend/library-gotchas/gqlgen-acronym-enum-type-vs-method-casing.md)
+- [Casing-asymmetric enum: persisted lowercase vs wire uppercase needs explicit mappers (exhaustive read switch + erroring write + round-trip test)](../../docs/backend/library-gotchas/casing-asymmetric-enum-mapper.md)
 - [Panic value format: `%T %v` vs `%T`-only — PII trade-off](../../docs/backend/library-gotchas/panic-value-format-pii-tradeoff.md)
 - [XOR-invariant outcome structs for mutually-exclusive results](../../docs/backend/library-gotchas/xor-invariant-outcome-struct.md)
 - [Fire-and-forget goroutine: detach context from request lifecycle](../../docs/backend/library-gotchas/fire-and-forget-goroutine-detached-context.md)

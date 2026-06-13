@@ -315,6 +315,11 @@ func (r *countingUserPreferenceRepo) UpsertLastViewedCardgroup(_ context.Context
 	panic("countingUserPreferenceRepo.UpsertLastViewedCardgroup not configured")
 }
 
+// UpdateLearnDisplayMode is needed to satisfy repository.UserPreferenceRepository.
+func (r *countingUserPreferenceRepo) UpdateLearnDisplayMode(_ context.Context, _, _ string) error {
+	panic("countingUserPreferenceRepo.UpdateLearnDisplayMode not configured")
+}
+
 func emptyUserPreferenceRepo() *countingUserPreferenceRepo {
 	return &countingUserPreferenceRepo{
 		findByUserIDs: func(_ context.Context, _ []string) ([]*domain.UserPreference, error) {

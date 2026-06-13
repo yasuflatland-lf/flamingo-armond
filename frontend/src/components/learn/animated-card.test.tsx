@@ -53,6 +53,10 @@ function getCard() {
   return screen.getByTestId("swipe-card");
 }
 
+function revealedProps() {
+  return { revealed: true, onReveal: vi.fn() };
+}
+
 /**
  * Spy on every `Controller.start` call (the underlying driver behind the
  * `api.start` the component issues) and record the target `x` and whether a
@@ -114,6 +118,33 @@ function fireCommittingSwipeRight(element: Element) {
   });
 }
 
+function fireCommittingSwipeDown(element: Element) {
+  const startX = 100;
+  const startY = 100;
+  fireEvent.pointerDown(element, {
+    pointerId: 1,
+    clientX: startX,
+    clientY: startY,
+    buttons: 1,
+    bubbles: true,
+  });
+  for (const dy of [40, 120, 220]) {
+    fireEvent.pointerMove(window, {
+      pointerId: 1,
+      clientX: startX,
+      clientY: startY + dy,
+      buttons: 1,
+      bubbles: true,
+    });
+  }
+  fireEvent.pointerUp(window, {
+    pointerId: 1,
+    clientX: startX,
+    clientY: startY + 220,
+    bubbles: true,
+  });
+}
+
 /** A fresh re-grab gesture (a different pointerId) on the same element. */
 function fireReGrab(element: Element) {
   fireEvent.pointerDown(element, {
@@ -138,10 +169,39 @@ function fireReGrab(element: Element) {
   });
 }
 
+describe("<AnimatedCard> — front-only reveal phase", () => {
+  it("clicking the front-only active card reveals without rating", () => {
+    const onReveal = vi.fn();
+    const onSwipe = vi.fn();
+    render(
+      <AnimatedCard card={CARD} isActive revealed={false} onReveal={onReveal} onSwipe={onSwipe} />,
+    );
+
+    fireEvent.click(getCard());
+
+    expect(onReveal).toHaveBeenCalledTimes(1);
+    expect(onSwipe).not.toHaveBeenCalled();
+  });
+
+  it("suppresses rating swipes while the active card is front-only", async () => {
+    const onSwipe = vi.fn();
+    render(
+      <AnimatedCard card={CARD} isActive revealed={false} onReveal={vi.fn()} onSwipe={onSwipe} />,
+    );
+
+    act(() => {
+      fireCommittingSwipeDown(getCard());
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(onSwipe).not.toHaveBeenCalled();
+  });
+});
+
 describe("<AnimatedCard> — committing gesture commits exactly once", () => {
   it("a committing rightward swipe fires onSwipe exactly once with the right direction", async () => {
     const onSwipe = vi.fn();
-    render(<AnimatedCard card={CARD} isActive onSwipe={onSwipe} />);
+    render(<AnimatedCard card={CARD} isActive onSwipe={onSwipe} {...revealedProps()} />);
 
     await act(async () => {
       fireCommittingSwipeRight(getCard());
@@ -158,7 +218,7 @@ describe("<AnimatedCard> — committing gesture commits exactly once", () => {
 
   it("does not commit when the swipe falls short of the threshold (snaps back)", async () => {
     const onSwipe = vi.fn();
-    render(<AnimatedCard card={CARD} isActive onSwipe={onSwipe} />);
+    render(<AnimatedCard card={CARD} isActive onSwipe={onSwipe} {...revealedProps()} />);
 
     await act(async () => {
       const el = getCard();
@@ -211,7 +271,7 @@ describe("<AnimatedCard> — re-grab during fly-off must not interrupt the exit"
   it("issues no spring-reset api.start after the fly-off begins", async () => {
     const calls = spyControllerStart();
     const onSwipe = vi.fn();
-    render(<AnimatedCard card={CARD} isActive onSwipe={onSwipe} />);
+    render(<AnimatedCard card={CARD} isActive onSwipe={onSwipe} {...revealedProps()} />);
 
     // The committing swipe AND the re-grab both fire synchronously inside this
     // act block — the interrupting spring-reset (if the guard were missing)
@@ -270,9 +330,11 @@ describe("<AnimatedCard> — a re-render must not re-apply the spring initialize
   it("issues no initializer re-apply (config-carrying start) when a resting card re-renders", () => {
     const calls = spyControllerStart();
     const onSwipe = vi.fn();
-    const { rerender } = render(<AnimatedCard card={CARD} isActive onSwipe={onSwipe} />);
+    const { rerender } = render(
+      <AnimatedCard card={CARD} isActive onSwipe={onSwipe} {...revealedProps()} />,
+    );
     // Force a fresh commit with no gesture and no flyOut (new onSwipe identity).
-    rerender(<AnimatedCard card={CARD} isActive onSwipe={vi.fn()} />);
+    rerender(<AnimatedCard card={CARD} isActive onSwipe={vi.fn()} {...revealedProps()} />);
     expect(calls.some((call) => call.hasConfig)).toBe(false);
   });
 });
@@ -299,7 +361,15 @@ describe("<AnimatedCard> — fly-off spring rejection still commits", () => {
 
     const onSwipe = vi.fn();
     const handleRef = createRef<AnimatedCardHandle | null>();
-    render(<AnimatedCard card={CARD} isActive onSwipe={onSwipe} handleRef={handleRef} />);
+    render(
+      <AnimatedCard
+        card={CARD}
+        isActive
+        onSwipe={onSwipe}
+        handleRef={handleRef}
+        {...revealedProps()}
+      />,
+    );
 
     act(() => {
       handleRef.current?.flyOut("right");
@@ -317,13 +387,33 @@ describe("<AnimatedCard> — fly-off spring rejection still commits", () => {
 });
 
 describe("<AnimatedCard> — reduced motion", () => {
+  it("renders the revealed face without a rotateY rotator", () => {
+    stubMatchMedia(true);
+    const onSwipe = vi.fn();
+
+    render(
+      <AnimatedCard card={CARD} isActive revealed={true} onReveal={vi.fn()} onSwipe={onSwipe} />,
+    );
+
+    expect(screen.queryByTestId("swipe-card-rotator")).not.toBeInTheDocument();
+    expect(screen.getByText("Hola")).toBeInTheDocument();
+  });
+
   it("commits synchronously without driving a fly-off spring", () => {
     stubMatchMedia(true);
     const calls = spyControllerStart();
     const onSwipe = vi.fn();
     const handleRef = createRef<AnimatedCardHandle | null>();
 
-    render(<AnimatedCard card={CARD} isActive onSwipe={onSwipe} handleRef={handleRef} />);
+    render(
+      <AnimatedCard
+        card={CARD}
+        isActive
+        onSwipe={onSwipe}
+        handleRef={handleRef}
+        {...revealedProps()}
+      />,
+    );
 
     act(() => {
       handleRef.current?.flyOut("left");
@@ -342,7 +432,15 @@ describe("<AnimatedCard> — double-exit guard", () => {
     const onSwipe = vi.fn();
     const handleRef = createRef<AnimatedCardHandle | null>();
 
-    render(<AnimatedCard card={CARD} isActive onSwipe={onSwipe} handleRef={handleRef} />);
+    render(
+      <AnimatedCard
+        card={CARD}
+        isActive
+        onSwipe={onSwipe}
+        handleRef={handleRef}
+        {...revealedProps()}
+      />,
+    );
 
     act(() => {
       handleRef.current?.flyOut("right");
@@ -377,7 +475,7 @@ describe("<AnimatedCard> — React StrictMode double-mount", () => {
 
     render(
       <StrictMode>
-        <AnimatedCard card={CARD} isActive onSwipe={onSwipe} />
+        <AnimatedCard card={CARD} isActive onSwipe={onSwipe} {...revealedProps()} />
       </StrictMode>,
     );
 

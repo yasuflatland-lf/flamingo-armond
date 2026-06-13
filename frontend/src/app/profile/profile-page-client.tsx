@@ -7,13 +7,16 @@ import { useCallback, useRef, useState } from "react";
 import { LanguageSwitcher } from "@/components/settings/language-switcher";
 import { Button } from "@/components/ui/button";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
+import type { LearnDisplayMode } from "@/generated/graphql";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { DeleteAccountSection } from "./delete-account-section";
+import { DisplayModeSection } from "./display-mode-section";
 import { ProfileForm } from "./profile-form";
 
 type Props = {
   email: string | null;
   initial: { displayName: string; bio: string };
+  displayMode: LearnDisplayMode;
 };
 
 function ProfileSheetBody({
@@ -24,7 +27,7 @@ function ProfileSheetBody({
   onRegisterReset,
   onSaved,
   onSubmittingChange,
-}: Props & {
+}: Pick<Props, "email" | "initial"> & {
   onChangeEmail: () => void;
   onDirtyChange: (dirty: boolean) => void;
   onRegisterReset: (reset: () => void) => void;
@@ -54,7 +57,7 @@ function ProfileSheetBody({
 // entity). The contract is local to this page; the hook stays unaware.
 const PROFILE_SHEET_SENTINEL_ID = "self";
 
-export function ProfilePageClient({ email, initial }: Props) {
+export function ProfilePageClient({ email, initial, displayMode }: Props) {
   const t = useTranslations("Profile");
   const tSettings = useTranslations("Settings");
   const router = useRouter();
@@ -140,6 +143,7 @@ export function ProfilePageClient({ email, initial }: Props) {
             <p className="text-sm text-muted-foreground">{tSettings("description")}</p>
           </div>
           <LanguageSwitcher />
+          <DisplayModeSection initialMode={displayMode} />
         </section>
 
         <DeleteAccountSection />

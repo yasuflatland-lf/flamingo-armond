@@ -5,7 +5,14 @@
  * so snapshot assertions remain stable across runs.
  */
 
-import type { Card, CardConnection, CardEdge, Cardgroup, PageInfo } from "@/generated/base-types";
+import {
+  type Card,
+  type CardConnection,
+  type CardEdge,
+  type Cardgroup,
+  LearnDisplayMode,
+  type PageInfo,
+} from "@/generated/base-types";
 
 const userCardState = (due: string) => ({
   __typename: "UserCardState" as const,
@@ -40,6 +47,7 @@ const cardgroupFixture: Cardgroup = {
     bio: null,
     avatarUrl: null,
     lastViewedCardgroup: null,
+    learnDisplayMode: LearnDisplayMode.FlipToReveal,
     roles: [],
   },
   createdAt: "2026-01-15T00:00:00Z",

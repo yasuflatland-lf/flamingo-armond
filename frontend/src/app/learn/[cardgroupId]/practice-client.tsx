@@ -190,7 +190,12 @@ export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
       </div>
 
       <div className="relative flex min-h-0 items-center justify-center overflow-hidden">
-        <SwipeCardStack ref={swipeStackRef} cards={queue} onCardSwiped={onCardSwiped} />
+        <SwipeCardStack
+          ref={swipeStackRef}
+          cards={queue}
+          displayMode="ALWAYS_VISIBLE"
+          onCardSwiped={onCardSwiped}
+        />
       </div>
       <LearnActionBar onRate={handleRate} disabled={queue.length === 0} />
     </section>
