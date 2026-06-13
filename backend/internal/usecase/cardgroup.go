@@ -139,14 +139,16 @@ type CreateCardgroupOutcome struct {
 
 // CardgroupLimitInfo reports that the authenticated owner has reached the
 // per-user cardgroup limit. Limit is the cap; Current is the owner's count at
-// the time the create was rejected.
+// the time the create was rejected. Current is always >= Limit when this
+// struct is constructed.
 type CardgroupLimitInfo struct {
 	Limit   int
 	Current int
 }
 
 // cardgroupOwnerCounter is the narrow surface checkCardgroupLimit needs.
-// Satisfied by CardgroupRepository and reused by the future import path.
+// Keeping it separate from CardgroupRepository lets tests stub only the
+// counting method.
 type cardgroupOwnerCounter interface {
 	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
 }
@@ -167,6 +169,9 @@ func checkCardgroupLimit(ctx context.Context, counter cardgroupOwnerCounter, adm
 	}
 	count, err := counter.CountByOwner(ctx, ownerID, nil)
 	if err != nil {
+		if isContextDone(err) {
+			return nil, err
+		}
 		return nil, eris.Wrap(err, "usecase: cardgroup: count by owner")
 	}
 	if count >= generalUserCardgroupLimit {

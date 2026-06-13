@@ -37,7 +37,7 @@ type CardgroupLimitReachedError implements UserError {
   current: Int!
 }
 
-"""Result of `createCardgroup`. Either the created cardgroup or an input-validation failure."""
+"""Result of `createCardgroup`. One of: the created cardgroup, an input-validation failure, or a limit-reached error when a non-admin caller's cardgroup cap is exceeded."""
 union CreateCardgroupResult =
     CreateCardgroupSuccess
   | InputValidationError
@@ -98,8 +98,10 @@ extend type Query {
 extend type Mutation {
   """
   Create a cardgroup owned by the authenticated caller.
-  Returns a union: `CreateCardgroupSuccess` for the happy path, or `InputValidationError`
-  when the name fails validation (typed "error as data").
+  Returns a union: `CreateCardgroupSuccess` on the happy path,
+  `InputValidationError` when the name fails validation (typed "error as data"),
+  or `CardgroupLimitReachedError` when a non-admin caller already owns the
+  maximum number of cardgroups.
   """
   createCardgroup(input: NewCardgroupInput!): CreateCardgroupResult!
   """Update a cardgroup. Non-owners receive UNAUTHENTICATED."""

@@ -1903,3 +1903,62 @@ func TestCheckCardgroupLimit_IsAdminCancelled_IdentityPreserved(t *testing.T) {
 		t.Fatalf("expected counter NOT to be called when IsAdmin is cancelled, got %d calls", counter.calls)
 	}
 }
+
+// TestCardgroupUsecase_Create_CountByOwnerCancelled_IdentityPreserved verifies
+// that a context.Canceled returned from CountByOwner propagates with its
+// identity intact (errors.Is matches and err == context.Canceled, NOT an eris
+// wrap) and that repo.Create is not reached. The admin stub reports isAdmin=false
+// so the count query is reached and injects the cancellation.
+func TestCardgroupUsecase_Create_CountByOwnerCancelled_IdentityPreserved(t *testing.T) {
+	t.Parallel()
+	repo := &mockCardgroupRepository{countErr: context.Canceled}
+	uc := NewCardgroupUsecase(repo, &mockAdminChecker{isAdmin: false}, newTestLogger())
+
+	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "Group"})
+
+	if err == nil {
+		t.Fatal("expected context.Canceled, got nil")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected errors.Is(err, context.Canceled)=true, got %v (%T)", err, err)
+	}
+	// Identity preserved: the returned error IS context.Canceled, not an eris wrap.
+	if err != context.Canceled {
+		t.Fatalf("expected the unwrapped context.Canceled, got %v (%T)", err, err)
+	}
+	// The outcome must be the zero value — no LimitReached, no Cardgroup.
+	if outcome.LimitReached != nil {
+		t.Fatalf("expected nil LimitReached on cancellation, got %+v", outcome.LimitReached)
+	}
+	if outcome.Cardgroup != nil {
+		t.Fatalf("expected nil Cardgroup on cancellation, got %+v", outcome.Cardgroup)
+	}
+	if repo.capturedCreate != nil {
+		t.Fatal("repository.Create must not be called when CountByOwner is cancelled")
+	}
+}
+
+// TestCheckCardgroupLimit_CountCancelled_IdentityPreserved verifies that a
+// context.Canceled returned from CountByOwner passes through checkCardgroupLimit
+// unwrapped: errors.Is matches and err == context.Canceled (bare identity).
+func TestCheckCardgroupLimit_CountCancelled_IdentityPreserved(t *testing.T) {
+	t.Parallel()
+	counter := &stubCardgroupCounter{err: context.Canceled}
+	admin := &stubLimitAdminChecker{isAdmin: false}
+
+	info, err := checkCardgroupLimit(context.Background(), counter, admin, "user-1")
+
+	if err == nil {
+		t.Fatal("expected context.Canceled, got nil")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected errors.Is(err, context.Canceled)=true, got %v (%T)", err, err)
+	}
+	// Identity preserved: the returned error IS context.Canceled, not an eris wrap.
+	if err != context.Canceled {
+		t.Fatalf("expected the unwrapped context.Canceled, got %v (%T)", err, err)
+	}
+	if info != nil {
+		t.Fatalf("expected nil LimitInfo on cancellation, got %+v", info)
+	}
+}

@@ -31,10 +31,12 @@ func (r *cardgroupResolver) Owner(ctx context.Context, obj *model.Cardgroup) (*m
 
 // CreateCardgroup is the resolver for the createCardgroup field.
 //
-// Returns a union: `model.CreateCardgroupSuccess` on the happy path, or
+// Returns a union: `model.CreateCardgroupSuccess` on the happy path,
 // `model.InputValidationError` when the name fails validation (e.g. empty,
-// too long). Validation failures are "errors as data" — the error return is
-// reserved for auth and infrastructure failures.
+// too long), or `model.CardgroupLimitReachedError` when a non-admin caller
+// has already reached the per-user cardgroup cap. Validation failures and
+// limit errors are "errors as data" — the error return is reserved for auth
+// and infrastructure failures.
 func (r *mutationResolver) CreateCardgroup(ctx context.Context, input model.NewCardgroupInput) (model.CreateCardgroupResult, error) {
 	outcome, err := r.CardgroupUC.Create(ctx, usecase.CreateCardgroupInput{Name: input.Name})
 	if err != nil {
