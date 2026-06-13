@@ -69,7 +69,7 @@ These values target a public API on Render. Revisit if the threat model or deplo
 
 `PORT`, `SHUTDOWN_TIMEOUT`, `NOTION_MAX_ATTEMPTS`, `NOTION_MAX_ELAPSED`, and `SUPER_USER_EMAILS` are optional with safe defaults. The three `SUPABASE_JWT_*` variables, `SUPABASE_DB_URL`, and `PING_TOKEN` are strictly required — the server refuses to start if any is missing.
 
-\* **Optional as a group.** When any of the four `NOTION_*` sync vars (`NOTION_TOKEN`, `NOTION_PAGE_IDS`, `NOTION_MASTER_CARDGROUP_NAME`, `NOTION_SYNC_TOKEN`) is absent or whitespace-only, the `POST /internal/notion-sync` route is disabled and the server still starts — a single `WARN` log line is emitted listing the missing var names (via `OptionalConfigFromEnv` in `run()`). The exception: when the group is otherwise present, `NOTION_PAGE_IDS` must contain at least one non-whitespace ID — a comma/whitespace-only value fails startup. Note: the Makefile and deployment playbook still push `NOTION_TARGET_OWNER_ID` and `NOTION_TARGET_CARDGROUP_NAME` until an operator follow-up updates those scripts; the backend no longer reads those vars.
+\* **Optional as a group.** When any of the four `NOTION_*` sync vars (`NOTION_TOKEN`, `NOTION_PAGE_IDS`, `NOTION_MASTER_CARDGROUP_NAME`, `NOTION_SYNC_TOKEN`) is absent or whitespace-only, the `POST /internal/notion-sync` route is disabled and the server still starts — a single `WARN` log line is emitted listing the missing var names (via `OptionalConfigFromEnv` in `run()`). The exception: when the group is otherwise present, `NOTION_PAGE_IDS` must contain at least one non-whitespace ID — a comma/whitespace-only value fails startup.
 
 ## Testing patterns
 

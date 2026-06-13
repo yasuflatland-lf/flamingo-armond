@@ -76,9 +76,7 @@ services:
         sync: false
       - key: NOTION_PAGE_IDS
         sync: false
-      - key: NOTION_TARGET_OWNER_ID
-        sync: false
-      - key: NOTION_TARGET_CARDGROUP_NAME
+      - key: NOTION_MASTER_CARDGROUP_NAME
         sync: false
       - key: NOTION_SYNC_TOKEN
         sync: false
