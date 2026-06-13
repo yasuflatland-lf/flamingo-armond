@@ -24,10 +24,11 @@ interface CatalogClientProps {
  * Client component for the /catalog gallery.
  *
  * Wires:
- *  - SSR seed: writes initialConnection into the cache once at mount via
- *    apollo.writeQuery so useQuery (cache-first) renders immediately without a
- *    network round-trip. CATALOG_DEFAULT_VARS keeps the cache key identical to
- *    the SSR seed and the client useQuery — any mismatch silently splits the cache.
+ *  - SSR seed: writes initialConnection into the cache once synchronously during
+ *    render (before useQuery runs) via apollo.writeQuery so useQuery (cache-first)
+ *    renders immediately without a network round-trip. CATALOG_DEFAULT_VARS keeps
+ *    the cache key identical to the SSR seed and the client useQuery — any
+ *    mismatch silently splits the cache.
  *  - Debounced search (300ms; searchInput → searchQuery), passed as the `search`
  *    variable on MasterCatalogQuery.
  *  - Infinite scroll via IntersectionObserver, with an in-flight guard via

@@ -13,12 +13,24 @@ import { ImportMasterCardgroupMutation } from "./queries";
  * `/cardgroups` (the connection cache is updated inside this hook); `not_found`
  * and `rejected` surface a banner; `auth` surfaces a sign-in prompt.
  *
- * `not_found` collapses both "unknown id" and "exists but unpublished" — the
- * backend never discloses draft existence (see schema `MasterNotFoundError`).
+ * `not_found` carries no payload: it collapses both "unknown id" and "exists but
+ * unpublished", and the backend's `MasterNotFoundError.message` must never reach
+ * the user (it could disclose draft existence or echo user input). The client
+ * renders its own localized copy, so the server message is intentionally dropped
+ * at this boundary rather than threaded through as a dead field.
+ *
+ * Unlike the sibling `CreateCardgroupOutcome` (which splits `unexpected` from
+ * `rejected`), the resolved-but-unparseable and transport-error cases are
+ * collapsed into a single `rejected` here, because no catalog caller
+ * distinguishes them — both render the same generic error banner.
  */
 export type ImportMasterOutcome =
   | { status: "success"; cardgroupId: string; cardgroupName: string }
-  | { status: "not_found"; message: string }
+  | { status: "not_found" }
+  // `auth.kind` mirrors the two GraphQL auth codes. `importMasterCardgroup`
+  // currently only emits UNAUTHENTICATED; `forbidden` is handled defensively so a
+  // future authorization rule degrades to the sign-in prompt, not the generic
+  // error banner.
   | { status: "auth"; kind: "unauthenticated" | "forbidden" }
   // The mutation threw a non-auth transport error, or resolved with an
   // unparseable payload (unknown __typename / partial-response null bubble).
@@ -93,7 +105,9 @@ export function useImportMaster() {
         // it (TypeScript narrows to `never` after the known cases).
         const typename = payload?.__typename ?? null;
         if (payload?.__typename === "MasterNotFoundError") {
-          return { status: "not_found", message: payload.message };
+          // The backend message is deliberately discarded (non-disclosure); the
+          // client surfaces its own localized copy.
+          return { status: "not_found" };
         }
         if (payload?.__typename === "ImportMasterCardgroupSuccess") {
           return {
