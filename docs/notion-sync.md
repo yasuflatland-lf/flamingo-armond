@@ -1,6 +1,6 @@
 # Notion Page Sync
 
-The backend exposes `POST /internal/notion-sync` for GitHub Actions or another trusted scheduler. The request body is ignored; all sync inputs come from backend environment variables.
+The backend exposes `POST /internal/notion-sync` for GitHub Actions or another trusted scheduler. The request body is ignored; all sync inputs come from backend environment variables. The sync writes into the admin-only `master_*` catalog tables (`master_cardgroups` / `master_cards`), not the user-owned `cardgroups` table.
 
 ## Backend env
 
@@ -8,8 +8,7 @@ Required:
 
 - `NOTION_TOKEN`: Notion integration token.
 - `NOTION_PAGE_IDS`: comma-separated page IDs.
-- `NOTION_TARGET_OWNER_ID`: existing Supabase/auth user UUID that owns the destination cardgroup.
-- `NOTION_TARGET_CARDGROUP_NAME`: destination cardgroup name. The backend creates it when absent.
+- `NOTION_MASTER_CARDGROUP_NAME`: destination master cardgroup name. The backend creates it when absent.
 - `NOTION_SYNC_TOKEN`: shared bearer token used by the scheduler.
 
 Optional:
@@ -17,7 +16,7 @@ Optional:
 - `NOTION_MAX_ATTEMPTS`: default `5`.
 - `NOTION_MAX_ELAPSED`: default `2m`.
 
-`NOTION_TARGET_OWNER_ID` is required because the current `cardgroups` table is user-owned. Use the UUID from `auth.users.id` / `public.users.id` for the account that should see the synced cards.
+Master cardgroups are owner-less: the destination deck is identified by `NOTION_MASTER_CARDGROUP_NAME` alone. The backend resolves the name to a master cardgroup id via `MasterCardgroupRepository.EnsureByName`, which serializes lookup-then-insert under a `pg_advisory_xact_lock(hashtext('master'), hashtext(name))` so concurrent runs cannot create duplicate-name rows. No owner UUID is required.
 
 ## GitHub Actions
 
@@ -84,6 +83,8 @@ make notion-local-run      # repeat as needed
 For the production sync flow, see [Operational setup](#operational-setup) below.
 
 ## Operational setup
+
+> **Pending operator step (master repoint).** The backend now reads `NOTION_MASTER_CARDGROUP_NAME` and no longer reads `NOTION_TARGET_OWNER_ID` / `NOTION_TARGET_CARDGROUP_NAME`. The deployed Render service env, `render.yaml`, `cloudbuild.yaml`, and the `make sync-notion-*` targets below still reference the old variable names; they are intentionally left unchanged in the code change that repointed the sync because rotating a deployed service's env is a deploy-affecting operation. Before the next production sync run, set `NOTION_MASTER_CARDGROUP_NAME` on the Render service (and update the Makefile push targets) so the scheduler keeps working. The `NOTION_TARGET_*` keys become inert once the new key is set.
 
 All NOTION_* values are stored in the root `.env` file (gitignored). The Makefile provides three targets that read from that file and push values to the appropriate destinations.
 
@@ -158,9 +159,9 @@ When a user creates or updates a card via GraphQL and the save succeeds, the bac
 
 ## Behavior
 
-The backend fetches every configured page, renders supported blocks to plain text, parses the existing text dictionary format, then upserts cards into the destination cardgroup. Each card is assigned a `position` equal to its zero-based index in the deduped, document-order row list (page order, then line order within a page). `position` is an internal sync-metadata field with no GraphQL field. On upsert conflict, `back`, `updated_at`, and `position` are overwritten, so re-syncing reflects the latest Notion document order for surviving cards. FSRS state is still preserved: `position` is not FSRS data and the `user_card_fsrs` row is never touched by sync. `position` is retained as sync metadata but no longer drives the learn queue: the learn-session query samples never-seen cards uniformly at random rather than walking document order. See [`docs/backend/ddd-patterns/discovery-first-due-ordering.md`](backend/ddd-patterns/discovery-first-due-ordering.md) for the ordering design. Cards whose `front` no longer appears in Notion are deleted.
+The backend fetches every configured page, renders supported blocks to plain text, parses the existing text dictionary format, then upserts master cards into the destination master cardgroup (resolved by name via `MasterCardgroupRepository.EnsureByName`). Each card is assigned a `position` equal to its zero-based index in the deduped, document-order row list (page order, then line order within a page). `position` is an internal sync-metadata field with no GraphQL field. On upsert conflict, `back`, `updated_at`, and `position` are overwritten, so re-syncing reflects the latest Notion document order for surviving master cards. Cards whose `front` no longer appears in Notion are deleted from the master cardgroup. The master catalog is admin-only and never directly owned by an end user; per-user copies are created downstream from the published master deck.
 
-Lone front-only or back-only lines are skipped and reported as validation errors; they do not drop the rest of the batch. If every non-blank row is skipped, the sync returns the skip diagnostics without mutating cards. The skip-only short-circuit returns before `EnsureByName`, so no cardgroup is auto-created for a sync that would produce no cards — a deliberate "no persistence, no side effects" invariant. For the grammar-level rationale, see [`docs/backend/library-gotchas/goyacc-lexer-recovery-via-newline.md` § "What"](backend/library-gotchas/goyacc-lexer-recovery-via-newline.md#what).
+Lone front-only or back-only lines are skipped and reported as validation errors; they do not drop the rest of the batch. If every non-blank row is skipped, the sync returns the skip diagnostics without mutating cards. The skip-only short-circuit returns before `EnsureByName`, so no master cardgroup is auto-created for a sync that would produce no cards — a deliberate "no persistence, no side effects" invariant. For the grammar-level rationale, see [`docs/backend/library-gotchas/goyacc-lexer-recovery-via-newline.md` § "What"](backend/library-gotchas/goyacc-lexer-recovery-via-newline.md#what).
 
 If Notion returns `429` or `5xx`, the backend follows the `Retry-After` header (with an exponential-backoff fallback capped at 5 seconds when the header is absent).
 
