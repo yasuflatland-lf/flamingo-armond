@@ -369,6 +369,11 @@
                                         <td>((rating &gt;&#61; 1) AND (rating &lt;&#61; 4))</td>
                                     </tr>
                                     <tr>
+                                        <td><a href='tables/user_preferences.html'>user_preferences</a></td>
+                                        <td>user_preferences_learn_display_mode_check</td>
+                                        <td>(learn_display_mode &#61; ANY (ARRAY[&#39;flip_to_reveal&#39;::text, &#39;always_visible&#39;::text]))</td>
+                                    </tr>
+                                    <tr>
                                         <td><a href='tables/master_cards.html'>master_cards</a></td>
                                         <td>master_cards_back_length</td>
                                         <td>((char_length(TRIM(BOTH FROM back)) &gt;&#61; 1) AND (char_length(TRIM(BOTH FROM back)) &lt;&#61; 500))</td>
