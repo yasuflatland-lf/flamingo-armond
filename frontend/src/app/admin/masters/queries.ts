@@ -3,25 +3,6 @@ import { graphql } from "@/generated";
 /** Default page size for the admin masters connection. Keep in sync with cache reads. */
 export const ADMIN_MASTERS_PAGE_SIZE = 20;
 
-/** All master fields consumed by the list rows and the edit form. */
-export const AdminMasterFieldsFragment = graphql(`
-  fragment AdminMasterFields on MasterCardgroup {
-    id
-    name
-    description
-    language
-    level
-    category
-    coverImageUrl
-    source
-    version
-    status
-    isDefaultStarter
-    sortOrder
-    cardCount
-  }
-`);
-
 export const AdminMastersQuery = graphql(`
   query AdminMasters(
     $first: Int
@@ -44,7 +25,19 @@ export const AdminMastersQuery = graphql(`
       edges {
         cursor
         node {
-          ...AdminMasterFields
+          id
+          name
+          description
+          language
+          level
+          category
+          coverImageUrl
+          source
+          version
+          status
+          isDefaultStarter
+          sortOrder
+          cardCount
         }
       }
       pageInfo {
@@ -64,7 +57,19 @@ export const AdminCreateMasterMutation = graphql(`
       __typename
       ... on CreateMasterCardgroupSuccess {
         master {
-          ...AdminMasterFields
+          id
+          name
+          description
+          language
+          level
+          category
+          coverImageUrl
+          source
+          version
+          status
+          isDefaultStarter
+          sortOrder
+          cardCount
         }
       }
       ... on InputValidationError {
@@ -81,7 +86,19 @@ export const AdminUpdateMasterMutation = graphql(`
       __typename
       ... on UpdateMasterCardgroupSuccess {
         master {
-          ...AdminMasterFields
+          id
+          name
+          description
+          language
+          level
+          category
+          coverImageUrl
+          source
+          version
+          status
+          isDefaultStarter
+          sortOrder
+          cardCount
         }
       }
       ... on InputValidationError {
@@ -98,7 +115,19 @@ export const AdminPublishMasterMutation = graphql(`
       __typename
       ... on PublishMasterCardgroupSuccess {
         master {
-          ...AdminMasterFields
+          id
+          name
+          description
+          language
+          level
+          category
+          coverImageUrl
+          source
+          version
+          status
+          isDefaultStarter
+          sortOrder
+          cardCount
         }
       }
       ... on MasterCardgroupEmptyError {
@@ -111,7 +140,19 @@ export const AdminPublishMasterMutation = graphql(`
 export const AdminUnpublishMasterMutation = graphql(`
   mutation AdminUnpublishMaster($id: ID!) {
     adminUnpublishMasterCardgroup(id: $id) {
-      ...AdminMasterFields
+      id
+      name
+      description
+      language
+      level
+      category
+      coverImageUrl
+      source
+      version
+      status
+      isDefaultStarter
+      sortOrder
+      cardCount
     }
   }
 `);
