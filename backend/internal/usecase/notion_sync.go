@@ -54,10 +54,10 @@ type MasterNotionSyncUsecase struct {
 
 // SyncToMasterInput is the input for a master-targeted Notion sync. Unlike the
 // user-targeted variant it carries no OwnerID: master cardgroups are owner-less
-// and identified by CardgroupName alone.
+// and identified by MasterCardgroupName alone.
 type SyncToMasterInput struct {
-	PageIDs       []string
-	CardgroupName string
+	PageIDs             []string
+	MasterCardgroupName string
 }
 
 type ParsedRow struct {
@@ -67,7 +67,7 @@ type ParsedRow struct {
 	Line         int    `json:"line"`
 }
 
-type SyncFromNotionOutput struct {
+type MasterNotionSyncOutput struct {
 	CardgroupID string            `json:"cardgroupId"`
 	Inserted    int64             `json:"inserted"`
 	Updated     int64             `json:"updated"`
@@ -119,33 +119,33 @@ func NewMasterNotionSyncUsecaseWithTx(
 	}
 }
 
-func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterInput) (SyncFromNotionOutput, error) {
+func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterInput) (MasterNotionSyncOutput, error) {
 	pageIDs := normalizePageIDs(input.PageIDs)
 	if len(pageIDs) == 0 {
-		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "page ids are required")
+		return MasterNotionSyncOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "page ids are required")
 	}
-	cgName, cgNameErr := domain.ParseCardgroupName(input.CardgroupName)
+	cgName, cgNameErr := domain.ParseCardgroupName(input.MasterCardgroupName)
 	if cgNameErr != nil {
 		// The typed *ucerr.ValidationError is preserved in the chain for log-structured
 		// detail and any future GraphQL/CLI consumer; the REST handler intentionally
 		// collapses it to a generic 422 body.
-		return SyncFromNotionOutput{}, eris.Wrap(
+		return MasterNotionSyncOutput{}, eris.Wrap(
 			errors.Join(ErrNotionSyncInvalidInput, translateCardgroupNameErr(cgNameErr)),
 			"cardgroup name is invalid",
 		)
 	}
 	if u.fetcher == nil || u.masterCardgroupRepo == nil || u.masterCardRepo == nil || u.tx == nil {
-		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "dependencies are not configured")
+		return MasterNotionSyncOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "dependencies are not configured")
 	}
 
 	pages, err := u.fetcher.FetchPages(ctx, pageIDs)
 	if err != nil {
-		return SyncFromNotionOutput{}, eris.Wrap(errors.Join(ErrNotionSyncFetch, err), "fetch pages")
+		return MasterNotionSyncOutput{}, eris.Wrap(errors.Join(ErrNotionSyncFetch, err), "fetch pages")
 	}
 
 	rows, parseErrs, err := parseNotionPages(ctx, u.logger, pages)
 	if err != nil {
-		return SyncFromNotionOutput{}, eris.Wrap(errors.Join(ErrNotionSyncParse, err), "parse pages")
+		return MasterNotionSyncOutput{}, eris.Wrap(errors.Join(ErrNotionSyncParse, err), "parse pages")
 	}
 	// Soft skip-only input: every non-blank line was intentionally skipped by
 	// the grammar. Report the skipped rows, but do not persist an empty sync
@@ -163,7 +163,7 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 				"first_kind", parseErrs[0].Kind,
 				"first_snippet", parseErrs[0].Snippet,
 			)
-			return SyncFromNotionOutput{ParseErrors: parseErrs}, nil
+			return MasterNotionSyncOutput{ParseErrors: parseErrs}, nil
 		}
 		u.logger.WarnContext(ctx, "notion sync: all rows failed to parse",
 			"parse_error_count", len(parseErrs),
@@ -171,15 +171,15 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 			"first_error_kind", parseErrs[0].Kind,
 			"first_error_snippet", parseErrs[0].Snippet,
 		)
-		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncParse, "all rows failed to parse")
+		return MasterNotionSyncOutput{}, eris.Wrap(ErrNotionSyncParse, "all rows failed to parse")
 	}
 	if len(rows) > cardImportParsedRowCap {
-		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "parsed rows exceed cap")
+		return MasterNotionSyncOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "parsed rows exceed cap")
 	}
 
 	cardgroup, err := u.masterCardgroupRepo.EnsureByName(ctx, cgName.String())
 	if err != nil {
-		return SyncFromNotionOutput{}, eris.Wrap(errors.Join(ErrNotionSyncPersist, err), "ensure master cardgroup")
+		return MasterNotionSyncOutput{}, eris.Wrap(errors.Join(ErrNotionSyncPersist, err), "ensure master cardgroup")
 	}
 
 	rows, parseErrs = dedupeParsedRows(rows, parseErrs)
@@ -189,7 +189,7 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 		notionFronts[row.Front] = struct{}{}
 	}
 
-	out := SyncFromNotionOutput{
+	out := MasterNotionSyncOutput{
 		CardgroupID: cardgroup.ID,
 		Parsed:      rows,
 		ParseErrors: parseErrs,
@@ -214,7 +214,7 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 		return nil
 	})
 	if err != nil {
-		return SyncFromNotionOutput{}, eris.Wrap(errors.Join(ErrNotionSyncPersist, err), "persist master cards")
+		return MasterNotionSyncOutput{}, eris.Wrap(errors.Join(ErrNotionSyncPersist, err), "persist master cards")
 	}
 
 	u.logger.InfoContext(ctx, "notion sync complete",

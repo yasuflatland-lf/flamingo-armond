@@ -17,7 +17,7 @@ import (
 )
 
 type SyncUsecase interface {
-	Sync(ctx context.Context, input usecase.SyncToMasterInput) (usecase.SyncFromNotionOutput, error)
+	Sync(ctx context.Context, input usecase.SyncToMasterInput) (usecase.MasterNotionSyncOutput, error)
 }
 
 type Config struct {
@@ -51,8 +51,8 @@ func (h *Handler) Handle(c *echo.Context) error {
 	}
 
 	out, err := h.uc.Sync(c.Request().Context(), usecase.SyncToMasterInput{
-		PageIDs:       h.config.PageIDs,
-		CardgroupName: h.config.MasterCardgroupName,
+		PageIDs:             h.config.PageIDs,
+		MasterCardgroupName: h.config.MasterCardgroupName,
 	})
 	if err != nil {
 		return h.handleError(c, err)
