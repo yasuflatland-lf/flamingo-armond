@@ -17,14 +17,13 @@ import (
 )
 
 type SyncUsecase interface {
-	Sync(ctx context.Context, input usecase.SyncFromNotionInput) (usecase.SyncFromNotionOutput, error)
+	Sync(ctx context.Context, input usecase.SyncToMasterInput) (usecase.SyncFromNotionOutput, error)
 }
 
 type Config struct {
-	Token         string
-	PageIDs       []string
-	OwnerID       string
-	CardgroupName string
+	Token               string
+	PageIDs             []string
+	MasterCardgroupName string
 }
 
 type Handler struct {
@@ -51,10 +50,9 @@ func (h *Handler) Handle(c *echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	}
 
-	out, err := h.uc.Sync(c.Request().Context(), usecase.SyncFromNotionInput{
+	out, err := h.uc.Sync(c.Request().Context(), usecase.SyncToMasterInput{
 		PageIDs:       h.config.PageIDs,
-		OwnerID:       h.config.OwnerID,
-		CardgroupName: h.config.CardgroupName,
+		CardgroupName: h.config.MasterCardgroupName,
 	})
 	if err != nil {
 		return h.handleError(c, err)
