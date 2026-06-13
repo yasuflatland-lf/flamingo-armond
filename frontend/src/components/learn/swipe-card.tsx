@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import type { RefObject } from "react";
 import type { CefrLevel } from "@/generated/graphql";
+import { cn } from "@/lib/utils";
 import type { AnimatedCardHandle } from "./animated-card";
 import { CefrBadge } from "./cefr-badge";
 import type { SwipeDirection } from "./types";
@@ -25,6 +26,8 @@ export type SwipeCardData = {
 type Props = {
   card: SwipeCardData;
   isActive: boolean;
+  revealed: boolean;
+  onReveal: () => void;
   onSwipe: (card: SwipeCardData, direction: SwipeDirection) => void;
   onSwipeProgress?: (direction: SwipeDirection | null, progress: number) => void;
   // Travels as a normal prop (not React `ref`) so it survives the next/dynamic
@@ -50,7 +53,7 @@ const AnimatedCard = dynamic(() => import("./animated-card").then((m) => m.Anima
 });
 
 // CardContent is exported so animated-card.tsx can share the same presentational layer.
-export function CardContent({ card }: { card: SwipeCardData }) {
+export function CardContent({ card, revealed }: { card: SwipeCardData; revealed: boolean }) {
   return (
     // `relative` anchors the absolutely-positioned CefrBadge to this card.
     // The TOP-RIGHT corner is reserved for the CEFR badge; future FSRS badges
@@ -68,13 +71,28 @@ export function CardContent({ card }: { card: SwipeCardData }) {
         so CLS stays zero.
       */}
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 px-10 text-center">
-        <p className="max-w-full break-words text-4xl font-semibold leading-tight text-foreground sm:text-5xl">
+        <p
+          className={cn(
+            "max-w-full break-words font-semibold leading-tight text-foreground",
+            revealed ? "text-2xl sm:text-3xl" : "text-4xl sm:text-5xl",
+          )}
+        >
           {card.front}
         </p>
-        <p className="max-w-full break-words text-xl leading-relaxed text-muted-foreground sm:text-2xl">
-          {card.back}
-        </p>
+        {revealed ? (
+          <p className="max-w-full break-words text-xl leading-relaxed text-muted-foreground sm:text-2xl">
+            {card.back}
+          </p>
+        ) : (
+          <div className="h-16 w-full max-w-full" aria-hidden="true" />
+        )}
       </div>
+      {!revealed && (
+        <div
+          className="pointer-events-none absolute right-0 bottom-0 h-16 w-16 bg-muted shadow-inner [clip-path:polygon(100%_0,0_100%,100%_100%)]"
+          aria-hidden="true"
+        />
+      )}
     </div>
   );
 }
