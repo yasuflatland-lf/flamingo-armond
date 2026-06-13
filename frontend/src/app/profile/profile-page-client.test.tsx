@@ -3,7 +3,7 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { UpdateProfileDocument } from "@/generated/graphql";
+import { UpdateLearnDisplayModeDocument, UpdateProfileDocument } from "@/generated/graphql";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { ProfilePageClient } from "./profile-page-client";
 
@@ -52,6 +52,30 @@ function makeUpdateProfileMock(variables: { input: { displayName: string; bio?: 
   };
 }
 
+function makeUpdateLearnDisplayModeMock(
+  mode: "ALWAYS_VISIBLE" | "FLIP_TO_REVEAL",
+  onCalled?: () => void,
+) {
+  return {
+    request: {
+      query: UpdateLearnDisplayModeDocument,
+      variables: { mode },
+    },
+    result: () => {
+      onCalled?.();
+      return {
+        data: {
+          updateLearnDisplayMode: {
+            __typename: "User" as const,
+            id: "user-1",
+            learnDisplayMode: mode,
+          },
+        },
+      };
+    },
+  };
+}
+
 describe("<ProfilePageClient>", () => {
   const initial = { displayName: "Alice", bio: "hello" };
 
@@ -61,7 +85,11 @@ describe("<ProfilePageClient>", () => {
 
     renderWithIntl(
       <MockedProvider mocks={[]}>
-        <ProfilePageClient email="alice@example.com" initial={initial} />
+        <ProfilePageClient
+          email="alice@example.com"
+          initial={initial}
+          displayMode="FLIP_TO_REVEAL"
+        />
       </MockedProvider>,
     );
 
@@ -75,7 +103,11 @@ describe("<ProfilePageClient>", () => {
 
     renderWithIntl(
       <MockedProvider mocks={[]}>
-        <ProfilePageClient email="alice@example.com" initial={initial} />
+        <ProfilePageClient
+          email="alice@example.com"
+          initial={initial}
+          displayMode="FLIP_TO_REVEAL"
+        />
       </MockedProvider>,
     );
 
@@ -88,7 +120,11 @@ describe("<ProfilePageClient>", () => {
 
     renderWithIntl(
       <MockedProvider mocks={[]}>
-        <ProfilePageClient email="alice@example.com" initial={initial} />
+        <ProfilePageClient
+          email="alice@example.com"
+          initial={initial}
+          displayMode="FLIP_TO_REVEAL"
+        />
       </MockedProvider>,
     );
 
@@ -102,7 +138,11 @@ describe("<ProfilePageClient>", () => {
 
     renderWithIntl(
       <MockedProvider mocks={mocks}>
-        <ProfilePageClient email="alice@example.com" initial={initial} />
+        <ProfilePageClient
+          email="alice@example.com"
+          initial={initial}
+          displayMode="FLIP_TO_REVEAL"
+        />
       </MockedProvider>,
     );
 
@@ -120,7 +160,11 @@ describe("<ProfilePageClient>", () => {
 
     renderWithIntl(
       <MockedProvider mocks={[]}>
-        <ProfilePageClient email="alice@example.com" initial={initial} />
+        <ProfilePageClient
+          email="alice@example.com"
+          initial={initial}
+          displayMode="FLIP_TO_REVEAL"
+        />
       </MockedProvider>,
     );
 
@@ -164,7 +208,11 @@ describe("<ProfilePageClient>", () => {
 
     renderWithIntl(
       <MockedProvider mocks={mocks}>
-        <ProfilePageClient email="alice@example.com" initial={initial} />
+        <ProfilePageClient
+          email="alice@example.com"
+          initial={initial}
+          displayMode="FLIP_TO_REVEAL"
+        />
       </MockedProvider>,
     );
 
@@ -177,5 +225,35 @@ describe("<ProfilePageClient>", () => {
 
     expect(mockReplace).not.toHaveBeenCalled();
     expect(mockPush).not.toHaveBeenCalledWith("/profile/change-email");
+  });
+
+  it("clicking Always visible fires updateLearnDisplayMode with mode ALWAYS_VISIBLE", async () => {
+    const user = userEvent.setup();
+    mockSearchParamsValue = "";
+    const mutationCalled = vi.fn();
+    const mocks = [makeUpdateLearnDisplayModeMock("ALWAYS_VISIBLE", mutationCalled)];
+
+    renderWithIntl(
+      <MockedProvider mocks={mocks}>
+        <ProfilePageClient
+          email="alice@example.com"
+          initial={initial}
+          displayMode="FLIP_TO_REVEAL"
+        />
+      </MockedProvider>,
+    );
+
+    // FLIP_TO_REVEAL is the active mode on mount.
+    const flipOption = screen.getByRole("button", { name: /flip to reveal|めくって表示/i });
+    expect(flipOption).toHaveAttribute("aria-pressed", "true");
+
+    const alwaysVisibleOption = screen.getByRole("button", { name: /always visible|常に表示/i });
+    expect(alwaysVisibleOption).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(alwaysVisibleOption);
+
+    await waitFor(() => {
+      expect(mutationCalled).toHaveBeenCalledOnce();
+    });
   });
 });
