@@ -5,7 +5,14 @@
  * so snapshot assertions remain stable across runs.
  */
 
-import { LearnDisplayMode, type Card, type CardConnection, type CardEdge, type Cardgroup, type PageInfo } from "@/generated/base-types";
+import {
+  type Card,
+  type CardConnection,
+  type CardEdge,
+  type Cardgroup,
+  LearnDisplayMode,
+  type PageInfo,
+} from "@/generated/base-types";
 
 const userCardState = (due: string) => ({
   __typename: "UserCardState" as const,

@@ -244,10 +244,10 @@ describe("<ProfilePageClient>", () => {
     );
 
     // FLIP_TO_REVEAL is the active mode on mount.
-    const flipOption = screen.getByRole("button", { name: /flip to reveal|めくって表示/i });
+    const flipOption = screen.getByTestId("display-mode-flip-to-reveal");
     expect(flipOption).toHaveAttribute("aria-pressed", "true");
 
-    const alwaysVisibleOption = screen.getByRole("button", { name: /always visible|常に表示/i });
+    const alwaysVisibleOption = screen.getByTestId("display-mode-always-visible");
     expect(alwaysVisibleOption).toHaveAttribute("aria-pressed", "false");
 
     await user.click(alwaysVisibleOption);

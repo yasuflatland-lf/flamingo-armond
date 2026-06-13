@@ -57,6 +57,7 @@ export function DisplayModeSection({ initialMode }: { initialMode: LearnDisplayM
             <button
               key={option}
               type="button"
+              data-testid={`display-mode-${option === "FLIP_TO_REVEAL" ? "flip-to-reveal" : "always-visible"}`}
               aria-pressed={active}
               disabled={loading}
               onClick={() => handleSelect(option)}
