@@ -1,11 +1,13 @@
 "use client";
 
-import { RotateCcw, Smile, Zap } from "lucide-react";
+import { Eye, RotateCcw, Smile, Zap } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import type { SwipeDirection } from "./types";
 
 type Props = {
+  revealed?: boolean;
+  onReveal?: () => void;
   onRate: (direction: SwipeDirection) => void;
   disabled?: boolean;
 };
@@ -37,8 +39,36 @@ const DIRECTIONS = [
   },
 ] as const;
 
-export function LearnActionBar({ onRate, disabled = false }: Props) {
+export function LearnActionBar({
+  revealed = true,
+  onReveal = () => {},
+  onRate,
+  disabled = false,
+}: Props) {
   const t = useTranslations("Learn");
+  if (!revealed) {
+    return (
+      <div className="pointer-events-none z-40 flex justify-center px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+        <div className="pointer-events-auto flex w-full max-w-xl items-center">
+          <button
+            type="button"
+            aria-keyshortcuts="Space"
+            disabled={disabled}
+            onClick={onReveal}
+            className={cn(
+              "inline-flex h-14 w-full items-center justify-center gap-2 rounded-full border border-primary bg-primary px-6 font-medium text-primary-foreground transition active:scale-[0.99]",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+            )}
+          >
+            <Eye className="h-5 w-5" aria-hidden="true" />
+            <span>{t("showAnswer")}</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="pointer-events-none z-40 flex justify-center px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
       <div className="pointer-events-auto flex items-center gap-4">

@@ -6,8 +6,38 @@ import { renderWithIntl } from "@/test/render-with-intl";
 import { LearnActionBar } from "./learn-action-bar";
 
 describe("<LearnActionBar>", () => {
+  it("shows a Show answer button while front-only and calls onReveal", async () => {
+    const user = userEvent.setup();
+    const onReveal = vi.fn();
+    renderWithIntl(<LearnActionBar revealed={false} onReveal={onReveal} onRate={vi.fn()} />);
+
+    const button = screen.getByRole("button", { name: "Show answer" });
+    expect(button).toHaveAttribute("aria-keyshortcuts", "Space");
+
+    await user.click(button);
+
+    expect(onReveal).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Rate as Again" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rate as Hard" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rate as Easy" })).not.toBeInTheDocument();
+  });
+
+  it("lets keyboard users focus and activate the Show answer button", async () => {
+    const user = userEvent.setup();
+    const onReveal = vi.fn();
+    renderWithIntl(<LearnActionBar revealed={false} onReveal={onReveal} onRate={vi.fn()} />);
+
+    await user.tab();
+    const button = screen.getByRole("button", { name: "Show answer" });
+    expect(button).toHaveFocus();
+
+    await user.keyboard("[Space]");
+
+    expect(onReveal).toHaveBeenCalledTimes(1);
+  });
+
   it("renders the three rating buttons with accessible labels and shortcuts but no visible text labels", () => {
-    renderWithIntl(<LearnActionBar onRate={vi.fn()} />);
+    renderWithIntl(<LearnActionBar revealed={true} onReveal={vi.fn()} onRate={vi.fn()} />);
 
     expect(screen.getByRole("button", { name: "Rate as Again" })).toHaveAttribute(
       "aria-keyshortcuts",
@@ -35,7 +65,7 @@ describe("<LearnActionBar>", () => {
   ] as const)("calls onRate with %s direction", async (name, direction) => {
     const user = userEvent.setup();
     const onRate = vi.fn();
-    renderWithIntl(<LearnActionBar onRate={onRate} />);
+    renderWithIntl(<LearnActionBar revealed={true} onReveal={vi.fn()} onRate={onRate} />);
 
     await user.click(screen.getByRole("button", { name }));
 
@@ -45,7 +75,7 @@ describe("<LearnActionBar>", () => {
   it("disables all rating buttons and ignores clicks while disabled", async () => {
     const user = userEvent.setup();
     const onRate = vi.fn();
-    renderWithIntl(<LearnActionBar onRate={onRate} disabled />);
+    renderWithIntl(<LearnActionBar revealed={true} onReveal={vi.fn()} onRate={onRate} disabled />);
 
     const again = screen.getByRole("button", { name: "Rate as Again" });
     const hard = screen.getByRole("button", { name: "Rate as Hard" });
@@ -64,7 +94,7 @@ describe("<LearnActionBar>", () => {
 
   it("keeps tab order as Again, Hard, Easy", async () => {
     const user = userEvent.setup();
-    renderWithIntl(<LearnActionBar onRate={vi.fn()} />);
+    renderWithIntl(<LearnActionBar revealed={true} onReveal={vi.fn()} onRate={vi.fn()} />);
 
     await user.tab();
     expect(screen.getByRole("button", { name: "Rate as Again" })).toHaveFocus();
