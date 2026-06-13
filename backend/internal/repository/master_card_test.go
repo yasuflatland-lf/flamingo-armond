@@ -334,6 +334,31 @@ func TestMasterCardRepository_DeleteByMasterCardgroupAndFrontsTx(t *testing.T) {
 	require.Equal(t, int64(0), noopAffected)
 }
 
+// TestMasterCardRepository_Create_DuplicateFront pins the current pass-through
+// behavior: Create on a duplicate (master_cardgroup_id, front) pair returns a
+// non-nil error because the uq_master_cards_cg_front unique constraint is
+// enforced. Unlike cardRepo.Create, masterCardRepo.Create intentionally does not
+// classify the 23505 conflict into a sentinel today (deferred to the future admin
+// consumer); callers receive the raw wrapped error.
+func TestMasterCardRepository_Create_DuplicateFront(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "DupFront-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	first := newMasterCard(mcg.ID, "DupFront-same-front", "back-one", 0)
+	require.NoError(t, repo.Create(ctx, first))
+
+	second := newMasterCard(mcg.ID, "DupFront-same-front", "back-two", 1)
+	err := repo.Create(ctx, second)
+	require.Error(t, err, "Create with duplicate (master_cardgroup_id, front) must return an error")
+
+	// Only one row for that front exists — the duplicate was rejected.
+	stored, listErr := repo.ListByMasterCardgroup(ctx, mcg.ID)
+	require.NoError(t, listErr)
+	require.Len(t, stored, 1)
+}
+
 // TestMasterCardRepository_Delete verifies Delete by primary key: the row is
 // removed on success, and a non-existent id returns ErrNotFound.
 func TestMasterCardRepository_Delete(t *testing.T) {
