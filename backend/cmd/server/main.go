@@ -292,6 +292,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	adminUserUC := usecase.NewAdminUser(db.GORM, userRepo, roleRepo, userRoleRepo, adminGate, logger)
 	adminRoleUC := usecase.NewAdminRole(roleRepo, adminGate, logger)
 	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
+	updateLearnDisplayModeUC := usecase.NewUpdateLearnDisplayMode(userPreferenceRepo, userRepo, logger)
 	pingHandler := ping.New(pingRecordRepo, pingToken)
 	var notionSyncHandler *notionsync.Handler
 	var cardObserver usecase.CardObserver
@@ -315,7 +316,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	var cefrWords domain.CEFRWordList = cefr.NewWordList()
 	cefrClassifier := service.NewCEFRClassifier(cefrWords)
 	cefrUC := usecase.NewCEFRUsecase(cefrClassifier)
-	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, learnUC, cefrUC)
+	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, updateLearnDisplayModeUC, learnUC, cefrUC)
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.

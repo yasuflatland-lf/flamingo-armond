@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/rotisserie/eris"
+
 	"backend/graph/model"
 	"backend/internal/domain"
 	"backend/internal/usecase"
@@ -84,6 +86,24 @@ func toCEFRLevelModel(level domain.CEFRLevel) (model.CEFRLevel, bool) {
 		return model.CEFRLevelC2, true
 	default:
 		return "", false
+	}
+}
+
+func toLearnDisplayModeModel(m domain.LearnDisplayMode) model.LearnDisplayMode {
+	if m == domain.LearnDisplayAlwaysVisible {
+		return model.LearnDisplayModeAlwaysVisible
+	}
+	return model.LearnDisplayModeFlipToReveal
+}
+
+func fromLearnDisplayModeModel(m model.LearnDisplayMode) (domain.LearnDisplayMode, error) {
+	switch m {
+	case model.LearnDisplayModeFlipToReveal:
+		return domain.LearnDisplayFlipToReveal, nil
+	case model.LearnDisplayModeAlwaysVisible:
+		return domain.LearnDisplayAlwaysVisible, nil
+	default:
+		return "", eris.Errorf("resolver: unknown learn display mode %q", m)
 	}
 }
 
