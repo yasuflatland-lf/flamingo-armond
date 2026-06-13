@@ -80,6 +80,27 @@ For each hit, check whether a newer migration now sits above the one under test.
 
 This failure mode is the migration-ordering analogue of the broader "adjacent edit surfaces a pre-existing assumption" theme in [`.claude/rules/scope-discipline.md`](../../../.claude/rules/scope-discipline.md).
 
+## Bump every per-migration `Steps(-N)` when a newer migration lands
+
+The relative-count trap above is a standing tax: **each per-migration roundtrip test hardcodes a step count `N` that counts every migration newer than its target, so a migration added anywhere above the target (including at HEAD) shifts the distance and `N` must increase by 1 in each affected test.** These tests migrate to HEAD, `m.Steps(-N)` down past their target to assert the column/table is gone, then `m.Steps(1)` to re-apply.
+
+The failure mode when you forget: the down navigation stops one migration short of the target, the column is still present, and the test fails with `expected column X.Y to be absent`.
+
+Worked example: adding `20260614000000_add_master_tables` (the Master Catalog tables, newest at HEAD) shifted both per-migration tests up by one — `TestCardsPositionDownUpRoundtrip` went `Steps(-4)` → `Steps(-5)` and `TestUsersVersionDownUpRoundtrip` went `Steps(-5)` → `Steps(-6)`. See `backend/internal/database/cards_position_roundtrip_test.go` and `users_version_roundtrip_test.go`.
+
+The **generic** `TestMigrateDownUpRoundtrip` (`backend/internal/database/migrate_roundtrip_test.go`) is immune to step-count drift — it uses a full `m.Down()` / re-`Up`, not a relative count. But it hardcodes a `want` list of expected public tables, so **any new table must be appended to that list** (`master_cardgroups` and `master_cards` were added for the same migration).
+
+The harness to run when adding ANY migration:
+
+```bash
+# Bump each per-migration count by 1 …
+grep -rn 'm.Steps(-' backend/internal/database/*_test.go
+# … and append any new table(s) to the `want` slice in:
+#   backend/internal/database/migrate_roundtrip_test.go
+```
+
+**CI-only nuance.** These are testcontainers integration tests that require a running Postgres. A step-count regression is **invisible** to local `go build` / `go vet` (which only compile) and cannot be caught locally when Docker is unavailable — it manifests only when the migration actually runs (CI). A green local compile does **not** prove a migration change is correct; push to CI to verify. The testcontainers / Docker-unavailable constraint is the same one noted in [`docs/backend-db.md` § "Migration test quality bar"](../../backend-db.md#migration-test-quality-bar).
+
 ## Restore the suite state
 
 Both tests must end with the database migrated back up. A test that leaves the schema rolled back contaminates every downstream test in the same package. The pattern above re-applies the up migration at the end of each test; alternative shapes use `t.Cleanup` to centralise the restore.
