@@ -456,6 +456,12 @@ type mockCopyMasterToUserUC struct {
 }
 
 func (m *mockCopyMasterToUserUC) CopyMasterToUser(ctx context.Context, masterID, ownerID string) (*domain.Cardgroup, error) {
+	// Mirror mockMasterCatalogRepository.FindPublishedByID: a nil fn (the placeholder
+	// passed on paths that never reach the copy) yields an attributed error rather
+	// than an unattributed nil-function panic if a future test wires it incorrectly.
+	if m.fn == nil {
+		return nil, eris.New("mockCopyMasterToUserUC: fn not set")
+	}
 	return m.fn(ctx, masterID, ownerID)
 }
 
