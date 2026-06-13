@@ -30,6 +30,8 @@ export type AnimatedCardHandle = {
 type Props = {
   card: SwipeCardData;
   isActive: boolean;
+  revealed: boolean;
+  onReveal: () => void;
   onSwipe: (card: SwipeCardData, direction: SwipeDirection) => void;
   onSwipeProgress?: (direction: SwipeDirection | null, progress: number) => void;
   // Passed as a NORMAL prop, not React's `ref`: next/dynamic (ssr: false) wraps
@@ -39,7 +41,17 @@ type Props = {
   handleRef?: RefObject<AnimatedCardHandle | null>;
 };
 
-export function AnimatedCard({ card, isActive, onSwipe, onSwipeProgress, handleRef }: Props) {
+export function AnimatedCard({
+  card,
+  isActive,
+  revealed,
+  onReveal,
+  onSwipe,
+  onSwipeProgress,
+  handleRef,
+}: Props) {
+  const reducedMotion = useReducedMotion();
+
   // Drive the spring through an explicit `useSpringRef` rather than the api
   // returned by `useSpring(() => …)`. With the bare function form, react-spring
   // leaves the controller's internal `ctrl.ref` unset, so its per-commit layout
@@ -53,10 +65,11 @@ export function AnimatedCard({ card, isActive, onSwipe, onSwipeProgress, handleR
   // that layout effect queue the initializer instead of starting it, leaving the
   // imperative fly-off the sole driver. See @react-spring/core useSprings.
   const api = useSpringRef();
-  const [{ x, y, rotate, scale }] = useSpring(() => ({
+  const [{ x, y, rotate, rotateY, scale }] = useSpring(() => ({
     x: 0,
     y: 0,
     rotate: 0,
+    rotateY: revealed && !reducedMotion ? 180 : 0,
     scale: 1,
     config: { tension: 520, friction: 38 },
     ref: api,
@@ -83,11 +96,14 @@ export function AnimatedCard({ card, isActive, onSwipe, onSwipeProgress, handleR
   // Read reduced motion through a ref so the exit routines stay referentially
   // stable across renders — otherwise the gesture/imperative wiring would churn
   // on every media-query change.
-  const reducedMotion = useReducedMotion();
   const reducedMotionRef = useRef(reducedMotion);
   useEffect(() => {
     reducedMotionRef.current = reducedMotion;
-  }, [reducedMotion]);
+    void api.start({
+      rotateY: revealed && !reducedMotion ? 180 : 0,
+      immediate: reducedMotion,
+    });
+  }, [api, reducedMotion, revealed]);
 
   const runExit = useCallback(
     (direction: SwipeDirection) => {
@@ -158,9 +174,10 @@ export function AnimatedCard({ card, isActive, onSwipe, onSwipeProgress, handleR
 
   const flyOut = useCallback(
     (direction: SwipeDirection) => {
+      if (!revealed) return;
       runExit(direction);
     },
-    [runExit],
+    [revealed, runExit],
   );
 
   useImperativeHandle(handleRef, () => ({ flyOut }), [flyOut]);
@@ -171,6 +188,11 @@ export function AnimatedCard({ card, isActive, onSwipe, onSwipeProgress, handleR
     },
     [runExit],
   );
+
+  const revealCard = useCallback(() => {
+    if (!isActive || revealed || exitingRef.current) return;
+    onReveal();
+  }, [isActive, onReveal, revealed]);
 
   const bind = useDrag(
     ({ active, movement: [mx, my], direction: [, yDir], velocity: [vx, vy] }) => {
@@ -192,9 +214,9 @@ export function AnimatedCard({ card, isActive, onSwipe, onSwipeProgress, handleR
         vy,
         yDir,
       });
-      onSwipeProgress?.(active ? direction : null, active ? progress : 0);
+      onSwipeProgress?.(revealed && active ? direction : null, revealed && active ? progress : 0);
 
-      if (shouldSwipe && direction) {
+      if (shouldSwipe && direction && revealed) {
         completeSwipe(direction);
         return;
       }
@@ -233,8 +255,33 @@ export function AnimatedCard({ card, isActive, onSwipe, onSwipeProgress, handleR
         rotate: rotate.to((value) => `${value}deg`),
         scale,
       }}
+      onClick={revealCard}
+      onKeyDown={(event) => {
+        if (event.key !== " " && event.key !== "Enter") return;
+        event.preventDefault();
+        revealCard();
+      }}
     >
-      <CardContent card={card} />
+      {reducedMotion ? (
+        <CardContent card={card} revealed={revealed} />
+      ) : (
+        <animated.div
+          className="relative h-full w-full [transform-style:preserve-3d]"
+          data-testid="swipe-card-rotator"
+          style={{
+            transform: rotateY.to((value) => `rotateY(${value}deg)`),
+          }}
+        >
+          <div className="absolute inset-0 [backface-visibility:hidden]">
+            <CardContent card={card} revealed={false} />
+          </div>
+          {revealed && (
+            <div className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)]">
+              <CardContent card={card} revealed={true} />
+            </div>
+          )}
+        </animated.div>
+      )}
     </animated.article>
   );
 }
