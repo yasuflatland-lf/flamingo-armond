@@ -169,19 +169,17 @@ func setNotionSyncEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("NOTION_TOKEN", "notion-test-token")
 	t.Setenv("NOTION_PAGE_IDS", "page-1,page-2")
-	t.Setenv("NOTION_TARGET_OWNER_ID", uuid.NewString())
-	t.Setenv("NOTION_TARGET_CARDGROUP_NAME", "English")
+	t.Setenv("NOTION_MASTER_CARDGROUP_NAME", "English")
 	t.Setenv("NOTION_SYNC_TOKEN", "sync-test-token")
 }
 
-// unsetNotionSyncEnv blanks all five NOTION_* vars so that run() treats
+// unsetNotionSyncEnv blanks all four NOTION_* vars so that run() treats
 // notion-sync as disabled and skips registering /internal/notion-sync.
 func unsetNotionSyncEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("NOTION_TOKEN", "")
 	t.Setenv("NOTION_PAGE_IDS", "")
-	t.Setenv("NOTION_TARGET_OWNER_ID", "")
-	t.Setenv("NOTION_TARGET_CARDGROUP_NAME", "")
+	t.Setenv("NOTION_MASTER_CARDGROUP_NAME", "")
 	t.Setenv("NOTION_SYNC_TOKEN", "")
 }
 

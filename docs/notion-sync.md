@@ -1,6 +1,6 @@
 # Notion Page Sync
 
-The backend exposes `POST /internal/notion-sync` for GitHub Actions or another trusted scheduler. The request body is ignored; all sync inputs come from backend environment variables.
+The backend exposes `POST /internal/notion-sync` for GitHub Actions or another trusted scheduler. The request body is ignored; all sync inputs come from backend environment variables. The sync writes into the admin-only `master_*` catalog tables (`master_cardgroups` / `master_cards`), not the user-owned `cardgroups` table.
 
 ## Backend env
 
@@ -8,8 +8,7 @@ Required:
 
 - `NOTION_TOKEN`: Notion integration token.
 - `NOTION_PAGE_IDS`: comma-separated page IDs.
-- `NOTION_TARGET_OWNER_ID`: existing Supabase/auth user UUID that owns the destination cardgroup.
-- `NOTION_TARGET_CARDGROUP_NAME`: destination cardgroup name. The backend creates it when absent.
+- `NOTION_MASTER_CARDGROUP_NAME`: destination master cardgroup name. The backend creates it when absent.
 - `NOTION_SYNC_TOKEN`: shared bearer token used by the scheduler.
 
 Optional:
@@ -17,7 +16,7 @@ Optional:
 - `NOTION_MAX_ATTEMPTS`: default `5`.
 - `NOTION_MAX_ELAPSED`: default `2m`.
 
-`NOTION_TARGET_OWNER_ID` is required because the current `cardgroups` table is user-owned. Use the UUID from `auth.users.id` / `public.users.id` for the account that should see the synced cards.
+Master cardgroups are owner-less: the destination deck is identified by `NOTION_MASTER_CARDGROUP_NAME` alone. The backend resolves the name to a master cardgroup id via `MasterCardgroupRepository.EnsureByName`, which serializes lookup-then-insert under a `pg_advisory_xact_lock(hashtext('master'), hashtext(name))` so concurrent runs cannot create duplicate-name rows. No owner UUID is required.
 
 ## GitHub Actions
 
@@ -43,6 +42,8 @@ Use this section to run the Notion sync against your local Supabase instance wit
 - The root `.env` file is populated with the keys listed below.
 
 ### Required keys in root `.env`
+
+> **Transitional state.** The backend now reads `NOTION_MASTER_CARDGROUP_NAME` to identify the master cardgroup, but `make notion-local-setup` still writes the old `NOTION_LOCAL_TARGET_OWNER_EMAIL` / `NOTION_LOCAL_TARGET_CARDGROUP_NAME` keys into `backend/.env.local`. Until the operator follow-up in the [pending operator step callout](#operational-setup) lands, you must also set `NOTION_MASTER_CARDGROUP_NAME` manually in `backend/.env.local` (or in root `.env` and re-run `make notion-local-setup`) for local master-sync testing to work.
 
 | Key | Purpose |
 |---|---|
@@ -70,7 +71,7 @@ make dev-backend           # in another terminal
 make notion-local-run      # repeat as needed
 ```
 
-`make notion-local-setup` validates that the required keys are present in root `.env`, probes local Supabase connectivity, resolves `NOTION_LOCAL_TARGET_OWNER_EMAIL` to a UUID, then writes 7 `NOTION_*` keys into `backend/.env.local`. `make dev-backend` starts the backend on `:1323` with those env vars loaded. `make notion-local-run` fires a single authenticated POST to `/internal/notion-sync` and prints the HTTP response body. Backend progress logs appear in the terminal where `make dev-backend` is running.
+`make notion-local-setup` validates that the required keys are present in root `.env`, probes local Supabase connectivity, resolves `NOTION_LOCAL_TARGET_OWNER_EMAIL` to a UUID, then writes the `NOTION_*` keys configured in the Makefile target into `backend/.env.local`. `make dev-backend` starts the backend on `:1323` with those env vars loaded. `make notion-local-run` fires a single authenticated POST to `/internal/notion-sync` and prints the HTTP response body. Backend progress logs appear in the terminal where `make dev-backend` is running.
 
 ### Troubleshooting
 
@@ -78,16 +79,20 @@ make notion-local-run      # repeat as needed
 |---|---|
 | `make notion-local-setup` fails with "log into local app first" | Run `make dev-frontend`, sign in via Google OAuth, then re-run `make notion-local-setup`. |
 | `make notion-local-run` prints "Backend not reachable on :1323" | Start the backend in another terminal with `make dev-backend`, then re-run. |
-| Backend logs show "notion sync: disabled" | Check `backend/.env.local` for the 7 `NOTION_*` keys. Re-run `make notion-local-setup` if missing, then restart the backend. |
+| Backend logs show "notion sync: disabled" | Check `backend/.env.local` for the required `NOTION_*` keys (see note above about `NOTION_MASTER_CARDGROUP_NAME`). Re-run `make notion-local-setup` if missing, then restart the backend. |
 | psql probe fails with connection refused | Run `make supabase-start` and wait until the local Supabase stack reports healthy. |
 
 For the production sync flow, see [Operational setup](#operational-setup) below.
 
 ## Operational setup
 
+> **Pending operator step (master repoint).** The backend now reads `NOTION_MASTER_CARDGROUP_NAME` and no longer reads `NOTION_TARGET_OWNER_ID` / `NOTION_TARGET_CARDGROUP_NAME`. The deployed Render service env, `render.yaml`, `cloudbuild.yaml`, and the `make sync-notion-*` targets below still reference the old variable names; they are intentionally left unchanged in the code change that repointed the sync because rotating a deployed service's env is a deploy-affecting operation. Before the next production sync run, set `NOTION_MASTER_CARDGROUP_NAME` on the Render service (and update the Makefile push targets) so the scheduler keeps working. The `NOTION_TARGET_*` keys become inert once the new key is set.
+
 All NOTION_* values are stored in the root `.env` file (gitignored). The Makefile provides three targets that read from that file and push values to the appropriate destinations.
 
 ### Required keys in root `.env`
+
+> **Transitional state.** The backend now reads `NOTION_MASTER_CARDGROUP_NAME` but the Makefile targets and playbook below still push/write the old `NOTION_TARGET_*` keys until the operator follow-up in the [pending operator step callout](#operational-setup) lands. The table below reflects the keys the Makefile currently reads; `NOTION_MASTER_CARDGROUP_NAME` must be set manually on the Render service until those targets are updated.
 
 | Key | Required | Notes |
 |---|---|---|
@@ -95,7 +100,7 @@ All NOTION_* values are stored in the root `.env` file (gitignored). The Makefil
 | `NOTION_PAGE_IDS` | yes | Comma-separated page IDs |
 | `NOTION_TARGET_OWNER_EMAIL` | one of these two | Email of the destination account. `make sync-notion-secrets` resolves it to a UUID automatically via the production Supabase `auth.users` table. The account must have signed in to the production app at least once. |
 | `NOTION_TARGET_OWNER_ID` | one of these two | Manual fallback: UUID from `auth.users.id`. Set only when `NOTION_TARGET_OWNER_EMAIL` is blank. |
-| `NOTION_TARGET_CARDGROUP_NAME` | yes | Destination cardgroup name; created when absent |
+| `NOTION_TARGET_CARDGROUP_NAME` | yes | Destination cardgroup name; created when absent (Makefile only — backend reads `NOTION_MASTER_CARDGROUP_NAME` instead) |
 | `NOTION_SYNC_TOKEN` | yes | Shared bearer token — written to both Render env and the GHA secret (see note below) |
 | `NOTION_MAX_ATTEMPTS` | no | Defaults to `5` |
 | `NOTION_MAX_ELAPSED` | no | Defaults to `2m` |
@@ -112,7 +117,7 @@ All NOTION_* values are stored in the root `.env` file (gitignored). The Makefil
 make sync-notion-preflight
 ```
 
-Checks that root `.env` contains every required NOTION_* key. Exits non-zero and prints the missing keys if any are absent. Run this before any push step to confirm your `.env` is complete.
+Checks that root `.env` contains the NOTION_* keys configured in the Makefile target. Exits non-zero and prints the missing keys if any are absent. Run this before any push step to confirm your `.env` is complete.
 
 **Push Notion secrets:**
 
@@ -120,7 +125,7 @@ Checks that root `.env` contains every required NOTION_* key. Exits non-zero and
 make sync-notion-secrets
 ```
 
-Pushes all seven NOTION_* keys to the Render service's environment variables, and writes `NOTION_SYNC_URL` (derived from the Render `backend_url` + `/internal/notion-sync`) and `NOTION_SYNC_TOKEN` to GitHub Actions secrets. The target is idempotent — safe to re-run after rotating a token or adding a new page ID.
+Pushes the NOTION_* keys configured in the Makefile target to the Render service's environment variables, and writes `NOTION_SYNC_URL` (derived from the Render `backend_url` + `/internal/notion-sync`) and `NOTION_SYNC_TOKEN` to GitHub Actions secrets. The target is idempotent — safe to re-run after rotating a token or adding a new page ID.
 
 **Full production sync (includes Notion):**
 
@@ -148,7 +153,7 @@ When a user creates or updates a card via GraphQL and the save succeeds, the bac
 - `updateCard` mutation completes with an updated card.
 - The duplicate path (`outcome.Duplicate != nil`) skips the write-back entirely because the card already exists in the database.
 
-**Configuration:** No new environment variables. The write-back reuses `NOTION_TOKEN` (for API authentication) and the first entry of `NOTION_PAGE_IDS` as the target page. When any of the five `NOTION_*` variables is absent, `notionSyncDisabled` is true, the Notion `CardWritebacker` adapter is not wired, and write-back is silently disabled. This covers local development and CI environments without Notion credentials.
+**Configuration:** No new environment variables. The write-back reuses `NOTION_TOKEN` (for API authentication) and the first entry of `NOTION_PAGE_IDS` as the target page. When any of the four `NOTION_*` variables is absent, `notionSyncDisabled` is true, the Notion `CardWritebacker` adapter is not wired, and write-back is silently disabled. This covers local development and CI environments without Notion credentials.
 
 **Failure handling:** Any Notion API error (non-2xx response, network timeout, context expiry) emits `slog.Warn` with `card_id`, `cardgroup_id`, and `page_id` as structured fields. Card create/update is unaffected — the mutation returns successfully regardless of the write-back outcome.
 
@@ -158,9 +163,9 @@ When a user creates or updates a card via GraphQL and the save succeeds, the bac
 
 ## Behavior
 
-The backend fetches every configured page, renders supported blocks to plain text, parses the existing text dictionary format, then upserts cards into the destination cardgroup. Each card is assigned a `position` equal to its zero-based index in the deduped, document-order row list (page order, then line order within a page). `position` is an internal sync-metadata field with no GraphQL field. On upsert conflict, `back`, `updated_at`, and `position` are overwritten, so re-syncing reflects the latest Notion document order for surviving cards. FSRS state is still preserved: `position` is not FSRS data and the `user_card_fsrs` row is never touched by sync. `position` is retained as sync metadata but no longer drives the learn queue: the learn-session query samples never-seen cards uniformly at random rather than walking document order. See [`docs/backend/ddd-patterns/discovery-first-due-ordering.md`](backend/ddd-patterns/discovery-first-due-ordering.md) for the ordering design. Cards whose `front` no longer appears in Notion are deleted.
+The backend fetches every configured page, renders supported blocks to plain text, parses the existing text dictionary format, then upserts master cards into the destination master cardgroup (resolved by name via `MasterCardgroupRepository.EnsureByName`). Each card is assigned a `position` equal to its zero-based index in the deduped, document-order row list (page order, then line order within a page). `position` is an internal sync-metadata field with no GraphQL field. On upsert conflict, `back`, `updated_at`, and `position` are overwritten, so re-syncing reflects the latest Notion document order for surviving master cards. Cards whose `front` no longer appears in Notion are deleted from the master cardgroup. The master catalog is admin-only and never directly owned by an end user; per-user copies are created downstream from the published master deck.
 
-Lone front-only or back-only lines are skipped and reported as validation errors; they do not drop the rest of the batch. If every non-blank row is skipped, the sync returns the skip diagnostics without mutating cards. The skip-only short-circuit returns before `EnsureByName`, so no cardgroup is auto-created for a sync that would produce no cards — a deliberate "no persistence, no side effects" invariant. For the grammar-level rationale, see [`docs/backend/library-gotchas/goyacc-lexer-recovery-via-newline.md` § "What"](backend/library-gotchas/goyacc-lexer-recovery-via-newline.md#what).
+Lone front-only or back-only lines are skipped and reported as validation errors; they do not drop the rest of the batch. If every non-blank row is skipped, the sync returns the skip diagnostics without mutating cards. The skip-only short-circuit returns before `EnsureByName`, so no master cardgroup is auto-created for a sync that would produce no cards — a deliberate "no persistence, no side effects" invariant. For the grammar-level rationale, see [`docs/backend/library-gotchas/goyacc-lexer-recovery-via-newline.md` § "What"](backend/library-gotchas/goyacc-lexer-recovery-via-newline.md#what).
 
 If Notion returns `429` or `5xx`, the backend follows the `Retry-After` header (with an exponential-backoff fallback capped at 5 seconds when the header is absent).
 

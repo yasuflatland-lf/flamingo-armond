@@ -19,17 +19,17 @@ import (
 )
 
 type stubSyncUsecase struct {
-	out   usecase.SyncFromNotionOutput
+	out   usecase.MasterNotionSyncOutput
 	err   error
 	calls int
-	in    usecase.SyncFromNotionInput
+	in    usecase.SyncToMasterInput
 }
 
-func (s *stubSyncUsecase) Sync(_ context.Context, in usecase.SyncFromNotionInput) (usecase.SyncFromNotionOutput, error) {
+func (s *stubSyncUsecase) Sync(_ context.Context, in usecase.SyncToMasterInput) (usecase.MasterNotionSyncOutput, error) {
 	s.calls++
 	s.in = in
 	if s.err != nil {
-		return usecase.SyncFromNotionOutput{}, s.err
+		return usecase.MasterNotionSyncOutput{}, s.err
 	}
 	return s.out, nil
 }
@@ -97,17 +97,16 @@ func TestHandlerUnauthorizedVariants(t *testing.T) {
 func TestHandlerSuccess(t *testing.T) {
 	t.Parallel()
 
-	uc := &stubSyncUsecase{out: usecase.SyncFromNotionOutput{
+	uc := &stubSyncUsecase{out: usecase.MasterNotionSyncOutput{
 		CardgroupID: "cg-1",
 		Inserted:    2,
 		Updated:     3,
 		Deleted:     1,
 	}}
 	h := New(uc, Config{
-		Token:         "secret",
-		PageIDs:       []string{"p1", "p2"},
-		OwnerID:       "owner-1",
-		CardgroupName: "English",
+		Token:               "secret",
+		PageIDs:             []string{"p1", "p2"},
+		MasterCardgroupName: "English",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/internal/notion-sync", nil)
 	req.Header.Set("Authorization", "Bearer secret")
@@ -124,7 +123,7 @@ func TestHandlerSuccess(t *testing.T) {
 	if uc.calls != 1 {
 		t.Fatalf("usecase calls = %d, want 1", uc.calls)
 	}
-	if uc.in.OwnerID != "owner-1" || uc.in.CardgroupName != "English" || len(uc.in.PageIDs) != 2 {
+	if uc.in.MasterCardgroupName != "English" || len(uc.in.PageIDs) != 2 {
 		t.Fatalf("input = %+v", uc.in)
 	}
 	var body map[string]any
@@ -151,7 +150,7 @@ func TestHandlerSuccess(t *testing.T) {
 func TestHandlerSuccess_ParseErrorsJSONShape(t *testing.T) {
 	t.Parallel()
 
-	uc := &stubSyncUsecase{out: usecase.SyncFromNotionOutput{
+	uc := &stubSyncUsecase{out: usecase.MasterNotionSyncOutput{
 		CardgroupID: "cg-1",
 		ParseErrors: []usecase.CardImportError{
 			{Line: 2, Message: "duplicate front in Notion pages (later occurrence wins)", Front: "apple", Back: "fruit"},
