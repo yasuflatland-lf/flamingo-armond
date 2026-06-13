@@ -77,17 +77,34 @@ func (f *fakeUserCardRepo) UpsertManyTx(_ context.Context, _ *gorm.DB, cards []*
 	return repository.UpsertManyTxResult{Inserted: int64(len(cards))}, nil
 }
 
-type fakeCounter struct {
-	count    int64
-	countErr error
-	calls    int
-	lastUser string
+// fakeUserCG implements masterDeckUserCardgroupRepo: the idempotency-guard
+// CountByOwner plus the snapshot-cardgroup CreateTx. createdCGs records every
+// cardgroup handed to CreateTx (deep-copied) so assertions survive caller-side
+// mutation.
+type fakeUserCG struct {
+	count       int64
+	countErr    error
+	calls       int
+	lastUser    string
+	createErr   error
+	createCalls int
+	createdCGs  []*domain.Cardgroup
 }
 
-func (f *fakeCounter) CountByOwner(_ context.Context, ownerID string, _ *string) (int64, error) {
+func (f *fakeUserCG) CountByOwner(_ context.Context, ownerID string, _ *string) (int64, error) {
 	f.calls++
 	f.lastUser = ownerID
 	return f.count, f.countErr
+}
+
+func (f *fakeUserCG) CreateTx(_ context.Context, _ *gorm.DB, cg *domain.Cardgroup) error {
+	f.createCalls++
+	clone := *cg
+	f.createdCGs = append(f.createdCGs, &clone)
+	if f.createErr != nil {
+		return f.createErr
+	}
+	return nil
 }
 
 // --- in-memory tx harness --------------------------------------------------
@@ -177,11 +194,11 @@ func newSeedUsecase(
 	cg masterDeckCardgroupRepo,
 	card masterDeckCardRepo,
 	user masterDeckUserCardRepo,
-	counter masterDeckCardgroupCounter,
+	userCG masterDeckUserCardgroupRepo,
 ) (*masterDeckUsecase, *recordPool, *int) {
 	t.Helper()
 	runner, pool, calls := recordingTxRunner(t)
-	uc := NewMasterDeckUsecaseWithTx(cg, card, user, counter, runner, newTestLogger())
+	uc := NewMasterDeckUsecaseWithTx(cg, card, user, userCG, runner, newTestLogger())
 	return uc, pool, calls
 }
 
@@ -193,7 +210,7 @@ func TestNewMasterDeckUsecase_PanicsOnNilDeps(t *testing.T) {
 	cg := &fakeMasterCGRepo{}
 	card := &fakeMasterCardRepo{}
 	user := &fakeUserCardRepo{}
-	counter := &fakeCounter{}
+	userCG := &fakeUserCG{}
 	logger := newTestLogger()
 	db, _ := newRecordingDB(t)
 
@@ -201,12 +218,12 @@ func TestNewMasterDeckUsecase_PanicsOnNilDeps(t *testing.T) {
 		name string
 		fn   func()
 	}{
-		{"nil masterCG", func() { NewMasterDeckUsecase(nil, card, user, counter, db, logger) }},
-		{"nil masterCard", func() { NewMasterDeckUsecase(cg, nil, user, counter, db, logger) }},
-		{"nil userCard", func() { NewMasterDeckUsecase(cg, card, nil, counter, db, logger) }},
-		{"nil counter", func() { NewMasterDeckUsecase(cg, card, user, nil, db, logger) }},
-		{"nil db", func() { NewMasterDeckUsecase(cg, card, user, counter, nil, logger) }},
-		{"nil logger", func() { NewMasterDeckUsecase(cg, card, user, counter, db, nil) }},
+		{"nil masterCG", func() { NewMasterDeckUsecase(nil, card, user, userCG, db, logger) }},
+		{"nil masterCard", func() { NewMasterDeckUsecase(cg, nil, user, userCG, db, logger) }},
+		{"nil userCard", func() { NewMasterDeckUsecase(cg, card, nil, userCG, db, logger) }},
+		{"nil userCG", func() { NewMasterDeckUsecase(cg, card, user, nil, db, logger) }},
+		{"nil db", func() { NewMasterDeckUsecase(cg, card, user, userCG, nil, logger) }},
+		{"nil logger", func() { NewMasterDeckUsecase(cg, card, user, userCG, db, nil) }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -222,7 +239,7 @@ func TestNewMasterDeckUsecaseWithTx_PanicsOnNilDeps(t *testing.T) {
 	cg := &fakeMasterCGRepo{}
 	card := &fakeMasterCardRepo{}
 	user := &fakeUserCardRepo{}
-	counter := &fakeCounter{}
+	userCG := &fakeUserCG{}
 	logger := newTestLogger()
 	runner := func(ctx context.Context, fn func(tx *gorm.DB) error) error { return nil }
 
@@ -230,12 +247,12 @@ func TestNewMasterDeckUsecaseWithTx_PanicsOnNilDeps(t *testing.T) {
 		name string
 		fn   func()
 	}{
-		{"nil masterCG", func() { NewMasterDeckUsecaseWithTx(nil, card, user, counter, runner, logger) }},
-		{"nil masterCard", func() { NewMasterDeckUsecaseWithTx(cg, nil, user, counter, runner, logger) }},
-		{"nil userCard", func() { NewMasterDeckUsecaseWithTx(cg, card, nil, counter, runner, logger) }},
-		{"nil counter", func() { NewMasterDeckUsecaseWithTx(cg, card, user, nil, runner, logger) }},
-		{"nil tx", func() { NewMasterDeckUsecaseWithTx(cg, card, user, counter, nil, logger) }},
-		{"nil logger", func() { NewMasterDeckUsecaseWithTx(cg, card, user, counter, runner, nil) }},
+		{"nil masterCG", func() { NewMasterDeckUsecaseWithTx(nil, card, user, userCG, runner, logger) }},
+		{"nil masterCard", func() { NewMasterDeckUsecaseWithTx(cg, nil, user, userCG, runner, logger) }},
+		{"nil userCard", func() { NewMasterDeckUsecaseWithTx(cg, card, nil, userCG, runner, logger) }},
+		{"nil userCG", func() { NewMasterDeckUsecaseWithTx(cg, card, user, nil, runner, logger) }},
+		{"nil tx", func() { NewMasterDeckUsecaseWithTx(cg, card, user, userCG, nil, logger) }},
+		{"nil logger", func() { NewMasterDeckUsecaseWithTx(cg, card, user, userCG, runner, nil) }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -260,9 +277,9 @@ func TestCopyMasterToUser_CopiesContentWithFreshIDsAndPositions(t *testing.T) {
 		},
 	}}
 	user := &fakeUserCardRepo{}
-	counter := &fakeCounter{}
+	userCG := &fakeUserCG{}
 
-	uc, _, calls := newSeedUsecase(t, cg, card, user, counter)
+	uc, _, calls := newSeedUsecase(t, cg, card, user, userCG)
 
 	got, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-1")
 	require.NoError(t, err)
@@ -303,9 +320,9 @@ func TestCopyMasterToUser_EmptyDeck_CopiesEmptyCardgroup(t *testing.T) {
 	cg := &fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Empty Deck")}}
 	card := &fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{}} // no cards
 	user := &fakeUserCardRepo{}
-	counter := &fakeCounter{}
+	userCG := &fakeUserCG{}
 
-	uc, _, calls := newSeedUsecase(t, cg, card, user, counter)
+	uc, _, calls := newSeedUsecase(t, cg, card, user, userCG)
 
 	got, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-2")
 	require.NoError(t, err)
@@ -315,7 +332,8 @@ func TestCopyMasterToUser_EmptyDeck_CopiesEmptyCardgroup(t *testing.T) {
 	assert.NotEmpty(t, got.ID)
 	assert.Equal(t, domain.CardgroupName("Empty Deck"), got.Name)
 
-	// UpsertManyTx is still invoked once, with an empty (non-nil) batch.
+	// UpsertManyTx is still invoked exactly once, with an empty (non-nil) batch.
+	assert.Equal(t, 1, user.upsertCall, "the bulk insert runs once even for an empty deck")
 	require.Len(t, user.captured, 1)
 	assert.Empty(t, user.captured[0])
 }
@@ -326,9 +344,9 @@ func TestCopyMasterToUser_MasterNotFound_ReturnsInternalChain(t *testing.T) {
 	cg := &fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{}} // master absent
 	card := &fakeMasterCardRepo{}
 	user := &fakeUserCardRepo{}
-	counter := &fakeCounter{}
+	userCG := &fakeUserCG{}
 
-	uc, _, _ := newSeedUsecase(t, cg, card, user, counter)
+	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
 
 	got, err := uc.CopyMasterToUser(context.Background(), "missing", "owner-3")
 	require.Error(t, err)
@@ -355,17 +373,17 @@ func TestSeedForNewUser_CopiesAllDefaultStarters(t *testing.T) {
 		"m2": {masterCard("a2", "m2", "f2", "b2", 0), masterCard("a3", "m2", "f3", "b3", 1)},
 	}}
 	user := &fakeUserCardRepo{}
-	counter := &fakeCounter{count: 0} // brand-new user
+	userCG := &fakeUserCG{count: 0} // brand-new user
 
-	uc, _, calls := newSeedUsecase(t, cg, card, user, counter)
+	uc, _, calls := newSeedUsecase(t, cg, card, user, userCG)
 
 	err := uc.SeedForNewUser(context.Background(), "new-user")
 	require.NoError(t, err)
 	require.Equal(t, 1, *calls, "the whole batch runs in a single transaction")
 
 	// Idempotency guard consulted once with the seeded user id.
-	assert.Equal(t, 1, counter.calls)
-	assert.Equal(t, "new-user", counter.lastUser)
+	assert.Equal(t, 1, userCG.calls)
+	assert.Equal(t, "new-user", userCG.lastUser)
 
 	// One copy per default starter; each copies its own cards.
 	require.Len(t, user.captured, 2)
@@ -390,17 +408,19 @@ func TestSeedForNewUser_SecondCall_NoOps(t *testing.T) {
 	}
 	card := &fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{"m1": {masterCard("a1", "m1", "f", "b", 0)}}}
 	user := &fakeUserCardRepo{}
-	counter := &fakeCounter{count: 3} // user already owns cardgroups
+	userCG := &fakeUserCG{count: 3} // user already owns cardgroups
 
-	uc, _, calls := newSeedUsecase(t, cg, card, user, counter)
+	uc, _, calls := newSeedUsecase(t, cg, card, user, userCG)
 
 	err := uc.SeedForNewUser(context.Background(), "returning-user")
 	require.NoError(t, err)
 	require.Equal(t, 1, *calls, "the guard still runs inside a transaction (advisory lock)")
 
 	// Guard short-circuits before listing starters or copying anything.
-	assert.Equal(t, 1, counter.calls)
+	assert.Equal(t, 1, userCG.calls)
 	assert.Equal(t, 0, cg.startersCall, "default starters are not listed when the guard trips")
+	assert.Equal(t, 0, cg.findCalls, "no master deck is looked up on the no-op path")
+	assert.Equal(t, 0, userCG.createCalls, "no user cardgroup is inserted on the no-op path")
 	assert.Empty(t, user.captured, "no cards persisted on the no-op path")
 }
 
@@ -410,9 +430,9 @@ func TestSeedForNewUser_TakesAdvisoryLockBeforeCounting(t *testing.T) {
 	cg := &fakeMasterCGRepo{starters: nil}
 	card := &fakeMasterCardRepo{}
 	user := &fakeUserCardRepo{}
-	counter := &fakeCounter{count: 5} // short-circuit after the lock
+	userCG := &fakeUserCG{count: 5} // short-circuit after the lock
 
-	uc, pool, _ := newSeedUsecase(t, cg, card, user, counter)
+	uc, pool, _ := newSeedUsecase(t, cg, card, user, userCG)
 
 	err := uc.SeedForNewUser(context.Background(), "lock-user")
 	require.NoError(t, err)
@@ -421,6 +441,11 @@ func TestSeedForNewUser_TakesAdvisoryLockBeforeCounting(t *testing.T) {
 	// advisory lock; the idempotency COUNT (mocked) runs after it.
 	require.NotEmpty(t, pool.sqls)
 	assert.Contains(t, pool.sqls[0], "pg_advisory_xact_lock(0, hashtext(")
+	// The lock is keyed on the user id: the single bound argument is the user,
+	// so two distinct users never contend on the same advisory lock.
+	require.NotEmpty(t, pool.args)
+	require.Len(t, pool.args[0], 1)
+	assert.Equal(t, "lock-user", pool.args[0][0])
 }
 
 func TestSeedForNewUser_NoStarters_NoCopies(t *testing.T) {
@@ -429,9 +454,9 @@ func TestSeedForNewUser_NoStarters_NoCopies(t *testing.T) {
 	cg := &fakeMasterCGRepo{starters: nil}
 	card := &fakeMasterCardRepo{}
 	user := &fakeUserCardRepo{}
-	counter := &fakeCounter{count: 0}
+	userCG := &fakeUserCG{count: 0}
 
-	uc, _, _ := newSeedUsecase(t, cg, card, user, counter)
+	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
 
 	err := uc.SeedForNewUser(context.Background(), "no-starter-user")
 	require.NoError(t, err)
@@ -445,12 +470,127 @@ func TestSeedForNewUser_CountError_Propagates(t *testing.T) {
 	cg := &fakeMasterCGRepo{}
 	card := &fakeMasterCardRepo{}
 	user := &fakeUserCardRepo{}
-	counter := &fakeCounter{countErr: errors.New("db down")}
+	userCG := &fakeUserCG{countErr: errors.New("db down")}
 
-	uc, _, _ := newSeedUsecase(t, cg, card, user, counter)
+	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
 
 	err := uc.SeedForNewUser(context.Background(), "err-user")
 	require.Error(t, err)
 	assertInternalChain(t, err, "usecase: master deck: seed for new user")
 	assert.Empty(t, user.captured)
+}
+
+func TestSeedForNewUser_ListStartersError_PropagatesChain(t *testing.T) {
+	t.Parallel()
+
+	cg := &fakeMasterCGRepo{startersErr: errors.New("starters query failed")}
+	card := &fakeMasterCardRepo{}
+	user := &fakeUserCardRepo{}
+	userCG := &fakeUserCG{count: 0} // brand-new user → guard passes, then list fails
+
+	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
+
+	err := uc.SeedForNewUser(context.Background(), "starter-err-user")
+	require.Error(t, err)
+	assertInternalChain(t, err, "usecase: master deck: seed for new user")
+	assert.Equal(t, 1, cg.startersCall, "ListDefaultStarters was attempted")
+	assert.Empty(t, user.captured, "no cards persisted when listing starters fails")
+}
+
+func TestSeedForNewUser_MidLoopCopyFailure_AbortsBatch(t *testing.T) {
+	t.Parallel()
+
+	// Two default starters: the copy of m1 succeeds, m2's master lookup fails.
+	cg := &fakeMasterCGRepo{
+		byID:     map[string]*domain.MasterCardgroup{"m1": masterCG("m1", "Deck One")},
+		starters: []*domain.MasterCardgroup{masterCG("m1", "Deck One"), masterCG("m2", "Deck Two")},
+	}
+	card := &fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
+		"m1": {masterCard("a1", "m1", "f1", "b1", 0)},
+	}}
+	user := &fakeUserCardRepo{}
+	userCG := &fakeUserCG{count: 0}
+
+	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
+
+	err := uc.SeedForNewUser(context.Background(), "mid-loop-user")
+	// The loop aborts on the second starter (m2 is absent from byID, so FindByID
+	// returns ErrNotFound). The whole batch fails. The real transaction rollback
+	// is exercised by the integration test; here we prove the loop stops.
+	require.Error(t, err)
+	assertInternalChain(t, err, "usecase: master deck: seed for new user")
+	// Deck One copied before the failure; Deck Two never reached the card insert.
+	require.Len(t, user.captured, 1, "only the first starter was copied before the abort")
+}
+
+func TestSeedForNewUser_ContextCancelled_PassesThrough(t *testing.T) {
+	t.Parallel()
+
+	cg := &fakeMasterCGRepo{}
+	card := &fakeMasterCardRepo{}
+	user := &fakeUserCardRepo{}
+	userCG := &fakeUserCG{countErr: context.Canceled}
+
+	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
+
+	err := uc.SeedForNewUser(context.Background(), "cancelled-user")
+	require.Error(t, err)
+	assertCancelled(t, err)
+}
+
+func TestCopyMasterToUser_ContextCancelled_PassesThrough(t *testing.T) {
+	t.Parallel()
+
+	cg := &fakeMasterCGRepo{findErr: context.Canceled}
+	card := &fakeMasterCardRepo{}
+	user := &fakeUserCardRepo{}
+	userCG := &fakeUserCG{}
+
+	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
+
+	got, err := uc.CopyMasterToUser(context.Background(), "any-master", "owner-cancel")
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assertCancelled(t, err)
+}
+
+func TestCopyMasterToUser_ListCardsError_ReturnsInternalChain(t *testing.T) {
+	t.Parallel()
+
+	const masterID = "m-listerr"
+	cg := &fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Deck")}}
+	card := &fakeMasterCardRepo{listErr: errors.New("list cards failed")}
+	user := &fakeUserCardRepo{}
+	userCG := &fakeUserCG{}
+
+	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
+
+	got, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-listerr")
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assertInternalChain(t, err, "usecase: master deck: copy master to user")
+	assert.Equal(t, 0, userCG.createCalls, "no cardgroup is inserted when listing cards fails")
+	assert.Empty(t, user.captured)
+}
+
+func TestCopyMasterToUser_UpsertCardsError_PropagatesChain(t *testing.T) {
+	t.Parallel()
+
+	const masterID = "m-upserterr"
+	cg := &fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Deck")}}
+	card := &fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
+		masterID: {masterCard("mc1", masterID, "f1", "b1", 0)},
+	}}
+	user := &fakeUserCardRepo{upsertErr: errors.New("upsert failed")}
+	userCG := &fakeUserCG{}
+
+	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
+
+	got, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-upserterr")
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assertInternalChain(t, err, "usecase: master deck: copy master to user")
+	// The bulk insert was attempted (one batch captured) before the error.
+	assert.Equal(t, 1, user.upsertCall, "the card insert was attempted")
+	require.Len(t, user.captured, 1)
 }
