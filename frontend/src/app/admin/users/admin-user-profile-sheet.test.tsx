@@ -604,9 +604,7 @@ describe("AdminUserProfileSheet", () => {
     await user.click(screen.getByTestId("admin-delete-user-confirm"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("admin-delete-user-error")).toHaveTextContent(
-        /cannot be deleted/i,
-      );
+      expect(screen.getByTestId("admin-delete-user-error")).toHaveTextContent(/cannot be deleted/i);
     });
     // The confirm button is still present — the dialog did not auto-close.
     expect(screen.getByTestId("admin-delete-user-confirm")).toBeInTheDocument();
