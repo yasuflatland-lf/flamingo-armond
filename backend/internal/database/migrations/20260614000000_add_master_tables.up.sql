@@ -18,8 +18,10 @@
 --
 -- These trigger functions assign only NEW.updated_at and reference no
 -- schema-qualified objects, so they are SECURITY INVOKER (the default) and need
--- no GRANT/REVOKE management — they fire with the table owner's privileges and
--- are never reachable as PostgREST RPCs the way SECURITY DEFINER functions are.
+-- no GRANT/REVOKE management — a SECURITY INVOKER trigger function runs with the
+-- privileges of the user executing the DML statement, so no extra grants are
+-- required. Unlike SECURITY DEFINER functions, they are never callable as
+-- PostgREST RPCs, eliminating the definer-privilege escalation risk.
 --
 -- golang-migrate pgx/v5 does NOT auto-wrap migrations in a transaction; the
 -- explicit BEGIN/COMMIT below ensures all-or-nothing execution.

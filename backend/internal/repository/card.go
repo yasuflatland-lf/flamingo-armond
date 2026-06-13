@@ -613,7 +613,7 @@ type UpsertManyTxResult struct {
 
 // UpsertManyTx upserts cards by (cardgroup_id, front). Existing rows have
 // `back`, `updated_at`, and `position` overwritten. The conflict key requires the
-// unique index `uq_cards_cardgroup_front` (migration 20260503000000).
+// unique index `uq_cards_cardgroup_front` (migration 20260430080000_initial_schema).
 //
 // Counts are derived per-row from the PostgreSQL system column `xmax`. A
 // freshly inserted row has `xmax = 0` in the same transaction; a row updated

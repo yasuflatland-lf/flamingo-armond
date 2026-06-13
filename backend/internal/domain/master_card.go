@@ -4,7 +4,7 @@ import "time"
 
 // MasterCard is a single card within a MasterCardgroup. It references its
 // parent by MasterCardgroupID only; cross-aggregate resolution is handled by
-// the repository and DataLoader layers.
+// the repository layer.
 //
 // Front and Back are CardText values so the same grapheme-cluster length
 // invariant (1..CardTextMax) and sentinel reuse apply without duplicating

@@ -39,9 +39,9 @@ DROP TRIGGER IF EXISTS trg_master_cards_set_updated_at      ON public.master_car
 DROP TRIGGER IF EXISTS trg_master_cardgroups_set_updated_at ON public.master_cardgroups;
 
 -- ---------------------------------------------------------------------------
--- 4) Explicit index drop for the unique index that should fail loudly if
---    missing (it backs an ON CONFLICT upsert contract). Plain idx_* drops are
---    implied by DROP TABLE.
+-- 4) Explicit index drop for the unique index backing the ON CONFLICT upsert
+--    contract. Plain idx_* indexes are implied by DROP TABLE, but naming this
+--    one explicitly makes the rollback observable and intentional.
 -- ---------------------------------------------------------------------------
 
 DROP INDEX IF EXISTS public.uq_master_cards_cg_front;
