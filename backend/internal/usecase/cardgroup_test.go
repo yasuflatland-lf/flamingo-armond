@@ -1764,25 +1764,12 @@ func (s *stubCardgroupCounter) CountByOwner(_ context.Context, _ string, _ *stri
 	return s.count, s.err
 }
 
-// stubLimitAdminChecker is a minimal AdminChecker for the direct
-// checkCardgroupLimit tests.
-type stubLimitAdminChecker struct {
-	isAdmin bool
-	err     error
-	calls   int
-}
-
-func (s *stubLimitAdminChecker) IsAdmin(_ context.Context, _ string) (bool, error) {
-	s.calls++
-	return s.isAdmin, s.err
-}
-
 // TestCheckCardgroupLimit_Admin_Exempt verifies that an admin owner is exempt:
 // the helper returns (nil, nil) and the counter is never consulted.
 func TestCheckCardgroupLimit_Admin_Exempt(t *testing.T) {
 	t.Parallel()
 	counter := &stubCardgroupCounter{count: generalUserCardgroupLimit}
-	admin := &stubLimitAdminChecker{isAdmin: true}
+	admin := &mockAdminChecker{isAdmin: true}
 
 	info, err := checkCardgroupLimit(context.Background(), counter, admin, "admin-1")
 
@@ -1802,7 +1789,7 @@ func TestCheckCardgroupLimit_Admin_Exempt(t *testing.T) {
 func TestCheckCardgroupLimit_UnderLimit(t *testing.T) {
 	t.Parallel()
 	counter := &stubCardgroupCounter{count: generalUserCardgroupLimit - 1}
-	admin := &stubLimitAdminChecker{isAdmin: false}
+	admin := &mockAdminChecker{isAdmin: false}
 
 	info, err := checkCardgroupLimit(context.Background(), counter, admin, "user-1")
 
@@ -1834,7 +1821,7 @@ func TestCheckCardgroupLimit_AtOrOverLimit(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			counter := &stubCardgroupCounter{count: tc.count}
-			admin := &stubLimitAdminChecker{isAdmin: false}
+			admin := &mockAdminChecker{isAdmin: false}
 
 			info, err := checkCardgroupLimit(context.Background(), counter, admin, "user-1")
 
@@ -1859,8 +1846,8 @@ func TestCheckCardgroupLimit_AtOrOverLimit(t *testing.T) {
 // and the counter is never consulted.
 func TestCheckCardgroupLimit_IsAdminError_Wrapped(t *testing.T) {
 	t.Parallel()
-	counter := &stubCardgroupCounter{count: 0}
-	admin := &stubLimitAdminChecker{err: errors.New("auth: lookup failed")}
+	counter := &stubCardgroupCounter{}
+	admin := &mockAdminChecker{err: errors.New("auth: lookup failed")}
 
 	_, err := checkCardgroupLimit(context.Background(), counter, admin, "user-1")
 
@@ -1876,7 +1863,7 @@ func TestCheckCardgroupLimit_IsAdminError_Wrapped(t *testing.T) {
 func TestCheckCardgroupLimit_CountError_Wrapped(t *testing.T) {
 	t.Parallel()
 	counter := &stubCardgroupCounter{err: errors.New("db: count failed")}
-	admin := &stubLimitAdminChecker{isAdmin: false}
+	admin := &mockAdminChecker{isAdmin: false}
 
 	_, err := checkCardgroupLimit(context.Background(), counter, admin, "user-1")
 
@@ -1888,8 +1875,8 @@ func TestCheckCardgroupLimit_CountError_Wrapped(t *testing.T) {
 // the returned error IS context.Canceled), and the counter is never consulted.
 func TestCheckCardgroupLimit_IsAdminCancelled_IdentityPreserved(t *testing.T) {
 	t.Parallel()
-	counter := &stubCardgroupCounter{count: 0}
-	admin := &stubLimitAdminChecker{err: context.Canceled}
+	counter := &stubCardgroupCounter{}
+	admin := &mockAdminChecker{err: context.Canceled}
 
 	_, err := checkCardgroupLimit(context.Background(), counter, admin, "user-1")
 
@@ -1944,7 +1931,7 @@ func TestCardgroupUsecase_Create_CountByOwnerCancelled_IdentityPreserved(t *test
 func TestCheckCardgroupLimit_CountCancelled_IdentityPreserved(t *testing.T) {
 	t.Parallel()
 	counter := &stubCardgroupCounter{err: context.Canceled}
-	admin := &stubLimitAdminChecker{isAdmin: false}
+	admin := &mockAdminChecker{isAdmin: false}
 
 	info, err := checkCardgroupLimit(context.Background(), counter, admin, "user-1")
 
@@ -1971,7 +1958,7 @@ func TestCheckCardgroupLimit_CountCancelled_IdentityPreserved(t *testing.T) {
 func TestCheckCardgroupLimit_CountDeadlineExceeded_IdentityPreserved(t *testing.T) {
 	t.Parallel()
 	counter := &stubCardgroupCounter{err: context.DeadlineExceeded}
-	admin := &stubLimitAdminChecker{isAdmin: false}
+	admin := &mockAdminChecker{isAdmin: false}
 
 	info, err := checkCardgroupLimit(context.Background(), counter, admin, "user-1")
 
