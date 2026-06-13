@@ -112,9 +112,7 @@ describe("AdminMasterRow", () => {
 
   it("renders an Unpublish toggle for a PUBLISHED master", () => {
     renderRow({ ...BASE, status: "PUBLISHED" });
-    expect(screen.getByTestId("master-row-publish-toggle")).toHaveAccessibleName(
-      /unpublish|非公開/i,
-    );
+    expect(screen.getByTestId("master-row-publish-toggle")).toHaveAccessibleName(/unpublish/i);
     expect(screen.getByTestId("master-row-publish-toggle")).toHaveAttribute("aria-pressed", "true");
   });
 
