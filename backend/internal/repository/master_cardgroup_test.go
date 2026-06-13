@@ -316,11 +316,6 @@ func TestMasterCardgroupRepository_ListDefaultStarters_FilterAndOrder(t *testing
 	repo := repository.NewMasterCardgroupRepository(testDB.GORM)
 
 	// (a) published + starter, sort_order=2
-	sortOrder2 := 2
-	statusPub := string(domain.MasterStatusPublished)
-	isStarter := true
-	notStarter := false
-
 	mA := newMasterCardgroupMinimal("Starter A " + uuid.NewString())
 	mA.Status = domain.MasterStatusPublished
 	mA.IsDefaultStarter = true
@@ -345,12 +340,6 @@ func TestMasterCardgroupRepository_ListDefaultStarters_FilterAndOrder(t *testing
 	mD.Status = domain.MasterStatusDraft
 	mD.IsDefaultStarter = true
 	require.NoError(t, repo.Create(ctx, mD))
-
-	// Suppress unused variable warnings for the patch variables declared above.
-	_ = sortOrder2
-	_ = statusPub
-	_ = isStarter
-	_ = notStarter
 
 	all, err := repo.ListDefaultStarters(ctx)
 	require.NoError(t, err)
