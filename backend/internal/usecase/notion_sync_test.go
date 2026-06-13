@@ -845,7 +845,7 @@ func TestMasterNotionSyncUsecase_OverCapRejected(t *testing.T) {
 
 	const n = cardImportParsedRowCap + 1
 	var b strings.Builder
-	for i := 0; i < n; i++ {
+	for i := range n {
 		b.WriteString(stringFront("front", i))
 		b.WriteString(" ")
 		b.WriteString(uniqueBack(i))
