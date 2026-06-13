@@ -31,6 +31,28 @@ func (s *stubMasterCatalogUC) ListPublishedConnection(
 	return s.out, s.err
 }
 
+func (s *stubMasterCatalogUC) ListAdminConnection(_ context.Context, _ usecase.MasterCatalogConnectionInput) (*usecase.MasterCatalogConnectionOutput, error) {
+	return nil, nil
+}
+
+func (s *stubMasterCatalogUC) CreateMaster(_ context.Context, _ usecase.CreateMasterInput) (usecase.CreateMasterOutcome, error) {
+	return usecase.CreateMasterOutcome{}, nil
+}
+
+func (s *stubMasterCatalogUC) UpdateMaster(_ context.Context, _ string, _ usecase.UpdateMasterInput) (usecase.UpdateMasterOutcome, error) {
+	return usecase.UpdateMasterOutcome{}, nil
+}
+
+func (s *stubMasterCatalogUC) PublishMaster(_ context.Context, _ string) (usecase.PublishMasterOutcome, error) {
+	return usecase.PublishMasterOutcome{}, nil
+}
+
+func (s *stubMasterCatalogUC) UnpublishMaster(_ context.Context, _ string) (*usecase.MasterWithCount, error) {
+	return nil, nil
+}
+
+func (s *stubMasterCatalogUC) DeleteMaster(_ context.Context, _ string) error { return nil }
+
 // TestQueryResolver_MasterCatalog_Success verifies the resolver maps the model
 // enums to usecase enums on the way in and the usecase output to the wire
 // connection on the way out.

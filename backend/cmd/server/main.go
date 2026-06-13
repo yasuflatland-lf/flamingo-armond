@@ -321,7 +321,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	var cefrWords domain.CEFRWordList = cefr.NewWordList()
 	cefrClassifier := service.NewCEFRClassifier(cefrWords)
 	cefrUC := usecase.NewCEFRUsecase(cefrClassifier)
-	masterCatalogUC := usecase.NewMasterCatalogUsecase(masterCardgroupRepo, logger)
+	masterCatalogUC := usecase.NewMasterCatalogUsecase(masterCardgroupRepo, adminGate, logger)
 	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, updateLearnDisplayModeUC, learnUC, cefrUC, masterCatalogUC)
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above

@@ -26,8 +26,22 @@ type mockMasterCatalogRepository struct {
 	countErr    error
 	countCalls  []countPublishedCall
 
-	// FindPublishedByID
+	// FindPublishedByID (also used by published cursor resolution)
 	findByIDFn func(id string) (*domain.MasterCardgroup, error)
+
+	// admin methods
+	findAdminPage []*repository.MasterCatalogItem
+	findAdminErr  error
+	countAdminRes int64
+	countAdminErr error
+	countCardsRes int64
+	countCardsErr error
+	createCalls   []*domain.MasterCardgroup
+	createErr     error
+	updateFn      func(id string, patch repository.MasterCardgroupUpdate) (*domain.MasterCardgroup, error)
+	deleteErr     error
+	publishFn     func(id string) (*domain.MasterCardgroup, error)
+	unpublishFn   func(id string) (*domain.MasterCardgroup, error)
 }
 
 type findPublishedPageCall struct {
@@ -77,6 +91,62 @@ func (m *mockMasterCatalogRepository) FindPublishedByID(_ context.Context, id st
 	return nil, repository.ErrNotFound
 }
 
+func (m *mockMasterCatalogRepository) FindByID(_ context.Context, id string) (*domain.MasterCardgroup, error) {
+	if m.findByIDFn != nil {
+		return m.findByIDFn(id)
+	}
+	return nil, repository.ErrNotFound
+}
+
+func (m *mockMasterCatalogRepository) FindAdminPage(
+	_ context.Context, _, _ *repository.MasterCatalogCursor, _, _ int,
+	_ repository.MasterCatalogOrderBy, _ repository.SortOrder, _ *string,
+) ([]*repository.MasterCatalogItem, error) {
+	if m.findAdminErr != nil {
+		return nil, m.findAdminErr
+	}
+	return m.findAdminPage, nil
+}
+
+func (m *mockMasterCatalogRepository) CountAdmin(_ context.Context, _ *string) (int64, error) {
+	return m.countAdminRes, m.countAdminErr
+}
+
+func (m *mockMasterCatalogRepository) CountCards(_ context.Context, _ string) (int64, error) {
+	return m.countCardsRes, m.countCardsErr
+}
+
+func (m *mockMasterCatalogRepository) Create(_ context.Context, mc *domain.MasterCardgroup) error {
+	if m.createErr != nil {
+		return m.createErr
+	}
+	m.createCalls = append(m.createCalls, mc)
+	return nil
+}
+
+func (m *mockMasterCatalogRepository) Update(_ context.Context, id string, patch repository.MasterCardgroupUpdate) (*domain.MasterCardgroup, error) {
+	if m.updateFn != nil {
+		return m.updateFn(id, patch)
+	}
+	return nil, repository.ErrNotFound
+}
+
+func (m *mockMasterCatalogRepository) Delete(_ context.Context, _ string) error { return m.deleteErr }
+
+func (m *mockMasterCatalogRepository) Publish(_ context.Context, id string) (*domain.MasterCardgroup, error) {
+	if m.publishFn != nil {
+		return m.publishFn(id)
+	}
+	return nil, repository.ErrNotFound
+}
+
+func (m *mockMasterCatalogRepository) Unpublish(_ context.Context, id string) (*domain.MasterCardgroup, error) {
+	if m.unpublishFn != nil {
+		return m.unpublishFn(id)
+	}
+	return nil, repository.ErrNotFound
+}
+
 // catalogItem builds a MasterCatalogItem with the given id and published status.
 func catalogItem(id string, cardCount int64) *repository.MasterCatalogItem {
 	now := time.Now().UTC()
@@ -103,7 +173,7 @@ func TestNewMasterCatalogUsecase_NilLoggerPanics(t *testing.T) {
 			t.Fatal("expected panic on nil logger")
 		}
 	}()
-	NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, nil)
+	NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, newTestAdminGate(true), nil)
 }
 
 // ---------------------------------------------------------------------------
@@ -111,7 +181,7 @@ func TestNewMasterCatalogUsecase_NilLoggerPanics(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestListPublishedConnection_Unauthenticated(t *testing.T) {
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, newTestAdminGate(true), newTestLogger())
 
 	_, err := uc.ListPublishedConnection(context.Background(), MasterCatalogConnectionInput{})
 	if !errors.Is(err, ucerr.ErrUnauthenticated) {
@@ -131,7 +201,7 @@ func TestListPublishedConnection_Forward_TrimsExtraRow_SetsHasNext(t *testing.T)
 			catalogItem("a", 10), catalogItem("b", 20), catalogItem("c", 30),
 		},
 	}
-	uc := NewMasterCatalogUsecase(repo, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, newTestAdminGate(true), newTestLogger())
 
 	out, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
 		First: intPtr(2),
@@ -179,7 +249,7 @@ func TestListPublishedConnection_Forward_NoExtraRow_NoNextPage(t *testing.T) {
 		countResult:    2,
 		findPageResult: []*repository.MasterCatalogItem{catalogItem("a", 1), catalogItem("b", 2)},
 	}
-	uc := NewMasterCatalogUsecase(repo, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, newTestAdminGate(true), newTestLogger())
 
 	out, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(5)})
 	if err != nil {
@@ -210,7 +280,7 @@ func TestListPublishedConnection_Backward_TrimsLeadingRow_SetsHasPrev(t *testing
 			catalogItem("x", 1), catalogItem("y", 2), catalogItem("w", 3),
 		},
 	}
-	uc := NewMasterCatalogUsecase(repo, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, newTestAdminGate(true), newTestLogger())
 
 	out, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
 		Last:   intPtr(2),
@@ -249,7 +319,7 @@ func TestListPublishedConnection_Backward_TrimsLeadingRow_SetsHasPrev(t *testing
 
 func TestListPublishedConnection_OrderByName_Desc(t *testing.T) {
 	repo := &mockMasterCatalogRepository{countResult: 0, findPageResult: nil}
-	uc := NewMasterCatalogUsecase(repo, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, newTestAdminGate(true), newTestLogger())
 
 	ob := MasterCatalogOrderByName
 	dir := SortOrderDesc
@@ -275,7 +345,7 @@ func TestListPublishedConnection_OrderByName_Desc(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestListPublishedConnection_FirstAndLast_Rejected(t *testing.T) {
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, newTestAdminGate(true), newTestLogger())
 
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
 		First: intPtr(2),
@@ -296,7 +366,7 @@ func TestListPublishedConnection_TotalCountOnlyRequest(t *testing.T) {
 		countResult:    42,
 		findPageResult: []*repository.MasterCatalogItem{},
 	}
-	uc := NewMasterCatalogUsecase(repo, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, newTestAdminGate(true), newTestLogger())
 
 	// first=0 → no rows fetched, but COUNT still runs.
 	out, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(0)})
@@ -317,7 +387,7 @@ func TestListPublishedConnection_TotalCountOnlyRequest(t *testing.T) {
 
 func TestListPublishedConnection_InvalidCursor(t *testing.T) {
 	repo := &mockMasterCatalogRepository{countResult: 0}
-	uc := NewMasterCatalogUsecase(repo, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, newTestAdminGate(true), newTestLogger())
 
 	bad := "%%%not-a-cursor"
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
@@ -343,7 +413,7 @@ func TestListPublishedConnection_CursorNotPublished(t *testing.T) {
 			return nil, repository.ErrNotFound
 		},
 	}
-	uc := NewMasterCatalogUsecase(repo, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, newTestAdminGate(true), newTestLogger())
 
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
 		First: intPtr(2),
@@ -361,7 +431,7 @@ func TestListPublishedConnection_CursorNotPublished(t *testing.T) {
 
 func TestListPublishedConnection_CountError_Wrapped(t *testing.T) {
 	repo := &mockMasterCatalogRepository{countErr: eris.New("db down")}
-	uc := NewMasterCatalogUsecase(repo, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, newTestAdminGate(true), newTestLogger())
 
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(2)})
 	if err == nil {
@@ -374,7 +444,7 @@ func TestListPublishedConnection_CountError_Wrapped(t *testing.T) {
 
 func TestListPublishedConnection_FindPageError_Wrapped(t *testing.T) {
 	repo := &mockMasterCatalogRepository{countResult: 1, findPageErr: eris.New("db down")}
-	uc := NewMasterCatalogUsecase(repo, newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, newTestAdminGate(true), newTestLogger())
 
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(2)})
 	if err == nil {
