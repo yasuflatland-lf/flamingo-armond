@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, User } from "lucide-react";
+import { BookOpen, LibraryBig, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -35,16 +35,16 @@ const HOVER_CLOSE_DELAY_MS = 150;
 /**
  * Resolve the active rail item from the current pathname.
  *
- * Only handles the static center item (Cardgroups). Admin items and the footer
- * Profile link compute their own active state inline, so this function
- * deliberately does not return `"profile"` or `"admin"`.
+ * Only handles the static center items (Cardgroups, Catalog). Admin items and
+ * the footer Profile link compute their own active state inline, so this
+ * function deliberately does not return `"profile"` or `"admin"`.
  *
  * Uses a positive-allowlist style (per
  * `docs/frontend/typescript-conventions.md` § "Positive allowlist over
  * negative exclusion") so that future top-level routes do not silently match an
  * existing rail item.
  */
-type ActiveItem = "cardgroups" | null;
+type ActiveItem = "cardgroups" | "catalog" | null;
 
 /** Matches `pathname` against a top-level route — exact match or a sub-route prefix. */
 function matchesRoute(pathname: string, route: string): boolean {
@@ -59,6 +59,9 @@ function resolveActiveItem(pathname: string): ActiveItem {
     pathname.startsWith("/learn/")
   ) {
     return "cardgroups";
+  }
+  if (pathname === "/catalog" || pathname.startsWith("/catalog/")) {
+    return "catalog";
   }
   return null;
 }
@@ -152,6 +155,15 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
                     >
                       <BookOpen aria-hidden="true" />
                       <span>{t("cardgroups")}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={active === "catalog"} tooltip={t("catalog")}>
+                    <Link href="/catalog" aria-current={active === "catalog" ? "page" : undefined}>
+                      <LibraryBig aria-hidden="true" />
+                      <span>{t("catalog")}</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

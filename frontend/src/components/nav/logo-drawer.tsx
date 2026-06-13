@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Plus, User } from "lucide-react";
+import { BookOpen, LibraryBig, Plus, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -114,6 +114,13 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
                 <Link href="/cardgroups" className={NAV_LINK_CLASS}>
                   <BookOpen className="h-4 w-4 shrink-0" aria-hidden="true" />
                   {t("cardgroups")}
+                </Link>
+              </SheetClose>
+
+              <SheetClose asChild>
+                <Link href="/catalog" className={NAV_LINK_CLASS}>
+                  <LibraryBig className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {t("catalog")}
                 </Link>
               </SheetClose>
 
