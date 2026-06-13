@@ -171,6 +171,7 @@ export function AdminMastersClient() {
       });
       if (!result) return;
       const payload = result.data?.adminCreateMasterCardgroup;
+      const typename = payload?.__typename ?? "null";
       if (payload?.__typename === "InputValidationError") {
         setCreateValidationError({ field: payload.field, message: payload.message });
         return;
@@ -223,7 +224,11 @@ export function AdminMastersClient() {
         resetCreate();
         setCreateDirty(false);
         sheet.close({ refresh: true });
+        return;
       }
+      // Neither known variant matched (null or an unknown union member) — never fail silently.
+      console.warn("[admin-masters] unexpected createMaster payload", { typename });
+      toast.error(t("unexpectedError"));
     },
     [apolloClient, runCreate, resetCreate, sheet, t],
   );
@@ -251,6 +256,7 @@ export function AdminMastersClient() {
       });
       if (!result) return;
       const payload = result.data?.adminUpdateMasterCardgroup;
+      const typename = payload?.__typename ?? "null";
       if (payload?.__typename === "InputValidationError") {
         setEditValidationError({ field: payload.field, message: payload.message });
         return;
@@ -259,7 +265,10 @@ export function AdminMastersClient() {
         toast.success(t("updateSuccess"));
         resetUpdate();
         sheet.close({ refresh: true });
+        return;
       }
+      console.warn("[admin-masters] unexpected updateMaster payload", { typename });
+      toast.error(t("unexpectedError"));
     },
     [editId, runUpdate, resetUpdate, sheet, t],
   );
