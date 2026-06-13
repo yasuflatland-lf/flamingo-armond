@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
 import { type AnimatedCardHandle, SwipeCard, type SwipeCardData } from "./swipe-card";
 import { SwipeDirectionOverlay } from "./swipe-direction-overlay";
-import type { SwipeDirection } from "./types";
+import type { LearnCardPhase, LearnDisplayMode, SwipeDirection } from "./types";
 
 /**
  * Imperative handle exposed by SwipeCardStack so parents can trigger a swipe
@@ -21,6 +21,7 @@ export type SwipeCardStackHandle = {
 
 type Props<TCard extends SwipeCardData> = {
   cards: TCard[];
+  displayMode?: LearnDisplayMode;
   onCardSwiped: (card: TCard, direction: SwipeDirection) => void;
   completedCount?: number;
   /**
@@ -31,14 +32,33 @@ type Props<TCard extends SwipeCardData> = {
   ref?: RefObject<SwipeCardStackHandle | null>;
 };
 
+function initialPhaseForDisplayMode(displayMode: LearnDisplayMode): LearnCardPhase {
+  return displayMode === "ALWAYS_VISIBLE" ? "revealed" : "front_only";
+}
+
 export function SwipeCardStack<TCard extends SwipeCardData>({
   cards,
+  displayMode = "ALWAYS_VISIBLE",
   onCardSwiped,
   completedCount,
   ref,
 }: Props<TCard>) {
   const t = useTranslations("Learn");
   const activeCard = cards[0];
+  const [activeCardPhase, setActiveCardPhase] = useState<{
+    cardId: string | null;
+    phase: LearnCardPhase;
+  }>(() => ({
+    cardId: activeCard?.id ?? null,
+    phase: initialPhaseForDisplayMode(displayMode),
+  }));
+  const phase =
+    activeCardPhase.cardId === (activeCard?.id ?? null)
+      ? activeCardPhase.phase
+      : initialPhaseForDisplayMode(displayMode);
+  const activeCardRevealed = phase === "revealed";
+  const activeCardRevealedRef = useRef(activeCardRevealed);
+  activeCardRevealedRef.current = activeCardRevealed;
 
   // Drag-progress state ownership stays inside the stack, so the parent
   // component never re-renders during a gesture — per-frame onSwipeProgress
@@ -75,6 +95,12 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
     onCardSwipedRef.current = onCardSwiped;
   }, [onCardSwiped]);
 
+  const handleReveal = useCallback(() => {
+    const card = activeCardRef.current;
+    if (!card) return;
+    setActiveCardPhase({ cardId: card.id, phase: "revealed" });
+  }, []);
+
   const handleSwipeProgress = useCallback((direction: SwipeDirection | null, progress: number) => {
     setSwipeDirection(direction);
     setSwipeProgress(progress);
@@ -106,6 +132,7 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
     (direction: SwipeDirection) => {
       const card = activeCardRef.current;
       if (!card) return;
+      if (!activeCardRevealedRef.current) return;
       // Already flying off this card — ignore repeat triggers.
       if (exitingCardIdRef.current === card.id) return;
 
@@ -139,12 +166,15 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
 
   // Reset overlay state and the exiting guard whenever the active card changes
   // so a programmatic triggerSwipe paint does not leak into the next card.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: tracking only the id of the active card is intentional — full-object deps would reset on referential changes to the same card.
   useEffect(() => {
     setSwipeDirection(null);
     setSwipeProgress(0);
     exitingCardIdRef.current = null;
-  }, [activeCard?.id]);
+    setActiveCardPhase({
+      cardId: activeCard?.id ?? null,
+      phase: initialPhaseForDisplayMode(displayMode),
+    });
+  }, [activeCard?.id, displayMode]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -187,6 +217,9 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
 
   return (
     <div className="relative h-full w-full max-w-xl">
+      <div role="status" aria-live="polite" className="sr-only">
+        {displayMode === "FLIP_TO_REVEAL" && activeCardRevealed ? t("answerRevealed") : ""}
+      </div>
       {cards.slice(0, 3).map((card, index) => (
         <div
           key={card.id}
@@ -202,6 +235,8 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
           <SwipeCard
             card={card}
             isActive={index === 0}
+            revealed={index === 0 ? activeCardRevealed : displayMode === "ALWAYS_VISIBLE"}
+            onReveal={handleReveal}
             onSwipe={handleGestureCommit}
             onSwipeProgress={handleSwipeProgress}
             handleRef={index === 0 ? activeCardHandleRef : undefined}

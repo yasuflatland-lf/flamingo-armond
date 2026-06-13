@@ -42,12 +42,16 @@ vi.mock("./swipe-card", async (importOriginal) => {
     SwipeCard: ({
       card,
       handleRef,
+      revealed,
+      onReveal,
       onSwipe,
       onSwipeProgress,
     }: {
       card: SwipeCardData;
       isActive: boolean;
       handleRef?: React.RefObject<import("./swipe-card").AnimatedCardHandle | null>;
+      revealed?: boolean;
+      onReveal?: () => void;
       onSwipe: (card: SwipeCardData, direction: "left" | "down" | "right") => void;
       onSwipeProgress?: (direction: "left" | "down" | "right" | null, progress: number) => void;
     }) => {
@@ -92,6 +96,12 @@ vi.mock("./swipe-card", async (importOriginal) => {
           }}
         >
           {card.front}
+          {revealed && <span>{card.back}</span>}
+          {!revealed && (
+            <button type="button" data-testid={`reveal-${card.id}`} onClick={onReveal}>
+              reveal
+            </button>
+          )}
         </div>
       );
     },
@@ -121,6 +131,72 @@ const makeCard = (id: string): SwipeCardData => ({
 
 const cardA = makeCard("card-a");
 const cardB = makeCard("card-b");
+
+// ---------------------------------------------------------------------------
+// describe: active-card reveal phase
+// ---------------------------------------------------------------------------
+
+describe("SwipeCardStack — active-card reveal phase", () => {
+  it("starts front-only in flip mode, reveals, then resets when the active card changes", () => {
+    const onCardSwiped = vi.fn();
+    const ref = createRef<SwipeCardStackHandle | null>();
+
+    const { rerender } = renderWithIntl(
+      <SwipeCardStack
+        cards={[cardA, cardB]}
+        displayMode="FLIP_TO_REVEAL"
+        onCardSwiped={onCardSwiped}
+        ref={ref}
+      />,
+    );
+
+    expect(screen.getByText(cardA.front)).toBeInTheDocument();
+    expect(screen.queryByText(cardA.back)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("reveal-card-a"));
+    expect(screen.getByText(cardA.back)).toBeInTheDocument();
+
+    act(() => {
+      ref.current?.triggerSwipe("right");
+    });
+    act(() => {
+      settleFlyOuts();
+    });
+    rerender(
+      <SwipeCardStack
+        cards={[cardB]}
+        displayMode="FLIP_TO_REVEAL"
+        onCardSwiped={onCardSwiped}
+        ref={ref}
+      />,
+    );
+
+    expect(screen.getByText(cardB.front)).toBeInTheDocument();
+    expect(screen.queryByText(cardB.back)).not.toBeInTheDocument();
+  });
+
+  it("starts revealed in always-visible mode", () => {
+    renderWithIntl(
+      <SwipeCardStack cards={[cardA]} displayMode="ALWAYS_VISIBLE" onCardSwiped={vi.fn()} />,
+    );
+
+    expect(screen.getByText(cardA.front)).toBeInTheDocument();
+    expect(screen.getByText(cardA.back)).toBeInTheDocument();
+  });
+
+  it("announces when the active card is revealed", () => {
+    renderWithIntl(
+      <SwipeCardStack cards={[cardA]} displayMode="FLIP_TO_REVEAL" onCardSwiped={vi.fn()} />,
+    );
+
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("");
+
+    fireEvent.click(screen.getByTestId("reveal-card-a"));
+
+    expect(status).toHaveTextContent("Answer shown");
+  });
+});
 
 // ---------------------------------------------------------------------------
 // describe: Session-complete count line
