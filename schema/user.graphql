@@ -42,4 +42,14 @@ type Mutation {
   Unauthenticated callers receive an error with `extensions.code = "UNAUTHENTICATED"`.
   """
   updateProfile(input: UpdateProfileInput!): UpdateProfileResult!
+  """
+  Permanently deletes the authenticated caller's own account and all associated
+  data (cardgroups, cards, learning history, preferences, role assignments) via
+  database cascade. Returns true on success.
+
+  Unauthenticated callers receive an error with `extensions.code = "UNAUTHENTICATED"`.
+  FORBIDDEN when the caller is the last remaining admin (promote another admin
+  first).
+  """
+  deleteMyAccount: Boolean!
 }

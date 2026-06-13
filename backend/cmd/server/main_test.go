@@ -643,6 +643,10 @@ func (c *countingUserRepo) ListPage(
 	return c.inner.ListPage(ctx, after, before, first, last, search)
 }
 
+func (c *countingUserRepo) DeleteAuthUser(ctx context.Context, id string) error {
+	return c.inner.DeleteAuthUser(ctx, id)
+}
+
 // insertAuthUser inserts a row into auth.users so the handle_new_user trigger
 // creates the matching public.users row. Returns the generated user id.
 func insertAuthUser(t *testing.T, ctx context.Context) string {

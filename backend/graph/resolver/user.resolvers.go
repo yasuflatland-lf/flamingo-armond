@@ -42,6 +42,14 @@ func (r *mutationResolver) UpdateProfile(ctx context.Context, input model.Update
 	return model.UpdateProfileSuccess{User: toUserModel(outcome.User)}, nil
 }
 
+// DeleteMyAccount is the resolver for the deleteMyAccount field.
+func (r *mutationResolver) DeleteMyAccount(ctx context.Context) (bool, error) {
+	if err := r.UserUC.DeleteMyAccount(ctx); err != nil {
+		return false, gqlerr.FromUsecaseError(ctx, err)
+	}
+	return true, nil
+}
+
 // Me is the resolver for the me field.
 func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
 	user, err := r.UserUC.Me(ctx)

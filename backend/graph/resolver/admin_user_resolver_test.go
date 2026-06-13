@@ -32,6 +32,10 @@ type mockAdminUserUsecase struct {
 	editErr       error
 	lastEditID    string
 	lastEditInput usecase.AdminEditUserInput
+
+	deleteErr    error
+	lastDeleteID string
+	deleteCalls  int
 }
 
 func (m *mockAdminUserUsecase) List(_ context.Context, _, _ *int, _, _, _ *string) (*usecase.AdminUserConnection, error) {
@@ -47,6 +51,12 @@ func (m *mockAdminUserUsecase) EditUser(_ context.Context, id string, input usec
 	return m.editOutcome, m.editErr
 }
 
+func (m *mockAdminUserUsecase) DeleteUser(_ context.Context, id string) error {
+	m.deleteCalls++
+	m.lastDeleteID = id
+	return m.deleteErr
+}
+
 // mockRoleByUserIDRepo satisfies the minimal interface needed to build the
 // RoleByUserID DataLoader.
 type mockRoleByUserIDRepo struct {
@@ -57,6 +67,8 @@ type mockRoleByUserIDRepo struct {
 	// lastIDs holds the key slice from the most recent ListByUserIDs call so
 	// N+1 batch assertions can verify all expected user IDs were batched together.
 	lastIDs []string
+	// adminCount is returned by CountAdmins; used by DeleteMyAccount tests.
+	adminCount int64
 }
 
 func (m *mockRoleByUserIDRepo) ListByUserIDs(_ context.Context, ids []string) (map[string][]*domain.Role, error) {
@@ -85,6 +97,10 @@ func (m *mockRoleByUserIDRepo) ListByUser(_ context.Context, userID string) ([]*
 		return []*domain.Role{}, nil
 	}
 	return roles, nil
+}
+
+func (m *mockRoleByUserIDRepo) CountAdmins(_ context.Context) (int64, error) {
+	return m.adminCount, nil
 }
 
 // newAdminUserSrv builds a gqlgen handler.Server backed by a mock
@@ -673,5 +689,65 @@ func TestAdminUserResolver_AdminEditUser_XORInvariantViolation(t *testing.T) {
 	code := errCode(t, resp)
 	if code != string(gqlerr.CodeInternal) {
 		t.Fatalf("expected INTERNAL_SERVER_ERROR, got %q; response: %v", code, resp)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Mutation.adminDeleteUser tests
+// ---------------------------------------------------------------------------
+
+const adminDeleteUserMutation = `{"query":"mutation { adminDeleteUser(id: \"u-target\") }"}`
+
+// TestAdminUserResolver_AdminDeleteUser_Success verifies adminDeleteUser returns
+// true and delegates to the usecase with the requested id when the usecase
+// succeeds.
+func TestAdminUserResolver_AdminDeleteUser_Success(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminUserUsecase{}
+	srv := newAdminUserSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), adminDeleteUserMutation)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	if deleted, _ := data["adminDeleteUser"].(bool); !deleted {
+		t.Fatalf("expected data.adminDeleteUser == true, got %v", data["adminDeleteUser"])
+	}
+	if mock.deleteCalls != 1 || mock.lastDeleteID != "u-target" {
+		t.Fatalf("usecase.DeleteUser: calls=%d id=%q, want 1 and \"u-target\"", mock.deleteCalls, mock.lastDeleteID)
+	}
+}
+
+// TestAdminUserResolver_AdminDeleteUser_Forbidden verifies a usecase forbidden
+// error (self-deletion or last-admin guard) surfaces as FORBIDDEN.
+func TestAdminUserResolver_AdminDeleteUser_Forbidden(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminUserUsecase{
+		deleteErr: ucerr.NewForbiddenError("cannot delete the last admin account"),
+	}
+	srv := newAdminUserSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), adminDeleteUserMutation)
+
+	if code := errCode(t, resp); code != string(gqlerr.CodeForbidden) {
+		t.Fatalf("expected FORBIDDEN, got %q; response: %v", code, resp)
+	}
+}
+
+// TestAdminUserResolver_AdminDeleteUser_NotFound verifies a usecase validation
+// error (missing target) surfaces as BAD_USER_INPUT.
+func TestAdminUserResolver_AdminDeleteUser_NotFound(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminUserUsecase{
+		deleteErr: ucerr.NewValidationError("id", "user not found"),
+	}
+	srv := newAdminUserSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), adminDeleteUserMutation)
+
+	if code := errCode(t, resp); code != string(gqlerr.CodeBadUserInput) {
+		t.Fatalf("expected BAD_USER_INPUT, got %q; response: %v", code, resp)
 	}
 }

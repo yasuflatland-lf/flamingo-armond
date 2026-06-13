@@ -106,6 +106,14 @@ func (r *mutationResolver) DeleteRole(ctx context.Context, id string) (bool, err
 	return true, nil
 }
 
+// AdminDeleteUser is the resolver for the adminDeleteUser field.
+func (r *mutationResolver) AdminDeleteUser(ctx context.Context, id string) (bool, error) {
+	if err := r.AdminUserUC.DeleteUser(ctx, id); err != nil {
+		return false, gqlerr.FromUsecaseError(ctx, err)
+	}
+	return true, nil
+}
+
 // Users is the resolver for the users field.
 func (r *queryResolver) Users(ctx context.Context, first *int, after *string, last *int, before *string, search *string) (*model.UserConnection, error) {
 	uc, err := r.AdminUserUC.List(ctx, first, last, after, before, search)
