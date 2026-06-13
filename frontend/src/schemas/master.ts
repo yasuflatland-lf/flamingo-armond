@@ -16,5 +16,3 @@ const masterNameSchema = z
 export const masterSchema = z.object({
   name: masterNameSchema,
 });
-
-export const MASTER_NAME_MAX = 100;

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AdminPublishMasterMutation, AdminUnpublishMasterMutation } from "./queries";
 
-export type MasterStatus = "DRAFT" | "PUBLISHED";
+type MasterStatus = "DRAFT" | "PUBLISHED";
 
 /**
  * Display shape for an admin master row + edit form. Nullable string fields are
