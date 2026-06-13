@@ -103,9 +103,11 @@ describe("<DeleteAccountSection>", () => {
     expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
-  it("still redirects when signOut fails (non-fatal)", async () => {
+  it("still redirects when signOut fails (non-fatal) without leaking the error message", async () => {
     const user = userEvent.setup();
-    mockSignOut.mockResolvedValue({ error: { message: "network" } });
+    mockSignOut.mockResolvedValue({
+      error: Object.assign(new Error("network"), { name: "AuthApiError" }),
+    });
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     renderSection([successMock()]);
 
@@ -116,9 +118,14 @@ describe("<DeleteAccountSection>", () => {
     await waitFor(() => {
       expect(mockReplace).toHaveBeenCalledWith("/login");
     });
+    // The warn logs the stable error name, never error.message (redact rule).
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("signOut after deleteMyAccount failed"),
-      "network",
+      expect.objectContaining({ name: "AuthApiError" }),
+    );
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.anything() }),
     );
   });
 
@@ -139,6 +146,26 @@ describe("<DeleteAccountSection>", () => {
     expect(warnSpy).toHaveBeenCalledWith(
       "[profile] deleteMyAccount rejected",
       expect.objectContaining({ codes: ["FORBIDDEN"] }),
+    );
+  });
+
+  it("shows the session-expired copy and does not redirect on UNAUTHENTICATED", async () => {
+    const user = userEvent.setup();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    renderSection([errorMock("UNAUTHENTICATED")]);
+
+    await user.click(screen.getByTestId("delete-account-trigger"));
+    await user.type(screen.getByTestId("delete-account-confirm-input"), CONFIRM_PHRASE);
+    await user.click(screen.getByTestId("delete-account-confirm"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("delete-account-error")).toHaveTextContent(/session has expired/i);
+    });
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[profile] deleteMyAccount rejected",
+      expect.objectContaining({ codes: ["UNAUTHENTICATED"] }),
     );
   });
 

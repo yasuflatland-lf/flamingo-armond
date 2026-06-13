@@ -64,7 +64,12 @@ export function DeleteAccountSection() {
       const supabase = createSupabaseBrowserClient();
       const { error } = await supabase.auth.signOut();
       if (error) {
-        console.warn("[profile] signOut after deleteMyAccount failed:", error.message);
+        // Redact error.message — Supabase auth errors can carry user-identifying
+        // content (see .claude/rules/frontend-rsc-error-handling.md). Log the
+        // stable error name only.
+        console.warn("[profile] signOut after deleteMyAccount failed", {
+          name: error instanceof Error ? error.name : "unknown",
+        });
       }
       router.replace("/login");
       router.refresh();

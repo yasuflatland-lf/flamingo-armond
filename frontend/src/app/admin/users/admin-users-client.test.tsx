@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
@@ -7,6 +9,7 @@ import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  AdminDeleteUserDocument,
   AdminEditUserDocument,
   AdminRolesDocument,
   AdminUserDocument,
@@ -35,6 +38,11 @@ vi.mock("next/navigation", () => ({
     replace: mockReplace,
   }),
   useSearchParams: () => new URLSearchParams(mockSearchParamsValue),
+}));
+
+const toastSuccessMock = vi.fn();
+vi.mock("sonner", () => ({
+  toast: { success: (...args: unknown[]) => toastSuccessMock(...args) },
 }));
 
 vi.mock("next/link", () => ({
@@ -155,6 +163,7 @@ beforeEach(() => {
   mockPush.mockReset();
   mockReplace.mockReset();
   mockRefresh.mockReset();
+  toastSuccessMock.mockReset();
   mockPathname = "/admin/users";
   mockSearchParamsValue = "";
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
@@ -473,5 +482,93 @@ describe("<AdminUsersClient> fetchMore catch", () => {
     expect(warnCall?.[1]).not.toHaveProperty("message");
 
     consoleWarnSpy.mockRestore();
+  });
+});
+
+describe("<AdminUsersClient> delete", () => {
+  it("deletes a user, drops the row from the cached connection, and toasts", async () => {
+    const user = userEvent.setup();
+    mockSearchParamsValue = "edit=u-1";
+    leakSpy.teardown();
+    leakSpy = installApolloMockLeakSpy({
+      operationNames: ["AdminUsers", "AdminRoles", "AdminUser", "AdminDeleteUser"],
+    });
+
+    const cache = new InMemoryCache();
+    const initialVars = { first: ADMIN_USERS_PAGE_SIZE, search: null };
+    const conn = makeConnection([USER_1, USER_2], false, 2);
+    cache.writeQuery({
+      query: AdminUsersDocument,
+      variables: initialVars,
+      data: { users: conn },
+    });
+
+    const mocks = [
+      {
+        request: { query: AdminUsersDocument, variables: initialVars },
+        result: { data: { users: conn } },
+      },
+      makeRolesMock(),
+      {
+        request: { query: AdminUserDocument, variables: { id: "u-1" } },
+        result: { data: { adminUser: USER_1 } },
+      },
+      {
+        request: { query: AdminDeleteUserDocument, variables: { id: "u-1" } },
+        result: { data: { adminDeleteUser: true } },
+      },
+      // Evicting User:u-1 makes the still-open sheet's network-only lazy query
+      // re-observe and re-fetch (a test artifact — in production sheet.close()
+      // drops ?edit so editUserId becomes null and the query unmounts). The user
+      // is gone, so this absorbing response returns null.
+      {
+        request: { query: AdminUserDocument, variables: { id: "u-1" } },
+        result: { data: { adminUser: null } },
+      },
+    ];
+
+    renderWithIntl(
+      <MockedProvider mocks={mocks} cache={cache}>
+        <AdminUsersClient />
+      </MockedProvider>,
+    );
+
+    // The sheet opens for u-1, exposing its danger-zone delete trigger.
+    await screen.findByTestId("admin-delete-user-trigger");
+    expect(screen.getByTestId("admin-user-row-u-1")).toBeInTheDocument();
+    expect(screen.getByTestId("admin-user-row-u-2")).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("admin-delete-user-trigger"));
+    await user.click(screen.getByTestId("admin-delete-user-confirm"));
+
+    // cache.modify removes the u-1 edge from the live connection; the list
+    // re-renders without that row while u-2 stays.
+    await waitFor(() => {
+      expect(screen.queryByTestId("admin-user-row-u-1")).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId("admin-user-row-u-2")).toBeInTheDocument();
+    expect(toastSuccessMock).toHaveBeenCalledWith("User deleted.");
+
+    // The cached connection reflects the removal and the decremented totalCount,
+    // and the normalized User entity was evicted.
+    const after = cache.readQuery<{ users: typeof conn }>({
+      query: AdminUsersDocument,
+      variables: initialVars,
+    });
+    expect(after?.users.edges.map((edge) => edge.cursor)).toEqual(["u-2"]);
+    expect(after?.users.totalCount).toBe(1);
+    expect(cache.extract()["User:u-1"]).toBeUndefined();
+  });
+
+  it("does not configure optimisticResponse for adminDeleteUser", () => {
+    const source = readFileSync(
+      join(process.cwd(), "src/app/admin/users/admin-users-client.tsx"),
+      "utf8",
+    );
+    const start = source.indexOf("runDeleteUser({");
+    const end = source.indexOf("});", start);
+
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(source.slice(start, end)).not.toContain("optimisticResponse");
   });
 });
