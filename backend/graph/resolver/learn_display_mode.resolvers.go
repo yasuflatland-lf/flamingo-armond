@@ -20,6 +20,11 @@ import (
 func (r *mutationResolver) UpdateLearnDisplayMode(ctx context.Context, mode model.LearnDisplayMode) (*model.User, error) {
 	domainMode, err := fromLearnDisplayModeModel(mode)
 	if err != nil {
+		// Defense-in-depth: the GraphQL layer rejects unknown enum values before
+		// the resolver runs, so this branch is only reachable via a schema mismatch
+		// or a broken client that bypasses enum validation. INTERNAL is correct here
+		// rather than BAD_USER_INPUT because the fault is structural, not a
+		// correctable user mistake.
 		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "resolver: update learn display mode"))
 	}
 	user, err := r.UpdateLearnDisplayModeUC.Set(ctx, domainMode)

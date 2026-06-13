@@ -51,8 +51,10 @@ type UserPreferenceRepository interface {
 	// via error shape.
 	UpsertLastViewedCardgroup(ctx context.Context, userID, cardgroupID string) error
 	// UpdateLearnDisplayMode upserts userID's learn display mode. The mode string
-	// MUST already be a validated domain.LearnDisplayMode value (the usecase parses
-	// it); the column CHECK constraint is a backstop.
+	// is the persisted form of a domain.LearnDisplayMode converted via
+	// mode.String() at the usecase call site; unvalidated strings are never passed
+	// here. The column CHECK constraint is a backstop for direct DB writes that
+	// bypass the usecase layer.
 	UpdateLearnDisplayMode(ctx context.Context, userID, mode string) error
 }
 
@@ -151,6 +153,13 @@ SET learn_display_mode = EXCLUDED.learn_display_mode,
 	return nil
 }
 
+// toDomainUserPreference converts a raw database row to a domain.UserPreference.
+// An empty or unrecognised learn_display_mode column value silently falls back
+// to domain.DefaultLearnDisplayMode — the one deliberate exception to
+// ParseLearnDisplayMode's "unknown value is a caller error" contract. The
+// silent fallback keeps reads non-fatal during rolling deploys and for legacy
+// rows written before the column existed; a corrupt value in production is
+// surfaced only as the safe default, not a load error.
 func toDomainUserPreference(g gormUserPreference) *domain.UserPreference {
 	mode := domain.DefaultLearnDisplayMode
 	if parsed, err := domain.ParseLearnDisplayMode(g.LearnDisplayMode); err == nil {
