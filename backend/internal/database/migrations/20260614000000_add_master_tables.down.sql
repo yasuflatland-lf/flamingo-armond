@@ -1,7 +1,7 @@
 -- Reverse of 20260614000000_add_master_tables.up.sql.
 --
 -- Dependency-reverse order: drop policies, disable RLS, drop triggers, the
--- unique index that fails loudly if missing, then tables (FK-referenced ones
+-- unique index (IF EXISTS — idempotent), then tables (FK-referenced ones
 -- last: master_cards before master_cardgroups), and finally the trigger
 -- functions the triggers referenced. The set_master_*_updated_at functions are
 -- owned exclusively by these two tables — no other table reuses them — so
