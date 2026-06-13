@@ -182,13 +182,6 @@ export function AnimatedCard({
 
   useImperativeHandle(handleRef, () => ({ flyOut }), [flyOut]);
 
-  const completeSwipe = useCallback(
-    (direction: SwipeDirection) => {
-      runExit(direction);
-    },
-    [runExit],
-  );
-
   const revealCard = useCallback(() => {
     if (!isActive || revealed || exitingRef.current) return;
     onReveal();
@@ -217,7 +210,7 @@ export function AnimatedCard({
       onSwipeProgress?.(revealed && active ? direction : null, revealed && active ? progress : 0);
 
       if (shouldSwipe && direction && revealed) {
-        completeSwipe(direction);
+        runExit(direction);
         return;
       }
 

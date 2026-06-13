@@ -148,14 +148,9 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
     onCardSwipedRef.current(card as TCard, direction);
   }, []);
 
-  // onSwipe sink passed to every SwipeCard. The gesture path reaches it on
-  // pointer-release; the fly-off path reaches it when the spring settles.
-  const handleGestureCommit = useCallback(
-    (swipedCard: SwipeCardData, direction: SwipeDirection) => {
-      commitCard(swipedCard, direction);
-    },
-    [commitCard],
-  );
+  // commitCard is the onSwipe sink passed to every SwipeCard. The gesture path
+  // reaches it on pointer-release; the fly-off path reaches it when the spring
+  // settles.
 
   const triggerSwipe = useCallback(
     (direction: SwipeDirection) => {
@@ -266,7 +261,7 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
             isActive={index === 0}
             revealed={index === 0 ? activeCardRevealed : displayMode === "ALWAYS_VISIBLE"}
             onReveal={handleReveal}
-            onSwipe={handleGestureCommit}
+            onSwipe={commitCard}
             onSwipeProgress={handleSwipeProgress}
             handleRef={index === 0 ? activeCardHandleRef : undefined}
           />

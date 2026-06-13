@@ -648,7 +648,7 @@ describe("SwipeCardStack — gesture-driven overlay via SwipeCard callbacks", ()
     expect(screen.getByText("Easy")).toBeInTheDocument();
 
     // Simulate drag release — the mock calls onSwipeProgress(null, 0) then onSwipe.
-    // onSwipe goes through handleGestureCommit → commitCard which clears the overlay.
+    // onSwipe calls commitCard directly which clears the overlay.
     act(() => {
       fireEvent.pointerUp(stub);
     });
