@@ -19,6 +19,7 @@ import (
 type gormUserPreference struct {
 	UserID                string    `gorm:"column:user_id;primaryKey;type:uuid"`
 	LastViewedCardgroupID *string   `gorm:"column:last_viewed_cardgroup_id;type:uuid"`
+	LearnDisplayMode      string    `gorm:"column:learn_display_mode"`
 	UpdatedAt             time.Time `gorm:"column:updated_at"`
 }
 
@@ -49,6 +50,10 @@ type UserPreferenceRepository interface {
 	// "cardgroup not owned" so the caller cannot probe other users' cardgroups
 	// via error shape.
 	UpsertLastViewedCardgroup(ctx context.Context, userID, cardgroupID string) error
+	// UpdateLearnDisplayMode upserts userID's learn display mode. The mode string
+	// MUST already be a validated domain.LearnDisplayMode value (the usecase parses
+	// it); the column CHECK constraint is a backstop.
+	UpdateLearnDisplayMode(ctx context.Context, userID, mode string) error
 }
 
 type userPreferenceRepo struct{ db *gorm.DB }
@@ -133,10 +138,28 @@ func classifyUserPreferenceCardgroupFKError(err error) error {
 	return nil
 }
 
+func (r *userPreferenceRepo) UpdateLearnDisplayMode(ctx context.Context, userID, mode string) error {
+	sql := `INSERT INTO user_preferences (user_id, learn_display_mode, updated_at)
+VALUES (?, ?, now())
+ON CONFLICT (user_id) DO UPDATE
+SET learn_display_mode = EXCLUDED.learn_display_mode,
+    updated_at         = EXCLUDED.updated_at`
+	res := r.db.WithContext(ctx).Exec(sql, userID, mode)
+	if res.Error != nil {
+		return eris.Wrap(res.Error, "repository: upsert learn display mode")
+	}
+	return nil
+}
+
 func toDomainUserPreference(g gormUserPreference) *domain.UserPreference {
+	mode := domain.DefaultLearnDisplayMode
+	if parsed, err := domain.ParseLearnDisplayMode(g.LearnDisplayMode); err == nil {
+		mode = parsed
+	}
 	return &domain.UserPreference{
 		UserID:                g.UserID,
 		LastViewedCardgroupID: g.LastViewedCardgroupID,
+		LearnDisplayMode:      mode,
 		UpdatedAt:             g.UpdatedAt,
 	}
 }

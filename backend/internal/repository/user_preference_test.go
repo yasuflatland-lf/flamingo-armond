@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"backend/internal/domain"
 	"backend/internal/repository"
 )
 
@@ -326,6 +327,53 @@ func TestUserPreferenceRepository_OnDeleteUser_CascadesPreferenceRow(t *testing.
 
 	if prefRowExists(t, ctx, userID) {
 		t.Fatal("user_preferences row still exists after user deletion: FK is not ON DELETE CASCADE")
+	}
+}
+
+// TestUserPreferenceRepository_UpdateLearnDisplayMode_CreateRow verifies that
+// UpdateLearnDisplayMode creates a new user_preferences row when none exists,
+// and that FindByUserID reflects the stored mode.
+func TestUserPreferenceRepository_UpdateLearnDisplayMode_CreateRow(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	userID := insertAuthUser(t, ctx)
+
+	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	if err := repo.UpdateLearnDisplayMode(ctx, userID, "always_visible"); err != nil {
+		t.Fatalf("UpdateLearnDisplayMode (create): %v", err)
+	}
+
+	got, err := repo.FindByUserID(ctx, userID)
+	if err != nil {
+		t.Fatalf("FindByUserID after create: %v", err)
+	}
+	if got.LearnDisplayMode != domain.LearnDisplayAlwaysVisible {
+		t.Fatalf("after create: LearnDisplayMode = %q, want %q", got.LearnDisplayMode, domain.LearnDisplayAlwaysVisible)
+	}
+}
+
+// TestUserPreferenceRepository_UpdateLearnDisplayMode_UpdateRow verifies that
+// calling UpdateLearnDisplayMode a second time updates the column without
+// creating a duplicate row.
+func TestUserPreferenceRepository_UpdateLearnDisplayMode_UpdateRow(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	userID := insertAuthUser(t, ctx)
+
+	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	if err := repo.UpdateLearnDisplayMode(ctx, userID, "always_visible"); err != nil {
+		t.Fatalf("UpdateLearnDisplayMode (first): %v", err)
+	}
+	if err := repo.UpdateLearnDisplayMode(ctx, userID, "flip_to_reveal"); err != nil {
+		t.Fatalf("UpdateLearnDisplayMode (second): %v", err)
+	}
+
+	got, err := repo.FindByUserID(ctx, userID)
+	if err != nil {
+		t.Fatalf("FindByUserID after update: %v", err)
+	}
+	if got.LearnDisplayMode != domain.LearnDisplayFlipToReveal {
+		t.Fatalf("after update: LearnDisplayMode = %q, want %q", got.LearnDisplayMode, domain.LearnDisplayFlipToReveal)
 	}
 }
 

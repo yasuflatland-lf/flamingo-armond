@@ -7,5 +7,6 @@ import "time"
 type UserPreference struct {
 	UserID                string
 	LastViewedCardgroupID *string
+	LearnDisplayMode      LearnDisplayMode
 	UpdatedAt             time.Time
 }
