@@ -9,12 +9,11 @@ import (
 var notionEnvAllVars = map[string]string{
 	"NOTION_TOKEN":                 "tok-123",
 	"NOTION_PAGE_IDS":              "page-1,page-2,page-3",
-	"NOTION_TARGET_OWNER_ID":       "owner-abc",
-	"NOTION_TARGET_CARDGROUP_NAME": "My Cards",
+	"NOTION_MASTER_CARDGROUP_NAME": "My Cards",
 	"NOTION_SYNC_TOKEN":            "sync-tok",
 }
 
-// setNotionEnv populates the five NOTION_* env vars from notionEnvAllVars,
+// setNotionEnv populates the four NOTION_* env vars from notionEnvAllVars,
 // applying any overrides supplied by the test. Values are unset via
 // t.Setenv(k, "") rather than os.Unsetenv so that t.Cleanup restores the
 // prior process state automatically.
@@ -53,11 +52,8 @@ func TestConfigFromEnv(t *testing.T) {
 				t.Errorf("PageIDs[%d] = %q, want %q", i, cfg.HandlerConfig.PageIDs[i], want)
 			}
 		}
-		if cfg.HandlerConfig.OwnerID != "owner-abc" {
-			t.Errorf("OwnerID = %q, want %q", cfg.HandlerConfig.OwnerID, "owner-abc")
-		}
-		if cfg.HandlerConfig.CardgroupName != "My Cards" {
-			t.Errorf("CardgroupName = %q, want %q", cfg.HandlerConfig.CardgroupName, "My Cards")
+		if cfg.HandlerConfig.MasterCardgroupName != "My Cards" {
+			t.Errorf("MasterCardgroupName = %q, want %q", cfg.HandlerConfig.MasterCardgroupName, "My Cards")
 		}
 	})
 
@@ -67,8 +63,7 @@ func TestConfigFromEnv(t *testing.T) {
 	}{
 		{"missing NOTION_TOKEN", "NOTION_TOKEN"},
 		{"missing NOTION_PAGE_IDS", "NOTION_PAGE_IDS"},
-		{"missing NOTION_TARGET_OWNER_ID", "NOTION_TARGET_OWNER_ID"},
-		{"missing NOTION_TARGET_CARDGROUP_NAME", "NOTION_TARGET_CARDGROUP_NAME"},
+		{"missing NOTION_MASTER_CARDGROUP_NAME", "NOTION_MASTER_CARDGROUP_NAME"},
 		{"missing NOTION_SYNC_TOKEN", "NOTION_SYNC_TOKEN"},
 	}
 	for _, tc := range missingVarCases {
@@ -109,14 +104,14 @@ func TestConfigFromEnv(t *testing.T) {
 		}
 	})
 
-	t.Run("NOTION_TARGET_OWNER_ID with whitespace is trimmed", func(t *testing.T) {
-		setNotionEnv(t, map[string]string{"NOTION_TARGET_OWNER_ID": "  owner-xyz  "})
+	t.Run("NOTION_MASTER_CARDGROUP_NAME with whitespace is trimmed", func(t *testing.T) {
+		setNotionEnv(t, map[string]string{"NOTION_MASTER_CARDGROUP_NAME": "  Master Deck  "})
 		cfg, err := ConfigFromEnv()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if cfg.HandlerConfig.OwnerID != "owner-xyz" {
-			t.Errorf("OwnerID = %q, want %q", cfg.HandlerConfig.OwnerID, "owner-xyz")
+		if cfg.HandlerConfig.MasterCardgroupName != "Master Deck" {
+			t.Errorf("MasterCardgroupName = %q, want %q", cfg.HandlerConfig.MasterCardgroupName, "Master Deck")
 		}
 	})
 }
@@ -137,11 +132,8 @@ func TestOptionalConfigFromEnv(t *testing.T) {
 		if cfg.HandlerConfig.Token != "sync-tok" {
 			t.Errorf("HandlerConfig.Token = %q, want %q", cfg.HandlerConfig.Token, "sync-tok")
 		}
-		if cfg.HandlerConfig.OwnerID != "owner-abc" {
-			t.Errorf("OwnerID = %q, want %q", cfg.HandlerConfig.OwnerID, "owner-abc")
-		}
-		if cfg.HandlerConfig.CardgroupName != "My Cards" {
-			t.Errorf("CardgroupName = %q, want %q", cfg.HandlerConfig.CardgroupName, "My Cards")
+		if cfg.HandlerConfig.MasterCardgroupName != "My Cards" {
+			t.Errorf("MasterCardgroupName = %q, want %q", cfg.HandlerConfig.MasterCardgroupName, "My Cards")
 		}
 		wantPageIDs := []string{"page-1", "page-2", "page-3"}
 		if !reflect.DeepEqual(cfg.HandlerConfig.PageIDs, wantPageIDs) {
@@ -175,8 +167,7 @@ func TestOptionalConfigFromEnv(t *testing.T) {
 		want := []string{
 			"NOTION_TOKEN",
 			"NOTION_PAGE_IDS",
-			"NOTION_TARGET_OWNER_ID",
-			"NOTION_TARGET_CARDGROUP_NAME",
+			"NOTION_MASTER_CARDGROUP_NAME",
 			"NOTION_SYNC_TOKEN",
 		}
 		if !reflect.DeepEqual(missing, want) {
@@ -187,14 +178,14 @@ func TestOptionalConfigFromEnv(t *testing.T) {
 		}
 	})
 
-	t.Run("whitespace-only NOTION_TARGET_OWNER_ID treated as missing", func(t *testing.T) {
-		setNotionEnv(t, map[string]string{"NOTION_TARGET_OWNER_ID": "  "})
+	t.Run("whitespace-only NOTION_MASTER_CARDGROUP_NAME treated as missing", func(t *testing.T) {
+		setNotionEnv(t, map[string]string{"NOTION_MASTER_CARDGROUP_NAME": "  "})
 		_, missing, err := OptionalConfigFromEnv()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(missing) != 1 || missing[0] != "NOTION_TARGET_OWNER_ID" {
-			t.Errorf("missing = %v, want [NOTION_TARGET_OWNER_ID]", missing)
+		if len(missing) != 1 || missing[0] != "NOTION_MASTER_CARDGROUP_NAME" {
+			t.Errorf("missing = %v, want [NOTION_MASTER_CARDGROUP_NAME]", missing)
 		}
 	})
 

@@ -80,6 +80,10 @@ type CardgroupRepository interface {
 	// FindPageByOwner so the totalCount survives a zero-page request.
 	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
 	Create(ctx context.Context, cg *domain.Cardgroup) error
+	// CreateTx inserts a new cardgroup row using the supplied transaction
+	// handle so the insert participates in the caller's transaction. The caller
+	// is responsible for pre-filling cg.ID (uuid v7) and both timestamps.
+	CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Cardgroup) error
 	EnsureByName(ctx context.Context, ownerID, name string) (*domain.Cardgroup, error)
 	Update(ctx context.Context, id string, patch CardgroupUpdate) (*domain.Cardgroup, error)
 	Delete(ctx context.Context, id string) error
@@ -306,15 +310,19 @@ func (r *cardgroupRepo) FindByIDs(ctx context.Context, ids []string) (map[string
 // Create inserts a new cardgroup row. The caller is responsible for pre-filling
 // cg.ID (uuid v7) and both timestamps.
 func (r *cardgroupRepo) Create(ctx context.Context, cg *domain.Cardgroup) error {
-	row := gormCardgroup{
-		ID:        cg.ID,
-		OwnerID:   cg.OwnerID,
-		Name:      string(cg.Name),
-		CreatedAt: cg.CreatedAt,
-		UpdatedAt: cg.UpdatedAt,
-	}
-	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
+	row := cardgroupToRow(cg)
+	if err := r.db.WithContext(ctx).Create(row).Error; err != nil {
 		return eris.Wrap(err, "repository: create cardgroup")
+	}
+	return nil
+}
+
+// CreateTx inserts a new cardgroup row using the supplied transaction handle so
+// the insert participates in the caller's transaction. The caller is
+// responsible for pre-filling cg.ID (uuid v7) and both timestamps.
+func (r *cardgroupRepo) CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Cardgroup) error {
+	if err := tx.WithContext(ctx).Create(cardgroupToRow(cg)).Error; err != nil {
+		return eris.Wrap(err, "repository: create cardgroup tx")
 	}
 	return nil
 }
@@ -401,6 +409,16 @@ func (r *cardgroupRepo) Delete(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func cardgroupToRow(cg *domain.Cardgroup) *gormCardgroup {
+	return &gormCardgroup{
+		ID:        cg.ID,
+		OwnerID:   cg.OwnerID,
+		Name:      string(cg.Name),
+		CreatedAt: cg.CreatedAt,
+		UpdatedAt: cg.UpdatedAt,
+	}
 }
 
 func cardgroupToDomain(g gormCardgroup) *domain.Cardgroup {

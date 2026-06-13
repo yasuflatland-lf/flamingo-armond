@@ -107,7 +107,7 @@ func (m *mockRoleByUserIDRepo) CountAdmins(_ context.Context) (int64, error) {
 // AdminUserUsecase. Other usecase fields are nil — only admin-user resolvers
 // are exercised here.
 func newAdminUserSrv(adminUC usecase.AdminUserUsecase) *handler.Server {
-	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, adminUC, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, adminUC, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -124,8 +124,8 @@ func newAdminUserSrvWithAuth(adminUC usecase.AdminUserUsecase, isAdmin bool, rol
 	if len(rolesByUser) > 0 && rolesByUser[0] != nil {
 		userRoles = rolesByUser[0]
 	}
-	userUC := usecase.NewUserUsecase(&mockUserRepository{}, &mockRoleByUserIDRepo{byUserID: userRoles}, authSvc, newDiscardLogger())
-	r := resolver.NewResolver(userUC, nil, nil, nil, authSvc, nil, adminUC, nil, nil, nil, nil, nil)
+	userUC := usecase.NewUserUsecase(&mockUserRepository{}, &mockRoleByUserIDRepo{byUserID: userRoles}, authSvc, nil, newDiscardLogger())
+	r := resolver.NewResolver(userUC, nil, nil, nil, authSvc, nil, adminUC, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -366,8 +366,8 @@ func TestAdminUserResolver_Roles_SelfIntrospection_Allowed(t *testing.T) {
 	// must skip the IsAdmin check entirely.
 	roleRepo := &mockUserRoleRepository{isAdmin: false}
 	authSvc := auth.NewService(roleRepo)
-	uc := usecase.NewUserUsecase(userMock, rolesRepo, authSvc, newDiscardLogger())
-	r := resolver.NewResolver(uc, nil, nil, nil, authSvc, nil, &mockAdminUserUsecase{}, nil, nil, nil, nil, nil)
+	uc := usecase.NewUserUsecase(userMock, rolesRepo, authSvc, nil, newDiscardLogger())
+	r := resolver.NewResolver(uc, nil, nil, nil, authSvc, nil, &mockAdminUserUsecase{}, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 

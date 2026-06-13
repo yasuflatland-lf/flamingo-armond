@@ -8,6 +8,7 @@ import (
 
 	"backend/graph/model"
 	"backend/internal/domain"
+	"backend/internal/repository"
 	"backend/internal/usecase"
 )
 
@@ -34,6 +35,47 @@ func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 		OwnerID:   cg.OwnerID,
 		CreatedAt: cg.CreatedAt,
 		UpdatedAt: cg.UpdatedAt,
+	}
+}
+
+// toMasterCardgroupModel maps a published-catalog item (a master cardgroup plus
+// its card count) to the generated GraphQL model. The status is mapped to the
+// uppercase wire enum; an unrecognised status surfaces as the empty enum value
+// so the field still serializes.
+func toMasterCardgroupModel(item *repository.MasterCatalogItem) *model.MasterCardgroup {
+	if item == nil || item.Cardgroup == nil {
+		return nil
+	}
+	m := item.Cardgroup
+	return &model.MasterCardgroup{
+		ID:               m.ID,
+		Name:             m.Name.String(),
+		Description:      m.Description,
+		Language:         m.Language,
+		Level:            m.Level,
+		Category:         m.Category,
+		CoverImageURL:    m.CoverImageURL,
+		Source:           m.Source,
+		Version:          m.Version,
+		Status:           toMasterCardgroupStatusModel(m.Status),
+		IsDefaultStarter: m.IsDefaultStarter,
+		SortOrder:        m.SortOrder,
+		CardCount:        int(item.CardCount),
+		CreatedAt:        m.CreatedAt,
+		UpdatedAt:        m.UpdatedAt,
+	}
+}
+
+// toMasterCardgroupStatusModel maps the lowercase domain status to the
+// uppercase generated wire enum.
+func toMasterCardgroupStatusModel(s domain.MasterCardgroupStatus) model.MasterCardgroupStatus {
+	switch s {
+	case domain.MasterStatusPublished:
+		return model.MasterCardgroupStatusPublished
+	case domain.MasterStatusDraft:
+		return model.MasterCardgroupStatusDraft
+	default:
+		return ""
 	}
 }
 
@@ -161,6 +203,14 @@ func toUsecaseCardgroupOrderBy(o *model.CardgroupOrderBy) *usecase.CardgroupOrde
 		return nil
 	}
 	v := usecase.CardgroupOrderBy(*o)
+	return &v
+}
+
+func toUsecaseMasterCatalogOrderBy(o *model.MasterCatalogOrderBy) *usecase.MasterCatalogOrderBy {
+	if o == nil {
+		return nil
+	}
+	v := usecase.MasterCatalogOrderBy(*o)
 	return &v
 }
 

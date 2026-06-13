@@ -15,7 +15,7 @@ type EnvConfig struct {
 	HandlerConfig Config
 }
 
-// varOrder defines the deterministic iteration order for the five required
+// varOrder defines the deterministic iteration order for the four required
 // NOTION_* env vars. The order is fixed so that OptionalConfigFromEnv returns
 // a stable missing slice regardless of map-iteration randomness, and so that
 // ConfigFromEnv always reports the first missing var in the same predictable
@@ -23,12 +23,11 @@ type EnvConfig struct {
 var varOrder = []string{
 	"NOTION_TOKEN",
 	"NOTION_PAGE_IDS",
-	"NOTION_TARGET_OWNER_ID",
-	"NOTION_TARGET_CARDGROUP_NAME",
+	"NOTION_MASTER_CARDGROUP_NAME",
 	"NOTION_SYNC_TOKEN",
 }
 
-// OptionalConfigFromEnv reads the five NOTION_* env vars and reports which (if
+// OptionalConfigFromEnv reads the four NOTION_* env vars and reports which (if
 // any) are missing or whitespace-only. When missing is empty, the returned
 // EnvConfig is fully populated and the handler should be wired up. When
 // missing is non-empty, the handler should be skipped and the caller should
@@ -57,15 +56,14 @@ func OptionalConfigFromEnv() (cfg EnvConfig, missing []string, err error) {
 	return EnvConfig{
 		NotionToken: vals["NOTION_TOKEN"],
 		HandlerConfig: Config{
-			Token:         vals["NOTION_SYNC_TOKEN"],
-			PageIDs:       pageIDs,
-			OwnerID:       vals["NOTION_TARGET_OWNER_ID"],
-			CardgroupName: vals["NOTION_TARGET_CARDGROUP_NAME"],
+			Token:               vals["NOTION_SYNC_TOKEN"],
+			PageIDs:             pageIDs,
+			MasterCardgroupName: vals["NOTION_MASTER_CARDGROUP_NAME"],
 		},
 	}, nil, nil
 }
 
-// ConfigFromEnv reads the five required NOTION_* env vars and returns an
+// ConfigFromEnv reads the four required NOTION_* env vars and returns an
 // EnvConfig. All values are required; whitespace-only is treated as missing.
 // This is the strict variant: any missing var produces an error. Callers that
 // want to skip Notion sync gracefully when env is incomplete should use

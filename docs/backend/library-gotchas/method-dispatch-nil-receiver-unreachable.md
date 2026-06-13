@@ -10,4 +10,4 @@ The guard is **also** unhelpful as a defensive layer because the only way to rea
 
 **Why:** removing the dead `u == nil` branch makes the method's preconditions accurate. A future reader who sees `if u.fetcher == nil` understands the constraint is on construction, not on receiver validity.
 
-**Reference:** `NotionSyncUsecase.Sync` originally had `if u == nil || u.fetcher == nil || ...`; the `u == nil` term was removed because method dispatch had already panicked before reaching it.
+**Reference:** `MasterNotionSyncUsecase.Sync` originally had `if u == nil || u.fetcher == nil || ...`; the `u == nil` term was removed because method dispatch had already panicked before reaching it.

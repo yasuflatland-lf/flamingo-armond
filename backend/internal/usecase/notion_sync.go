@@ -24,28 +24,40 @@ var (
 	ErrNotionSyncPersist      = errors.New("usecase: notion sync persist failed")
 )
 
-type NotionSyncCardRepository interface {
-	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (repository.UpsertManyTxResult, error)
-	ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, cardgroupID string) ([]string, error)
-	DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
+// NotionSyncMasterCardgroupRepository is the narrow consumer interface the
+// master-targeted sync needs from the master cardgroup repository. Master
+// cardgroups are owner-less; EnsureByName looks up or creates the named
+// catalog template under a 'master' advisory-lock namespace.
+type NotionSyncMasterCardgroupRepository interface {
+	EnsureByName(ctx context.Context, name string) (*domain.MasterCardgroup, error)
 }
 
-type NotionSyncCardgroupRepository interface {
-	EnsureByName(ctx context.Context, ownerID, name string) (*domain.Cardgroup, error)
+// NotionSyncMasterCardRepository is the narrow consumer interface the
+// master-targeted sync needs from the master card repository: the bulk upsert
+// plus the diff-prune pair (list current fronts, delete the stale ones).
+type NotionSyncMasterCardRepository interface {
+	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.MasterCard) (repository.UpsertManyTxResult, error)
+	ListFrontsByMasterCardgroupTx(ctx context.Context, tx *gorm.DB, masterCardgroupID string) ([]string, error)
+	DeleteByMasterCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, masterCardgroupID string, fronts []string) (int64, error)
 }
 
-type NotionSyncUsecase struct {
-	fetcher       notion.Fetcher
-	cardRepo      NotionSyncCardRepository
-	cardgroupRepo NotionSyncCardgroupRepository
-	tx            txRunner
-	logger        *slog.Logger
+// MasterNotionSyncUsecase syncs Notion pages into the admin-only master_*
+// catalog tables. The destination master cardgroup is identified by name only
+// (owner-less); EnsureByName resolves the name to an id under an advisory lock.
+type MasterNotionSyncUsecase struct {
+	fetcher             notion.Fetcher
+	masterCardgroupRepo NotionSyncMasterCardgroupRepository
+	masterCardRepo      NotionSyncMasterCardRepository
+	tx                  txRunner
+	logger              *slog.Logger
 }
 
-type SyncFromNotionInput struct {
-	PageIDs       []string
-	OwnerID       string
-	CardgroupName string
+// SyncToMasterInput is the input for a master-targeted Notion sync. Unlike the
+// user-targeted variant it carries no OwnerID: master cardgroups are owner-less
+// and identified by MasterCardgroupName alone.
+type SyncToMasterInput struct {
+	PageIDs             []string
+	MasterCardgroupName string
 }
 
 type ParsedRow struct {
@@ -55,7 +67,7 @@ type ParsedRow struct {
 	Line         int    `json:"line"`
 }
 
-type SyncFromNotionOutput struct {
+type MasterNotionSyncOutput struct {
 	CardgroupID string            `json:"cardgroupId"`
 	Inserted    int64             `json:"inserted"`
 	Updated     int64             `json:"updated"`
@@ -64,21 +76,21 @@ type SyncFromNotionOutput struct {
 	ParseErrors []CardImportError `json:"parseErrors"`
 }
 
-func NewNotionSyncUsecase(
+func NewMasterNotionSyncUsecase(
 	fetcher notion.Fetcher,
-	cardgroupRepo NotionSyncCardgroupRepository,
-	cardRepo NotionSyncCardRepository,
+	masterCardgroupRepo NotionSyncMasterCardgroupRepository,
+	masterCardRepo NotionSyncMasterCardRepository,
 	db *gorm.DB,
 	logger *slog.Logger,
-) *NotionSyncUsecase {
+) *MasterNotionSyncUsecase {
 	if logger == nil {
 		panic("usecase: notion sync: logger is required")
 	}
-	uc := &NotionSyncUsecase{
-		fetcher:       fetcher,
-		cardgroupRepo: cardgroupRepo,
-		cardRepo:      cardRepo,
-		logger:        logger,
+	uc := &MasterNotionSyncUsecase{
+		fetcher:             fetcher,
+		masterCardgroupRepo: masterCardgroupRepo,
+		masterCardRepo:      masterCardRepo,
+		logger:              logger,
 	}
 	if db != nil {
 		uc.tx = func(ctx context.Context, fn func(tx *gorm.DB) error) error {
@@ -88,60 +100,56 @@ func NewNotionSyncUsecase(
 	return uc
 }
 
-func NewNotionSyncUsecaseWithTx(
+func NewMasterNotionSyncUsecaseWithTx(
 	fetcher notion.Fetcher,
-	cardgroupRepo NotionSyncCardgroupRepository,
-	cardRepo NotionSyncCardRepository,
+	masterCardgroupRepo NotionSyncMasterCardgroupRepository,
+	masterCardRepo NotionSyncMasterCardRepository,
 	tx txRunner,
 	logger *slog.Logger,
-) *NotionSyncUsecase {
+) *MasterNotionSyncUsecase {
 	if logger == nil {
 		panic("usecase: notion sync: logger is required")
 	}
-	return &NotionSyncUsecase{
-		fetcher:       fetcher,
-		cardgroupRepo: cardgroupRepo,
-		cardRepo:      cardRepo,
-		tx:            tx,
-		logger:        logger,
+	return &MasterNotionSyncUsecase{
+		fetcher:             fetcher,
+		masterCardgroupRepo: masterCardgroupRepo,
+		masterCardRepo:      masterCardRepo,
+		tx:                  tx,
+		logger:              logger,
 	}
 }
 
-func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput) (SyncFromNotionOutput, error) {
+func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterInput) (MasterNotionSyncOutput, error) {
 	pageIDs := normalizePageIDs(input.PageIDs)
-	ownerID := strings.TrimSpace(input.OwnerID)
 	if len(pageIDs) == 0 {
-		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "page ids are required")
+		return MasterNotionSyncOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "page ids are required")
 	}
-	if ownerID == "" {
-		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "owner id is required")
-	}
-	cgName, cgNameErr := domain.ParseCardgroupName(input.CardgroupName)
+	cgName, cgNameErr := domain.ParseCardgroupName(input.MasterCardgroupName)
 	if cgNameErr != nil {
 		// The typed *ucerr.ValidationError is preserved in the chain for log-structured
 		// detail and any future GraphQL/CLI consumer; the REST handler intentionally
 		// collapses it to a generic 422 body.
-		return SyncFromNotionOutput{}, eris.Wrap(
+		return MasterNotionSyncOutput{}, eris.Wrap(
 			errors.Join(ErrNotionSyncInvalidInput, translateCardgroupNameErr(cgNameErr)),
 			"cardgroup name is invalid",
 		)
 	}
-	if u.fetcher == nil || u.cardgroupRepo == nil || u.cardRepo == nil || u.tx == nil {
-		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "dependencies are not configured")
+	if u.fetcher == nil || u.masterCardgroupRepo == nil || u.masterCardRepo == nil || u.tx == nil {
+		return MasterNotionSyncOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "dependencies are not configured")
 	}
 
 	pages, err := u.fetcher.FetchPages(ctx, pageIDs)
 	if err != nil {
-		return SyncFromNotionOutput{}, eris.Wrap(errors.Join(ErrNotionSyncFetch, err), "fetch pages")
+		return MasterNotionSyncOutput{}, eris.Wrap(errors.Join(ErrNotionSyncFetch, err), "fetch pages")
 	}
 
 	rows, parseErrs, err := parseNotionPages(ctx, u.logger, pages)
 	if err != nil {
-		return SyncFromNotionOutput{}, eris.Wrap(errors.Join(ErrNotionSyncParse, err), "parse pages")
+		return MasterNotionSyncOutput{}, eris.Wrap(errors.Join(ErrNotionSyncParse, err), "parse pages")
 	}
 	// Soft skip-only input: every non-blank line was intentionally skipped by
 	// the grammar. Report the skipped rows, but do not persist an empty sync
-	// that would delete existing cards from the target cardgroup.
+	// that would delete existing cards from the target master cardgroup.
 	//
 	// This short-circuit MUST run before dedupeParsedRows: dedupe appends
 	// non-skip "duplicate front" warnings to parseErrs, which would make
@@ -155,7 +163,7 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 				"first_kind", parseErrs[0].Kind,
 				"first_snippet", parseErrs[0].Snippet,
 			)
-			return SyncFromNotionOutput{ParseErrors: parseErrs}, nil
+			return MasterNotionSyncOutput{ParseErrors: parseErrs}, nil
 		}
 		u.logger.WarnContext(ctx, "notion sync: all rows failed to parse",
 			"parse_error_count", len(parseErrs),
@@ -163,42 +171,42 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 			"first_error_kind", parseErrs[0].Kind,
 			"first_error_snippet", parseErrs[0].Snippet,
 		)
-		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncParse, "all rows failed to parse")
+		return MasterNotionSyncOutput{}, eris.Wrap(ErrNotionSyncParse, "all rows failed to parse")
 	}
 	if len(rows) > cardImportParsedRowCap {
-		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "parsed rows exceed cap")
+		return MasterNotionSyncOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "parsed rows exceed cap")
 	}
 
-	cardgroup, err := u.cardgroupRepo.EnsureByName(ctx, ownerID, cgName.String())
+	cardgroup, err := u.masterCardgroupRepo.EnsureByName(ctx, cgName.String())
 	if err != nil {
-		return SyncFromNotionOutput{}, eris.Wrap(errors.Join(ErrNotionSyncPersist, err), "ensure cardgroup")
+		return MasterNotionSyncOutput{}, eris.Wrap(errors.Join(ErrNotionSyncPersist, err), "ensure master cardgroup")
 	}
 
 	rows, parseErrs = dedupeParsedRows(rows, parseErrs)
-	cards := cardsFromParsedRows(cardgroup.ID, rows)
+	cards := masterCardsFromParsedRows(cardgroup.ID, rows)
 	notionFronts := make(map[string]struct{}, len(rows))
 	for _, row := range rows {
 		notionFronts[row.Front] = struct{}{}
 	}
 
-	out := SyncFromNotionOutput{
+	out := MasterNotionSyncOutput{
 		CardgroupID: cardgroup.ID,
 		Parsed:      rows,
 		ParseErrors: parseErrs,
 	}
 	err = u.tx(ctx, func(tx *gorm.DB) error {
-		upserted, err := u.cardRepo.UpsertManyTx(ctx, tx, cards)
+		upserted, err := u.masterCardRepo.UpsertManyTx(ctx, tx, cards)
 		if err != nil {
-			return eris.Wrap(err, "upsert cards")
+			return eris.Wrap(err, "upsert master cards")
 		}
-		currentFronts, err := u.cardRepo.ListFrontsByCardgroupTx(ctx, tx, cardgroup.ID)
+		currentFronts, err := u.masterCardRepo.ListFrontsByMasterCardgroupTx(ctx, tx, cardgroup.ID)
 		if err != nil {
 			return eris.Wrap(err, "list current fronts")
 		}
 		deleteFronts := frontsToDelete(currentFronts, notionFronts)
-		deleted, err := u.cardRepo.DeleteByCardgroupAndFrontsTx(ctx, tx, cardgroup.ID, deleteFronts)
+		deleted, err := u.masterCardRepo.DeleteByMasterCardgroupAndFrontsTx(ctx, tx, cardgroup.ID, deleteFronts)
 		if err != nil {
-			return eris.Wrap(err, "delete stale cards")
+			return eris.Wrap(err, "delete stale master cards")
 		}
 		out.Inserted = upserted.Inserted
 		out.Updated = upserted.Updated
@@ -206,7 +214,7 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 		return nil
 	})
 	if err != nil {
-		return SyncFromNotionOutput{}, eris.Wrap(errors.Join(ErrNotionSyncPersist, err), "persist cards")
+		return MasterNotionSyncOutput{}, eris.Wrap(errors.Join(ErrNotionSyncPersist, err), "persist master cards")
 	}
 
 	u.logger.InfoContext(ctx, "notion sync complete",
@@ -316,19 +324,20 @@ func dedupeParsedRows(rows []ParsedRow, errs []CardImportError) ([]ParsedRow, []
 	return out, errs
 }
 
-func cardsFromParsedRows(cardgroupID string, rows []ParsedRow) []*domain.Card {
+// masterCardsFromParsedRows builds master cards from deduped, document-order
+// parsed rows. Position is the index in the deduped slice (0..n-1) so the
+// catalog reflects the original Notion document position.
+func masterCardsFromParsedRows(masterCardgroupID string, rows []ParsedRow) []*domain.MasterCard {
 	now := time.Now().UTC()
-	cards := make([]*domain.Card, 0, len(rows))
-	// Position is the index in the deduped document-order slice (0..n-1), so the
-	// learn query can order new cards by their original Notion document position.
+	cards := make([]*domain.MasterCard, 0, len(rows))
 	for i, row := range rows {
-		cards = append(cards, &domain.Card{
-			CardgroupID: cardgroupID,
-			Front:       domain.CardText(row.Front),
-			Back:        domain.CardText(row.Back),
-			Position:    i,
-			CreatedAt:   now,
-			UpdatedAt:   now,
+		cards = append(cards, &domain.MasterCard{
+			MasterCardgroupID: masterCardgroupID,
+			Front:             domain.CardText(row.Front),
+			Back:              domain.CardText(row.Back),
+			Position:          i,
+			CreatedAt:         now,
+			UpdatedAt:         now,
 		})
 	}
 	return cards

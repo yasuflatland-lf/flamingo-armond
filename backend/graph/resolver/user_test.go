@@ -56,8 +56,8 @@ func dnPtr(s string) *domain.DisplayName {
 // newServer builds a gqlgen handler.Server backed by a resolver that uses the
 // given mock repository.
 func newServer(mock *mockUserRepository) *handler.Server {
-	uc := usecase.NewUserUsecase(mock, nil, nil, newDiscardLogger())
-	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	uc := usecase.NewUserUsecase(mock, nil, nil, nil, newDiscardLogger())
+	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -345,8 +345,8 @@ func TestResolver_UpdateProfile_NilVariant_ReturnsInternal(t *testing.T) {
 // for the caller and a roles repo reporting the global admin count.
 func newDeleteMyAccountSrv(repo *mockUserRepository, isAdmin bool, adminCount int64) *handler.Server {
 	authSvc := auth.NewService(&mockUserRoleRepository{isAdmin: isAdmin})
-	uc := usecase.NewUserUsecase(repo, &mockRoleByUserIDRepo{adminCount: adminCount}, authSvc, newDiscardLogger())
-	r := resolver.NewResolver(uc, nil, nil, nil, authSvc, nil, nil, nil, nil, nil, nil, nil)
+	uc := usecase.NewUserUsecase(repo, &mockRoleByUserIDRepo{adminCount: adminCount}, authSvc, nil, newDiscardLogger())
+	r := resolver.NewResolver(uc, nil, nil, nil, authSvc, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv

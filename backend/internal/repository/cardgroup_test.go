@@ -339,9 +339,10 @@ func TestCardgroupRepository_EnsureByName_Create(t *testing.T) {
 // TestCardgroupRepository_EnsureByName_WhitespaceContract pins the current
 // contract that EnsureByName matches name verbatim: leading/trailing whitespace
 // produces a distinct row from the trimmed value. Trimming is the caller's
-// responsibility (the NotionSyncUsecase trims at its boundary). A future
-// caller that bypasses that trim must either trim itself or this contract
-// must change deliberately, not by accident.
+// responsibility (callers parse the name into a domain.CardgroupName, which
+// trims at its boundary, before invoking the repository). A future caller that
+// bypasses that trim must either trim itself or this contract must change
+// deliberately, not by accident.
 func TestCardgroupRepository_EnsureByName_WhitespaceContract(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

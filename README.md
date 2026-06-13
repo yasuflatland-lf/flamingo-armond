@@ -15,6 +15,8 @@ When my child was about one, we were playing make-believe and she handed me a pr
 
 ![Production architecture](docs/images/architecture.png)
 
+The live database **entity-relationship diagram** — auto-generated from the production schema by SchemaSpy whenever migrations change — is published to GitHub Pages: <https://yasuflatland-lf.github.io/flamingo-armond/er-chart/>. See [`docs/ci.md` § "ER-chart workflow"](docs/ci.md#er-chart-workflow) for how it is generated.
+
 ## Pre-conditions
 
 Production deployment uses three external services. Create accounts before running `make setup-prod` — free tiers cover everything this repo provisions:

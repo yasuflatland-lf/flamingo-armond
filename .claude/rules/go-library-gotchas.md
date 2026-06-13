@@ -106,6 +106,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [DataLoader missing-key semantics: `nil data` vs `ErrNotFound` is per-aggregate](../../docs/backend/library-gotchas/dataloader-missing-key-semantics.md)
 - [`ON DELETE` FK action requires an integration test against a real database](../../docs/backend/library-gotchas/fk-action-integration-test.md)
 - [Migration down/up roundtrip test: prove the reverse path preserves data](../../docs/backend/library-gotchas/migration-down-up-roundtrip-test.md)
+- [Shared parallel test DB: isolate no-cursor `first=N` pagination queries via a search predicate or cursor, not `filterByIDs` alone](../../docs/backend/library-gotchas/shared-parallel-db-pagination-test-isolation.md)
 - [RLS `INSERT-own` assertion on a PK-keyed table needs a fixture row that does not exist yet](../../docs/backend/library-gotchas/rls-insert-own-fresh-fixture-row.md)
 - [LSP stale-cache diagnostics during refactor — verify with `go build` before treating as real](../../docs/backend/library-gotchas/lsp-stale-cache-during-refactor.md)
 - [CI bash `rc=$?` is dead code under `set -e` — use `cmd || rc=$?`](../../docs/backend/library-gotchas/ci-bash-rc-capture-under-set-e.md)

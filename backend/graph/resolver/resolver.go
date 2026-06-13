@@ -18,6 +18,7 @@ type Resolver struct {
 	LastViewedCardgroupUC    usecase.LastViewedCardgroupUsecase
 	UpdateLearnDisplayModeUC usecase.UpdateLearnDisplayModeUsecase
 	CEFRUC                   usecase.CEFRClassifier
+	MasterCatalogUC          usecase.MasterCatalogUsecase
 }
 
 // NewResolver wires every Resolver dependency. Tests may pass nil for unused
@@ -35,6 +36,7 @@ func NewResolver(
 	updateLearnDisplayModeUC usecase.UpdateLearnDisplayModeUsecase,
 	learnUC usecase.LearnUsecase,
 	cefrUC usecase.CEFRClassifier,
+	masterCatalogUC usecase.MasterCatalogUsecase,
 ) *Resolver {
 	return &Resolver{
 		UserUC:                   user,
@@ -49,5 +51,6 @@ func NewResolver(
 		UpdateLearnDisplayModeUC: updateLearnDisplayModeUC,
 		LearnUC:                  learnUC,
 		CEFRUC:                   cefrUC,
+		MasterCatalogUC:          masterCatalogUC,
 	}
 }
