@@ -208,7 +208,20 @@
     "emailRateLimited": "Too many requests. Please wait a moment and try again.",
     "emailAlreadyInUse": "That email address is already in use.",
     "emailCouldNotSend": "Could not send confirmation link. Please try again.",
-    "emailNetworkError": "Network error. Please check your connection and try again."
+    "emailNetworkError": "Network error. Please check your connection and try again.",
+    "dangerZoneHeading": "Danger zone",
+    "dangerZoneDescription": "These actions are permanent and cannot be undone.",
+    "deleteAccountButton": "Delete my account",
+    "deleteAccountDialogTitle": "Delete your account?",
+    "deleteAccountDialogDescription": "This permanently deletes your account and all your cardgroups, cards, and learning history. You will be signed out immediately. This cannot be undone.",
+    "deleteAccountConfirmPhrase": "delete my account",
+    "deleteAccountTypeToConfirm": "Type \"{phrase}\" to confirm:",
+    "deleteAccountConfirmInputLabel": "Type the confirmation phrase to delete your account",
+    "deleteAccountConfirmButton": "Delete my account",
+    "deleteAccountDeleting": "Deleting...",
+    "deleteAccountFailed": "Could not delete your account. Please try again.",
+    "deleteAccountForbidden": "You cannot delete your account while you are the last admin. Promote another admin first.",
+    "deleteAccountSessionExpired": "Your session has expired. Please sign in again."
   },
   "Onboarding": {
     "welcome": "Welcome to Flamingo Armond",
@@ -257,6 +270,16 @@
     "deleteAuthFailed": "Your session has expired. Please sign in again.",
     "systemRole": "System role",
     "roleNameLabel": "Name",
-    "roleNamePlaceholder": "new-role-name"
+    "roleNamePlaceholder": "new-role-name",
+    "deleteUserButton": "Delete user",
+    "deleteUserHeading": "Danger zone",
+    "deleteUserDescription": "Permanently delete this user and all their data.",
+    "deleteUserDialogTitle": "Delete this user?",
+    "deleteUserDialogDescription": "This permanently deletes the user account and all their cardgroups, cards, and learning history. This cannot be undone.",
+    "deleteUserConfirmButton": "Delete user",
+    "deleteUserDeleting": "Deleting...",
+    "deleteUserSuccess": "User deleted.",
+    "deleteUserFailed": "Could not delete the user. Please try again.",
+    "deleteUserForbidden": "This user cannot be deleted. You cannot delete your own account here, and the last admin cannot be removed."
   }
 }

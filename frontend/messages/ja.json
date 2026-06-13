@@ -208,7 +208,20 @@
     "emailRateLimited": "リクエストが多すぎます。少し待ってからもう一度お試しください。",
     "emailAlreadyInUse": "そのメールアドレスは既に使用されています。",
     "emailCouldNotSend": "確認リンクを送信できませんでした。もう一度お試しください。",
-    "emailNetworkError": "ネットワークエラーです。接続を確認してもう一度お試しください。"
+    "emailNetworkError": "ネットワークエラーです。接続を確認してもう一度お試しください。",
+    "dangerZoneHeading": "危険な操作",
+    "dangerZoneDescription": "これらの操作は永続的で、元に戻せません。",
+    "deleteAccountButton": "アカウントを削除",
+    "deleteAccountDialogTitle": "アカウントを削除しますか？",
+    "deleteAccountDialogDescription": "アカウントと、すべてのカードグループ・カード・学習履歴が完全に削除されます。直ちにログアウトされます。この操作は元に戻せません。",
+    "deleteAccountConfirmPhrase": "アカウントを削除する",
+    "deleteAccountTypeToConfirm": "確認のため「{phrase}」と入力してください：",
+    "deleteAccountConfirmInputLabel": "アカウントを削除するには確認フレーズを入力してください",
+    "deleteAccountConfirmButton": "アカウントを削除",
+    "deleteAccountDeleting": "削除中...",
+    "deleteAccountFailed": "アカウントを削除できませんでした。もう一度お試しください。",
+    "deleteAccountForbidden": "最後の管理者であるため、アカウントを削除できません。先に他のユーザーを管理者にしてください。",
+    "deleteAccountSessionExpired": "セッションの有効期限が切れました。再度ログインしてください。"
   },
   "Onboarding": {
     "welcome": "Flamingo Armond へようこそ",
@@ -257,6 +270,16 @@
     "deleteAuthFailed": "セッションの有効期限が切れました。再度ログインしてください。",
     "systemRole": "システムロール",
     "roleNameLabel": "名前",
-    "roleNamePlaceholder": "new-role-name"
+    "roleNamePlaceholder": "new-role-name",
+    "deleteUserButton": "ユーザーを削除",
+    "deleteUserHeading": "危険な操作",
+    "deleteUserDescription": "このユーザーとすべてのデータを完全に削除します。",
+    "deleteUserDialogTitle": "このユーザーを削除しますか？",
+    "deleteUserDialogDescription": "このユーザーアカウントと、そのすべてのカードグループ・カード・学習履歴が完全に削除されます。この操作は元に戻せません。",
+    "deleteUserConfirmButton": "ユーザーを削除",
+    "deleteUserDeleting": "削除中...",
+    "deleteUserSuccess": "ユーザーを削除しました。",
+    "deleteUserFailed": "ユーザーを削除できませんでした。もう一度お試しください。",
+    "deleteUserForbidden": "このユーザーは削除できません。自分自身のアカウントはここでは削除できず、最後の管理者も削除できません。"
   }
 }

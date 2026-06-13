@@ -116,3 +116,9 @@ export const AdminEditUserMutation = graphql(`
     }
   }
 `);
+
+export const AdminDeleteUserMutation = graphql(`
+  mutation AdminDeleteUser($id: ID!) {
+    adminDeleteUser(id: $id)
+  }
+`);

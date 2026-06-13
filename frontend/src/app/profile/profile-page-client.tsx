@@ -8,6 +8,7 @@ import { LanguageSwitcher } from "@/components/settings/language-switcher";
 import { Button } from "@/components/ui/button";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
+import { DeleteAccountSection } from "./delete-account-section";
 import { ProfileForm } from "./profile-form";
 
 type Props = {
@@ -140,6 +141,8 @@ export function ProfilePageClient({ email, initial }: Props) {
           </div>
           <LanguageSwitcher />
         </section>
+
+        <DeleteAccountSection />
       </div>
 
       <FormSheet
