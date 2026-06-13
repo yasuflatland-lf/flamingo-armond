@@ -2,6 +2,7 @@
 
 import { NetworkStatus } from "@apollo/client";
 import { useApolloClient, useMutation, useQuery } from "@apollo/client/react";
+import type { Reference } from "@apollo/client/utilities";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -99,7 +100,10 @@ export function AdminMastersClient() {
   const [runDelete] = useMutation(AdminDeleteMasterMutation);
 
   const editId = sheet.state.mode === "edit" ? sheet.state.id : null;
-  const editEdge = editId ? edges.find((e) => e.cursor === editId) : undefined;
+  // Resolve the edit target by node.id, never by `cursor`: the backend emits an
+  // opaque encoded cursor ("v1:..."), so matching against the raw id always misses
+  // and renders "Master not found." for every master.
+  const editEdge = editId ? edges.find((e) => e.node.id === editId) : undefined;
 
   const fetchNextPage = useCallback(
     ({ hasNextPage, endCursor, searchQuery }: FetchNextPageInput) => {
@@ -285,13 +289,16 @@ export function AdminMastersClient() {
         }
         apolloClient.cache.modify({
           fields: {
-            adminMasters(existing) {
+            adminMasters(existing, { readField }) {
               const conn = existing as {
-                edges?: ReadonlyArray<{ cursor: string }>;
+                edges?: ReadonlyArray<{ node: Reference }>;
                 totalCount?: number;
               };
               if (!conn.edges) return existing;
-              const next = conn.edges.filter((edge) => edge.cursor !== id);
+              // Filter by the normalized node's id, not by `cursor`: in the cache the
+              // edge cursor is the opaque encoded value ("v1:..."), so `cursor !== id`
+              // never matches and the deleted edge would linger in the connection.
+              const next = conn.edges.filter((edge) => readField<string>("id", edge.node) !== id);
               if (next.length === conn.edges.length) return existing;
               return { ...conn, edges: next, totalCount: Math.max(0, (conn.totalCount ?? 0) - 1) };
             },
