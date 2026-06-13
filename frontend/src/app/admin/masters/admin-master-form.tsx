@@ -42,7 +42,6 @@ type Props = {
   submit: (values: MasterFormValues) => Promise<void>;
   validationError?: { field: string; message: string } | null;
   onDirtyChange?: (dirty: boolean) => void;
-  onCancel?: () => void;
   onDelete?: (id: string) => Promise<void>;
 };
 
@@ -71,7 +70,6 @@ export function AdminMasterForm({
   submit,
   validationError,
   onDirtyChange,
-  onCancel,
   onDelete,
 }: Props) {
   const t = useTranslations("AdminMasters");
@@ -263,11 +261,6 @@ export function AdminMasterForm({
         >
           {submitting ? tCommon("saving") : mode === "create" ? t("createMaster") : tCommon("save")}
         </Button>
-        {onCancel ? (
-          <Button type="button" variant="outline" onClick={onCancel}>
-            {tCommon("cancel")}
-          </Button>
-        ) : null}
       </div>
 
       {mode === "edit" && master && onDelete ? (
