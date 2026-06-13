@@ -54,10 +54,12 @@ func TestLearnDisplayModeDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back one migration to reverse add_learn_display_mode_to_user_preferences.
-	// This is the newest migration, so exactly one step is needed. Bump this count
-	// when adding migrations after it.
-	if err := m.Steps(-1); err != nil {
+	// Step back two migrations: first reverse add_user_card_fsrs_card_id_index
+	// (now the newest), then add_learn_display_mode_to_user_preferences (the
+	// target). The Steps(1) below re-applies add_learn_display_mode, and the
+	// t.Cleanup restores the rest. Bump this count when adding migrations after
+	// add_learn_display_mode_to_user_preferences.
+	if err := m.Steps(-2); err != nil {
 		t.Fatalf("migrate down to before add_learn_display_mode_to_user_preferences: %v", err)
 	}
 
