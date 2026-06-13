@@ -453,4 +453,46 @@ describe("<CatalogClient>", () => {
     });
     expect(screen.getByTestId("catalog-import-m-2")).not.toBeDisabled();
   });
+
+  it("renders the no-match empty state when a search returns no decks", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    const searchMock = {
+      request: {
+        query: MasterCatalogDocument,
+        variables: { ...CATALOG_DEFAULT_VARS, search: "zzz" },
+      },
+      result: { data: { masterCatalog: makeConnection([]) } },
+    };
+
+    renderClient([searchMock], makeConnection([M1]), cache);
+
+    expect(await screen.findByText("Business English")).toBeInTheDocument();
+    await user.type(screen.getByTestId("catalog-search"), "zzz");
+
+    expect(await screen.findByTestId("catalog-empty-search")).toBeInTheDocument();
+  });
+
+  it("surfaces the error banner when import resolves with an unknown payload variant", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    // A union variant the client was not regenerated against → the hook's
+    // unparseable-payload fallthrough returns `rejected`.
+    const unknownPayloadMock = {
+      request: {
+        query: ImportMasterCardgroupDocument,
+        variables: { masterCardgroupId: "m-1" },
+      },
+      result: { data: { importMasterCardgroup: { __typename: "SomeFutureVariant" } } },
+    };
+
+    renderClient([unknownPayloadMock], makeConnection([M1]), cache);
+
+    await user.click(await screen.findByTestId("catalog-import-m-1"));
+
+    expect(await screen.findByTestId("catalog-import-error")).toHaveTextContent(
+      "Could not import the deck.",
+    );
+    expect(screen.getByTestId("catalog-import-m-1")).not.toBeDisabled();
+  });
 });
