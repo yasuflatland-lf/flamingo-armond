@@ -104,6 +104,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Ownership-checked UPSERT: collapse `EXISTS` ownership predicate into the INSERT statement](../../docs/backend/library-gotchas/ownership-checked-upsert-where-exists.md)
 - [DataLoader two-step chain: hydrate aggregate A, then key aggregate B from its field](../../docs/backend/library-gotchas/dataloader-two-step-chain.md)
 - [DataLoader missing-key semantics: `nil data` vs `ErrNotFound` is per-aggregate](../../docs/backend/library-gotchas/dataloader-missing-key-semantics.md)
+- [Index every foreign key — a composite PK does not back its non-leading columns, so cascade deletes seq-scan](../../docs/backend-db.md#index-strategy)
 - [`ON DELETE` FK action requires an integration test against a real database](../../docs/backend/library-gotchas/fk-action-integration-test.md)
 - [Migration down/up roundtrip test: prove the reverse path preserves data](../../docs/backend/library-gotchas/migration-down-up-roundtrip-test.md)
 - [Shared parallel test DB: isolate no-cursor `first=N` pagination queries via a search predicate or cursor, not `filterByIDs` alone](../../docs/backend/library-gotchas/shared-parallel-db-pagination-test-isolation.md)

@@ -38,17 +38,18 @@ func TestUsersVersionDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back through the 7 migrations listed newest-first until
+	// Step back through the 8 migrations listed newest-first until
 	// add_version_to_users (the target) is also rolled back:
-	//   1. add_learn_display_mode_to_user_preferences
-	//   2. add_master_tables
-	//   3. restrict_definer_function_exposure
-	//   4. pin_trigger_function_search_path
-	//   5. enable_rls_schema_migrations
-	//   6. add_position_to_cards
-	//   7. add_version_to_users  ← target (rolls back the version column)
+	//   1. add_user_card_fsrs_card_id_index
+	//   2. add_learn_display_mode_to_user_preferences
+	//   3. add_master_tables
+	//   4. restrict_definer_function_exposure
+	//   5. pin_trigger_function_search_path
+	//   6. enable_rls_schema_migrations
+	//   7. add_position_to_cards
+	//   8. add_version_to_users  ← target (rolls back the version column)
 	// Bump the count here when adding migrations after add_version_to_users.
-	if err := m.Steps(-7); err != nil {
+	if err := m.Steps(-8); err != nil {
 		t.Fatalf("migrate down to before add_version_to_users: %v", err)
 	}
 

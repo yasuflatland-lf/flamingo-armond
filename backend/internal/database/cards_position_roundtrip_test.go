@@ -44,14 +44,15 @@ func TestCardsPositionDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back past the five migrations newer than add_position_to_cards
+	// Step back past the six migrations newer than add_position_to_cards
 	// (enable_rls_schema_migrations, pin_trigger_function_search_path,
 	// restrict_definer_function_exposure, add_master_tables,
-	// add_learn_display_mode_to_user_preferences), then past
-	// add_position_to_cards itself. Six steps are required because
-	// add_position_to_cards is no longer near the newest migration; bump this
-	// count when adding migrations after it.
-	if err := m.Steps(-6); err != nil {
+	// add_learn_display_mode_to_user_preferences,
+	// add_user_card_fsrs_card_id_index), then past add_position_to_cards
+	// itself. Seven steps are required because add_position_to_cards is no
+	// longer near the newest migration; bump this count when adding migrations
+	// after it.
+	if err := m.Steps(-7); err != nil {
 		t.Fatalf("migrate down to before add_position_to_cards: %v", err)
 	}
 
