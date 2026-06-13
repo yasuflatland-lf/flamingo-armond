@@ -1,0 +1,26 @@
+directive @goField(forceResolver: Boolean, name: String) on INPUT_FIELD_DEFINITION | FIELD_DEFINITION
+
+"""How the back of a flashcard is shown on /learn."""
+enum LearnDisplayMode {
+  """Hide the back until the learner taps to reveal it (default, active-recall)."""
+  FLIP_TO_REVEAL
+  """Show front and back together from the start."""
+  ALWAYS_VISIBLE
+}
+
+extend type User {
+  """
+  The authenticated user's learn display-mode preference.
+  Defaults to FLIP_TO_REVEAL when never set.
+  """
+  learnDisplayMode: LearnDisplayMode! @goField(forceResolver: true)
+}
+
+extend type Mutation {
+  """
+  Sets the authenticated caller's learn display-mode preference. Idempotent.
+  Returns the updated user. Unauthenticated callers receive an error with
+  extensions.code = "UNAUTHENTICATED".
+  """
+  updateLearnDisplayMode(mode: LearnDisplayMode!): User!
+}
