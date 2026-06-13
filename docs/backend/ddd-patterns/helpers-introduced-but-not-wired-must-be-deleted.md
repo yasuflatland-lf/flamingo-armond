@@ -78,6 +78,30 @@ deleting helpers that production code actually depends on. The reverse —
 and no direct unit test is fine if the caller's behavioural tests exercise
 the helper's path; the helper is greppably reachable from a tested call site.
 
+## Exception: forward-infrastructure PRs where the entire layer is unwired by design
+
+The zero-caller rule does **not** apply when a PR delivers a pure
+persistence/foundation layer whose consumer (usecase, resolver) lands in a later
+issue. In that shape, every symbol — `FindByID`, `Create`, `UpsertManyTx`, and
+domain behaviour methods alike — has zero production callers by construction.
+Deleting them would mean deleting the deliverable.
+
+The correct resolution for spec'd domain behaviour methods (e.g.
+`MasterCardgroupStatus.IsValid()`, `MasterCardgroup.IsPublished()`,
+`MasterCard.Validate()` in the master-catalog aggregates) is to **wire them by a
+domain unit test**, consistent with how `Rating.IsValid()` and `CEFRLevel.IsValid()` are
+pinned in this codebase. A unit test is a caller: it keeps the method greppably
+reachable from a tested code path and prevents dead-surface rot.
+
+The rule still bites for a **single speculative helper** added inside an
+otherwise-wired PR — the `ResolvePageSize` case from issue #181 is the canonical
+example. The distinction:
+
+| Shape | Rule |
+|---|---|
+| Entire infrastructure layer, consumer in next issue | Pin every domain behaviour method with a unit test. |
+| Single new helper inside a mostly-wired PR | Zero callers → delete in the same PR. |
+
 ## Reference
 
 - See [`.claude/rules/scope-discipline.md`](../../../.claude/rules/scope-discipline.md)
