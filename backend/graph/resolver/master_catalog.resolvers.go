@@ -10,7 +10,13 @@ import (
 	"backend/internal/gqlerr"
 	"backend/internal/usecase"
 	"context"
+	"fmt"
 )
+
+// ImportMasterCardgroup is the resolver for the importMasterCardgroup field.
+func (r *mutationResolver) ImportMasterCardgroup(ctx context.Context, masterCardgroupID string) (model.ImportMasterCardgroupResult, error) {
+	panic(fmt.Errorf("not implemented: ImportMasterCardgroup - importMasterCardgroup"))
+}
 
 // MasterCatalog is the resolver for the masterCatalog field.
 func (r *queryResolver) MasterCatalog(ctx context.Context, first *int, after *string, last *int, before *string, search *string, orderBy *model.MasterCatalogOrderBy, orderDirection *model.SortOrder) (*model.MasterCatalogConnection, error) {
