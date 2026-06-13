@@ -54,6 +54,46 @@ func TestUserCardFSRSRepository_UpsertTxAndFindByUserAndCardIDs(t *testing.T) {
 	require.True(t, got[card.ID].State.Due.Equal(second.State.Due))
 }
 
+// TestUserCardFSRSRepository_OnCardDelete_CascadesFSRSRow proves the
+// user_card_fsrs.card_id -> cards(id) FK is ON DELETE CASCADE: deleting a card
+// removes every user's FSRS row for it. This is the runtime behaviour that
+// idx_user_card_fsrs_card_id backs — the composite PK (user_id, card_id) cannot
+// serve a card_id-only lookup, so without the index this cascade sequential-scans
+// the whole table.
+//   - SET NULL would violate the NOT NULL on user_card_fsrs.card_id.
+//   - RESTRICT would block the card DELETE, breaking the cardgroup- and
+//     user-deletion cascades that pass through cards.
+func TestUserCardFSRSRepository_OnCardDelete_CascadesFSRSRow(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	cardRepo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+
+	card := newCard(cg.ID, "front", "back")
+	require.NoError(t, cardRepo.Create(ctx, card))
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	state := domain.NewUserCardFSRSForNewCard(ownerID, card.ID, now)
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return ucsRepo.UpsertTx(ctx, tx, state)
+	}))
+
+	// Precondition: the FSRS row exists before the card is deleted.
+	got, err := ucsRepo.FindByUserAndCardIDs(ctx, ownerID, []string{card.ID})
+	require.NoError(t, err)
+	require.Len(t, got, 1, "expected the FSRS row to exist before card deletion")
+
+	// Delete the card; the ON DELETE CASCADE FK on user_card_fsrs.card_id must
+	// remove the dependent FSRS row.
+	require.NoError(t, cardRepo.Delete(ctx, card.ID))
+
+	got, err = ucsRepo.FindByUserAndCardIDs(ctx, ownerID, []string{card.ID})
+	require.NoError(t, err)
+	require.Len(t, got, 0, "FSRS row still exists after card deletion: FK is not ON DELETE CASCADE")
+}
+
 func TestUserCardFSRSRepository_FindByUserAndCardIDs_ScopesByViewer(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

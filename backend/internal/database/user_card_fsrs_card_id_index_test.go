@@ -32,7 +32,10 @@ func TestUserCardFSRSCardIDIndex_Exists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query pg_indexes for %q: %v", indexName, err)
 	}
-	if !strings.Contains(indexdef, "card_id") {
-		t.Fatalf("index %q does not reference card_id: %q", indexName, indexdef)
+	// Assert the shape (btree keyed on card_id), not merely that the substring
+	// "card_id" appears — that rules out a future regression to a different
+	// method or a composite that no longer serves the card_id-only cascade lookup.
+	if !strings.Contains(indexdef, "btree (card_id)") {
+		t.Fatalf("index %q is not a btree keyed on card_id: %q", indexName, indexdef)
 	}
 }
