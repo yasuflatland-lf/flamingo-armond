@@ -80,7 +80,7 @@
                     <div class="box box-primary">
                         <div class="box-header with-border">
                             <i class="ion ion-key"></i>
-                            <h3 class="box-title">11 Foreign Key Constraints</h3>
+                            <h3 class="box-title">12 Foreign Key Constraints</h3>
                             <div class="box-tools pull-right">
                                 <button type="button" class="btn btn-box-tool" data-widget="collapse"><i class="fa fa-minus"></i></button>
                                 <button type="button" class="btn btn-box-tool" data-widget="remove"><i class="fa fa-times"></i></button>
@@ -109,6 +109,42 @@
                                             <table border='0' cellspacing='0' cellpadding='0'>
                                                 <tr>
                                                     <td><a href='tables/cardgroups.html'>cardgroups</a><span>.owner_id</span></td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                        <td>
+                                            <table border='0' cellspacing='0' cellpadding='0'>
+                                                <tr>
+                                                    <td><a href='tables/users.html'>users</a><span>.id</span></td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                        <td><span title='Cascade on delete:&#10;Deletion of parent deletes child'>Cascade on delete</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>user_card_fsrs_card_id_fkey</td>
+                                        <td>
+                                            <table border='0' cellspacing='0' cellpadding='0'>
+                                                <tr>
+                                                    <td><a href='tables/user_card_fsrs.html'>user_card_fsrs</a><span>.card_id</span></td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                        <td>
+                                            <table border='0' cellspacing='0' cellpadding='0'>
+                                                <tr>
+                                                    <td><a href='tables/cards.html'>cards</a><span>.id</span></td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                        <td><span title='Cascade on delete:&#10;Deletion of parent deletes child'>Cascade on delete</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>user_card_fsrs_user_id_fkey</td>
+                                        <td>
+                                            <table border='0' cellspacing='0' cellpadding='0'>
+                                                <tr>
+                                                    <td><a href='tables/user_card_fsrs.html'>user_card_fsrs</a><span>.user_id</span></td>
                                                 </tr>
                                             </table>
                                         </td>
@@ -158,42 +194,6 @@
                                         <td><span title='Cascade on delete:&#10;Deletion of parent deletes child'>Cascade on delete</span></td>
                                     </tr>
                                     <tr>
-                                        <td>user_card_fsrs_card_id_fkey</td>
-                                        <td>
-                                            <table border='0' cellspacing='0' cellpadding='0'>
-                                                <tr>
-                                                    <td><a href='tables/user_card_fsrs.html'>user_card_fsrs</a><span>.card_id</span></td>
-                                                </tr>
-                                            </table>
-                                        </td>
-                                        <td>
-                                            <table border='0' cellspacing='0' cellpadding='0'>
-                                                <tr>
-                                                    <td><a href='tables/cards.html'>cards</a><span>.id</span></td>
-                                                </tr>
-                                            </table>
-                                        </td>
-                                        <td><span title='Cascade on delete:&#10;Deletion of parent deletes child'>Cascade on delete</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td>user_card_fsrs_user_id_fkey</td>
-                                        <td>
-                                            <table border='0' cellspacing='0' cellpadding='0'>
-                                                <tr>
-                                                    <td><a href='tables/user_card_fsrs.html'>user_card_fsrs</a><span>.user_id</span></td>
-                                                </tr>
-                                            </table>
-                                        </td>
-                                        <td>
-                                            <table border='0' cellspacing='0' cellpadding='0'>
-                                                <tr>
-                                                    <td><a href='tables/users.html'>users</a><span>.id</span></td>
-                                                </tr>
-                                            </table>
-                                        </td>
-                                        <td><span title='Cascade on delete:&#10;Deletion of parent deletes child'>Cascade on delete</span></td>
-                                    </tr>
-                                    <tr>
                                         <td>user_preferences_last_viewed_cardgroup_id_fkey</td>
                                         <td>
                                             <table border='0' cellspacing='0' cellpadding='0'>
@@ -224,6 +224,24 @@
                                             <table border='0' cellspacing='0' cellpadding='0'>
                                                 <tr>
                                                     <td><a href='tables/users.html'>users</a><span>.id</span></td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                        <td><span title='Cascade on delete:&#10;Deletion of parent deletes child'>Cascade on delete</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>master_cards_master_cardgroup_id_fkey</td>
+                                        <td>
+                                            <table border='0' cellspacing='0' cellpadding='0'>
+                                                <tr>
+                                                    <td><a href='tables/master_cards.html'>master_cards</a><span>.master_cardgroup_id</span></td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                        <td>
+                                            <table border='0' cellspacing='0' cellpadding='0'>
+                                                <tr>
+                                                    <td><a href='tables/master_cardgroups.html'>master_cardgroups</a><span>.id</span></td>
                                                 </tr>
                                             </table>
                                         </td>
@@ -331,6 +349,16 @@
                                 </thead>
                                 <tbody>
                                     <tr>
+                                        <td><a href='tables/master_cardgroups.html'>master_cardgroups</a></td>
+                                        <td>master_cardgroups_name_length</td>
+                                        <td>((char_length(TRIM(BOTH FROM name)) &gt;&#61; 1) AND (char_length(TRIM(BOTH FROM name)) &lt;&#61; 100))</td>
+                                    </tr>
+                                    <tr>
+                                        <td><a href='tables/master_cardgroups.html'>master_cardgroups</a></td>
+                                        <td>master_cardgroups_status_values</td>
+                                        <td>(status &#61; ANY (ARRAY[&#39;draft&#39;::text, &#39;published&#39;::text]))</td>
+                                    </tr>
+                                    <tr>
                                         <td><a href='tables/cardgroups.html'>cardgroups</a></td>
                                         <td>cardgroups_name_length</td>
                                         <td>((char_length(TRIM(BOTH FROM name)) &gt;&#61; 1) AND (char_length(TRIM(BOTH FROM name)) &lt;&#61; 100))</td>
@@ -339,6 +367,16 @@
                                         <td><a href='tables/swipe_records.html'>swipe_records</a></td>
                                         <td>swipe_records_rating_check</td>
                                         <td>((rating &gt;&#61; 1) AND (rating &lt;&#61; 4))</td>
+                                    </tr>
+                                    <tr>
+                                        <td><a href='tables/master_cards.html'>master_cards</a></td>
+                                        <td>master_cards_back_length</td>
+                                        <td>((char_length(TRIM(BOTH FROM back)) &gt;&#61; 1) AND (char_length(TRIM(BOTH FROM back)) &lt;&#61; 500))</td>
+                                    </tr>
+                                    <tr>
+                                        <td><a href='tables/master_cards.html'>master_cards</a></td>
+                                        <td>master_cards_front_length</td>
+                                        <td>((char_length(TRIM(BOTH FROM front)) &gt;&#61; 1) AND (char_length(TRIM(BOTH FROM front)) &lt;&#61; 500))</td>
                                     </tr>
                                     <tr>
                                         <td><a href='tables/cards.html'>cards</a></td>

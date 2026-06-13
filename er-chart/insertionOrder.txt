@@ -1,7 +1,9 @@
+master_cardgroups
 roles
 users
 cardgroups
 cards
+master_cards
 swipe_records
 user_card_fsrs
 user_preferences
