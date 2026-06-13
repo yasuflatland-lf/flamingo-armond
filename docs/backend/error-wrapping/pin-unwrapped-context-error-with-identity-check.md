@@ -146,3 +146,27 @@ passes even when the inner wrap snuck in. The dual-assertion pattern from
 [The dual assertion](#the-dual-assertion) above applies inside the tx-callback
 too — each sub-op branch that can carry a context error needs its own
 identity pin, not a chain-shape pin shared with the others.
+
+## Multi-call free-function helpers: guard every branch, not just the first
+
+The same per-branch discipline applies outside a tx callback. A free-function
+helper that makes two or more sequential infrastructure calls must place
+`if isContextDone(err) { return nil, err }` on **each** call's error branch
+before the `eris.Wrap`. Guarding only the first call while wrapping the second
+silently double-wraps a `context.Canceled` / `context.DeadlineExceeded` from
+the second call, breaking the bare-identity contract for that path even though
+the chain still satisfies `errors.Is`.
+
+Worked example: `checkCardgroupLimit` (`backend/internal/usecase/cardgroup.go`)
+calls `admin.IsAdmin` then `counter.CountByOwner`. Both error branches guard
+context errors via `isContextDone`. An asymmetric version that guarded only the
+`IsAdmin` branch shipped briefly and was caught in review — the
+`CountByOwner`-cancelled path returned a wrapped error that failed an
+`err == context.Canceled` identity check at the caller. The fix mirrored the
+guard onto the second branch.
+
+Pin the contract with identity tests on each branch:
+`TestCheckCardgroupLimit_CountCancelled_IdentityPreserved` and
+`_CountDeadlineExceeded_IdentityPreserved` assert `err == context.Canceled` /
+`context.DeadlineExceeded` (bare identity) for the count path, complementing
+the `IsAdmin`-branch tests.

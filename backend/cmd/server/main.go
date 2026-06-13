@@ -285,7 +285,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 
 	userUC := usecase.NewUserUsecase(userRepo, userRoleRepo, authSvc, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, authSvc, logger)
 	learnUC := usecase.NewLearnUsecase(cardRepo, cardgroupRepo, service.NewOrderingPolicy(), nil, 0, 0, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	cardImportUC := usecase.NewCardImportUsecase(cardgroupRepo, cardRepo, db.GORM, logger)
