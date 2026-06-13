@@ -390,6 +390,47 @@ describe("<NewCardgroupPage> (client)", () => {
     }
   });
 
+  it("CardgroupLimitReachedError — shows limit banner with localized message, no navigation", async () => {
+    const user = userEvent.setup();
+
+    const mocks = [
+      {
+        request: {
+          query: CreateCardgroupDocument,
+          variables: { input: { name: "My Group" } },
+        },
+        result: () => ({
+          data: {
+            createCardgroup: {
+              __typename: "CardgroupLimitReachedError" as const,
+              message: "cardgroup limit reached",
+              limit: 5,
+              current: 5,
+            },
+          },
+        }),
+      },
+    ];
+
+    renderPage(mocks);
+
+    await user.type(screen.getByRole("textbox"), "My Group");
+    await user.click(screen.getByRole("button", { name: /create/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("cardgroup-new-limit-error")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("cardgroup-new-limit-error")).toHaveTextContent(
+      "You can create up to 5 card groups.",
+    );
+    // No navigation: the limit variant is data, not a success.
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockRefresh).not.toHaveBeenCalled();
+    // Limit branch returns early — no generic warn must fire.
+    expect(screen.queryByTestId("cardgroup-new-validation-error")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("cardgroup-new-unexpected-payload-error")).not.toBeInTheDocument();
+  });
+
   it("null createCardgroup payload (partial-response null bubble) — warns and shows degraded banner", async () => {
     const user = userEvent.setup();
 

@@ -32,6 +32,10 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
   // response null bubble.
   const [unexpectedPayloadError, setUnexpectedPayloadError] = useState<string | null>(null);
 
+  // Server-enforced cardgroup limit reached. Rendered as a banner so the
+  // user knows creation is blocked without a field-level error indicator.
+  const [limitError, setLimitError] = useState<string | null>(null);
+
   // Mid-session auth failures. Cleared on each new submission attempt so a
   // retry after re-login does not show a stale banner.
   // Per .claude/rules/frontend-rsc-error-handling.md § "Mid-session
@@ -45,6 +49,7 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
     setValidationError(null);
     setUnexpectedPayloadError(null);
     setAuthError(null);
+    setLimitError(null);
 
     const outcome = await create(values.name);
 
@@ -54,6 +59,9 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
         return;
       case "auth":
         setAuthError(outcome.kind);
+        return;
+      case "limit":
+        setLimitError(t("limitReached", { limit: outcome.limit }));
         return;
       case "unexpected":
         setUnexpectedPayloadError(tCommon("somethingWentWrong"));
@@ -118,6 +126,16 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
           className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
         >
           {validationError.message}
+        </div>
+      ) : null}
+
+      {limitError ? (
+        <div
+          role="alert"
+          data-testid="cardgroup-new-limit-error"
+          className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          {limitError}
         </div>
       ) : null}
 

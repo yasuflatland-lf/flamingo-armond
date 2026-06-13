@@ -16,6 +16,7 @@ export type CreateCardgroupOutcome =
   | { status: "success"; cardgroupId: string }
   | { status: "validation"; field: string; message: string }
   | { status: "auth"; kind: "unauthenticated" | "forbidden" }
+  | { status: "limit"; limit: number; current: number }
   // The mutation resolved with an unparseable payload (unknown __typename or a
   // partial-response null bubble).
   | { status: "unexpected" }
@@ -93,6 +94,9 @@ export function useCreateCardgroup() {
         const typename = payload?.__typename ?? null;
         if (payload?.__typename === "InputValidationError") {
           return { status: "validation", field: payload.field, message: payload.message };
+        }
+        if (payload?.__typename === "CardgroupLimitReachedError") {
+          return { status: "limit", limit: payload.limit, current: payload.current };
         }
         if (payload?.__typename === "CreateCardgroupSuccess") {
           return { status: "success", cardgroupId: payload.cardgroup.id };

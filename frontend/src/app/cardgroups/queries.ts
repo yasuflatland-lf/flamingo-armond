@@ -86,6 +86,11 @@ export const CreateCardgroupMutation = graphql(`
         field
         message
       }
+      ... on CardgroupLimitReachedError {
+        message
+        limit
+        current
+      }
     }
   }
 `);

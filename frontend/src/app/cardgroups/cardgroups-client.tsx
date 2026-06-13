@@ -163,6 +163,9 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
       case "auth":
         setAddAuthError(outcome.kind);
         return;
+      case "limit":
+        setAddUnexpectedError(t("limitReached", { limit: outcome.limit }));
+        return;
       case "unexpected":
       case "rejected":
         // The drawer is modal, so surface a banner for both an unparseable
