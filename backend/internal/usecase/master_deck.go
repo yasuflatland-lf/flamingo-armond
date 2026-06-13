@@ -33,28 +33,16 @@ type masterDeckUserCardRepo interface {
 	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (repository.UpsertManyTxResult, error)
 }
 
-// masterDeckCardgroupCounter is the subset of repository.CardgroupRepository the
-// master deck usecase consumes for the idempotency guard. CountByOwner targets
-// the USER cardgroups table (not the master catalog), so a returning user is
-// never re-seeded.
-type masterDeckCardgroupCounter interface {
+// masterDeckUserCardgroupRepo is the subset of repository.CardgroupRepository the
+// master deck usecase consumes against the USER cardgroups table (not the master
+// catalog). CountByOwner backs the idempotency guard: a user who already owns at
+// least one cardgroup is not re-seeded on the next call. CreateTx inserts the
+// snapshot cardgroup using the caller's transaction handle so the insert
+// participates in the seed/import transaction.
+type masterDeckUserCardgroupRepo interface {
 	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
+	CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Cardgroup) error
 }
-
-// gormMasterDeckCardgroup mirrors repository.gormCardgroup (the public.cardgroups
-// row mapping). It is replicated here because copyMasterToUserTx inserts the new
-// user cardgroup using the supplied tx handle directly, rather than going through
-// the repository's non-tx Create. The two MUST stay in sync with the cardgroups
-// table columns.
-type gormMasterDeckCardgroup struct {
-	ID        string    `gorm:"column:id;primaryKey;type:uuid"`
-	OwnerID   string    `gorm:"column:owner_id"`
-	Name      string    `gorm:"column:name"`
-	CreatedAt time.Time `gorm:"column:created_at"`
-	UpdatedAt time.Time `gorm:"column:updated_at"`
-}
-
-func (gormMasterDeckCardgroup) TableName() string { return "cardgroups" }
 
 // SeedForNewUserUsecase auto-provisions the published default-starter master
 // decks into a newly-onboarded user's cardgroups. Wired into UserUsecase as an
@@ -64,21 +52,21 @@ type SeedForNewUserUsecase interface {
 }
 
 // CopyMasterToUserUsecase snapshots a single master deck into a user-owned
-// cardgroup. Used by the master-deck import mutation; the copy is a one-time
-// snapshot with empty FSRS/swipe state.
+// cardgroup. Intended for a future master-deck import mutation; the copy is a
+// one-time snapshot with empty FSRS/swipe state.
 type CopyMasterToUserUsecase interface {
 	CopyMasterToUser(ctx context.Context, masterID, ownerID string) (*domain.Cardgroup, error)
 }
 
 // masterDeckUsecase implements both the public copy primitive and the
 // seed-on-onboarding batch. copyMasterToUserTx is the shared tx-aware core; the
-// two public entry points open (or reuse) a transaction and supply the caller
+// two public entry points each open their own transaction and supply the caller
 // wrap prefix.
 type masterDeckUsecase struct {
 	masterCG   masterDeckCardgroupRepo
 	masterCard masterDeckCardRepo
 	userCard   masterDeckUserCardRepo
-	counter    masterDeckCardgroupCounter
+	userCG     masterDeckUserCardgroupRepo
 	tx         txRunner
 	logger     *slog.Logger
 }
@@ -90,7 +78,7 @@ func NewMasterDeckUsecase(
 	masterCG masterDeckCardgroupRepo,
 	masterCard masterDeckCardRepo,
 	userCard masterDeckUserCardRepo,
-	counter masterDeckCardgroupCounter,
+	userCG masterDeckUserCardgroupRepo,
 	db *gorm.DB,
 	logger *slog.Logger,
 ) *masterDeckUsecase {
@@ -103,8 +91,8 @@ func NewMasterDeckUsecase(
 	if userCard == nil {
 		panic("usecase: master deck: userCard is required")
 	}
-	if counter == nil {
-		panic("usecase: master deck: counter is required")
+	if userCG == nil {
+		panic("usecase: master deck: userCG is required")
 	}
 	if db == nil {
 		panic("usecase: master deck: db is required")
@@ -116,7 +104,7 @@ func NewMasterDeckUsecase(
 		masterCG:   masterCG,
 		masterCard: masterCard,
 		userCard:   userCard,
-		counter:    counter,
+		userCG:     userCG,
 		tx: func(ctx context.Context, fn func(tx *gorm.DB) error) error {
 			return db.WithContext(ctx).Transaction(fn)
 		},
@@ -131,7 +119,7 @@ func NewMasterDeckUsecaseWithTx(
 	masterCG masterDeckCardgroupRepo,
 	masterCard masterDeckCardRepo,
 	userCard masterDeckUserCardRepo,
-	counter masterDeckCardgroupCounter,
+	userCG masterDeckUserCardgroupRepo,
 	tx txRunner,
 	logger *slog.Logger,
 ) *masterDeckUsecase {
@@ -144,8 +132,8 @@ func NewMasterDeckUsecaseWithTx(
 	if userCard == nil {
 		panic("usecase: master deck: userCard is required")
 	}
-	if counter == nil {
-		panic("usecase: master deck: counter is required")
+	if userCG == nil {
+		panic("usecase: master deck: userCG is required")
 	}
 	if tx == nil {
 		panic("usecase: master deck: tx runner is required")
@@ -157,7 +145,7 @@ func NewMasterDeckUsecaseWithTx(
 		masterCG:   masterCG,
 		masterCard: masterCard,
 		userCard:   userCard,
-		counter:    counter,
+		userCG:     userCG,
 		tx:         tx,
 		logger:     logger,
 	}
@@ -200,7 +188,7 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) e
 			return eris.Wrap(err, "usecase: master deck: seed for new user: advisory lock")
 		}
 
-		count, err := u.counter.CountByOwner(ctx, userID, nil)
+		count, err := u.userCG.CountByOwner(ctx, userID, nil)
 		if err != nil {
 			return eris.Wrap(err, "usecase: master deck: seed for new user: count owner cardgroups")
 		}
@@ -214,8 +202,11 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) e
 			return eris.Wrap(err, "usecase: master deck: seed for new user: list default starters")
 		}
 		for _, m := range starters {
+			// The helper returns its error bare; the outer tx-return wrap below
+			// applies the single "seed for new user" prefix, so wrapping here
+			// would duplicate that frame in the error chain.
 			if _, err := u.copyMasterToUserTx(ctx, tx, m.ID, userID); err != nil {
-				return eris.Wrap(err, "usecase: master deck: seed for new user")
+				return err
 			}
 		}
 		return nil
@@ -234,11 +225,11 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) e
 // prefix so the logged error_chain attributes the failure to the calling
 // operation rather than this helper.
 //
-// The new cardgroup row is inserted with the supplied tx handle directly (not
-// the repository's non-tx Create) so the insert participates in the caller's
-// transaction. Cards are deep-copied with fresh ids and the new cardgroup id;
-// FSRS/swipe state is left empty by construction (no rows are written to the
-// per-user FSRS table).
+// The new cardgroup row is inserted via the cardgroup repository's CreateTx with
+// the supplied tx handle so the insert participates in the caller's transaction.
+// Cards are deep-copied with fresh ids and the new cardgroup id; FSRS/swipe
+// state is left empty by construction (no rows are written to the per-user FSRS
+// table).
 func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx *gorm.DB, masterID, ownerID string) (*domain.Cardgroup, error) {
 	master, err := u.masterCG.FindByID(ctx, masterID)
 	if err != nil {
@@ -256,14 +247,14 @@ func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx *gorm.DB,
 	}
 
 	now := time.Now().UTC()
-	row := gormMasterDeckCardgroup{
+	newCG := &domain.Cardgroup{
 		ID:        newCGID,
 		OwnerID:   ownerID,
-		Name:      string(master.Name),
+		Name:      master.Name,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	if err := tx.WithContext(ctx).Create(&row).Error; err != nil {
+	if err := u.userCG.CreateTx(ctx, tx, newCG); err != nil {
 		return nil, eris.Wrap(err, "create user cardgroup")
 	}
 
@@ -288,11 +279,5 @@ func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx *gorm.DB,
 		return nil, eris.Wrap(err, "upsert user cards")
 	}
 
-	return &domain.Cardgroup{
-		ID:        newCGID,
-		OwnerID:   ownerID,
-		Name:      master.Name,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}, nil
+	return newCG, nil
 }
