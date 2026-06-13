@@ -11,8 +11,11 @@
  */
 export type SwipeDirection = "left" | "right" | "down";
 
-/** Mirror of the GraphQL LearnDisplayMode enum, in component-local form. */
-export type LearnDisplayMode = "FLIP_TO_REVEAL" | "ALWAYS_VISIBLE";
+/**
+ * Re-export of the generated GraphQL `LearnDisplayMode` enum so the schema is
+ * the single source of truth and the component layer can never drift from it.
+ */
+export type { LearnDisplayMode } from "@/generated/graphql";
 
 /**
  * Reveal phase of the active card.
