@@ -11,6 +11,7 @@ import (
 
 	"backend/internal/auth"
 	"backend/internal/domain"
+	"backend/internal/logging"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
 )
@@ -47,14 +48,18 @@ type userUsecase struct {
 	repo   UserRepository
 	roles  UserRolesRepository
 	auth   AdminChecker
+	seedUC SeedForNewUserUsecase
 	logger *slog.Logger
 }
 
-func NewUserUsecase(repo UserRepository, roles UserRolesRepository, authSvc AdminChecker, logger *slog.Logger) UserUsecase {
+// NewUserUsecase constructs the user profile usecase. seedUC is optional: a nil
+// value disables master-deck seeding on onboarding completion (the UpdateUser
+// path guards on the nil before invoking it).
+func NewUserUsecase(repo UserRepository, roles UserRolesRepository, authSvc AdminChecker, seedUC SeedForNewUserUsecase, logger *slog.Logger) UserUsecase {
 	if logger == nil {
 		panic("usecase: user: logger is required")
 	}
-	return &userUsecase{repo: repo, roles: roles, auth: authSvc, logger: logger}
+	return &userUsecase{repo: repo, roles: roles, auth: authSvc, seedUC: seedUC, logger: logger}
 }
 
 func (u *userUsecase) Me(ctx context.Context) (*domain.User, error) {
@@ -162,6 +167,19 @@ func (u *userUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (Updat
 	if err != nil {
 		return UpdateProfileOutcome{}, eris.Wrap(err, "usecase: UpdateUser: update user")
 	}
+
+	// Seed the published default-starter master decks into the freshly-onboarded
+	// user's cardgroups. This runs after the profile patch commits and is
+	// best-effort: the seed has its own idempotency guard, so a failure here is
+	// transparently retried on the next UpdateUser. Surfacing the error would
+	// fail an already-committed profile update, so it is logged and swallowed.
+	if u.seedUC != nil {
+		if err := u.seedUC.SeedForNewUser(ctx, user.Sub); err != nil {
+			logging.LogWarn(ctx, u.logger, "usecase: UpdateUser: seed default starters failed", err,
+				slog.String("user_id", user.Sub))
+		}
+	}
+
 	return UpdateProfileOutcome{User: appUser}, nil
 }
 
