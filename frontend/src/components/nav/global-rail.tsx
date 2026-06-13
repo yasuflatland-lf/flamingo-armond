@@ -60,7 +60,7 @@ function resolveActiveItem(pathname: string): ActiveItem {
   ) {
     return "cardgroups";
   }
-  if (pathname === "/catalog" || pathname.startsWith("/catalog/")) {
+  if (matchesRoute(pathname, "/catalog")) {
     return "catalog";
   }
   return null;
