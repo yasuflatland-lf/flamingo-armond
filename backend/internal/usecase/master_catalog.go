@@ -168,11 +168,6 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 	return out, nil
 }
 
-// masterCatalogMaxPageSize is the user-facing cap on masterCatalog page size.
-// The repository-level cap (repository.PageCap=101) is one greater so the
-// "+1 fetch" trick survives a maximum-sized request.
-const masterCatalogMaxPageSize = 100
-
 // resolveMasterCatalogOrderBy maps the typed usecase enums to the repository
 // allowlist. Defaults match the schema (SORT_ORDER, ASC) when both inputs are
 // nil. The default switch arm is defense in depth — gqlgen UnmarshalGQL already
@@ -207,9 +202,12 @@ func resolveMasterCatalogOrderBy(
 	return field, d, nil
 }
 
-// resolveMasterCatalogPageSize clamps first/last to [0, masterCatalogMaxPageSize]
-// and rejects passing both. Defaults first=defaultPageSize (20) when neither is
-// provided, matching the schema's documented default.
+// resolveMasterCatalogPageSize clamps first/last to [0, maxPageSize] and rejects
+// passing both. Defaults first=defaultPageSize (20) when neither is provided,
+// matching the schema's documented default. maxPageSize/defaultPageSize are the
+// package-wide page-size caps shared with the card/cardgroup resolvers; the
+// repository-level cap (repository.PageCap = maxPageSize + 1) is one greater so
+// the "+1 fetch" trick survives a maximum-sized request.
 func resolveMasterCatalogPageSize(first, last *int) (int, int, error) {
 	if first != nil && last != nil {
 		return 0, 0, ucerr.NewValidationError("first", "specify either first or last, not both")
@@ -221,8 +219,8 @@ func resolveMasterCatalogPageSize(first, last *int) (int, int, error) {
 		if v < 0 {
 			return 0
 		}
-		if v > masterCatalogMaxPageSize {
-			return masterCatalogMaxPageSize
+		if v > maxPageSize {
+			return maxPageSize
 		}
 		return v
 	}

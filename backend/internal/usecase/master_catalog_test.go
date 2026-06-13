@@ -413,8 +413,8 @@ func TestResolveMasterCatalogPageSize_ClampsAtMax(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if first != masterCatalogMaxPageSize {
-		t.Fatalf("want clamp to %d, got %d", masterCatalogMaxPageSize, first)
+	if first != maxPageSize {
+		t.Fatalf("want clamp to %d, got %d", maxPageSize, first)
 	}
 }
 
