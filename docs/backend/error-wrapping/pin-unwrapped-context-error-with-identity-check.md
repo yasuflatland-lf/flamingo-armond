@@ -170,3 +170,25 @@ Pin the contract with identity tests on each branch:
 `_CountDeadlineExceeded_IdentityPreserved` assert `err == context.Canceled` /
 `context.DeadlineExceeded` (bare identity) for the count path, complementing
 the `IsAdmin`-branch tests.
+
+## Delegating to another usecase: the delegate's bare sentinel must survive the outer wrap
+
+When usecase A calls usecase B as a delegate, and B already honors this contract
+(returns a bare `context.Canceled` / `context.DeadlineExceeded` on cancellation),
+A must *still* place `if isContextDone(err) { return ..., err }` before its own
+`eris.Wrap` of B's error. The intuition "B already handles context, so A doesn't
+need to" is backwards: precisely *because* B returns the bare sentinel, A's wrap
+would clobber the identity B worked to preserve. The delegate honoring the
+contract is the reason the outer guard is load-bearing, not a reason to skip it.
+
+Worked example: `MasterCatalogUsecase.ImportMaster`
+(`backend/internal/usecase/master_catalog.go`) gates a master via
+`repo.FindPublishedByID`, then delegates the copy to
+`CopyMasterToUserUsecase.CopyMasterToUser`. `CopyMasterToUser` already returns a
+bare `context.Canceled` (it guards `isContextDone` before its own wrap). Both of
+`ImportMaster`'s error branches — the `FindPublishedByID` infra branch and the
+delegated-copy branch — guard `isContextDone` before `eris.Wrap`, so a
+cancellation surfaced by either path reaches the resolver as the bare sentinel.
+Pinned by `TestImportMaster_FindPublishedByID_ContextCancelled_PassesThrough`
+and `TestImportMaster_CopyMasterToUser_ContextCancelled_PassesThrough`, each
+using the dual assertion (`assertCancelled` + `err != context.Canceled`).
