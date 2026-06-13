@@ -10,11 +10,130 @@ import (
 	"backend/internal/gqlerr"
 	"backend/internal/usecase"
 	"context"
+
+	"github.com/rotisserie/eris"
 )
+
+// AdminCreateMasterCardgroup is the resolver for the adminCreateMasterCardgroup field.
+//
+// Returns a union: `model.CreateMasterCardgroupSuccess` on the happy path, or
+// `model.InputValidationError` when the name fails validation (e.g. empty, too
+// long). Validation failures are "errors as data" — the error return is reserved
+// for auth and infrastructure failures.
+func (r *mutationResolver) AdminCreateMasterCardgroup(ctx context.Context, input model.CreateMasterCardgroupInput) (model.CreateMasterCardgroupResult, error) {
+	out, err := r.MasterCatalogUC.CreateMaster(ctx, usecase.CreateMasterInput{
+		Name:             input.Name,
+		Description:      input.Description,
+		Language:         input.Language,
+		Level:            input.Level,
+		Category:         input.Category,
+		CoverImageURL:    input.CoverImageURL,
+		Source:           input.Source,
+		IsDefaultStarter: input.IsDefaultStarter,
+		SortOrder:        input.SortOrder,
+	})
+	if err != nil {
+		return nil, gqlerr.FromUsecaseError(ctx, err)
+	}
+	if out.Validation != nil {
+		return model.InputValidationError{Field: out.Validation.Field, Message: out.Validation.Message}, nil
+	}
+	if out.Master == nil {
+		return nil, gqlerr.Internal(ctx, eris.New("resolver: CreateMasterOutcome has no variant set"))
+	}
+	return model.CreateMasterCardgroupSuccess{Master: toMasterCardgroupModelFromParts(out.Master, 0)}, nil
+}
+
+// AdminUpdateMasterCardgroup is the resolver for the adminUpdateMasterCardgroup field.
+//
+// Returns a union: `model.UpdateMasterCardgroupSuccess` on the happy path, or
+// `model.InputValidationError` when any field fails validation (e.g. empty or
+// too-long name). Validation failures are "errors as data" — the error return is
+// reserved for auth and infrastructure failures.
+func (r *mutationResolver) AdminUpdateMasterCardgroup(ctx context.Context, id string, input model.UpdateMasterCardgroupInput) (model.UpdateMasterCardgroupResult, error) {
+	out, err := r.MasterCatalogUC.UpdateMaster(ctx, id, usecase.UpdateMasterInput{
+		Name:             input.Name,
+		Description:      input.Description,
+		Language:         input.Language,
+		Level:            input.Level,
+		Category:         input.Category,
+		CoverImageURL:    input.CoverImageURL,
+		Source:           input.Source,
+		IsDefaultStarter: input.IsDefaultStarter,
+		SortOrder:        input.SortOrder,
+	})
+	if err != nil {
+		return nil, gqlerr.FromUsecaseError(ctx, err)
+	}
+	if out.Validation != nil {
+		return model.InputValidationError{Field: out.Validation.Field, Message: out.Validation.Message}, nil
+	}
+	if out.Master == nil {
+		return nil, gqlerr.Internal(ctx, eris.New("resolver: UpdateMasterOutcome has no variant set"))
+	}
+	return model.UpdateMasterCardgroupSuccess{Master: toMasterCardgroupModelFromParts(out.Master, int(out.CardCount))}, nil
+}
+
+// AdminPublishMasterCardgroup is the resolver for the adminPublishMasterCardgroup field.
+//
+// Returns a union: `model.PublishMasterCardgroupSuccess` on the happy path, or
+// `model.MasterCardgroupEmptyError` when the deck has zero cards and cannot be
+// published. The empty-deck case is "errors as data" — the error return is
+// reserved for auth and infrastructure failures.
+func (r *mutationResolver) AdminPublishMasterCardgroup(ctx context.Context, id string) (model.PublishMasterCardgroupResult, error) {
+	out, err := r.MasterCatalogUC.PublishMaster(ctx, id)
+	if err != nil {
+		return nil, gqlerr.FromUsecaseError(ctx, err)
+	}
+	if out.EmptyMaster {
+		return model.MasterCardgroupEmptyError{Message: "master cardgroup has no cards and cannot be published"}, nil
+	}
+	if out.Master == nil {
+		return nil, gqlerr.Internal(ctx, eris.New("resolver: PublishMasterOutcome has no variant set"))
+	}
+	return model.PublishMasterCardgroupSuccess{Master: toMasterCardgroupModelFromParts(out.Master, int(out.CardCount))}, nil
+}
+
+// AdminUnpublishMasterCardgroup is the resolver for the adminUnpublishMasterCardgroup field.
+func (r *mutationResolver) AdminUnpublishMasterCardgroup(ctx context.Context, id string) (*model.MasterCardgroup, error) {
+	res, err := r.MasterCatalogUC.UnpublishMaster(ctx, id)
+	if err != nil {
+		return nil, gqlerr.FromUsecaseError(ctx, err)
+	}
+	if res == nil || res.Master == nil {
+		return nil, gqlerr.Internal(ctx, eris.New("resolver: UnpublishMaster returned no master"))
+	}
+	return toMasterCardgroupModelFromParts(res.Master, int(res.CardCount)), nil
+}
+
+// AdminDeleteMasterCardgroup is the resolver for the adminDeleteMasterCardgroup field.
+func (r *mutationResolver) AdminDeleteMasterCardgroup(ctx context.Context, id string) (bool, error) {
+	if err := r.MasterCatalogUC.DeleteMaster(ctx, id); err != nil {
+		return false, gqlerr.FromUsecaseError(ctx, err)
+	}
+	return true, nil
+}
 
 // MasterCatalog is the resolver for the masterCatalog field.
 func (r *queryResolver) MasterCatalog(ctx context.Context, first *int, after *string, last *int, before *string, search *string, orderBy *model.MasterCatalogOrderBy, orderDirection *model.SortOrder) (*model.MasterCatalogConnection, error) {
 	out, err := r.MasterCatalogUC.ListPublishedConnection(ctx, usecase.MasterCatalogConnectionInput{
+		First:          first,
+		Last:           last,
+		After:          after,
+		Before:         before,
+		Search:         search,
+		OrderBy:        toUsecaseMasterCatalogOrderBy(orderBy),
+		OrderDirection: toUsecaseSortOrder(orderDirection),
+	})
+	if err != nil {
+		return nil, gqlerr.FromUsecaseError(ctx, err)
+	}
+	return toMasterCatalogConnectionModel(ctx, out), nil
+}
+
+// AdminMasters is the resolver for the adminMasters field.
+func (r *queryResolver) AdminMasters(ctx context.Context, first *int, after *string, last *int, before *string, search *string, orderBy *model.MasterCatalogOrderBy, orderDirection *model.SortOrder) (*model.MasterCatalogConnection, error) {
+	out, err := r.MasterCatalogUC.ListAdminConnection(ctx, usecase.MasterCatalogConnectionInput{
 		First:          first,
 		Last:           last,
 		After:          after,

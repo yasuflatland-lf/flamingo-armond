@@ -2514,6 +2514,9 @@ func (panicQueryResolver) Role(_ context.Context, _ string) (*model.Role, error)
 func (panicQueryResolver) MasterCatalog(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.MasterCatalogOrderBy, _ *model.SortOrder) (*model.MasterCatalogConnection, error) {
 	return nil, nil
 }
+func (panicQueryResolver) AdminMasters(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.MasterCatalogOrderBy, _ *model.SortOrder) (*model.MasterCatalogConnection, error) {
+	panic("not implemented")
+}
 
 // panicResolverRoot is a generated.ResolverRoot whose Query resolver panics on
 // Health. All other sub-resolvers forward to the real resolver with nil deps

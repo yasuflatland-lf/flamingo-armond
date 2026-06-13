@@ -46,7 +46,16 @@ func toMasterCardgroupModel(item *repository.MasterCatalogItem) *model.MasterCar
 	if item == nil || item.Cardgroup == nil {
 		return nil
 	}
-	m := item.Cardgroup
+	return toMasterCardgroupModelFromParts(item.Cardgroup, int(item.CardCount))
+}
+
+// toMasterCardgroupModelFromParts maps a domain master cardgroup plus a known
+// card count to the generated model. Shared by the catalog list path and the
+// admin single-entity mutation responses.
+func toMasterCardgroupModelFromParts(m *domain.MasterCardgroup, cardCount int) *model.MasterCardgroup {
+	if m == nil {
+		return nil
+	}
 	return &model.MasterCardgroup{
 		ID:               m.ID,
 		Name:             m.Name.String(),
@@ -60,7 +69,7 @@ func toMasterCardgroupModel(item *repository.MasterCatalogItem) *model.MasterCar
 		Status:           toMasterCardgroupStatusModel(m.Status),
 		IsDefaultStarter: m.IsDefaultStarter,
 		SortOrder:        m.SortOrder,
-		CardCount:        int(item.CardCount),
+		CardCount:        cardCount,
 		CreatedAt:        m.CreatedAt,
 		UpdatedAt:        m.UpdatedAt,
 	}
