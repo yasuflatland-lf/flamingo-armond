@@ -7,6 +7,7 @@ import { useId } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { AdminPublishMasterMutation, AdminUnpublishMasterMutation } from "./queries";
 
 type MasterStatus = "DRAFT" | "PUBLISHED";
@@ -54,7 +55,12 @@ export function AdminMasterRow({ master, onEdit }: Props) {
     if (emptyDraft) return;
     try {
       if (published) {
-        await runUnpublish({ variables: { id: master.id } });
+        const result = await runUnpublish({ variables: { id: master.id } });
+        if (!result.data?.adminUnpublishMasterCardgroup) {
+          console.warn("[admin-masters] unpublish returned null payload", { masterId: master.id });
+          toast.error(t("unexpectedError"));
+          return;
+        }
         toast.success(t("unpublishSuccess"));
         return;
       }
@@ -79,11 +85,19 @@ export function AdminMasterRow({ master, onEdit }: Props) {
     } catch (err) {
       // err.message omitted — backend messages may carry content. See
       // docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
+      const codes = liftGraphQLCodes(err);
       console.warn("[admin-masters] publish toggle failed", {
         masterId: master.id,
         name: err instanceof Error ? err.name : "unknown",
+        codes,
       });
-      toast.error(t("unexpectedError"));
+      toast.error(
+        codes.includes("FORBIDDEN")
+          ? t("forbidden")
+          : codes.includes("UNAUTHENTICATED")
+            ? t("unauthenticated")
+            : t("unexpectedError"),
+      );
     }
   }
 

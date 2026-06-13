@@ -149,6 +149,16 @@ export function AdminMasterForm({
       }}
       className="space-y-4"
     >
+      {validationError && validationError.field !== "name" ? (
+        <div
+          role="alert"
+          data-testid="master-form-error"
+          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          {validationError.message}
+        </div>
+      ) : null}
+
       <form.Field
         name="name"
         validators={{ onChange: nameSchema, onBlur: nameSchema, onSubmit: nameSchema }}

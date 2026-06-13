@@ -15,6 +15,7 @@ import {
   AdminCreateMasterMutation,
   AdminDeleteMasterMutation,
   AdminMastersQuery,
+  AdminUpdateMasterMutation,
 } from "./queries";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -219,5 +220,136 @@ describe("AdminMastersClient", () => {
     await user.click(await screen.findByTestId("master-delete-dialog-confirm"));
     await waitFor(() => expect(screen.queryByText("Deck m-1")).not.toBeInTheDocument());
     expect(toast.success).toHaveBeenCalled();
+  });
+
+  it("updates a master and toasts success", async () => {
+    sheetState = { mode: "edit", id: "m-1" };
+    const user = userEvent.setup();
+    const updateMock = {
+      request: {
+        query: AdminUpdateMasterMutation,
+        variables: {
+          id: "m-1",
+          input: {
+            name: "Renamed",
+            description: null,
+            language: null,
+            level: null,
+            category: null,
+            coverImageUrl: null,
+            source: null,
+            isDefaultStarter: false,
+            sortOrder: 0,
+          },
+        },
+      },
+      result: {
+        data: {
+          adminUpdateMasterCardgroup: {
+            __typename: "UpdateMasterCardgroupSuccess",
+            master: node("m-1", { name: "Renamed" }),
+          },
+        },
+      },
+    };
+    renderWithIntl(
+      <MockedProvider mocks={[listMock(["m-1"]), updateMock]}>
+        <AdminMastersClient />
+      </MockedProvider>,
+    );
+    const nameInput = await screen.findByTestId("master-field-name");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Renamed");
+    await user.click(screen.getByTestId("master-form-submit"));
+    const { toast } = await import("sonner");
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+  });
+
+  it("shows the name field error when update returns InputValidationError on name", async () => {
+    sheetState = { mode: "edit", id: "m-1" };
+    const user = userEvent.setup();
+    const updateMock = {
+      request: {
+        query: AdminUpdateMasterMutation,
+        variables: {
+          id: "m-1",
+          input: {
+            name: "Renamed",
+            description: null,
+            language: null,
+            level: null,
+            category: null,
+            coverImageUrl: null,
+            source: null,
+            isDefaultStarter: false,
+            sortOrder: 0,
+          },
+        },
+      },
+      result: {
+        data: {
+          adminUpdateMasterCardgroup: {
+            __typename: "InputValidationError",
+            field: "name",
+            message: "name is taken",
+          },
+        },
+      },
+    };
+    renderWithIntl(
+      <MockedProvider mocks={[listMock(["m-1"]), updateMock]}>
+        <AdminMastersClient />
+      </MockedProvider>,
+    );
+    const nameInput = await screen.findByTestId("master-field-name");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Renamed");
+    await user.click(screen.getByTestId("master-form-submit"));
+    expect(await screen.findByText("name is taken")).toBeInTheDocument();
+  });
+
+  it("shows a drawer banner when update returns InputValidationError on a non-name field (master not found)", async () => {
+    sheetState = { mode: "edit", id: "m-1" };
+    const user = userEvent.setup();
+    const updateMock = {
+      request: {
+        query: AdminUpdateMasterMutation,
+        variables: {
+          id: "m-1",
+          input: {
+            name: "Renamed",
+            description: null,
+            language: null,
+            level: null,
+            category: null,
+            coverImageUrl: null,
+            source: null,
+            isDefaultStarter: false,
+            sortOrder: 0,
+          },
+        },
+      },
+      result: {
+        data: {
+          adminUpdateMasterCardgroup: {
+            __typename: "InputValidationError",
+            field: "id",
+            message: "master cardgroup not found",
+          },
+        },
+      },
+    };
+    renderWithIntl(
+      <MockedProvider mocks={[listMock(["m-1"]), updateMock]}>
+        <AdminMastersClient />
+      </MockedProvider>,
+    );
+    const nameInput = await screen.findByTestId("master-field-name");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Renamed");
+    await user.click(screen.getByTestId("master-form-submit"));
+    expect(await screen.findByTestId("master-form-error")).toHaveTextContent(
+      "master cardgroup not found",
+    );
   });
 });
