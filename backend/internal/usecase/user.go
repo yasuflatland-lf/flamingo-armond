@@ -170,12 +170,21 @@ func (u *userUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (Updat
 
 	// Seed the published default-starter master decks into the freshly-onboarded
 	// user's cardgroups. This runs after the profile patch commits and is
-	// best-effort: the seed has its own idempotency guard, so a failure here is
-	// transparently retried on the next UpdateUser. Surfacing the error would
-	// fail an already-committed profile update, so it is logged and swallowed.
+	// best-effort: the seed is attempted on every UpdateUser call, and its own
+	// idempotency guard makes it a no-op once seeding has succeeded; a transient
+	// failure is therefore retried only if and when the user updates their
+	// profile again. Surfacing the error would fail an already-committed profile
+	// update, so it is logged and swallowed — the mutation still succeeds.
+	//
+	// A SeedForNewUser failure is server-side infrastructure (DB, master catalog,
+	// advisory lock, uuid generation), not client-attributable, so per the repo
+	// logging convention (docs/backend/error-wrapping/logging-error-warn-helpers.md:
+	// LogWarn for client-attributable failures, LogError for server-side /
+	// operator-visible ones) it is logged at ERROR level so a systematic failure
+	// is visible to operators.
 	if u.seedUC != nil {
 		if err := u.seedUC.SeedForNewUser(ctx, user.Sub); err != nil {
-			logging.LogWarn(ctx, u.logger, "usecase: UpdateUser: seed default starters failed", err,
+			logging.LogError(ctx, u.logger, "usecase: UpdateUser: seed default starters failed", err,
 				slog.String("user_id", user.Sub))
 		}
 	}
