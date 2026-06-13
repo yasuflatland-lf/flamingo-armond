@@ -17,14 +17,29 @@ describe("TermsPage", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Terms of Service" })).toBeInTheDocument();
   });
 
-  it("en locale: renders all 11 section headings", async () => {
+  it("en locale: renders all 12 section headings", async () => {
     const jsx = await TermsPage();
     render(jsx);
 
     expect(
       screen.getByRole("heading", { level: 2, name: "1. Acceptance of Terms" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 2, name: "11. Contact" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", {
+        level: 2,
+        name: "3. Beta Service, No Support, and No Data Guarantee",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "12. Contact" })).toBeInTheDocument();
+  });
+
+  it("en locale: beta section discloses no support and no data guarantee", async () => {
+    const jsx = await TermsPage();
+    render(jsx);
+
+    expect(screen.getByText(/free, public beta/i)).toBeInTheDocument();
+    expect(screen.getByText(/we provide no user support/i)).toBeInTheDocument();
+    expect(screen.getByText(/may be corrupted, lost, or permanently deleted/i)).toBeInTheDocument();
   });
 
   it("en locale: renders back-to-login link pointing to /login", async () => {
