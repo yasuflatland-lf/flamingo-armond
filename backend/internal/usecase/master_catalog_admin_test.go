@@ -227,6 +227,17 @@ func TestMasterCatalog_DeleteMaster_Success(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestMasterCatalog_DeleteMaster_NotFound(t *testing.T) {
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{deleteErr: repository.ErrNotFound}
+	uc := NewMasterCatalogUsecase(repo, newTestAdminGate(true), newTestLogger())
+	ctx := authedCtx("admin1")
+	err := uc.DeleteMaster(ctx, "some-id")
+	var ve *ucerr.ValidationError
+	require.ErrorAs(t, err, &ve)
+	require.Equal(t, "id", ve.Field)
+}
+
 // ---------------------------------------------------------------------------
 // ListAdminConnection
 // ---------------------------------------------------------------------------
@@ -323,4 +334,27 @@ func TestMasterCatalog_UpdateMaster_CountCardsErrorAfterUpdate(t *testing.T) {
 	require.True(t, errors.Is(err, sentinel))
 	require.Zero(t, out.CardCount)
 	require.Nil(t, out.Master)
+}
+
+// ---------------------------------------------------------------------------
+// PublishMaster CountCards error (deck exists, count fails)
+// ---------------------------------------------------------------------------
+
+func TestMasterCatalog_PublishMaster_CountCardsError(t *testing.T) {
+	t.Parallel()
+	mcg := masterCardgroup("id-1")
+	sentinel := eris.New("count boom")
+	var publishCalled bool
+	repo := &mockMasterCatalogRepository{
+		findByIDFn:    func(_ string) (*domain.MasterCardgroup, error) { return mcg, nil },
+		countCardsErr: sentinel,
+		publishFn:     func(_ string) (*domain.MasterCardgroup, error) { publishCalled = true; return mcg, nil },
+	}
+	uc := NewMasterCatalogUsecase(repo, newTestAdminGate(true), newTestLogger())
+	ctx := authedCtx("admin1")
+	out, err := uc.PublishMaster(ctx, "id-1")
+	require.Error(t, err)
+	require.True(t, errors.Is(err, sentinel))
+	require.False(t, out.EmptyMaster, "count error must not be misclassified as empty deck")
+	require.False(t, publishCalled, "Publish must NOT be called when CountCards fails")
 }
