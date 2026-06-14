@@ -1,49 +1,62 @@
 /**
- * Regression-rule test: ref-triplet removal and useEffectEvent adoption.
+ * Regression-rule test: ref-triplet removal / useEffectEvent adoption AND the
+ * shared-hook extraction for cursor-paginated list screens.
  *
  * WHAT THIS FILE TESTS
  * --------------------
- * Static string checks on production source files that enforce two rules:
- *   1. `useEffectEvent` is present — each pagination call site must use the
- *      React 19.2 Effect Event pattern to read the latest cursor/page state
- *      inside an IntersectionObserver callback without capturing stale values.
- *   2. The deprecated `endCursorRef` / `hasNextPageRef` / `searchQueryRef`
- *      ref-triplet identifiers are absent — these were the pre-migration
- *      stale-value capture refs (replaced by useEffectEvent latest-value reads)
- *      and must not re-appear after the migration landed.
+ * Static string checks on production source files that enforce two families of
+ * rules:
  *
- * NOTE: `fetchingRef` is INTENTIONALLY retained in production as the same-tick
- * in-flight mutex, per `.claude/rules/pagination.md`. This rule does not assert
- * anything about `fetchingRef`.
+ *   IO-owning sites (the files that build an IntersectionObserver loop directly):
+ *     1. `useEffectEvent` is present — the React 19.2 Effect Event pattern is
+ *        used to read the latest cursor/page state inside the observer callback
+ *        without capturing stale values.
+ *     2. The deprecated `endCursorRef` / `hasNextPageRef` / `searchQueryRef`
+ *        ref-triplet identifiers are absent — these were the pre-migration
+ *        stale-value capture refs, replaced by useEffectEvent latest-value
+ *        reads, and must not re-appear.
+ *
+ *   Migrated sites (the screens/hooks that consume the shared
+ *   `useConnectionPagination` hook instead of inlining the loop):
+ *     3. `useConnectionPagination` is present — the screen routes its IO through
+ *        the single shared implementation.
+ *     4. No inline IO loop remains — `new IntersectionObserver` and
+ *        `useEffectEvent` are absent (they live in the shared hook now), and the
+ *        ref-triplet is still absent.
+ *
+ * The shared `src/lib/pagination/use-connection-pagination.ts` hook is now the
+ * canonical owner of the observer loop; cards / cardgroups / catalog all consume
+ * it. Admin listings still inline their own loop pending their follow-up
+ * migration, so they remain in the IO-owning set.
+ *
+ * NOTE: `fetchingRef` is INTENTIONALLY retained in the shared hook as the
+ * same-tick in-flight mutex, per `.claude/rules/pagination.md`. This rule does
+ * not assert anything about `fetchingRef`.
  *
  * WHAT THIS FILE DOES NOT TEST
  * ----------------------------
- * Behavioral invariants (e.g. that fetchMore is called with the correct
- * cursor, that overlapping observer fires are deduplicated, that the error
- * halt gate stops the IO loop) are NOT tested here. Those invariants live in
- * the per-file behavioral test companions:
+ * Behavioral invariants (correct cursor on fetchMore, overlapping-fire dedup,
+ * error halt gate) are NOT tested here. Those live in the behavioral companions:
+ *   - src/lib/pagination/use-connection-pagination.test.tsx
  *   - src/app/cardgroups/[id]/cards/use-cards-connection.test.ts
  *   - src/app/cardgroups/cardgroups-client.test.tsx
+ *   - src/app/catalog/catalog-client.test.tsx
  *   - src/app/admin/users/admin-users-client.test.tsx
  *
- * This file is intentionally a grep-style regression guard: if a future
- * refactor accidentally reintroduces the ref-triplet pattern or removes the
- * useEffectEvent call, this test fails immediately without requiring a full
- * behavioral test run.
+ * This file is intentionally a grep-style regression guard: if a future refactor
+ * reintroduces the ref-triplet, drops useEffectEvent from an IO owner, or
+ * re-inlines an observer loop into a migrated screen, this test fails
+ * immediately without requiring a full behavioral test run.
  */
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const productionSites = [
+const ioOwningSites = [
   {
-    name: "cardgroups listing",
-    sourcePath: "src/app/cardgroups/cardgroups-client.tsx",
-  },
-  {
-    name: "cardgroup cards connection hook",
-    sourcePath: "src/app/cardgroups/[id]/cards/use-cards-connection.ts",
+    name: "connection pagination hook",
+    sourcePath: "src/lib/pagination/use-connection-pagination.ts",
   },
   {
     name: "admin users listing",
@@ -51,13 +64,32 @@ const productionSites = [
   },
 ];
 
+const migratedSites = [
+  {
+    name: "cardgroups listing",
+    sourcePath: "src/app/cardgroups/cardgroups-client.tsx",
+  },
+  {
+    name: "catalog gallery",
+    sourcePath: "src/app/catalog/catalog-client.tsx",
+  },
+  {
+    name: "cardgroup cards connection hook",
+    sourcePath: "src/app/cardgroups/[id]/cards/use-cards-connection.ts",
+  },
+];
+
+function readSource(sourcePath: string): string {
+  return readFileSync(join(process.cwd(), sourcePath), "utf8");
+}
+
 describe("pagination ref-triplet removal regression rule", () => {
   it.each(
-    productionSites,
+    ioOwningSites,
   )("$name: uses useEffectEvent and does not contain deprecated endCursorRef/hasNextPageRef/searchQueryRef identifiers", ({
     sourcePath,
   }) => {
-    const source = readFileSync(join(process.cwd(), sourcePath), "utf8");
+    const source = readSource(sourcePath);
 
     // Rule 1: useEffectEvent must be present — confirms the React 19.2
     // Effect Event pattern is in use for observer-owned latest-value reads.
@@ -66,6 +98,25 @@ describe("pagination ref-triplet removal regression rule", () => {
     // Rule 2: the old ref-triplet identifiers must not reappear — these were
     // the pre-migration stale-value capture refs, replaced by useEffectEvent
     // latest-value reads, and are now deleted.
+    expect(source).not.toMatch(/\b(endCursorRef|hasNextPageRef|searchQueryRef)\b/);
+  });
+});
+
+describe("pagination shared-hook extraction regression rule", () => {
+  it.each(
+    migratedSites,
+  )("$name: consumes useConnectionPagination and carries no inline IntersectionObserver IO loop", ({
+    sourcePath,
+  }) => {
+    const source = readSource(sourcePath);
+
+    // Rule 3: the screen routes its pagination through the shared hook.
+    expect(source).toContain("useConnectionPagination");
+
+    // Rule 4: no inline IO loop remains — the observer construction and the
+    // Effect Event live in the shared hook now, and the ref-triplet stays out.
+    expect(source).not.toContain("new IntersectionObserver");
+    expect(source).not.toContain("useEffectEvent");
     expect(source).not.toMatch(/\b(endCursorRef|hasNextPageRef|searchQueryRef)\b/);
   });
 });

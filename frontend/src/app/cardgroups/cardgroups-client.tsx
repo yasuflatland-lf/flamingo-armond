@@ -1,11 +1,11 @@
 "use client";
 
 import { NetworkStatus } from "@apollo/client";
-import { useApolloClient, useMutation, useQuery } from "@apollo/client/react";
+import { useApolloClient, useMutation } from "@apollo/client/react";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
 import { CardgroupListItem } from "@/components/cardgroups/cardgroup-list-item";
 import { CardgroupsToolbar } from "@/components/cardgroups/cardgroups-toolbar";
@@ -15,17 +15,51 @@ import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import {
   MyCardgroupsConnectionDocument,
   type MyCardgroupsConnectionQuery,
+  type MyCardgroupsConnectionQueryVariables,
 } from "@/generated/graphql";
+import { useDebouncedSearch } from "@/hooks/use-debounced-search";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
-import type { FetchNextPageInput } from "@/lib/pagination/types";
+import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useUndoDelete } from "@/lib/undo-delete";
 import { CARDGROUPS_DEFAULT_VARS, DeleteCardgroupMutation } from "./queries";
 import { useCreateCardgroup } from "./use-create-cardgroup";
 
 type Connection = MyCardgroupsConnectionQuery["myCardgroupsConnection"];
+type CardgroupEdge = Connection["edges"][number];
+type CardgroupPageInfo = Connection["pageInfo"];
 
 interface CardgroupsClientProps {
   initialConnection: Connection | null;
+}
+
+const EMPTY_PAGE_INFO: CardgroupPageInfo = {
+  __typename: "PageInfo",
+  hasNextPage: false,
+  hasPreviousPage: false,
+  startCursor: null,
+  endCursor: null,
+};
+
+// Render fallback for useConnectionPagination. The client seeds the cache
+// synchronously before useQuery runs, so this is never read on the happy path;
+// it keeps the empty-edges shape the inline implementation used (`?? []`).
+const CARDGROUPS_INITIAL = {
+  edges: [] as CardgroupEdge[],
+  pageInfo: EMPTY_PAGE_INFO,
+  totalCount: 0,
+};
+
+// Concatenate the next page's edges onto the cached cardgroups connection.
+function mergeCardgroupsConnection(
+  prev: MyCardgroupsConnectionQuery,
+  more: MyCardgroupsConnectionQuery,
+): MyCardgroupsConnectionQuery {
+  return {
+    myCardgroupsConnection: {
+      ...more.myCardgroupsConnection,
+      edges: [...prev.myCardgroupsConnection.edges, ...more.myCardgroupsConnection.edges],
+    },
+  };
 }
 
 function CreateCardgroupSheetContent({
@@ -119,9 +153,8 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   const apollo = useApolloClient();
   const t = useTranslations("Cardgroups");
   const tCommon = useTranslations("Common");
-  const [searchInput, setSearchInput] = useState("");
-  const [searchQuery, setSearchQuery] = useState<string | null>(null);
-  const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
+  const search = useDebouncedSearch();
+  const searchQuery = search.query;
   const [deleteCommitError, setDeleteCommitError] = useState<string | null>(null);
 
   const { scheduleDelete } = useUndoDelete();
@@ -196,30 +229,8 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
     }
   }
 
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // In-flight guard MUST be useRef<boolean>, not useState — see
-  // docs/pagination/intersection-observer-in-flight-guard.md.
-  const fetchingRef = useRef(false);
   // Strict Mode double-mount safety: only write the SSR seed into the cache once.
   const seededRef = useRef(false);
-
-  // Debounce: update searchQuery 300ms after the last keystroke.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setSearchQuery(searchInput.trim() || null);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchInput]);
-
-  // When the active search query changes, any in-flight fetchMore from the
-  // previous search holds a stale cursor. Reset the IO guard and error state
-  // immediately so the new query starts from a clean slate.
-  // See docs/pagination/intersection-observer-in-flight-guard.md.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery is an intentional trigger dependency; it is not referenced in the body because the effect resets derived IO state, not searchQuery itself.
-  useEffect(() => {
-    fetchingRef.current = false;
-    setFetchMoreError(null);
-  }, [searchQuery]);
 
   // Seed the cache synchronously during render (before useQuery runs) with the
   // SSR initialConnection so the first useQuery pass (cache-first) finds the
@@ -246,22 +257,46 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
 
   // When searchQuery is null we use CARDGROUPS_DEFAULT_VARS verbatim so the
   // cache key matches the SSR seed exactly. For non-null searches we spread and
-  // override `search`, keeping `first` in sync with the default.
-  const queryVariables =
-    searchQuery === null
-      ? CARDGROUPS_DEFAULT_VARS
-      : { ...CARDGROUPS_DEFAULT_VARS, search: searchQuery };
+  // override `search`, keeping `first` in sync with the default. Memoized so the
+  // hook's useQuery does not re-subscribe on unrelated re-renders.
+  const queryVariables = useMemo(
+    () =>
+      searchQuery === null
+        ? CARDGROUPS_DEFAULT_VARS
+        : { ...CARDGROUPS_DEFAULT_VARS, search: searchQuery },
+    [searchQuery],
+  );
 
-  const { data, fetchMore, loading, networkStatus } = useQuery(MyCardgroupsConnectionDocument, {
+  const {
+    edges,
+    pageInfo,
+    loading,
+    networkStatus,
+    fetchingMore,
+    fetchMoreError,
+    retryFetchMore,
+    sentinelRef,
+  } = useConnectionPagination<
+    MyCardgroupsConnectionQuery,
+    MyCardgroupsConnectionQueryVariables,
+    CardgroupEdge,
+    CardgroupPageInfo
+  >({
+    document: MyCardgroupsConnectionDocument,
     variables: queryVariables,
-    fetchPolicy: "cache-first",
-    notifyOnNetworkStatusChange: true,
+    searchQuery: searchQuery,
+    selectConnection: (data) => data?.myCardgroupsConnection,
+    buildFetchMoreVariables: (after, searchValue) => ({
+      ...CARDGROUPS_DEFAULT_VARS,
+      after,
+      search: searchValue,
+    }),
+    mergeConnection: mergeCardgroupsConnection,
+    initial: CARDGROUPS_INITIAL,
+    resolveFetchMoreError: (err) => getBackendErrorBanner(err) ?? t("fetchMoreError"),
+    logScope: "[cardgroups]",
   });
-
-  const connection = data?.myCardgroupsConnection;
-  const edges = connection?.edges ?? [];
-  const hasNextPage = connection?.pageInfo.hasNextPage ?? false;
-  const endCursor = connection?.pageInfo.endCursor ?? null;
+  const hasNextPage = pageInfo.hasNextPage;
 
   function handleDelete(id: string, name: string) {
     // Clear any stale delete-error banner so a new attempt starts clean.
@@ -313,68 +348,6 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
     });
   }
 
-  const fetchNextPage = useCallback(
-    ({ hasNextPage, endCursor, searchQuery }: FetchNextPageInput) => {
-      if (fetchingRef.current || !hasNextPage) return;
-
-      fetchingRef.current = true;
-      fetchMore({
-        variables: { ...CARDGROUPS_DEFAULT_VARS, after: endCursor, search: searchQuery },
-        updateQuery: (prev, { fetchMoreResult }) => {
-          if (!fetchMoreResult) return prev;
-          return {
-            myCardgroupsConnection: {
-              ...fetchMoreResult.myCardgroupsConnection,
-              edges: [
-                ...prev.myCardgroupsConnection.edges,
-                ...fetchMoreResult.myCardgroupsConnection.edges,
-              ],
-            },
-          };
-        },
-      })
-        .then(() => {
-          // Clear any previous fetchMore error on success so the observer can resume.
-          setFetchMoreError(null);
-        })
-        .catch((err) => {
-          // Structured warn for operator triage: name + request context only.
-          // err.message is omitted — backend messages may carry user-authored content.
-          // See docs/frontend/typescript-conventions.md § "expect.objectContaining".
-          console.warn("[cardgroups] fetchMore failed", {
-            name: err instanceof Error ? err.name : "unknown",
-            searchQuery,
-            endCursor,
-          });
-          setFetchMoreError(getBackendErrorBanner(err) ?? t("fetchMoreError"));
-        })
-        .finally(() => {
-          fetchingRef.current = false;
-        });
-    },
-    [fetchMore, t],
-  );
-
-  const requestNextPageFromObserver = useEffectEvent(() => {
-    fetchNextPage({ hasNextPage, endCursor, searchQuery });
-  });
-
-  useEffect(() => {
-    // Halt the observer loop while a previous fetch failed; user must click Retry to resume.
-    if (!hasNextPage || fetchMoreError != null) return;
-    const node = sentinelRef.current;
-    if (!node) return;
-
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries[0]?.isIntersecting || fetchingRef.current) return;
-      requestNextPageFromObserver();
-    });
-
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [hasNextPage, fetchMoreError]);
-
-  const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
   const initialLoading = loading && edges.length === 0 && networkStatus !== NetworkStatus.fetchMore;
   const hasSearch = searchQuery !== null && searchQuery !== "";
 
@@ -394,7 +367,9 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
           <Plus aria-hidden="true" />
         </Button>
       }
-      toolbar={<CardgroupsToolbar searchInput={searchInput} onSearchInputChange={setSearchInput} />}
+      toolbar={
+        <CardgroupsToolbar searchInput={search.input} onSearchInputChange={search.setInput} />
+      }
     >
       {initialLoading && (
         <p className="text-sm text-muted-foreground" data-testid="cardgroups-loading">
@@ -459,15 +434,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
           data-testid="cardgroups-fetch-more-error"
         >
           <span>{fetchMoreError}</span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setFetchMoreError(null);
-              fetchNextPage({ hasNextPage, endCursor, searchQuery });
-            }}
-          >
+          <Button type="button" variant="outline" size="sm" onClick={retryFetchMore}>
             {tCommon("retry")}
           </Button>
         </div>
