@@ -2,11 +2,12 @@
 
 import { useForm } from "@tanstack/react-form";
 import { useTranslations } from "next-intl";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
+import { DirtyStateBridge } from "@/lib/forms/dirty-state-bridge";
 import { FieldError } from "@/lib/forms/field-error";
 import { roleSchema } from "@/schemas/role";
 
@@ -25,20 +26,6 @@ type RoleFormProps = {
   onCancel?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
 };
-
-function DirtyStateBridge({
-  dirty,
-  onDirtyChange,
-}: {
-  dirty: boolean;
-  onDirtyChange?: (dirty: boolean) => void;
-}) {
-  useEffect(() => {
-    onDirtyChange?.(dirty);
-  }, [dirty, onDirtyChange]);
-
-  return null;
-}
 
 export function RoleForm({
   defaultValues,

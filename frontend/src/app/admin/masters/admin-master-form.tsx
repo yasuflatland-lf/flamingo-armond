@@ -2,7 +2,7 @@
 
 import { useForm } from "@tanstack/react-form";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,6 +19,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { DirtyStateBridge } from "@/lib/forms/dirty-state-bridge";
 import { FieldError } from "@/lib/forms/field-error";
 import { masterSchema } from "@/schemas/master";
 import type { AdminMasterListItem } from "./admin-master-row";
@@ -50,19 +51,6 @@ type Props = {
 function emptyToNull(s: string): string | null {
   const trimmed = s.trim();
   return trimmed.length === 0 ? null : trimmed;
-}
-
-function DirtyStateBridge({
-  dirty,
-  onDirtyChange,
-}: {
-  dirty: boolean;
-  onDirtyChange?: (dirty: boolean) => void;
-}) {
-  useEffect(() => {
-    onDirtyChange?.(dirty);
-  }, [dirty, onDirtyChange]);
-  return null;
 }
 
 export function AdminMasterForm({
