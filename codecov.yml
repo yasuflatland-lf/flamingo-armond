@@ -32,3 +32,9 @@ comment:
   layout: "reach, diff, flags, files"
   behavior: default
   require_changes: false
+
+ignore:
+  # Test-support helpers (testcontainers DB bootstrap) are exercised by the
+  # consuming packages' tests, but `go test ./...` only credits coverage to the
+  # package that owns the test, so the helper shows 0% and skews patch coverage.
+  - "backend/internal/database/testsupport"

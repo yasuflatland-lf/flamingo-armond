@@ -18,6 +18,7 @@ components:
   cefr:                { in: internal/cefr }
   cursor:              { in: internal/cursor }
   database:            { in: internal/database }
+  database_testsupport: { in: internal/database/testsupport }
   domain:              { in: internal/domain }
   domain_service:      { in: internal/domain/service }
   gqlerr:              { in: internal/gqlerr }
@@ -49,6 +50,7 @@ deps:
   cefr:               { mayDependOn: [domain] }
   cursor:             { anyVendorDeps: true }           # leaf: vendor-only deps (eris, std)
   database:           { anyVendorDeps: true }           # leaf: vendor-only deps (gorm, pgx, migrate, eris)
+  database_testsupport: { anyVendorDeps: true }         # leaf: test-only helper, vendor-only deps (pgx, eris)
   domain:             { anyVendorDeps: true }           # leaf: vendor-only deps (uuid, uniseg, eris)
   domain_service:     { mayDependOn: [domain] }
   gqlerr:             { mayDependOn: [logging, ucerr] }

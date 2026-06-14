@@ -42,6 +42,7 @@ import (
 	"backend/graph/resolver"
 	"backend/internal/auth"
 	"backend/internal/database"
+	"backend/internal/database/testsupport"
 	"backend/internal/domain"
 	"backend/internal/domain/service"
 	"backend/internal/gqlerr"
@@ -97,7 +98,7 @@ func runTests(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "conn string: %v\n", err)
 		return 1
 	}
-	if err := bootstrapAuthSchema(ctx, dsn); err != nil {
+	if err := testsupport.BootstrapAuthSchema(ctx, dsn); err != nil {
 		fmt.Fprintf(os.Stderr, "bootstrap: %v\n", err)
 		return 1
 	}
@@ -107,52 +108,6 @@ func runTests(m *testing.M) int {
 	}
 	testDBURL = dsn
 	return m.Run()
-}
-
-// bootstrapAuthSchema mimics the Supabase-managed auth schema and roles just
-// enough for FK, trigger, and RLS policy references in migrations to resolve.
-func bootstrapAuthSchema(ctx context.Context, dsn string) error {
-	cfg, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		return err
-	}
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
-	if err != nil {
-		return err
-	}
-	defer pool.Close()
-	_, err = pool.Exec(ctx, `
-        DO $$
-        BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-                CREATE ROLE authenticated LOGIN PASSWORD 'test';
-            END IF;
-        END
-        $$;
-        CREATE SCHEMA IF NOT EXISTS auth;
-        CREATE TABLE IF NOT EXISTS auth.users (
-            id uuid PRIMARY KEY,
-            email text
-        );
-        CREATE OR REPLACE FUNCTION auth.uid()
-        RETURNS uuid
-        LANGUAGE sql
-        STABLE
-        AS $$
-            SELECT COALESCE(
-                NULLIF(current_setting('request.jwt.claim.sub', true), ''),
-                NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub'
-            )::uuid
-        $$;
-        GRANT USAGE ON SCHEMA auth TO authenticated;
-        GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated;
-        GRANT USAGE ON SCHEMA public TO authenticated;
-        ALTER DEFAULT PRIVILEGES IN SCHEMA public
-            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated;
-        ALTER DEFAULT PRIVILEGES IN SCHEMA public
-            GRANT USAGE, SELECT ON SEQUENCES TO authenticated;
-    `)
-	return err
 }
 
 func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
