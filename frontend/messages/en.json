@@ -100,6 +100,7 @@
     "fetchMoreError": "Could not load more cardgroups. Please try again.",
     "deleteReloadError": "Could not delete cardgroup. Please reload and try again.",
     "sessionExpired": "Your session has expired. ",
+    "sessionExpiredSignIn": "Your session expired. Please sign in again.",
     "noPermission": "You do not have permission. ",
     "signInAgain": "Sign in again",
     "deleteAriaLabel": "Delete cardgroup {name}",

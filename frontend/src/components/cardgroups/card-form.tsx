@@ -45,6 +45,7 @@ export function CardForm({
   onCancel,
 }: CardFormProps) {
   const t = useTranslations("Cards");
+  const tCommon = useTranslations("Common");
   const resolvedLabel = submitLabel ?? (mode === "create" ? "Add" : "Save");
   const schema = mode === "create" ? newCardSchema.omit({ cardgroupId: true }) : updateCardSchema;
   const frontSchema = schema.shape.front;
@@ -132,7 +133,7 @@ export function CardForm({
 
       <div className="flex items-center gap-2">
         <Button type="submit" variant="brand" disabled={submitting}>
-          {submitting ? "Saving..." : resolvedLabel}
+          {submitting ? tCommon("saving") : resolvedLabel}
         </Button>
         {onCancel && (
           <Button type="button" variant="outline" onClick={onCancel}>

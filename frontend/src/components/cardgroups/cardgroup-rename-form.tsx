@@ -2,6 +2,7 @@
 
 import { useMutation } from "@apollo/client/react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { UpdateCardgroupMutation } from "@/app/cardgroups/queries";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
@@ -16,6 +17,8 @@ type Props = {
 
 export function CardgroupRenameForm({ cardgroup, onSaved, onSubmittingChange }: Props) {
   const router = useRouter();
+  const t = useTranslations("Cardgroups");
+  const tCommon = useTranslations("Common");
 
   // Typed InputValidationError variant — field-level validation failure
   // surfaced by the server via the outcome union. Cleared on each new submission.
@@ -53,10 +56,10 @@ export function CardgroupRenameForm({ cardgroup, onSaved, onSubmittingChange }: 
       });
       const codes = liftGraphQLCodes(err);
       if (codes.includes("UNAUTHENTICATED")) {
-        setBannerMessage("Your session expired. Please sign in again.");
+        setBannerMessage(t("sessionExpiredSignIn"));
         return null;
       }
-      const banner = getBackendErrorBanner(err) ?? "Something went wrong. Please try again.";
+      const banner = getBackendErrorBanner(err) ?? tCommon("somethingWentWrong");
       setBannerMessage(banner);
       return null;
     });
@@ -83,7 +86,7 @@ export function CardgroupRenameForm({ cardgroup, onSaved, onSubmittingChange }: 
     console.warn("[CardgroupRenameForm] unexpected updateCardgroup payload", {
       typename: unknownPayload?.__typename ?? null,
     });
-    setBannerMessage("Something went wrong. Please try again.");
+    setBannerMessage(tCommon("somethingWentWrong"));
   }
 
   return (
