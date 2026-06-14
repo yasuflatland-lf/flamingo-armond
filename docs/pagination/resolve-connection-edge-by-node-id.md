@@ -60,8 +60,9 @@ cache.modify({
 The two sites read the id differently because they operate on different
 representations of the same edge:
 
-- The **render path** (`editEdge`) sees the `useQuery` result object, where
-  `edge.node` is a plain object — `edge.node.id` is a direct field read.
+- The **render path** (`editEdge`) sees the live query result — `edges` from the
+  shared `useConnectionPagination` hook — where `edge.node` is a plain object, so
+  `edge.node.id` is a direct field read.
 - The **cache path** (`cache.modify`) sees the *normalized* store, where
   `edge.node` is an Apollo `Reference` (a pointer into the entity table) — the
   id is read with `readField<string>("id", edge.node)`.

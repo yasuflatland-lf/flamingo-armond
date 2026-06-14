@@ -4,16 +4,19 @@ import { NetworkStatus } from "@apollo/client";
 import { useApolloClient, useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useFragment } from "@/generated/fragment-masking";
-import type { AdminUsersQuery as AdminUsersQueryResult } from "@/generated/graphql";
+import type {
+  AdminUsersQuery as AdminUsersQueryResult,
+  AdminUsersQueryVariables,
+} from "@/generated/graphql";
 import {
   classifyQueryError,
   getBackendErrorBanner,
   type QueryErrorKind,
 } from "@/lib/apollo/errors";
-import type { FetchNextPageInput } from "@/lib/pagination/types";
+import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { AdminUserProfileSheet } from "./admin-user-profile-sheet";
 import { type AdminUserListItem, AdminUserRow } from "./admin-user-row";
@@ -31,6 +34,37 @@ import {
 
 type Connection = AdminUsersQueryResult["users"];
 type Edge = Connection["edges"][number];
+type PageInfo = Connection["pageInfo"];
+
+const EMPTY_PAGE_INFO: PageInfo = {
+  __typename: "PageInfo",
+  hasNextPage: false,
+  hasPreviousPage: false,
+  startCursor: null,
+  endCursor: null,
+};
+
+// Render fallback for useConnectionPagination before the first query resolves.
+// Admin users has no SSR seed, so this is the initial render value; it keeps the
+// empty-edges shape the inline implementation used (`?? []`).
+const USERS_INITIAL = {
+  edges: [] as Edge[],
+  pageInfo: EMPTY_PAGE_INFO,
+  totalCount: 0,
+};
+
+// Concatenate the next page's edges onto the cached users connection.
+function mergeUsersConnection(
+  prev: AdminUsersQueryResult,
+  more: AdminUsersQueryResult,
+): AdminUsersQueryResult {
+  return {
+    users: {
+      ...more.users,
+      edges: [...prev.users.edges, ...more.users.edges],
+    },
+  };
+}
 
 function UserRow({ edge, onEdit }: { edge: Edge; onEdit: (id: string) => void }) {
   const user = useFragment(AdminUserFieldsFragment, edge.node);
@@ -71,13 +105,7 @@ export function AdminUsersClient() {
   const tNav = useTranslations("Nav");
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
-  const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
   const sheet = useSheetSearchParam();
-
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // In-flight guard MUST be useRef<boolean>, not useState — see
-  // docs/pagination/intersection-observer-in-flight-guard.md.
-  const fetchingRef = useRef(false);
 
   // Debounce: update searchQuery 300ms after the last keystroke.
   useEffect(() => {
@@ -87,28 +115,41 @@ export function AdminUsersClient() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  // When the active search query changes, any in-flight fetchMore from the
-  // previous search holds a stale cursor. Reset the IO guard and error state
-  // immediately so the new query starts from a clean slate.
-  // See docs/pagination/intersection-observer-in-flight-guard.md.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery is an intentional trigger dependency; it is not referenced in the body because the effect resets derived IO state, not searchQuery itself.
-  useEffect(() => {
-    fetchingRef.current = false;
-    setFetchMoreError(null);
-  }, [searchQuery]);
+  // The cache key is { first, search }; memoize on searchQuery so the hook's
+  // useQuery does not re-subscribe on unrelated re-renders.
+  const queryVariables = useMemo<AdminUsersQueryVariables>(
+    () => ({ first: ADMIN_USERS_PAGE_SIZE, search: searchQuery }),
+    [searchQuery],
+  );
 
   const {
-    data,
-    fetchMore,
-    loading,
+    edges,
+    pageInfo,
+    totalCount,
     networkStatus,
-    error: queryError,
+    fetchingMore,
+    fetchMoreError,
+    retryFetchMore,
+    sentinelRef,
+    queryError,
     refetch,
-  } = useQuery(AdminUsersQuery, {
-    variables: { first: ADMIN_USERS_PAGE_SIZE, search: searchQuery },
-    fetchPolicy: "cache-first",
-    notifyOnNetworkStatusChange: true,
+  } = useConnectionPagination<AdminUsersQueryResult, AdminUsersQueryVariables, Edge, PageInfo>({
+    document: AdminUsersQuery,
+    variables: queryVariables,
+    searchQuery,
+    selectConnection: (data) => data?.users,
+    buildFetchMoreVariables: (after, search) => ({
+      first: ADMIN_USERS_PAGE_SIZE,
+      after,
+      search,
+    }),
+    mergeConnection: mergeUsersConnection,
+    initial: USERS_INITIAL,
+    resolveFetchMoreError: (err) => getBackendErrorBanner(err) ?? t("fetchMoreFailed"),
+    logScope: "[admin-users]",
   });
+  const hasNextPage = pageInfo.hasNextPage;
+
   const { data: rolesData, error: rolesError } = useQuery(AdminRolesQuery, {
     fetchPolicy: "cache-first",
   });
@@ -131,11 +172,6 @@ export function AdminUsersClient() {
   const queryErrorKind = classifyQueryError(queryError);
   const queryBannerError = queryErrorKind?.kind === "banner" ? queryErrorKind.message : undefined;
 
-  const connection = data?.users;
-  const edges: Edge[] = connection?.edges ?? [];
-  const hasNextPage = connection?.pageInfo.hasNextPage ?? false;
-  const endCursor = connection?.pageInfo.endCursor ?? null;
-  const totalCount = connection?.totalCount ?? 0;
   const allRoles = useFragment(AdminRoleFieldsFragment, rolesData?.roles ?? []);
   const roleOptions = useMemo(
     () => allRoles.map((role) => ({ id: role.id, name: role.name })),
@@ -223,70 +259,6 @@ export function AdminUsersClient() {
     [apolloClient, runDeleteUser, sheet, t],
   );
 
-  const fetchNextPage = useCallback(
-    ({ hasNextPage, endCursor, searchQuery }: FetchNextPageInput) => {
-      if (fetchingRef.current || !hasNextPage) return;
-
-      fetchingRef.current = true;
-      fetchMore({
-        variables: {
-          first: ADMIN_USERS_PAGE_SIZE,
-          after: endCursor,
-          search: searchQuery,
-        },
-        updateQuery: (prev, { fetchMoreResult }) => {
-          if (!fetchMoreResult) return prev;
-          return {
-            users: {
-              ...fetchMoreResult.users,
-              edges: [...prev.users.edges, ...fetchMoreResult.users.edges],
-            },
-          };
-        },
-      })
-        .then(() => {
-          setFetchMoreError(null);
-        })
-        .catch((err) => {
-          // Structured warn for operator triage: name + request context only.
-          // err.message is omitted — backend messages may carry user-authored content.
-          // See docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
-          console.warn("[admin-users] fetchMore failed", {
-            name: err instanceof Error ? err.name : "unknown",
-            searchQuery,
-            endCursor,
-          });
-          const banner = getBackendErrorBanner(err) ?? t("fetchMoreFailed");
-          setFetchMoreError(banner);
-        })
-        .finally(() => {
-          fetchingRef.current = false;
-        });
-    },
-    [fetchMore, t],
-  );
-
-  const requestNextPageFromObserver = useEffectEvent(() => {
-    fetchNextPage({ hasNextPage, endCursor, searchQuery });
-  });
-
-  useEffect(() => {
-    if (!hasNextPage) return;
-    // Halt the observer loop while a previous fetch failed; user must click Retry to resume.
-    if (fetchMoreError != null) return;
-    const node = sentinelRef.current;
-    if (!node) return;
-
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries[0]?.isIntersecting || fetchingRef.current) return;
-      requestNextPageFromObserver();
-    });
-
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [hasNextPage, fetchMoreError]);
-
-  const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
   // Show the full-page skeleton only on the very first load (NetworkStatus.loading = 1).
   // Refetch and setVariables must not re-trigger the skeleton — a refetch mid-session
   // (e.g. after ConcurrentUpdateError) would unmount the open sheet and lose any banner.
@@ -405,10 +377,7 @@ export function AdminUsersClient() {
           <button
             type="button"
             className="rounded-md border border-destructive/40 px-3 py-1 text-xs hover:bg-destructive/10"
-            onClick={() => {
-              setFetchMoreError(null);
-              fetchNextPage({ hasNextPage, endCursor, searchQuery });
-            }}
+            onClick={retryFetchMore}
           >
             {tCommon("retry")}
           </button>

@@ -24,10 +24,10 @@
  *        `useEffectEvent` are absent (they live in the shared hook now), and the
  *        ref-triplet is still absent.
  *
- * The shared `src/lib/pagination/use-connection-pagination.ts` hook is now the
- * canonical owner of the observer loop; cards / cardgroups / catalog all consume
- * it. Admin listings still inline their own loop pending their follow-up
- * migration, so they remain in the IO-owning set.
+ * The shared `src/lib/pagination/use-connection-pagination.ts` hook is the
+ * canonical owner of the observer loop; cards / cardgroups / catalog and the
+ * admin masters / users listings all consume it. The hook is the only remaining
+ * IO-owning site.
  *
  * NOTE: `fetchingRef` is INTENTIONALLY retained in the shared hook as the
  * same-tick in-flight mutex, per `.claude/rules/pagination.md`. This rule does
@@ -41,6 +41,7 @@
  *   - src/app/cardgroups/[id]/cards/use-cards-connection.test.ts
  *   - src/app/cardgroups/cardgroups-client.test.tsx
  *   - src/app/catalog/catalog-client.test.tsx
+ *   - src/app/admin/masters/admin-masters-client.test.tsx
  *   - src/app/admin/users/admin-users-client.test.tsx
  *
  * This file is intentionally a grep-style regression guard: if a future refactor
@@ -58,10 +59,6 @@ const ioOwningSites = [
     name: "connection pagination hook",
     sourcePath: "src/lib/pagination/use-connection-pagination.ts",
   },
-  {
-    name: "admin users listing",
-    sourcePath: "src/app/admin/users/admin-users-client.tsx",
-  },
 ];
 
 const migratedSites = [
@@ -76,6 +73,14 @@ const migratedSites = [
   {
     name: "cardgroup cards connection hook",
     sourcePath: "src/app/cardgroups/[id]/cards/use-cards-connection.ts",
+  },
+  {
+    name: "admin masters listing",
+    sourcePath: "src/app/admin/masters/admin-masters-client.tsx",
+  },
+  {
+    name: "admin users listing",
+    sourcePath: "src/app/admin/users/admin-users-client.tsx",
   },
 ];
 

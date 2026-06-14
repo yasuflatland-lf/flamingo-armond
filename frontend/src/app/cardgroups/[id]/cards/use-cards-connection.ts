@@ -24,6 +24,7 @@ export interface UseCardsConnectionInput {
 }
 
 export type UseCardsConnectionResult = UseConnectionPaginationResult<
+  CardsByCardgroupConnectionQuery,
   CardEdge,
   CardConnectionPageInfo,
   CardsByCardgroupConnectionQueryVariables
