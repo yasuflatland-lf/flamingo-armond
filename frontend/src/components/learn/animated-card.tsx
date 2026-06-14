@@ -1,6 +1,6 @@
 "use client";
 
-import { animated, useSpring, useSpringRef } from "@react-spring/web";
+import { animated, easings, useSpring, useSpringRef } from "@react-spring/web";
 import { useDrag } from "@use-gesture/react";
 import { type RefObject, useCallback, useEffect, useImperativeHandle, useRef } from "react";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
@@ -19,6 +19,16 @@ const USE_GESTURE_THRESHOLD = 12;
 // deterministically. ~200 ms matches the snappy feel the programmatic path had
 // before, while still leaving the spring enough time to paint frames.
 const FLY_OFF_DURATION_MS = 200;
+
+// The reveal flip rotates the card to the RIGHT — `rotateY` runs 0 → -180deg
+// (negative: the right edge swings toward the viewer first; positive rotateY
+// would swing left). The flip eases IN: `easeInQuart` holds the card nearly
+// still for roughly the first half of FLIP_DURATION_MS, then accelerates sharply
+// into a "snap" as the back face arrives. The controller's spring config (used
+// for drag / fly-off) would do the opposite — fast start, slow settle — so the
+// flip overrides it with a fixed duration + ease-in easing.
+const FLIP_DEGREES = -180;
+const FLIP_DURATION_MS = 500;
 
 // Imperative handle the parent stack uses to fly the active card off-screen
 // programmatically (rating buttons / arrow keys). Stable contract — shape is
@@ -69,7 +79,7 @@ export function AnimatedCard({
     x: 0,
     y: 0,
     rotate: 0,
-    rotateY: revealed && !reducedMotion ? 180 : 0,
+    rotateY: revealed && !reducedMotion ? FLIP_DEGREES : 0,
     scale: 1,
     config: { tension: 520, friction: 38 },
     ref: api,
@@ -100,8 +110,11 @@ export function AnimatedCard({
   useEffect(() => {
     reducedMotionRef.current = reducedMotion;
     void api.start({
-      rotateY: revealed && !reducedMotion ? 180 : 0,
+      rotateY: revealed && !reducedMotion ? FLIP_DEGREES : 0,
       immediate: reducedMotion,
+      // Ease-in flip: slow start, sharp "snap" finish. `immediate` (reduced
+      // motion) skips the animation entirely, so the easing is a no-op there.
+      config: { duration: FLIP_DURATION_MS, easing: easings.easeInQuart },
     });
   }, [api, reducedMotion, revealed]);
 
