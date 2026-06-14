@@ -40,7 +40,7 @@ func TestSwipeRecordRepository_CreateTxAndFind(t *testing.T) {
 	require.Equal(t, domain.RatingEasy, byID[sr.ID].Rating)
 	require.Equal(t, state.Reps, byID[sr.ID].StateAfter.Reps)
 
-	history, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, cg.ID)
+	history, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cg.ID))
 	require.NoError(t, err)
 	require.Len(t, history, 1)
 	require.Equal(t, sr.ID, history[0].ID)
@@ -67,13 +67,13 @@ func TestSwipeRecordRepository_FindByUserAndCardgroup_UsesDenormalizedCardgroup(
 		return swipeRepo.CreateTx(ctx, tx, sr)
 	}))
 
-	historyAtSwipe, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, cgAtSwipe.ID)
+	historyAtSwipe, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cgAtSwipe.ID))
 	require.NoError(t, err)
 	require.Len(t, historyAtSwipe, 1)
 	require.Equal(t, sr.ID, historyAtSwipe[0].ID)
 	require.Equal(t, cgAtSwipe.ID, historyAtSwipe[0].CardgroupID)
 
-	historyCurrent, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, cgCurrent.ID)
+	historyCurrent, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cgCurrent.ID))
 	require.NoError(t, err)
 	require.Empty(t, historyCurrent)
 }
@@ -99,7 +99,7 @@ func TestSwipeRecordRepository_ListRecentByUser_OrdersAndScopes(t *testing.T) {
 	sameReviewTime := base
 	newest := base.Add(time.Hour)
 
-	seed := func(id, userID, cardID, cardgroupID string, reviewedAt time.Time) *domain.SwipeRecord {
+	seed := func(id, userID, cardID string, cardgroupID domain.CardgroupID, reviewedAt time.Time) *domain.SwipeRecord {
 		return &domain.SwipeRecord{
 			ID:          id,
 			UserID:      userID,

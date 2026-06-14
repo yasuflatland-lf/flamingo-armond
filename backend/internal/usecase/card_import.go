@@ -258,7 +258,7 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 		// present, so the realistic failure is the length cap; surface it as a
 		// typed validation error (the DB CHECK would otherwise abort the tx with
 		// an opaque constraint violation).
-		c, err := domain.NewCard(input.CardgroupID, w.Front, w.Back, 0)
+		c, err := domain.NewCard(domain.CardgroupID(input.CardgroupID), w.Front, w.Back, 0)
 		if err != nil {
 			return ImportCardsOutput{}, translateCardErr(err)
 		}

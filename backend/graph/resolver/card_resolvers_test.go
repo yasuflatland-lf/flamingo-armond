@@ -208,7 +208,7 @@ func TestResolver_LearnNextDueCards_ReturnsDueCards(t *testing.T) {
 
 	c1 := &domain.Card{
 		ID:          "c1",
-		CardgroupID: "cg1",
+		CardgroupID: domain.CardgroupID("cg1"),
 		Front:       "front",
 		Back:        "back",
 	}
@@ -219,7 +219,7 @@ func TestResolver_LearnNextDueCards_ReturnsDueCards(t *testing.T) {
 	}
 	srv := newLearnSrv(
 		cardRepo,
-		&cardMockCGRepo{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		&cardMockCGRepo{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
 	)
 
 	body := `{"query":"query($cardgroupId: ID!, $limit: Int!) { learnNextDueCards(cardgroupId: $cardgroupId, limit: $limit) { id front back cardgroupId } }","variables":{"cardgroupId":"cg1","limit":5}}`
@@ -261,7 +261,7 @@ func TestResolver_LearnNextDueCards_EmptyListIsNormal(t *testing.T) {
 
 	srv := newLearnSrv(
 		&cardMockRepo{findDueRows: []domain.DueCard{}},
-		&cardMockCGRepo{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		&cardMockCGRepo{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
 	)
 
 	body := `{"query":"query { learnNextDueCards(cardgroupId: \"cg1\") { id } }"}`
@@ -285,14 +285,14 @@ func TestResolver_CreateCard_DuplicateFront_ReturnsCardDuplicateFrontError(t *te
 
 	// cardgroup is owned by the authenticated user so authorization passes.
 	cgRepo := &cardMockCGRepo{
-		findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"},
 	}
 	// The mock repo causes Create to return ErrCardDuplicateFront and then
 	// FindByCardgroupAndFront to return the existing card identified by "ex-1".
 	cardRepo := &duplicateCardMockRepo{
 		existingCard: &domain.Card{
 			ID:          "ex-1",
-			CardgroupID: "cg1",
+			CardgroupID: domain.CardgroupID("cg1"),
 			Front:       "Question",
 			Back:        "existing back",
 		},
@@ -390,13 +390,13 @@ func updateCardMutation(id, front, back string) string {
 func TestResolver_UpdateCard_HappyPath(t *testing.T) {
 	t.Parallel()
 
-	updatedCard := &domain.Card{ID: "c-1", CardgroupID: "cg-1", Front: "NewFront", Back: "NewBack"}
+	updatedCard := &domain.Card{ID: "c-1", CardgroupID: domain.CardgroupID("cg-1"), Front: "NewFront", Back: "NewBack"}
 	cardRepo := &cardMockRepo{
-		findByIDResult: &domain.Card{ID: "c-1", CardgroupID: "cg-1", Front: "OldFront", Back: "OldBack"},
+		findByIDResult: &domain.Card{ID: "c-1", CardgroupID: domain.CardgroupID("cg-1"), Front: "OldFront", Back: "OldBack"},
 		updateResult:   updatedCard,
 	}
 	cgRepo := &cardMockCGRepo{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"},
 	}
 	srv := newUpdateCardSrv(cardRepo, cgRepo)
 
@@ -432,10 +432,10 @@ func TestResolver_UpdateCard_InputValidation(t *testing.T) {
 	t.Parallel()
 
 	cardRepo := &cardMockRepo{
-		findByIDResult: &domain.Card{ID: "c-1", CardgroupID: "cg-1", Front: "OldFront", Back: "OldBack"},
+		findByIDResult: &domain.Card{ID: "c-1", CardgroupID: domain.CardgroupID("cg-1"), Front: "OldFront", Back: "OldBack"},
 	}
 	cgRepo := &cardMockCGRepo{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"},
 	}
 	srv := newUpdateCardSrv(cardRepo, cgRepo)
 
@@ -484,11 +484,11 @@ func TestResolver_UpdateCard_NilVariant_ReturnsInternal(t *testing.T) {
 	t.Parallel()
 
 	cardRepo := &cardMockRepo{
-		findByIDResult: &domain.Card{ID: "c-1", CardgroupID: "cg-1", Front: "OldFront", Back: "OldBack"},
+		findByIDResult: &domain.Card{ID: "c-1", CardgroupID: domain.CardgroupID("cg-1"), Front: "OldFront", Back: "OldBack"},
 		updateResult:   nil, // triggers nil-variant path
 	}
 	cgRepo := &cardMockCGRepo{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"},
 	}
 	srv := newUpdateCardSrv(cardRepo, cgRepo)
 
@@ -514,8 +514,8 @@ func TestResolver_UpdateCard_NilVariant_ReturnsInternal(t *testing.T) {
 func TestResolver_PracticeTodaysCards_ReturnsCards(t *testing.T) {
 	t.Parallel()
 
-	c1 := &domain.Card{ID: "p1", CardgroupID: "cg1", Front: "practice front 1", Back: "back 1"}
-	c2 := &domain.Card{ID: "p2", CardgroupID: "cg1", Front: "practice front 2", Back: "back 2"}
+	c1 := &domain.Card{ID: "p1", CardgroupID: domain.CardgroupID("cg1"), Front: "practice front 1", Back: "back 1"}
+	c2 := &domain.Card{ID: "p2", CardgroupID: domain.CardgroupID("cg1"), Front: "practice front 2", Back: "back 2"}
 	cardRepo := &cardMockRepo{
 		findPracticeRows: []domain.DueCard{
 			{Card: c1, State: domain.FSRSStateReview, Due: c1.CreatedAt},
@@ -524,7 +524,7 @@ func TestResolver_PracticeTodaysCards_ReturnsCards(t *testing.T) {
 	}
 	srv := newLearnSrv(
 		cardRepo,
-		&cardMockCGRepo{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		&cardMockCGRepo{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
 	)
 
 	// Omit limit to exercise the nil→100 clamp path.
@@ -576,7 +576,7 @@ func TestResolver_PracticeTodaysCards_EmptyListIsNormal(t *testing.T) {
 
 	srv := newLearnSrv(
 		&cardMockRepo{findPracticeRows: []domain.DueCard{}},
-		&cardMockCGRepo{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		&cardMockCGRepo{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
 	)
 
 	body := `{"query":"query { practiceTodaysCards(cardgroupId: \"cg1\") { id } }"}`

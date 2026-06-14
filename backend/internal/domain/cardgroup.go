@@ -22,7 +22,7 @@ var (
 // one User. The collection of Cards is a separate aggregate; Cardgroup holds
 // only its OwnerID, never an embedded *User.
 type Cardgroup struct {
-	ID        string
+	ID        CardgroupID
 	OwnerID   string
 	Name      CardgroupName
 	CreatedAt time.Time

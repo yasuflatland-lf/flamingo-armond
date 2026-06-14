@@ -215,7 +215,7 @@ func (u *cardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 
 	now := time.Now().UTC()
 	cg := &domain.Cardgroup{
-		ID:        id,
+		ID:        domain.CardgroupID(id),
 		OwnerID:   user.Sub,
 		Name:      name,
 		CreatedAt: now,
@@ -373,8 +373,8 @@ func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 
 	out := &CardgroupConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Cardgroups: cgs}
 	if len(cgs) > 0 {
-		out.StartCur = cgs[0].ID
-		out.EndCur = cgs[len(cgs)-1].ID
+		out.StartCur = string(cgs[0].ID)
+		out.EndCur = string(cgs[len(cgs)-1].ID)
 	}
 	return out, nil
 }

@@ -51,7 +51,7 @@ type swipeUsecase struct {
 	userFSRSRepo   UserCardFSRSRepoForSwipe
 	scheduler      *service.FSRSScheduler
 	applyRating    func(current *domain.UserCardFSRS, scheduler domain.FSRSScheduler, rating domain.Rating, now time.Time) error
-	newSwipeRecord func(userID, cardID, cardgroupID string, rating domain.Rating, reviewedAt time.Time, stateAfter domain.FSRSState) (*domain.SwipeRecord, error)
+	newSwipeRecord func(userID, cardID string, cardgroupID domain.CardgroupID, rating domain.Rating, reviewedAt time.Time, stateAfter domain.FSRSState) (*domain.SwipeRecord, error)
 	tx             txRunner
 	logger         *slog.Logger
 }
@@ -170,7 +170,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			}
 			return eris.Wrap(err, "usecase: swipe: find card by id")
 		}
-		if !card.BelongsToCardgroup(in.CardgroupID) {
+		if !card.BelongsToCardgroup(domain.CardgroupID(in.CardgroupID)) {
 			return ucerr.NewValidationError("cardId", "card not found")
 		}
 

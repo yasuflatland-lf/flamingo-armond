@@ -112,14 +112,14 @@ func TestCopyMasterToUser_Integration_CopiesDeckWithNoFSRSState(t *testing.T) {
 	assert.Equal(t, 1, countCardgroupsForOwner(t, ctx, ownerID))
 
 	cgRepo := repository.NewCardgroupRepository(testDB.GORM)
-	persisted, err := cgRepo.FindByID(ctx, cg.ID)
+	persisted, err := cgRepo.FindByID(ctx, string(cg.ID))
 	require.NoError(t, err)
 	assert.Equal(t, ownerID, persisted.OwnerID)
 	assert.Equal(t, domain.CardgroupName("Integration Starter"), persisted.Name)
 
 	// The cards landed in public.cards: reparented, fresh ids, content preserved.
 	cardRepo := repository.NewCardRepository(testDB.GORM)
-	got, err := cardRepo.FindByCardgroup(ctx, cg.ID)
+	got, err := cardRepo.FindByCardgroup(ctx, string(cg.ID))
 	require.NoError(t, err)
 	require.Len(t, got, 3)
 

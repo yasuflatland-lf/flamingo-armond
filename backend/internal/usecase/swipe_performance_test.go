@@ -74,11 +74,11 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 			cardRepo := &mockCardRepository{
 				findResult: &domain.Card{
 					ID:          "card-1",
-					CardgroupID: "cg-1",
+					CardgroupID: domain.CardgroupID("cg-1"),
 				},
 			}
 			cardgroupRepo := &mockCardgroupRepoForCard{
-				findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+				findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 			}
 			swipeRepo := &mockSwipeRecordRepoForSwipe{recent: append([]*domain.SwipeRecord(nil), tc.recent...)}
 			userFSRSRepo := &mockUserCardFSRSRepository{
@@ -137,11 +137,11 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 	cardRepo := &mockCardRepository{
 		findResult: &domain.Card{
 			ID:          "card-1",
-			CardgroupID: "cg-1",
+			CardgroupID: domain.CardgroupID("cg-1"),
 		},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	swipeRepo := &mockSwipeRecordRepoForSwipe{}
 	userFSRSRepo := &mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}}
@@ -194,7 +194,7 @@ func TestSwipeUsecase_HandleSwipe_NonOwner_Unauthenticated(t *testing.T) {
 	t.Parallel()
 
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-2"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-2"},
 	}
 	tx, _ := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
@@ -249,11 +249,11 @@ func TestSwipeUsecase_HandleSwipe_PropagatesUpsertError(t *testing.T) {
 	cardRepo := &mockCardRepository{
 		findResult: &domain.Card{
 			ID:          "card-1",
-			CardgroupID: "cg-1",
+			CardgroupID: domain.CardgroupID("cg-1"),
 		},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	swipeRepo := &mockSwipeRecordRepoForSwipe{}
 	upsertErr := eris.New("storage: simulated upsert failure")
@@ -292,7 +292,7 @@ func TestSwipeUsecase_HandleSwipe_InvalidMode_ValidationVariant(t *testing.T) {
 	t.Parallel()
 
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	tx, _ := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
@@ -337,7 +337,7 @@ func TestSwipeUsecase_HandleSwipe_CardNotFound_ValidationVariant(t *testing.T) {
 		findErr: repository.ErrNotFound,
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	swipeRepo := &mockSwipeRecordRepoForSwipe{}
 	tx, _ := fakeTxRunner()
@@ -429,11 +429,11 @@ func TestSwipeUsecase_HandleSwipe_CardCrossCardgroup_ValidationVariant(t *testin
 	cardRepo := &mockCardRepository{
 		findResult: &domain.Card{
 			ID:          "card-1",
-			CardgroupID: "cg-other",
+			CardgroupID: domain.CardgroupID("cg-other"),
 		},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	tx, _ := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(

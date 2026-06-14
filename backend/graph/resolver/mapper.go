@@ -30,7 +30,7 @@ func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 		return nil
 	}
 	return &model.Cardgroup{
-		ID:        cg.ID,
+		ID:        string(cg.ID),
 		Name:      cg.Name.String(),
 		OwnerID:   cg.OwnerID,
 		CreatedAt: cg.CreatedAt,
@@ -96,7 +96,7 @@ func toCardModel(card *domain.Card) *model.Card {
 		ID:          card.ID,
 		Front:       string(card.Front),
 		Back:        string(card.Back),
-		CardgroupID: card.CardgroupID,
+		CardgroupID: string(card.CardgroupID),
 		CreatedAt:   card.CreatedAt,
 		UpdatedAt:   card.UpdatedAt,
 	}

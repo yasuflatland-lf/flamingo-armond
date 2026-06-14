@@ -42,7 +42,7 @@ func TestCardgroupLoader_BatchesNCallsIntoOne(t *testing.T) {
 			receivedKeys = ids
 			out := make(map[string]*domain.Cardgroup, len(ids))
 			for _, id := range ids {
-				out[id] = &domain.Cardgroup{ID: id, Name: domain.CardgroupName("cg-" + id)}
+				out[id] = &domain.Cardgroup{ID: domain.CardgroupID(id), Name: domain.CardgroupName("cg-" + id)}
 			}
 			return out, nil
 		},
@@ -69,7 +69,7 @@ func TestCardgroupLoader_BatchesNCallsIntoOne(t *testing.T) {
 		if results[i] == nil {
 			t.Fatalf("load %d: nil result", i)
 		}
-		if results[i].ID != ids[i] {
+		if results[i].ID != domain.CardgroupID(ids[i]) {
 			t.Fatalf("load %d: ID mismatch: got %q want %q", i, results[i].ID, ids[i])
 		}
 	}
@@ -91,7 +91,7 @@ func TestCardgroupLoader_PartialNotFound(t *testing.T) {
 				if id == "missing" {
 					continue
 				}
-				out[id] = &domain.Cardgroup{ID: id, Name: domain.CardgroupName("cg-" + id)}
+				out[id] = &domain.Cardgroup{ID: domain.CardgroupID(id), Name: domain.CardgroupName("cg-" + id)}
 			}
 			return out, nil
 		},
@@ -109,13 +109,13 @@ func TestCardgroupLoader_PartialNotFound(t *testing.T) {
 	if errs[0] != nil {
 		t.Fatalf("present-1: unexpected error: %v", errs[0])
 	}
-	if results[0] == nil || results[0].ID != "present-1" {
+	if results[0] == nil || results[0].ID != domain.CardgroupID("present-1") {
 		t.Fatalf("present-1: bad result: %+v", results[0])
 	}
 	if errs[2] != nil {
 		t.Fatalf("present-2: unexpected error: %v", errs[2])
 	}
-	if results[2] == nil || results[2].ID != "present-2" {
+	if results[2] == nil || results[2].ID != domain.CardgroupID("present-2") {
 		t.Fatalf("present-2: bad result: %+v", results[2])
 	}
 	if !errors.Is(errs[1], repository.ErrNotFound) {

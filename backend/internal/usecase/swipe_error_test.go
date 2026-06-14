@@ -26,7 +26,7 @@ func TestSwipeUsecase_HandleSwipe_FindCardByIDError_PinsChain(t *testing.T) {
 		findErr: infraErr,
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	tx, _ := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
@@ -59,11 +59,11 @@ func TestSwipeUsecase_HandleSwipe_FindUserCardFSRSError_PinsChain(t *testing.T) 
 	cardRepo := &mockCardRepository{
 		findResult: &domain.Card{
 			ID:          "card-1",
-			CardgroupID: "cg-1",
+			CardgroupID: domain.CardgroupID("cg-1"),
 		},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	userFSRSRepo := &mockUserCardFSRSRepository{
 		byCardID: map[string]*domain.UserCardFSRS{},
@@ -100,11 +100,11 @@ func TestSwipeUsecase_HandleSwipe_ApplyRatingError_PinsChain(t *testing.T) {
 	cardRepo := &mockCardRepository{
 		findResult: &domain.Card{
 			ID:          "card-1",
-			CardgroupID: "cg-1",
+			CardgroupID: domain.CardgroupID("cg-1"),
 		},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	userFSRSRepo := &mockUserCardFSRSRepository{
 		byCardID: map[string]*domain.UserCardFSRS{},
@@ -143,11 +143,11 @@ func TestSwipeUsecase_HandleSwipe_NewSwipeRecordError_PinsChain(t *testing.T) {
 	cardRepo := &mockCardRepository{
 		findResult: &domain.Card{
 			ID:          "card-1",
-			CardgroupID: "cg-1",
+			CardgroupID: domain.CardgroupID("cg-1"),
 		},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	userFSRSRepo := &mockUserCardFSRSRepository{
 		byCardID: map[string]*domain.UserCardFSRS{},
@@ -162,7 +162,7 @@ func TestSwipeUsecase_HandleSwipe_NewSwipeRecordError_PinsChain(t *testing.T) {
 		userFSRSRepo,
 		newTestLogger(),
 	)
-	uc.(*swipeUsecase).newSwipeRecord = func(_, _, _ string, _ domain.Rating, _ time.Time, _ domain.FSRSState) (*domain.SwipeRecord, error) {
+	uc.(*swipeUsecase).newSwipeRecord = func(_, _ string, _ domain.CardgroupID, _ domain.Rating, _ time.Time, _ domain.FSRSState) (*domain.SwipeRecord, error) {
 		return nil, infraErr
 	}
 
@@ -186,11 +186,11 @@ func TestSwipeUsecase_HandleSwipe_InsertSwipeRecordError_PinsChain(t *testing.T)
 	cardRepo := &mockCardRepository{
 		findResult: &domain.Card{
 			ID:          "card-1",
-			CardgroupID: "cg-1",
+			CardgroupID: domain.CardgroupID("cg-1"),
 		},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	swipeRepo := &mockSwipeRecordRepoForSwipe{
 		createErr: infraErr,
@@ -227,7 +227,7 @@ func TestSwipeUsecase_HandleSwipe_FindCardByID_PropagatesCancelled(t *testing.T)
 
 	cardRepo := &mockCardRepository{findErr: context.Canceled}
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	tx, _ := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
@@ -259,11 +259,11 @@ func TestSwipeUsecase_HandleSwipe_FindUserCardFSRS_PropagatesCancelled(t *testin
 	cardRepo := &mockCardRepository{
 		findResult: &domain.Card{
 			ID:          "card-1",
-			CardgroupID: "cg-1",
+			CardgroupID: domain.CardgroupID("cg-1"),
 		},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	userFSRSRepo := &mockUserCardFSRSRepository{
 		byCardID: map[string]*domain.UserCardFSRS{},
@@ -298,11 +298,11 @@ func TestSwipeUsecase_HandleSwipe_UpsertUserCardFSRS_PropagatesCancelled(t *test
 	cardRepo := &mockCardRepository{
 		findResult: &domain.Card{
 			ID:          "card-1",
-			CardgroupID: "cg-1",
+			CardgroupID: domain.CardgroupID("cg-1"),
 		},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	userFSRSRepo := &mockUserCardFSRSRepository{
 		byCardID:  map[string]*domain.UserCardFSRS{},
@@ -337,11 +337,11 @@ func TestSwipeUsecase_HandleSwipe_InsertSwipeRecord_PropagatesCancelled(t *testi
 	cardRepo := &mockCardRepository{
 		findResult: &domain.Card{
 			ID:          "card-1",
-			CardgroupID: "cg-1",
+			CardgroupID: domain.CardgroupID("cg-1"),
 		},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	swipeRepo := &mockSwipeRecordRepoForSwipe{
 		createErr: context.Canceled,
@@ -380,11 +380,11 @@ func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PinsChain(t *testing.T) {
 	cardRepo := &mockCardRepository{
 		findResult: &domain.Card{
 			ID:          "card-1",
-			CardgroupID: "cg-1",
+			CardgroupID: domain.CardgroupID("cg-1"),
 		},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	swipeRepo := &mockSwipeRecordRepoForSwipe{
 		listErr: infraErr,
@@ -422,11 +422,11 @@ func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesCancelled(t *testin
 	cardRepo := &mockCardRepository{
 		findResult: &domain.Card{
 			ID:          "card-1",
-			CardgroupID: "cg-1",
+			CardgroupID: domain.CardgroupID("cg-1"),
 		},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	swipeRepo := &mockSwipeRecordRepoForSwipe{
 		listErr: context.Canceled,
@@ -464,11 +464,11 @@ func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesDeadlineExceeded(t 
 	cardRepo := &mockCardRepository{
 		findResult: &domain.Card{
 			ID:          "card-1",
-			CardgroupID: "cg-1",
+			CardgroupID: domain.CardgroupID("cg-1"),
 		},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	swipeRepo := &mockSwipeRecordRepoForSwipe{
 		listErr: context.DeadlineExceeded,

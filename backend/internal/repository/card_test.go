@@ -15,7 +15,7 @@ import (
 	"backend/internal/repository"
 )
 
-func newCard(cardgroupID, front, back string) *domain.Card {
+func newCard(cardgroupID domain.CardgroupID, front, back string) *domain.Card {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	return &domain.Card{
 		ID:          uuid.NewString(),
@@ -78,7 +78,7 @@ func TestCardRepository_FindByCardgroup_Scoped(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, card1))
 	require.NoError(t, repo.Create(ctx, card2))
 
-	got, err := repo.FindByCardgroup(ctx, cg1.ID)
+	got, err := repo.FindByCardgroup(ctx, string(cg1.ID))
 	require.NoError(t, err)
 	ids := map[string]bool{}
 	for _, card := range got {
@@ -136,7 +136,7 @@ func TestCardRepository_FindDueCards_UsesPerUserFSRSRows(t *testing.T) {
 		return ucsRepo.UpsertTx(ctx, tx, state)
 	}))
 
-	due, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now, 10)
+	due, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), now, now, 10)
 	require.NoError(t, err)
 	require.Equal(t, []string{dueCard.ID}, repoCardIDs(due))
 }
@@ -171,7 +171,7 @@ func TestCardRepository_FindDueCards_IgnoresOtherUsersFSRSRows(t *testing.T) {
 
 	// ownerID has no FSRS row for card → the JOIN for ownerID returns NULL →
 	// card surfaces through the new-card window.
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now, 10)
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), now, now, 10)
 	require.NoError(t, err)
 	require.Equal(t, []string{card.ID}, repoCardIDs(got),
 		"otherUser's future-due row must not hide the card from the calling user's new-card window")
@@ -240,7 +240,7 @@ func TestCardRepository_FindDueCards_ScopedAndLimited(t *testing.T) {
 
 	// Selection within the review phase is random() now, so a small limit picks
 	// some two of the three due review cards (never future / other-group).
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg1.ID, now, reviewedBefore, 2)
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg1.ID), now, reviewedBefore, 2)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 	due3 := map[string]bool{earlierDue.ID: true, laterDue.ID: true, dueNow.ID: true}
@@ -248,12 +248,12 @@ func TestCardRepository_FindDueCards_ScopedAndLimited(t *testing.T) {
 		require.True(t, due3[id], "limit=2 must select from the due review set, got %q", id)
 	}
 
-	got, err = repo.FindDueCardsForUser(ctx, ownerID, cg1.ID, now, reviewedBefore, 10)
+	got, err = repo.FindDueCardsForUser(ctx, ownerID, string(cg1.ID), now, reviewedBefore, 10)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{earlierDue.ID, laterDue.ID, dueNow.ID}, repoCardIDs(got))
 	require.NotContains(t, repoCardIDs(got), otherGroup.ID, "FindDueCards must not leak cards from another cardgroup")
 
-	empty, err := repo.FindDueCardsForUser(ctx, ownerID, cg1.ID, now, reviewedBefore, 0)
+	empty, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg1.ID), now, reviewedBefore, 0)
 	require.NoError(t, err)
 	require.Empty(t, empty)
 }
@@ -272,7 +272,7 @@ func TestCardRepository_FindDueCards_NoFSRSRow(t *testing.T) {
 	card := newCard(cg.ID, "no-fsrs", "back")
 	require.NoError(t, repo.Create(ctx, card))
 
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now, 10)
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), now, now, 10)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.Equal(t, card.ID, got[0].Card.ID)
@@ -320,7 +320,7 @@ func TestCardRepository_FindDueCards_FSRSStateMapping(t *testing.T) {
 		return nil
 	}))
 
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now.Add(time.Second), 10)
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), now, now.Add(time.Second), 10)
 	require.NoError(t, err)
 	require.Len(t, got, len(cases))
 
@@ -361,7 +361,7 @@ func TestCardRepository_FindDueCards_InvalidState(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now.Add(time.Second), 10)
+	_, err = repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), now, now.Add(time.Second), 10)
 	require.ErrorContains(t, err, "repository: card: invalid FSRSCardState 99")
 }
 
@@ -409,7 +409,7 @@ func TestCardRepo_FindByCardgroupAndFront(t *testing.T) {
 	}
 
 	// Hit: existing (cardgroup_id, front) pair returns the card.
-	got, err := repo.FindByCardgroupAndFront(ctx, cg.ID, "find-front")
+	got, err := repo.FindByCardgroupAndFront(ctx, string(cg.ID), "find-front")
 	if err != nil {
 		t.Fatalf("FindByCardgroupAndFront (hit): %v", err)
 	}
@@ -421,7 +421,7 @@ func TestCardRepo_FindByCardgroupAndFront(t *testing.T) {
 	}
 
 	// Miss: unknown front value must return ErrNotFound.
-	_, err = repo.FindByCardgroupAndFront(ctx, cg.ID, "no-such-front")
+	_, err = repo.FindByCardgroupAndFront(ctx, string(cg.ID), "no-such-front")
 	if !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("FindByCardgroupAndFront (miss): want ErrNotFound, got %v", err)
 	}
@@ -442,7 +442,7 @@ func TestCardRepository_ListFrontsByCardgroupTx_Scoped(t *testing.T) {
 	var fronts []string
 	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var txErr error
-		fronts, txErr = repo.ListFrontsByCardgroupTx(ctx, tx, cgA.ID)
+		fronts, txErr = repo.ListFrontsByCardgroupTx(ctx, tx, string(cgA.ID))
 		return txErr
 	})
 	require.NoError(t, err)
@@ -461,7 +461,7 @@ func TestCardRepository_DeleteByCardgroupAndFrontsTx_EmptySlice(t *testing.T) {
 	var affected int64
 	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var txErr error
-		affected, txErr = repo.DeleteByCardgroupAndFrontsTx(ctx, tx, cg.ID, nil)
+		affected, txErr = repo.DeleteByCardgroupAndFrontsTx(ctx, tx, string(cg.ID), nil)
 		return txErr
 	})
 	require.NoError(t, err)
@@ -490,7 +490,7 @@ func TestCardRepository_DeleteByCardgroupAndFrontsTx_ScopedDelete(t *testing.T) 
 	var affected int64
 	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var txErr error
-		affected, txErr = repo.DeleteByCardgroupAndFrontsTx(ctx, tx, cgA.ID, []string{"shared"})
+		affected, txErr = repo.DeleteByCardgroupAndFrontsTx(ctx, tx, string(cgA.ID), []string{"shared"})
 		return txErr
 	})
 	require.NoError(t, err)
@@ -526,7 +526,7 @@ func TestCardRepository_DeleteByCardgroupAndFrontsTx_NonOverlappingFrontsScoped(
 	var affected int64
 	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var txErr error
-		affected, txErr = repo.DeleteByCardgroupAndFrontsTx(ctx, tx, cgB.ID, []string{"front-only-in-a"})
+		affected, txErr = repo.DeleteByCardgroupAndFrontsTx(ctx, tx, string(cgB.ID), []string{"front-only-in-a"})
 		return txErr
 	})
 	require.NoError(t, err)
@@ -555,7 +555,7 @@ func TestCardRepository_DeleteByCardgroupAndFrontsTx_DeleteByFronts(t *testing.T
 	var affected int64
 	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var txErr error
-		affected, txErr = repo.DeleteByCardgroupAndFrontsTx(ctx, tx, cg.ID, []string{"alpha", "gamma"})
+		affected, txErr = repo.DeleteByCardgroupAndFrontsTx(ctx, tx, string(cg.ID), []string{"alpha", "gamma"})
 		return txErr
 	})
 	require.NoError(t, err)
@@ -580,7 +580,7 @@ func TestCardRepository_OnCardgroupDeleteCascade(t *testing.T) {
 
 	card := newCard(cg.ID, "front", "back")
 	require.NoError(t, cardRepo.Create(ctx, card))
-	require.NoError(t, cgRepo.Delete(ctx, cg.ID))
+	require.NoError(t, cgRepo.Delete(ctx, string(cg.ID)))
 
 	_, err := cardRepo.FindByID(ctx, card.ID)
 	require.True(t, errors.Is(err, repository.ErrNotFound), "got %v", err)
@@ -603,7 +603,7 @@ func TestCardRepo_FindByCardgroupAndFront_CardgroupScoped(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, cardA))
 	require.NoError(t, repo.Create(ctx, cardB))
 
-	got, err := repo.FindByCardgroupAndFront(ctx, cgB.ID, "apple")
+	got, err := repo.FindByCardgroupAndFront(ctx, string(cgB.ID), "apple")
 	require.NoError(t, err)
 	require.Equal(t, cardB.ID, got.ID, "must return cardgroup B's card, not cardgroup A's")
 }
@@ -622,7 +622,7 @@ func TestCardRepo_FindByCardgroupAndFront_TrimSensitive(t *testing.T) {
 	card := newCard(cg.ID, "apple", "back")
 	require.NoError(t, repo.Create(ctx, card))
 
-	_, err := repo.FindByCardgroupAndFront(ctx, cg.ID, " apple ")
+	_, err := repo.FindByCardgroupAndFront(ctx, string(cg.ID), " apple ")
 	require.True(t, errors.Is(err, repository.ErrNotFound),
 		"padded front must not match exact-stored value; got %v", err)
 }
@@ -709,7 +709,7 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 	t.Run("hit on front substring", func(t *testing.T) {
 		t.Parallel()
 		got, total, err := repo.FindPageByCardgroup(
-			ctx, cg.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("apple"),
+			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("apple"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total, "totalCount must reflect search filter")
@@ -722,7 +722,7 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 		t.Parallel()
 		// "dessert" appears in both apple and banana backs.
 		got, total, err := repo.FindPageByCardgroup(
-			ctx, cg.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("dessert"),
+			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("dessert"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(2), total)
@@ -734,7 +734,7 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 	t.Run("miss: no match", func(t *testing.T) {
 		t.Parallel()
 		got, total, err := repo.FindPageByCardgroup(
-			ctx, cg.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("zzznomatch"),
+			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("zzznomatch"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(0), total)
@@ -744,7 +744,7 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 	t.Run("nil search returns all cards", func(t *testing.T) {
 		t.Parallel()
 		got, total, err := repo.FindPageByCardgroup(
-			ctx, cg.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, nil,
+			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, nil,
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(5), total)
@@ -758,7 +758,7 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 	t.Run("empty string search returns all cards (defensive)", func(t *testing.T) {
 		t.Parallel()
 		got, total, err := repo.FindPageByCardgroup(
-			ctx, cg.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr(""),
+			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr(""),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(5), total)
@@ -769,7 +769,7 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 		t.Parallel()
 		// "100%" must only match cardCherry whose front contains that literal string.
 		got, total, err := repo.FindPageByCardgroup(
-			ctx, cg.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("100%"),
+			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("100%"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
@@ -781,7 +781,7 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 		t.Parallel()
 		// "a_b" must only match cardUnderscore, not every two-char prefix (LIKE _ = any single char).
 		got, total, err := repo.FindPageByCardgroup(
-			ctx, cg.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("a_b"),
+			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("a_b"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
@@ -792,7 +792,7 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 	t.Run("backslash metachar treated literally", func(t *testing.T) {
 		t.Parallel()
 		got, total, err := repo.FindPageByCardgroup(
-			ctx, cg.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr(`back\slash`),
+			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr(`back\slash`),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
@@ -804,7 +804,7 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 		t.Parallel()
 		// "COLD" appears uppercase in banana's back; search with lowercase must still match.
 		got, total, err := repo.FindPageByCardgroup(
-			ctx, cg.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("cold"),
+			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("cold"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
@@ -850,7 +850,7 @@ func TestCardRepository_FindDueCards_ReviewRowsPrecedeNewRows(t *testing.T) {
 		return ucsRepo.UpsertTx(ctx, tx, state)
 	}))
 
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now.Add(time.Second), 10)
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), now, now.Add(time.Second), 10)
 	require.NoError(t, err)
 	require.Equal(t,
 		[]string{reviewEarly.ID, newLowPos.ID},
@@ -880,7 +880,7 @@ func TestCardRepo_FindPageByCardgroup_Search_CrossTenantNonLeak(t *testing.T) {
 
 	// Query cgB with a search that matches the shared front.
 	got, total, err := repo.FindPageByCardgroup(
-		ctx, cgB.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("shared"),
+		ctx, string(cgB.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("shared"),
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total, "only cardgroup B's card should match")
@@ -938,7 +938,7 @@ func TestCardRepository_FindDueCards_ReviewsNotStarvedByNewBacklog(t *testing.T)
 	// new cards in separate LIMIT windows, so both due reviews still surface.
 	// NewUserCardFSRSForNewCard sets LastReview == now; a cutoff strictly after
 	// now keeps both due reviews inside the window.
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now.Add(time.Second), 2)
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), now, now.Add(time.Second), 2)
 	require.NoError(t, err)
 	ids := repoCardIDs(got)
 
@@ -997,7 +997,7 @@ func TestCardRepository_FindDueCards_ExcludesCardsReviewedToday(t *testing.T) {
 		return ucsRepo.UpsertTx(ctx, tx, boundary)
 	}))
 
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, startOfToday, 10)
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), now, startOfToday, 10)
 	require.NoError(t, err)
 	require.Equal(t, []string{reviewedYesterday.ID}, repoCardIDs(got),
 		"only cards reviewed strictly before the boundary enter the review window")
@@ -1034,12 +1034,12 @@ func TestCardRepository_FindDueCards_LearningPhaseWinsReviewSlots(t *testing.T) 
 	r2 := mk("review-2", domain.FSRSStateReview)
 
 	// Selection: limit=2 must pick the two learning-phase rows.
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now, 2)
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), now, now, 2)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{l1.ID, l2.ID}, repoCardIDs(got))
 
 	// Order: with all four returned, learning-phase rows come first.
-	got, err = repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now, 10)
+	got, err = repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), now, now, 10)
 	require.NoError(t, err)
 	require.Len(t, got, 4)
 	require.ElementsMatch(t, []string{l1.ID, l2.ID}, repoCardIDs(got)[:2])
@@ -1064,7 +1064,7 @@ func TestCardRepository_FindDueCards_SamplesNewCardsUnderLimit(t *testing.T) {
 		pool[c.ID] = true
 	}
 
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now, 3)
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), now, now, 3)
 	require.NoError(t, err)
 	require.Len(t, got, 3)
 	seen := map[string]bool{}
@@ -1132,7 +1132,7 @@ func TestCardRepository_FindPracticeCards_BoundaryComplementarity(t *testing.T) 
 	// Learn window: cards reviewed strictly before the boundary, plus the
 	// never-reviewed card via the new-card window. reviewedAtBoundary and
 	// reviewedToday are excluded (learn predicate is last_review < boundary).
-	learn, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, boundary, 10)
+	learn, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), now, boundary, 10)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{reviewedYesterday.ID, neverReviewed.ID}, repoCardIDs(learn),
 		"learn window holds cards reviewed before the boundary plus never-reviewed new cards")
@@ -1140,7 +1140,7 @@ func TestCardRepository_FindPracticeCards_BoundaryComplementarity(t *testing.T) 
 	// Practice window: exactly the cards reviewed at-or-after the boundary.
 	// reviewedYesterday (before boundary) and neverReviewed (NULL last_review)
 	// are excluded. Result order is randomized, so compare order-insensitive.
-	practice, err := repo.FindPracticeCardsForUser(ctx, ownerID, cg.ID, boundary, 10)
+	practice, err := repo.FindPracticeCardsForUser(ctx, ownerID, string(cg.ID), boundary, 10)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{reviewedAtBoundary.ID, reviewedToday.ID}, repoCardIDs(practice),
 		"practice pool holds exactly the cards reviewed at-or-after the boundary (inclusive >=)")
@@ -1175,7 +1175,7 @@ func TestCardRepository_FindPracticeCards_IgnoresOtherUsersFSRSRows(t *testing.T
 		return ucsRepo.UpsertTx(ctx, tx, state)
 	}))
 
-	got, err := repo.FindPracticeCardsForUser(ctx, ownerID, cg.ID, boundary, 10)
+	got, err := repo.FindPracticeCardsForUser(ctx, ownerID, string(cg.ID), boundary, 10)
 	require.NoError(t, err)
 	require.Empty(t, got,
 		"otherUser's today-review must not surface in the calling user's practice pool")
@@ -1212,7 +1212,7 @@ func TestCardRepository_FindPracticeCards_CardgroupScoped(t *testing.T) {
 		return nil
 	}))
 
-	got, err := repo.FindPracticeCardsForUser(ctx, ownerID, cg1.ID, boundary, 10)
+	got, err := repo.FindPracticeCardsForUser(ctx, ownerID, string(cg1.ID), boundary, 10)
 	require.NoError(t, err)
 	require.Equal(t, []string{inGroup.ID}, repoCardIDs(got),
 		"practice pool must not leak a today-reviewed card from another cardgroup")
@@ -1252,14 +1252,14 @@ func TestCardRepository_FindPracticeCards_Limited(t *testing.T) {
 		return nil
 	}))
 
-	got, err := repo.FindPracticeCardsForUser(ctx, ownerID, cg.ID, boundary, 2)
+	got, err := repo.FindPracticeCardsForUser(ctx, ownerID, string(cg.ID), boundary, 2)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 	for _, id := range repoCardIDs(got) {
 		require.True(t, pool[id], "limit=2 must select from the reviewed-today pool, got %q", id)
 	}
 
-	empty, err := repo.FindPracticeCardsForUser(ctx, ownerID, cg.ID, boundary, 0)
+	empty, err := repo.FindPracticeCardsForUser(ctx, ownerID, string(cg.ID), boundary, 0)
 	require.NoError(t, err)
 	require.Empty(t, empty)
 	require.NotNil(t, empty, "limit 0 returns an empty non-nil slice")

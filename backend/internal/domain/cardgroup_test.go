@@ -13,7 +13,7 @@ func TestCardgroupShape(t *testing.T) {
 
 	cgType := reflect.TypeOf(Cardgroup{})
 	want := map[string]reflect.Type{
-		"ID":        reflect.TypeOf(""),
+		"ID":        reflect.TypeOf(CardgroupID("")),
 		"OwnerID":   reflect.TypeOf(""),
 		"Name":      reflect.TypeOf(CardgroupName("")),
 		"CreatedAt": reflect.TypeOf(time.Time{}),
@@ -40,11 +40,11 @@ func TestCardgroup_Rename(t *testing.T) {
 	fixedTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	cases := []struct {
-		name        string
-		initial     CardgroupName
-		arg         CardgroupName
-		wantErr     error
-		wantName    CardgroupName
+		name     string
+		initial  CardgroupName
+		arg      CardgroupName
+		wantErr  error
+		wantName CardgroupName
 	}{
 		{
 			name:     "zero CardgroupName returns ErrCardgroupNameRequired and leaves Name unchanged",
@@ -67,7 +67,7 @@ func TestCardgroup_Rename(t *testing.T) {
 			t.Parallel()
 
 			cg := &Cardgroup{
-				ID:        "cg-id-001",
+				ID:        CardgroupID("cg-id-001"),
 				OwnerID:   "owner-001",
 				Name:      tc.initial,
 				CreatedAt: fixedTime,
@@ -84,7 +84,7 @@ func TestCardgroup_Rename(t *testing.T) {
 			require.Equal(t, tc.wantName, cg.Name)
 
 			// Rename must not mutate ID, OwnerID, CreatedAt, or UpdatedAt.
-			require.Equal(t, "cg-id-001", cg.ID)
+			require.Equal(t, CardgroupID("cg-id-001"), cg.ID)
 			require.Equal(t, "owner-001", cg.OwnerID)
 			require.Equal(t, fixedTime, cg.CreatedAt)
 			require.Equal(t, fixedTime, cg.UpdatedAt)

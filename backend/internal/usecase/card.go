@@ -231,7 +231,7 @@ func (u *cardUsecase) Card(ctx context.Context, id string) (*domain.Card, error)
 		}
 		return nil, eris.Wrap(err, "usecase: card: find by id")
 	}
-	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, card.CardgroupID, user.Sub); err != nil {
+	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, string(card.CardgroupID), user.Sub); err != nil {
 		return nil, err
 	}
 	return card, nil
@@ -251,7 +251,7 @@ func (u *cardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 		return CreateCardOutcome{}, err
 	}
 
-	card, err := domain.NewCard(in.CardgroupID, in.Front, in.Back, 0)
+	card, err := domain.NewCard(domain.CardgroupID(in.CardgroupID), in.Front, in.Back, 0)
 	if err != nil {
 		return CreateCardOutcome{}, translateCardErr(err)
 	}
@@ -288,7 +288,7 @@ func (u *cardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 		}
 		return UpdateCardOutcome{}, eris.Wrap(err, "usecase: update card: find by id")
 	}
-	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, existing.CardgroupID, user.Sub); err != nil {
+	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, string(existing.CardgroupID), user.Sub); err != nil {
 		return UpdateCardOutcome{}, err
 	}
 
@@ -351,7 +351,7 @@ func (u *cardUsecase) Delete(ctx context.Context, id string) error {
 		}
 		return eris.Wrap(err, "usecase: delete card: find by id")
 	}
-	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, card.CardgroupID, user.Sub); err != nil {
+	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, string(card.CardgroupID), user.Sub); err != nil {
 		return err
 	}
 	if err := u.cardRepo.Delete(ctx, id); err != nil {
@@ -518,7 +518,7 @@ func (u *cardUsecase) resolveCursor(
 		}
 		return nil, eris.Wrap(err, "usecase: resolve cursor: find by id")
 	}
-	if !card.BelongsToCardgroup(cardgroupID) {
+	if !card.BelongsToCardgroup(domain.CardgroupID(cardgroupID)) {
 		return nil, ucerr.NewValidationError(field, "cursor not found")
 	}
 	switch orderBy {

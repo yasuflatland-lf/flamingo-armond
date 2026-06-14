@@ -18,7 +18,7 @@ func TestMutationResolver_ImportMasterCardgroup_Success(t *testing.T) {
 
 	stub := &stubMasterCatalogUC{
 		importOut: usecase.ImportMasterOutcome{
-			Cardgroup: &domain.Cardgroup{ID: "cg1", OwnerID: "u1", Name: domain.CardgroupName("Deck")},
+			Cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1", Name: domain.CardgroupName("Deck")},
 		},
 	}
 	r := &Resolver{MasterCatalogUC: stub}
