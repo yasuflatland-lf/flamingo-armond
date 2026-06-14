@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
+import { mutationAuthBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import type { AdminUserListItem, AdminUserRole } from "./admin-user-row";
 import { AdminEditUserMutation } from "./queries";
@@ -170,12 +171,13 @@ export function AdminUserProfileSheet({
         name: err instanceof Error ? err.name : "unknown",
         codes,
       });
-      const msg = codes.includes("FORBIDDEN")
-        ? t("forbidden")
-        : codes.includes("UNAUTHENTICATED")
-          ? t("unauthenticated")
-          : t("unexpectedError");
-      setSaveError(msg);
+      setSaveError(
+        mutationAuthBanner(err, {
+          forbidden: t("forbidden"),
+          unauthenticated: t("unauthenticated"),
+          fallback: t("unexpectedError"),
+        }),
+      );
     }
   }
 
@@ -285,11 +287,11 @@ function AdminUserProfileSheetBody({
         codes,
       });
       setDeleteError(
-        codes.includes("FORBIDDEN")
-          ? t("deleteUserForbidden")
-          : codes.includes("UNAUTHENTICATED")
-            ? t("unauthenticated")
-            : t("deleteUserFailed"),
+        mutationAuthBanner(err, {
+          forbidden: t("deleteUserForbidden"),
+          unauthenticated: t("unauthenticated"),
+          fallback: t("deleteUserFailed"),
+        }),
       );
       setDeleting(false);
     }

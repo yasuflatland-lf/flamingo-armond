@@ -10,7 +10,7 @@ import { RoleListItem } from "@/components/admin/role-list-item";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { Button } from "@/components/ui/button";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
-import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { classifyMutationAuthError, getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { useUndoDelete } from "@/lib/undo-delete";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
@@ -352,20 +352,16 @@ export function AdminRolesClient({ initialRoles }: Props) {
 
     const name = values.name.trim().toLowerCase();
     const result = await createRole({ variables: { name } }).catch((err) => {
-      const codes = liftGraphQLCodes(err);
-      if (codes.includes("UNAUTHENTICATED")) {
-        setCreateAuthError("unauthenticated");
-        return null;
-      }
-      if (codes.includes("FORBIDDEN")) {
-        setCreateAuthError("forbidden");
+      const authKind = classifyMutationAuthError(err);
+      if (authKind !== "other") {
+        setCreateAuthError(authKind);
         return null;
       }
       // err.message is omitted — backend messages may echo user input.
       // codes is safe to log (fixed enum of GraphQL extension codes).
       console.warn("[admin/roles] createRole rejected", {
         name: err instanceof Error ? err.name : "unknown",
-        codes,
+        codes: liftGraphQLCodes(err),
       });
       return null;
     });
@@ -401,19 +397,15 @@ export function AdminRolesClient({ initialRoles }: Props) {
 
     const name = values.name.trim().toLowerCase();
     const result = await updateRole({ variables: { id: editRole.id, name } }).catch((err) => {
-      const codes = liftGraphQLCodes(err);
-      if (codes.includes("UNAUTHENTICATED")) {
-        setEditAuthError("unauthenticated");
-        return null;
-      }
-      if (codes.includes("FORBIDDEN")) {
-        setEditAuthError("forbidden");
+      const authKind = classifyMutationAuthError(err);
+      if (authKind !== "other") {
+        setEditAuthError(authKind);
         return null;
       }
       console.warn("[admin/roles] updateRole rejected", {
         roleId: editRole.id,
         name: err instanceof Error ? err.name : "unknown",
-        codes,
+        codes: liftGraphQLCodes(err),
       });
       return null;
     });
