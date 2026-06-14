@@ -50,6 +50,14 @@ vi.mock("@vercel/speed-insights/next", () => ({
   SpeedInsights: () => null,
 }));
 
+// next/font/google — the font loader is a build-time transform that only runs
+// under the Next.js pipeline; in vitest the module-level Inter() call in
+// layout.tsx must be stubbed to return a font object carrying the `variable`
+// className the layout applies to <html>.
+vi.mock("next/font/google", () => ({
+  Inter: () => ({ variable: "__inter_variable", className: "__inter" }),
+}));
+
 // next-intl — the layout reads the active locale and wraps the tree in the
 // client provider. Stub both so RootLayout/generateMetadata run without the
 // Next.js request context. The provider is a passthrough so findElement can
@@ -245,8 +253,8 @@ describe("root metadata", () => {
 
   test("keeps the default title and appends the site name via the template", () => {
     expect(metadata.title).toMatchObject({
-      default: "flamingo-armond",
-      template: "%s | flamingo-armond",
+      default: "Flamingo Armond",
+      template: "%s | Flamingo Armond",
     });
   });
 
@@ -257,8 +265,8 @@ describe("root metadata", () => {
   test("carries the Open Graph fields with the generated OG image", () => {
     expect(metadata.openGraph).toMatchObject({
       type: "website",
-      siteName: "flamingo-armond",
-      title: "flamingo-armond",
+      siteName: "Flamingo Armond",
+      title: "Flamingo Armond",
       description: "Swiping flashcard app.",
       url: "/",
       locale: "en_US",
@@ -275,7 +283,7 @@ describe("root metadata", () => {
   test("carries the Twitter Card fields with the generated OG image", () => {
     expect(metadata.twitter).toMatchObject({
       card: "summary_large_image",
-      title: "flamingo-armond",
+      title: "Flamingo Armond",
       description: "Swiping flashcard app.",
       images: ["/opengraph-image"],
     });
