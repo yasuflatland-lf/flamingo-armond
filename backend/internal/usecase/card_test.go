@@ -584,6 +584,29 @@ func TestCardUsecase_ListCardsByCardgroupConnection_BothFirstAndLast(t *testing.
 	assertValidationError(t, err, "first", "")
 }
 
+// TestCardUsecase_ListCardsByCardgroupConnection_AfterWithLast verifies that a
+// mixed-direction combo (forward cursor `after` paired with backward count
+// `last`) is rejected with BAD_USER_INPUT via validateRelayArgs, rather than
+// being silently re-interpreted. See .claude/rules/pagination.md and
+// docs/pagination/reject-mixed-direction-combos.md.
+func TestCardUsecase_ListCardsByCardgroupConnection_AfterWithLast(t *testing.T) {
+	t.Parallel()
+	uc := NewCardUsecase(nil, &mockCardRepository{},
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		nil, nil, newTestLogger(),
+	)
+	// validateRelayArgs runs before cursor decoding, so `after` need only be
+	// non-nil to exercise the mixed-direction guard.
+	after := "any-cursor"
+	last := 5
+	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
+		CardgroupID: "cg1",
+		After:       &after,
+		Last:        &last,
+	})
+	assertValidationError(t, err, "after", "")
+}
+
 func TestCardUsecase_ListCardsByCardgroupConnection_DefaultsAndPaging(t *testing.T) {
 	t.Parallel()
 

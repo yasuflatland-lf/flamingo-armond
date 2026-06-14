@@ -391,6 +391,9 @@ func (u *cardUsecase) ListCardsByCardgroupConnection(
 	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, in.CardgroupID, user.Sub); err != nil {
 		return nil, err
 	}
+	if err := validateRelayArgs(in.First, in.Last, in.After, in.Before); err != nil {
+		return nil, err
+	}
 
 	orderBy, dir, err := resolveOrderBy(in.OrderBy, in.OrderDirection)
 	if err != nil {
