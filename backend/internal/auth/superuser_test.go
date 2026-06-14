@@ -200,7 +200,7 @@ func TestSuperUserPromoter_M1_EmptyEmails(t *testing.T) {
 		assignCalls.Add(1)
 		return nil
 	}}
-	promoter := NewSuperUserPromoter(map[string]struct{}{}, "role-id", checker, assigner)
+	promoter := NewSuperUserPromoter(map[string]struct{}{}, "role-id", checker, assigner, nil)
 
 	u := &AuthUser{Sub: "user-1", Email: "a@x.com", EmailVerified: true}
 	rec := runMiddleware(t, promoter, u)
@@ -228,7 +228,7 @@ func TestSuperUserPromoter_M2_AnonymousRequest(t *testing.T) {
 		assignCalls.Add(1)
 		return nil
 	}}
-	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner)
+	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner, nil)
 
 	rec := runMiddleware(t, promoter, nil /* anonymous */)
 
@@ -255,7 +255,7 @@ func TestSuperUserPromoter_M3_EmailNotInSet(t *testing.T) {
 		assignCalls.Add(1)
 		return nil
 	}}
-	promoter := NewSuperUserPromoter(makeSet("other@x.com"), "role-id", checker, assigner)
+	promoter := NewSuperUserPromoter(makeSet("other@x.com"), "role-id", checker, assigner, nil)
 
 	u := &AuthUser{Sub: "user-1", Email: "a@x.com", EmailVerified: true}
 	rec := runMiddleware(t, promoter, u)
@@ -283,7 +283,7 @@ func TestSuperUserPromoter_M4_EmailVerifiedFalse(t *testing.T) {
 		assignCalls.Add(1)
 		return nil
 	}}
-	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner)
+	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner, nil)
 
 	u := &AuthUser{Sub: "user-1", Email: "a@x.com", EmailVerified: false}
 	rec := runMiddleware(t, promoter, u)
@@ -314,7 +314,7 @@ func TestSuperUserPromoter_M5_AlreadyAdmin(t *testing.T) {
 		assignCalls.Add(1)
 		return nil
 	}}
-	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner)
+	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner, nil)
 
 	u := &AuthUser{Sub: "user-1", Email: "a@x.com", EmailVerified: true}
 	rec := runMiddleware(t, promoter, u)
@@ -354,7 +354,7 @@ func TestSuperUserPromoter_M6_SuccessfulPromotion(t *testing.T) {
 		gotRoleID = roleID
 		return nil
 	}}
-	promoter := NewSuperUserPromoter(makeSet("a@x.com"), wantRoleID, checker, assigner)
+	promoter := NewSuperUserPromoter(makeSet("a@x.com"), wantRoleID, checker, assigner, nil)
 
 	u := &AuthUser{Sub: wantUserID, Email: "a@x.com", EmailVerified: true}
 	rec := runMiddleware(t, promoter, u)
@@ -410,7 +410,7 @@ func TestSuperUserPromoter_M7_IsAdminError(t *testing.T) {
 		assignCalls.Add(1)
 		return nil
 	}}
-	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner)
+	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner, nil)
 
 	u := &AuthUser{Sub: wantUserID, Email: "a@x.com", EmailVerified: true}
 	rec := runMiddleware(t, promoter, u)
@@ -454,6 +454,58 @@ func TestSuperUserPromoter_M7_IsAdminError(t *testing.T) {
 	}
 }
 
+// TestSuperUserPromoter_InjectedLogger_WarnsOnAdminCheckFailure verifies the
+// logger-DI path: a logger passed to NewSuperUserPromoter (writing to a local
+// bytes.Buffer) is the one the middleware uses, NOT the global slog.Default().
+// The admin-check-failure path must emit its WARN line through the injected
+// logger. This is the DI replacement for the captureDefaultLogger global-mutation
+// pattern the M5–M9 tests use; it runs in parallel because it touches no global
+// state.
+func TestSuperUserPromoter_InjectedLogger_WarnsOnAdminCheckFailure(t *testing.T) {
+	t.Parallel()
+
+	const wantUserID = "user-injected-1"
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	checker := stubAdminChecker{fn: func(_ context.Context, _ string) (bool, error) {
+		return false, eris.New("db: connection refused")
+	}}
+	assigner := stubRoleAssigner{fn: func(_ context.Context, _, _ string) error {
+		t.Fatal("AssignToUser must not be called when the admin check fails")
+		return nil
+	}}
+	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner, logger)
+
+	u := &AuthUser{Sub: wantUserID, Email: "a@x.com", EmailVerified: true}
+	rec := runMiddleware(t, promoter, u)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	records := decodeLogLines(t, &buf)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 log line on the injected logger, got %d: %s", len(records), buf.String())
+	}
+	rec0 := records[0]
+	if rec0["level"] != "WARN" {
+		t.Errorf("expected level=WARN, got %v", rec0["level"])
+	}
+	if rec0["msg"] != "superuser: admin check failed" {
+		t.Errorf("unexpected msg: %v", rec0["msg"])
+	}
+	if rec0["user_id"] != wantUserID {
+		t.Errorf("expected user_id=%q in WARN log, got %v", wantUserID, rec0["user_id"])
+	}
+	if _, hasEmail := rec0["email"]; hasEmail {
+		t.Error("WARN log must not contain 'email' field (PII protection)")
+	}
+	if _, hasChain := rec0["error_chain"]; !hasChain {
+		t.Error("WARN log must carry the error_chain attribute")
+	}
+}
+
 // M8: AssignToUser returns an error — WARN log with error_chain, 200.
 func TestSuperUserPromoter_M8_AssignToUserError(t *testing.T) {
 	// Not parallel: captureDefaultLogger mutates global slog default.
@@ -467,7 +519,7 @@ func TestSuperUserPromoter_M8_AssignToUserError(t *testing.T) {
 	assigner := stubRoleAssigner{fn: func(_ context.Context, _, _ string) error {
 		return eris.New("db: deadlock detected")
 	}}
-	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner)
+	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner, nil)
 
 	u := &AuthUser{Sub: wantUserID, Email: "a@x.com", EmailVerified: true}
 	rec := runMiddleware(t, promoter, u)
@@ -525,7 +577,7 @@ func TestSuperUserPromoter_M9_ConcurrentFirstLogin(t *testing.T) {
 		assignCalls.Add(1)
 		return nil // ON CONFLICT DO NOTHING equivalent
 	}}
-	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner)
+	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner, nil)
 
 	const goroutines = 2
 	var wg sync.WaitGroup
@@ -588,6 +640,7 @@ func TestSuperUserPromoter_AuthUserWithEmptySub(t *testing.T) {
 			assignerCalls.Add(1)
 			return nil
 		}},
+		nil,
 	)
 	u := &AuthUser{Sub: "", Email: "a@x.com", EmailVerified: true}
 	rec := runMiddleware(t, promoter, u)
@@ -608,7 +661,7 @@ func TestSuperUserPromoter_AuthUserWithEmptySub(t *testing.T) {
 func TestNewSuperUserPromoter_NilMapIsPassthrough(t *testing.T) {
 	t.Parallel()
 	// No checker/assigner provided; must not be called when map is empty/nil.
-	promoter := NewSuperUserPromoter(nil, "", nil, nil)
+	promoter := NewSuperUserPromoter(nil, "", nil, nil, nil)
 	u := &AuthUser{Sub: "user-1", Email: "anyone@example.com", EmailVerified: true}
 	rec := runMiddleware(t, promoter, u)
 	if rec.Code != http.StatusOK {

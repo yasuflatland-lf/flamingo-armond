@@ -30,6 +30,7 @@ type SuperUserPromoter struct {
 	adminRoleID string
 	checker     adminChecker
 	assigner    roleAssigner
+	logger      *slog.Logger
 }
 
 // ParseSuperUserSet splits a comma-separated string of email addresses into a
@@ -58,11 +59,17 @@ func canonicalEmail(s string) string {
 // returns a zero-cost pass-through; checker, assigner, and adminRoleID may be
 // nil/empty in that case. Panics if emails is non-empty but any dependency is
 // missing — catches misconfiguration at process startup, not per-request.
+//
+// logger is the injected structured logger the middleware uses for its WARN and
+// INFO promotion events. A nil logger falls back to slog.Default() so existing
+// callers that do not yet thread a logger keep working; production callers
+// should pass the composition-root logger so the events carry request context.
 func NewSuperUserPromoter(
 	emails map[string]struct{},
 	adminRoleID string,
 	checker adminChecker,
 	assigner roleAssigner,
+	logger *slog.Logger,
 ) *SuperUserPromoter {
 	if len(emails) > 0 {
 		if checker == nil {
@@ -76,6 +83,10 @@ func NewSuperUserPromoter(
 		}
 	}
 
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	emailsCopy := make(map[string]struct{}, len(emails))
 	for k := range emails {
 		emailsCopy[k] = struct{}{}
@@ -86,6 +97,7 @@ func NewSuperUserPromoter(
 		adminRoleID: adminRoleID,
 		checker:     checker,
 		assigner:    assigner,
+		logger:      logger,
 	}
 }
 
@@ -121,7 +133,7 @@ func (p *SuperUserPromoter) Middleware() echo.MiddlewareFunc {
 
 			isAdmin, err := p.checker.IsAdmin(ctx, u.Sub)
 			if err != nil {
-				logging.LogWarn(ctx, slog.Default(), "superuser: admin check failed",
+				logging.LogWarn(ctx, p.logger, "superuser: admin check failed",
 					eris.Wrap(err, "superuser: IsAdmin"),
 					slog.String("user_id", u.Sub))
 				return next(c)
@@ -132,13 +144,13 @@ func (p *SuperUserPromoter) Middleware() echo.MiddlewareFunc {
 			}
 
 			if err := p.assigner.AssignToUser(ctx, u.Sub, p.adminRoleID); err != nil {
-				logging.LogWarn(ctx, slog.Default(), "superuser: role assignment failed",
+				logging.LogWarn(ctx, p.logger, "superuser: role assignment failed",
 					eris.Wrap(err, "superuser: AssignToUser"),
 					slog.String("user_id", u.Sub))
 				return next(c)
 			}
 
-			slog.InfoContext(ctx, "superuser: promoted to admin", slog.String("user_id", u.Sub))
+			p.logger.InfoContext(ctx, "superuser: promoted to admin", slog.String("user_id", u.Sub))
 			return next(c)
 		}
 	}

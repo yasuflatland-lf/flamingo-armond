@@ -48,11 +48,20 @@ const defaultShutdownTimeout = 25 * time.Second
 
 type serverConfig struct {
 	shutdownTimeout time.Duration
+	// introspectionEnabled is the single source of truth for whether GraphQL
+	// introspection (and the Playground UI that depends on it) is served.
+	// Resolved from one predicate so the schema-introspection gate and the
+	// Playground route gate can never disagree.
+	introspectionEnabled bool
 }
 
 // serverConfigFromEnv builds a serverConfig from environment variables.
 // SHUTDOWN_TIMEOUT accepts any value accepted by time.ParseDuration; invalid
 // or non-positive values fall back to defaultShutdownTimeout with a WARN log.
+//
+// Introspection is fail-safe: enabled only when GRAPHQL_INTROSPECTION is exactly
+// "on". Unset or any other value (including "true") keeps the schema hidden so a
+// new deploy target cannot leak it by forgetting to set the variable.
 func serverConfigFromEnv(logger *slog.Logger) serverConfig {
 	shutdownDur := defaultShutdownTimeout
 	if v := os.Getenv("SHUTDOWN_TIMEOUT"); v != "" {
@@ -68,7 +77,8 @@ func serverConfigFromEnv(logger *slog.Logger) serverConfig {
 		}
 	}
 	return serverConfig{
-		shutdownTimeout: shutdownDur,
+		shutdownTimeout:      shutdownDur,
+		introspectionEnabled: os.Getenv("GRAPHQL_INTROSPECTION") == "on",
 	}
 }
 
@@ -187,7 +197,7 @@ func buildResolver(
 	return resolvers, pingHandler, notionSyncHandler, nil
 }
 
-func newGraphQLServer(r *resolver.Resolver) *handler.Server {
+func newGraphQLServer(r *resolver.Resolver, introspectionEnabled bool) *handler.Server {
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.Options{})
 	srv.AddTransport(transport.POST{
@@ -200,11 +210,11 @@ func newGraphQLServer(r *resolver.Resolver) *handler.Server {
 
 	srv.Use(extension.FixedComplexityLimit(100))
 
-	// Introspection is fail-safe: opt-in only. Enabled when
-	// GRAPHQL_INTROSPECTION is exactly "on"; unset or any other value keeps
-	// the schema hidden so a new deploy target cannot leak it by forgetting
-	// to set the variable.
-	if os.Getenv("GRAPHQL_INTROSPECTION") == "on" {
+	// Introspection is fail-safe: opt-in only. The introspectionEnabled flag is
+	// resolved once in serverConfigFromEnv from a single predicate
+	// (GRAPHQL_INTROSPECTION == "on"), so this schema gate and the Playground
+	// route gate in newRouter can never disagree.
+	if introspectionEnabled {
 		srv.Use(extension.Introspection{})
 	}
 
@@ -221,6 +231,7 @@ func newRouter(
 	ld loaderDeps,
 	pingHandler *ping.Handler,
 	notionSyncHandler *notionsync.Handler,
+	introspectionEnabled bool,
 ) *echo.Echo {
 	e := echo.New()
 	e.Use(internalmw.RequestID())
@@ -252,7 +263,7 @@ func newRouter(
 		e.POST("/internal/notion-sync", notionSyncHandler.Handle)
 	}
 
-	gqlSrv := newGraphQLServer(resolvers)
+	gqlSrv := newGraphQLServer(resolvers, introspectionEnabled)
 	// Wrap only the GraphQL POST handler with otelhttp so the HTTP layer
 	// extracts an incoming traceparent and creates the root HTTP span.
 	// /health and /playground are intentionally excluded to reduce noise.
@@ -274,11 +285,11 @@ func newRouter(
 	q := e.Group("/query", authMW, promoter.Middleware(), loader.MiddlewareWithUserCardFSRS(ld.user, ld.role, ld.userRole, ld.cardgroup, ld.card, ld.userPreference, ld.swipeRecord, ld.userCardFSRS))
 	q.POST("", echo.WrapHandler(otelGQLHandler))
 
-	// Gate the Playground UI on the same switch as introspection (main.go
-	// `extension.Introspection{}` gate): the UI is useless without
-	// introspection, so production (GRAPHQL_INTROSPECTION=off) does not serve
+	// Gate the Playground UI on the same single introspectionEnabled flag as the
+	// schema introspection gate in newGraphQLServer: the UI is useless without
+	// introspection, so a deployment with introspection disabled does not serve
 	// it at all rather than serving a non-functional page.
-	if os.Getenv("GRAPHQL_INTROSPECTION") != "off" {
+	if introspectionEnabled {
 		e.GET("/playground", echo.WrapHandler(playground.Handler("GraphQL", "/query")))
 	}
 
@@ -308,7 +319,7 @@ func bootstrapSuperUserPromoter(
 			return nil, eris.Wrap(err, "run: lookup admin role for super-user bootstrap")
 		}
 		logger.Info("super-user bootstrap enabled", "email_count", len(superUserEmails))
-		return auth.NewSuperUserPromoter(superUserEmails, adminRole.ID, authSvc, userRoleRepo), nil
+		return auth.NewSuperUserPromoter(superUserEmails, adminRole.ID, authSvc, userRoleRepo, logger), nil
 	}
 	// No SUPER_USER_EMAILS configured. Check whether at least one admin
 	// already exists in the DB; if not, the operator has no escape hatch
@@ -321,7 +332,7 @@ func bootstrapSuperUserPromoter(
 		logger.Warn("super-user bootstrap: no admin configured and no admin role-holder exists",
 			"admin_count", adminCount)
 	}
-	return auth.NewSuperUserPromoter(nil, "", nil, nil), nil
+	return auth.NewSuperUserPromoter(nil, "", nil, nil, logger), nil
 }
 
 func run(ctx context.Context, logger *slog.Logger) error {
@@ -393,7 +404,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	// constructs reads otel.GetTextMapPropagator() eagerly (it is newRouter, not
 	// the buildResolver call just above, that constructs that handler). See comment
 	// above telemetry.Init for the full ordering invariant.
-	e := newRouter(resolvers, authMW, promoter, repos.loaderDeps(), pingHandler, notionSyncHandler)
+	e := newRouter(resolvers, authMW, promoter, repos.loaderDeps(), pingHandler, notionSyncHandler, srvCfg.introspectionEnabled)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")
