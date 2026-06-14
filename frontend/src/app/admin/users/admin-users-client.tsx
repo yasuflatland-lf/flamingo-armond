@@ -1,7 +1,7 @@
 "use client";
 
 import { NetworkStatus } from "@apollo/client";
-import { useApolloClient, useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
+import { useLazyQuery, useQuery } from "@apollo/client/react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -23,7 +23,6 @@ import { type AdminUserListItem, AdminUserRow } from "./admin-user-row";
 import { AdminUsersSkeleton } from "./admin-users-skeleton";
 import {
   ADMIN_USERS_PAGE_SIZE,
-  AdminDeleteUserMutation,
   AdminRoleFieldsFragment,
   AdminRolesQuery,
   AdminUserFieldsFragment,
@@ -31,6 +30,7 @@ import {
   AdminUserQuery,
   AdminUsersQuery,
 } from "./queries";
+import { useAdminUserMutations } from "./use-admin-user-mutations";
 
 type Connection = AdminUsersQueryResult["users"];
 type Edge = Connection["edges"][number];
@@ -215,48 +215,18 @@ export function AdminUsersClient() {
     void loadAdminUser({ variables: { id: editUserId } });
   }, [editUserId, loadAdminUser, refetch]);
 
-  const apolloClient = useApolloClient();
-  const [runDeleteUser] = useMutation(AdminDeleteUserMutation);
+  const { deleteUser } = useAdminUserMutations();
 
-  // Deletes a user, updates the cache, toasts, and closes the sheet. Rejects on
-  // failure (e.g. FORBIDDEN) so the sheet's danger zone can render the reason.
+  // Deletes a user (mutation + cache eviction live in the hook), then toasts and
+  // closes the sheet. Re-throws on failure so AdminUserProfileSheet's danger zone
+  // can render the reason.
   const handleDeleteUser = useCallback(
     async (id: string) => {
-      const result = await runDeleteUser({ variables: { id } });
-      if (!result.data?.adminDeleteUser) {
-        throw new Error("adminDeleteUser returned false");
-      }
-      // Drop the deleted user from every cached `users` connection variant (each
-      // search / pagination combo is a separate field entry). The edge cursor
-      // equals the user id by schema contract, so filter on cursor and avoid
-      // unmasking the node fragment. Then evict the now-orphaned entity.
-      apolloClient.cache.modify({
-        fields: {
-          users(existing) {
-            const connection = existing as {
-              edges?: ReadonlyArray<{ cursor: string }>;
-              totalCount?: number;
-            };
-            if (!connection.edges) return existing;
-            const edges = connection.edges.filter((edge) => edge.cursor !== id);
-            if (edges.length === connection.edges.length) return existing;
-            return {
-              ...connection,
-              edges,
-              totalCount: Math.max(0, (connection.totalCount ?? 0) - 1),
-            };
-          },
-        },
-      });
-      const cacheId = apolloClient.cache.identify({ __typename: "User", id });
-      if (cacheId) {
-        apolloClient.cache.evict({ id: cacheId });
-        apolloClient.cache.gc();
-      }
+      await deleteUser(id);
       toast.success(t("deleteUserSuccess"));
       sheet.close();
     },
-    [apolloClient, runDeleteUser, sheet, t],
+    [deleteUser, t, sheet],
   );
 
   // Show the full-page skeleton only on the very first load (NetworkStatus.loading = 1).
