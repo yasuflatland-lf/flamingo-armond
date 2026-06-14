@@ -28,12 +28,13 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   );
 
   return (
-    // Golden-ratio split: brand panel (61.8%) left, form column (38.2%) right.
-    // The `1.618fr_1fr` grid template is the exact φ division; below lg the brand
-    // panel is hidden and the form takes the full width.
-    <main data-testid="login-grid" className="relative grid h-svh lg:grid-cols-[1.618fr_1fr]">
-      {/* LEFT — brand panel (lg+ only). First grid child so it occupies the wider
-          golden column on the left. */}
+    // Even split: brand panel (50%) left, form column (50%) right. The
+    // `grid-cols-2` template divides the viewport equally so the panel boundary
+    // sits at the centre; below lg the brand panel is hidden and the form takes
+    // the full width.
+    <main data-testid="login-grid" className="relative grid h-svh lg:grid-cols-2">
+      {/* LEFT — brand panel (lg+ only). First grid child so it occupies the left
+          half. */}
       <div
         data-testid="brand-panel"
         className="max-lg:hidden relative flex items-center justify-center overflow-hidden bg-gradient-to-br from-[oklch(83%_0.11_22)] via-[oklch(72%_0.185_18.45)] to-[oklch(60%_0.2_13)]"
@@ -62,8 +63,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
         </div>
       </div>
 
-      {/* RIGHT — form column. Second grid child → narrower golden column on the
-          right at lg+, full-width and centered below lg. */}
+      {/* RIGHT — form column. Second grid child → right half at lg+,
+          full-width and centered below lg. */}
       <div className="flex flex-col">
         <div
           data-testid="form-brand-header"

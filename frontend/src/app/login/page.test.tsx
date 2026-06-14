@@ -106,12 +106,12 @@ describe("LoginPage", () => {
       ({ container } = render(jsx));
     });
 
-    it("outer wrapper has h-svh and the golden-ratio grid template", () => {
+    it("outer wrapper has h-svh and the even-split grid template", () => {
       const grid = container.querySelector("[data-testid='login-grid']");
       expect(grid).toBeInTheDocument();
       expect(grid?.className).toMatch(/h-svh/);
-      // φ split: brand column 1.618fr, form column 1fr.
-      expect(grid?.className).toMatch(/lg:grid-cols-\[1\.618fr_1fr\]/);
+      // Even split: two equal columns put the panel boundary at the centre.
+      expect(grid?.className).toMatch(/lg:grid-cols-2/);
     });
 
     it("brand panel has max-lg:hidden", () => {
