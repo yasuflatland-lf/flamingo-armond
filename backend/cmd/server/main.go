@@ -23,6 +23,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
+	"gorm.io/gorm"
 
 	"backend/graph/generated"
 	"backend/graph/resolver"
@@ -71,6 +72,121 @@ func serverConfigFromEnv(logger *slog.Logger) serverConfig {
 	}
 }
 
+// appRepos bundles every repository instance, each built once over the same
+// *gorm.DB. Bundling removes the previous double-construction of the master
+// repos inside the notion-sync block and the long positional argument lists.
+// gorm is retained so buildResolver can construct the tx-taking usecases without
+// threading db through a separate parameter.
+type appRepos struct {
+	gorm            *gorm.DB
+	user            repository.UserRepository
+	role            repository.RoleRepository
+	cardgroup       repository.CardgroupRepository
+	masterCardgroup repository.MasterCardgroupRepository
+	card            repository.CardRepository
+	masterCard      repository.MasterCardRepository
+	userCardFSRS    repository.UserCardFSRSRepository
+	swipeRecord     repository.SwipeRecordRepository
+	pingRecord      repository.PingRecordRepository
+	userRole        repository.UserRoleRepository
+	userPreference  repository.UserPreferenceRepository
+}
+
+func newAppRepos(db *database.DB) *appRepos {
+	return &appRepos{
+		gorm:            db.GORM,
+		user:            repository.NewUserRepository(db.GORM),
+		role:            repository.NewRoleRepository(db.GORM),
+		cardgroup:       repository.NewCardgroupRepository(db.GORM),
+		masterCardgroup: repository.NewMasterCardgroupRepository(db.GORM),
+		card:            repository.NewCardRepository(db.GORM),
+		masterCard:      repository.NewMasterCardRepository(db.GORM),
+		userCardFSRS:    repository.NewUserCardFSRSRepository(db.GORM),
+		swipeRecord:     repository.NewSwipeRecordRepository(db.GORM),
+		pingRecord:      repository.NewPingRecordRepository(db.GORM),
+		userRole:        repository.NewUserRoleRepository(db.GORM),
+		userPreference:  repository.NewUserPreferenceRepository(db.GORM),
+	}
+}
+
+// loaderDeps is the subset of repositories the GraphQL loader middleware needs.
+type loaderDeps struct {
+	user           repository.UserRepository
+	role           repository.RoleRepository
+	userRole       repository.UserRoleRepository
+	cardgroup      repository.CardgroupRepository
+	card           repository.CardRepository
+	userPreference repository.UserPreferenceRepository
+	swipeRecord    repository.SwipeRecordRepository
+	userCardFSRS   repository.UserCardFSRSRepository
+}
+
+func (r *appRepos) loaderDeps() loaderDeps {
+	return loaderDeps{
+		user:           r.user,
+		role:           r.role,
+		userRole:       r.userRole,
+		cardgroup:      r.cardgroup,
+		card:           r.card,
+		userPreference: r.userPreference,
+		swipeRecord:    r.swipeRecord,
+		userCardFSRS:   r.userCardFSRS,
+	}
+}
+
+// buildResolver wires every usecase, the ping/notion handlers, and the GraphQL
+// resolver from the repository bundle. Extracted from run() so the wiring is
+// unit-testable, mirroring bootstrapSuperUserPromoter. notionSyncHandler is nil
+// when notion sync is disabled.
+func buildResolver(
+	repos *appRepos,
+	authSvc *auth.Service,
+	adminGate *usecase.AdminGate,
+	logger *slog.Logger,
+	notionEnv notionsync.EnvConfig,
+	notionSyncDisabled bool,
+	pingToken string,
+) (*resolver.Resolver, *ping.Handler, *notionsync.Handler, error) {
+	masterDeckUC := usecase.NewMasterDeckUsecase(repos.masterCardgroup, repos.masterCard, repos.card, repos.cardgroup, repos.gorm, logger)
+	userUC := usecase.NewUserUsecase(repos.user, repos.userRole, authSvc, masterDeckUC, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(repos.cardgroup, authSvc, logger)
+	learnUC := usecase.NewLearnUsecase(repos.card, repos.cardgroup, service.NewOrderingPolicy(), nil, 0, 0, nil, logger)
+	swipeUC := usecase.NewSwipeUsecase(repos.gorm, repos.card, repos.cardgroup, repos.swipeRecord, service.NewFSRSScheduler(), repos.userCardFSRS, logger)
+	cardImportUC := usecase.NewCardImportUsecase(repos.cardgroup, repos.card, repos.gorm, logger)
+	adminUserUC := usecase.NewAdminUser(repos.gorm, repos.user, repos.role, repos.userRole, adminGate, logger)
+	adminRoleUC := usecase.NewAdminRole(repos.role, adminGate, logger)
+	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(repos.userPreference, repos.user, logger)
+	updateLearnDisplayModeUC := usecase.NewUpdateLearnDisplayMode(repos.userPreference, repos.user, logger)
+	pingHandler := ping.New(repos.pingRecord, pingToken)
+
+	var notionSyncHandler *notionsync.Handler
+	var cardObserver usecase.CardObserver
+	if !notionSyncDisabled {
+		retryCfg, err := notion.RetryConfigFromEnv()
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		retryCfg.Logger = logger
+		notionFetcher := notion.NewFetcher(notionEnv.NotionToken, retryCfg)
+		notionWriter := notion.NewWriter(notionEnv.NotionToken, retryCfg)
+		cardObserver = notion.NewCardWritebacker(notionWriter, notionEnv.HandlerConfig.PageIDs[0], logger)
+		notionSyncUC := usecase.NewMasterNotionSyncUsecase(notionFetcher, repos.masterCardgroup, repos.masterCard, repos.gorm, logger)
+		notionSyncHandler = notionsync.New(notionSyncUC, notionEnv.HandlerConfig)
+	}
+	cardUC := usecase.NewCardUsecase(repos.gorm, repos.card, repos.cardgroup, repos.userCardFSRS, cardObserver, logger)
+	// Type the word list as the domain.CEFRWordList port so the dependency
+	// edge the constructor creates is domain_service -> domain (allowed),
+	// rather than attributing the concrete *cefr.WordList type to a
+	// cefr -> domain_service edge (which the layer model forbids).
+	var cefrWords domain.CEFRWordList = cefr.NewWordList()
+	cefrClassifier := service.NewCEFRClassifier(cefrWords)
+	cefrUC := usecase.NewCEFRUsecase(cefrClassifier)
+	masterCatalogUC := usecase.NewMasterCatalogUsecase(repos.masterCardgroup, masterDeckUC, adminGate, logger)
+
+	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, updateLearnDisplayModeUC, learnUC, cefrUC, masterCatalogUC)
+	return resolvers, pingHandler, notionSyncHandler, nil
+}
+
 func newGraphQLServer(r *resolver.Resolver) *handler.Server {
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.Options{})
@@ -102,16 +218,9 @@ func newRouter(
 	resolvers *resolver.Resolver,
 	authMW echo.MiddlewareFunc,
 	promoter *auth.SuperUserPromoter,
-	userRepo repository.UserRepository,
-	roleRepo repository.RoleRepository,
-	userRoleRepo repository.UserRoleRepository,
-	cardgroupRepo repository.CardgroupRepository,
-	cardRepo repository.CardRepository,
-	userPreferenceRepo repository.UserPreferenceRepository,
-	userCardFSRSRepo repository.UserCardFSRSRepository,
+	ld loaderDeps,
 	pingHandler *ping.Handler,
 	notionSyncHandler *notionsync.Handler,
-	swipeRecordRepo repository.SwipeRecordRepository,
 ) *echo.Echo {
 	e := echo.New()
 	e.Use(internalmw.RequestID())
@@ -162,7 +271,7 @@ func newRouter(
 			return r.Method + " " + r.URL.Path
 		}),
 	)
-	q := e.Group("/query", authMW, promoter.Middleware(), loader.MiddlewareWithUserCardFSRS(userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, swipeRecordRepo, userCardFSRSRepo))
+	q := e.Group("/query", authMW, promoter.Middleware(), loader.MiddlewareWithUserCardFSRS(ld.user, ld.role, ld.userRole, ld.cardgroup, ld.card, ld.userPreference, ld.swipeRecord, ld.userCardFSRS))
 	q.POST("", echo.WrapHandler(otelGQLHandler))
 
 	// Gate the Playground UI on the same switch as introspection (main.go
@@ -267,66 +376,23 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		return eris.Wrap(err, "run: db open")
 	}
 
-	userRepo := repository.NewUserRepository(db.GORM)
-	roleRepo := repository.NewRoleRepository(db.GORM)
-	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
-	masterCardgroupRepo := repository.NewMasterCardgroupRepository(db.GORM)
-	cardRepo := repository.NewCardRepository(db.GORM)
-	masterCardRepo := repository.NewMasterCardRepository(db.GORM)
-	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
-	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
-	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
-	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
-	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
-	authSvc := auth.NewService(userRoleRepo)
+	repos := newAppRepos(db)
+	authSvc := auth.NewService(repos.userRole)
 	adminGate := usecase.NewAdminGate(authSvc)
 
-	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, roleRepo, userRoleRepo, os.Getenv("SUPER_USER_EMAILS"))
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, repos.role, repos.userRole, os.Getenv("SUPER_USER_EMAILS"))
 	if err != nil {
 		return err
 	}
 
-	masterDeckUC := usecase.NewMasterDeckUsecase(masterCardgroupRepo, masterCardRepo, cardRepo, cardgroupRepo, db.GORM, logger)
-	userUC := usecase.NewUserUsecase(userRepo, userRoleRepo, authSvc, masterDeckUC, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, authSvc, logger)
-	learnUC := usecase.NewLearnUsecase(cardRepo, cardgroupRepo, service.NewOrderingPolicy(), nil, 0, 0, nil, logger)
-	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
-	cardImportUC := usecase.NewCardImportUsecase(cardgroupRepo, cardRepo, db.GORM, logger)
-	adminUserUC := usecase.NewAdminUser(db.GORM, userRepo, roleRepo, userRoleRepo, adminGate, logger)
-	adminRoleUC := usecase.NewAdminRole(roleRepo, adminGate, logger)
-	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
-	updateLearnDisplayModeUC := usecase.NewUpdateLearnDisplayMode(userPreferenceRepo, userRepo, logger)
-	pingHandler := ping.New(pingRecordRepo, pingToken)
-	var notionSyncHandler *notionsync.Handler
-	var cardObserver usecase.CardObserver
-	if !notionSyncDisabled {
-		retryCfg, err := notion.RetryConfigFromEnv()
-		if err != nil {
-			return err
-		}
-		retryCfg.Logger = logger
-		notionFetcher := notion.NewFetcher(notionEnv.NotionToken, retryCfg)
-		notionWriter := notion.NewWriter(notionEnv.NotionToken, retryCfg)
-		cardObserver = notion.NewCardWritebacker(notionWriter, notionEnv.HandlerConfig.PageIDs[0], logger)
-		masterCardgroupRepo := repository.NewMasterCardgroupRepository(db.GORM)
-		masterCardRepo := repository.NewMasterCardRepository(db.GORM)
-		notionSyncUC := usecase.NewMasterNotionSyncUsecase(notionFetcher, masterCardgroupRepo, masterCardRepo, db.GORM, logger)
-		notionSyncHandler = notionsync.New(notionSyncUC, notionEnv.HandlerConfig)
+	resolvers, pingHandler, notionSyncHandler, err := buildResolver(repos, authSvc, adminGate, logger, notionEnv, notionSyncDisabled, pingToken)
+	if err != nil {
+		return err
 	}
-	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, cardObserver, logger)
-	// Type the word list as the domain.CEFRWordList port so the dependency
-	// edge the constructor creates is domain_service -> domain (allowed),
-	// rather than attributing the concrete *cefr.WordList type to a
-	// cefr -> domain_service edge (which the layer model forbids).
-	var cefrWords domain.CEFRWordList = cefr.NewWordList()
-	cefrClassifier := service.NewCEFRClassifier(cefrWords)
-	cefrUC := usecase.NewCEFRUsecase(cefrClassifier)
-	masterCatalogUC := usecase.NewMasterCatalogUsecase(masterCardgroupRepo, masterDeckUC, adminGate, logger)
-	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, updateLearnDisplayModeUC, learnUC, cefrUC, masterCatalogUC)
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.
-	e := newRouter(resolvers, authMW, promoter, userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo, pingHandler, notionSyncHandler, swipeRecordRepo)
+	e := newRouter(resolvers, authMW, promoter, repos.loaderDeps(), pingHandler, notionSyncHandler)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")

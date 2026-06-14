@@ -45,6 +45,7 @@ import (
 	"backend/internal/domain"
 	"backend/internal/domain/service"
 	"backend/internal/gqlerr"
+	"backend/internal/handler/notionsync"
 	"backend/internal/handler/ping"
 	"backend/internal/logging"
 	"backend/internal/repository"
@@ -160,7 +161,7 @@ func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil), nil, nil, nil, nil, nil, nil, nil, ping.New(nil, "test-token"), nil, nil))
+	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil), loaderDeps{}, ping.New(nil, "test-token"), nil))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -253,6 +254,42 @@ func TestRootEndpoint(t *testing.T) {
 	}
 	if got, want := body["service"], "flamingo-armond-backend"; got != want {
 		t.Errorf("body[\"service\"] = %q, want %q", got, want)
+	}
+}
+
+// TestBuildResolver_WiresResolverAndHandlers is a wiring smoke test: it asserts
+// buildResolver returns a non-nil resolver and ping handler, and a nil notion
+// sync handler when notion sync is disabled. It uses the testcontainer Postgres
+// (testDBURL) opened the same way the other DB-backed tests in this file do.
+func TestBuildResolver_WiresResolverAndHandlers(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	db, err := database.Open(ctx, database.Config{URL: testDBURL})
+	if err != nil {
+		t.Fatalf("db open: %v", err)
+	}
+	t.Cleanup(db.Close)
+
+	repos := newAppRepos(db)
+	authSvc := auth.NewService(repos.userRole)
+	adminGate := usecase.NewAdminGate(authSvc)
+
+	resolvers, pingHandler, notionSyncHandler, err := buildResolver(
+		repos, authSvc, adminGate, slog.New(slog.DiscardHandler),
+		notionsync.EnvConfig{}, true /* notionSyncDisabled */, "ping-token",
+	)
+	if err != nil {
+		t.Fatalf("buildResolver returned error: %v", err)
+	}
+	if resolvers == nil {
+		t.Fatal("expected non-nil resolver")
+	}
+	if pingHandler == nil {
+		t.Fatal("expected non-nil ping handler")
+	}
+	if notionSyncHandler != nil {
+		t.Fatal("notion sync disabled => nil handler")
 	}
 }
 
@@ -600,7 +637,16 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
-	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil), userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo, ping.New(pingRecordRepo, "test-token"), nil, swipeRecordRepo)
+	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil), loaderDeps{
+		user:           userRepo,
+		role:           roleRepo,
+		userRole:       userRoleRepo,
+		cardgroup:      cardgroupRepo,
+		card:           cardRepo,
+		userPreference: userPreferenceRepo,
+		swipeRecord:    swipeRecordRepo,
+		userCardFSRS:   userCardFSRSRepo,
+	}, ping.New(pingRecordRepo, "test-token"), nil)
 
 	ts := httptest.NewServer(e)
 	t.Cleanup(ts.Close)
@@ -1767,8 +1813,17 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 		resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, lastViewedUC, nil, nil, nil, nil),
 		mw,
 		auth.NewSuperUserPromoter(nil, "", nil, nil),
-		userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo,
-		ping.New(pingRecordRepo, "test-token"), nil, swipeRecordRepo,
+		loaderDeps{
+			user:           userRepo,
+			role:           roleRepo,
+			userRole:       userRoleRepo,
+			cardgroup:      cardgroupRepo,
+			card:           cardRepo,
+			userPreference: userPreferenceRepo,
+			swipeRecord:    swipeRecordRepo,
+			userCardFSRS:   userCardFSRSRepo,
+		},
+		ping.New(pingRecordRepo, "test-token"), nil,
 	)
 
 	ts := httptest.NewServer(e)
