@@ -28,6 +28,7 @@ The frontend package manager is **pnpm** (pinned via `package.json` engines + `p
 - [`docs/frontend/e2e-tests.md`](../docs/frontend/e2e-tests.md) — Playwright + service-role-key handling.
 - [`docs/frontend/tailwind-4-notes.md`](../docs/frontend/tailwind-4-notes.md) — CSS-first config via `@theme`, no `tailwind.config.ts`.
 - [`docs/frontend/design-system.md`](../docs/frontend/design-system.md) — Color-token semantics (brand/destructive/primary), `Button` variant usage, and the destructive-confirm-dialog convention.
+- [`docs/frontend/auto-fit-text.md`](../docs/frontend/auto-fit-text.md) — `useFitText` card-front auto-shrink: `break-normal` word-wrap, pure solver + jsdom-safe test harness, observe-parent / load-bearing-write gotchas.
 - [`docs/frontend/codegen.md`](../docs/frontend/codegen.md) — `graphql-codegen` wiring and `prebuild` lifecycle.
 - [`docs/frontend/apollo-wiring.md`](../docs/frontend/apollo-wiring.md) — `gqlFetch` for RSC and Apollo client cache patterns.
 - [`docs/frontend/routing-topology.md`](../docs/frontend/routing-topology.md) — HomePage / cardgroup / login / `/cards/new` chains.
