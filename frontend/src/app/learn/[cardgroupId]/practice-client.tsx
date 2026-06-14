@@ -10,6 +10,7 @@ import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
 import type { SwipeDirection } from "@/components/learn/types";
 import { Button } from "@/components/ui/button";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import type { PracticeTodaysCardsQuery } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
@@ -134,10 +135,7 @@ export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
   if (error) {
     return (
       <section className="flex flex-1 items-center justify-center">
-        <div
-          className="w-full max-w-xl rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-        >
+        <ErrorBanner className="w-full max-w-xl">
           <p>
             {getBackendErrorBanner(error) ??
               "Could not load today's practice cards. Please try again."}
@@ -147,7 +145,7 @@ export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
               Retry
             </Button>
           </div>
-        </div>
+        </ErrorBanner>
       </section>
     );
   }

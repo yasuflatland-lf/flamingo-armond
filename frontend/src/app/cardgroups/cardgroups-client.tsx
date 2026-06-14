@@ -11,6 +11,7 @@ import { CardgroupListItem } from "@/components/cardgroups/cardgroup-list-item";
 import { CardgroupsToolbar } from "@/components/cardgroups/cardgroups-toolbar";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { Button } from "@/components/ui/button";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import {
   MyCardgroupsConnectionDocument,
@@ -86,37 +87,21 @@ function CreateCardgroupSheetContent({
   return (
     <div onInput={onDirty} className="space-y-4">
       {authError ? (
-        <div
-          role="alert"
-          data-testid="cardgroup-create-auth-error"
-          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-        >
+        <ErrorBanner data-testid="cardgroup-create-auth-error">
           <span>{authError === "unauthenticated" ? t("sessionExpired") : t("noPermission")}</span>
           <Link href="/login" className="underline">
             {t("signInAgain")}
           </Link>
           .
-        </div>
+        </ErrorBanner>
       ) : null}
 
       {limitError ? (
-        <div
-          role="alert"
-          data-testid="cardgroup-create-limit-error"
-          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-        >
-          {limitError}
-        </div>
+        <ErrorBanner data-testid="cardgroup-create-limit-error">{limitError}</ErrorBanner>
       ) : null}
 
       {unexpectedError ? (
-        <div
-          role="alert"
-          data-testid="cardgroup-create-unexpected-error"
-          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-        >
-          {unexpectedError}
-        </div>
+        <ErrorBanner data-testid="cardgroup-create-unexpected-error">{unexpectedError}</ErrorBanner>
       ) : null}
 
       <CardgroupForm
@@ -416,28 +401,23 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
       )}
 
       {deleteCommitError && (
-        <div
-          className="mt-3 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-          data-testid="cardgroups-delete-error"
-        >
+        <ErrorBanner className="mt-3" data-testid="cardgroups-delete-error">
           {deleteCommitError}
-        </div>
+        </ErrorBanner>
       )}
 
       <div ref={sentinelRef} aria-hidden="true" data-testid="cardgroups-sentinel" />
 
       {fetchMoreError && (
-        <div
-          className="mt-3 flex flex-col items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
+        <ErrorBanner
+          className="mt-3 flex flex-col items-center gap-2"
           data-testid="cardgroups-fetch-more-error"
         >
           <span>{fetchMoreError}</span>
           <Button type="button" variant="outline" size="sm" onClick={retryFetchMore}>
             {tCommon("retry")}
           </Button>
-        </div>
+        </ErrorBanner>
       )}
 
       {!fetchMoreError && fetchingMore && hasNextPage && (

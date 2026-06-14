@@ -8,6 +8,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { Button } from "@/components/ui/button";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import {
   MasterCatalogDocument,
   type MasterCatalogQuery,
@@ -218,26 +219,16 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
       }
     >
       {importAuthError ? (
-        <div
-          role="alert"
-          data-testid="catalog-import-auth-error"
-          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-        >
+        <ErrorBanner data-testid="catalog-import-auth-error">
           <span>{t("sessionExpired")}</span>
           <Link href="/login" className="underline">
             {t("signInAgain")}
           </Link>
-        </div>
+        </ErrorBanner>
       ) : null}
 
       {importError ? (
-        <div
-          role="alert"
-          data-testid="catalog-import-error"
-          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-        >
-          {importError}
-        </div>
+        <ErrorBanner data-testid="catalog-import-error">{importError}</ErrorBanner>
       ) : null}
 
       {initialLoading && (
@@ -278,16 +269,15 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
       <div ref={sentinelRef} aria-hidden="true" data-testid="catalog-sentinel" />
 
       {fetchMoreError && (
-        <div
-          className="mt-3 flex flex-col items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
+        <ErrorBanner
+          className="mt-3 flex flex-col items-center gap-2"
           data-testid="catalog-fetch-more-error"
         >
           <span>{fetchMoreError}</span>
           <Button type="button" variant="outline" size="sm" onClick={retryFetchMore}>
             {tCommon("retry")}
           </Button>
-        </div>
+        </ErrorBanner>
       )}
 
       {!fetchMoreError && fetchingMore && hasNextPage && (

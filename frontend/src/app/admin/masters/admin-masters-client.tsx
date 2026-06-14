@@ -8,6 +8,7 @@ import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { Button } from "@/components/ui/button";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet } from "@/components/ui/form-sheet";
 import { Input } from "@/components/ui/input";
 import type {
@@ -270,39 +271,25 @@ export function AdminMastersClient() {
       </div>
 
       {queryErrorKind?.kind === "forbidden" && (
-        <div
-          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-          data-testid="admin-masters-query-error"
-        >
-          {t("viewForbidden")}
-        </div>
+        <ErrorBanner data-testid="admin-masters-query-error">{t("viewForbidden")}</ErrorBanner>
       )}
 
       {queryErrorKind?.kind === "unauthenticated" && (
-        <div
-          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-          data-testid="admin-masters-query-error"
-        >
+        <ErrorBanner data-testid="admin-masters-query-error">
           <span>{t("sessionExpired")}</span>{" "}
           <Link href="/login" className="underline">
             {t("pleaseSignInAgain")}
           </Link>
-        </div>
+        </ErrorBanner>
       )}
 
       {queryBannerError && (
-        <div
-          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-          data-testid="admin-masters-query-error"
-        >
+        <ErrorBanner data-testid="admin-masters-query-error">
           <span>{queryBannerError}</span>
           <button type="button" className="ml-3 underline" onClick={() => refetch()}>
             {tCommon("retry")}
           </button>
-        </div>
+        </ErrorBanner>
       )}
 
       {!initialLoading && !queryErrorKind && edges.length === 0 && (
@@ -326,9 +313,8 @@ export function AdminMastersClient() {
       <div ref={sentinelRef} aria-hidden="true" data-testid="admin-masters-sentinel" />
 
       {fetchMoreError && (
-        <div
-          className="mt-3 flex flex-col items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
+        <ErrorBanner
+          className="mt-3 flex flex-col items-center gap-2"
           data-testid="admin-masters-fetch-more-error"
         >
           <span>{fetchMoreError}</span>
@@ -339,7 +325,7 @@ export function AdminMastersClient() {
           >
             {tCommon("retry")}
           </button>
-        </div>
+        </ErrorBanner>
       )}
 
       {!fetchMoreError && fetchingMore && hasNextPage && (

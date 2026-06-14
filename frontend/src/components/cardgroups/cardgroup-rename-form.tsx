@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { UpdateCardgroupMutation } from "@/app/cardgroups/queries";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 
@@ -91,11 +92,7 @@ export function CardgroupRenameForm({ cardgroup, onSaved, onSubmittingChange }: 
 
   return (
     <div className="space-y-4">
-      {bannerMessage ? (
-        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-          {bannerMessage}
-        </div>
-      ) : null}
+      {bannerMessage ? <ErrorBanner>{bannerMessage}</ErrorBanner> : null}
       <CardgroupForm
         mode="edit"
         defaultValues={{ name: cardgroup.name }}

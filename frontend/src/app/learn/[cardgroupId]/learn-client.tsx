@@ -14,6 +14,7 @@ import { LearnActionBar } from "@/components/learn/learn-action-bar";
 import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
 import type { LearnDisplayMode, SwipeDirection } from "@/components/learn/types";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import type { LearnNextDueCardsQuery } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
@@ -283,12 +284,7 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
   return (
     <section className="grid min-h-0 flex-1 grid-rows-[auto_1fr_auto] gap-3">
       {visibleError ? (
-        <div
-          className="mx-auto w-full max-w-xl rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-        >
-          {visibleError}
-        </div>
+        <ErrorBanner className="mx-auto w-full max-w-xl">{visibleError}</ErrorBanner>
       ) : (
         // Placeholder so the card stays in the 1fr row and the action bar in
         // the trailing auto row when the banner is absent. Without it, grid

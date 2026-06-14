@@ -9,6 +9,7 @@ import { RoleForm } from "@/components/admin/role-form";
 import { RoleListItem } from "@/components/admin/role-list-item";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { Button } from "@/components/ui/button";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import { classifyMutationAuthError, getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
@@ -37,17 +38,13 @@ function AuthBanner({
 }) {
   const t = useTranslations("Admin");
   return (
-    <div
-      role="alert"
-      data-testid={testId}
-      className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-    >
+    <ErrorBanner data-testid={testId}>
       <span>{authError === "unauthenticated" ? t("sessionExpired") : t("forbidden")}</span>{" "}
       <Link href="/login" className="underline">
         {t("signInAgain")}
       </Link>
       .
-    </div>
+    </ErrorBanner>
   );
 }
 
@@ -75,22 +72,14 @@ function CreateRoleSheetBody({
     <div onInput={onDirty}>
       {authError ? <AuthBanner testId="admin-role-new-auth-error" authError={authError} /> : null}
       {validationError ? (
-        <div
-          role="alert"
-          data-testid="admin-role-new-validation-error"
-          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-        >
+        <ErrorBanner data-testid="admin-role-new-validation-error">
           {validationError.message}
-        </div>
+        </ErrorBanner>
       ) : null}
       {unexpectedPayloadError ? (
-        <div
-          role="alert"
-          data-testid="admin-role-new-unexpected-payload-error"
-          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-        >
+        <ErrorBanner data-testid="admin-role-new-unexpected-payload-error">
           {unexpectedPayloadError}
-        </div>
+        </ErrorBanner>
       ) : null}
 
       <RoleForm
@@ -134,19 +123,11 @@ function EditRoleSheetBody({
     return (
       <div className="space-y-4">
         {queryErrorBanner ? (
-          <div role="alert" className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-            {queryErrorBanner}
-          </div>
+          <ErrorBanner>{queryErrorBanner}</ErrorBanner>
         ) : loading ? (
           <p className="text-sm text-muted-foreground">{t("loadingRole")}</p>
         ) : (
-          <div
-            role="alert"
-            data-testid="admin-role-edit-not-found"
-            className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          >
-            {t("roleNotFound")}
-          </div>
+          <ErrorBanner data-testid="admin-role-edit-not-found">{t("roleNotFound")}</ErrorBanner>
         )}
       </div>
     );
@@ -156,11 +137,7 @@ function EditRoleSheetBody({
 
   return (
     <div className="space-y-4">
-      {queryErrorBanner ? (
-        <div role="alert" className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-          {queryErrorBanner}
-        </div>
-      ) : null}
+      {queryErrorBanner ? <ErrorBanner>{queryErrorBanner}</ErrorBanner> : null}
       {readOnly ? (
         <div
           role="status"
@@ -172,22 +149,12 @@ function EditRoleSheetBody({
       ) : null}
       {authError ? <AuthBanner testId="admin-role-edit-auth-error" authError={authError} /> : null}
       {systemRoleError ? (
-        <div
-          role="alert"
-          data-testid="admin-role-edit-system-role-error"
-          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-        >
-          {systemRoleError}
-        </div>
+        <ErrorBanner data-testid="admin-role-edit-system-role-error">{systemRoleError}</ErrorBanner>
       ) : null}
       {unexpectedPayloadError ? (
-        <div
-          role="alert"
-          data-testid="admin-role-edit-unexpected-payload-error"
-          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-        >
+        <ErrorBanner data-testid="admin-role-edit-unexpected-payload-error">
           {unexpectedPayloadError}
-        </div>
+        </ErrorBanner>
       ) : null}
 
       <RoleForm
@@ -469,13 +436,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
         <ul className="space-y-3" data-testid="admin-roles-list">
           {deleteError ? (
             <li>
-              <div
-                role="alert"
-                data-testid="admin-roles-error"
-                className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-              >
-                {deleteError}
-              </div>
+              <ErrorBanner data-testid="admin-roles-error">{deleteError}</ErrorBanner>
             </li>
           ) : null}
           {roles.map((role) => (

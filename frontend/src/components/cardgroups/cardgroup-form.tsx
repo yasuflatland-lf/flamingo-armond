@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import type React from "react";
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
@@ -79,11 +80,7 @@ export function CardgroupForm({
       }}
       className="space-y-4"
     >
-      {bannerError ? (
-        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-          {bannerError}
-        </div>
-      ) : null}
+      {bannerError ? <ErrorBanner>{bannerError}</ErrorBanner> : null}
 
       <form.Field name="name" validators={{ onChange: nameSchema, onBlur: nameSchema }}>
         {(field) => (

@@ -14,6 +14,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import { mutationAuthBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
@@ -305,23 +306,11 @@ function AdminUserProfileSheetBody({
         </p>
       )}
 
-      {queryError && (
-        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-          {queryError}
-        </div>
-      )}
+      {queryError && <ErrorBanner>{queryError}</ErrorBanner>}
 
-      {open && !loading && !queryError && !user && (
-        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-          {t("userNotFound")}
-        </div>
-      )}
+      {open && !loading && !queryError && !user && <ErrorBanner>{t("userNotFound")}</ErrorBanner>}
 
-      {saveError && (
-        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-          {saveError}
-        </div>
-      )}
+      {saveError && <ErrorBanner>{saveError}</ErrorBanner>}
 
       {user && (
         <>
@@ -410,13 +399,7 @@ function AdminUserProfileSheetBody({
               </div>
 
               {deleteError && (
-                <div
-                  className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-                  role="alert"
-                  data-testid="admin-delete-user-error"
-                >
-                  {deleteError}
-                </div>
+                <ErrorBanner data-testid="admin-delete-user-error">{deleteError}</ErrorBanner>
               )}
 
               <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
