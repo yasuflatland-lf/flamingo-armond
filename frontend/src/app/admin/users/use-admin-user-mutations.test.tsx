@@ -84,6 +84,8 @@ describe("useAdminUserMutations.deleteUser", () => {
     const conn = readUsers(cache);
     expect(conn?.users.totalCount).toBe(1);
     expect(conn?.users.edges.map((e) => e.cursor)).toEqual(["u-2"]);
+    // The deleted entity is evicted + gc'd from the normalized cache.
+    expect(cache.extract()["User:u-1"]).toBeUndefined();
   });
 
   it("re-throws and leaves the cache untouched on FORBIDDEN", async () => {

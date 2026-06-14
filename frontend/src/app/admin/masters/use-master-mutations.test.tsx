@@ -329,6 +329,8 @@ describe("useMasterMutations.deleteMaster", () => {
     const conn = readConnection(cache);
     expect(conn?.adminMasters.totalCount).toBe(1);
     expect(conn?.adminMasters.edges.map((e) => e.node.id)).toEqual(["m-2"]);
+    // The deleted entity is evicted + gc'd from the normalized cache.
+    expect(cache.extract()["MasterCardgroup:m-1"]).toBeUndefined();
   });
 
   it("returns rejected when the mutation returns false", async () => {
