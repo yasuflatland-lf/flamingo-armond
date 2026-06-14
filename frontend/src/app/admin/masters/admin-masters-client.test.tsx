@@ -385,8 +385,10 @@ describe("AdminMastersClient", () => {
     // MasterCardgroupEmptyError); Apollo v4 does not consistently roll back optimistic
     // writes on typed GraphQL errors, so neither toggle mutation may carry one.
     // See .claude/rules/pagination.md "Drop optimisticResponse ...".
+    // After the useMasterMutations refactor the runPublish/runUnpublish calls live in
+    // the hook file, not in the client — check there so the guard remains meaningful.
     const source = readFileSync(
-      join(process.cwd(), "src/app/admin/masters/admin-masters-client.tsx"),
+      join(process.cwd(), "src/app/admin/masters/use-master-mutations.ts"),
       "utf8",
     );
     for (const call of ["runPublish({", "runUnpublish({"]) {
