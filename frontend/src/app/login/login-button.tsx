@@ -1,6 +1,6 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -32,6 +32,7 @@ function GoogleGLogo() {
 
 export function LoginButton() {
   const t = useTranslations("Login");
+  const isJa = useLocale() === "ja";
 
   async function handleSignIn() {
     const supabase = createSupabaseBrowserClient();
@@ -47,13 +48,14 @@ export function LoginButton() {
   }
 
   return (
-    // Taller (48px) than the default control height and slightly tighter tracking
-    // for a premium primary CTA; the flex-column card stretches it to full width.
+    // Taller (48px) than the default control height; locale-aware tracking
+    // (tight negative for Latin, near-zero for Japanese so kana stays legible)
+    // for a premium primary CTA. The flex-column card stretches it to full width.
     <Button
       onClick={handleSignIn}
       type="button"
       variant="brand"
-      className="h-12 rounded-[13px] text-[15px] tracking-[-0.01em]"
+      className={`h-12 rounded-[13px] text-[15px] ${isJa ? "tracking-[0.01em]" : "tracking-[-0.01em]"}`}
     >
       <GoogleGLogo />
       {t("googleButton")}
