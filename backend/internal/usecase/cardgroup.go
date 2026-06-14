@@ -329,20 +329,12 @@ func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 		return nil, ucerr.ErrUnauthenticated
 	}
 
-	// Relay argument coherence: after pairs with first (forward) and before
-	// pairs with last (backward). Reject any other combination before the repo
-	// is touched so the failure mode is observable rather than a silent
-	// page-1 reset.
-	if err := validateRelayArgs(in.First, in.Last, in.After, in.Before); err != nil {
-		return nil, err
-	}
-
-	orderBy, dir, err := resolveCardgroupOrderBy(in.OrderBy, in.OrderDirection)
+	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveCardgroupPageSize)
 	if err != nil {
 		return nil, err
 	}
 
-	first, last, err := resolveCardgroupPageSize(in.First, in.Last)
+	orderBy, dir, err := resolveCardgroupOrderBy(in.OrderBy, in.OrderDirection)
 	if err != nil {
 		return nil, err
 	}
@@ -356,45 +348,30 @@ func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 		return nil, err
 	}
 
-	// totalCount comes from a separate COUNT(*) scoped to the caller and
-	// the optional search predicate. Computed before the no-rows
-	// short-circuit so callers asking only for totalCount still see a
-	// real value. Acceptable for cardgroup-per-owner counts that stay
-	// well below 10k; revisit with a denormalised counter if the cap grows.
+	// totalCount comes from a separate COUNT(*) scoped to the caller and the
+	// optional search predicate. Computed before the page fetch so callers
+	// asking only for totalCount still see a real value.
 	total, err := u.repo.CountByOwner(ctx, user.Sub, in.Search)
 	if err != nil {
 		return nil, eris.Wrap(err, "usecase: cardgroup: count by owner")
 	}
 
-	// Request one extra row to detect whether another page exists. Trim
-	// before returning to the caller.
-	wantFirst := first
-	wantLast := last
-	if wantFirst > 0 {
-		wantFirst++
-	}
-	if wantLast > 0 {
-		wantLast++
-	}
-
-	cgs, err := u.repo.FindPageByOwner(
-		ctx, user.Sub, after, before, wantFirst, wantLast, orderBy, dir, in.Search,
+	cgs, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
+		func(wantFirst, wantLast int) ([]*domain.Cardgroup, error) {
+			rows, e := u.repo.FindPageByOwner(
+				ctx, user.Sub, after, before, wantFirst, wantLast, orderBy, dir, in.Search,
+			)
+			if e != nil {
+				return nil, eris.Wrap(e, "usecase: cardgroup: find page by owner")
+			}
+			return rows, nil
+		},
 	)
 	if err != nil {
-		return nil, eris.Wrap(err, "usecase: cardgroup: find page by owner")
+		return nil, err
 	}
 
-	out := &CardgroupConnectionOutput{TotalCount: total}
-	switch {
-	case first > 0:
-		cgs, out.HasNext = TrimAndDetect(cgs, first)
-		out.HasPrev = after != nil
-	case last > 0:
-		cgs, out.HasPrev = TrimAndDetectBackward(cgs, last)
-		out.HasNext = before != nil
-	}
-
-	out.Cardgroups = cgs
+	out := &CardgroupConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Cardgroups: cgs}
 	if len(cgs) > 0 {
 		out.StartCur = cgs[0].ID
 		out.EndCur = cgs[len(cgs)-1].ID

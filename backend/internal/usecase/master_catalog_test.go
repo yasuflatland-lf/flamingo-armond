@@ -665,3 +665,31 @@ func TestImportMaster_CopyMasterToUser_ContextCancelled_PassesThrough(t *testing
 		t.Fatalf("expected unwrapped context.Canceled, got %v", err)
 	}
 }
+
+func TestListPublishedConnection_AfterWithLast_Rejected(t *testing.T) {
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	after := "v1:abc"
+	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
+		Last:  intPtr(2),
+		After: &after,
+	})
+	var ve *ucerr.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want ValidationError for after+last, got %v", err)
+	}
+}
+
+func TestListAdminConnection_AfterWithLast_Rejected(t *testing.T) {
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	after := "v1:abc"
+	_, err := uc.ListAdminConnection(authedCtx("u1"), MasterCatalogConnectionInput{
+		Last:  intPtr(2),
+		After: &after,
+	})
+	var ve *ucerr.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want ValidationError for after+last, got %v", err)
+	}
+}

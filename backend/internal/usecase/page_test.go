@@ -1,8 +1,11 @@
 package usecase
 
 import (
+	"errors"
 	"reflect"
 	"testing"
+
+	"backend/internal/usecase/ucerr"
 )
 
 func TestTrimAndDetect(t *testing.T) {
@@ -186,5 +189,152 @@ func TestTrimAndDetect_DirectionDistinction(t *testing.T) {
 	}
 	if reflect.DeepEqual(forward, backward) {
 		t.Fatal("forward and backward results must differ")
+	}
+}
+
+func TestAssemblePage_ForwardTrimsTrailingAndSetsHasNext(t *testing.T) {
+	t.Parallel()
+	// first=2 → fetch must be asked for 3 (+1 trick). Return 3 → trim to 2, hasNext=true.
+	items, hasNext, hasPrev, err := assemblePage(2, 0, true, false,
+		func(wantFirst, wantLast int) ([]int, error) {
+			if wantFirst != 3 || wantLast != 0 {
+				t.Fatalf("want fetch(3,0) for first=2, got fetch(%d,%d)", wantFirst, wantLast)
+			}
+			return []int{1, 2, 3}, nil
+		})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 2 || items[0] != 1 || items[1] != 2 {
+		t.Fatalf("want [1 2] after trailing trim, got %v", items)
+	}
+	if !hasNext {
+		t.Fatal("want hasNext=true (extra row trimmed)")
+	}
+	if !hasPrev {
+		t.Fatal("want hasPrev=true (hasAfter passed true)")
+	}
+}
+
+func TestAssemblePage_ForwardNoExtraRowNoNext(t *testing.T) {
+	t.Parallel()
+	items, hasNext, hasPrev, err := assemblePage(5, 0, false, false,
+		func(wantFirst, wantLast int) ([]int, error) {
+			return []int{1, 2}, nil // fewer than first → no extra row
+		})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("want 2 items, got %d", len(items))
+	}
+	if hasNext {
+		t.Fatal("want hasNext=false when no extra row")
+	}
+	if hasPrev {
+		t.Fatal("want hasPrev=false when hasAfter=false")
+	}
+}
+
+func TestAssemblePage_BackwardTrimsLeadingAndSetsHasPrev(t *testing.T) {
+	t.Parallel()
+	// last=2 → fetch asked for 3. Repo returns 3 (already reversed) → trim leading.
+	items, hasNext, hasPrev, err := assemblePage(0, 2, false, true,
+		func(wantFirst, wantLast int) ([]int, error) {
+			if wantFirst != 0 || wantLast != 3 {
+				t.Fatalf("want fetch(0,3) for last=2, got fetch(%d,%d)", wantFirst, wantLast)
+			}
+			return []int{1, 2, 3}, nil
+		})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 2 || items[0] != 2 || items[1] != 3 {
+		t.Fatalf("want [2 3] after leading trim, got %v", items)
+	}
+	if !hasPrev {
+		t.Fatal("want hasPrev=true (extra leading row trimmed)")
+	}
+	if !hasNext {
+		t.Fatal("want hasNext=true (hasBefore passed true)")
+	}
+}
+
+func TestAssemblePage_TotalCountOnlyRequestNoTrim(t *testing.T) {
+	t.Parallel()
+	// first=0 && last=0 → fetch called with (0,0); switch matches neither arm.
+	called := false
+	items, hasNext, hasPrev, err := assemblePage(0, 0, false, false,
+		func(wantFirst, wantLast int) ([]int, error) {
+			called = true
+			if wantFirst != 0 || wantLast != 0 {
+				t.Fatalf("want fetch(0,0), got fetch(%d,%d)", wantFirst, wantLast)
+			}
+			return []int{}, nil
+		})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !called {
+		t.Fatal("want fetch invoked even for total-only request")
+	}
+	if len(items) != 0 || hasNext || hasPrev {
+		t.Fatalf("want empty/no-flags, got items=%v hasNext=%v hasPrev=%v", items, hasNext, hasPrev)
+	}
+}
+
+func TestAssemblePage_FetchErrorPropagates(t *testing.T) {
+	t.Parallel()
+	sentinel := errors.New("boom")
+	items, hasNext, hasPrev, err := assemblePage(2, 0, false, false,
+		func(wantFirst, wantLast int) ([]int, error) {
+			return nil, sentinel
+		})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("want sentinel error propagated, got %v", err)
+	}
+	if items != nil || hasNext || hasPrev {
+		t.Fatalf("want nil/no-flags on error, got items=%v hasNext=%v hasPrev=%v", items, hasNext, hasPrev)
+	}
+}
+
+func TestResolveRelayPage_ValidArgsCallsClamp(t *testing.T) {
+	t.Parallel()
+	clampCalled := false
+	first := 7
+	pageFirst, pageLast, err := resolveRelayPage(&first, nil, nil, nil,
+		func(f, l *int) (int, int, error) {
+			clampCalled = true
+			return 7, 0, nil
+		})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !clampCalled {
+		t.Fatal("want clamp invoked for valid args")
+	}
+	if pageFirst != 7 || pageLast != 0 {
+		t.Fatalf("want (7,0) from clamp, got (%d,%d)", pageFirst, pageLast)
+	}
+}
+
+func TestResolveRelayPage_InvalidComboSkipsClamp(t *testing.T) {
+	t.Parallel()
+	// after + last is a mixed-direction combo → validateRelayArgs rejects it
+	// BEFORE the clamp runs (preserving the validate-before-cursor ordering).
+	last := 5
+	after := "cursor"
+	clampCalled := false
+	_, _, err := resolveRelayPage(nil, &last, &after, nil,
+		func(f, l *int) (int, int, error) {
+			clampCalled = true
+			return 0, 0, nil
+		})
+	var ve *ucerr.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want ValidationError for after+last, got %v", err)
+	}
+	if clampCalled {
+		t.Fatal("want clamp NOT called when validation fails")
 	}
 }

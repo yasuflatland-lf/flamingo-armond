@@ -162,20 +162,12 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 		return nil, ucerr.ErrUnauthenticated
 	}
 
-	// Relay argument coherence: after pairs with first (forward) and before
-	// pairs with last (backward). Reject any other combination before the repo
-	// is touched so the failure mode is observable rather than a silent
-	// page-1 reset.
-	if err := validateRelayArgs(in.First, in.Last, in.After, in.Before); err != nil {
-		return nil, err
-	}
-
-	orderBy, dir, err := resolveMasterCatalogOrderBy(in.OrderBy, in.OrderDirection)
+	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveMasterCatalogPageSize)
 	if err != nil {
 		return nil, err
 	}
 
-	first, last, err := resolveMasterCatalogPageSize(in.First, in.Last)
+	orderBy, dir, err := resolveMasterCatalogOrderBy(in.OrderBy, in.OrderDirection)
 	if err != nil {
 		return nil, err
 	}
@@ -189,41 +181,28 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 		return nil, err
 	}
 
-	// totalCount comes from a separate COUNT(*) scoped to published rows and
-	// the optional search predicate. Computed before the no-rows short-circuit
-	// so callers asking only for totalCount still see a real value.
+	// totalCount comes from a separate COUNT(*) scoped to published rows and the
+	// optional search predicate. Computed before the page fetch so callers asking
+	// only for totalCount still see a real value.
 	total, err := u.repo.CountPublished(ctx, in.Search)
 	if err != nil {
 		return nil, eris.Wrap(err, "usecase: master catalog: count published")
 	}
 
-	// Request one extra row to detect whether another page exists. Trim before
-	// returning to the caller.
-	wantFirst := first
-	wantLast := last
-	if wantFirst > 0 {
-		wantFirst++
-	}
-	if wantLast > 0 {
-		wantLast++
-	}
-
-	items, err := u.repo.FindPublishedPage(ctx, after, before, wantFirst, wantLast, orderBy, dir, in.Search)
+	items, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
+		func(wantFirst, wantLast int) ([]*repository.MasterCatalogItem, error) {
+			rows, e := u.repo.FindPublishedPage(ctx, after, before, wantFirst, wantLast, orderBy, dir, in.Search)
+			if e != nil {
+				return nil, eris.Wrap(e, "usecase: master catalog: find published page")
+			}
+			return rows, nil
+		},
+	)
 	if err != nil {
-		return nil, eris.Wrap(err, "usecase: master catalog: find published page")
+		return nil, err
 	}
 
-	out := &MasterCatalogConnectionOutput{TotalCount: total}
-	switch {
-	case first > 0:
-		items, out.HasNext = TrimAndDetect(items, first)
-		out.HasPrev = after != nil
-	case last > 0:
-		items, out.HasPrev = TrimAndDetectBackward(items, last)
-		out.HasNext = before != nil
-	}
-
-	out.Items = items
+	out := &MasterCatalogConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Items: items}
 	if len(items) > 0 {
 		out.StartCur = items[0].Cardgroup.ID
 		out.EndCur = items[len(items)-1].Cardgroup.ID
@@ -596,17 +575,17 @@ func (u *masterCatalogUsecase) ListAdminConnection(
 	if _, err := u.adminGate.Require(ctx, "usecase: master catalog: list admin"); err != nil {
 		return nil, err
 	}
-	if err := validateRelayArgs(in.First, in.Last, in.After, in.Before); err != nil {
+
+	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveMasterCatalogPageSize)
+	if err != nil {
 		return nil, err
 	}
+
 	orderBy, dir, err := resolveMasterCatalogOrderBy(in.OrderBy, in.OrderDirection)
 	if err != nil {
 		return nil, err
 	}
-	first, last, err := resolveMasterCatalogPageSize(in.First, in.Last)
-	if err != nil {
-		return nil, err
-	}
+
 	after, err := u.resolveMasterAdminCursor(ctx, in.After, orderBy, "after")
 	if err != nil {
 		return nil, err
@@ -621,29 +600,20 @@ func (u *masterCatalogUsecase) ListAdminConnection(
 		return nil, eris.Wrap(err, "usecase: master catalog: count admin")
 	}
 
-	wantFirst := first
-	wantLast := last
-	if wantFirst > 0 {
-		wantFirst++
-	}
-	if wantLast > 0 {
-		wantLast++
-	}
-	items, err := u.repo.FindAdminPage(ctx, after, before, wantFirst, wantLast, orderBy, dir, in.Search)
+	items, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
+		func(wantFirst, wantLast int) ([]*repository.MasterCatalogItem, error) {
+			rows, e := u.repo.FindAdminPage(ctx, after, before, wantFirst, wantLast, orderBy, dir, in.Search)
+			if e != nil {
+				return nil, eris.Wrap(e, "usecase: master catalog: find admin page")
+			}
+			return rows, nil
+		},
+	)
 	if err != nil {
-		return nil, eris.Wrap(err, "usecase: master catalog: find admin page")
+		return nil, err
 	}
 
-	out := &MasterCatalogConnectionOutput{TotalCount: total}
-	switch {
-	case first > 0:
-		items, out.HasNext = TrimAndDetect(items, first)
-		out.HasPrev = after != nil
-	case last > 0:
-		items, out.HasPrev = TrimAndDetectBackward(items, last)
-		out.HasNext = before != nil
-	}
-	out.Items = items
+	out := &MasterCatalogConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Items: items}
 	if len(items) > 0 {
 		out.StartCur = items[0].Cardgroup.ID
 		out.EndCur = items[len(items)-1].Cardgroup.ID

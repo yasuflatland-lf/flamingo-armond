@@ -372,16 +372,13 @@ func (u *cardUsecase) ListCardsByCardgroupConnection(
 	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, in.CardgroupID, user.Sub); err != nil {
 		return nil, err
 	}
-	if err := validateRelayArgs(in.First, in.Last, in.After, in.Before); err != nil {
-		return nil, err
-	}
 
-	orderBy, dir, err := resolveOrderBy(in.OrderBy, in.OrderDirection)
+	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolvePageSize)
 	if err != nil {
 		return nil, err
 	}
 
-	first, last, err := resolvePageSize(in.First, in.Last)
+	orderBy, dir, err := resolveOrderBy(in.OrderBy, in.OrderDirection)
 	if err != nil {
 		return nil, err
 	}
@@ -408,34 +405,24 @@ func (u *cardUsecase) ListCardsByCardgroupConnection(
 		}
 	}
 
-	// Request one extra row to detect whether another page exists. Trim
-	// before returning to the caller.
-	wantFirst := first
-	wantLast := last
-	if wantFirst > 0 {
-		wantFirst++
-	}
-	if wantLast > 0 {
-		wantLast++
-	}
-
-	cards, total, err := u.cardRepo.FindPageByCardgroupForUser(
-		ctx, user.Sub, in.CardgroupID, after, before, wantFirst, wantLast, orderBy, dir, search,
+	var total int64
+	cards, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
+		func(wantFirst, wantLast int) ([]*domain.Card, error) {
+			rows, t, e := u.cardRepo.FindPageByCardgroupForUser(
+				ctx, user.Sub, in.CardgroupID, after, before, wantFirst, wantLast, orderBy, dir, search,
+			)
+			if e != nil {
+				return nil, eris.Wrap(e, "usecase: list cards by cardgroup: find page")
+			}
+			total = t
+			return rows, nil
+		},
 	)
 	if err != nil {
-		return nil, eris.Wrap(err, "usecase: list cards by cardgroup: find page")
+		return nil, err
 	}
 
-	out := &CardConnectionOutput{TotalCount: total}
-	if first > 0 {
-		cards, out.HasNext = TrimAndDetect(cards, first)
-		out.HasPrev = after != nil
-	} else if last > 0 {
-		cards, out.HasPrev = TrimAndDetectBackward(cards, last)
-		out.HasNext = before != nil
-	}
-
-	out.Cards = cards
+	out := &CardConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Cards: cards}
 	if len(cards) > 0 {
 		out.StartCur = cards[0].ID
 		out.EndCur = cards[len(cards)-1].ID
