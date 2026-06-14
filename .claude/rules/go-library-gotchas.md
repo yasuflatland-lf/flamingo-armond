@@ -128,6 +128,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [GORM v1 round-trips underlying-string newtypes without Scanner/Valuer; reserving the `Value` accessor slot](../../docs/backend/library-gotchas/gorm-newtype-string-no-scanner-valuer.md)
 - [Defensive-copy tests assert pointer identity (`require.NotSame`), not variable rebind](../../docs/backend/library-gotchas/defensive-copy-test-pointer-identity.md)
 - [Mock-pointer fixture pitfalls: directionality tautology and parallel sub-test races](../../docs/backend/library-gotchas/mock-pointer-fixture-pitfalls.md)
+- [`require.Equal` silently fails on typed string newtypes — `go build`/`go vet` miss it; only running the suite surfaces it](../../docs/backend/library-gotchas/testify-equal-typed-newtype-boxing.md)
 - [GORM embedded struct with `TableName()` silently breaks the outer scan target](../../docs/backend/library-gotchas/gorm-embedded-tablename-scan-confusion.md)
 - [Interleave trailing-append paths need a non-divisible fixture per direction](../../docs/backend/library-gotchas/interleave-trailing-append-test-fixture.md)
 - [Exact-boundary fixture for strict time-cutoff predicates, proven by temporary mutation](../../docs/backend/library-gotchas/strict-cutoff-boundary-fixture-and-mutation-proof.md)

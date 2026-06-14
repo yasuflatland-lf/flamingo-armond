@@ -194,6 +194,22 @@ may keep the distinction; erase it only across the trust boundary it protects.
 
 [`docs/backend/ddd-patterns/notfound-collapse-non-disclosure.md`](../../docs/backend/ddd-patterns/notfound-collapse-non-disclosure.md)
 
+### Typed bare-newtype IDs for the authorization-confusable pair
+
+Two ownership predicates (`Cardgroup.IsOwnedBy`, `Card.BelongsToCardgroup`) share
+the same `func(string) bool` shape, so a transposed id compiles and fails open at
+runtime. `type CardgroupID string` / `type UserID string` (`id_types.go`) make the
+two ID spaces non-swappable at compile time. They are deliberately BARE — no
+`Parse` constructor — because an ID carries no domain-authored invariant: UUID
+validity is guaranteed upstream by `NewID` and the DB column, and a format `Parse`
+would wrongly turn a malformed id into a validation error instead of a not-found
+and contradict the opaque-handle contract. Type only the authz-confusable pair and
+the helper signatures with adjacent same-type params (`authorizeCardgroupOrBadInput`);
+leave the shared `FindByID` interface and row structs raw `string` and cast at the
+boundary (`string(id)` / `domain.UserID(user.Sub)`).
+
+[`docs/backend/ddd-patterns/typed-id-newtype-for-authz-confusable-pair.md`](../../docs/backend/ddd-patterns/typed-id-newtype-for-authz-confusable-pair.md)
+
 ## Further reading (on-demand)
 
 - [Value object Parse pattern](../../docs/backend/ddd-patterns/value-object-parse-pattern.md)
@@ -214,3 +230,4 @@ may keep the distinction; erase it only across the trust boundary it protects.
 - [Discovery-first due ordering (80% new / 20% prior-day review)](../../docs/backend/ddd-patterns/discovery-first-due-ordering.md)
 - [Append-only extension of a classification with a secondary, independently-graded source](../../docs/backend/ddd-patterns/append-only-classification-extension.md)
 - [Collapse "unknown" and "exists-but-hidden" into one not-found (non-disclosure gate)](../../docs/backend/ddd-patterns/notfound-collapse-non-disclosure.md)
+- [Typed bare-newtype IDs for the authorization-confusable pair](../../docs/backend/ddd-patterns/typed-id-newtype-for-authz-confusable-pair.md)
