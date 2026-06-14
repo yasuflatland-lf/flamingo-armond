@@ -162,7 +162,7 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 		return nil, ucerr.ErrUnauthenticated
 	}
 
-	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveMasterCatalogPageSize)
+	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveStandardPageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -242,34 +242,6 @@ func resolveMasterCatalogOrderBy(
 		}
 	}
 	return field, d, nil
-}
-
-// resolveMasterCatalogPageSize clamps first/last to [0, maxPageSize] and rejects
-// passing both. Defaults first=defaultPageSize (20) when neither is provided,
-// matching the schema's documented default. maxPageSize/defaultPageSize are the
-// package-wide page-size caps shared with the card/cardgroup resolvers; the
-// repository-level cap (repository.PageCap = maxPageSize + 1) is one greater so
-// the "+1 fetch" trick survives a maximum-sized request.
-func resolveMasterCatalogPageSize(first, last *int) (int, int, error) {
-	if first != nil && last != nil {
-		return 0, 0, ucerr.NewValidationError("first", "specify either first or last, not both")
-	}
-	if first == nil && last == nil {
-		return defaultPageSize, 0, nil
-	}
-	clamp := func(v int) int {
-		if v < 0 {
-			return 0
-		}
-		if v > maxPageSize {
-			return maxPageSize
-		}
-		return v
-	}
-	if first != nil {
-		return clamp(*first), 0, nil
-	}
-	return 0, clamp(*last), nil
 }
 
 // resolveMasterCatalogCursor decodes an opaque cursor string into a
@@ -576,7 +548,7 @@ func (u *masterCatalogUsecase) ListAdminConnection(
 		return nil, err
 	}
 
-	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveMasterCatalogPageSize)
+	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveStandardPageSize)
 	if err != nil {
 		return nil, err
 	}

@@ -63,27 +63,36 @@ func (r *userCardFSRSRepo) UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.
 }
 
 func (r *userCardFSRSRepo) FindByUserAndCardIDs(ctx context.Context, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error) {
-	if len(cardIDs) == 0 {
-		return map[string]*domain.UserCardFSRS{}, nil
-	}
-	var rows []gormUserCardFSRS
-	if err := r.db.WithContext(ctx).
-		Where("user_id = ? AND card_id IN ?", userID, cardIDs).
-		Find(&rows).Error; err != nil {
+	out, err := findUserCardFSRSByUserAndCardIDs(ctx, r.db, userID, cardIDs)
+	if err != nil {
 		return nil, eris.Wrap(err, "repository: find user card fsrs by user and card ids")
 	}
-	return rowsToUserCardFSRSMap(rows)
+	return out, nil
 }
 
 func (r *userCardFSRSRepo) FindByUserAndCardIDsTx(ctx context.Context, tx *gorm.DB, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error) {
+	out, err := findUserCardFSRSByUserAndCardIDs(ctx, tx, userID, cardIDs)
+	if err != nil {
+		return nil, eris.Wrap(err, "repository: find user card fsrs by user and card ids tx")
+	}
+	return out, nil
+}
+
+// findUserCardFSRSByUserAndCardIDs is shared by FindByUserAndCardIDs (pool) and
+// FindByUserAndCardIDsTx (transaction). It runs the (user_id, card_id IN ?)
+// fetch against the supplied db handle and maps the rows into domain values. An
+// empty cardIDs slice returns an empty map with no SQL (GORM drops an empty
+// IN ? clause and would otherwise full-table scan). The error is returned
+// unwrapped so each caller can attach its own layer prefix.
+func findUserCardFSRSByUserAndCardIDs(ctx context.Context, db *gorm.DB, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error) {
 	if len(cardIDs) == 0 {
 		return map[string]*domain.UserCardFSRS{}, nil
 	}
 	var rows []gormUserCardFSRS
-	if err := tx.WithContext(ctx).
+	if err := db.WithContext(ctx).
 		Where("user_id = ? AND card_id IN ?", userID, cardIDs).
 		Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: find user card fsrs by user and card ids tx")
+		return nil, err
 	}
 	return rowsToUserCardFSRSMap(rows)
 }

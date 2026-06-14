@@ -31,10 +31,7 @@ func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.HandleSw
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	if outcome.Validation != nil {
-		return model.InputValidationError{
-			Field:   outcome.Validation.Field,
-			Message: outcome.Validation.Message,
-		}, nil
+		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.Swipe == nil {
 		return nil, gqlerr.Internal(ctx,

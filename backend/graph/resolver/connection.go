@@ -17,6 +17,19 @@ func encodeCursor(id string) *string {
 	return &s
 }
 
+// buildPageInfo assembles the Relay PageInfo from the boundary flags and the
+// already-encoded start/end cursor strings. Each caller computes its own
+// start/end (some encode via cursor.Encode, others carry a pre-encoded value)
+// and passes the final strings in.
+func buildPageInfo(hasNext, hasPrev bool, start, end *string) *model.PageInfo {
+	return &model.PageInfo{
+		HasNextPage:     hasNext,
+		HasPreviousPage: hasPrev,
+		StartCursor:     start,
+		EndCursor:       end,
+	}
+}
+
 func toCardConnectionModel(ctx context.Context, out *usecase.CardConnectionOutput) *model.CardConnection {
 	if out == nil {
 		return &model.CardConnection{Edges: []*model.CardEdge{}, PageInfo: &model.PageInfo{}}
@@ -31,13 +44,8 @@ func toCardConnectionModel(ctx context.Context, out *usecase.CardConnectionOutpu
 		edges = append(edges, &model.CardEdge{Cursor: cursor.Encode(c.ID), Node: cm})
 	}
 	return &model.CardConnection{
-		Edges: edges,
-		PageInfo: &model.PageInfo{
-			HasNextPage:     out.HasNext,
-			HasPreviousPage: out.HasPrev,
-			StartCursor:     encodeCursor(out.StartCur),
-			EndCursor:       encodeCursor(out.EndCur),
-		},
+		Edges:      edges,
+		PageInfo:   buildPageInfo(out.HasNext, out.HasPrev, encodeCursor(out.StartCur), encodeCursor(out.EndCur)),
 		TotalCount: int(out.TotalCount),
 	}
 }
@@ -56,13 +64,8 @@ func toCardgroupConnectionModel(ctx context.Context, out *usecase.CardgroupConne
 		edges = append(edges, &model.CardgroupEdge{Cursor: cursor.Encode(string(cg.ID)), Node: cgm})
 	}
 	return &model.CardgroupConnection{
-		Edges: edges,
-		PageInfo: &model.PageInfo{
-			HasNextPage:     out.HasNext,
-			HasPreviousPage: out.HasPrev,
-			StartCursor:     encodeCursor(out.StartCur),
-			EndCursor:       encodeCursor(out.EndCur),
-		},
+		Edges:      edges,
+		PageInfo:   buildPageInfo(out.HasNext, out.HasPrev, encodeCursor(out.StartCur), encodeCursor(out.EndCur)),
 		TotalCount: int(out.TotalCount),
 	}
 }
@@ -81,13 +84,8 @@ func toMasterCatalogConnectionModel(ctx context.Context, out *usecase.MasterCata
 		edges = append(edges, &model.MasterCatalogEdge{Cursor: cursor.Encode(item.Cardgroup.ID), Node: mm})
 	}
 	return &model.MasterCatalogConnection{
-		Edges: edges,
-		PageInfo: &model.PageInfo{
-			HasNextPage:     out.HasNext,
-			HasPreviousPage: out.HasPrev,
-			StartCursor:     encodeCursor(out.StartCur),
-			EndCursor:       encodeCursor(out.EndCur),
-		},
+		Edges:      edges,
+		PageInfo:   buildPageInfo(out.HasNext, out.HasPrev, encodeCursor(out.StartCur), encodeCursor(out.EndCur)),
 		TotalCount: int(out.TotalCount),
 	}
 }
@@ -106,13 +104,8 @@ func toUserConnectionModel(ctx context.Context, uc *usecase.AdminUserConnection)
 		edges = append(edges, &model.UserEdge{Cursor: e.Cursor, Node: um})
 	}
 	return &model.UserConnection{
-		Edges: edges,
-		PageInfo: &model.PageInfo{
-			HasNextPage:     uc.PageInfo.HasNextPage,
-			HasPreviousPage: uc.PageInfo.HasPreviousPage,
-			StartCursor:     uc.PageInfo.StartCursor,
-			EndCursor:       uc.PageInfo.EndCursor,
-		},
+		Edges:      edges,
+		PageInfo:   buildPageInfo(uc.PageInfo.HasNextPage, uc.PageInfo.HasPreviousPage, uc.PageInfo.StartCursor, uc.PageInfo.EndCursor),
 		TotalCount: int(uc.TotalCount),
 	}
 }

@@ -27,10 +27,7 @@ func (r *mutationResolver) AdminEditUser(ctx context.Context, id string, input m
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	if outcome.Validation != nil {
-		return model.InputValidationError{
-			Field:   outcome.Validation.Field,
-			Message: outcome.Validation.Message,
-		}, nil
+		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.CannotRevokeOwnAdmin {
 		return model.CannotRevokeOwnAdminRoleError{
@@ -61,10 +58,7 @@ func (r *mutationResolver) CreateRole(ctx context.Context, name string) (model.C
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	if outcome.Validation != nil {
-		return model.InputValidationError{
-			Field:   outcome.Validation.Field,
-			Message: outcome.Validation.Message,
-		}, nil
+		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.Role == nil {
 		return nil, gqlerr.Internal(ctx,

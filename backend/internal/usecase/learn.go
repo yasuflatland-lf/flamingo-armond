@@ -136,8 +136,8 @@ func NewLearnUsecase(
 // (callers only need the ownership decision and the user's Sub).
 func (u *learnUsecase) authorizeCardgroupForLearn(ctx context.Context, cardgroupID string) (*auth.AuthUser, error) {
 	user := auth.UserFrom(ctx)
-	if user == nil {
-		return nil, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(user); err != nil {
+		return nil, err
 	}
 	cg, err := u.cardgroupRepo.FindByID(ctx, cardgroupID)
 	if err != nil {

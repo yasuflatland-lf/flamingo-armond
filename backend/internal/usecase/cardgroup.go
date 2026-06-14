@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"time"
 
 	"github.com/rotisserie/eris"
 
@@ -106,8 +105,8 @@ func NewCardgroupUsecase(repo CardgroupRepository, admin AdminChecker, logger *s
 // A missing row returns (nil, nil) so the nullable GraphQL field resolves to null.
 func (u *cardgroupUsecase) Cardgroup(ctx context.Context, id string) (*domain.Cardgroup, error) {
 	user := auth.UserFrom(ctx)
-	if user == nil {
-		return nil, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(user); err != nil {
+		return nil, err
 	}
 	cg, err := u.repo.FindByID(ctx, id)
 	if err != nil {
@@ -184,8 +183,8 @@ func checkCardgroupLimit(ctx context.Context, counter cardgroupOwnerCounter, adm
 // Create creates a new cardgroup owned by the authenticated caller.
 func (u *cardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) (CreateCardgroupOutcome, error) {
 	user := auth.UserFrom(ctx)
-	if user == nil {
-		return CreateCardgroupOutcome{}, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(user); err != nil {
+		return CreateCardgroupOutcome{}, err
 	}
 
 	name, nameErr := domain.ParseCardgroupName(in.Name)
@@ -208,18 +207,9 @@ func (u *cardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 		return CreateCardgroupOutcome{LimitReached: limit}, nil
 	}
 
-	id, err := domain.NewID()
+	cg, err := domain.NewCardgroup(domain.UserID(user.Sub), name)
 	if err != nil {
-		return CreateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: generate id")
-	}
-
-	now := time.Now().UTC()
-	cg := &domain.Cardgroup{
-		ID:        domain.CardgroupID(id),
-		OwnerID:   domain.UserID(user.Sub),
-		Name:      name,
-		CreatedAt: now,
-		UpdatedAt: now,
+		return CreateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: new cardgroup")
 	}
 
 	if err := u.repo.Create(ctx, cg); err != nil {
@@ -247,8 +237,8 @@ type UpdateCardgroupOutcome struct {
 // without any database write.
 func (u *cardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardgroupInput) (UpdateCardgroupOutcome, error) {
 	user := auth.UserFrom(ctx)
-	if user == nil {
-		return UpdateCardgroupOutcome{}, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(user); err != nil {
+		return UpdateCardgroupOutcome{}, err
 	}
 
 	existing, err := u.repo.FindByID(ctx, id)
@@ -292,8 +282,8 @@ func (u *cardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 // Non-owners and missing rows both return UNAUTHENTICATED to prevent ID enumeration.
 func (u *cardgroupUsecase) Delete(ctx context.Context, id string) error {
 	user := auth.UserFrom(ctx)
-	if user == nil {
-		return ucerr.ErrUnauthenticated
+	if err := requireCallerSub(user); err != nil {
+		return err
 	}
 
 	existing, err := u.repo.FindByID(ctx, id)
@@ -325,11 +315,11 @@ func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 	ctx context.Context, in CardgroupConnectionInput,
 ) (*CardgroupConnectionOutput, error) {
 	user := auth.UserFrom(ctx)
-	if user == nil {
-		return nil, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(user); err != nil {
+		return nil, err
 	}
 
-	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveCardgroupPageSize)
+	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveStandardPageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -413,32 +403,6 @@ func resolveCardgroupOrderBy(
 		}
 	}
 	return field, d, nil
-}
-
-// resolveCardgroupPageSize clamps first/last to [0, maxPageSize] and rejects
-// passing both. Defaults first=defaultPageSize (20) when neither is provided,
-// matching the schema's documented default. maxPageSize is the package-wide
-// cap shared with the card/master-catalog resolvers.
-func resolveCardgroupPageSize(first, last *int) (int, int, error) {
-	if first != nil && last != nil {
-		return 0, 0, ucerr.NewValidationError("first", "specify either first or last, not both")
-	}
-	if first == nil && last == nil {
-		return defaultPageSize, 0, nil
-	}
-	clamp := func(v int) int {
-		if v < 0 {
-			return 0
-		}
-		if v > maxPageSize {
-			return maxPageSize
-		}
-		return v
-	}
-	if first != nil {
-		return clamp(*first), 0, nil
-	}
-	return 0, clamp(*last), nil
 }
 
 // resolveCardgroupCursor decodes an opaque cursor string into a

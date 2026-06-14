@@ -36,7 +36,7 @@ func (r *mutationResolver) AdminCreateMasterCardgroup(ctx context.Context, input
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	if out.Validation != nil {
-		return model.InputValidationError{Field: out.Validation.Field, Message: out.Validation.Message}, nil
+		return toInputValidationError(out.Validation), nil
 	}
 	if out.Master == nil {
 		return nil, gqlerr.Internal(ctx, eris.New("resolver: CreateMasterOutcome has no variant set"))
@@ -66,7 +66,7 @@ func (r *mutationResolver) AdminUpdateMasterCardgroup(ctx context.Context, id st
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	if out.Validation != nil {
-		return model.InputValidationError{Field: out.Validation.Field, Message: out.Validation.Message}, nil
+		return toInputValidationError(out.Validation), nil
 	}
 	if out.Master == nil {
 		return nil, gqlerr.Internal(ctx, eris.New("resolver: UpdateMasterOutcome has no variant set"))

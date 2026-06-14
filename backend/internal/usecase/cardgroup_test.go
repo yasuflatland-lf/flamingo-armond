@@ -1002,7 +1002,7 @@ func TestCardgroupUC_Connection_Anonymous(t *testing.T) {
 
 // TestCardgroupUC_ConnectionGuards_FirstAndLast verifies that supplying both
 // first and last is rejected with BAD_USER_INPUT(field="first") via
-// resolveCardgroupPageSize.
+// resolveStandardPageSize.
 func TestCardgroupUC_ConnectionGuards_FirstAndLast(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
@@ -1223,7 +1223,7 @@ func TestCardgroupUC_Connection_DefaultOrderBy_WhenNil(t *testing.T) {
 
 // TestCardgroupUC_Connection_DefaultPageSize_WhenAllNil verifies that when
 // neither first nor last is supplied (and neither is a cursor), the
-// resolveCardgroupPageSize default of 20 is used.
+// resolveStandardPageSize default of 20 is used.
 func TestCardgroupUC_Connection_DefaultPageSize_WhenAllNil(t *testing.T) {
 	t.Parallel()
 
@@ -1568,7 +1568,7 @@ func TestCardgroupUC_Connection_CountError_Internal(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// resolveCardgroupOrderBy / resolveCardgroupPageSize / resolveCardgroupCursor
+// resolveCardgroupOrderBy / resolveStandardPageSize / resolveCardgroupCursor
 // — direct unit tests for branches that are hard to reach end-to-end.
 // ---------------------------------------------------------------------------
 
@@ -1599,7 +1599,7 @@ func TestResolveCardgroupPageSize_LastClamp(t *testing.T) {
 	t.Parallel()
 
 	last := 9999
-	first, gotLast, err := resolveCardgroupPageSize(nil, &last)
+	first, gotLast, err := resolveStandardPageSize(nil, &last)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1617,7 +1617,7 @@ func TestResolveCardgroupPageSize_LastNegativeClampedToZero(t *testing.T) {
 	t.Parallel()
 
 	last := -7
-	first, gotLast, err := resolveCardgroupPageSize(nil, &last)
+	first, gotLast, err := resolveStandardPageSize(nil, &last)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

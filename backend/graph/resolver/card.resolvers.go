@@ -112,10 +112,7 @@ func (r *mutationResolver) UpdateCard(ctx context.Context, id string, input mode
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	if outcome.Validation != nil {
-		return model.InputValidationError{
-			Field:   outcome.Validation.Field,
-			Message: outcome.Validation.Message,
-		}, nil
+		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.Card == nil {
 		return nil, gqlerr.Internal(ctx,

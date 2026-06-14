@@ -12,6 +12,13 @@ import (
 	"backend/internal/usecase"
 )
 
+// toInputValidationError maps a usecase input-validation carrier to the
+// generated outcome-union variant. Shared by every promoted mutation resolver
+// that surfaces a validation failure as data.
+func toInputValidationError(v *usecase.InputValidationInfo) model.InputValidationError {
+	return model.InputValidationError{Field: v.Field, Message: v.Message}
+}
+
 func toUserModel(user *domain.User) *model.User {
 	if user == nil {
 		return nil

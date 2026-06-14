@@ -144,3 +144,36 @@ func TestCardgroup_IsOwnedBy_TypedEmptyHandle(t *testing.T) {
 	require.False(t, cg.IsOwnedBy(UserID("u-2")))
 	require.False(t, cg.IsOwnedBy(UserID("")), "empty UserID never matches")
 }
+
+func TestNewCardgroup(t *testing.T) {
+	t.Parallel()
+
+	owner := UserID("owner-001")
+	name := CardgroupName("My Deck")
+
+	before := time.Now().UTC()
+	cg, err := NewCardgroup(owner, name)
+	after := time.Now().UTC()
+
+	require.NoError(t, err)
+	require.NotNil(t, cg)
+
+	// A fresh UUID v7 id is generated and is non-empty.
+	require.NotEmpty(t, cg.ID)
+
+	// OwnerID and Name are carried through verbatim.
+	require.Equal(t, owner, cg.OwnerID)
+	require.Equal(t, name, cg.Name)
+
+	// CreatedAt and UpdatedAt are stamped with the current UTC time and are
+	// equal to each other (a freshly constructed aggregate has not been modified).
+	require.Equal(t, cg.CreatedAt, cg.UpdatedAt)
+	require.False(t, cg.CreatedAt.IsZero(), "CreatedAt must be stamped")
+	require.False(t, cg.CreatedAt.Before(before), "CreatedAt must be at or after the construction window start")
+	require.False(t, cg.CreatedAt.After(after), "CreatedAt must be at or before the construction window end")
+
+	// Two constructions produce distinct ids.
+	other, err := NewCardgroup(owner, name)
+	require.NoError(t, err)
+	require.NotEqual(t, cg.ID, other.ID)
+}

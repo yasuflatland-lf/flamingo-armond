@@ -497,7 +497,7 @@ func TestResolveMasterCatalogOrderBy_Invalid(t *testing.T) {
 }
 
 func TestResolveMasterCatalogPageSize_ClampsAtMax(t *testing.T) {
-	first, _, err := resolveMasterCatalogPageSize(intPtr(1000), nil)
+	first, _, err := resolveStandardPageSize(intPtr(1000), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -507,7 +507,7 @@ func TestResolveMasterCatalogPageSize_ClampsAtMax(t *testing.T) {
 }
 
 func TestResolveMasterCatalogPageSize_DefaultWhenAbsent(t *testing.T) {
-	first, last, err := resolveMasterCatalogPageSize(nil, nil)
+	first, last, err := resolveStandardPageSize(nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
