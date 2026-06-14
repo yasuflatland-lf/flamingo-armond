@@ -1,21 +1,24 @@
 "use client";
 
 import { NetworkStatus } from "@apollo/client";
-import { useApolloClient, useMutation, useQuery } from "@apollo/client/react";
+import { useApolloClient, useMutation } from "@apollo/client/react";
 import type { Reference } from "@apollo/client/utilities";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { Button } from "@/components/ui/button";
 import { FormSheet } from "@/components/ui/form-sheet";
 import { Input } from "@/components/ui/input";
-import type { AdminMastersQuery as AdminMastersQueryResult } from "@/generated/graphql";
+import type {
+  AdminMastersQuery as AdminMastersQueryResult,
+  AdminMastersQueryVariables,
+} from "@/generated/graphql";
 import { classifyQueryError, getBackendErrorBanner, mutationAuthBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
-import type { FetchNextPageInput } from "@/lib/pagination/types";
+import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { AdminMasterForm, type MasterFormValues } from "./admin-master-form";
 import { AdminMasterRow } from "./admin-master-row";
@@ -32,6 +35,7 @@ import {
 
 type Connection = AdminMastersQueryResult["adminMasters"];
 type Edge = Connection["edges"][number];
+type PageInfo = Connection["pageInfo"];
 
 const BASE_VARS = {
   first: ADMIN_MASTERS_PAGE_SIZE,
@@ -39,12 +43,41 @@ const BASE_VARS = {
   orderDirection: "ASC" as const,
 };
 
+const EMPTY_PAGE_INFO: PageInfo = {
+  __typename: "PageInfo",
+  hasNextPage: false,
+  hasPreviousPage: false,
+  startCursor: null,
+  endCursor: null,
+};
+
+// Render fallback for useConnectionPagination before the first query resolves.
+// Admin masters has no SSR seed, so this is the initial render value; it keeps
+// the empty-edges shape the inline implementation used (`?? []`).
+const MASTERS_INITIAL = {
+  edges: [] as Edge[],
+  pageInfo: EMPTY_PAGE_INFO,
+  totalCount: 0,
+};
+
+// Concatenate the next page's edges onto the cached adminMasters connection.
+function mergeMastersConnection(
+  prev: AdminMastersQueryResult,
+  more: AdminMastersQueryResult,
+): AdminMastersQueryResult {
+  return {
+    adminMasters: {
+      ...more.adminMasters,
+      edges: [...prev.adminMasters.edges, ...more.adminMasters.edges],
+    },
+  };
+}
+
 export function AdminMastersClient() {
   const t = useTranslations("AdminMasters");
   const tCommon = useTranslations("Common");
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
-  const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
   const [createDirty, setCreateDirty] = useState(false);
   const [createValidationError, setCreateValidationError] = useState<{
     field: string;
@@ -56,44 +89,46 @@ export function AdminMastersClient() {
   } | null>(null);
   const sheet = useSheetSearchParam();
 
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // In-flight guard MUST be useRef<boolean> — see
-  // docs/pagination/intersection-observer-in-flight-guard.md.
-  const fetchingRef = useRef(false);
-
   // Debounce search 300ms after the last keystroke.
   useEffect(() => {
     const timer = setTimeout(() => setSearchQuery(searchInput.trim() || null), 300);
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery is an intentional trigger; the effect resets derived IO state, not searchQuery itself.
-  useEffect(() => {
-    fetchingRef.current = false;
-    setFetchMoreError(null);
-  }, [searchQuery]);
+  // The cache key is BASE_VARS + the active search; the create handler reads and
+  // writes the search=null variant. Memoize on searchQuery so the hook's
+  // useQuery does not re-subscribe on unrelated re-renders.
+  const queryVariables = useMemo<AdminMastersQueryVariables>(
+    () => ({ ...BASE_VARS, search: searchQuery }),
+    [searchQuery],
+  );
 
   const {
-    data,
-    fetchMore,
-    loading,
+    edges,
+    pageInfo,
+    totalCount,
     networkStatus,
-    error: queryError,
+    fetchingMore,
+    fetchMoreError,
+    retryFetchMore,
+    sentinelRef,
+    queryError,
     refetch,
-  } = useQuery(AdminMastersQuery, {
-    variables: { ...BASE_VARS, search: searchQuery },
-    fetchPolicy: "cache-first",
-    notifyOnNetworkStatusChange: true,
+  } = useConnectionPagination<AdminMastersQueryResult, AdminMastersQueryVariables, Edge, PageInfo>({
+    document: AdminMastersQuery,
+    variables: queryVariables,
+    searchQuery,
+    selectConnection: (data) => data?.adminMasters,
+    buildFetchMoreVariables: (after, search) => ({ ...BASE_VARS, after, search }),
+    mergeConnection: mergeMastersConnection,
+    initial: MASTERS_INITIAL,
+    resolveFetchMoreError: (err) => getBackendErrorBanner(err) ?? t("fetchMoreFailed"),
+    logScope: "[admin-masters]",
   });
+  const hasNextPage = pageInfo.hasNextPage;
 
   const queryErrorKind = classifyQueryError(queryError);
   const queryBannerError = queryErrorKind?.kind === "banner" ? queryErrorKind.message : undefined;
-
-  const connection = data?.adminMasters;
-  const edges: Edge[] = connection?.edges ?? [];
-  const hasNextPage = connection?.pageInfo.hasNextPage ?? false;
-  const endCursor = connection?.pageInfo.endCursor ?? null;
-  const totalCount = connection?.totalCount ?? 0;
 
   const apolloClient = useApolloClient();
   const [runCreate, { loading: creating, reset: resetCreate }] =
@@ -109,55 +144,6 @@ export function AdminMastersClient() {
   // opaque encoded cursor ("v1:..."), so matching against the raw id always misses
   // and renders "Master not found." for every master.
   const editEdge = editId ? edges.find((e) => e.node.id === editId) : undefined;
-
-  const fetchNextPage = useCallback(
-    ({ hasNextPage, endCursor, searchQuery }: FetchNextPageInput) => {
-      if (fetchingRef.current || !hasNextPage) return;
-      fetchingRef.current = true;
-      fetchMore({
-        variables: { ...BASE_VARS, after: endCursor, search: searchQuery },
-        updateQuery: (prev, { fetchMoreResult }) => {
-          if (!fetchMoreResult) return prev;
-          return {
-            adminMasters: {
-              ...fetchMoreResult.adminMasters,
-              edges: [...prev.adminMasters.edges, ...fetchMoreResult.adminMasters.edges],
-            },
-          };
-        },
-      })
-        .then(() => setFetchMoreError(null))
-        .catch((err) => {
-          console.warn("[admin-masters] fetchMore failed", {
-            name: err instanceof Error ? err.name : "unknown",
-            searchQuery,
-            endCursor,
-          });
-          setFetchMoreError(getBackendErrorBanner(err) ?? t("fetchMoreFailed"));
-        })
-        .finally(() => {
-          fetchingRef.current = false;
-        });
-    },
-    [fetchMore, t],
-  );
-
-  const requestNextPageFromObserver = useEffectEvent(() => {
-    fetchNextPage({ hasNextPage, endCursor, searchQuery });
-  });
-
-  useEffect(() => {
-    if (!hasNextPage) return;
-    if (fetchMoreError != null) return;
-    const node = sentinelRef.current;
-    if (!node) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries[0]?.isIntersecting || fetchingRef.current) return;
-      requestNextPageFromObserver();
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [hasNextPage, fetchMoreError]);
 
   // Create: prepend the new edge to the base (search=null) connection.
   const handleCreate = useCallback(
@@ -392,7 +378,6 @@ export function AdminMastersClient() {
     [runPublish, runUnpublish, t],
   );
 
-  const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
   const initialLoading = networkStatus === NetworkStatus.loading && edges.length === 0;
 
   if (initialLoading) return <AdminMastersSkeleton />;
@@ -495,10 +480,7 @@ export function AdminMastersClient() {
           <button
             type="button"
             className="rounded-md border border-destructive/40 px-3 py-1 text-xs hover:bg-destructive/10"
-            onClick={() => {
-              setFetchMoreError(null);
-              fetchNextPage({ hasNextPage, endCursor, searchQuery });
-            }}
+            onClick={retryFetchMore}
           >
             {tCommon("retry")}
           </button>
