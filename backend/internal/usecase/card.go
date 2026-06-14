@@ -231,7 +231,7 @@ func (u *cardUsecase) Card(ctx context.Context, id string) (*domain.Card, error)
 		}
 		return nil, eris.Wrap(err, "usecase: card: find by id")
 	}
-	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, string(card.CardgroupID), user.Sub); err != nil {
+	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, card.CardgroupID, domain.UserID(user.Sub)); err != nil {
 		return nil, err
 	}
 	return card, nil
@@ -247,7 +247,7 @@ func (u *cardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 	if user == nil {
 		return CreateCardOutcome{}, ucerr.ErrUnauthenticated
 	}
-	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, in.CardgroupID, user.Sub); err != nil {
+	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, domain.CardgroupID(in.CardgroupID), domain.UserID(user.Sub)); err != nil {
 		return CreateCardOutcome{}, err
 	}
 
@@ -288,7 +288,7 @@ func (u *cardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 		}
 		return UpdateCardOutcome{}, eris.Wrap(err, "usecase: update card: find by id")
 	}
-	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, string(existing.CardgroupID), user.Sub); err != nil {
+	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, existing.CardgroupID, domain.UserID(user.Sub)); err != nil {
 		return UpdateCardOutcome{}, err
 	}
 
@@ -351,7 +351,7 @@ func (u *cardUsecase) Delete(ctx context.Context, id string) error {
 		}
 		return eris.Wrap(err, "usecase: delete card: find by id")
 	}
-	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, string(card.CardgroupID), user.Sub); err != nil {
+	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, card.CardgroupID, domain.UserID(user.Sub)); err != nil {
 		return err
 	}
 	if err := u.cardRepo.Delete(ctx, id); err != nil {
@@ -369,7 +369,7 @@ func (u *cardUsecase) ListCardsByCardgroupConnection(
 	if user == nil {
 		return nil, ucerr.ErrUnauthenticated
 	}
-	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, in.CardgroupID, user.Sub); err != nil {
+	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, domain.CardgroupID(in.CardgroupID), domain.UserID(user.Sub)); err != nil {
 		return nil, err
 	}
 

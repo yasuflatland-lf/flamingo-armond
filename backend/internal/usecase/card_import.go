@@ -190,7 +190,7 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 	if input.CardgroupID == "" {
 		return ImportCardsOutput{}, ucerr.NewValidationError("cardgroupId", "cardgroupId is required")
 	}
-	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, input.CardgroupID, caller.Sub); err != nil {
+	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, domain.CardgroupID(input.CardgroupID), domain.UserID(caller.Sub)); err != nil {
 		return ImportCardsOutput{}, err
 	}
 

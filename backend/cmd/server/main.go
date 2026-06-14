@@ -136,8 +136,8 @@ func (r *appRepos) loaderDeps() loaderDeps {
 
 // buildResolver wires every usecase, the ping/notion handlers, and the GraphQL
 // resolver from the repository bundle. Extracted from run() so the wiring is
-// unit-testable, mirroring bootstrapSuperUserPromoter. notionSyncHandler is nil
-// when notion sync is disabled.
+// independently testable, mirroring bootstrapSuperUserPromoter. notionSyncHandler
+// is nil when notion sync is disabled.
 func buildResolver(
 	repos *appRepos,
 	authSvc *auth.Service,
@@ -390,8 +390,9 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		return err
 	}
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
-	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
-	// telemetry.Init for the full ordering invariant.
+	// constructs reads otel.GetTextMapPropagator() eagerly (it is newRouter, not
+	// the buildResolver call just above, that constructs that handler). See comment
+	// above telemetry.Init for the full ordering invariant.
 	e := newRouter(resolvers, authMW, promoter, repos.loaderDeps(), pingHandler, notionSyncHandler)
 	e.Logger = logger
 

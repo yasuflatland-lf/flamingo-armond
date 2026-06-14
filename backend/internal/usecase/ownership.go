@@ -24,9 +24,10 @@ type CardgroupOwnershipFinder interface {
 func authorizeCardgroupOrBadInput(
 	ctx context.Context,
 	repo CardgroupOwnershipFinder,
-	id, userID string,
+	id domain.CardgroupID,
+	userID domain.UserID,
 ) error {
-	cg, err := repo.FindByID(ctx, id)
+	cg, err := repo.FindByID(ctx, string(id))
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ucerr.NewValidationError("cardgroupId", "cardgroup not found")
@@ -36,7 +37,7 @@ func authorizeCardgroupOrBadInput(
 		}
 		return eris.Wrap(err, "usecase: authorize cardgroup: find by id")
 	}
-	if !cg.IsOwnedBy(domain.UserID(userID)) {
+	if !cg.IsOwnedBy(userID) {
 		return ucerr.ErrUnauthenticated
 	}
 	return nil
@@ -50,9 +51,10 @@ func authorizeCardgroupOrBadInput(
 func authorizeCardgroupOrUnauthenticated(
 	ctx context.Context,
 	repo CardgroupOwnershipFinder,
-	id, userID string,
+	id domain.CardgroupID,
+	userID domain.UserID,
 ) error {
-	cg, err := repo.FindByID(ctx, id)
+	cg, err := repo.FindByID(ctx, string(id))
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ucerr.ErrUnauthenticated
@@ -62,7 +64,7 @@ func authorizeCardgroupOrUnauthenticated(
 		}
 		return eris.Wrap(err, "usecase: authorize cardgroup: find by id")
 	}
-	if !cg.IsOwnedBy(domain.UserID(userID)) {
+	if !cg.IsOwnedBy(userID) {
 		return ucerr.ErrUnauthenticated
 	}
 	return nil

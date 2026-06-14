@@ -119,6 +119,12 @@ func TestCardgroup_IsOwnedBy(t *testing.T) {
 			userID: "",
 			want:   false,
 		},
+		{
+			name:   "both owner and userID empty returns false",
+			owner:  "",
+			userID: "",
+			want:   false,
+		},
 	}
 
 	for _, tc := range cases {

@@ -293,6 +293,38 @@ func TestBuildResolver_WiresResolverAndHandlers(t *testing.T) {
 	}
 }
 
+// TestBuildResolver_NotionEnabledRetryConfigError asserts that when notion sync
+// is enabled, a malformed notion retry-config env var (NOTION_MAX_ATTEMPTS) makes
+// buildResolver propagate notion.RetryConfigFromEnv's error and return a nil
+// resolver. It reuses the same testcontainer Postgres harness as the wiring test.
+func TestBuildResolver_NotionEnabledRetryConfigError(t *testing.T) {
+	t.Setenv("NOTION_MAX_ATTEMPTS", "not-a-number")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	db, err := database.Open(ctx, database.Config{URL: testDBURL})
+	if err != nil {
+		t.Fatalf("db open: %v", err)
+	}
+	t.Cleanup(db.Close)
+
+	repos := newAppRepos(db)
+	authSvc := auth.NewService(repos.userRole)
+	adminGate := usecase.NewAdminGate(authSvc)
+
+	resolvers, _, _, err := buildResolver(
+		repos, authSvc, adminGate, slog.New(slog.DiscardHandler),
+		notionsync.EnvConfig{}, false /* notionSyncDisabled */, "ping-token",
+	)
+	if err == nil {
+		t.Fatal("expected error from invalid NOTION_MAX_ATTEMPTS, got nil")
+	}
+	if resolvers != nil {
+		t.Fatal("expected nil resolver on error")
+	}
+}
+
 func freePort(t *testing.T) string {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -2148,7 +2180,7 @@ func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
 
 	_, err := uc.HandleSwipe(auth.ContextWithUser(ctx, &auth.AuthUser{Sub: sub}), usecase.HandleSwipeInput{
 		CardID:      cardID,
-		CardgroupID: cgID,
+		CardgroupID: domain.CardgroupID(cgID),
 		Mode:        4,
 	})
 	if err == nil {

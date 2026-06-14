@@ -58,7 +58,7 @@ type swipeUsecase struct {
 
 type HandleSwipeInput struct {
 	CardID      string
-	CardgroupID string
+	CardgroupID domain.CardgroupID
 	Mode        int
 }
 
@@ -139,7 +139,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		// prefix ("rating: unknown swipe mode N") that is not appropriate on the wire.
 		return HandleSwipeOutcome{Validation: NewInputValidationInfo("mode", "unknown swipe mode")}, nil
 	}
-	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, in.CardgroupID, user.Sub); err != nil {
+	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, in.CardgroupID, domain.UserID(user.Sub)); err != nil {
 		// authorizeCardgroupOrBadInput returns ucerr.NewValidationError("cardgroupId", ...) for
 		// not-found and ucerr.ErrUnauthenticated for non-owner. The not-found case
 		// is a validation variant; the non-owner case stays on the error channel.
@@ -170,7 +170,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			}
 			return eris.Wrap(err, "usecase: swipe: find card by id")
 		}
-		if !card.BelongsToCardgroup(domain.CardgroupID(in.CardgroupID)) {
+		if !card.BelongsToCardgroup(in.CardgroupID) {
 			return ucerr.NewValidationError("cardId", "card not found")
 		}
 

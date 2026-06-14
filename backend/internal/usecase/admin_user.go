@@ -342,6 +342,9 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 	var earlyOutcome *AdminEditUserOutcome
 
 	err = u.tx(ctx, func(tx *gorm.DB) error {
+		// No write may be inserted ahead of this guard: the guard blocks via an
+		// early `return nil`, which commits the transaction, so any prior write
+		// would be persisted despite the block.
 		if callerID == id {
 			keepsAdmin := false
 			if len(roleIDs) > 0 {
