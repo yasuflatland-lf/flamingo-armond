@@ -3,10 +3,19 @@
 import dynamic from "next/dynamic";
 import type { RefObject } from "react";
 import type { CefrLevel } from "@/generated/graphql";
-import { cn } from "@/lib/utils";
 import type { AnimatedCardHandle } from "./animated-card";
 import { CefrBadge } from "./cefr-badge";
 import type { SwipeDirection } from "./types";
+import { useFitText } from "./use-fit-text";
+
+// Front-term auto-fit bounds (px). The front is a single term held on one line
+// (`whitespace-nowrap`); useFitText shrinks the font so a long word like
+// "cardiovascular" fits the card width instead of wrapping. `max` mirrors the
+// previous static sizes (≈ text-5xl unrevealed, ≈ text-3xl revealed); `min`
+// is the floor below which the term may overflow the clipped card rather than
+// shrink to an unreadable size.
+const FRONT_FIT_UNREVEALED = { maxPx: 48, minPx: 20 };
+const FRONT_FIT_REVEALED = { maxPx: 30, minPx: 16 };
 
 export type { AnimatedCardHandle } from "./animated-card";
 
@@ -54,6 +63,9 @@ const AnimatedCard = dynamic(() => import("./animated-card").then((m) => m.Anima
 
 // CardContent is exported so animated-card.tsx can share the same presentational layer.
 export function CardContent({ card, revealed }: { card: SwipeCardData; revealed: boolean }) {
+  const { maxPx, minPx } = revealed ? FRONT_FIT_REVEALED : FRONT_FIT_UNREVEALED;
+  const { ref: frontRef, fontPx } = useFitText<HTMLParagraphElement>(card.front, maxPx, minPx);
+
   return (
     // `relative` anchors the absolutely-positioned CefrBadge to this card.
     // The TOP-RIGHT corner is reserved for the CEFR badge; future FSRS badges
@@ -72,10 +84,14 @@ export function CardContent({ card, revealed }: { card: SwipeCardData; revealed:
       */}
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 px-10 text-center">
         <p
-          className={cn(
-            "max-w-full break-words font-semibold leading-tight text-foreground",
-            revealed ? "text-2xl sm:text-3xl" : "text-4xl sm:text-5xl",
-          )}
+          ref={frontRef}
+          // Single-line: useFitText measures the term at `maxPx` and shrinks
+          // the inline font-size to fit the card width (set via style, so it is
+          // a measured pixel value, not a Tailwind step). The outer card is
+          // `overflow-hidden`, so a term at the `minPx` floor is clipped rather
+          // than spilling past the card edge.
+          className="max-w-full whitespace-nowrap font-semibold leading-tight text-foreground"
+          style={{ fontSize: `${fontPx}px` }}
         >
           {card.front}
         </p>

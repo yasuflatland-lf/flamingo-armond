@@ -54,6 +54,26 @@ describe("<CardContent>", () => {
     expect(screen.getByText("Hola")).toBeInTheDocument();
   });
 
+  it("renders the front term on a single line so auto-fit can shrink it instead of wrapping", () => {
+    // The front term is held on one line (`whitespace-nowrap`); useFitText
+    // shrinks the font to fit the card width. jsdom has no layout engine, so
+    // the auto-fit math is unit-tested in use-fit-text.test.ts; here we pin the
+    // structural precondition (nowrap) the shrink relies on.
+    render(<CardContent card={{ ...CARD, front: "cardiovascular" }} revealed={false} />);
+
+    const frontEl = screen.getByText("cardiovascular");
+    expect(frontEl).toHaveClass("whitespace-nowrap");
+    expect(frontEl).not.toHaveClass("break-words");
+  });
+
+  it("lets the back translation wrap normally — it may be a phrase, not a single term", () => {
+    render(<CardContent card={{ ...CARD, back: "a multi word phrase" }} revealed={true} />);
+
+    const backEl = screen.getByText("a multi word phrase");
+    expect(backEl).toHaveClass("break-words");
+    expect(backEl).not.toHaveClass("whitespace-nowrap");
+  });
+
   it("reserves horizontal padding so a long front term cannot slide under the badge", () => {
     // jsdom has no real layout engine, so the overlap is guarded structurally:
     // the centered content block must carry the horizontal-padding utility that
