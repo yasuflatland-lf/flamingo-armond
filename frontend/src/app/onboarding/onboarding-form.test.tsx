@@ -93,7 +93,7 @@ describe("<OnboardingForm>", () => {
     });
   });
 
-  it("onCompleted triggers router.push('/cardgroups/new?welcome=1')", async () => {
+  it("onCompleted triggers router.push('/onboarding/start')", async () => {
     const user = userEvent.setup();
 
     const mocks = [makeUpdateProfileMock({ input: { displayName: "Alice" } })];
@@ -110,7 +110,7 @@ describe("<OnboardingForm>", () => {
     await user.click(screen.getByRole("button", { name: /continue/i }));
 
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/cardgroups/new?welcome=1");
+      expect(mockPush).toHaveBeenCalledWith("/onboarding/start");
     });
   });
 
