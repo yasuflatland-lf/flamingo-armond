@@ -37,6 +37,13 @@ export function useAdminUserMutations() {
               totalCount?: number;
             };
             if (!connection.edges) return existing;
+            // Filter by `edge.cursor`, NOT `readField("id", edge.node)`. This is the
+            // deliberate exception to .claude/rules/pagination.md "Resolve an edge by
+            // node.id, never by edge.cursor": the backend emits the raw user id as the
+            // users-connection cursor (AdminUserEdge{Cursor: user.ID} in
+            // backend/internal/usecase/admin_user.go — NOT cursor.Encode), so here
+            // cursor === id. Masters/cards/cardgroups encode their cursors, so they must
+            // use node.id; users intentionally differ (issue #448).
             const edges = connection.edges.filter((edge) => edge.cursor !== id);
             if (edges.length === connection.edges.length) return existing;
             return {
