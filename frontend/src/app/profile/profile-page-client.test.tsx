@@ -95,7 +95,11 @@ describe("<ProfilePageClient>", () => {
       </MockedProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: /edit profile/i }));
+    const editButton = screen.getByRole("button", { name: /edit profile/i });
+    // Icon-only: the visible label was removed; the accessible name comes from aria-label.
+    expect(editButton).not.toHaveTextContent(/edit profile/i);
+
+    await user.click(editButton);
 
     expect(mockPush).toHaveBeenCalledWith("/profile?edit=self", { scroll: false });
   });
