@@ -788,4 +788,85 @@ describe("AdminRolesClient — delete failure", () => {
       warnSpy.mockRestore();
     }
   });
+
+  // Regression locks for the deliberate divergence from the shared kind-only
+  // classifyMutationAuthError used by the create/update branches: delete passes
+  // the server's FORBIDDEN message through verbatim (system-role protection) but
+  // collapses UNAUTHENTICATED to generic copy. A future "DRY" refactor that
+  // routed delete through the kind-only classifier would break these.
+  it("keeps the server's FORBIDDEN message verbatim when deleting a system role is refused", async () => {
+    const user = userEvent.setup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const mocks = [
+        {
+          request: { query: AdminDeleteRoleDocument, variables: { id: CUSTOM_ROLE.id } },
+          result: {
+            errors: [
+              new GraphQLError('cannot delete system role "admin"', {
+                extensions: { code: "FORBIDDEN" },
+              }),
+            ],
+          },
+        },
+      ];
+
+      renderRoles([CUSTOM_ROLE], mocks);
+
+      await user.click(screen.getByTestId(`admin-role-delete-btn-${CUSTOM_ROLE.id}`));
+      await waitFor(() => {
+        expect(screen.queryByTestId(`admin-role-row-${CUSTOM_ROLE.id}`)).toBeNull();
+      });
+
+      act(() => vi.advanceTimersByTime(5100));
+      vi.useRealTimers();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("admin-roles-error")).toHaveTextContent(
+          'cannot delete system role "admin"',
+        );
+      });
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("collapses a delete UNAUTHENTICATED failure to the generic sign-in copy, dropping the server detail", async () => {
+    const user = userEvent.setup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const mocks = [
+        {
+          request: { query: AdminDeleteRoleDocument, variables: { id: CUSTOM_ROLE.id } },
+          result: {
+            errors: [
+              new GraphQLError("token expired at the edge proxy", {
+                extensions: { code: "UNAUTHENTICATED" },
+              }),
+            ],
+          },
+        },
+      ];
+
+      renderRoles([CUSTOM_ROLE], mocks);
+
+      await user.click(screen.getByTestId(`admin-role-delete-btn-${CUSTOM_ROLE.id}`));
+      await waitFor(() => {
+        expect(screen.queryByTestId(`admin-role-row-${CUSTOM_ROLE.id}`)).toBeNull();
+      });
+
+      act(() => vi.advanceTimersByTime(5100));
+      vi.useRealTimers();
+
+      const banner = await screen.findByTestId("admin-roles-error");
+      expect(banner).toHaveTextContent("Your session has expired. Please sign in again.");
+      expect(banner).not.toHaveTextContent("token expired at the edge proxy");
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
 });
