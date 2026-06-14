@@ -766,7 +766,8 @@ func TestMasterCardsFromParsedRows_AssignsContiguousPositions(t *testing.T) {
 	}
 
 	const masterCardgroupID = "mcg-test"
-	cards := masterCardsFromParsedRows(masterCardgroupID, rows)
+	uc := NewMasterNotionSyncUsecaseWithTx(nil, nil, nil, nil, newTestLogger())
+	cards := uc.masterCardsFromParsedRows(context.Background(), masterCardgroupID, rows)
 
 	if len(cards) != len(rows) {
 		t.Fatalf("len(cards) = %d, want %d", len(cards), len(rows))
@@ -784,6 +785,74 @@ func TestMasterCardsFromParsedRows_AssignsContiguousPositions(t *testing.T) {
 		// MasterCardgroupID must be propagated.
 		if card.MasterCardgroupID != masterCardgroupID {
 			t.Errorf("cards[%d].MasterCardgroupID = %q, want %q", i, card.MasterCardgroupID, masterCardgroupID)
+		}
+	}
+}
+
+// TestMasterCardsFromParsedRows_SkipsInvalidRowsWithWarn verifies that rows
+// whose front or back fail CardText validation (empty, whitespace-only, or
+// over CardTextMax graphemes) are dropped from the import and surfaced with a
+// structured WarnContext record, while the remaining valid rows still produce
+// cards. Position is the index in the original deduped slice, so survivors keep
+// gaps where invalid rows were skipped.
+//
+// Not parallel: injects a logger directly into the usecase.
+func TestMasterCardsFromParsedRows_SkipsInvalidRowsWithWarn(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	uc := NewMasterNotionSyncUsecaseWithTx(nil, nil, nil, nil, logger)
+
+	rows := []ParsedRow{
+		{Front: "apple", Back: "fruit", SourcePageID: "page-1", Line: 1},     // valid
+		{Front: "   ", Back: "fruit", SourcePageID: "page-1", Line: 2},       // empty front -> skip
+		{Front: "carrot", Back: "", SourcePageID: "page-1", Line: 3},         // empty back -> skip
+		{Front: strings.Repeat("x", 501), Back: "ok", Line: 4},              // oversized front -> skip
+		{Front: "banana", Back: "fruit", SourcePageID: "page-1", Line: 5},    // valid
+	}
+
+	const masterCardgroupID = "mcg-skip"
+	cards := uc.masterCardsFromParsedRows(context.Background(), masterCardgroupID, rows)
+
+	// Only the two valid rows survive, keeping their original deduped-slice
+	// indices as Position (0 and 4).
+	if len(cards) != 2 {
+		t.Fatalf("len(cards) = %d, want 2", len(cards))
+	}
+	if string(cards[0].Front) != "apple" || cards[0].Position != 0 {
+		t.Errorf("cards[0] = {Front:%q, Position:%d}, want {apple, 0}", cards[0].Front, cards[0].Position)
+	}
+	if string(cards[1].Front) != "banana" || cards[1].Position != 4 {
+		t.Errorf("cards[1] = {Front:%q, Position:%d}, want {banana, 4}", cards[1].Front, cards[1].Position)
+	}
+
+	// Three warn records, one per skipped row, anchored to (position, field).
+	records := decodeJSONRecords(t, buf.Bytes())
+	type skip struct {
+		position int
+		field    string
+	}
+	got := make(map[skip]bool)
+	for _, rec := range records {
+		if rec["msg"] != "notion sync: skipping invalid master card row" {
+			continue
+		}
+		if rec["cardgroupID"] != masterCardgroupID {
+			t.Errorf("warn cardgroupID = %v, want %q", rec["cardgroupID"], masterCardgroupID)
+		}
+		if rec["reason"] == nil || rec["reason"] == "" {
+			t.Errorf("warn reason is empty for record %v", rec)
+		}
+		pos, _ := rec["position"].(float64)
+		field, _ := rec["field"].(string)
+		got[skip{int(pos), field}] = true
+	}
+	want := []skip{{1, "front"}, {2, "back"}, {3, "front"}}
+	if len(got) != len(want) {
+		t.Fatalf("warn records = %d, want %d (records=%v)", len(got), len(want), got)
+	}
+	for _, w := range want {
+		if !got[w] {
+			t.Errorf("missing warn for skipped row position=%d field=%q", w.position, w.field)
 		}
 	}
 }
