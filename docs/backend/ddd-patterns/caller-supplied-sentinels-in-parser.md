@@ -37,21 +37,21 @@ func ParseCardText(s string, requiredErr, tooLongErr error) (CardText, error) {
 }
 ```
 
-The VO stays field-agnostic. The aggregate (`Card.Validate`) picks the right
-sentinel for each field:
+The VO stays field-agnostic. The aggregate constructor (`NewCard`) picks the
+right sentinel for each field:
 
 ```go
 // domain/card.go
 
-func (c *Card) Validate() error {
+func NewCard(cardgroupID, front, back string, position int) (*Card, error) {
     // ...
-    if _, err := ParseCardText(c.Front, ErrCardFrontRequired, ErrCardFrontTooLong); err != nil {
-        return err
+    if _, err := ParseCardText(front, ErrCardFrontRequired, ErrCardFrontTooLong); err != nil {
+        return nil, err
     }
-    if _, err := ParseCardText(c.Back, ErrCardBackRequired, ErrCardBackTooLong); err != nil {
-        return err
+    if _, err := ParseCardText(back, ErrCardBackRequired, ErrCardBackTooLong); err != nil {
+        return nil, err
     }
-    return nil
+    // ... generate ID, stamp timestamps, return &Card{...}, nil
 }
 ```
 

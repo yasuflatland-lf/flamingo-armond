@@ -4,10 +4,10 @@
 
 ## Why
 
-A domain aggregate's `Validate()` method is the temptation to centralise every
-invariant in one place: "validate everything every time, then it is impossible
-to forget". The problem with double-checking an invariant that the usecase
-boundary already enforces is twofold:
+A domain aggregate's enforced constructor (e.g. `NewCard`) is the temptation to
+centralise every invariant in one place: "validate everything every time, then
+it is impossible to forget". The problem with double-checking an invariant that
+the usecase boundary already enforces is twofold:
 
 - **Dead code.** If the only callers of the aggregate constructor flow through
   the boundary gate, the domain-side check never fires for any non-malicious
@@ -58,7 +58,7 @@ An empty `CardgroupID` reaches `repo.FindByID`, which returns `ErrNotFound`,
 which the gate translates into `BAD_USER_INPUT(field=cardgroupId)`. The
 GraphQL caller sees a typed validation error before any `Card` is constructed.
 
-A domain-side `if c.CardgroupID == ""` check inside `Card.Validate()` would
+A domain-side `if c.CardgroupID == ""` check inside `NewCard` would
 have been unreachable for every production caller. The check was removed
 along with its `ErrCardCardgroupIDRequired` sentinel; the aggregate's
 docstring documents the boundary contract instead:
@@ -69,19 +69,20 @@ docstring documents the boundary contract instead:
 //
 // CardgroupID ownership is enforced at the usecase boundary via
 // authorizeCardgroupOrBadInput before a Card is constructed; the domain
-// aggregate therefore does not re-check CardgroupID presence in Validate.
+// aggregate therefore does not re-check CardgroupID presence in NewCard.
 type Card struct { ... }
 ```
 
-## The other Card.Validate fields stayed
+## Front and Back stay enforced in NewCard
 
-`Card.Validate()` retains `ParseCardText` calls for `Front` and `Back`. Those
-fields are not gated at the usecase boundary; `ParseCardText` is the
-single source of truth for the grapheme-bound + non-empty invariants. The
-aggregate's `Validate()` method is still load-bearing for any caller that
-constructs a `Card` outside the usecase's `Create`/`Update` paths (today: no
-such callers in production, but the contract is the right shape for future
-seed/migration paths).
+`NewCard` (and its `MasterCard` sibling `NewMasterCard`) validates `Front` and
+`Back` through `ParseCardText`. Those fields are not gated at the usecase
+boundary; `ParseCardText` is the single source of truth for the grapheme-bound +
+non-empty invariants. The enforced constructor is the single construction path
+for a new `Card` — an invalid `Front`/`Back` cannot produce a constructed
+aggregate — so the invariant is enforced exactly once, in the constructor,
+rather than re-checked by a separate `Validate()` method (which had zero
+production callers and was removed).
 
 The pattern is: each invariant has a single enforcement site. If the
 boundary enforces it, the domain skips it. If the domain owns it (because
@@ -99,6 +100,6 @@ no boundary gate has it), the domain enforces it.
 
 ## Reference
 
-- `backend/internal/domain/card.go` — `Card.Validate` minus the `CardgroupID` check; docstring notes the boundary contract.
+- `backend/internal/domain/card.go` — `NewCard` enforces `Front`/`Back` but not `CardgroupID` presence; docstring notes the boundary contract.
 - `backend/internal/usecase/ownership.go` — `authorizeCardgroupOrBadInput`, the gate that owns the invariant.
 - `backend/internal/usecase/card.go` — `Create` / `Update` call the gate before constructing the aggregate.

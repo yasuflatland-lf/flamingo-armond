@@ -20,7 +20,7 @@ var (
 //
 // CardgroupID ownership is enforced at the usecase boundary via
 // authorizeCardgroupOrBadInput before a Card is constructed; the domain
-// aggregate therefore does not re-check CardgroupID presence in Validate.
+// aggregate therefore does not re-check CardgroupID presence in NewCard.
 type Card struct {
 	ID          string
 	CardgroupID string
@@ -42,14 +42,36 @@ func (c *Card) BelongsToCardgroup(cardgroupID string) bool {
 	return cardgroupID != "" && c.CardgroupID == cardgroupID
 }
 
-func (c *Card) Validate() error {
-	if _, err := ParseCardText(string(c.Front), ErrCardFrontRequired, ErrCardFrontTooLong); err != nil {
-		return err
+// NewCard constructs a Card aggregate, enforcing its invariants at construction
+// time: Front and Back are validated and trimmed through ParseCardText and a
+// fresh UUID v7 ID is generated. CreatedAt and UpdatedAt are stamped with the
+// current UTC time; batch callers may override both with a shared timestamp
+// before persisting. Returns the field-specific CardText sentinel (e.g.
+// ErrCardFrontRequired) on invalid input — callers translate it via
+// translateCardErr — or a wrapped error when ID generation fails.
+func NewCard(cardgroupID, front, back string, position int) (*Card, error) {
+	frontVO, err := ParseCardText(front, ErrCardFrontRequired, ErrCardFrontTooLong)
+	if err != nil {
+		return nil, err
 	}
-	if _, err := ParseCardText(string(c.Back), ErrCardBackRequired, ErrCardBackTooLong); err != nil {
-		return err
+	backVO, err := ParseCardText(back, ErrCardBackRequired, ErrCardBackTooLong)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	id, err := NewID()
+	if err != nil {
+		return nil, eris.Wrap(err, "card: new id")
+	}
+	now := time.Now().UTC()
+	return &Card{
+		ID:          id,
+		CardgroupID: cardgroupID,
+		Front:       frontVO,
+		Back:        backVO,
+		Position:    position,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}, nil
 }
 
 // UpdateFront updates the card's front text to the supplied value and returns an

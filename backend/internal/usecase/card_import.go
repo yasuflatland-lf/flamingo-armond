@@ -253,13 +253,18 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 	now := time.Now().UTC()
 	cards := make([]*domain.Card, 0, len(words))
 	for _, w := range words {
-		c := &domain.Card{
-			CardgroupID: input.CardgroupID,
-			Front:       domain.CardText(w.Front),
-			Back:        domain.CardText(w.Back),
-			CreatedAt:   now,
-			UpdatedAt:   now,
+		// Build through the enforcing constructor so an over-length front/back
+		// cannot reach the repository. textdic guarantees both fields are
+		// present, so the realistic failure is the length cap; surface it as a
+		// typed validation error (the DB CHECK would otherwise abort the tx with
+		// an opaque constraint violation).
+		c, err := domain.NewCard(input.CardgroupID, w.Front, w.Back, 0)
+		if err != nil {
+			return ImportCardsOutput{}, translateCardErr(err)
 		}
+		// NewCard stamps per-card timestamps; pin the whole batch to one now.
+		c.CreatedAt = now
+		c.UpdatedAt = now
 		cards = append(cards, c)
 	}
 
