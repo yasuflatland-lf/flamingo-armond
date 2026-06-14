@@ -18,6 +18,7 @@ import {
   getBackendErrorBanner,
   type QueryErrorKind,
 } from "@/lib/apollo/errors";
+import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { AdminUserProfileSheet } from "./admin-user-profile-sheet";
@@ -37,14 +38,6 @@ import { useAdminUserMutations } from "./use-admin-user-mutations";
 type Connection = AdminUsersQueryResult["users"];
 type Edge = Connection["edges"][number];
 type PageInfo = Connection["pageInfo"];
-
-const EMPTY_PAGE_INFO: PageInfo = {
-  __typename: "PageInfo",
-  hasNextPage: false,
-  hasPreviousPage: false,
-  startCursor: null,
-  endCursor: null,
-};
 
 // Render fallback for useConnectionPagination before the first query resolves.
 // Admin users has no SSR seed, so this is the initial render value; it keeps the
