@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { loginAs, seedUser } from "./_auth";
 
-// Scenario: a brand-new user (zero cardgroups, no last_viewed) is funnelled
-// into onboarding (/cardgroups/new?welcome=1), creates their first cardgroup,
-// and the nav-header "+" button opens the inline "Add card" FormSheet on the
-// cardgroup edit page (no navigation to /cards/new).
+// Scenario: a brand-new user (zero cardgroups, no last_viewed) is funnelled by
+// the HomePage chain to /onboarding/start (the first-deck chooser). Because the
+// e2e DB seeds no master decks, that route hits its empty-catalog fallback and
+// redirects to /cardgroups/new?welcome=1, where the user creates their first
+// cardgroup; the nav-header "+" button then opens the inline "Add card"
+// FormSheet on the cardgroup edit page (no navigation to /cards/new).
 
 const runId = randomUUID().slice(0, 8);
 const newcomer = {
@@ -28,7 +30,8 @@ test.describe
 
     test.beforeAll(async () => {
       // Seed only the auth user + role; deliberately NO cardgroup so the home
-      // RSC routes to /cardgroups/new?welcome=1 on first login.
+      // RSC routes the deckless-onboarded user to /onboarding/start on first
+      // login (which falls back to /cardgroups/new?welcome=1 — see file header).
       await seedUser({
         email: newcomer.email,
         password: newcomer.password,
@@ -43,7 +46,8 @@ test.describe
     }) => {
       await loginAs(context, newcomer);
 
-      // 1. Home redirects to onboarding because user has no cardgroups.
+      // 1. Home routes the deckless-onboarded user to /onboarding/start, which
+      //    (no master decks seeded) falls back to /cardgroups/new?welcome=1.
       await page.goto("/");
       await page.waitForURL("**/cardgroups/new?welcome=1", { timeout: 10_000 });
       // Use the existing id="welcome-heading" to avoid locale-dependent text matching
