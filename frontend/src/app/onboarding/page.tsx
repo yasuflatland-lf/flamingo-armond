@@ -18,11 +18,9 @@ export default async function OnboardingPage() {
     if (isUnauthenticatedGraphQLError(err)) {
       redirect("/login");
     }
-    console.error(
-      "[onboarding] gqlFetch failed:",
-      err instanceof Error ? err.name : "unknown",
-      err instanceof Error ? err.message : String(err),
-    );
+    console.error("[onboarding] gqlFetch failed:", {
+      name: err instanceof Error ? err.name : "unknown",
+    });
     throw err;
   }
 

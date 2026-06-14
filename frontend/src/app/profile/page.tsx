@@ -33,7 +33,9 @@ export default async function ProfilePage() {
     if (isUnauthenticatedGraphQLError(err)) {
       redirect("/login");
     }
-    console.error("[profile] gqlFetch failed:", err);
+    console.error("[profile] gqlFetch failed:", {
+      name: err instanceof Error ? err.name : "unknown",
+    });
     throw err;
   }
   if (!data.me) {
