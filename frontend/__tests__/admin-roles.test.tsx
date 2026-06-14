@@ -2,8 +2,9 @@
 /**
  * Broad page-level tests for /admin/roles (AdminRolesPage RSC).
  *
- * Scope: SSR-seed rendering, empty-seed path, gqlFetch error propagation, and
- * system-role presence in the rendered list.
+ * Scope: SSR-seed rendering, empty-seed path, gqlFetch error branches
+ * (auth-code redirect vs. redacted-log-and-rethrow), and system-role presence
+ * in the rendered list.
  *
  * NOT covered here (owned by admin-roles-crud.test.tsx):
  *   - Create / update / delete mutation flows.
@@ -17,6 +18,10 @@
 // ---------------------------------------------------------------------------
 // Module mocks — hoisted by Vitest before imports
 // ---------------------------------------------------------------------------
+
+// redirect() throws with this prefix so RSC tests can assert the target path,
+// mirroring how Next.js's server runtime aborts the render on redirect.
+const REDIRECT_PREFIX = "REDIRECT:";
 
 vi.mock("@/lib/apollo/server", () => ({
   gqlFetch: vi.fn(),
@@ -36,8 +41,13 @@ vi.mock("@/lib/undo-delete", () => ({
   UndoDeleteProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
-// usePathname is consumed by UndoDeleteProvider for flush-on-navigation.
+// redirect throws so the page's catch-block redirect aborts the render like
+// Next.js does. usePathname / useRouter / useSearchParams are consumed by
+// UndoDeleteProvider (flush-on-navigation) in the SSR-seed render tests.
 vi.mock("next/navigation", () => ({
+  redirect: vi.fn((path: string) => {
+    throw new Error(`${REDIRECT_PREFIX}${path}`);
+  }),
   usePathname: () => "/admin/roles",
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn() }),
   useSearchParams: () => new URLSearchParams(""),
@@ -48,6 +58,7 @@ vi.mock("next/navigation", () => ({
 // ---------------------------------------------------------------------------
 
 import { screen } from "@testing-library/react";
+import { redirect } from "next/navigation";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AdminRolesPage from "@/app/admin/roles/page";
 import { gqlFetch } from "@/lib/apollo/server";
@@ -145,14 +156,43 @@ describe("AdminRolesPage (page-level SSR seed)", () => {
   });
 
   // -------------------------------------------------------------------------
-  // 3. gqlFetch error: the RSC throws — error propagates to the caller
+  // 3. gqlFetch error branches — auth codes redirect, others log + rethrow
   // -------------------------------------------------------------------------
 
-  it("propagates a gqlFetch error (page throws — error boundary handles it)", async () => {
+  it("propagates a non-auth gqlFetch error and logs a redacted, scoped error", async () => {
     const networkErr = new Error("network failure");
     mockGqlFetchError(networkErr);
 
-    await expect(AdminRolesPage()).rejects.toThrow("network failure");
+    await expect(AdminRolesPage()).rejects.toBe(networkErr);
+
+    expect(redirect).not.toHaveBeenCalled();
+    // PII redaction: only the error name is logged, never the message/object.
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("[admin/roles]"), {
+      name: "Error",
+    });
+  });
+
+  it("redirects to / on UNAUTHENTICATED without logging (admin pages → /, not /login)", async () => {
+    mockGqlFetchError(
+      new Error(`GraphQL errors: ${JSON.stringify([{ extensions: { code: "UNAUTHENTICATED" } }])}`),
+    );
+
+    await expect(AdminRolesPage()).rejects.toThrow(`${REDIRECT_PREFIX}/`);
+
+    expect(redirect).toHaveBeenCalledWith("/");
+    // The redirect path swallows the error cleanly — no error log.
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it("redirects to / on FORBIDDEN without logging", async () => {
+    mockGqlFetchError(
+      new Error(`GraphQL errors: ${JSON.stringify([{ extensions: { code: "FORBIDDEN" } }])}`),
+    );
+
+    await expect(AdminRolesPage()).rejects.toThrow(`${REDIRECT_PREFIX}/`);
+
+    expect(redirect).toHaveBeenCalledWith("/");
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
   // -------------------------------------------------------------------------
