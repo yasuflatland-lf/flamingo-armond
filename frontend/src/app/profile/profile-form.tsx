@@ -1,6 +1,5 @@
 "use client";
 
-import { useMutation } from "@apollo/client/react";
 import { useForm } from "@tanstack/react-form";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -9,31 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { graphql } from "@/generated";
-import { getBackendErrorBanner } from "@/lib/apollo/errors";
-import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { FieldError } from "@/lib/forms/field-error";
 import { updateProfileSchema } from "@/schemas/profile";
-
-const UpdateProfileMutation = graphql(`
-  mutation UpdateProfile($input: UpdateProfileInput!) {
-    updateProfile(input: $input) {
-      __typename
-      ... on UpdateProfileSuccess {
-        user {
-          id
-          displayName
-          bio
-          avatarUrl
-        }
-      }
-      ... on InputValidationError {
-        field
-        message
-      }
-    }
-  }
-`);
+import { useUpdateProfile } from "./use-update-profile";
 
 type Props = {
   /** The user's email address. Required — callers must pass the value or explicit null; never collapse to "". */
@@ -84,7 +61,7 @@ export function ProfileForm({
   // Mid-session auth failures or unexpected payloads. Cleared on each submission.
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
 
-  const [updateProfile, { loading, reset }] = useMutation(UpdateProfileMutation);
+  const { submit, loading, reset } = useUpdateProfile();
 
   const resetLocalState = useCallback(() => {
     setValidationError(null);
@@ -112,46 +89,30 @@ export function ProfileForm({
       setValidationError(null);
       setBannerMessage(null);
 
-      const result = await updateProfile({
-        variables: {
-          input: {
-            displayName: value.displayName,
-            bio: value.bio,
-          },
-        },
-      }).catch((err) => {
-        const codes = liftGraphQLCodes(err);
-        if (codes.includes("UNAUTHENTICATED")) {
+      const outcome = await submit({
+        displayName: value.displayName,
+        bio: value.bio,
+      });
+
+      switch (outcome.status) {
+        case "success":
+          onSaved?.();
+          return;
+        case "validation":
+          setValidationError({ field: outcome.field, message: outcome.message });
+          return;
+        case "unauthenticated":
           setBannerMessage(t("sessionExpired"));
-          return null;
-        }
-        const banner = getBackendErrorBanner(err) ?? tCommon("somethingWentWrong");
-        setBannerMessage(banner);
-        console.error("[ProfileForm] mutation rejection", err);
-        throw err; // keep formState.isSubmitSuccessful correct
-      });
-
-      if (!result) return;
-
-      const payload = result.data?.updateProfile;
-
-      if (payload?.__typename === "InputValidationError") {
-        setValidationError({ field: payload.field, message: payload.message });
-        return;
+          return;
+        case "unexpected":
+          setBannerMessage(tCommon("somethingWentWrong"));
+          return;
+        case "rejected":
+          setBannerMessage(outcome.banner ?? tCommon("somethingWentWrong"));
+          // Re-throw so TanStack Form keeps formState.isSubmitSuccessful=false; the
+          // outer form.handleSubmit().catch() at the JSX call site swallows it.
+          throw new Error("[ProfileForm] update profile rejected");
       }
-
-      if (payload?.__typename === "UpdateProfileSuccess") {
-        onSaved?.();
-        return;
-      }
-
-      // Unknown variant: null payload or a future union variant the client was not
-      // regenerated against.
-      const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
-      console.warn("[ProfileForm] unexpected updateProfile payload", {
-        typename: unknownPayload?.__typename ?? null,
-      });
-      setBannerMessage(tCommon("somethingWentWrong"));
     },
   });
 

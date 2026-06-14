@@ -1,38 +1,15 @@
 "use client";
 
-import { useMutation } from "@apollo/client/react";
 import { useForm } from "@tanstack/react-form";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
+import { useUpdateProfile } from "@/app/profile/use-update-profile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { graphql } from "@/generated";
-import { getBackendErrorBanner } from "@/lib/apollo/errors";
-import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { FieldError } from "@/lib/forms/field-error";
 import { updateProfileSchema } from "@/schemas/profile";
-
-const UpdateProfileMutation = graphql(`
-  mutation UpdateProfile($input: UpdateProfileInput!) {
-    updateProfile(input: $input) {
-      __typename
-      ... on UpdateProfileSuccess {
-        user {
-          id
-          displayName
-          bio
-          avatarUrl
-        }
-      }
-      ... on InputValidationError {
-        field
-        message
-      }
-    }
-  }
-`);
 
 export function OnboardingForm() {
   const router = useRouter();
@@ -49,7 +26,7 @@ export function OnboardingForm() {
   // Mid-session auth failures or unexpected payloads. Cleared on each submission.
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
 
-  const [updateProfile, { loading }] = useMutation(UpdateProfileMutation);
+  const { submit, loading } = useUpdateProfile();
 
   const displayNameSchema = updateProfileSchema.shape.displayName;
 
@@ -61,45 +38,29 @@ export function OnboardingForm() {
       setValidationError(null);
       setBannerMessage(null);
 
-      const result = await updateProfile({
-        variables: {
-          input: {
-            displayName: value.displayName,
-          },
-        },
-      }).catch((err) => {
-        const codes = liftGraphQLCodes(err);
-        if (codes.includes("UNAUTHENTICATED")) {
+      const outcome = await submit({
+        displayName: value.displayName,
+      });
+
+      switch (outcome.status) {
+        case "success":
+          router.push("/onboarding/start");
+          return;
+        case "validation":
+          setValidationError({ field: outcome.field, message: outcome.message });
+          return;
+        case "unauthenticated":
           setBannerMessage(t("sessionExpired"));
-          return null;
-        }
-        const banner = getBackendErrorBanner(err) ?? tCommon("somethingWentWrong");
-        setBannerMessage(banner);
-        console.error("[OnboardingForm] mutation rejection", err);
-        throw err; // keep formState.isSubmitSuccessful correct
-      });
-
-      if (!result) return;
-
-      const payload = result.data?.updateProfile;
-
-      if (payload?.__typename === "InputValidationError") {
-        setValidationError({ field: payload.field, message: payload.message });
-        return;
+          return;
+        case "unexpected":
+          setBannerMessage(tCommon("somethingWentWrong"));
+          return;
+        case "rejected":
+          setBannerMessage(outcome.banner ?? tCommon("somethingWentWrong"));
+          // Re-throw so TanStack Form keeps formState.isSubmitSuccessful=false; the
+          // outer form.handleSubmit().catch() at the JSX call site swallows it.
+          throw new Error("[OnboardingForm] update profile rejected");
       }
-
-      if (payload?.__typename === "UpdateProfileSuccess") {
-        router.push("/onboarding/start");
-        return;
-      }
-
-      // Unknown variant: null payload or a future union variant the client was not
-      // regenerated against.
-      const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
-      console.warn("[OnboardingForm] unexpected updateProfile payload", {
-        typename: unknownPayload?.__typename ?? null,
-      });
-      setBannerMessage(tCommon("somethingWentWrong"));
     },
   });
 
