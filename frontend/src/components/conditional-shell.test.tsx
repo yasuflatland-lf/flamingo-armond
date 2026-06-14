@@ -41,6 +41,7 @@ describe("<ConditionalShell>", () => {
     it.each([
       "/login",
       "/onboarding",
+      "/onboarding/start",
       "/terms",
       "/privacy",
     ])("renders children directly without the navigation shell on %s", (pathname) => {
