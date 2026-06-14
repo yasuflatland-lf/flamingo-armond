@@ -2,8 +2,8 @@
 
 import { useMutation } from "@apollo/client/react";
 import { useCallback } from "react";
-import { CARDGROUPS_DEFAULT_VARS } from "@/app/cardgroups/queries";
-import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
+import { prependMyCardgroupEdge } from "@/app/cardgroups/cache";
+import { classifyMutationAuthError } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { ImportMasterCardgroupMutation } from "./queries";
 
@@ -52,47 +52,7 @@ export function useImportMaster() {
       // Narrow on __typename before touching .cardgroup so a MasterNotFoundError
       // or unknown variant does not mutate the cache.
       if (data?.importMasterCardgroup?.__typename !== "ImportMasterCardgroupSuccess") return;
-      const created = data.importMasterCardgroup.cardgroup;
-
-      // cache.modify is forbidden — use readQuery + writeQuery so a cold cache
-      // (user landing on /catalog without having visited /cardgroups) is also
-      // handled. CARDGROUPS_DEFAULT_VARS keeps the cache key in sync with the
-      // /cardgroups SSR seed and client useQuery — any mismatch makes this write
-      // invisible. See .claude/rules/pagination.md.
-      const existingConnection = cache.readQuery({
-        query: MyCardgroupsConnectionDocument,
-        variables: CARDGROUPS_DEFAULT_VARS,
-      });
-      const newEdge = {
-        __typename: "CardgroupEdge" as const,
-        cursor: created.id,
-        node: created,
-      };
-      const nextConnection = existingConnection
-        ? {
-            ...existingConnection.myCardgroupsConnection,
-            edges: [newEdge, ...existingConnection.myCardgroupsConnection.edges],
-            totalCount: existingConnection.myCardgroupsConnection.totalCount + 1,
-          }
-        : {
-            // Cold cache: build a minimal connection so the listing page renders
-            // the new edge immediately when the user navigates there.
-            __typename: "CardgroupConnection" as const,
-            edges: [newEdge],
-            pageInfo: {
-              __typename: "PageInfo" as const,
-              hasNextPage: false,
-              hasPreviousPage: false,
-              startCursor: created.id,
-              endCursor: created.id,
-            },
-            totalCount: 1,
-          };
-      cache.writeQuery({
-        query: MyCardgroupsConnectionDocument,
-        variables: CARDGROUPS_DEFAULT_VARS,
-        data: { myCardgroupsConnection: nextConnection },
-      });
+      prependMyCardgroupEdge(cache, data.importMasterCardgroup.cardgroup);
     },
   });
 
@@ -121,14 +81,13 @@ export function useImportMaster() {
         console.warn("[useImportMaster] unexpected importMasterCardgroup payload", { typename });
         return { status: "rejected" };
       } catch (err) {
-        const codes = liftGraphQLCodes(err);
-        if (codes.includes("UNAUTHENTICATED")) return { status: "auth", kind: "unauthenticated" };
-        if (codes.includes("FORBIDDEN")) return { status: "auth", kind: "forbidden" };
+        const authKind = classifyMutationAuthError(err);
+        if (authKind !== "other") return { status: "auth", kind: authKind };
         // err.message is omitted — backend messages may echo user input.
         // codes is safe to log (fixed enum of GraphQL extension codes).
         console.warn("[useImportMaster] importMasterCardgroup rejected", {
           name: err instanceof Error ? err.name : "unknown",
-          codes,
+          codes: liftGraphQLCodes(err),
         });
         return { status: "rejected" };
       }

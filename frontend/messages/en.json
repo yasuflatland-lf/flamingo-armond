@@ -9,6 +9,7 @@
     "edit": "Edit",
     "delete": "Delete",
     "somethingWentWrong": "Something went wrong. Please try again.",
+    "forbidden": "You do not have permission.",
     "discardChanges": "Discard your changes?",
     "keepEditing": "Keep editing",
     "discard": "Discard",

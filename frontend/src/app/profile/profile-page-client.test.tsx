@@ -318,6 +318,49 @@ describe("<DisplayModeSection> error handling and no-op guard", () => {
     );
   });
 
+  it("reverts the toggle and shows the permission-denied error on FORBIDDEN", async () => {
+    const user = userEvent.setup();
+    const mocks = [
+      {
+        request: {
+          query: UpdateLearnDisplayModeDocument,
+          variables: { mode: "ALWAYS_VISIBLE" },
+        },
+        result: {
+          errors: [new GraphQLError("not allowed", { extensions: { code: "FORBIDDEN" } })],
+        },
+      },
+    ];
+
+    renderWithIntl(
+      <MockedProvider mocks={mocks}>
+        <DisplayModeSection initialMode="FLIP_TO_REVEAL" />
+      </MockedProvider>,
+    );
+
+    const flipOption = screen.getByTestId("display-mode-flip-to-reveal");
+    const alwaysVisibleOption = screen.getByTestId("display-mode-always-visible");
+
+    await user.click(alwaysVisibleOption);
+
+    // After the FORBIDDEN rejection the optimistic selection rolls back.
+    await waitFor(() => {
+      expect(flipOption).toHaveAttribute("aria-pressed", "true");
+      expect(alwaysVisibleOption).toHaveAttribute("aria-pressed", "false");
+    });
+
+    // The FORBIDDEN branch surfaces the permission-denied copy, distinct from the
+    // session-expired copy used for UNAUTHENTICATED.
+    const alert = await screen.findByRole("alert");
+    expect(alert).toBe(screen.getByTestId("display-mode-error"));
+    expect(alert).toHaveTextContent(/permission/i);
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "[profile] updateLearnDisplayMode rejected",
+      expect.objectContaining({ codes: expect.arrayContaining(["FORBIDDEN"]) }),
+    );
+  });
+
   it("does not fire the mutation when the already-active option is clicked", async () => {
     const user = userEvent.setup();
     const mutationCalled = vi.fn();
