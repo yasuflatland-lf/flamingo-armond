@@ -562,7 +562,7 @@ describe("<AdminUsersClient> delete", () => {
 
   it("does not configure optimisticResponse for adminDeleteUser", () => {
     const source = readFileSync(
-      join(process.cwd(), "src/app/admin/users/admin-users-client.tsx"),
+      join(process.cwd(), "src/app/admin/users/use-admin-user-mutations.ts"),
       "utf8",
     );
     const start = source.indexOf("runDeleteUser({");
