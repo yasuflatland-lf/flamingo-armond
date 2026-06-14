@@ -38,6 +38,7 @@ export function RoleForm({
   onDirtyChange,
 }: RoleFormProps) {
   const t = useTranslations("Admin");
+  const tCommon = useTranslations("Common");
   const nameSchema = roleSchema.shape.name;
 
   const fieldErrors = useMemo(() => getBackendFieldErrors(error), [error]);
@@ -99,7 +100,7 @@ export function RoleForm({
 
       <div className="flex items-center gap-2">
         <Button type="submit" variant="brand" disabled={submitting || readOnly}>
-          {submitting ? "Saving..." : submitLabel}
+          {submitting ? tCommon("saving") : submitLabel}
         </Button>
         {onCancel ? (
           <Button type="button" variant="outline" onClick={onCancel}>
