@@ -84,4 +84,22 @@ describe("<CatalogCard>", () => {
 
     expect(onImport).toHaveBeenCalledWith("m-1");
   });
+
+  it("uses custom labels and a custom testId prefix when provided", () => {
+    renderWithIntl(
+      <CatalogCard
+        node={FULL_NODE}
+        importing={false}
+        imported={false}
+        onImport={vi.fn()}
+        labels={{ action: "Start with this deck", inProgress: "Starting...", done: "Added" }}
+        testIdPrefix="onboarding-deck"
+      />,
+    );
+
+    const btn = screen.getByTestId("onboarding-deck-m-1");
+    expect(btn).toHaveTextContent("Start with this deck");
+    // The default catalog testId must NOT be present when a prefix override is given.
+    expect(screen.queryByTestId("catalog-import-m-1")).toBeNull();
+  });
 });
