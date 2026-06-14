@@ -56,6 +56,7 @@ export function useFitText<T extends HTMLElement>(
   const ref = useRef<T>(null);
   const [fontPx, setFontPx] = useState(maxPx);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `text` is a trigger-only dependency; the effect re-measures `scrollWidth` when the card term changes but does not reference `text` in its body. Removing it (Biome's offered fix) would pin the font to the previous term's width.
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;

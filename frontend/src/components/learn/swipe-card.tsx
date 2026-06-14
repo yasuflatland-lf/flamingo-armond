@@ -8,12 +8,14 @@ import { CefrBadge } from "./cefr-badge";
 import type { SwipeDirection } from "./types";
 import { useFitText } from "./use-fit-text";
 
-// Front-term auto-fit bounds (px). The front is a single term held on one line
-// (`whitespace-nowrap`); useFitText shrinks the font so a long word like
-// "cardiovascular" fits the card width instead of wrapping. `max` mirrors the
-// previous static sizes (≈ text-5xl unrevealed, ≈ text-3xl revealed); `min`
-// is the floor below which the term may overflow the clipped card rather than
-// shrink to an unreadable size.
+// Front-term auto-fit bounds (px). The front wraps at word boundaries
+// (`break-normal` — never mid-word); useFitText shrinks the font only when a
+// single word is wider than the card (e.g. "cardiovascular"), so that word fits
+// one line instead of overflowing, while multi-word fronts still wrap normally.
+// `max` mirrors the previous largest static size (the `sm:` step: text-5xl
+// unrevealed, text-3xl revealed); `min` is the floor below which an
+// exceptionally long word is clipped by the card rather than shrunk to an
+// unreadable size.
 const FRONT_FIT_UNREVEALED = { maxPx: 48, minPx: 20 };
 const FRONT_FIT_REVEALED = { maxPx: 30, minPx: 16 };
 
@@ -85,18 +87,22 @@ export function CardContent({ card, revealed }: { card: SwipeCardData; revealed:
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 px-10 text-center">
         <p
           ref={frontRef}
-          // Single-line: useFitText measures the term at `maxPx` and shrinks
-          // the inline font-size to fit the card width (set via style, so it is
-          // a measured pixel value, not a Tailwind step). The outer card is
-          // `overflow-hidden`, so a term at the `minPx` floor is clipped rather
-          // than spilling past the card edge.
-          className="max-w-full whitespace-nowrap font-semibold leading-tight text-foreground"
+          // `break-normal` wraps at word boundaries and never breaks a word
+          // mid-character. useFitText measures the term at `maxPx` and shrinks
+          // the inline font-size (set via style — a measured pixel value, not a
+          // Tailwind step) only when the widest single word would overflow the
+          // card width; multi-word fronts wrap across lines instead. The outer
+          // card is `overflow-hidden`, so a word still too wide at the `minPx`
+          // floor is clipped rather than spilling past the card edge.
+          className="max-w-full break-normal font-semibold leading-tight text-foreground"
           style={{ fontSize: `${fontPx}px` }}
         >
           {card.front}
         </p>
         {revealed ? (
-          <p className="max-w-full break-words text-xl leading-relaxed text-muted-foreground sm:text-2xl">
+          // `break-normal` (not `break-words`): the translation wraps across
+          // lines at word boundaries and is never broken mid-word.
+          <p className="max-w-full break-normal text-xl leading-relaxed text-muted-foreground sm:text-2xl">
             {card.back}
           </p>
         ) : (

@@ -54,24 +54,44 @@ describe("<CardContent>", () => {
     expect(screen.getByText("Hola")).toBeInTheDocument();
   });
 
-  it("renders the front term on a single line so auto-fit can shrink it instead of wrapping", () => {
-    // The front term is held on one line (`whitespace-nowrap`); useFitText
-    // shrinks the font to fit the card width. jsdom has no layout engine, so
-    // the auto-fit math is unit-tested in use-fit-text.test.ts; here we pin the
-    // structural precondition (nowrap) the shrink relies on.
+  it("wraps the front term at word boundaries, never mid-word (break-normal, not break-words/nowrap)", () => {
+    // A multi-word front wraps across lines at spaces; a single overflowing
+    // word is shrunk by useFitText rather than broken mid-word. The structural
+    // precondition is `break-normal` (word-break: normal; overflow-wrap:
+    // normal) — NOT `break-words` (breaks mid-word) and NOT `whitespace-nowrap`
+    // (forbids the multi-line wrap the user asked for). jsdom has no layout
+    // engine, so the shrink math is unit-tested in use-fit-text.test.ts.
     render(<CardContent card={{ ...CARD, front: "cardiovascular" }} revealed={false} />);
 
     const frontEl = screen.getByText("cardiovascular");
-    expect(frontEl).toHaveClass("whitespace-nowrap");
+    expect(frontEl).toHaveClass("break-normal");
     expect(frontEl).not.toHaveClass("break-words");
+    expect(frontEl).not.toHaveClass("break-all");
+    expect(frontEl).not.toHaveClass("whitespace-nowrap");
   });
 
-  it("lets the back translation wrap normally — it may be a phrase, not a single term", () => {
-    render(<CardContent card={{ ...CARD, back: "a multi word phrase" }} revealed={true} />);
+  it("wraps the back translation at word boundaries too, never mid-word", () => {
+    render(<CardContent card={{ ...CARD, back: "electroencephalographically" }} revealed={true} />);
 
-    const backEl = screen.getByText("a multi word phrase");
-    expect(backEl).toHaveClass("break-words");
-    expect(backEl).not.toHaveClass("whitespace-nowrap");
+    const backEl = screen.getByText("electroencephalographically");
+    expect(backEl).toHaveClass("break-normal");
+    expect(backEl).not.toHaveClass("break-words");
+    expect(backEl).not.toHaveClass("break-all");
+  });
+
+  it("applies the unrevealed front-fit ceiling (maxPx=48) as an inline font size", () => {
+    // jsdom reports clientWidth/scrollWidth = 0, so useFitText returns the
+    // ceiling unchanged — letting us pin the revealed→bounds switch and the
+    // style wiring without a layout engine.
+    render(<CardContent card={{ ...CARD, front: "Hello" }} revealed={false} />);
+
+    expect(screen.getByText("Hello")).toHaveStyle({ fontSize: "48px" });
+  });
+
+  it("applies the revealed front-fit ceiling (maxPx=30) as an inline font size", () => {
+    render(<CardContent card={{ ...CARD, front: "Hello" }} revealed={true} />);
+
+    expect(screen.getByText("Hello")).toHaveStyle({ fontSize: "30px" });
   });
 
   it("reserves horizontal padding so a long front term cannot slide under the badge", () => {
