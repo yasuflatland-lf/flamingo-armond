@@ -2,15 +2,14 @@
 
 import { Check, Download } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { CatalogCardFieldsFragment } from "@/app/catalog/queries";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { MasterCatalogQuery } from "@/generated/graphql";
-
-/** A single published master deck node, derived from the catalog query selection. */
-type MasterCatalogNode = MasterCatalogQuery["masterCatalog"]["edges"][number]["node"];
+import { type FragmentType, useFragment } from "@/generated/fragment-masking";
 
 export type CatalogCardProps = {
-  node: MasterCatalogNode;
+  /** A masked `CatalogCardFields` ref — unmasked once via `useFragment` below. */
+  node: FragmentType<typeof CatalogCardFieldsFragment>;
   /** True while this deck's import mutation is in flight. */
   importing: boolean;
   /** True once this deck has been imported in the current session. */
@@ -40,6 +39,7 @@ export function CatalogCard({
   testIdPrefix,
 }: CatalogCardProps) {
   const t = useTranslations("Catalog");
+  const card = useFragment(CatalogCardFieldsFragment, node);
 
   const actionLabel = labels?.action ?? t("import");
   const inProgressLabel = labels?.inProgress ?? t("importing");
@@ -49,31 +49,31 @@ export function CatalogCard({
   return (
     <li className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
       <div className="flex flex-col gap-1">
-        <h3 className="truncate font-medium text-foreground">{node.name}</h3>
-        {node.description && (
-          <p className="line-clamp-2 text-sm text-muted-foreground">{node.description}</p>
+        <h3 className="truncate font-medium text-foreground">{card.name}</h3>
+        {card.description && (
+          <p className="line-clamp-2 text-sm text-muted-foreground">{card.description}</p>
         )}
       </div>
 
-      {(node.language || node.level || node.category) && (
+      {(card.language || card.level || card.category) && (
         <div className="flex flex-wrap gap-1.5">
-          {node.language && <Badge variant="secondary">{node.language}</Badge>}
-          {node.level && <Badge variant="outline">{t("level", { level: node.level })}</Badge>}
-          {node.category && <Badge variant="outline">{node.category}</Badge>}
+          {card.language && <Badge variant="secondary">{card.language}</Badge>}
+          {card.level && <Badge variant="outline">{t("level", { level: card.level })}</Badge>}
+          {card.category && <Badge variant="outline">{card.category}</Badge>}
         </div>
       )}
 
       <div className="mt-auto flex items-center justify-between gap-2">
         <span className="text-sm text-muted-foreground">
-          {t("cardCount", { count: node.cardCount })}
+          {t("cardCount", { count: card.cardCount })}
         </span>
         <Button
           type="button"
           variant={imported ? "outline" : "brand"}
           size="sm"
-          onClick={() => onImport(node.id)}
+          onClick={() => onImport(card.id)}
           disabled={importing || imported}
-          data-testid={`${idPrefix}-${node.id}`}
+          data-testid={`${idPrefix}-${card.id}`}
         >
           {imported ? (
             <>

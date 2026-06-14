@@ -2,7 +2,9 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CatalogCardFieldsFragment } from "@/app/catalog/queries";
 import type { ImportMasterOutcome } from "@/app/catalog/use-import-master";
+import { makeFragmentData } from "@/generated/fragment-masking";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { OnboardingStartClient } from "./onboarding-start-client";
 
@@ -30,27 +32,35 @@ vi.mock("@/app/catalog/use-import-master", () => ({
   useImportMaster: () => ({ importMasterCardgroup: mockImport, loading: false }),
 }));
 
+// Each deck carries a top-level `id` (read for React keys + per-deck `importing`
+// state) plus a masked `CatalogCardFields` ref the chooser hands to `CatalogCard`
+// — mirroring the `OnboardingStartQuery` node shape. `makeFragmentData` is
+// identity at runtime, so the card's `useFragment` still sees every field.
+const M1_FIELDS = {
+  __typename: "MasterCardgroup" as const,
+  id: "m-1",
+  name: "Business English",
+  description: "Professional vocabulary",
+  language: "en",
+  level: "B2",
+  category: "Business",
+  cardCount: 42,
+};
+
+const M2_FIELDS = {
+  __typename: "MasterCardgroup" as const,
+  id: "m-2",
+  name: "JLPT N3 Kanji",
+  description: null,
+  language: "ja",
+  level: null,
+  category: null,
+  cardCount: 100,
+};
+
 const DECKS = [
-  {
-    __typename: "MasterCardgroup" as const,
-    id: "m-1",
-    name: "Business English",
-    description: "Professional vocabulary",
-    language: "en",
-    level: "B2",
-    category: "Business",
-    cardCount: 42,
-  },
-  {
-    __typename: "MasterCardgroup" as const,
-    id: "m-2",
-    name: "JLPT N3 Kanji",
-    description: null,
-    language: "ja",
-    level: null,
-    category: null,
-    cardCount: 100,
-  },
+  { id: M1_FIELDS.id, ...makeFragmentData(M1_FIELDS, CatalogCardFieldsFragment) },
+  { id: M2_FIELDS.id, ...makeFragmentData(M2_FIELDS, CatalogCardFieldsFragment) },
 ];
 
 beforeEach(() => {
