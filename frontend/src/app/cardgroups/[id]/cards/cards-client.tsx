@@ -1,34 +1,22 @@
 "use client";
 
-import { useApolloClient, useMutation } from "@apollo/client/react";
 import { Search } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { ReactNode, RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  CreateCardMutation,
-  DeleteCardMutation,
-  DeleteCardsMutation,
-  UpdateCardMutation,
-} from "@/app/cardgroups/queries";
 import { CardForm } from "@/components/cardgroups/card-form";
 import { CardgroupBatchImportForm } from "@/components/cardgroups/cardgroup-batch-import-form";
 import type { SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
-import {
-  CardsByCardgroupConnectionDocument,
-  type CardsByCardgroupConnectionQuery,
-  type CardsByCardgroupConnectionQueryVariables,
-} from "@/generated/graphql";
+import type { CardsByCardgroupConnectionQuery } from "@/generated/graphql";
 import { useBulkSelection } from "@/hooks/use-bulk-selection";
 import { useDebouncedSearch } from "@/hooks/use-debounced-search";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
-import { useUndoDelete } from "@/lib/undo-delete";
 import { BulkActionBar } from "./components/bulk-action-bar";
 import { CardRow } from "./components/card-row";
-import { cardsDefaultVars } from "./queries";
+import { useCardMutations } from "./use-card-mutations";
 import { useCardsConnection } from "./use-cards-connection";
 
 type Connection = CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"];
@@ -193,8 +181,6 @@ export function CardsClient({
   sectionHeader,
 }: Props) {
   const t = useTranslations("Cards");
-  const apollo = useApolloClient();
-  const { scheduleDelete } = useUndoDelete();
   const [addOpen, setAddOpen] = useState(false);
   const [addDirty, setAddDirty] = useState(false);
   const [batchImportOpen, setBatchImportOpen] = useState(false);
@@ -212,9 +198,6 @@ export function CardsClient({
   const rowRefs = useRef<Map<string, RefObject<SwipeableRowHandle | null>>>(new Map());
   const selection = useBulkSelection<string>();
   const search = useDebouncedSearch();
-  // Per-row delete commit error banner persists across useMutation calls.
-  // See docs/pagination/do-not-reuse-mutation-error-state.md.
-  const [deleteCommitError, setDeleteCommitError] = useState<string | null>(null);
 
   const {
     edges,
@@ -234,7 +217,26 @@ export function CardsClient({
     initialTotalCount,
   });
 
+  const {
+    createCard,
+    updateCard,
+    deleteRow,
+    deleteCards,
+    creating,
+    updating,
+    bulkDeleting,
+    createError,
+    updateError,
+    bulkDeleteError,
+    deleteRowError,
+    resetCreateCard,
+  } = useCardMutations({ cardgroupId, queryVariables });
+
   const queryBannerError = getBackendErrorBanner(queryError);
+  const bulkDeleteBannerError = getBackendErrorBanner(bulkDeleteError);
+  // Raw per-row delete error → localized banner copy (server message or fallback).
+  const deleteRowBannerError =
+    deleteRowError !== null ? (getBackendErrorBanner(deleteRowError) ?? t("deleteError")) : null;
 
   const closeOtherRows = useCallback((exceptCardId: string) => {
     for (const [id, ref] of rowRefs.current.entries()) {
@@ -243,52 +245,6 @@ export function CardsClient({
   }, []);
 
   const editingCard = edges.find((edge) => edge.node.id === editingId)?.node;
-
-  const [createCard, { loading: creating, error: createError, reset: resetCreateCard }] =
-    useMutation(CreateCardMutation);
-  // Updates propagate automatically via Apollo cache normalization (Card has id).
-  const [updateCard, { loading: updating, error: updateError }] = useMutation(UpdateCardMutation);
-  // scheduleDelete (5s undo window) fires the per-row mutation imperatively.
-  const [deleteCardMutation] = useMutation(DeleteCardMutation);
-
-  const [deleteCards, { error: bulkDeleteError, loading: bulkDeleting }] = useMutation(
-    DeleteCardsMutation,
-    {
-      // queryVariables matches the live cache entry under any active search filter.
-      // See docs/pagination/optimistic-rollback-cache-key.md.
-      update(cache, { data: bulkData }, { variables: mutationVars }) {
-        const ids = mutationVars?.ids as string[] | undefined;
-        if (!ids) return;
-        if (bulkData?.deleteCards == null) return;
-        const deletedCount = bulkData.deleteCards;
-        if (deletedCount === 0) return;
-        const existing = cache.readQuery({
-          query: CardsByCardgroupConnectionDocument,
-          variables: queryVariables,
-        });
-        if (existing) {
-          const next = existing.cardsByCardgroupConnection;
-          cache.writeQuery({
-            query: CardsByCardgroupConnectionDocument,
-            variables: queryVariables,
-            data: {
-              cardsByCardgroupConnection: {
-                ...next,
-                edges: next.edges.filter((edge) => !ids.includes(edge.node.id)),
-                totalCount: Math.max(0, next.totalCount - deletedCount),
-              },
-            },
-          });
-        }
-        for (const id of ids) {
-          cache.evict({ id: cache.identify({ __typename: "Card", id }) });
-        }
-        cache.gc();
-      },
-    },
-  );
-
-  const bulkDeleteBannerError = getBackendErrorBanner(bulkDeleteError);
 
   const openAddSheet = useCallback(() => {
     resetCreateCard();
@@ -314,85 +270,32 @@ export function CardsClient({
     return () => window.removeEventListener("flamingo:add-card", handleAddCardEvent);
   }, [cardgroupId, openAddSheet]);
 
-  function cardMatchesSearch(
-    card: CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"]["edges"][number]["node"],
-    searchValue: string,
-  ) {
-    const normalized = searchValue.trim().toLowerCase();
-    if (normalized === "") return true;
-    return (
-      card.front.toLowerCase().includes(normalized) || card.back.toLowerCase().includes(normalized)
-    );
-  }
-
-  function writeCreatedCardToConnection(
-    card: CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"]["edges"][number]["node"],
-    variables: CardsByCardgroupConnectionQueryVariables,
-  ) {
-    const existing = apollo.readQuery({
-      query: CardsByCardgroupConnectionDocument,
-      variables,
-    });
-    if (!existing) return;
-
-    const next = existing.cardsByCardgroupConnection;
-    if (next.edges.some((edge) => edge.node.id === card.id)) return;
-
-    apollo.writeQuery({
-      query: CardsByCardgroupConnectionDocument,
-      variables,
-      data: {
-        cardsByCardgroupConnection: {
-          ...next,
-          edges: [{ __typename: "CardEdge" as const, cursor: card.id, node: card }, ...next.edges],
-          totalCount: next.totalCount + 1,
-        },
-      },
-    });
-  }
-
   async function handleCreate(values: { front: string; back: string }) {
     resetCreateCard();
     setCreateValidationError(null);
-    const result = await createCard({
-      variables: { input: { cardgroupId, front: values.front, back: values.back } },
-    }).catch((err) => {
-      console.error("[CardsClient] create rejection", {
-        name: err instanceof Error ? err.name : "unknown",
-        cardgroupId,
-      });
-      return null;
-    });
-    if (!result) return;
-
-    const payload = result.data?.createCard;
-    if (payload?.__typename === "CreateCardSuccess") {
-      writeCreatedCardToConnection(payload.card, cardsDefaultVars(cardgroupId));
-      if (
-        typeof queryVariables.search === "string" &&
-        cardMatchesSearch(payload.card, queryVariables.search)
-      ) {
-        writeCreatedCardToConnection(payload.card, queryVariables);
-      }
-      setAddDirty(false);
-      setCreateValidationError(null);
-      setAddOpen(false);
-    } else if (payload?.__typename === "CardDuplicateFrontError") {
-      setCreateValidationError({ field: "front", message: payload.message });
-    } else {
-      const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
-      console.warn("[CardsClient] unexpected createCard payload", {
-        typename: unknownPayload?.__typename ?? null,
-        cardgroupId,
-      });
-      setCreateValidationError({ field: "front", message: t("addFailed") });
+    const outcome = await createCard(values);
+    switch (outcome.status) {
+      case "success":
+        setAddDirty(false);
+        setCreateValidationError(null);
+        setAddOpen(false);
+        break;
+      case "validation":
+        setCreateValidationError({ field: outcome.field, message: outcome.message });
+        break;
+      case "unexpected":
+        setCreateValidationError({ field: "front", message: t("addFailed") });
+        break;
+      case "rejected":
+        // The CardForm error banner surfaces the rejection via `createError`.
+        break;
     }
   }
 
   async function handleBulkDelete() {
     const ids = Array.from(selection.selectedIds);
     try {
-      await deleteCards({ variables: { ids } });
+      await deleteCards(ids);
       selection.clearSelection();
     } catch (err) {
       console.error("[CardsClient] bulk delete rejection", {
@@ -403,84 +306,22 @@ export function CardsClient({
     }
   }
 
-  // Per-row delete: snapshot, optimistic drop, schedule DELETE with a 5s undo window.
-  // See docs/pagination/optimistic-rollback-cache-key.md for the queryVariables rule.
-  const handleDeleteRow = useCallback(
-    (cardId: string) => {
-      const snapshot = apollo.readQuery({
-        query: CardsByCardgroupConnectionDocument,
-        variables: queryVariables,
-      });
-      if (snapshot) {
-        const next = snapshot.cardsByCardgroupConnection;
-        apollo.writeQuery({
-          query: CardsByCardgroupConnectionDocument,
-          variables: queryVariables,
-          data: {
-            cardsByCardgroupConnection: {
-              ...next,
-              edges: next.edges.filter((edge) => edge.node.id !== cardId),
-              totalCount: Math.max(0, next.totalCount - 1),
-            },
-          },
-        });
-      }
-      scheduleDelete({
-        id: cardId,
-        label: t("cardDeleted"),
-        optimisticRollback: () => {
-          if (snapshot !== null) {
-            apollo.writeQuery({
-              query: CardsByCardgroupConnectionDocument,
-              variables: queryVariables,
-              data: snapshot,
-            });
-          }
-          setDeleteCommitError(null);
-        },
-        commitDelete: async () => {
-          setDeleteCommitError(null);
-          const result = await deleteCardMutation({ variables: { id: cardId } });
-          if (result.data?.deleteCard) {
-            apollo.cache.evict({ id: apollo.cache.identify({ __typename: "Card", id: cardId }) });
-            apollo.cache.gc();
-          }
-        },
-        onCommitFailed: (err) => {
-          setDeleteCommitError(getBackendErrorBanner(err) ?? t("deleteError"));
-        },
-      });
-    },
-    [apollo, deleteCardMutation, queryVariables, scheduleDelete, t],
-  );
-
   async function handleUpdate(id: string, values: { front: string; back: string }) {
     setRowValidationError(null);
-    const result = await updateCard({
-      variables: { id, input: { front: values.front, back: values.back } },
-    }).catch((err) => {
-      console.error("[CardsClient] update rejection", {
-        name: err instanceof Error ? err.name : "unknown",
-        cardgroupId,
-        cardId: id,
-      });
-      return null;
-    });
-    if (!result) return;
-    const payload = result.data?.updateCard;
-    if (payload?.__typename === "UpdateCardSuccess") {
-      setEditingId(null);
-    } else if (payload?.__typename === "InputValidationError") {
-      setRowValidationError({ field: payload.field, message: payload.message });
-    } else {
-      // Null payload or a future union member from a stale codegen.
-      const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
-      console.warn("[CardsClient] unexpected updateCard payload", {
-        typename: unknownPayload?.__typename ?? null,
-        cardId: id,
-        cardgroupId,
-      });
-      setRowValidationError({ field: "front", message: t("saveFailed") });
+    const outcome = await updateCard(id, values);
+    switch (outcome.status) {
+      case "success":
+        setEditingId(null);
+        break;
+      case "validation":
+        setRowValidationError({ field: outcome.field, message: outcome.message });
+        break;
+      case "unexpected":
+        setRowValidationError({ field: "front", message: t("saveFailed") });
+        break;
+      case "rejected":
+        // The edit-sheet error banner surfaces the rejection via `updateError`.
+        break;
     }
   }
 
@@ -489,8 +330,8 @@ export function CardsClient({
       {queryBannerError && (
         <ErrorBanner data-testid="cards-query-error">{queryBannerError}</ErrorBanner>
       )}
-      {deleteCommitError && (
-        <ErrorBanner data-testid="cards-delete-error">{deleteCommitError}</ErrorBanner>
+      {deleteRowBannerError && (
+        <ErrorBanner data-testid="cards-delete-error">{deleteRowBannerError}</ErrorBanner>
       )}
       {bulkDeleteBannerError && (
         <ErrorBanner data-testid="cards-bulk-delete-error">{bulkDeleteBannerError}</ErrorBanner>
@@ -543,7 +384,7 @@ export function CardsClient({
                       setRowValidationError(null);
                       setEditingId(card.id);
                     }}
-                    onDelete={() => handleDeleteRow(card.id)}
+                    onDelete={() => deleteRow(card.id, t("cardDeleted"))}
                   />
                 </li>
               );
