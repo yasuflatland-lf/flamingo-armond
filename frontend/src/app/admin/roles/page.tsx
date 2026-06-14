@@ -1,5 +1,11 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { graphql } from "@/generated";
+import type { AdminRolesPageQuery as AdminRolesPageQueryType } from "@/generated/graphql";
+import {
+  isForbiddenGraphQLError,
+  isUnauthenticatedGraphQLError,
+} from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { AdminRolesClient, type RoleItem } from "./admin-roles-client";
 
@@ -27,7 +33,19 @@ const AdminRolesPageQuery = graphql(`
 `);
 
 export default async function AdminRolesPage() {
-  const data = await gqlFetch(AdminRolesPageQuery, { revalidate: 0 });
+  let data: AdminRolesPageQueryType;
+  try {
+    data = await gqlFetch(AdminRolesPageQuery, { revalidate: 0 });
+  } catch (err) {
+    // Admin pages redirect to "/" (not "/login"), matching admin/layout.tsx
+    // and admin/users/page.tsx. UNAUTHENTICATED / FORBIDDEN fold into the same
+    // redirect path; everything else is logged (PII-redacted) and rethrown.
+    if (isUnauthenticatedGraphQLError(err) || isForbiddenGraphQLError(err)) redirect("/");
+    console.error("[admin/roles] gqlFetch failed:", {
+      name: err instanceof Error ? err.name : "unknown",
+    });
+    throw err;
+  }
   // Cast fragment-masked type to the plain serializable shape; runtime value is already plain.
   const initialRoles = data.roles as unknown as RoleItem[];
   return <AdminRolesClient initialRoles={initialRoles} />;
