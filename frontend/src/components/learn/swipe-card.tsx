@@ -95,7 +95,7 @@ export function CardContent({ card, revealed }: { card: SwipeCardData; revealed:
         <span
           data-testid="tap-hint"
           aria-hidden="true"
-          className="pointer-events-none absolute right-5 bottom-5 h-3 w-3 rounded-full bg-brand-primary motion-safe:animate-tap-pulse motion-reduce:opacity-40"
+          className="pointer-events-none absolute right-5 bottom-5 h-10 w-10 rounded-full bg-brand-primary blur-[10px] motion-safe:animate-tap-pulse motion-reduce:opacity-40"
         />
       )}
     </div>
