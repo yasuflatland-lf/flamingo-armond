@@ -8,6 +8,8 @@ A PR whose production diff exceeds 800 lines triggers a split decision. "Product
 
     git diff --stat <base>..HEAD -- '*.go' ':!*_test.go'
 
+**Measure against the merge-base, not a moved-ahead `origin/main`.** If upstream advances after you branch (common when working in a long-lived worktree while other PRs land on `main`), `git diff origin/main..HEAD` (two-dot) reports the *reverse* delta of the unrelated upstream commits — you will see other people's files as if you deleted them, and your own files will be missing. Use three-dot `git diff origin/main...HEAD` (diffs against the merge-base) or `git diff <branch-point>..HEAD`; the two-dot and three-dot forms agree only while `origin/main` is still your exact base. The three-dot form matches the diff GitHub shows on the PR, which is always computed against the merge-base.
+
 ## When to decide
 
 The split decision happens at design time, not after the first review round.
