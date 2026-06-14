@@ -61,7 +61,12 @@ export interface UseConnectionPaginationInput<
   logScope: string;
 }
 
-export interface UseConnectionPaginationResult<TEdge, TPageInfo, TVars> {
+export interface UseConnectionPaginationResult<
+  TData,
+  TEdge,
+  TPageInfo,
+  TVars extends OperationVariables,
+> {
   edges: TEdge[];
   pageInfo: TPageInfo;
   totalCount: number;
@@ -73,6 +78,13 @@ export interface UseConnectionPaginationResult<TEdge, TPageInfo, TVars> {
   sentinelRef: RefObject<HTMLDivElement | null>;
   queryVariables: TVars;
   queryError: ErrorLike | undefined;
+  /**
+   * The underlying `useQuery` refetch. Exposed so a screen that renders a
+   * query-error banner can offer a Retry, and so a mutation-conflict reload
+   * (admin users) can re-issue the list query. The SSR-seeded screens
+   * (cards / cardgroups / catalog) do not consume it.
+   */
+  refetch: useQuery.Result<TData, TVars>["refetch"];
 }
 
 // Generic Apollo connection + fetchMore + IntersectionObserver hook for
@@ -89,7 +101,7 @@ export function useConnectionPagination<
   TPageInfo extends PageInfoLike,
 >(
   input: UseConnectionPaginationInput<TData, TVars, TEdge, TPageInfo>,
-): UseConnectionPaginationResult<TEdge, TPageInfo, TVars> {
+): UseConnectionPaginationResult<TData, TEdge, TPageInfo, TVars> {
   const {
     document,
     variables,
@@ -125,6 +137,7 @@ export function useConnectionPagination<
     loading,
     networkStatus,
     error: queryError,
+    refetch,
   } = useQuery(document, {
     variables,
     fetchPolicy: "cache-first",
@@ -217,5 +230,6 @@ export function useConnectionPagination<
     sentinelRef,
     queryVariables: variables,
     queryError,
+    refetch,
   };
 }

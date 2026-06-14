@@ -181,6 +181,7 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 type HookResult = UseConnectionPaginationResult<
+  MyCardgroupsConnectionQuery,
   CgEdge,
   CgPageInfo,
   MyCardgroupsConnectionQueryVariables
