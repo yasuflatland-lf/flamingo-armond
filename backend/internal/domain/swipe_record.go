@@ -3,7 +3,6 @@ package domain
 import (
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/rotisserie/eris"
 )
 
@@ -23,12 +22,12 @@ func NewSwipeRecord(userID, cardID, cardgroupID string, rating Rating, reviewedA
 	if cardgroupID == "" {
 		return nil, eris.New("swipe record: cardgroupID is required")
 	}
-	id, err := uuid.NewV7()
+	id, err := NewID()
 	if err != nil {
-		return nil, eris.Wrap(err, "swipe record: new uuid v7")
+		return nil, eris.Wrap(err, "swipe record: new id")
 	}
 	return &SwipeRecord{
-		ID:          id.String(),
+		ID:          id,
 		UserID:      userID,
 		CardID:      cardID,
 		CardgroupID: cardgroupID,
