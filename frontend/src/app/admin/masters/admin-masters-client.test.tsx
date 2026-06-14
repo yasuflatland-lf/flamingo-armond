@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -9,14 +11,19 @@ import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
 } from "../../../../__tests__/utils/mock-apollo-paginated";
+import enMessages from "../../../../messages/en.json";
 import { AdminMastersClient } from "./admin-masters-client";
 import {
   ADMIN_MASTERS_PAGE_SIZE,
   AdminCreateMasterMutation,
   AdminDeleteMasterMutation,
   AdminMastersQuery,
+  AdminPublishMasterMutation,
+  AdminUnpublishMasterMutation,
   AdminUpdateMasterMutation,
 } from "./queries";
+
+const M = enMessages.AdminMasters;
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -78,7 +85,11 @@ function node(id: string, over: Record<string, unknown> = {}) {
   };
 }
 
-function connection(ids: string[], hasNextPage = false) {
+function connection(
+  ids: string[],
+  hasNextPage = false,
+  overrides: Record<string, Record<string, unknown>> = {},
+) {
   const first = ids[0];
   const last = ids[ids.length - 1];
   return {
@@ -86,7 +97,7 @@ function connection(ids: string[], hasNextPage = false) {
     edges: ids.map((id) => ({
       __typename: "MasterCatalogEdge" as const,
       cursor: encodeCursor(id),
-      node: node(id),
+      node: node(id, overrides[id] ?? {}),
     })),
     pageInfo: {
       __typename: "PageInfo" as const,
@@ -106,10 +117,10 @@ const BASE_VARS = {
   orderDirection: "ASC",
 };
 
-function listMock(ids: string[]) {
+function listMock(ids: string[], overrides: Record<string, Record<string, unknown>> = {}) {
   return {
     request: { query: AdminMastersQuery, variables: BASE_VARS },
-    result: { data: { adminMasters: connection(ids) } },
+    result: { data: { adminMasters: connection(ids, false, overrides) } },
   };
 }
 
@@ -244,6 +255,147 @@ describe("AdminMastersClient", () => {
     await user.click(await screen.findByTestId("master-delete-dialog-confirm"));
     await waitFor(() => expect(screen.queryByText("Deck m-1")).not.toBeInTheDocument());
     expect(toast.success).toHaveBeenCalled();
+  });
+
+  it("publishes a master from the edit drawer and toasts success", async () => {
+    sheetState = { mode: "edit", id: "m-1" };
+    const user = userEvent.setup();
+    const publishMock = {
+      request: { query: AdminPublishMasterMutation, variables: { id: "m-1" } },
+      result: {
+        data: {
+          adminPublishMasterCardgroup: {
+            __typename: "PublishMasterCardgroupSuccess",
+            master: node("m-1", { status: "PUBLISHED", version: 2 }),
+          },
+        },
+      },
+    };
+    renderWithIntl(
+      <MockedProvider mocks={[listMock(["m-1"]), publishMock]}>
+        <AdminMastersClient />
+      </MockedProvider>,
+    );
+    const toggle = await screen.findByTestId("master-publish-toggle");
+    await user.click(toggle);
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(M.publishSuccess));
+  });
+
+  it("unpublishes a published master from the edit drawer and toasts success", async () => {
+    sheetState = { mode: "edit", id: "m-1" };
+    const user = userEvent.setup();
+    const unpublishMock = {
+      request: { query: AdminUnpublishMasterMutation, variables: { id: "m-1" } },
+      result: {
+        data: { adminUnpublishMasterCardgroup: node("m-1", { status: "DRAFT", version: 2 }) },
+      },
+    };
+    renderWithIntl(
+      <MockedProvider
+        mocks={[listMock(["m-1"], { "m-1": { status: "PUBLISHED" } }), unpublishMock]}
+      >
+        <AdminMastersClient />
+      </MockedProvider>,
+    );
+    const toggle = await screen.findByTestId("master-publish-toggle");
+    await user.click(toggle);
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(M.unpublishSuccess));
+  });
+
+  it("toasts the empty-deck error when publish returns MasterCardgroupEmptyError", async () => {
+    // Backstop: the form disables Publish for 0-card drafts, but cardCount may be
+    // stale (deck enabled here with cardCount 5), so the backend's typed empty-deck
+    // rejection must still surface as a toast. Re-homed from the deleted row test.
+    sheetState = { mode: "edit", id: "m-1" };
+    const user = userEvent.setup();
+    const publishMock = {
+      request: { query: AdminPublishMasterMutation, variables: { id: "m-1" } },
+      result: {
+        data: {
+          adminPublishMasterCardgroup: {
+            __typename: "MasterCardgroupEmptyError",
+            message: "deck has no cards",
+          },
+        },
+      },
+    };
+    renderWithIntl(
+      <MockedProvider mocks={[listMock(["m-1"]), publishMock]}>
+        <AdminMastersClient />
+      </MockedProvider>,
+    );
+    const toggle = await screen.findByTestId("master-publish-toggle");
+    await user.click(toggle);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(M.publishEmptyToast));
+  });
+
+  it("toasts the forbidden message when publish fails with FORBIDDEN", async () => {
+    sheetState = { mode: "edit", id: "m-1" };
+    const user = userEvent.setup();
+    const publishMock = {
+      request: { query: AdminPublishMasterMutation, variables: { id: "m-1" } },
+      result: { errors: [{ message: "forbidden", extensions: { code: "FORBIDDEN" } }] },
+    };
+    renderWithIntl(
+      <MockedProvider mocks={[listMock(["m-1"]), publishMock]}>
+        <AdminMastersClient />
+      </MockedProvider>,
+    );
+    const toggle = await screen.findByTestId("master-publish-toggle");
+    await user.click(toggle);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(M.forbidden));
+  });
+
+  it("toasts the session-expired message when publish fails with UNAUTHENTICATED", async () => {
+    sheetState = { mode: "edit", id: "m-1" };
+    const user = userEvent.setup();
+    const publishMock = {
+      request: { query: AdminPublishMasterMutation, variables: { id: "m-1" } },
+      result: { errors: [{ message: "unauthenticated", extensions: { code: "UNAUTHENTICATED" } }] },
+    };
+    renderWithIntl(
+      <MockedProvider mocks={[listMock(["m-1"]), publishMock]}>
+        <AdminMastersClient />
+      </MockedProvider>,
+    );
+    const toggle = await screen.findByTestId("master-publish-toggle");
+    await user.click(toggle);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(M.unauthenticated));
+  });
+
+  it("toasts a generic error when publish rejects with a non-GraphQL error", async () => {
+    sheetState = { mode: "edit", id: "m-1" };
+    const user = userEvent.setup();
+    const publishMock = {
+      request: { query: AdminPublishMasterMutation, variables: { id: "m-1" } },
+      error: new Error("network down"),
+    };
+    renderWithIntl(
+      <MockedProvider mocks={[listMock(["m-1"]), publishMock]}>
+        <AdminMastersClient />
+      </MockedProvider>,
+    );
+    const toggle = await screen.findByTestId("master-publish-toggle");
+    await user.click(toggle);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(M.unexpectedError));
+  });
+
+  it("does not carry optimisticResponse in the publish or unpublish mutation calls", () => {
+    // AdminPublishMaster returns a typed-error union (PublishMasterCardgroupSuccess |
+    // MasterCardgroupEmptyError); Apollo v4 does not consistently roll back optimistic
+    // writes on typed GraphQL errors, so neither toggle mutation may carry one.
+    // See .claude/rules/pagination.md "Drop optimisticResponse ...".
+    const source = readFileSync(
+      join(process.cwd(), "src/app/admin/masters/admin-masters-client.tsx"),
+      "utf8",
+    );
+    for (const call of ["runPublish({", "runUnpublish({"]) {
+      const start = source.indexOf(call);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const end = source.indexOf("});", start);
+      expect(end).toBeGreaterThan(start);
+      expect(source.slice(start, end)).not.toContain("optimisticResponse");
+    }
   });
 
   it("updates a master and toasts success", async () => {

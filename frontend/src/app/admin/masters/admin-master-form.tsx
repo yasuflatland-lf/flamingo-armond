@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,6 +44,7 @@ type Props = {
   validationError?: { field: string; message: string } | null;
   onDirtyChange?: (dirty: boolean) => void;
   onDelete?: (id: string) => Promise<void>;
+  onPublishToggle?: (id: string, currentlyPublished: boolean) => Promise<void>;
 };
 
 function emptyToNull(s: string): string | null {
@@ -71,11 +73,19 @@ export function AdminMasterForm({
   validationError,
   onDirtyChange,
   onDelete,
+  onPublishToggle,
 }: Props) {
   const t = useTranslations("AdminMasters");
   const tCommon = useTranslations("Common");
   const nameSchema = masterSchema.shape.name;
   const [deleting, setDeleting] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+
+  const published = master?.status === "PUBLISHED";
+  // A draft with no cards cannot be published; the guard is rendered inline (a
+  // disabled button + a reason) instead of firing a mutation that the backend
+  // would reject with MasterCardgroupEmptyError.
+  const emptyDraft = master?.status === "DRAFT" && master.cardCount === 0;
 
   const form = useForm({
     defaultValues: {
@@ -129,6 +139,24 @@ export function AdminMasterForm({
       });
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handlePublishToggle() {
+    if (!master || !onPublishToggle) return;
+    setPublishing(true);
+    try {
+      await onPublishToggle(master.id, published);
+    } catch (err) {
+      // Parent (client) owns the user-facing error toast; log here (redacted)
+      // so the rejection is handled and never surfaces as an unhandled rejection
+      // at the async onClick boundary. err.message omitted — may carry content.
+      console.warn("[admin-master-form] publish toggle rejected", {
+        masterId: master.id,
+        name: err instanceof Error ? err.name : "unknown",
+      });
+    } finally {
+      setPublishing(false);
     }
   }
 
@@ -252,7 +280,7 @@ export function AdminMasterForm({
         )}
       </form.Field>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 border-t pt-4">
         <Button
           type="submit"
           variant="brand"
@@ -262,6 +290,44 @@ export function AdminMasterForm({
           {submitting ? tCommon("saving") : mode === "create" ? t("createMaster") : tCommon("save")}
         </Button>
       </div>
+
+      {mode === "edit" && master && onPublishToggle ? (
+        <section
+          className="mt-8 space-y-2 rounded-md border p-4"
+          data-testid="master-publish-section"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold">{t("publishSectionHeading")}</h2>
+            <Badge
+              variant={published ? "default" : "secondary"}
+              role="status"
+              data-testid="master-publish-status-badge"
+            >
+              {published ? t("statusPublished") : t("statusDraft")}
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {published
+              ? t("publishSectionPublishedDescription")
+              : t("publishSectionDraftDescription")}
+          </p>
+          {emptyDraft ? (
+            <p className="text-sm text-muted-foreground" data-testid="master-publish-empty-hint">
+              {t("publishEmptyHint")}
+            </p>
+          ) : null}
+          <Button
+            type="button"
+            variant={published ? "outline" : "brand"}
+            data-testid="master-publish-toggle"
+            aria-pressed={published}
+            disabled={publishing || emptyDraft}
+            onClick={handlePublishToggle}
+          >
+            {publishing ? tCommon("loading") : published ? t("unpublish") : t("publish")}
+          </Button>
+        </section>
+      ) : null}
 
       {mode === "edit" && master && onDelete ? (
         <div className="mt-8 space-y-2 rounded-md border border-destructive/40 p-4">
