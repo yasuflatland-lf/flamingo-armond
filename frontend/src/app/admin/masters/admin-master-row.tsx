@@ -50,30 +50,44 @@ export function AdminMasterRow({ master, onEdit }: Props) {
       className="rounded-md border border-border transition-colors hover:bg-accent"
       data-testid={`master-catalog-row-${master.id}`}
     >
-      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-        <Badge
-          variant={published ? "default" : "secondary"}
-          role="status"
-          data-testid="master-row-status-badge"
+      {/*
+       * Mobile (default): two tiers — the name as a full-width title line, then a
+       * meta line carrying [badge] · count on the left and Edit on the right.
+       * Desktop (sm+): a single inline row [badge][name][count][Edit]. One DOM
+       * serves both: `w-full` + `order-*` force the mobile line break, and
+       * `sm:contents` dissolves the meta wrapper on desktop so the badge and count
+       * rejoin the inline row in their own order. Spacing rhythm 16 / 12 / 8.
+       */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-3 p-4 sm:py-3">
+        <p
+          className="order-1 w-full min-w-0 truncate text-sm font-medium tracking-tight sm:order-2 sm:w-auto sm:flex-1"
+          title={master.name}
         >
-          {published ? t("statusPublished") : t("statusDraft")}
-        </Badge>
+          {master.name}
+        </p>
 
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium" title={master.name}>
-            {master.name}
-          </p>
+        <div className="order-2 flex min-w-0 flex-1 items-center gap-2 sm:contents">
+          <Badge
+            variant={published ? "default" : "secondary"}
+            role="status"
+            data-testid="master-row-status-badge"
+            className="shrink-0 sm:order-1"
+          >
+            {published ? t("statusPublished") : t("statusDraft")}
+          </Badge>
+          <span aria-hidden="true" className="text-muted-foreground sm:hidden">
+            ·
+          </span>
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground sm:order-3">
+            {t("cardCount", { count: master.cardCount })}
+          </span>
         </div>
-
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {t("cardCount", { count: master.cardCount })}
-        </span>
 
         <Button
           type="button"
           variant="outline"
           size="sm"
-          className="shrink-0"
+          className="order-3 shrink-0 sm:order-4"
           data-testid="master-row-edit"
           onClick={() => onEdit(master.id)}
           aria-label={t("editAriaLabel", { name: master.name })}
