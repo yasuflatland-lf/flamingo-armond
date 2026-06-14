@@ -3,6 +3,7 @@ import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { GraphQLError } from "graphql";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UpdateCardgroupDocument } from "@/generated/graphql";
 import { renderWithIntl } from "@/test/render-with-intl";
@@ -109,6 +110,30 @@ describe("<CardgroupRenameForm>", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Could not reach the server. Please try again.")).toBeInTheDocument();
+    });
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("UNAUTHENTICATED rejection shows the session-expired banner and keeps the form open", async () => {
+    const user = userEvent.setup();
+    const { onSaved } = renderForm([
+      makeUpdateMock(
+        { id: "cg-1", input: { name: "Spanish Vocab" } },
+        {
+          errors: [
+            new GraphQLError("Unauthenticated", {
+              extensions: { code: "UNAUTHENTICATED" },
+            }),
+          ],
+        },
+      ),
+    ]);
+
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/your session has expired/i)).toBeInTheDocument();
     });
     expect(mockRefresh).not.toHaveBeenCalled();
     expect(onSaved).not.toHaveBeenCalled();
