@@ -257,6 +257,22 @@
     "continue": "続ける",
     "sessionExpired": "セッションの有効期限が切れました。もう一度ログインしてください。"
   },
+  "OnboardingStart": {
+    "heading": "最初のデッキを選びましょう",
+    "catalogTitle": "出来合いのデッキから始める",
+    "catalogDescription": "カタログからデッキを選んで、すぐに学習を始められます。",
+    "createTitle": "自分で一から作る",
+    "createDescription": "自分で作りたい方は、空のデッキから始めましょう。",
+    "createCta": "デッキを作成",
+    "or": "または",
+    "startWithDeck": "このデッキで始める",
+    "starting": "開始中...",
+    "imported": "追加済み",
+    "importError": "このデッキで開始できませんでした。もう一度お試しください。",
+    "importNotFound": "このデッキは利用できなくなりました。",
+    "sessionExpired": "セッションの有効期限が切れました。",
+    "signInAgain": "再度サインイン"
+  },
   "AdminMasters": {
     "title": "マスター",
     "description": "公開カタログに表示するマスターデッキを管理します。",
