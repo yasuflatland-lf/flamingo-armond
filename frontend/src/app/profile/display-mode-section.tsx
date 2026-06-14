@@ -6,6 +6,7 @@ import { useState } from "react";
 import { UpdateLearnDisplayModeMutation } from "@/app/learn/queries";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import type { LearnDisplayMode } from "@/generated/graphql";
+import { mutationAuthBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { cn } from "@/lib/utils";
 
@@ -28,9 +29,9 @@ export function DisplayModeSection({ initialMode }: { initialMode: LearnDisplayM
   const tCommon = useTranslations("Common");
   const [mode, setMode] = useState<LearnDisplayMode>(initialMode);
   // Surfaced when a save fails, mirroring ProfileForm's banner approach on this
-  // page: UNAUTHENTICATED maps to the session-expired copy, anything else to the
-  // generic "something went wrong" message. Cleared at the start of each new
-  // selection.
+  // page: UNAUTHENTICATED maps to the session-expired copy, FORBIDDEN to the
+  // permission-denied copy, anything else to the generic "something went wrong"
+  // message. Cleared at the start of each new selection.
   const [saveError, setSaveError] = useState<string | null>(null);
   const [updateMode, { loading }] = useMutation(UpdateLearnDisplayModeMutation);
 
@@ -50,11 +51,14 @@ export function DisplayModeSection({ initialMode }: { initialMode: LearnDisplayM
       // Roll the segmented control back to the previously committed mode so the
       // UI never shows a value the server rejected.
       setMode(previous);
-      const codes = liftGraphQLCodes(err);
       setSaveError(
-        codes.includes("UNAUTHENTICATED") ? t("sessionExpired") : tCommon("somethingWentWrong"),
+        mutationAuthBanner(err, {
+          forbidden: tCommon("forbidden"),
+          unauthenticated: t("sessionExpired"),
+          fallback: tCommon("somethingWentWrong"),
+        }),
       );
-      console.warn("[profile] updateLearnDisplayMode rejected", { codes });
+      console.warn("[profile] updateLearnDisplayMode rejected", { codes: liftGraphQLCodes(err) });
     }
   }
 

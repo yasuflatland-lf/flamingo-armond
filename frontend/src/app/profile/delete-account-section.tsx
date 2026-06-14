@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
+import { mutationAuthBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { DeleteMyAccountMutation } from "./mutations";
@@ -76,14 +77,13 @@ export function DeleteAccountSection() {
       router.refresh();
       // No further state updates — this component unmounts on navigation.
     } catch (err) {
-      const codes = liftGraphQLCodes(err);
-      console.warn("[profile] deleteMyAccount rejected", { codes });
+      console.warn("[profile] deleteMyAccount rejected", { codes: liftGraphQLCodes(err) });
       setDeleteError(
-        codes.includes("FORBIDDEN")
-          ? t("deleteAccountForbidden")
-          : codes.includes("UNAUTHENTICATED")
-            ? t("deleteAccountSessionExpired")
-            : t("deleteAccountFailed"),
+        mutationAuthBanner(err, {
+          forbidden: t("deleteAccountForbidden"),
+          unauthenticated: t("deleteAccountSessionExpired"),
+          fallback: t("deleteAccountFailed"),
+        }),
       );
       setDeleting(false);
     }

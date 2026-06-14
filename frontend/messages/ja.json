@@ -9,6 +9,7 @@
     "edit": "編集",
     "delete": "削除",
     "somethingWentWrong": "エラーが発生しました。もう一度お試しください。",
+    "forbidden": "権限がありません。",
     "discardChanges": "変更を破棄しますか？",
     "keepEditing": "編集を続ける",
     "discard": "破棄",

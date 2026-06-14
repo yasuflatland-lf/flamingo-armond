@@ -2,9 +2,10 @@
 
 import { useMutation } from "@apollo/client/react";
 import { useCallback } from "react";
-import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
+import { classifyMutationAuthError } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
-import { CARDGROUPS_DEFAULT_VARS, CreateCardgroupMutation } from "./queries";
+import { prependMyCardgroupEdge } from "./cache";
+import { CreateCardgroupMutation } from "./queries";
 
 /**
  * Discriminated outcome of a create-cardgroup attempt. Callers branch on
@@ -41,46 +42,7 @@ export function useCreateCardgroup() {
       // Narrow on __typename before accessing .cardgroup so an InputValidationError
       // or unknown variant does not silently mutate the cache.
       if (data?.createCardgroup?.__typename !== "CreateCardgroupSuccess") return;
-      const created = data.createCardgroup.cardgroup;
-
-      // cache.modify is forbidden — use readQuery + writeQuery so cold-cache
-      // entries are also handled correctly. CARDGROUPS_DEFAULT_VARS keeps the
-      // cache key in sync with the SSR seed and the client useQuery — any
-      // mismatch makes this write invisible. See .claude/rules/pagination.md.
-      const existingConnection = cache.readQuery({
-        query: MyCardgroupsConnectionDocument,
-        variables: CARDGROUPS_DEFAULT_VARS,
-      });
-      const newEdge = {
-        __typename: "CardgroupEdge" as const,
-        cursor: created.id,
-        node: created,
-      };
-      const nextConnection = existingConnection
-        ? {
-            ...existingConnection.myCardgroupsConnection,
-            edges: [newEdge, ...existingConnection.myCardgroupsConnection.edges],
-            totalCount: existingConnection.myCardgroupsConnection.totalCount + 1,
-          }
-        : {
-            // Cold cache: build a minimal connection so the listing page can render
-            // the new edge immediately when the user lands there.
-            __typename: "CardgroupConnection" as const,
-            edges: [newEdge],
-            pageInfo: {
-              __typename: "PageInfo" as const,
-              hasNextPage: false,
-              hasPreviousPage: false,
-              startCursor: created.id,
-              endCursor: created.id,
-            },
-            totalCount: 1,
-          };
-      cache.writeQuery({
-        query: MyCardgroupsConnectionDocument,
-        variables: CARDGROUPS_DEFAULT_VARS,
-        data: { myCardgroupsConnection: nextConnection },
-      });
+      prependMyCardgroupEdge(cache, data.createCardgroup.cardgroup);
     },
   });
 
@@ -106,14 +68,13 @@ export function useCreateCardgroup() {
         console.warn("[useCreateCardgroup] unexpected createCardgroup payload", { typename });
         return { status: "unexpected" };
       } catch (err) {
-        const codes = liftGraphQLCodes(err);
-        if (codes.includes("UNAUTHENTICATED")) return { status: "auth", kind: "unauthenticated" };
-        if (codes.includes("FORBIDDEN")) return { status: "auth", kind: "forbidden" };
+        const authKind = classifyMutationAuthError(err);
+        if (authKind !== "other") return { status: "auth", kind: authKind };
         // err.message is omitted — backend messages may echo user input.
         // codes is safe to log (fixed enum of GraphQL extension codes).
         console.warn("[useCreateCardgroup] createCardgroup rejected", {
           name: err instanceof Error ? err.name : "unknown",
-          codes,
+          codes: liftGraphQLCodes(err),
         });
         return { status: "rejected" };
       }
