@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { DirtyStateBridge } from "@/lib/forms/dirty-state-bridge";
 import { FieldError } from "@/lib/forms/field-error";
 import { updateProfileSchema } from "@/schemas/profile";
 import { useUpdateProfile } from "./use-update-profile";
@@ -23,20 +24,6 @@ type Props = {
   onSaved?: () => void;
   onSubmittingChange?: (submitting: boolean) => void;
 };
-
-function DirtyStateBridge({
-  dirty,
-  onDirtyChange,
-}: {
-  dirty: boolean;
-  onDirtyChange?: (dirty: boolean) => void;
-}) {
-  useEffect(() => {
-    onDirtyChange?.(dirty);
-  }, [dirty, onDirtyChange]);
-
-  return null;
-}
 
 export function ProfileForm({
   email,
