@@ -15,6 +15,7 @@ import {
   type MasterCatalogQueryVariables,
 } from "@/generated/graphql";
 import { useDebouncedSearch } from "@/hooks/use-debounced-search";
+import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { CatalogCard } from "./catalog-card";
 import { CATALOG_DEFAULT_VARS } from "./queries";
@@ -27,14 +28,6 @@ type CatalogPageInfo = Connection["pageInfo"];
 interface CatalogClientProps {
   initialConnection: Connection | null;
 }
-
-const EMPTY_PAGE_INFO: CatalogPageInfo = {
-  __typename: "PageInfo",
-  hasNextPage: false,
-  hasPreviousPage: false,
-  startCursor: null,
-  endCursor: null,
-};
 
 // Render fallback for useConnectionPagination. The client seeds the cache
 // synchronously before useQuery runs, so this is never read on the happy path;

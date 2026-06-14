@@ -17,6 +17,7 @@ import type {
 } from "@/generated/graphql";
 import { useDebouncedSearch } from "@/hooks/use-debounced-search";
 import { classifyQueryError, getBackendErrorBanner } from "@/lib/apollo/errors";
+import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { AdminMasterForm, type MasterFormValues } from "./admin-master-form";
@@ -28,14 +29,6 @@ import { type AuthKind, useMasterMutations } from "./use-master-mutations";
 type Connection = AdminMastersQueryResult["adminMasters"];
 type Edge = Connection["edges"][number];
 type PageInfo = Connection["pageInfo"];
-
-const EMPTY_PAGE_INFO: PageInfo = {
-  __typename: "PageInfo",
-  hasNextPage: false,
-  hasPreviousPage: false,
-  startCursor: null,
-  endCursor: null,
-};
 
 // Render fallback for useConnectionPagination before the first query resolves.
 // Admin masters has no SSR seed, so this is the initial render value; it keeps
