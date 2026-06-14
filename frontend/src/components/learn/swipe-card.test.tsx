@@ -79,19 +79,32 @@ describe("<CardContent>", () => {
     expect(backEl).not.toHaveClass("break-all");
   });
 
-  it("applies the unrevealed front-fit ceiling (maxPx=48) as an inline font size", () => {
+  it("applies the fixed front-fit ceiling (maxPx=48) as an inline font size when unrevealed", () => {
     // jsdom reports clientWidth/scrollWidth = 0, so useFitText returns the
-    // ceiling unchanged — letting us pin the revealed→bounds switch and the
-    // style wiring without a layout engine.
+    // ceiling unchanged — letting us pin the bounds and the style wiring
+    // without a layout engine.
     render(<CardContent card={{ ...CARD, front: "Hello" }} revealed={false} />);
 
     expect(screen.getByText("Hello")).toHaveStyle({ fontSize: "48px" });
   });
 
-  it("applies the revealed front-fit ceiling (maxPx=30) as an inline font size", () => {
+  it("keeps the same front-fit ceiling (48px) when revealed — the headword does not shrink on flip", () => {
     render(<CardContent card={{ ...CARD, front: "Hello" }} revealed={true} />);
 
-    expect(screen.getByText("Hello")).toHaveStyle({ fontSize: "30px" });
+    expect(screen.getByText("Hello")).toHaveStyle({ fontSize: "48px" });
+  });
+
+  it("keeps the front size constant across an in-place reveal (reveal must not resize the headword)", () => {
+    // The reduced-motion path keeps ONE CardContent instance and flips
+    // `revealed` false→true in place. The headword size must stay constant
+    // (48px → 48px); revealing only adds the translation below it.
+    const { rerender } = render(
+      <CardContent card={{ ...CARD, front: "Hello" }} revealed={false} />,
+    );
+    expect(screen.getByText("Hello")).toHaveStyle({ fontSize: "48px" });
+
+    rerender(<CardContent card={{ ...CARD, front: "Hello" }} revealed={true} />);
+    expect(screen.getByText("Hello")).toHaveStyle({ fontSize: "48px" });
   });
 
   it("reserves horizontal padding so a long front term cannot slide under the badge", () => {

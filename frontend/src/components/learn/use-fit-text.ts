@@ -37,16 +37,19 @@ export function computeFitFontSize({
 }
 
 /**
- * Shrinks a single-line text element so a long word fits on one line instead
- * of wrapping. Attach `ref` to the text element (it must render with
- * `white-space: nowrap`) and apply the returned `fontPx` as its `font-size`.
+ * Shrinks a wrapping text element only when a single word is too wide for its
+ * content box, so that word fits on one line instead of overflowing — multi-word
+ * content still wraps normally at word boundaries and is left at `maxPx`. Attach
+ * `ref` to the text element (it should wrap at word boundaries, e.g. Tailwind
+ * `break-normal`) and apply the returned `fontPx` as its `font-size`.
  *
- * The element is measured at `maxPx` (its intrinsic single-line width via
- * `scrollWidth`) against the width it is allowed to occupy (`clientWidth`,
- * which a `max-width: 100%` text element caps at its parent's content box —
- * so the surrounding padding is respected automatically). Re-fits whenever the
- * parent container resizes (viewport change / rotation) and whenever `text`
- * changes.
+ * The element is measured at `maxPx` via `scrollWidth` — for wrappable content
+ * this equals `clientWidth` unless a single unbreakable word overflows, in which
+ * case it is that word's width. It is compared against the width the element is
+ * allowed to occupy (`clientWidth`, which a `max-width: 100%` text element caps
+ * at its parent's content box — so the surrounding padding is respected
+ * automatically). Re-fits whenever the parent container resizes (viewport change
+ * / rotation) and whenever `text` changes.
  */
 export function useFitText<T extends HTMLElement>(
   text: string,

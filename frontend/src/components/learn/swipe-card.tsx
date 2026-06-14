@@ -12,12 +12,13 @@ import { useFitText } from "./use-fit-text";
 // (`break-normal` — never mid-word); useFitText shrinks the font only when a
 // single word is wider than the card (e.g. "cardiovascular"), so that word fits
 // one line instead of overflowing, while multi-word fronts still wrap normally.
-// `max` mirrors the previous largest static size (the `sm:` step: text-5xl
-// unrevealed, text-3xl revealed); `min` is the floor below which an
+// `maxPx` mirrors the previous largest static size (`sm:text-5xl`). The SAME
+// ceiling is used whether or not the card is revealed, so the headword keeps a
+// constant size when the card is flipped — revealing only adds the translation
+// below it, it never resizes the term. `minPx` is the floor below which an
 // exceptionally long word is clipped by the card rather than shrunk to an
 // unreadable size.
-const FRONT_FIT_UNREVEALED = { maxPx: 48, minPx: 20 };
-const FRONT_FIT_REVEALED = { maxPx: 30, minPx: 16 };
+const FRONT_FIT = { maxPx: 48, minPx: 20 };
 
 export type { AnimatedCardHandle } from "./animated-card";
 
@@ -65,8 +66,11 @@ const AnimatedCard = dynamic(() => import("./animated-card").then((m) => m.Anima
 
 // CardContent is exported so animated-card.tsx can share the same presentational layer.
 export function CardContent({ card, revealed }: { card: SwipeCardData; revealed: boolean }) {
-  const { maxPx, minPx } = revealed ? FRONT_FIT_REVEALED : FRONT_FIT_UNREVEALED;
-  const { ref: frontRef, fontPx } = useFitText<HTMLParagraphElement>(card.front, maxPx, minPx);
+  const { ref: frontRef, fontPx } = useFitText<HTMLParagraphElement>(
+    card.front,
+    FRONT_FIT.maxPx,
+    FRONT_FIT.minPx,
+  );
 
   return (
     // `relative` anchors the absolutely-positioned CefrBadge to this card.
