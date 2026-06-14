@@ -114,6 +114,15 @@ describe("resolveHeaderCreateAction", () => {
     });
   });
 
+  describe("/admin/masters route", () => {
+    it("returns master action for exact /admin/masters", () => {
+      expect(resolveHeaderCreateAction("/admin/masters")).toEqual({
+        kind: "master",
+        label: "Add new master",
+      });
+    });
+  });
+
   describe("routes that return null", () => {
     it.each([
       ["/"],

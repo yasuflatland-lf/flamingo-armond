@@ -19,7 +19,10 @@ export type HeaderCreateAction =
     }
   // No href: role creation has no separate-page target — it opens the create
   // sheet by appending ?new=true to the current path (via useSheetSearchParam).
-  | { kind: "role"; label: "Add new role" };
+  | { kind: "role"; label: "Add new role" }
+  // No href: master creation opens the create sheet the same way as role —
+  // ?new=true on the current path (via useSheetSearchParam).
+  | { kind: "master"; label: "Add new master" };
 
 /**
  * Build a `card-with-group` action for the /cardgroups/:id/edit route.
@@ -65,6 +68,7 @@ function cardWithGroupFromLearn(
  * - `/cardgroups/:id/edit` -> create card pre-filled with the cardgroup
  * - `/learn/:id`           -> create card pre-filled with the cardgroup + return param
  * - `/admin/roles`         -> create new role
+ * - `/admin/masters`       -> create new master
  * - anything else          -> `null`
  */
 export function resolveHeaderCreateAction(pathname: string): HeaderCreateAction | null {
@@ -90,6 +94,10 @@ export function resolveHeaderCreateAction(pathname: string): HeaderCreateAction 
 
   if (pathname === "/admin/roles") {
     return { kind: "role", label: "Add new role" };
+  }
+
+  if (pathname === "/admin/masters") {
+    return { kind: "master", label: "Add new master" };
   }
 
   return null;
