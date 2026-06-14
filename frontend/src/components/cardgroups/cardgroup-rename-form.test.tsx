@@ -133,7 +133,7 @@ describe("<CardgroupRenameForm>", () => {
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/your session has expired/i)).toBeInTheDocument();
+      expect(screen.getByText("Your session expired. Please sign in again.")).toBeInTheDocument();
     });
     expect(mockRefresh).not.toHaveBeenCalled();
     expect(onSaved).not.toHaveBeenCalled();

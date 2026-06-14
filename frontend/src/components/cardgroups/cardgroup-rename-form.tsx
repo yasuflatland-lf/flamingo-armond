@@ -56,7 +56,7 @@ export function CardgroupRenameForm({ cardgroup, onSaved, onSubmittingChange }: 
       });
       const codes = liftGraphQLCodes(err);
       if (codes.includes("UNAUTHENTICATED")) {
-        setBannerMessage(t("sessionExpired"));
+        setBannerMessage(t("sessionExpiredSignIn"));
         return null;
       }
       const banner = getBackendErrorBanner(err) ?? tCommon("somethingWentWrong");
