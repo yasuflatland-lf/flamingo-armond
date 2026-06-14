@@ -15,7 +15,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -351,6 +351,7 @@ export function AdminMasterForm({
                   {tCommon("cancel")}
                 </AlertDialogCancel>
                 <AlertDialogAction
+                  className={buttonVariants({ variant: "destructive" })}
                   data-testid="master-delete-dialog-confirm"
                   disabled={deleting}
                   onClick={handleConfirmDelete}

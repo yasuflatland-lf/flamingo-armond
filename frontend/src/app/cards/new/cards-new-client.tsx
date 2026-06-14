@@ -19,6 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { buttonVariants } from "@/components/ui/button";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
 import { sanitizeReturnTo } from "@/lib/sanitize-return-to";
 
@@ -108,6 +109,7 @@ function DuplicateOverwriteDialog({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={loading}>{tCommon("cancel")}</AlertDialogCancel>
           <AlertDialogAction
+            className={buttonVariants({ variant: "destructive" })}
             onClick={(e) => {
               // Suppress Radix's default close-on-action behaviour. Closing is
               // driven by the parent clearing `duplicate` after a successful

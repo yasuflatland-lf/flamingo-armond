@@ -13,7 +13,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 
 export type BulkActionBarProps = {
   count: number;
@@ -51,7 +51,11 @@ export function BulkActionBar({ count, busy, onConfirm, onClear }: BulkActionBar
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{tCommon("cancel")}</AlertDialogCancel>
-            <AlertDialogAction data-testid="cards-bulk-confirm" onClick={onConfirm}>
+            <AlertDialogAction
+              className={buttonVariants({ variant: "destructive" })}
+              data-testid="cards-bulk-confirm"
+              onClick={onConfirm}
+            >
               {t("deleteConfirmCount", { count })}
             </AlertDialogAction>
           </AlertDialogFooter>
