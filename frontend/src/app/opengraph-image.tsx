@@ -5,7 +5,7 @@ import { ImageResponse } from "next/og";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "flamingo-armond — Remember more, study less.";
+export const alt = "Flamingo Armond — Remember more, study less.";
 
 export default function OpengraphImage() {
   return new ImageResponse(
@@ -22,7 +22,7 @@ export default function OpengraphImage() {
         color: "#FFFFFF",
       }}
     >
-      <div style={{ fontSize: 96, fontWeight: 700, letterSpacing: -2 }}>flamingo-armond</div>
+      <div style={{ fontSize: 96, fontWeight: 700, letterSpacing: -2 }}>Flamingo Armond</div>
       <div style={{ fontSize: 40, opacity: 0.9 }}>Remember more, study less.</div>
     </div>,
     { ...size },

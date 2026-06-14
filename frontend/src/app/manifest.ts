@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "flamingo-armond",
-    short_name: "flamingo",
+    name: "Flamingo Armond",
+    short_name: "Flamingo",
     description: "Swiping flashcard app.",
     start_url: "/",
     display: "standalone",

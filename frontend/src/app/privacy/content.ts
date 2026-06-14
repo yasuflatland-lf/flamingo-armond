@@ -13,7 +13,7 @@ export const PRIVACY_EN: PrivacyContent = {
   lastUpdated: "Last updated: June 12, 2026",
   backToLogin: "Back to login",
   intro:
-    "Your privacy is important to us. This Privacy Policy explains how flamingo-armond collects, uses, and protects your information.",
+    "Your privacy is important to us. This Privacy Policy explains how Flamingo Armond collects, uses, and protects your information.",
   sections: [
     {
       title: "1. Information We Collect",
@@ -59,7 +59,7 @@ export const PRIVACY_JA: PrivacyContent = {
   lastUpdated: "最終更新日：2026年6月12日",
   backToLogin: "ログインに戻る",
   intro:
-    "お客様のプライバシーは私たちにとって重要です。本プライバシーポリシーでは、flamingo-armondがお客様の情報をどのように収集・利用・保護するかを説明します。",
+    "お客様のプライバシーは私たちにとって重要です。本プライバシーポリシーでは、Flamingo Armondがお客様の情報をどのように収集・利用・保護するかを説明します。",
   sections: [
     {
       title: "1. 収集する情報",

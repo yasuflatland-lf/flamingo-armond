@@ -14,15 +14,15 @@ export const TERMS_EN: TermsContent = {
   sections: [
     {
       title: "1. Acceptance of Terms",
-      body: 'By accessing or using flamingo-armond (the "Service"), you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use the Service.',
+      body: 'By accessing or using Flamingo Armond (the "Service"), you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use the Service.',
     },
     {
       title: "2. Description of Service",
-      body: "flamingo-armond is a personal flashcard application that uses spaced repetition to help you study and memorize content. The Service is intended for personal and educational use.",
+      body: "Flamingo Armond is a personal flashcard application that uses spaced repetition to help you study and memorize content. The Service is intended for personal and educational use.",
     },
     {
       title: "3. Beta Service, No Support, and No Data Guarantee",
-      body: "flamingo-armond is currently offered as a free, public beta and runs on free-tier, no-cost hosting infrastructure. The Service is therefore provided on a best-effort basis only: (a) we provide no user support of any kind and are under no obligation to respond to inquiries, fix defects, or restore lost data; (b) availability, features, and stored data may be changed, interrupted, or discontinued at any time without prior notice; and (c) we do not guarantee that your data will be preserved. Your flashcards and other content may be corrupted, lost, or permanently deleted, including as a result of the underlying free-tier infrastructure, and we accept no liability for any such loss. You are solely responsible for exporting and keeping your own backups of any content you consider important.",
+      body: "Flamingo Armond is currently offered as a free, public beta and runs on free-tier, no-cost hosting infrastructure. The Service is therefore provided on a best-effort basis only: (a) we provide no user support of any kind and are under no obligation to respond to inquiries, fix defects, or restore lost data; (b) availability, features, and stored data may be changed, interrupted, or discontinued at any time without prior notice; and (c) we do not guarantee that your data will be preserved. Your flashcards and other content may be corrupted, lost, or permanently deleted, including as a result of the underlying free-tier infrastructure, and we accept no liability for any such loss. You are solely responsible for exporting and keeping your own backups of any content you consider important.",
     },
     {
       title: "4. Account Registration",
@@ -70,15 +70,15 @@ export const TERMS_JA: TermsContent = {
   sections: [
     {
       title: "1. 利用規約への同意",
-      body: "flamingo-armond（以下「本サービス」）にアクセスまたはご利用いただくことにより、本利用規約に同意したものとみなされます。同意いただけない場合は、本サービスのご利用はお控えください。",
+      body: "Flamingo Armond（以下「本サービス」）にアクセスまたはご利用いただくことにより、本利用規約に同意したものとみなされます。同意いただけない場合は、本サービスのご利用はお控えください。",
     },
     {
       title: "2. サービスの説明",
-      body: "flamingo-armondは、間隔反復法を用いた個人向けフラッシュカードアプリです。学習・暗記のサポートを目的として提供され、個人的・教育的な用途を想定しています。",
+      body: "Flamingo Armondは、間隔反復法を用いた個人向けフラッシュカードアプリです。学習・暗記のサポートを目的として提供され、個人的・教育的な用途を想定しています。",
     },
     {
       title: "3. ベータサービス・サポート非提供・データ無保証",
-      body: "flamingo-armondは現在、無料のパブリックベータ版として提供されており、無償（無料枠）のホスティング基盤上で運営されています。そのため、本サービスはベストエフォート（合理的な範囲での最善の努力）でのみ提供されます：（a）当社はいかなるユーザーサポートも提供せず、お問い合わせへの対応、不具合の修正、失われたデータの復旧を行う義務を負いません、（b）可用性・機能・保存されたデータは、事前の通知なくいつでも変更・中断・廃止される場合があります、（c）お客様のデータが保持されることは保証しません。お客様のフラッシュカードやその他のコンテンツは、無料枠の基盤に起因する場合を含め、破損・消失または完全に削除される可能性があり、当社はそのような損失について一切の責任を負いません。重要なコンテンツについては、お客様ご自身でエクスポートおよびバックアップを保持する責任を負うものとします。",
+      body: "Flamingo Armondは現在、無料のパブリックベータ版として提供されており、無償（無料枠）のホスティング基盤上で運営されています。そのため、本サービスはベストエフォート（合理的な範囲での最善の努力）でのみ提供されます：（a）当社はいかなるユーザーサポートも提供せず、お問い合わせへの対応、不具合の修正、失われたデータの復旧を行う義務を負いません、（b）可用性・機能・保存されたデータは、事前の通知なくいつでも変更・中断・廃止される場合があります、（c）お客様のデータが保持されることは保証しません。お客様のフラッシュカードやその他のコンテンツは、無料枠の基盤に起因する場合を含め、破損・消失または完全に削除される可能性があり、当社はそのような損失について一切の責任を負いません。重要なコンテンツについては、お客様ご自身でエクスポートおよびバックアップを保持する責任を負うものとします。",
     },
     {
       title: "4. アカウント登録",
