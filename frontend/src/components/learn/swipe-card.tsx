@@ -88,9 +88,14 @@ export function CardContent({ card, revealed }: { card: SwipeCardData; revealed:
         )}
       </div>
       {!revealed && (
-        <div
-          className="pointer-events-none absolute right-0 bottom-0 h-16 w-16 bg-muted shadow-inner [clip-path:polygon(100%_0,0_100%,100%_100%)]"
+        // Tap affordance: a faint coral dot gently pulses (~3s) to hint the card
+        // is tappable to reveal the back. Decorative only (aria-hidden); the
+        // pulse runs only when motion is allowed and degrades to a static faint
+        // dot under prefers-reduced-motion so the hint never disappears.
+        <span
+          data-testid="tap-hint"
           aria-hidden="true"
+          className="pointer-events-none absolute right-5 bottom-5 h-10 w-10 rounded-full bg-brand-primary blur-[10px] motion-safe:animate-tap-pulse motion-reduce:opacity-40"
         />
       )}
     </div>

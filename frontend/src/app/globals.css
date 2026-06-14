@@ -123,6 +123,10 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  /* Tap affordance — a faint coral dot gently breathes on the un-revealed card
+     corner, hinting the card is tappable to reveal the back. 3s so it reads as
+     a calm pulse, not an alert. Used via `animate-tap-pulse` (motion-safe). */
+  --animate-tap-pulse: tap-pulse 3s ease-in-out infinite;
   /* Inter for Latin (set on <html> by next/font), Hiragino / Noto Sans JP for
      Japanese — the same Latin+JP pairing apple.com/jp uses. */
   --font-sans:
@@ -136,6 +140,22 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+}
+
+/* Drives `animate-tap-pulse` (see --animate-tap-pulse above). Opacity stays low
+   so the dot reads as a faint coral hint, never an alert; the gentle scale adds
+   a "breathing" feel. Decorative only — gated behind motion-safe at the call
+   site, so prefers-reduced-motion users get a static dot instead. */
+@keyframes tap-pulse {
+  0%,
+  100% {
+    opacity: 0.15;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
 }
 
 @layer base {
