@@ -175,7 +175,7 @@ describe("HomePage (root redirect)", () => {
     expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("[home]"));
   });
 
-  test("onboarded user with no lastViewed and no cardgroups → /cardgroups/new?welcome=1", async () => {
+  test("onboarded user with no lastViewed and no cardgroups → /onboarding/start", async () => {
     vi.mocked(gqlFetch).mockResolvedValueOnce({
       me: { id: "u-1", displayName: "Alice", lastViewedCardgroup: null },
       myCardgroupsConnection: {
@@ -192,7 +192,7 @@ describe("HomePage (root redirect)", () => {
       },
     } as never);
 
-    await expect(HomePage()).rejects.toThrow(`${REDIRECT_PREFIX}/cardgroups/new?welcome=1`);
-    expect(redirect).toHaveBeenCalledWith("/cardgroups/new?welcome=1");
+    await expect(HomePage()).rejects.toThrow(`${REDIRECT_PREFIX}/onboarding/start`);
+    expect(redirect).toHaveBeenCalledWith("/onboarding/start");
   });
 });

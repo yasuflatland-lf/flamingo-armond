@@ -6,7 +6,7 @@ import { graphql } from "@/generated";
  * Used to decide where to redirect a signed-in caller:
  *   - me.lastViewedCardgroup != null            → /learn/{id}
  *   - myCardgroupsConnection.totalCount > 0     → /cardgroups
- *   - otherwise                                  → /cardgroups/new?welcome=1
+ *   - otherwise                                  → /onboarding/start
  *
  * Auth-sensitive (requires Authorization), so callers MUST pass `revalidate: 0`
  * to gqlFetch.

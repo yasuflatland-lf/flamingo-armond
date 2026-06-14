@@ -41,5 +41,5 @@ export default async function HomePage() {
     redirect("/cardgroups");
   }
 
-  redirect("/cardgroups/new?welcome=1");
+  redirect("/onboarding/start");
 }
