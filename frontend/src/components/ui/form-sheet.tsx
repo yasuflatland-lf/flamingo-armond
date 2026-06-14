@@ -12,6 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Drawer,
   DrawerContent,
@@ -167,7 +168,11 @@ function FormSheet({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("keepEditing")}</AlertDialogCancel>
-            <AlertDialogAction disabled={submitting} onClick={discard}>
+            <AlertDialogAction
+              className={buttonVariants({ variant: "destructive" })}
+              disabled={submitting}
+              onClick={discard}
+            >
               {t("discard")}
             </AlertDialogAction>
           </AlertDialogFooter>
