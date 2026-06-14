@@ -165,3 +165,15 @@ grep -rln "admin/users" frontend/src frontend/__tests__
 ```
 
 A grep scoped to the co-located file alone (or an agent told to "update the test" that creates a fresh co-located test and stops) leaves any broad page test under `frontend/__tests__/` still pinned to the old behavior. That broad test breaks the full suite, and the gap surfaces only at the orchestrator's full-suite re-run — exactly the resolver-test-compile-failure shape of the backend rule, one tree over.
+
+#### Routing / redirect-flow changes add a THIRD tree: `frontend/e2e/*.spec.ts`
+
+Co-located and broad vitest tests pin a page's *local* behavior (one redirect target, one rendered branch); a Playwright e2e spec pins the *whole redirect chain* end-to-end — and `vitest` never runs it. When a change retargets a `redirect()` / `router.push()` or reorders a redirect chain, the pre-flight grep MUST also cover the e2e tree, keyed on the route string:
+
+```bash
+grep -rln "cardgroups/new?welcome=1\|onboarding" frontend/src frontend/__tests__ frontend/e2e
+```
+
+The e2e tree is the most dangerous one to miss because it cannot be run from a normal worktree — it needs a live Supabase + backend stack and `E2E_SUPABASE_*` env vars — so a broken or silently-altered e2e spec surfaces only in CI, not at the local full-suite re-run.
+
+A worked example: inserting the `/onboarding/start` chooser between OnboardingForm-success and `/cardgroups/new?welcome=1` retargeted the post-onboarding destination. The co-located vitest tests (`onboarding-form.test.tsx`, `page.test.tsx`) were updated, but two e2e specs (`new-user-onboarding.spec.ts`, `display-name-onboarding.spec.ts`) `waitForURL("**/cardgroups/new?welcome=1")` and were silently affected. They stayed green only because the e2e DB seeds no master decks, so `/onboarding/start` hits its empty-catalog fallback to the *same* URL; a populated catalog would have broken both. The fix was to grep `frontend/e2e/` for the route, confirm the fallback keeps the assertions valid, and update the now-stale spec comments to document the new hop. **A conditional redirect that falls back to the old destination on empty data is the trap: the e2e passes by coincidence, so only the grep — not the test run — reveals that the spec's intent has drifted.**
