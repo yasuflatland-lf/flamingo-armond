@@ -3,7 +3,6 @@
 import { useMutation } from "@apollo/client/react";
 import { Pencil } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useId } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,7 +40,6 @@ type Props = {
 export function AdminMasterRow({ master, onEdit }: Props) {
   const t = useTranslations("AdminMasters");
   const tCommon = useTranslations("Common");
-  const hintId = useId();
 
   const published = master.status === "PUBLISHED";
   const emptyDraft = master.status === "DRAFT" && master.cardCount === 0;
@@ -51,8 +49,12 @@ export function AdminMasterRow({ master, onEdit }: Props) {
   const busy = publishing || unpublishing;
 
   async function handleToggle() {
-    // Empty-deck Publish is a no-op; the aria-disabled gate already explains why.
-    if (emptyDraft) return;
+    // Empty-deck Publish cannot proceed; surface the reason via the shared toast
+    // notification instead of a persistent inline hint.
+    if (emptyDraft) {
+      toast.error(t("publishEmptyHint"));
+      return;
+    }
     try {
       if (published) {
         const result = await runUnpublish({ variables: { id: master.id } });
@@ -127,31 +129,20 @@ export function AdminMasterRow({ master, onEdit }: Props) {
           {t("cardCount", { count: master.cardCount })}
         </span>
 
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            data-testid="master-row-publish-toggle"
-            aria-pressed={published}
-            aria-disabled={emptyDraft || undefined}
-            aria-describedby={emptyDraft ? hintId : undefined}
-            // aria-disabled (not `disabled`) keeps the button focusable so the
-            // describedby hint is announced; the handler no-ops on empty drafts.
-            onClick={busy ? undefined : handleToggle}
-          >
-            {busy ? tCommon("loading") : toggleLabel}
-          </Button>
-          {emptyDraft ? (
-            <span
-              id={hintId}
-              data-testid="master-publish-empty-hint"
-              className="text-xs text-muted-foreground"
-            >
-              {t("publishEmptyHint")}
-            </span>
-          ) : null}
-        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          data-testid="master-row-publish-toggle"
+          aria-pressed={published}
+          // Empty drafts stay clickable (no aria-disabled): a click surfaces the
+          // "add cards first" guidance via the shared toast (see handleToggle)
+          // rather than a persistent inline hint.
+          onClick={busy ? undefined : handleToggle}
+        >
+          {busy ? tCommon("loading") : toggleLabel}
+        </Button>
 
         <Button
           type="button"

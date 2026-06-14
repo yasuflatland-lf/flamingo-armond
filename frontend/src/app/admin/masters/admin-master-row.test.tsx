@@ -64,22 +64,21 @@ describe("AdminMasterRow", () => {
     );
   });
 
-  it("disables Publish and shows a hint for a DRAFT with 0 cards", () => {
+  it("keeps Publish clickable and renders no inline hint for a DRAFT with 0 cards", () => {
     renderRow({ ...BASE, cardCount: 0 });
-    expect(screen.getByTestId("master-row-publish-toggle")).toHaveAttribute(
+    expect(screen.getByTestId("master-row-publish-toggle")).not.toHaveAttribute(
       "aria-disabled",
       "true",
     );
-    expect(screen.getByTestId("master-publish-empty-hint")).toBeInTheDocument();
+    expect(screen.queryByTestId("master-publish-empty-hint")).not.toBeInTheDocument();
   });
 
-  it("does not fire the mutation when clicking a disabled empty-deck Publish", async () => {
+  it("toasts the empty-deck notification instead of firing the mutation on Publish click", async () => {
     renderRow({ ...BASE, cardCount: 0 });
     fireEvent.click(screen.getByTestId("master-row-publish-toggle"));
     const { toast } = await import("sonner");
+    expect(toast.error).toHaveBeenCalledWith("Add cards before publishing.");
     expect(toast.success).not.toHaveBeenCalled();
-    expect(toast.error).not.toHaveBeenCalled();
-    expect(screen.getByTestId("master-publish-empty-hint")).toBeInTheDocument();
   });
 
   it("invokes onEdit when the Edit button is clicked", async () => {
