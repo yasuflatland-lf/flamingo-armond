@@ -161,7 +161,7 @@ func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil), loaderDeps{}, ping.New(nil, "test-token"), nil))
+	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil, nil), loaderDeps{}, ping.New(nil, "test-token"), nil, serverConfigFromEnv(slog.Default()).introspectionEnabled))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -669,7 +669,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
-	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil), loaderDeps{
+	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil, nil), loaderDeps{
 		user:           userRepo,
 		role:           roleRepo,
 		userRole:       userRoleRepo,
@@ -678,7 +678,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 		userPreference: userPreferenceRepo,
 		swipeRecord:    swipeRecordRepo,
 		userCardFSRS:   userCardFSRSRepo,
-	}, ping.New(pingRecordRepo, "test-token"), nil)
+	}, ping.New(pingRecordRepo, "test-token"), nil, false)
 
 	ts := httptest.NewServer(e)
 	t.Cleanup(ts.Close)
@@ -939,7 +939,7 @@ func TestComplexityLimit_Rejects(t *testing.T) {
 
 func newIntrospectionTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newGraphQLServer(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)))
+	ts := httptest.NewServer(newGraphQLServer(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), serverConfigFromEnv(slog.Default()).introspectionEnabled))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -1023,9 +1023,14 @@ func getStatus(t *testing.T, url string) int {
 	return res.StatusCode
 }
 
+// The Playground UI is gated on the SAME single introspectionEnabled flag as
+// schema introspection (GRAPHQL_INTROSPECTION == "on"). The two gates can never
+// disagree: a value like "true" disables both, so the Playground is never served
+// against a server that rejects its introspection query.
+
 // TestPlayground_GatedOff asserts that GRAPHQL_INTROSPECTION=off leaves the
 // /playground route unregistered (404). The Playground UI is useless without
-// introspection, so production (where introspection is off) does not serve it.
+// introspection, so a server with introspection off does not serve it.
 func TestPlayground_GatedOff(t *testing.T) {
 	t.Setenv("GRAPHQL_INTROSPECTION", "off")
 	ts := newTestServer(t)
@@ -1035,15 +1040,40 @@ func TestPlayground_GatedOff(t *testing.T) {
 	}
 }
 
-// TestPlayground_DefaultOn asserts that the /playground route is registered
-// (returns 200) for any value other than "off" — the route gate is `!= "off"`,
-// which is intentionally looser than the introspection gate (`== "on"`).
-func TestPlayground_DefaultOn(t *testing.T) {
+// TestPlayground_UnsetGatedOff asserts that an unset GRAPHQL_INTROSPECTION leaves
+// the /playground route unregistered (404). Under the single-predicate gate, an
+// unset value disables introspection, so the Playground is gated off too — the
+// fail-safe default never serves a non-functional UI.
+func TestPlayground_UnsetGatedOff(t *testing.T) {
 	t.Setenv("GRAPHQL_INTROSPECTION", "")
+	ts := newTestServer(t)
+
+	if got := getStatus(t, ts.URL+"/playground"); got != http.StatusNotFound {
+		t.Fatalf("GET /playground status = %d, want %d (unset should gate the route off)", got, http.StatusNotFound)
+	}
+}
+
+// TestPlayground_OnRegistered asserts that GRAPHQL_INTROSPECTION=on registers the
+// /playground route (200), matching the introspection gate exactly.
+func TestPlayground_OnRegistered(t *testing.T) {
+	t.Setenv("GRAPHQL_INTROSPECTION", "on")
 	ts := newTestServer(t)
 
 	if got := getStatus(t, ts.URL+"/playground"); got != http.StatusOK {
 		t.Fatalf("GET /playground status = %d, want %d (route should be registered)", got, http.StatusOK)
+	}
+}
+
+// TestPlayground_StrayValueGatedOff asserts that a non-"on" value like "true"
+// leaves the /playground route unregistered (404). This pins the single-predicate
+// fix: the Playground and introspection gates resolve from the same `== "on"`
+// predicate, so "true" disables both rather than serving a broken UI.
+func TestPlayground_StrayValueGatedOff(t *testing.T) {
+	t.Setenv("GRAPHQL_INTROSPECTION", "true")
+	ts := newTestServer(t)
+
+	if got := getStatus(t, ts.URL+"/playground"); got != http.StatusNotFound {
+		t.Fatalf("GET /playground status = %d, want %d (stray value should gate the route off)", got, http.StatusNotFound)
 	}
 }
 
@@ -1844,7 +1874,7 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 	e := newRouter(
 		resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, lastViewedUC, nil, nil, nil, nil),
 		mw,
-		auth.NewSuperUserPromoter(nil, "", nil, nil),
+		auth.NewSuperUserPromoter(nil, "", nil, nil, nil),
 		loaderDeps{
 			user:           userRepo,
 			role:           roleRepo,
@@ -1856,6 +1886,7 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 			userCardFSRS:   userCardFSRSRepo,
 		},
 		ping.New(pingRecordRepo, "test-token"), nil,
+		false,
 	)
 
 	ts := httptest.NewServer(e)
@@ -2755,6 +2786,34 @@ func TestServerConfigFromEnv(t *testing.T) {
 			}
 			if tc.wantLog == "" && buf.Len() > 0 {
 				t.Errorf("expected no log output, got %q", buf.String())
+			}
+		})
+	}
+}
+
+// TestServerConfigFromEnv_Introspection pins the single-predicate resolution of
+// GRAPHQL_INTROSPECTION into the one introspectionEnabled flag. Only "on" enables
+// introspection; "off", unset, and a stray value like "true" all disable it. The
+// "true" case proves the fix: the prior split gates (one `== "on"`, one `!= "off"`)
+// disagreed on "true", serving a Playground UI against a server with introspection
+// disabled.
+func TestServerConfigFromEnv_Introspection(t *testing.T) {
+	cases := []struct {
+		name string
+		env  string
+		want bool
+	}{
+		{"on enables", "on", true},
+		{"off disables", "off", false},
+		{"unset disables", "", false},
+		{"stray value true disables", "true", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("GRAPHQL_INTROSPECTION", tc.env)
+			cfg := serverConfigFromEnv(slog.New(slog.DiscardHandler))
+			if cfg.introspectionEnabled != tc.want {
+				t.Errorf("introspectionEnabled = %v, want %v", cfg.introspectionEnabled, tc.want)
 			}
 		})
 	}

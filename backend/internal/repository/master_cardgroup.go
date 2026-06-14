@@ -159,7 +159,7 @@ func (r *masterCardgroupRepo) FindByID(ctx context.Context, id string) (*domain.
 		}
 		return nil, eris.Wrap(err, "repository: master cardgroup: find by id")
 	}
-	return masterCardgroupToDomain(row), nil
+	return masterCardgroupToDomain(row)
 }
 
 // EnsureByName returns the existing master cardgroup with the given name or
@@ -178,8 +178,8 @@ func (r *masterCardgroupRepo) EnsureByName(ctx context.Context, name string) (*d
 		var row gormMasterCardgroup
 		err := tx.Where("name = ?", name).Take(&row).Error
 		if err == nil {
-			out = masterCardgroupToDomain(row)
-			return nil
+			out, err = masterCardgroupToDomain(row)
+			return err
 		}
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: lookup")
@@ -203,8 +203,8 @@ func (r *masterCardgroupRepo) EnsureByName(ctx context.Context, name string) (*d
 		if err := tx.Create(&row).Error; err != nil {
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: create")
 		}
-		out = masterCardgroupToDomain(row)
-		return nil
+		out, err = masterCardgroupToDomain(row)
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -302,7 +302,11 @@ func (r *masterCardgroupRepo) ListDefaultStarters(ctx context.Context) ([]*domai
 	}
 	out := make([]*domain.MasterCardgroup, len(rows))
 	for i := range rows {
-		out[i] = masterCardgroupToDomain(rows[i])
+		m, err := masterCardgroupToDomain(rows[i])
+		if err != nil {
+			return nil, err
+		}
+		out[i] = m
 	}
 	return out, nil
 }
@@ -321,7 +325,7 @@ func (r *masterCardgroupRepo) FindPublishedByID(ctx context.Context, id string) 
 		}
 		return nil, eris.Wrap(err, "repository: master cardgroup: find published by id")
 	}
-	return masterCardgroupToDomain(row), nil
+	return masterCardgroupToDomain(row)
 }
 
 // Publish transitions the master cardgroup to the published state, bumping its
@@ -361,7 +365,10 @@ func (r *masterCardgroupRepo) applyStatusTransition(
 			}
 			return eris.Wrap(err, "repository: master cardgroup: "+op+": load")
 		}
-		m := masterCardgroupToDomain(row)
+		m, err := masterCardgroupToDomain(row)
+		if err != nil {
+			return err
+		}
 		if err := transition(m); err != nil {
 			return eris.Wrap(err, "repository: master cardgroup: "+op+": apply")
 		}
@@ -378,7 +385,11 @@ func (r *masterCardgroupRepo) applyStatusTransition(
 	return out, nil
 }
 
-func masterCardgroupToDomain(g gormMasterCardgroup) *domain.MasterCardgroup {
+func masterCardgroupToDomain(g gormMasterCardgroup) (*domain.MasterCardgroup, error) {
+	status := domain.MasterCardgroupStatus(g.Status)
+	if !status.IsValid() {
+		return nil, eris.Errorf("repository: master cardgroup: invalid status %q", g.Status)
+	}
 	return &domain.MasterCardgroup{
 		ID:               g.ID,
 		Name:             domain.CardgroupName(g.Name),
@@ -389,12 +400,12 @@ func masterCardgroupToDomain(g gormMasterCardgroup) *domain.MasterCardgroup {
 		CoverImageURL:    g.CoverImageURL,
 		Source:           g.Source,
 		Version:          g.Version,
-		Status:           domain.MasterCardgroupStatus(g.Status),
+		Status:           status,
 		IsDefaultStarter: g.IsDefaultStarter,
 		SortOrder:        g.SortOrder,
 		CreatedAt:        g.CreatedAt,
 		UpdatedAt:        g.UpdatedAt,
-	}
+	}, nil
 }
 
 func masterCardgroupFromDomain(m *domain.MasterCardgroup) gormMasterCardgroup {

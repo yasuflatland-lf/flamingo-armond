@@ -227,8 +227,12 @@ func (r *masterCardgroupRepo) findCatalogPage(
 
 	out := make([]*MasterCatalogItem, len(rows))
 	for i := range rows {
+		cg, err := masterCardgroupToDomain(rows[i].toGorm())
+		if err != nil {
+			return nil, err
+		}
 		out[i] = &MasterCatalogItem{
-			Cardgroup: masterCardgroupToDomain(rows[i].toGorm()),
+			Cardgroup: cg,
 			CardCount: rows[i].CardCount,
 		}
 	}
