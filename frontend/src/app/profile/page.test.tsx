@@ -157,7 +157,10 @@ describe("ProfilePage — gqlFetch error branches", () => {
     await expect(ProfilePage()).rejects.toBe(otherErr);
 
     expect(redirect).not.toHaveBeenCalled();
-    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("[profile]"), otherErr);
+    // PII redaction: only the error name is logged, never the message/object.
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("[profile]"), {
+      name: "Error",
+    });
   });
 });
 

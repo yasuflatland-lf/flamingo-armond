@@ -119,11 +119,10 @@ describe("OnboardingPage — gqlFetch error branches", () => {
     await expect(OnboardingPage()).rejects.toBe(otherErr);
 
     expect(redirect).not.toHaveBeenCalled();
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[onboarding]"),
-      otherErr.name,
-      otherErr.message,
-    );
+    // PII redaction: only the error name is logged, never the message.
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("[onboarding]"), {
+      name: otherErr.name,
+    });
   });
 });
 
