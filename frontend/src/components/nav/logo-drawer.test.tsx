@@ -320,6 +320,18 @@ describe("<LogoDrawer>", () => {
     expect(target).toContain("new=true");
   });
 
+  it("S-M1: on /admin/masters the '+' (Add new master) opens the create sheet by writing ?new=true to the URL", async () => {
+    const user = userEvent.setup();
+    mockUsePathname.mockReturnValue("/admin/masters");
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={true} />);
+
+    await user.click(screen.getByRole("button", { name: /add new master/i }));
+
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    const target = mockPush.mock.calls[0]?.[0] as string;
+    expect(target).toContain("new=true");
+  });
+
   it("S-G1: on an unknown route (/profile) the '+' button is not rendered", () => {
     mockUsePathname.mockReturnValue("/profile");
     renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);

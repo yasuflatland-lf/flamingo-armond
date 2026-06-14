@@ -410,6 +410,7 @@ export function AdminMastersClient() {
         <Button
           type="button"
           variant="brand"
+          className="hidden md:inline-flex"
           data-testid="admin-masters-new-btn"
           onClick={() => sheet.open({ mode: "new" })}
         >

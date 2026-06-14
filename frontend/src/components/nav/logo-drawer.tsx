@@ -36,7 +36,8 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
   // The '+' affordance dispatches a cancelable event so an in-context drawer can
   // claim the action (LearnAddCardSheet / cardgroup / card sheets listen and call
   // preventDefault). When no listener is mounted the event is uncancelled and we
-  // fall back to the full-page route. The role action writes URL state directly.
+  // fall back to the full-page route. The role and master actions write URL
+  // state directly.
   function handleCreate() {
     if (!createAction) return;
     switch (createAction.kind) {
@@ -59,7 +60,11 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
         }
         return;
       }
-      case "role": {
+      // Both role and master have no separate-page target: they open the
+      // create sheet by writing ?new=true to the current path. The page's own
+      // useSheetSearchParam picks it up and renders its create FormSheet.
+      case "role":
+      case "master": {
         open({ mode: "new" });
         return;
       }
