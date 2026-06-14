@@ -211,7 +211,6 @@
   },
   "Profile": {
     "title": "Profile",
-    "readOnlySummary": "Read-only summary",
     "displayName": "Display name",
     "email": "Email",
     "bio": "Bio",

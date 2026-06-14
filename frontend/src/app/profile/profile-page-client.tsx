@@ -119,7 +119,6 @@ export function ProfilePageClient({ email, initial, displayMode }: Props) {
                 <Pencil className="h-4 w-4" />
               </Button>
             </div>
-            <p className="text-sm text-muted-foreground">{t("readOnlySummary")}</p>
           </div>
           <dl className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-1">

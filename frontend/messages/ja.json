@@ -211,7 +211,6 @@
   },
   "Profile": {
     "title": "プロフィール",
-    "readOnlySummary": "読み取り専用の概要",
     "displayName": "表示名",
     "email": "メールアドレス",
     "bio": "自己紹介",
