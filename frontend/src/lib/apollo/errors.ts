@@ -96,3 +96,53 @@ export function classifyQueryError(err: unknown): QueryErrorKind | null {
     message: getBackendErrorBanner(err) ?? "An unexpected error occurred. Please try again.",
   };
 }
+
+/**
+ * Auth-relevant classification of a mutation-level Apollo error.
+ *
+ * - `forbidden`:       FORBIDDEN code — caller lacks the required role.
+ * - `unauthenticated`: UNAUTHENTICATED code — session expired.
+ * - `other`:           Any other GraphQL error or a network/transport failure.
+ */
+export type MutationAuthErrorKind = "forbidden" | "unauthenticated" | "other";
+
+/**
+ * Classify a mutation-level Apollo error by its auth-relevant extensions.code.
+ * Returns the kind so callers can fold it into either a translated banner string
+ * (see `mutationAuthBanner`) or a discriminated state key, without re-implementing
+ * the FORBIDDEN / UNAUTHENTICATED detection per screen.
+ *
+ * Precedence mirrors `classifyQueryError`: the first auth error encountered in the
+ * `errors` array wins. Anything that is not a CombinedGraphQLErrors (network /
+ * transport failure, falsy value) classifies as `other`.
+ */
+export function classifyMutationAuthError(err: unknown): MutationAuthErrorKind {
+  if (CombinedGraphQLErrors.is(err)) {
+    for (const ge of err.errors) {
+      const code = extensionString(ge.extensions, "code");
+      if (code === "FORBIDDEN") return "forbidden";
+      if (code === "UNAUTHENTICATED") return "unauthenticated";
+    }
+  }
+  return "other";
+}
+
+/**
+ * Fold a mutation-level Apollo error into one of three caller-supplied banner
+ * strings. The caller passes already-translated copy so the i18n namespace stays
+ * at the call site; FORBIDDEN and UNAUTHENTICATED are detected via
+ * `classifyMutationAuthError`, and everything else falls through to `fallback`.
+ */
+export function mutationAuthBanner(
+  err: unknown,
+  copy: { forbidden: string; unauthenticated: string; fallback: string },
+): string {
+  switch (classifyMutationAuthError(err)) {
+    case "forbidden":
+      return copy.forbidden;
+    case "unauthenticated":
+      return copy.unauthenticated;
+    default:
+      return copy.fallback;
+  }
+}
