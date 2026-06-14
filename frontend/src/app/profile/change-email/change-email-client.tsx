@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -96,11 +97,7 @@ export function ChangeEmailClient({ currentEmail }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {error !== null ? (
-        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-          {error}
-        </div>
-      ) : null}
+      {error !== null ? <ErrorBanner>{error}</ErrorBanner> : null}
 
       <div className="space-y-2">
         <Label>{t("currentEmail")}</Label>

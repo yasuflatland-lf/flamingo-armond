@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { useUpdateProfile } from "@/app/profile/use-update-profile";
 import { Button } from "@/components/ui/button";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldError } from "@/lib/forms/field-error";
@@ -84,11 +85,7 @@ export function OnboardingForm() {
     >
       <h1 className="mb-6 text-2xl font-semibold">{t("welcome")}</h1>
 
-      {bannerMessage ? (
-        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-          {bannerMessage}
-        </div>
-      ) : null}
+      {bannerMessage ? <ErrorBanner>{bannerMessage}</ErrorBanner> : null}
 
       <form.Field
         name="displayName"

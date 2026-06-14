@@ -15,6 +15,7 @@ import { CardForm } from "@/components/cardgroups/card-form";
 import { CardgroupBatchImportForm } from "@/components/cardgroups/cardgroup-batch-import-form";
 import type { SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
 import { Button } from "@/components/ui/button";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import {
   CardsByCardgroupConnectionDocument,
@@ -34,29 +35,18 @@ type Connection = CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"];
 export type CardEdge = Connection["edges"][number];
 export type CardConnectionPageInfo = Connection["pageInfo"];
 
-const ErrorBanner = ({ testId, message }: { testId: string; message: string }) => (
-  <div
-    className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-    role="alert"
-    data-testid={testId}
-  >
-    {message}
-  </div>
-);
-
 const FetchMoreError = ({ message, onRetry }: { message: string; onRetry: () => void }) => {
   const tCommon = useTranslations("Common");
   return (
-    <div
-      className="mt-3 flex flex-col items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-      role="alert"
+    <ErrorBanner
+      className="mt-3 flex flex-col items-center gap-2"
       data-testid="cards-fetch-more-error"
     >
       <span>{message}</span>
       <Button type="button" variant="outline" size="sm" onClick={onRetry}>
         {tCommon("retry")}
       </Button>
-    </div>
+    </ErrorBanner>
   );
 };
 
@@ -496,10 +486,14 @@ export function CardsClient({
 
   return (
     <div className="space-y-3">
-      {queryBannerError && <ErrorBanner testId="cards-query-error" message={queryBannerError} />}
-      {deleteCommitError && <ErrorBanner testId="cards-delete-error" message={deleteCommitError} />}
+      {queryBannerError && (
+        <ErrorBanner data-testid="cards-query-error">{queryBannerError}</ErrorBanner>
+      )}
+      {deleteCommitError && (
+        <ErrorBanner data-testid="cards-delete-error">{deleteCommitError}</ErrorBanner>
+      )}
       {bulkDeleteBannerError && (
-        <ErrorBanner testId="cards-bulk-delete-error" message={bulkDeleteBannerError} />
+        <ErrorBanner data-testid="cards-bulk-delete-error">{bulkDeleteBannerError}</ErrorBanner>
       )}
 
       <section>

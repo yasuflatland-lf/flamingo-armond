@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -121,11 +122,7 @@ export function ProfileForm({
       }}
       className="space-y-4"
     >
-      {bannerMessage ? (
-        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-          {bannerMessage}
-        </div>
-      ) : null}
+      {bannerMessage ? <ErrorBanner>{bannerMessage}</ErrorBanner> : null}
 
       <div className="mb-4 space-y-2">
         <Label>{t("email")}</Label>

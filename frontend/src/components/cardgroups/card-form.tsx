@@ -6,6 +6,7 @@ import { useForm } from "@tanstack/react-form";
 import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
@@ -77,11 +78,7 @@ export function CardForm({
       }}
       className="space-y-3"
     >
-      {bannerError ? (
-        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-          {bannerError}
-        </div>
-      ) : null}
+      {bannerError ? <ErrorBanner>{bannerError}</ErrorBanner> : null}
 
       <form.Field name="front" validators={{ onChange: frontSchema, onBlur: frontSchema }}>
         {(field) => {

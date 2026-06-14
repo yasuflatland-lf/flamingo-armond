@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo } from "react";
 import { toast } from "sonner";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { useFragment } from "@/generated/fragment-masking";
 import type {
   AdminUsersQuery as AdminUsersQueryResult,
@@ -252,13 +253,9 @@ export function AdminUsersClient() {
 
       {/* FORBIDDEN error banner — no Retry since re-issuing the query would fail again */}
       {queryErrorKind?.kind === "forbidden" && (
-        <div
-          className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-          data-testid="admin-users-query-error"
-        >
+        <ErrorBanner className="mb-4" data-testid="admin-users-query-error">
           {t("viewForbidden")}
-        </div>
+        </ErrorBanner>
       )}
 
       {/*
@@ -270,40 +267,28 @@ export function AdminUsersClient() {
         .claude/rules/frontend-rsc-error-handling.md.
       */}
       {queryErrorKind?.kind === "unauthenticated" && (
-        <div
-          className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-          data-testid="admin-users-query-error"
-        >
+        <ErrorBanner className="mb-4" data-testid="admin-users-query-error">
           <span>{t("sessionExpired")}</span>{" "}
           <Link href="/login" className="underline">
             {t("pleaseSignInAgain")}
           </Link>
-        </div>
+        </ErrorBanner>
       )}
 
       {/* Generic query error banner with Retry */}
       {queryBannerError && (
-        <div
-          className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-          data-testid="admin-users-query-error"
-        >
+        <ErrorBanner className="mb-4" data-testid="admin-users-query-error">
           <span>{queryBannerError}</span>
           <button type="button" className="ml-3 underline" onClick={() => refetch()}>
             {tCommon("retry")}
           </button>
-        </div>
+        </ErrorBanner>
       )}
 
       {rolesBannerError && (
-        <div
-          className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-          data-testid="admin-users-roles-error"
-        >
+        <ErrorBanner className="mb-4" data-testid="admin-users-roles-error">
           {rolesBannerError}
-        </div>
+        </ErrorBanner>
       )}
 
       {/* Empty state */}
@@ -331,9 +316,8 @@ export function AdminUsersClient() {
 
       {/* fetchMore error banner with Retry */}
       {fetchMoreError && (
-        <div
-          className="mt-3 flex flex-col items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
+        <ErrorBanner
+          className="mt-3 flex flex-col items-center gap-2"
           data-testid="admin-users-fetch-more-error"
         >
           <span>{fetchMoreError}</span>
@@ -344,7 +328,7 @@ export function AdminUsersClient() {
           >
             {tCommon("retry")}
           </button>
-        </div>
+        </ErrorBanner>
       )}
 
       {/* Loading more indicator */}

@@ -4,6 +4,7 @@ import { useMutation } from "@apollo/client/react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { UpdateLearnDisplayModeMutation } from "@/app/learn/queries";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import type { LearnDisplayMode } from "@/generated/graphql";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { cn } from "@/lib/utils";
@@ -83,15 +84,7 @@ export function DisplayModeSection({ initialMode }: { initialMode: LearnDisplayM
           );
         })}
       </div>
-      {saveError ? (
-        <p
-          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-          data-testid="display-mode-error"
-        >
-          {saveError}
-        </p>
-      ) : null}
+      {saveError ? <ErrorBanner data-testid="display-mode-error">{saveError}</ErrorBanner> : null}
     </fieldset>
   );
 }

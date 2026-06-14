@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { buttonVariants } from "@/components/ui/button";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
 import { sanitizeReturnTo } from "@/lib/sanitize-return-to";
 
@@ -100,11 +101,7 @@ function DuplicateOverwriteDialog({
           </div>
         </div>
 
-        {error ? (
-          <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-            {error}
-          </div>
-        ) : null}
+        {error ? <ErrorBanner>{error}</ErrorBanner> : null}
 
         <AlertDialogFooter>
           <AlertDialogCancel disabled={loading}>{tCommon("cancel")}</AlertDialogCancel>

@@ -8,6 +8,7 @@ import { useState } from "react";
 import { ImportCardsMutation, ValidateCardImportQuery } from "@/app/cardgroups/[id]/cards/queries";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { Textarea } from "@/components/ui/textarea";
 import { type CardImportErrorKind, CardsByCardgroupConnectionDocument } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
@@ -377,11 +378,7 @@ export function CardgroupBatchImportForm(props: {
     <div className="space-y-6">
       <ImportStepper current={step} importing={importing} onBack={goBackToStep1} />
 
-      {bannerError && (
-        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-          {bannerError}
-        </div>
-      )}
+      {bannerError && <ErrorBanner>{bannerError}</ErrorBanner>}
 
       {step === 1 ? (
         <div className="space-y-4">
@@ -445,9 +442,7 @@ export function CardgroupBatchImportForm(props: {
             <section className="space-y-4">
               <div role="status">
                 {importAllFailed ? (
-                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                    {t("importFailed", { count: importErrorCount })}
-                  </div>
+                  <ErrorBanner>{t("importFailed", { count: importErrorCount })}</ErrorBanner>
                 ) : (
                   <div className="rounded-md bg-green-50 p-3 text-sm text-green-800">
                     {t("importComplete", {

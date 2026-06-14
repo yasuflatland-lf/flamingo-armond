@@ -7,6 +7,7 @@ import { useCallback, useState } from "react";
 import { CatalogCard } from "@/app/catalog/catalog-card";
 import type { CatalogCardFieldsFragment } from "@/app/catalog/queries";
 import { useImportMaster } from "@/app/catalog/use-import-master";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import type { FragmentType } from "@/generated/fragment-masking";
 
 // `id` is read at this level (React keys, per-deck `importing` state); the rest
@@ -74,26 +75,16 @@ export function OnboardingStartClient({ decks }: OnboardingStartClientProps) {
       <h1 className="text-2xl font-semibold">{t("heading")}</h1>
 
       {importAuthError ? (
-        <div
-          role="alert"
-          data-testid="onboarding-import-auth-error"
-          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-        >
+        <ErrorBanner data-testid="onboarding-import-auth-error">
           <span>{t("sessionExpired")}</span>
           <Link href="/login" className="underline">
             {t("signInAgain")}
           </Link>
-        </div>
+        </ErrorBanner>
       ) : null}
 
       {importError ? (
-        <div
-          role="alert"
-          data-testid="onboarding-import-error"
-          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-        >
-          {importError}
-        </div>
+        <ErrorBanner data-testid="onboarding-import-error">{importError}</ErrorBanner>
       ) : null}
 
       <section className="space-y-3" aria-labelledby="onboarding-catalog-title">

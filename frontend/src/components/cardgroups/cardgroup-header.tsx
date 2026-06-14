@@ -26,6 +26,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet } from "@/components/ui/form-sheet";
 import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
@@ -170,11 +171,7 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
               {t("deleteCardgroupDesc", { name: cardgroup.name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {deleteBannerError && (
-            <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-              {deleteBannerError}
-            </div>
-          )}
+          {deleteBannerError && <ErrorBanner>{deleteBannerError}</ErrorBanner>}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>{tCommon("cancel")}</AlertDialogCancel>
             <AlertDialogAction

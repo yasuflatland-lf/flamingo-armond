@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { useCreateCardgroup } from "@/app/cardgroups/use-create-cardgroup";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
+import { ErrorBanner } from "@/components/ui/error-banner";
 
 interface NewCardgroupClientProps {
   showWelcome?: boolean;
@@ -106,47 +107,31 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
       )}
 
       {authError ? (
-        <div
-          role="alert"
-          data-testid="cardgroup-new-auth-error"
-          className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-        >
+        <ErrorBanner className="mb-4" data-testid="cardgroup-new-auth-error">
           <span>{authError === "unauthenticated" ? t("sessionExpired") : t("noPermission")}</span>
           <Link href="/login" className="underline">
             {t("signInAgain")}
           </Link>
           .
-        </div>
+        </ErrorBanner>
       ) : null}
 
       {validationError ? (
-        <div
-          role="alert"
-          data-testid="cardgroup-new-validation-error"
-          className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-        >
+        <ErrorBanner className="mb-4" data-testid="cardgroup-new-validation-error">
           {validationError.message}
-        </div>
+        </ErrorBanner>
       ) : null}
 
       {limitError ? (
-        <div
-          role="alert"
-          data-testid="cardgroup-new-limit-error"
-          className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-        >
+        <ErrorBanner className="mb-4" data-testid="cardgroup-new-limit-error">
           {limitError}
-        </div>
+        </ErrorBanner>
       ) : null}
 
       {unexpectedPayloadError ? (
-        <div
-          role="alert"
-          data-testid="cardgroup-new-unexpected-payload-error"
-          className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-        >
+        <ErrorBanner className="mb-4" data-testid="cardgroup-new-unexpected-payload-error">
           {unexpectedPayloadError}
-        </div>
+        </ErrorBanner>
       ) : null}
 
       <CardgroupForm

@@ -15,6 +15,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { DeleteMyAccountMutation } from "./mutations";
@@ -130,13 +131,7 @@ export function DeleteAccountSection() {
           </div>
 
           {deleteError && (
-            <div
-              className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-              role="alert"
-              data-testid="delete-account-error"
-            >
-              {deleteError}
-            </div>
+            <ErrorBanner data-testid="delete-account-error">{deleteError}</ErrorBanner>
           )}
 
           <AlertDialogFooter>
