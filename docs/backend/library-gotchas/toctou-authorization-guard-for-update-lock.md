@@ -27,7 +27,7 @@ Precedent in this repo: `backend/internal/repository/card.go` — `FindByIDTx` a
 
 ## Returning a business outcome from a guard that runs before any write
 
-The guard sits at the front of the transaction. When it decides the edit must **not** proceed (self-demotion, or an unknown role id), it wants to return a *non-error* business outcome to the caller (a `CannotRevokeOwnAdmin` or a `Validation` field on the outcome struct) without performing any write. Because the guard runs **before** any `UpdateTxVersioned` or `SetUserRolesTx` call, returning `nil` from the closure commits an empty transaction — there is nothing to roll back.
+When the caller is editing their own row (`callerID == id`), the guard sits at the front of the transaction. When it decides the edit must **not** proceed (self-demotion, or an unknown role id), it wants to return a *non-error* business outcome to the caller (a `CannotRevokeOwnAdmin` or a `Validation` field on the outcome struct) without performing any write. Because the guard runs **before** any `UpdateTxVersioned` or `SetUserRolesTx` call, returning `nil` from the closure commits an empty transaction — there is nothing to roll back.
 
 The pattern captures the guard result in a variable declared outside the closure:
 

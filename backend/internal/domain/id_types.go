@@ -15,12 +15,13 @@ package domain
 // methods. It also types the authorization-path helper signatures
 // (authorizeCardgroupOrBadInput / authorizeCardgroupOrUnauthenticated, whose
 // adjacent cardgroup-id and user-id parameters are the transposition-risk site)
-// and the HandleSwipeInput.CardgroupID field. The CardgroupOwnershipFinder and
-// repository FindByID interfaces, and non-authz usecase input fields (e.g.
-// CreateCardInput / CardConnectionInput / ImportCardsInput CardgroupID), stay
-// raw string by design: typing them would fan out through every FindByID caller
-// and the master mappers with no authz payoff. The cast is applied at that
-// boundary instead (FindByID(ctx, string(id)); domain.CardgroupID(in.CardgroupID)).
+// and the HandleSwipeInput.CardgroupID field. The CardgroupOwnershipFinder
+// usecase-narrow interface and the underlying repository.CardgroupRepository.FindByID
+// method, and non-authz usecase input fields (e.g. CreateCardInput /
+// CardConnectionInput / ImportCardsInput CardgroupID), stay raw string by
+// design: typing them would fan out through every FindByID caller and the
+// master mappers with no authz payoff. The cast is applied at that boundary
+// instead (FindByID(ctx, string(id)); domain.CardgroupID(in.CardgroupID)).
 //
 // Only UserID and CardgroupID are typed (the authorization-confusable pair).
 // CardID, RoleID, and master-aggregate IDs stay raw string by design — they are
