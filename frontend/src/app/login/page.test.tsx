@@ -33,10 +33,14 @@ vi.mock("next-intl/server", () => ({
   getTranslations: vi.fn(async (namespace: "Login") =>
     createTranslator({ locale: "en", messages: enMessages, namespace }),
   ),
+  // Default to "en" so the existing Latin-tracking assertions hold; the ja test
+  // overrides this once to exercise the locale-aware typography branch.
+  getLocale: vi.fn(async () => "en"),
 }));
 
 import { headers } from "next/headers";
 import { createTranslator } from "next-intl";
+import { getLocale } from "next-intl/server";
 import enMessages from "../../../messages/en.json";
 import LoginPage from "./page";
 
@@ -206,5 +210,27 @@ describe("LoginPage", () => {
     render(jsx);
 
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  // Apple's Japanese typography uses locale-specific letter-spacing: Latin display
+  // text takes negative tracking, Japanese does not (it cramps kana). These pin
+  // that the heading switches treatment with the active locale.
+  describe("locale-aware typography (apple.com/jp)", () => {
+    it("en (default): heading carries tight Latin negative tracking", async () => {
+      const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
+      const { container } = render(jsx);
+
+      expect(container.querySelector("h1")?.className).toMatch(/tracking-\[-0\.018em\]/);
+    });
+
+    it("ja: heading drops Latin negative tracking so kana is not cramped", async () => {
+      vi.mocked(getLocale).mockResolvedValueOnce("ja");
+      const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
+      const { container } = render(jsx);
+
+      const h1 = container.querySelector("h1");
+      expect(h1?.className).not.toMatch(/tracking-\[-/);
+      expect(h1?.className).toMatch(/tracking-\[0\.01em\]/);
+    });
   });
 });

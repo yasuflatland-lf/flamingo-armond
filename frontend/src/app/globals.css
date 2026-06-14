@@ -171,4 +171,18 @@
       "calt" 1;
     text-rendering: optimizeLegibility;
   }
+  /* Japanese: enable proportional-width metrics (palt) so kana and full-width
+     punctuation (、。「」etc.) tighten the way apple.com/jp's Japanese
+     typography does — the single biggest "kerning" win for Japanese text.
+     Gated on the document language (<html lang>), so Latin runs stay untouched
+     (Inter exposes no palt table) and non-ja locales keep the body set above.
+     font-feature-settings is not additive, so the Latin features are
+     re-declared alongside palt. */
+  :lang(ja) {
+    font-feature-settings:
+      "kern" 1,
+      "liga" 1,
+      "calt" 1,
+      "palt" 1;
+  }
 }
