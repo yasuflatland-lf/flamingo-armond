@@ -41,6 +41,7 @@ describe("<ConditionalShell>", () => {
     it.each([
       "/login",
       "/onboarding",
+      "/onboarding/start",
       "/terms",
       "/privacy",
     ])("renders children directly without the navigation shell on %s", (pathname) => {
@@ -59,11 +60,13 @@ describe("<ConditionalShell>", () => {
     it.each([
       "/login",
       "/onboarding",
+      "/onboarding/start",
     ])("keeps the shell hidden on %s even for an authenticated identity", (pathname) => {
       // A soft navigation can reach a bare route while the layout-computed
       // identity is still authenticated; the shell must stay hidden regardless
-      // of identity. /onboarding in particular is reached WHILE authenticated
-      // (it is the display-name gate), so the authenticated case matters there.
+      // of identity. /onboarding and /onboarding/start are both reached WHILE
+      // authenticated (the display-name gate and the first-deck chooser), so the
+      // authenticated case matters there.
       mockUsePathname.mockReturnValue(pathname);
       render(
         <ConditionalShell user={{ email: "a@b.c" }} isAdmin={true}>

@@ -1,0 +1,149 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { useCallback, useState } from "react";
+import { CatalogCard } from "@/app/catalog/catalog-card";
+import { useImportMaster } from "@/app/catalog/use-import-master";
+import type { OnboardingStartQuery } from "@/generated/graphql";
+
+type MasterDeckNode = OnboardingStartQuery["masterCatalog"]["edges"][number]["node"];
+
+interface OnboardingStartClientProps {
+  decks: MasterDeckNode[];
+}
+
+/**
+ * Onboarding chooser for a deckless, just-onboarded user. Presents two
+ * first-class paths: import a ready-made master deck (primary) or create an
+ * empty cardgroup (secondary). Single selection — each card's button imports
+ * that deck via `useImportMaster` and, on success, navigates straight to
+ * `/learn/{id}`. Imports are serialized to one at a time via `importingId`.
+ */
+export function OnboardingStartClient({ decks }: OnboardingStartClientProps) {
+  const t = useTranslations("OnboardingStart");
+  const router = useRouter();
+  const { importMasterCardgroup } = useImportMaster();
+
+  const [importingId, setImportingId] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importAuthError, setImportAuthError] = useState<"unauthenticated" | "forbidden" | null>(
+    null,
+  );
+
+  const handleStart = useCallback(
+    async (id: string) => {
+      // Serialize: ignore a second click while another import is in flight.
+      if (importingId !== null) return;
+      setImportError(null);
+      setImportAuthError(null);
+      setImportingId(id);
+
+      const outcome = await importMasterCardgroup(id);
+
+      switch (outcome.status) {
+        case "success":
+          // Leave importingId set so the buttons stay disabled through the
+          // navigation that unmounts this component.
+          router.push(`/learn/${outcome.cardgroupId}`);
+          return;
+        case "not_found":
+          setImportError(t("importNotFound"));
+          setImportingId(null);
+          return;
+        case "auth":
+          setImportAuthError(outcome.kind);
+          setImportingId(null);
+          return;
+        case "rejected":
+          setImportError(t("importError"));
+          setImportingId(null);
+          return;
+      }
+    },
+    [importingId, importMasterCardgroup, router, t],
+  );
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-8">
+      <h1 className="text-2xl font-semibold">{t("heading")}</h1>
+
+      {importAuthError ? (
+        <div
+          role="alert"
+          data-testid="onboarding-import-auth-error"
+          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          <span>{t("sessionExpired")}</span>
+          <Link href="/login" className="underline">
+            {t("signInAgain")}
+          </Link>
+        </div>
+      ) : null}
+
+      {importError ? (
+        <div
+          role="alert"
+          data-testid="onboarding-import-error"
+          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          {importError}
+        </div>
+      ) : null}
+
+      <section className="space-y-3" aria-labelledby="onboarding-catalog-title">
+        <h2 id="onboarding-catalog-title" className="text-lg font-medium">
+          {t("catalogTitle")}
+        </h2>
+        <p className="text-sm text-muted-foreground">{t("catalogDescription")}</p>
+        <ul
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          data-testid="onboarding-deck-list"
+        >
+          {decks.map((node) => (
+            <CatalogCard
+              key={node.id}
+              node={node}
+              importing={importingId === node.id}
+              imported={false}
+              onImport={handleStart}
+              labels={{
+                action: t("startWithDeck"),
+                inProgress: t("starting"),
+                done: t("imported"),
+              }}
+              testIdPrefix="onboarding-deck"
+            />
+          ))}
+        </ul>
+      </section>
+
+      <div
+        className="flex items-center gap-3 text-xs uppercase text-muted-foreground"
+        aria-hidden="true"
+      >
+        <span className="h-px flex-1 bg-border" />
+        {t("or")}
+        <span className="h-px flex-1 bg-border" />
+      </div>
+
+      <section
+        className="space-y-3 rounded-lg border border-border p-4"
+        aria-labelledby="onboarding-create-title"
+      >
+        <h2 id="onboarding-create-title" className="text-lg font-medium">
+          {t("createTitle")}
+        </h2>
+        <p className="text-sm text-muted-foreground">{t("createDescription")}</p>
+        <Link
+          href="/cardgroups/new?welcome=1"
+          className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+          data-testid="onboarding-create-link"
+        >
+          {t("createCta")}
+        </Link>
+      </section>
+    </div>
+  );
+}

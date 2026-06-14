@@ -7,10 +7,12 @@ import { AppleInstallHint } from "./pwa/apple-install-hint";
 
 /**
  * Routes that own the entire viewport and must render without the navigation
- * shell. /login is the sign-in screen, /onboarding the display-name gate, and
- * /terms + /privacy the public legal pages (each renders its own `<main>`).
+ * shell. /login is the sign-in screen, /onboarding the display-name gate,
+ * /onboarding/start the first-deck chooser (a deckless user's rail would point
+ * at empty destinations), and /terms + /privacy the public legal pages (each
+ * renders its own `<main>`).
  */
-const BARE_ROUTES = new Set(["/login", "/onboarding", "/terms", "/privacy"]);
+const BARE_ROUTES = new Set(["/login", "/onboarding", "/onboarding/start", "/terms", "/privacy"]);
 
 interface ConditionalShellProps {
   /** Shell display identity, or null for the anonymous shell. */

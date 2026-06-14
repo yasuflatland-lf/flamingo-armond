@@ -3,7 +3,11 @@ import { expect, test } from "@playwright/test";
 import { loginAs, seedUser } from "./_auth";
 
 // Scenario: a user whose displayName is empty is redirected from / to /onboarding,
-// fills in a display name, submits, and lands on /cardgroups/new?welcome=1.
+// fills in a display name, and submits. OnboardingForm pushes /onboarding/start
+// (the first-deck chooser); because the e2e DB seeds no master decks, that route
+// hits its empty-catalog fallback and redirects to /cardgroups/new?welcome=1,
+// which is the URL this test waits for. Seeding a master deck would make the
+// chooser render and stay on /onboarding/start instead.
 
 const runId = randomUUID().slice(0, 8);
 const onboarder = {
@@ -24,7 +28,7 @@ test.describe
       });
     });
 
-    test("home redirects to /onboarding, form accepts display name, then lands on /cardgroups/new?welcome=1", async ({
+    test("home redirects to /onboarding, form accepts display name, then lands on /cardgroups/new?welcome=1 via the /onboarding/start chooser fallback", async ({
       context,
       page,
     }) => {
@@ -44,7 +48,9 @@ test.describe
       await displayNameInput.fill("E2E Onboarder");
       await page.getByTestId("onboarding-submit").click();
 
-      // 4. On success, the form's onCompleted callback pushes /cardgroups/new?welcome=1.
+      // 4. On success, the form pushes /onboarding/start (the first-deck chooser).
+      //    With no master decks seeded, /onboarding/start hits its empty-catalog
+      //    fallback and redirects to /cardgroups/new?welcome=1 — the URL we wait for.
       await page.waitForURL("**/cardgroups/new?welcome=1", { timeout: 15_000 });
     });
   });

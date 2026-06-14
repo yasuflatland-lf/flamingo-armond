@@ -16,6 +16,13 @@ export type CatalogCardProps = {
   /** True once this deck has been imported in the current session. */
   imported: boolean;
   onImport: (id: string) => void;
+  /**
+   * Optional button label overrides. Defaults reproduce the `/catalog` copy
+   * (`Catalog` namespace) so existing call sites are unaffected.
+   */
+  labels?: { action: string; inProgress: string; done: string };
+  /** Optional `data-testid` prefix. Defaults to `"catalog-import"`. */
+  testIdPrefix?: string;
 };
 
 /**
@@ -24,8 +31,20 @@ export type CatalogCardProps = {
  * which runs in the ja-JP locale — can target it without depending on
  * translated copy. See project memory "E2E runs in Japanese locale".
  */
-export function CatalogCard({ node, importing, imported, onImport }: CatalogCardProps) {
+export function CatalogCard({
+  node,
+  importing,
+  imported,
+  onImport,
+  labels,
+  testIdPrefix,
+}: CatalogCardProps) {
   const t = useTranslations("Catalog");
+
+  const actionLabel = labels?.action ?? t("import");
+  const inProgressLabel = labels?.inProgress ?? t("importing");
+  const doneLabel = labels?.done ?? t("imported");
+  const idPrefix = testIdPrefix ?? "catalog-import";
 
   return (
     <li className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
@@ -54,17 +73,17 @@ export function CatalogCard({ node, importing, imported, onImport }: CatalogCard
           size="sm"
           onClick={() => onImport(node.id)}
           disabled={importing || imported}
-          data-testid={`catalog-import-${node.id}`}
+          data-testid={`${idPrefix}-${node.id}`}
         >
           {imported ? (
             <>
               <Check aria-hidden="true" className="h-4 w-4" />
-              <span>{t("imported")}</span>
+              <span>{doneLabel}</span>
             </>
           ) : (
             <>
               <Download aria-hidden="true" className="h-4 w-4" />
-              <span>{importing ? t("importing") : t("import")}</span>
+              <span>{importing ? inProgressLabel : actionLabel}</span>
             </>
           )}
         </Button>

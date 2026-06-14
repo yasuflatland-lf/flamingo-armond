@@ -256,6 +256,22 @@
     "continue": "Continue",
     "sessionExpired": "Your session expired. Please sign in again."
   },
+  "OnboardingStart": {
+    "heading": "Pick your first deck",
+    "catalogTitle": "Start with a ready-made deck",
+    "catalogDescription": "Choose a deck from our catalog and begin learning right away.",
+    "createTitle": "Create your own from scratch",
+    "createDescription": "Prefer to build your own? Start with an empty deck.",
+    "createCta": "Create a deck",
+    "or": "or",
+    "startWithDeck": "Start with this deck",
+    "starting": "Starting...",
+    "imported": "Added",
+    "importError": "Could not start with that deck. Please try again.",
+    "importNotFound": "This deck is no longer available.",
+    "sessionExpired": "Your session has expired. ",
+    "signInAgain": "Sign in again"
+  },
   "AdminMasters": {
     "title": "Masters",
     "description": "Manage master decks shown in the public catalog.",

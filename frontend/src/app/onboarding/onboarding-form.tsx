@@ -89,7 +89,7 @@ export function OnboardingForm() {
       }
 
       if (payload?.__typename === "UpdateProfileSuccess") {
-        router.push("/cardgroups/new?welcome=1");
+        router.push("/onboarding/start");
         return;
       }
 
