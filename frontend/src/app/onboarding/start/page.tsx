@@ -26,6 +26,9 @@ export default async function OnboardingStartPage() {
     data = await gqlFetch(OnboardingStartQuery, { revalidate: 0 });
   } catch (err) {
     if (isUnauthenticatedGraphQLError(err)) redirect("/login");
+    // err.message is omitted deliberately — gqlFetch error messages can carry
+    // backend-echoed content; err.name is sufficient for triage. Same posture as
+    // catalog/page.tsx. See docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
     console.error(
       "[onboarding-start] gqlFetch failed:",
       err instanceof Error ? err.name : "unknown",

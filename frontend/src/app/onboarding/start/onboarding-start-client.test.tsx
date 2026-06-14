@@ -130,6 +130,18 @@ describe("<OnboardingStartClient>", () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
+  it("shows the auth banner with a sign-in link on a forbidden outcome", async () => {
+    const user = userEvent.setup();
+    mockImport.mockResolvedValueOnce({ status: "auth", kind: "forbidden" });
+
+    renderWithIntl(<OnboardingStartClient decks={DECKS} />);
+    await user.click(screen.getByTestId("onboarding-deck-m-1"));
+
+    const banner = await screen.findByTestId("onboarding-import-auth-error");
+    expect(banner.querySelector("a")).toHaveAttribute("href", "/login");
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
   it("serializes imports — a second click while one is in flight is ignored", async () => {
     const user = userEvent.setup();
     let resolve: ((o: ImportMasterOutcome) => void) | undefined;
