@@ -280,7 +280,7 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
         >
           {edges.map((edge) => (
             <CatalogCard
-              key={edge.node.id}
+              key={edge.cursor}
               node={edge.node}
               importing={importingId === edge.node.id}
               imported={importedIds.has(edge.node.id)}

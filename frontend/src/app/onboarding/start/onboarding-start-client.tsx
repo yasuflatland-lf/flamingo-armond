@@ -5,10 +5,14 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 import { CatalogCard } from "@/app/catalog/catalog-card";
+import type { CatalogCardFieldsFragment } from "@/app/catalog/queries";
 import { useImportMaster } from "@/app/catalog/use-import-master";
-import type { OnboardingStartQuery } from "@/generated/graphql";
+import type { FragmentType } from "@/generated/fragment-masking";
 
-type MasterDeckNode = OnboardingStartQuery["masterCatalog"]["edges"][number]["node"];
+// `id` is read at this level (React keys, per-deck `importing` state); the rest
+// of the card's fields travel as a masked `CatalogCardFields` ref that
+// `CatalogCard` unmasks — the same fragment the /catalog gallery feeds it.
+type MasterDeckNode = { id: string } & FragmentType<typeof CatalogCardFieldsFragment>;
 
 interface OnboardingStartClientProps {
   decks: MasterDeckNode[];

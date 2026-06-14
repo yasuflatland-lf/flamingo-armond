@@ -2,30 +2,41 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { CatalogCardFieldsFragment } from "@/app/catalog/queries";
+import { makeFragmentData } from "@/generated/fragment-masking";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { CatalogCard } from "./catalog-card";
 
-const FULL_NODE = {
-  __typename: "MasterCardgroup" as const,
-  id: "m-1",
-  name: "Business English",
-  description: "Professional vocabulary",
-  language: "en",
-  level: "B2",
-  category: "Business",
-  cardCount: 42,
-};
+// `makeFragmentData` is identity at runtime, so the wrapped object still carries
+// every field the component reads via `useFragment`; the wrap only supplies the
+// masked `FragmentType` the `node` prop now expects.
+const FULL_NODE = makeFragmentData(
+  {
+    __typename: "MasterCardgroup" as const,
+    id: "m-1",
+    name: "Business English",
+    description: "Professional vocabulary",
+    language: "en",
+    level: "B2",
+    category: "Business",
+    cardCount: 42,
+  },
+  CatalogCardFieldsFragment,
+);
 
-const BARE_NODE = {
-  __typename: "MasterCardgroup" as const,
-  id: "m-2",
-  name: "JLPT N3 Kanji",
-  description: null,
-  language: null,
-  level: null,
-  category: null,
-  cardCount: 100,
-};
+const BARE_NODE = makeFragmentData(
+  {
+    __typename: "MasterCardgroup" as const,
+    id: "m-2",
+    name: "JLPT N3 Kanji",
+    description: null,
+    language: null,
+    level: null,
+    category: null,
+    cardCount: 100,
+  },
+  CatalogCardFieldsFragment,
+);
 
 describe("<CatalogCard>", () => {
   it("renders name, card count, and metadata badges when present", () => {
