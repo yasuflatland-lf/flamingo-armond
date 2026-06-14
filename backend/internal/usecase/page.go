@@ -1,5 +1,38 @@
 package usecase
 
+import "backend/internal/usecase/ucerr"
+
+// resolveStandardPageSize clamps first/last to [0, maxPageSize] and rejects
+// passing both. Defaults first=defaultPageSize (20) when neither is provided,
+// matching the schema's documented default. maxPageSize/defaultPageSize are the
+// package-wide page-size caps (declared in card.go) shared by the card,
+// cardgroup, and master-catalog connection resolvers; the repository-level cap
+// (repository.PageCap = maxPageSize + 1) is one greater so the "+1 fetch" trick
+// survives a maximum-sized request. The admin connections deliberately do NOT
+// use this resolver (resolveAdminPageSize defaults to maxPageSize and rejects
+// rather than clamps out-of-range values).
+func resolveStandardPageSize(first, last *int) (int, int, error) {
+	if first != nil && last != nil {
+		return 0, 0, ucerr.NewValidationError("first", "specify either first or last, not both")
+	}
+	if first == nil && last == nil {
+		return defaultPageSize, 0, nil
+	}
+	clamp := func(v int) int {
+		if v < 0 {
+			return 0
+		}
+		if v > maxPageSize {
+			return maxPageSize
+		}
+		return v
+	}
+	if first != nil {
+		return clamp(*first), 0, nil
+	}
+	return 0, clamp(*last), nil
+}
+
 // TrimAndDetect trims one trailing item from items when len(items) > want and
 // returns (trimmed, true) so the caller can set hasNextPage / hasPreviousPage.
 // Used after the repository's "+1 fetch" trick for forward pagination: ask for

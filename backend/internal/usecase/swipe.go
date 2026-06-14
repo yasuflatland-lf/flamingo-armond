@@ -130,8 +130,8 @@ func NewSwipeUsecaseWithTx(
 
 func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (HandleSwipeOutcome, error) {
 	user := auth.UserFrom(ctx)
-	if user == nil {
-		return HandleSwipeOutcome{}, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(user); err != nil {
+		return HandleSwipeOutcome{}, err
 	}
 	rating, err := domain.RatingFromSwipeMode(in.Mode)
 	if err != nil {

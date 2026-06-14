@@ -221,8 +221,8 @@ const (
 
 func (u *cardUsecase) Card(ctx context.Context, id string) (*domain.Card, error) {
 	user := auth.UserFrom(ctx)
-	if user == nil {
-		return nil, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(user); err != nil {
+		return nil, err
 	}
 	card, err := u.cardRepo.FindByID(ctx, id)
 	if err != nil {
@@ -244,8 +244,8 @@ func (u *cardUsecase) Card(ctx context.Context, id string) (*domain.Card, error)
 // gqlerr.FromUsecaseError into the wire-format GraphQL error.
 func (u *cardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCardOutcome, error) {
 	user := auth.UserFrom(ctx)
-	if user == nil {
-		return CreateCardOutcome{}, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(user); err != nil {
+		return CreateCardOutcome{}, err
 	}
 	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, domain.CardgroupID(in.CardgroupID), domain.UserID(user.Sub)); err != nil {
 		return CreateCardOutcome{}, err
@@ -278,8 +278,8 @@ func (u *cardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 
 func (u *cardUsecase) Update(ctx context.Context, id string, in UpdateCardInput) (UpdateCardOutcome, error) {
 	user := auth.UserFrom(ctx)
-	if user == nil {
-		return UpdateCardOutcome{}, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(user); err != nil {
+		return UpdateCardOutcome{}, err
 	}
 	existing, err := u.cardRepo.FindByID(ctx, id)
 	if err != nil {
@@ -341,8 +341,8 @@ func (u *cardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 
 func (u *cardUsecase) Delete(ctx context.Context, id string) error {
 	user := auth.UserFrom(ctx)
-	if user == nil {
-		return ucerr.ErrUnauthenticated
+	if err := requireCallerSub(user); err != nil {
+		return err
 	}
 	card, err := u.cardRepo.FindByID(ctx, id)
 	if err != nil {
@@ -366,14 +366,14 @@ func (u *cardUsecase) ListCardsByCardgroupConnection(
 	ctx context.Context, in CardConnectionInput,
 ) (*CardConnectionOutput, error) {
 	user := auth.UserFrom(ctx)
-	if user == nil {
-		return nil, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(user); err != nil {
+		return nil, err
 	}
 	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, domain.CardgroupID(in.CardgroupID), domain.UserID(user.Sub)); err != nil {
 		return nil, err
 	}
 
-	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolvePageSize)
+	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveStandardPageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -463,30 +463,6 @@ func resolveOrderBy(orderBy *CardOrderBy, dir *SortOrder) (repository.CardOrderB
 	return field, d, nil
 }
 
-// resolvePageSize clamps first/last to [0, maxPageSize] and rejects passing
-// both. Defaults first=defaultPageSize when neither is provided.
-func resolvePageSize(first, last *int) (int, int, error) {
-	if first != nil && last != nil {
-		return 0, 0, ucerr.NewValidationError("first", "specify either first or last")
-	}
-	if first == nil && last == nil {
-		return defaultPageSize, 0, nil
-	}
-	clamp := func(v int) int {
-		if v < 0 {
-			return 0
-		}
-		if v > maxPageSize {
-			return maxPageSize
-		}
-		return v
-	}
-	if first != nil {
-		return clamp(*first), 0, nil
-	}
-	return 0, clamp(*last), nil
-}
-
 // resolveCursor decodes an opaque cursor string into a *repository.CardCursor
 // with the field needed for the active orderBy populated. The cursor may be a
 // v1 envelope ("v1:" + base64) or a legacy bare UUID; both are accepted during
@@ -554,8 +530,8 @@ func (u *cardUsecase) resolveCursor(
 // exceeding the cap returns BAD_USER_INPUT.
 func (u *cardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, error) {
 	user := auth.UserFrom(ctx)
-	if user == nil {
-		return 0, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(user); err != nil {
+		return 0, err
 	}
 	if len(ids) > maxBulkDelete {
 		return 0, ucerr.NewValidationError("ids", fmt.Sprintf("at most %d ids per call", maxBulkDelete))

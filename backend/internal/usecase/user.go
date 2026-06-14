@@ -64,8 +64,8 @@ func NewUserUsecase(repo UserRepository, roles UserRolesRepository, authSvc Admi
 
 func (u *userUsecase) Me(ctx context.Context) (*domain.User, error) {
 	user := auth.UserFrom(ctx)
-	if user == nil {
-		return nil, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(user); err != nil {
+		return nil, err
 	}
 	appUser, err := u.repo.FindByID(ctx, user.Sub)
 	if err == nil {
@@ -135,8 +135,8 @@ type UpdateProfileOutcome struct {
 // field, not on the error channel.
 func (u *userUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (UpdateProfileOutcome, error) {
 	user := auth.UserFrom(ctx)
-	if user == nil {
-		return UpdateProfileOutcome{}, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(user); err != nil {
+		return UpdateProfileOutcome{}, err
 	}
 
 	dn, err := domain.ParseDisplayName(in.DisplayName)

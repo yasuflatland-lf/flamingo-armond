@@ -29,6 +29,26 @@ type Cardgroup struct {
 	UpdatedAt time.Time
 }
 
+// NewCardgroup constructs a Cardgroup aggregate, generating a fresh UUID v7 ID
+// and stamping CreatedAt and UpdatedAt with the current UTC time. The name VO is
+// validated upstream by ParseCardgroupName; callers pass the parsed CardgroupName
+// so this constructor stays free of validation branching. Returns a wrapped error
+// when ID generation fails.
+func NewCardgroup(ownerID UserID, name CardgroupName) (*Cardgroup, error) {
+	id, err := NewID()
+	if err != nil {
+		return nil, eris.Wrap(err, "cardgroup: new id")
+	}
+	now := time.Now().UTC()
+	return &Cardgroup{
+		ID:        CardgroupID(id),
+		OwnerID:   ownerID,
+		Name:      name,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, nil
+}
+
 // IsOwnedBy reports whether the cardgroup belongs to the user identified by userID.
 // Empty userID always returns false so callers do not need a redundant nil/empty guard.
 func (c Cardgroup) IsOwnedBy(userID UserID) bool {

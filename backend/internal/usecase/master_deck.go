@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"log/slog"
-	"time"
 
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
@@ -241,28 +240,20 @@ func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx *gorm.DB,
 		return nil, eris.Wrap(err, "list master cards")
 	}
 
-	newCGID, err := domain.NewID()
+	newCG, err := domain.NewCardgroup(domain.UserID(ownerID), master.Name)
 	if err != nil {
-		return nil, eris.Wrap(err, "new cardgroup id")
-	}
-
-	now := time.Now().UTC()
-	newCG := &domain.Cardgroup{
-		ID:        domain.CardgroupID(newCGID),
-		OwnerID:   domain.UserID(ownerID),
-		Name:      master.Name,
-		CreatedAt: now,
-		UpdatedAt: now,
+		return nil, eris.Wrap(err, "new cardgroup")
 	}
 	if err := u.userCG.CreateTx(ctx, tx, newCG); err != nil {
 		return nil, eris.Wrap(err, "create user cardgroup")
 	}
 
+	now := newCG.CreatedAt
 	userCards := make([]*domain.Card, 0, len(cards))
 	for _, mc := range cards {
 		// The source master cards are already valid; the constructor re-parses
 		// the text (idempotent) and generates the new user-card ID.
-		card, err := domain.NewCard(domain.CardgroupID(newCGID), mc.Front.String(), mc.Back.String(), mc.Position)
+		card, err := domain.NewCard(newCG.ID, mc.Front.String(), mc.Back.String(), mc.Position)
 		if err != nil {
 			return nil, eris.Wrap(err, "new card from master")
 		}
