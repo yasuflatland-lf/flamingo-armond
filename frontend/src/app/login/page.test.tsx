@@ -106,11 +106,12 @@ describe("LoginPage", () => {
       ({ container } = render(jsx));
     });
 
-    it("outer wrapper has h-svh and lg:grid-cols-2", () => {
+    it("outer wrapper has h-svh and the golden-ratio grid template", () => {
       const grid = container.querySelector("[data-testid='login-grid']");
       expect(grid).toBeInTheDocument();
       expect(grid?.className).toMatch(/h-svh/);
-      expect(grid?.className).toMatch(/lg:grid-cols-2/);
+      // φ split: brand column 1.618fr, form column 1fr.
+      expect(grid?.className).toMatch(/lg:grid-cols-\[1\.618fr_1fr\]/);
     });
 
     it("brand panel has max-lg:hidden", () => {
@@ -123,7 +124,7 @@ describe("LoginPage", () => {
       const brandPanel = container.querySelector("[data-testid='brand-panel']");
       expect(brandPanel).toBeInTheDocument();
       expect(brandPanel?.querySelector("[aria-label='Flamingo']")).toBeInTheDocument();
-      expect(brandPanel?.textContent).toContain("flamingo-armond");
+      expect(brandPanel?.textContent).toContain("Flamingo Armond");
     });
 
     it("brand panel does not contain an email address (PII)", () => {
@@ -149,7 +150,7 @@ describe("LoginPage", () => {
       const mobileBrand = container.querySelector("[data-testid='form-brand-header']");
       expect(mobileBrand).toBeInTheDocument();
       expect(mobileBrand?.className).toMatch(/lg:hidden/);
-      expect(mobileBrand?.textContent).toContain("flamingo-armond");
+      expect(mobileBrand?.textContent).toContain("Flamingo Armond");
     });
 
     it("sub-copy explaining OAuth-first-time semantics is rendered under h1", () => {
@@ -157,7 +158,7 @@ describe("LoginPage", () => {
       expect(screen.getByText(/an account is created on first sign-in/i)).toBeInTheDocument();
     });
 
-    it("brand panel comes after the form column in DOM order (right-side placement)", () => {
+    it("brand panel comes before the form column in DOM order (left-side placement)", () => {
       const grid = container.querySelector("[data-testid='login-grid']");
       const brandPanel = container.querySelector("[data-testid='brand-panel']");
       expect(grid).toBeInTheDocument();
@@ -168,8 +169,9 @@ describe("LoginPage", () => {
       );
       const brandIndex = children.indexOf(brandPanel as Element);
       expect(brandIndex).not.toBe(-1);
-      expect(formIndex).toBe(0);
-      expect(brandIndex).toBe(1);
+      // Golden-ratio split places the brand panel in the wider left column.
+      expect(brandIndex).toBe(0);
+      expect(formIndex).toBe(1);
     });
 
     it("form-brand-header and brand-panel have mutually exclusive viewport visibility", () => {

@@ -1,5 +1,6 @@
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import { headers } from "next/headers";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -12,7 +13,14 @@ import { readAuthContext } from "@/lib/supabase/auth-status";
 import { Providers } from "./providers";
 import "./globals.css";
 
-const siteTitle = "flamingo-armond";
+// Inter is the Latin UI typeface (geometric humanist sans, close to Apple's
+// SF Pro). next/font self-hosts the woff2 under /_next at build time, so no CSP
+// font-src change is needed. Japanese glyphs fall back to the Hiragino / Noto
+// Sans JP stack declared in globals.css (`--font-sans`). Exposed as the
+// `--font-inter` CSS variable so Tailwind's `--font-sans` can reference it.
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+
+const siteTitle = "Flamingo Armond";
 
 // Apple PWA splash screens, keyed by device dimensions. Lifted to a module const
 // so generateMetadata stays readable.
@@ -134,14 +142,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const isAdmin = auth.status === "authenticated" && auth.isAdmin;
 
   return (
-    <html lang={locale}>
+    <html lang={locale} className={inter.variable}>
       {/*
         Browser extensions (ColorZilla, Grammarly, etc.) inject attributes onto
         <body> before React hydrates, which causes a benign hydration mismatch.
         suppressHydrationWarning is shallow (this element only) so real hydration
         bugs in children still surface.
       */}
-      <body suppressHydrationWarning>
+      <body suppressHydrationWarning className="font-sans antialiased">
         <NextIntlClientProvider>
           <Providers nonce={nonce}>
             {/*

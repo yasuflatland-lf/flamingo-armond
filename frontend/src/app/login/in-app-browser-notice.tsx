@@ -51,7 +51,7 @@ export function InAppBrowserNotice() {
   return (
     <div
       role="alert"
-      className="flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"
+      className="flex flex-col gap-[13px] rounded-[13px] border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"
     >
       <p className="font-medium leading-snug">{t("inAppBrowserWarning")}</p>
       {browser === "line" ? (

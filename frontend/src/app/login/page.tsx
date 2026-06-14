@@ -28,22 +28,60 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   );
 
   return (
-    <main data-testid="login-grid" className="relative grid h-svh lg:grid-cols-2">
+    // Golden-ratio split: brand panel (61.8%) left, form column (38.2%) right.
+    // The `1.618fr_1fr` grid template is the exact φ division; below lg the brand
+    // panel is hidden and the form takes the full width.
+    <main data-testid="login-grid" className="relative grid h-svh lg:grid-cols-[1.618fr_1fr]">
+      {/* LEFT — brand panel (lg+ only). First grid child so it occupies the wider
+          golden column on the left. */}
+      <div
+        data-testid="brand-panel"
+        className="max-lg:hidden relative flex items-center justify-center overflow-hidden bg-gradient-to-br from-[oklch(83%_0.11_22)] via-[oklch(72%_0.185_18.45)] to-[oklch(60%_0.2_13)]"
+      >
+        {/* Soft radial glows give the flat coral gradient depth and atmosphere. */}
+        <div className="pointer-events-none absolute -top-24 -left-16 size-96 rounded-full bg-white/20 blur-3xl" />
+        <div className="pointer-events-none absolute -right-12 -bottom-32 size-[30rem] rounded-full bg-[rgba(150,25,60,0.45)] blur-3xl" />
+        {/* Right-edge vignette: a hint of depth where the panel meets the form. */}
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-32 bg-gradient-to-l from-[rgba(120,20,40,0.16)] to-transparent" />
+
+        {/* Centered vertical lockup: the bare app-mark (no badge, no shadow) over
+            the wordmark and tagline. The three sizes 144 / 55 / 21 are alternating
+            Fibonacci numbers, so each step is φ² (≈2.618) — the mark reads as the
+            golden-ratio counterpart of the wordmark. Vertical gaps 34 / 13 are the
+            same φ² step on the Fibonacci ladder. */}
+        <div className="relative flex flex-col items-center gap-[34px] px-[55px] text-center">
+          <FlamingoMark background={false} className="size-[144px]" />
+          <div className="flex flex-col items-center gap-[13px]">
+            <span className="text-[55px] font-semibold leading-[1.05] tracking-[-0.025em] text-white drop-shadow-[0_2px_12px_rgba(120,20,40,0.45)]">
+              Flamingo Armond
+            </span>
+            <span className="text-[21px] font-medium leading-[1.45] tracking-[-0.01em] text-white/90 drop-shadow-[0_1px_6px_rgba(120,20,40,0.35)]">
+              {t("tagline")}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT — form column. Second grid child → narrower golden column on the
+          right at lg+, full-width and centered below lg. */}
       <div className="flex flex-col">
         <div
           data-testid="form-brand-header"
-          className="lg:hidden flex items-center justify-center gap-2 pt-8"
+          className="lg:hidden flex items-center justify-center gap-[13px] pt-[34px]"
         >
           <FlamingoMark className="size-7" />
-          <span className="text-base font-medium">flamingo-armond</span>
+          <span className="text-base font-medium tracking-[-0.01em]">Flamingo Armond</span>
         </div>
 
-        <div className="flex flex-1 items-center justify-center p-6 sm:p-8">
-          <div className="w-full max-w-sm">
-            <div className="flex flex-col gap-6 rounded-2xl border bg-card p-8 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.18)]">
-              <div className="flex flex-col gap-2 text-start">
-                <h1 className="text-2xl font-semibold tracking-tight">{t("heading")}</h1>
-                <p className="text-sm text-muted-foreground">{t("googleCta")}</p>
+        <div className="flex flex-1 items-center justify-center px-6 py-[34px] sm:px-8 lg:px-12 xl:px-16">
+          {/* 377px is a Fibonacci number — a deliberately calm form measure. */}
+          <div className="w-full max-w-[377px]">
+            <div className="flex flex-col gap-[21px] rounded-[21px] border border-border/70 bg-card p-[34px] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_12px_32px_-12px_rgba(0,0,0,0.12)]">
+              <div className="flex flex-col gap-[13px] text-start">
+                <h1 className="text-[28px] font-semibold leading-[1.15] tracking-[-0.02em]">
+                  {t("heading")}
+                </h1>
+                <p className="text-[15px] leading-[1.55] text-muted-foreground">{t("googleCta")}</p>
               </div>
 
               {error && (
@@ -56,38 +94,13 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
 
               <LoginButton />
 
-              <footer className="border-t pt-5 text-xs text-muted-foreground text-center">
+              <footer className="border-t pt-[21px] text-[12px] leading-[1.5] text-muted-foreground text-center">
                 {t.rich("terms", {
                   terms: footerLink("/terms"),
                   privacy: footerLink("/privacy"),
                 })}
               </footer>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div
-        data-testid="brand-panel"
-        className="max-lg:hidden relative flex items-center justify-center overflow-hidden bg-gradient-to-br from-[oklch(83%_0.11_22)] via-[oklch(72%_0.185_18.45)] to-[oklch(60%_0.2_13)]"
-      >
-        {/* Soft radial glows give the flat coral gradient depth and atmosphere. */}
-        <div className="pointer-events-none absolute -top-24 -left-16 size-96 rounded-full bg-white/20 blur-3xl" />
-        <div className="pointer-events-none absolute -right-12 -bottom-32 size-[30rem] rounded-full bg-[rgba(150,25,60,0.45)] blur-3xl" />
-
-        {/* Horizontal brand lockup: white-framed logo beside the wordmark. The
-            mark is itself coral, so a white badge lifts it off the pink ground. */}
-        <div className="relative flex items-center gap-5">
-          <div className="rounded-[1.3rem] bg-white p-2.5 shadow-xl shadow-rose-950/20">
-            <FlamingoMark className="size-16" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-4xl font-semibold tracking-tight text-white drop-shadow-[0_2px_10px_rgba(120,20,40,0.45)]">
-              flamingo-armond
-            </span>
-            <span className="text-sm font-medium text-white/90 drop-shadow-[0_1px_6px_rgba(120,20,40,0.35)]">
-              {t("tagline")}
-            </span>
           </div>
         </div>
       </div>

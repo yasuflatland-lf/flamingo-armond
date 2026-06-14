@@ -47,7 +47,14 @@ export function LoginButton() {
   }
 
   return (
-    <Button onClick={handleSignIn} type="button" variant="brand">
+    // Taller (48px) than the default control height and slightly tighter tracking
+    // for a premium primary CTA; the flex-column card stretches it to full width.
+    <Button
+      onClick={handleSignIn}
+      type="button"
+      variant="brand"
+      className="h-12 rounded-[13px] text-[15px] tracking-[-0.01em]"
+    >
       <GoogleGLogo />
       {t("googleButton")}
     </Button>

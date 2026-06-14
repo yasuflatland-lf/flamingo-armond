@@ -1,10 +1,20 @@
 import type { SVGProps } from "react";
 
+type FlamingoMarkProps = SVGProps<SVGSVGElement> & {
+  /**
+   * Render the coral rounded-square plate behind the flamingo. Default `true`
+   * (the app-icon form used by favicons and on-white surfaces). Pass `false` to
+   * float the bare flamingo line art directly on a coloured surface — the coral
+   * detail strokes then blend into a coral background, leaving the white line art.
+   */
+  background?: boolean;
+};
+
 // Brand mark: coral rounded-square app icon with the geometric flamingo line art.
 // Shared by the favicon assets and every in-app brand surface so the logo stays
 // in one place. Size via the `className` prop (e.g. `size-7`); callers that wrap
 // it in an already-labeled control pass `aria-hidden` to keep it decorative.
-export function FlamingoMark(props: SVGProps<SVGSVGElement>) {
+export function FlamingoMark({ background = true, ...props }: FlamingoMarkProps) {
   return (
     <svg
       viewBox="0 0 1024 1024"
@@ -13,7 +23,9 @@ export function FlamingoMark(props: SVGProps<SVGSVGElement>) {
       xmlns="http://www.w3.org/2000/svg"
       {...props}
     >
-      <rect x="0" y="0" width="1024" height="1024" rx="153" ry="153" fill="#FF6F79" />
+      {background && (
+        <rect x="0" y="0" width="1024" height="1024" rx="153" ry="153" fill="#FF6F79" />
+      )}
       <path
         d="M0,0 L95,0 L103,6 L122,25 L122,27 L124,27 L131,35 L138,41 L145,49 L156,60 L158,64 L158,140 L154,146 L118,182 L111,190 L33,268 L31,268 L30,271 L29,303 L277,302 L288,286 L302,267 L309,257 L323,238 L335,221 L348,203 L362,184 L374,167 L387,149 L393,141 L398,138 L405,138 L411,142 L413,146 L413,153 L407,163 L397,176 L388,189 L375,207 L363,224 L349,243 L336,261 L322,281 L308,300 L307,302 L406,303 L412,307 L414,311 L414,319 L407,327 L390,344 L382,351 L365,368 L357,375 L342,390 L334,397 L313,418 L305,425 L292,438 L290,438 L290,440 L282,447 L265,464 L257,471 L240,488 L232,495 L214,513 L206,520 L193,533 L192,713 L283,713 L289,718 L290,720 L290,730 L285,736 L282,737 L78,737 L72,733 L70,730 L70,720 L75,714 L78,713 L168,713 L167,533 L151,517 L143,510 L120,487 L112,480 L99,467 L91,460 L71,440 L63,433 L47,417 L42,413 L37,408 L18,389 L10,382 L-7,365 L-15,358 L-27,346 L-35,339 L-53,321 L-54,319 L-54,240 L-51,235 L-31,215 L-26,210 L-16,200 L-9,192 L-4,187 L-1,186 L-1,184 L1,184 L3,180 L9,175 L16,167 L23,160 L28,155 L64,119 L65,94 L11,95 L3,102 L-4,110 L-12,117 L-14,120 L-15,167 L-18,172 L-21,175 L-30,176 L-37,172 L-39,168 L-43,166 L-76,133 L-78,129 L-78,77 L-74,71 L-69,66 L-67,66 L-67,64 L-65,64 L-65,62 L-63,62 L-61,58 L-51,48 L-43,41 L-36,34 L-29,26 L-14,12 L-3,1 Z "
         fill="#FDFAF6"
