@@ -10,8 +10,11 @@ import { useFitText } from "./use-fit-text";
 // covered by computeFitFontSize in use-fit-text.test.ts.
 function Harness({ text, max, min }: { text: string; max: number; min: number }) {
   const { ref, fontPx } = useFitText<HTMLParagraphElement>(text, max, min);
+  // `data-font-px` mirrors the RETURNED React state, while `style.fontSize`
+  // also reflects the hook's imperative DOM write. Asserting both lets a test
+  // distinguish "the state updated" from "only the imperative write ran".
   return (
-    <p ref={ref} data-testid="fit" style={{ fontSize: `${fontPx}px` }}>
+    <p ref={ref} data-testid="fit" data-font-px={fontPx} style={{ fontSize: `${fontPx}px` }}>
       {text}
     </p>
   );
@@ -95,7 +98,10 @@ describe("useFitText — ResizeObserver present", () => {
       capturedCallback?.([], {} as ResizeObserver);
     });
 
-    // 48 * 100 / 200 = 24 — the re-fit ran and updated the applied size.
+    // 48 * 100 / 200 = 24 — the re-fit ran and updated the applied size...
     expect(el).toHaveStyle({ fontSize: "24px" });
+    // ...AND the returned React state was updated (not just the imperative DOM
+    // write) — so a re-render cannot revert the size to the stale value.
+    expect(el).toHaveAttribute("data-font-px", "24");
   });
 });

@@ -3,7 +3,11 @@ import { useLayoutEffect, useRef, useState } from "react";
 type FitParams = {
   /** Content-box width the text must fit into (px). */
   availableWidth: number;
-  /** Single-line width the text occupies at `maxPx` (px). */
+  /**
+   * Width the content needs at `maxPx` (px). For wrappable content this equals
+   * `availableWidth` unless a single unbreakable word overflows, in which case
+   * it is that word's width.
+   */
   intrinsicWidth: number;
   /** Upper bound: the size used when the text already fits. */
   maxPx: number;
@@ -12,10 +16,11 @@ type FitParams = {
 };
 
 /**
- * Pure font-size solver for single-line auto-fit text.
+ * Pure font-size solver: downscales only when the measured content width
+ * exceeds the available width.
  *
- * Downscale-only: a word that already fits keeps `maxPx`; a word that
- * overflows shrinks proportionally (text width scales ~linearly with
+ * Downscale-only: content that already fits keeps `maxPx`; when a single word
+ * overflows, the size shrinks proportionally (text width scales ~linearly with
  * font-size for the same string) and is clamped to `minPx`.
  *
  * A non-positive `availableWidth` or `intrinsicWidth` means the element has
