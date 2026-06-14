@@ -216,54 +216,42 @@ func (u *adminUserUsecase) List(
 		return nil, err
 	}
 
-	// Relay argument coherence: after pairs with first (forward) and before
-	// pairs with last (backward). A cursor without its companion count is also
-	// rejected — page size and direction would be unresolvable.
-	if err := validateRelayArgs(first, last, after, before); err != nil {
-		return nil, err
-	}
-
-	wantFirst, wantLast, err := resolveAdminPageSize(first, last)
+	wantFirst, wantLast, err := resolveRelayPage(first, last, after, before, resolveAdminPageSize)
 	if err != nil {
 		return nil, err
 	}
 
-	// Request one extra row to detect whether another page exists. Trim the
-	// extra row before returning to the caller.
-	repoFirst := wantFirst
-	repoLast := wantLast
-	if repoFirst > 0 {
-		repoFirst++
-	}
-	if repoLast > 0 {
-		repoLast++
-	}
-
-	users, total, err := u.users.ListPage(ctx, after, before, repoFirst, repoLast, search)
-	if err != nil {
-		if errors.Is(err, repository.ErrCursorNotFound) {
-			field := "after"
-			if after == nil && before != nil {
-				field = "before"
+	var total int64
+	// admin user cursors are opaque strings resolved inside the repository (no
+	// hydration step here), so the raw after/before nil check IS the post-decode
+	// presence assemblePage expects.
+	users, hasNext, hasPrev, err := assemblePage(wantFirst, wantLast, after != nil, before != nil,
+		func(repoFirst, repoLast int) ([]*domain.User, error) {
+			rows, t, e := u.users.ListPage(ctx, after, before, repoFirst, repoLast, search)
+			if e != nil {
+				if errors.Is(e, repository.ErrCursorNotFound) {
+					field := "after"
+					if after == nil && before != nil {
+						field = "before"
+					}
+					return nil, ucerr.NewValidationError(field, "cursor not found")
+				}
+				if isContextDone(e) {
+					return nil, e
+				}
+				return nil, eris.Wrap(e, "usecase: admin user: list")
 			}
-			return nil, ucerr.NewValidationError(field, "cursor not found")
-		}
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: admin user list")
+			total = t
+			return rows, nil
+		},
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	out := &AdminUserConnection{TotalCount: total}
-	switch {
-	case wantFirst > 0:
-		users, out.PageInfo.HasNextPage = TrimAndDetect(users, wantFirst)
-		out.PageInfo.HasPreviousPage = after != nil
-	case wantLast > 0:
-		users, out.PageInfo.HasPreviousPage = TrimAndDetectBackward(users, wantLast)
-		out.PageInfo.HasNextPage = before != nil
-	}
-
+	out.PageInfo.HasNextPage = hasNext
+	out.PageInfo.HasPreviousPage = hasPrev
 	out.Edges = make([]AdminUserEdge, len(users))
 	for i, user := range users {
 		out.Edges[i] = AdminUserEdge{Cursor: user.ID, Node: user}
