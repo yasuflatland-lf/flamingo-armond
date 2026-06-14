@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeFitFontSize } from "./use-fit-text";
+import { computeFitFontSize, solveFitBySearch } from "./use-fit-text";
 
 describe("computeFitFontSize", () => {
   const BOUNDS = { maxPx: 48, minPx: 18 };
@@ -35,5 +35,24 @@ describe("computeFitFontSize", () => {
 
   it("returns the max size when the text width is unmeasured (empty / hidden element)", () => {
     expect(computeFitFontSize({ availableWidth: 300, intrinsicWidth: 0, ...BOUNDS })).toBe(48);
+  });
+});
+
+describe("solveFitBySearch", () => {
+  it("returns maxPx when the largest size already fits", () => {
+    expect(solveFitBySearch(() => true, 14, 48)).toBe(48);
+  });
+
+  it("returns minPx when even the smallest size does not fit", () => {
+    expect(solveFitBySearch(() => false, 14, 48)).toBe(14);
+  });
+
+  it("finds the largest fitting size for a monotone threshold predicate", () => {
+    // fits(px) is true iff px <= 30 → the largest fitting integer size is 30.
+    expect(solveFitBySearch((px) => px <= 30, 14, 48)).toBe(30);
+  });
+
+  it("floors a fractional maxPx before searching", () => {
+    expect(solveFitBySearch(() => true, 14, 48.9)).toBe(48);
   });
 });

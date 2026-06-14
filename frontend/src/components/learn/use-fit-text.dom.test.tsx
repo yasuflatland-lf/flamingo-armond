@@ -8,8 +8,18 @@ import { useFitText } from "./use-fit-text";
 // stubs them — this exercises the hook's CONTROL FLOW (ref attach, measure,
 // ResizeObserver guard, re-fit on resize), while the numeric layout math is
 // covered by computeFitFontSize in use-fit-text.test.ts.
-function Harness({ text, max, min }: { text: string; max: number; min: number }) {
-  const { ref, fontPx } = useFitText<HTMLParagraphElement>(text, max, min);
+function Harness({
+  text,
+  max,
+  min,
+  maxLines,
+}: {
+  text: string;
+  max: number;
+  min: number;
+  maxLines?: number;
+}) {
+  const { ref, fontPx } = useFitText<HTMLParagraphElement>(text, max, min, maxLines);
   // `data-font-px` mirrors the RETURNED React state, while `style.fontSize`
   // also reflects the hook's imperative DOM write. Asserting both lets a test
   // distinguish "the state updated" from "only the imperative write ran".
@@ -103,5 +113,36 @@ describe("useFitText — ResizeObserver present", () => {
     // ...AND the returned React state was updated (not just the imperative DOM
     // write) — so a re-render cannot revert the size to the stale value.
     expect(el).toHaveAttribute("data-font-px", "24");
+  });
+
+  it("shrinks the font so a multi-word phrase fits within maxLines (line-count fit)", () => {
+    render(<Harness text="one two three four five" max={48} min={14} maxLines={2} />);
+    const el = screen.getByTestId("fit");
+
+    const W = 200;
+    Object.defineProperty(el, "clientWidth", { configurable: true, value: W });
+    // No single unbreakable word overflows, so the width fit leaves it at max.
+    Object.defineProperty(el, "scrollWidth", { configurable: true, value: 150 });
+    // scrollHeight responds to the applied font size: lineCount * fontPx * 1.25,
+    // where lineCount = ceil(12.5 * fontPx / W) — a larger font wraps to more
+    // lines. jsdom's getComputedStyle reports no line-height, so the hook falls
+    // back to fontPx * 1.25, matching this model.
+    Object.defineProperty(el, "scrollHeight", {
+      configurable: true,
+      get() {
+        const fontPx = Number.parseFloat(el.style.fontSize) || 48;
+        const lineCount = Math.ceil((12.5 * fontPx) / W);
+        return lineCount * fontPx * 1.25;
+      },
+    });
+
+    act(() => {
+      capturedCallback?.([], {} as ResizeObserver);
+    });
+
+    // At 48px the phrase needs 3 lines (12.5*48/200 = 3); maxLines=2 forces a
+    // shrink to the largest size that wraps to <=2 lines: 32px (12.5*32/200 = 2).
+    expect(el).toHaveAttribute("data-font-px", "32");
+    expect(el).toHaveStyle({ fontSize: "32px" });
   });
 });

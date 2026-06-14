@@ -6,13 +6,6 @@ import { cn } from "@/lib/utils";
 import type { SwipeDirection } from "./types";
 
 type Props = {
-  /**
-   * Whether the active card's back is revealed. While `false` (the front_only
-   * phase of FLIP_TO_REVEAL mode) the rating buttons render but are disabled —
-   * the learner reveals the answer by tapping the card / pressing Space, not via
-   * this bar. Defaults to `true` for ALWAYS_VISIBLE and practice contexts.
-   */
-  revealed?: boolean;
   onRate: (direction: SwipeDirection) => void;
   disabled?: boolean;
 };
@@ -44,14 +37,13 @@ const DIRECTIONS = [
   },
 ] as const;
 
-export function LearnActionBar({ revealed = true, onRate, disabled = false }: Props) {
+export function LearnActionBar({ onRate, disabled = false }: Props) {
   const t = useTranslations("Learn");
-  // While the active card is unrevealed (front_only phase), the rating buttons
-  // are inert: the learner must reveal the answer by tapping the card / Space.
-  // They stay disabled when the caller's own `disabled` flag is set (e.g. the
-  // queue has emptied). Combining both keeps the buttons non-interactive and
-  // announced as disabled to assistive tech.
-  const ratingDisabled = disabled || !revealed;
+  // Rating is available whether or not the card is revealed — the learner may
+  // swipe / tap-rate a front-only card, or reveal it first to check the answer.
+  // The buttons go inert only when the caller's `disabled` flag is set (e.g. the
+  // queue has emptied), announced as disabled to assistive tech.
+  const ratingDisabled = disabled;
 
   return (
     <div className="pointer-events-none z-40 flex justify-center px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:pb-[calc(1.5rem+env(safe-area-inset-bottom))]">

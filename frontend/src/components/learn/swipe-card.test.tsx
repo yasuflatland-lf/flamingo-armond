@@ -86,6 +86,13 @@ describe("<CardContent>", () => {
     expect(frontEl).not.toHaveClass("whitespace-nowrap");
   });
 
+  it("balances the front term across lines (text-balance) so wrapping avoids a lone-word line", () => {
+    render(<CardContent card={{ ...CARD, front: "I'll have to beg off" }} revealed={false} />);
+
+    const frontEl = screen.getByText("I'll have to beg off");
+    expect(frontEl).toHaveClass("text-balance");
+  });
+
   it("wraps the back translation at word boundaries too, never mid-word", () => {
     render(<CardContent card={{ ...CARD, back: "electroencephalographically" }} revealed={true} />);
 

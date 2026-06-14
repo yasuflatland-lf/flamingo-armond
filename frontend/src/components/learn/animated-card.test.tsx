@@ -183,18 +183,25 @@ describe("<AnimatedCard> — front-only reveal phase", () => {
     expect(onSwipe).not.toHaveBeenCalled();
   });
 
-  it("suppresses rating swipes while the active card is front-only", async () => {
+  it("allows rating swipes while the active card is front-only (reveal is optional)", async () => {
+    // Reveal no longer gates rating: a committing swipe on a front-only card
+    // flies it off and commits, exactly as it does once revealed.
     const onSwipe = vi.fn();
     render(
       <AnimatedCard card={CARD} isActive revealed={false} onReveal={vi.fn()} onSwipe={onSwipe} />,
     );
 
-    act(() => {
+    await act(async () => {
       fireCommittingSwipeDown(getCard());
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(onSwipe).not.toHaveBeenCalled();
+    await waitFor(
+      () => {
+        expect(onSwipe).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 2000 },
+    );
+    expect(onSwipe).toHaveBeenCalledWith(CARD, "down");
   });
 });
 
@@ -321,12 +328,13 @@ describe("<AnimatedCard> — a re-render must not re-apply the spring initialize
   // the layout effect QUEUE the initializer instead of starting it.
   //
   // This is timing-independent in jsdom: the layout effect re-applies on every
-  // commit regardless of spring state. With no gesture and no flyOut, the only
-  // way a `config`-carrying Controller.start can appear is the initializer
-  // re-application (it carries the `{ tension, friction }` config). Pre-fix that
-  // call is present on mount and on every re-render; post-fix the only start is
-  // react-spring's benign `{ default: context }` propagation, which carries no
-  // config. So "no config-carrying start from a gesture-free render" pins the bug.
+  // commit regardless of spring state. The initializer re-apply (the bug) is the
+  // only config-carrying start that ALSO drives the transform key `x` (to 0). The
+  // reveal flip's `api.start` also carries a config (its ease-in `duration`) but
+  // targets `rotateY` only — no `x` — so the `x !== undefined` discriminator
+  // excludes it. Pre-fix the initializer re-apply (config + `x: 0`) is present on
+  // mount and every re-render; post-fix the only `x`-driving starts come from a
+  // gesture / fly-off, neither of which a resting re-render triggers.
   it("issues no initializer re-apply (config-carrying start) when a resting card re-renders", () => {
     const calls = spyControllerStart();
     const onSwipe = vi.fn();
@@ -335,7 +343,46 @@ describe("<AnimatedCard> — a re-render must not re-apply the spring initialize
     );
     // Force a fresh commit with no gesture and no flyOut (new onSwipe identity).
     rerender(<AnimatedCard card={CARD} isActive onSwipe={vi.fn()} {...revealedProps()} />);
-    expect(calls.some((call) => call.hasConfig)).toBe(false);
+    // A config-carrying start that ALSO drives `x` is the initializer re-apply.
+    // The reveal flip carries a config but no `x`, so it is correctly excluded.
+    expect(calls.some((call) => call.hasConfig && call.x !== undefined)).toBe(false);
+  });
+});
+
+describe("<AnimatedCard> — reveal flip is a half-turn with ease-in", () => {
+  // The reveal flip rotates the card a HALF-TURN (rotateY ±180) and overrides the
+  // controller's spring config with a fixed-duration ease-in (easeInQuart) so the
+  // rotation starts slow and snaps at the end. The SIGN of FLIP_DEGREES is the
+  // visual direction knob (tuned in the browser), so this test pins the half-turn
+  // + ease-in mechanism, NOT the specific direction. The spring initializer also
+  // names rotateY but carries `{ tension, friction }` (no `duration`), so the
+  // `duration` check isolates the flip from the initializer re-apply.
+  it("drives the reveal flip a half-turn (±180) carrying a fixed-duration ease-in", () => {
+    const flipCalls: Array<{ rotateY: unknown; hasDuration: boolean }> = [];
+    const original = Controller.prototype.start;
+    vi.spyOn(Controller.prototype, "start").mockImplementation(function (
+      this: Controller,
+      ...args: Parameters<typeof original>
+    ) {
+      const [props] = args;
+      if (props && typeof props === "object" && !Array.isArray(props)) {
+        const record = props as { rotateY?: unknown; config?: { duration?: unknown } };
+        if ("rotateY" in record) {
+          flipCalls.push({
+            rotateY: record.rotateY,
+            hasDuration: Boolean(record.config?.duration),
+          });
+        }
+      }
+      return original.apply(this, args);
+    });
+
+    render(<AnimatedCard card={CARD} isActive onSwipe={vi.fn()} {...revealedProps()} />);
+
+    // A half-turn (±180) start carrying an ease-in duration config is the flip.
+    expect(
+      flipCalls.some((call) => (call.rotateY === 180 || call.rotateY === -180) && call.hasDuration),
+    ).toBe(true);
   });
 });
 

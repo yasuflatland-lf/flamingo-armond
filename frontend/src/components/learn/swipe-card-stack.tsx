@@ -23,15 +23,6 @@ type Props<TCard extends SwipeCardData> = {
   cards: TCard[];
   displayMode: LearnDisplayMode;
   onCardSwiped: (card: TCard, direction: SwipeDirection) => void;
-  /**
-   * Fired whenever the active card's revealed state changes: on initial mount
-   * for the active card, when the learner reveals it (tap / Space), and when
-   * the deck advances and the new active card resets to its initial phase. The
-   * parent threads this into LearnActionBar so the rating buttons stay disabled
-   * until the active card is revealed (FLIP_TO_REVEAL); in ALWAYS_VISIBLE the
-   * active card is revealed from mount, so this fires `true` immediately.
-   */
-  onActiveRevealedChange?: (revealed: boolean) => void;
   completedCount?: number;
   /**
    * Imperative handle ref. React 19 supports refs as plain props, so we
@@ -49,7 +40,6 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
   cards,
   displayMode,
   onCardSwiped,
-  onActiveRevealedChange,
   completedCount,
   ref,
 }: Props<TCard>) {
@@ -67,8 +57,6 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
       ? activeCardPhase.phase
       : initialPhaseForDisplayMode(displayMode);
   const activeCardRevealed = phase === "revealed";
-  const activeCardRevealedRef = useRef(activeCardRevealed);
-  activeCardRevealedRef.current = activeCardRevealed;
 
   // Drag-progress state ownership stays inside the stack, so the parent
   // component never re-renders during a gesture — per-frame onSwipeProgress
@@ -105,25 +93,6 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
     onCardSwipedRef.current = onCardSwiped;
   }, [onCardSwiped]);
 
-  // Mirror onActiveRevealedChange into a ref so the reveal-notification effect
-  // below can depend only on the boolean `activeCardRevealed`, not on the
-  // parent's (potentially freshly-created) callback identity. This keeps the
-  // notification firing on the reveal-state transition itself, not on every
-  // parent re-render that mints a new callback.
-  const onActiveRevealedChangeRef = useRef(onActiveRevealedChange);
-  useEffect(() => {
-    onActiveRevealedChangeRef.current = onActiveRevealedChange;
-  }, [onActiveRevealedChange]);
-
-  // Notify the parent of the active card's revealed state. Fires on initial
-  // mount for the active card, when the learner reveals it (tap / Space), and
-  // when the deck advances and the new active card resets to its initial phase
-  // (the reset is driven by the active-card-change effect setting the phase back
-  // to front_only, which flips `activeCardRevealed` to false in FLIP_TO_REVEAL).
-  useEffect(() => {
-    onActiveRevealedChangeRef.current?.(activeCardRevealed);
-  }, [activeCardRevealed]);
-
   const handleReveal = useCallback(() => {
     const card = activeCardRef.current;
     if (!card) return;
@@ -156,7 +125,6 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
     (direction: SwipeDirection) => {
       const card = activeCardRef.current;
       if (!card) return;
-      if (!activeCardRevealedRef.current) return;
       // Already flying off this card — ignore repeat triggers.
       if (exitingCardIdRef.current === card.id) return;
 
