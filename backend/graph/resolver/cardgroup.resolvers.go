@@ -43,10 +43,7 @@ func (r *mutationResolver) CreateCardgroup(ctx context.Context, input model.NewC
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	if outcome.Validation != nil {
-		return model.InputValidationError{
-			Field:   outcome.Validation.Field,
-			Message: outcome.Validation.Message,
-		}, nil
+		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.LimitReached != nil {
 		return model.CardgroupLimitReachedError{
@@ -74,10 +71,7 @@ func (r *mutationResolver) UpdateCardgroup(ctx context.Context, id string, input
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	if outcome.Validation != nil {
-		return model.InputValidationError{
-			Field:   outcome.Validation.Field,
-			Message: outcome.Validation.Message,
-		}, nil
+		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.Cardgroup == nil {
 		return nil, gqlerr.Internal(ctx,

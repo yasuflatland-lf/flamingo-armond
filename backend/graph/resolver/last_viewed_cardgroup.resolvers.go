@@ -29,10 +29,7 @@ func (r *mutationResolver) SetLastViewedCardgroup(ctx context.Context, cardgroup
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	if outcome.Validation != nil {
-		return model.InputValidationError{
-			Field:   outcome.Validation.Field,
-			Message: outcome.Validation.Message,
-		}, nil
+		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.User == nil {
 		return nil, gqlerr.Internal(ctx,
