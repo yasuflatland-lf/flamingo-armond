@@ -104,37 +104,39 @@ export function ProfilePageClient({ email, initial, displayMode }: Props) {
   return (
     <main className="p-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
-        <section className="flex flex-wrap items-start gap-4 border-b pb-6">
-          <div className="min-w-0 flex-1 space-y-3">
-            <div>
+        <section className="space-y-3 border-b pb-6">
+          <div>
+            <div className="flex items-center gap-1">
               <h1 className="text-2xl font-semibold">{t("title")}</h1>
-              <p className="text-sm text-muted-foreground">{t("readOnlySummary")}</p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 text-muted-foreground"
+                aria-label={t("editProfile")}
+                onClick={() => sheet.open({ mode: "edit", id: PROFILE_SHEET_SENTINEL_ID })}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
             </div>
-            <dl className="grid gap-4 sm:grid-cols-3">
-              <div className="space-y-1">
-                <dt className="text-sm font-medium text-muted-foreground">{t("displayName")}</dt>
-                <dd className="break-words text-sm">{initial.displayName || t("notSet")}</dd>
-              </div>
-              <div className="space-y-1">
-                <dt className="text-sm font-medium text-muted-foreground">{t("email")}</dt>
-                <dd className="break-words text-sm">
-                  {email ?? <span className="italic">{t("noEmail")}</span>}
-                </dd>
-              </div>
-              <div className="space-y-1">
-                <dt className="text-sm font-medium text-muted-foreground">{t("bio")}</dt>
-                <dd className="break-words text-sm">{initial.bio || t("notSet")}</dd>
-              </div>
-            </dl>
+            <p className="text-sm text-muted-foreground">{t("readOnlySummary")}</p>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => sheet.open({ mode: "edit", id: PROFILE_SHEET_SENTINEL_ID })}
-          >
-            <Pencil className="h-4 w-4" />
-            {t("editProfile")}
-          </Button>
+          <dl className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-1">
+              <dt className="text-sm font-medium text-muted-foreground">{t("displayName")}</dt>
+              <dd className="break-words text-sm">{initial.displayName || t("notSet")}</dd>
+            </div>
+            <div className="space-y-1">
+              <dt className="text-sm font-medium text-muted-foreground">{t("email")}</dt>
+              <dd className="break-words text-sm">
+                {email ?? <span className="italic">{t("noEmail")}</span>}
+              </dd>
+            </div>
+            <div className="space-y-1">
+              <dt className="text-sm font-medium text-muted-foreground">{t("bio")}</dt>
+              <dd className="break-words text-sm">{initial.bio || t("notSet")}</dd>
+            </div>
+          </dl>
         </section>
 
         <section className="space-y-4">
