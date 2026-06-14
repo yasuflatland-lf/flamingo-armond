@@ -4,7 +4,7 @@ import { NetworkStatus } from "@apollo/client";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import type {
   AdminMastersQuery as AdminMastersQueryResult,
   AdminMastersQueryVariables,
 } from "@/generated/graphql";
+import { useDebouncedSearch } from "@/hooks/use-debounced-search";
 import { classifyQueryError, getBackendErrorBanner } from "@/lib/apollo/errors";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
@@ -60,8 +61,8 @@ function mergeMastersConnection(
 export function AdminMastersClient() {
   const t = useTranslations("AdminMasters");
   const tCommon = useTranslations("Common");
-  const [searchInput, setSearchInput] = useState("");
-  const [searchQuery, setSearchQuery] = useState<string | null>(null);
+  const search = useDebouncedSearch();
+  const searchQuery = search.query;
   const [createDirty, setCreateDirty] = useState(false);
   const [createValidationError, setCreateValidationError] = useState<{
     field: string;
@@ -72,12 +73,6 @@ export function AdminMastersClient() {
     message: string;
   } | null>(null);
   const sheet = useSheetSearchParam();
-
-  // Debounce search 300ms after the last keystroke.
-  useEffect(() => {
-    const timer = setTimeout(() => setSearchQuery(searchInput.trim() || null), 300);
-    return () => clearTimeout(timer);
-  }, [searchInput]);
 
   // The cache key is ADMIN_MASTERS_BASE_VARS + the active search; the create handler reads and
   // writes the search=null variant. Memoize on searchQuery so the hook's
@@ -268,8 +263,8 @@ export function AdminMastersClient() {
         <Input
           type="search"
           placeholder={t("searchPlaceholder")}
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
+          value={search.input}
+          onChange={(e) => search.setInput(e.target.value)}
           aria-label={t("searchLabel")}
         />
       </div>
