@@ -15,6 +15,7 @@ package repository_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -247,6 +248,46 @@ func TestMasterCardgroupRepository_Publish_NotFound(t *testing.T) {
 	_, err := repo.Publish(ctx, uuid.NewString())
 	require.True(t, errors.Is(err, repository.ErrNotFound),
 		"Publish on a non-existent id must return ErrNotFound")
+}
+
+// TestMasterCardgroupRepository_Publish_ConcurrentBumpsVersionExactlyOnce proves
+// the version invariant under contention. Two goroutines publish the same draft
+// at the same time; the repository loads the row FOR UPDATE inside a tx and the
+// aggregate's idempotent Publish() makes the second call a no-op. The version
+// therefore bumps exactly once (1 -> 2): the row lock prevents a lost update and
+// the idempotency guard prevents a double bump.
+func TestMasterCardgroupRepository_Publish_ConcurrentBumpsVersionExactlyOnce(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewMasterCardgroupRepository(testDB.GORM)
+
+	m := newMasterCardgroupMinimal("Concurrent Publish " + uuid.NewString())
+	m.Version = 1
+	m.Status = domain.MasterStatusDraft
+	require.NoError(t, repo.Create(ctx, m))
+
+	const n = 2
+	var wg sync.WaitGroup
+	errc := make(chan error, n)
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			_, err := repo.Publish(ctx, m.ID)
+			errc <- err
+		}()
+	}
+	wg.Wait()
+	close(errc)
+	for err := range errc {
+		require.NoError(t, err)
+	}
+
+	got, err := repo.FindByID(ctx, m.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.MasterStatusPublished, got.Status)
+	require.Equal(t, 2, got.Version,
+		"concurrent publishes must bump version exactly once (no double, no lost update)")
 }
 
 // ---------------------------------------------------------------------------

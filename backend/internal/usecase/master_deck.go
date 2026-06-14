@@ -260,19 +260,16 @@ func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx *gorm.DB,
 
 	userCards := make([]*domain.Card, 0, len(cards))
 	for _, mc := range cards {
-		cardID, err := domain.NewID()
+		// The source master cards are already valid; the constructor re-parses
+		// the text (idempotent) and generates the new user-card ID.
+		card, err := domain.NewCard(newCGID, mc.Front.String(), mc.Back.String(), mc.Position)
 		if err != nil {
-			return nil, eris.Wrap(err, "new card id")
+			return nil, eris.Wrap(err, "new card from master")
 		}
-		userCards = append(userCards, &domain.Card{
-			ID:          cardID,
-			CardgroupID: newCGID,
-			Front:       mc.Front,
-			Back:        mc.Back,
-			Position:    mc.Position,
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		})
+		// Pin the copied batch to the cardgroup's creation timestamp.
+		card.CreatedAt = now
+		card.UpdatedAt = now
+		userCards = append(userCards, card)
 	}
 
 	if _, err := u.userCard.UpsertManyTx(ctx, tx, userCards); err != nil {

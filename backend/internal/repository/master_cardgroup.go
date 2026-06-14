@@ -8,6 +8,7 @@ import (
 
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"backend/internal/domain"
 )
@@ -614,38 +615,58 @@ func (r *masterCardgroupRepo) FindAdminPage(
 	return out, nil
 }
 
-// Publish atomically sets the master cardgroup status to published and
-// increments the version counter by 1. Returns ErrNotFound when no row
-// matches id.
+// Publish transitions the master cardgroup to the published state, bumping its
+// version exactly once. The publish state machine and the version-bump rule live
+// in domain.MasterCardgroup.Publish; this method only loads, applies, and
+// persists. The row is loaded FOR UPDATE inside a transaction so concurrent
+// publishes serialize and the idempotent aggregate method cannot double-bump or
+// lose the version increment. Returns ErrNotFound when no row matches id.
 func (r *masterCardgroupRepo) Publish(ctx context.Context, id string) (*domain.MasterCardgroup, error) {
-	res := r.db.WithContext(ctx).Model(&gormMasterCardgroup{}).
-		Where("id = ?", id).
-		Updates(map[string]any{
-			"status":  string(domain.MasterStatusPublished),
-			"version": gorm.Expr("version + 1"),
-		})
-	if res.Error != nil {
-		return nil, eris.Wrap(res.Error, "repository: master cardgroup: publish")
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrNotFound
-	}
-	return r.FindByID(ctx, id)
+	return r.applyStatusTransition(ctx, id, "publish", (*domain.MasterCardgroup).Publish)
 }
 
-// Unpublish sets the master cardgroup status back to draft without changing the
-// version counter. Returns ErrNotFound when no row matches id.
+// Unpublish transitions the master cardgroup back to draft without changing the
+// version. Same load-FOR-UPDATE → aggregate-method → save transaction shape as
+// Publish; the version-unchanged rule lives in domain.MasterCardgroup.Unpublish.
+// Returns ErrNotFound when no row matches id.
 func (r *masterCardgroupRepo) Unpublish(ctx context.Context, id string) (*domain.MasterCardgroup, error) {
-	res := r.db.WithContext(ctx).Model(&gormMasterCardgroup{}).
-		Where("id = ?", id).
-		Updates(map[string]any{"status": string(domain.MasterStatusDraft)})
-	if res.Error != nil {
-		return nil, eris.Wrap(res.Error, "repository: master cardgroup: unpublish")
+	return r.applyStatusTransition(ctx, id, "unpublish", (*domain.MasterCardgroup).Unpublish)
+}
+
+// applyStatusTransition loads the master cardgroup FOR UPDATE inside a single
+// transaction, applies the supplied aggregate state transition, and persists the
+// resulting status and version. The row lock serializes concurrent transitions
+// so the version invariant encoded in the aggregate holds without the previous
+// two divergent Updates(map) statements. op is the caller-supplied verb embedded
+// in the wrap prefix so the error chain attributes to publish vs. unpublish.
+func (r *masterCardgroupRepo) applyStatusTransition(
+	ctx context.Context, id, op string, transition func(*domain.MasterCardgroup) error,
+) (*domain.MasterCardgroup, error) {
+	var out *domain.MasterCardgroup
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row gormMasterCardgroup
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ?", id).Take(&row).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return eris.Wrap(err, "repository: master cardgroup: "+op+": load")
+		}
+		m := masterCardgroupToDomain(row)
+		if err := transition(m); err != nil {
+			return eris.Wrap(err, "repository: master cardgroup: "+op+": apply")
+		}
+		if err := tx.Model(&gormMasterCardgroup{}).Where("id = ?", id).
+			Updates(map[string]any{"status": string(m.Status), "version": m.Version}).Error; err != nil {
+			return eris.Wrap(err, "repository: master cardgroup: "+op+": save")
+		}
+		out = m
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	if res.RowsAffected == 0 {
-		return nil, ErrNotFound
-	}
-	return r.FindByID(ctx, id)
+	return out, nil
 }
 
 func masterCardgroupToDomain(g gormMasterCardgroup) *domain.MasterCardgroup {

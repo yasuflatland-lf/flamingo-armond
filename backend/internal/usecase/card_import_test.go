@@ -585,6 +585,49 @@ func TestCardImportUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 	}
 }
 
+// TestCardImportUsecase_OverLengthFrontAbortsAsValidationError covers the
+// construction-time validation now enforced by domain.NewCard: a row whose
+// front exceeds CardTextMax parses cleanly through textdic but cannot be built
+// into a Card. The import aborts with a typed BAD_USER_INPUT validation error
+// (field "front") BEFORE the repository is touched — the all-or-nothing
+// semantics the DB CHECK constraint previously enforced via an opaque tx abort.
+func TestCardImportUsecase_OverLengthFrontAbortsAsValidationError(t *testing.T) {
+	t.Parallel()
+
+	// One valid row followed by a row whose front is one grapheme over the cap.
+	// The 501-char ASCII front lexes as a single WORD token.
+	var b strings.Builder
+	b.WriteString("apple ")
+	b.WriteString(uniqueBack(1))
+	b.WriteString("\n")
+	b.WriteString(strings.Repeat("a", domain.CardTextMax+1))
+	b.WriteString(" ")
+	b.WriteString(uniqueBack(2))
+	b.WriteString("\n")
+	payload := base64.StdEncoding.EncodeToString([]byte(b.String()))
+
+	repo := &mockDictCardRepo{}
+	tx, calls := dictTxRunner()
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+
+	out, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
+		CardgroupID: "cg-target",
+		Payload:     payload,
+	})
+
+	assertValidationError(t, err, "front", "")
+	if out.Inserted != 0 || out.Updated != 0 {
+		t.Fatalf("expected zero-valued output on abort, got %+v", out)
+	}
+	// All-or-nothing: the repository and tx runner must never be reached.
+	if repo.upsertCalls != 0 {
+		t.Fatalf("expected 0 UpsertManyTx calls on abort, got %d", repo.upsertCalls)
+	}
+	if *calls != 0 {
+		t.Fatalf("expected 0 tx invocations on abort, got %d", *calls)
+	}
+}
+
 // TestCardImportUsecase_ValidSkipValidMixedPayload covers the GraphQL
 // importCards path with a payload that interleaves a valid row, a lone
 // front (skip), and another valid row. The two valid rows must be persisted

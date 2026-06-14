@@ -29,6 +29,46 @@ func TestMasterCardgroupStatusIsValid(t *testing.T) {
 	}
 }
 
+func TestMasterCardgroupPublish(t *testing.T) {
+	t.Parallel()
+
+	t.Run("draft transitions to published and bumps version by one", func(t *testing.T) {
+		t.Parallel()
+		m := &MasterCardgroup{Name: "n", Status: MasterStatusDraft, Version: 1}
+		require.NoError(t, m.Publish())
+		require.Equal(t, MasterStatusPublished, m.Status)
+		require.Equal(t, 2, m.Version, "publish must increment version 1 -> 2")
+	})
+
+	t.Run("already published is idempotent and does not bump version", func(t *testing.T) {
+		t.Parallel()
+		m := &MasterCardgroup{Name: "n", Status: MasterStatusPublished, Version: 5}
+		require.NoError(t, m.Publish())
+		require.Equal(t, MasterStatusPublished, m.Status)
+		require.Equal(t, 5, m.Version, "re-publishing an already-published group must not bump version")
+	})
+}
+
+func TestMasterCardgroupUnpublish(t *testing.T) {
+	t.Parallel()
+
+	t.Run("published transitions to draft without changing version", func(t *testing.T) {
+		t.Parallel()
+		m := &MasterCardgroup{Name: "n", Status: MasterStatusPublished, Version: 3}
+		require.NoError(t, m.Unpublish())
+		require.Equal(t, MasterStatusDraft, m.Status)
+		require.Equal(t, 3, m.Version, "unpublish must leave version unchanged")
+	})
+
+	t.Run("already draft stays draft with version unchanged", func(t *testing.T) {
+		t.Parallel()
+		m := &MasterCardgroup{Name: "n", Status: MasterStatusDraft, Version: 3}
+		require.NoError(t, m.Unpublish())
+		require.Equal(t, MasterStatusDraft, m.Status)
+		require.Equal(t, 3, m.Version)
+	})
+}
+
 func TestMasterCardgroupIsPublished(t *testing.T) {
 	t.Parallel()
 

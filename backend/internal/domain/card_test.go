@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,59 +34,69 @@ func TestCardShape(t *testing.T) {
 	require.False(t, ok, "Card must not embed per-user FSRS state")
 }
 
-func TestCardValidate(t *testing.T) {
+func TestNewCard(t *testing.T) {
 	t.Parallel()
 
 	const zwjEmoji = "👨‍👩‍👧‍👦"
+
+	t.Run("valid input constructs a fully-formed card", func(t *testing.T) {
+		t.Parallel()
+
+		c, err := NewCard("cg-1", "  front  ", "back", 7)
+		require.NoError(t, err)
+		require.NotEmpty(t, c.ID, "constructor must generate an ID")
+		require.Equal(t, "cg-1", c.CardgroupID)
+		require.Equal(t, CardText("front"), c.Front, "front must be trimmed via ParseCardText")
+		require.Equal(t, CardText("back"), c.Back)
+		require.Equal(t, 7, c.Position)
+		require.False(t, c.CreatedAt.IsZero(), "constructor must stamp CreatedAt")
+		require.Equal(t, c.CreatedAt, c.UpdatedAt, "CreatedAt and UpdatedAt must match at construction")
+	})
+
+	t.Run("valid at max grapheme length", func(t *testing.T) {
+		t.Parallel()
+
+		c, err := NewCard("cg", strings.Repeat(zwjEmoji, 500), strings.Repeat("b", 500), 0)
+		require.NoError(t, err)
+		require.Equal(t, CardText(strings.Repeat(zwjEmoji, 500)), c.Front)
+	})
+
 	cases := []struct {
 		name        string
-		card        Card
+		front       string
+		back        string
 		sentinelErr error
 	}{
-		{
-			name:        "front required",
-			card:        Card{CardgroupID: "cg", Front: "", Back: "back"},
-			sentinelErr: ErrCardFrontRequired,
-		},
-		{
-			name:        "front whitespace only treated as required",
-			card:        Card{CardgroupID: "cg", Front: "   ", Back: "back"},
-			sentinelErr: ErrCardFrontRequired,
-		},
-		{
-			name:        "back required",
-			card:        Card{CardgroupID: "cg", Front: "front", Back: "  "},
-			sentinelErr: ErrCardBackRequired,
-		},
-		{
-			name:        "front too long",
-			card:        Card{CardgroupID: "cg", Front: CardText(strings.Repeat("a", 501)), Back: "back"},
-			sentinelErr: ErrCardFrontTooLong,
-		},
-		{
-			name:        "back too long with graphemes",
-			card:        Card{CardgroupID: "cg", Front: "front", Back: CardText(strings.Repeat(zwjEmoji, 501))},
-			sentinelErr: ErrCardBackTooLong,
-		},
-		{
-			name: "valid at max grapheme length",
-			card: Card{CardgroupID: "cg", Front: CardText(strings.Repeat(zwjEmoji, 500)), Back: CardText(strings.Repeat("b", 500))},
-		},
+		{"front required", "", "back", ErrCardFrontRequired},
+		{"front whitespace only treated as required", "   ", "back", ErrCardFrontRequired},
+		{"back required", "front", "  ", ErrCardBackRequired},
+		{"front too long", strings.Repeat("a", CardTextMax+1), "back", ErrCardFrontTooLong},
+		{"back too long with graphemes", "front", strings.Repeat(zwjEmoji, CardTextMax+1), ErrCardBackTooLong},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := tc.card.Validate()
-			if tc.sentinelErr == nil {
-				require.NoError(t, err)
-				return
-			}
-			require.Error(t, err)
-			require.True(t, errors.Is(err, tc.sentinelErr), "got %v", err)
+			c, err := NewCard("cg", tc.front, tc.back, 0)
+			require.Nil(t, c, "no aggregate may be constructed from invalid input")
+			require.ErrorIs(t, err, tc.sentinelErr, "got %v", err)
 		})
 	}
+}
+
+// TestNewCard_IDFailure pins the id-generation failure path through the newV7
+// test seam; ParseCardText runs first, so valid text reaches NewID.
+func TestNewCard_IDFailure(t *testing.T) {
+	orig := newV7
+	newV7 = func() (uuid.UUID, error) { return uuid.UUID{}, errors.New("crypto/rand unavailable") }
+	t.Cleanup(func() { newV7 = orig })
+
+	c, err := NewCard("cg", "front", "back", 0)
+	require.Nil(t, c)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "card: new id")
+	require.Contains(t, err.Error(), "domain: new uuid v7")
 }
 
 func TestCardBelongsToCardgroup(t *testing.T) {

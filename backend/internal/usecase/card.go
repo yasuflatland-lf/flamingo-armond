@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
@@ -252,27 +251,9 @@ func (u *cardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 		return CreateCardOutcome{}, err
 	}
 
-	frontVO, err := domain.ParseCardText(in.Front, domain.ErrCardFrontRequired, domain.ErrCardFrontTooLong)
+	card, err := domain.NewCard(in.CardgroupID, in.Front, in.Back, 0)
 	if err != nil {
 		return CreateCardOutcome{}, translateCardErr(err)
-	}
-	backVO, err := domain.ParseCardText(in.Back, domain.ErrCardBackRequired, domain.ErrCardBackTooLong)
-	if err != nil {
-		return CreateCardOutcome{}, translateCardErr(err)
-	}
-	now := time.Now().UTC()
-	id, err := domain.NewID()
-	if err != nil {
-		return CreateCardOutcome{}, eris.Wrap(err, "usecase: create card: generate id")
-	}
-
-	card := &domain.Card{
-		ID:          id,
-		CardgroupID: in.CardgroupID,
-		Front:       frontVO,
-		Back:        backVO,
-		CreatedAt:   now,
-		UpdatedAt:   now,
 	}
 	if err := u.cardRepo.Create(ctx, card); err != nil {
 		if errors.Is(err, repository.ErrCardDuplicateFront) {
