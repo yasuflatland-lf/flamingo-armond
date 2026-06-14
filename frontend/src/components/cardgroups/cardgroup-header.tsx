@@ -1,12 +1,11 @@
 "use client";
 
-import { useMutation } from "@apollo/client/react";
 import { Import, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
-import { CARDGROUPS_DEFAULT_VARS, DeleteCardgroupMutation } from "@/app/cardgroups/queries";
 import { CardgroupRenameForm } from "@/components/cardgroups/cardgroup-rename-form";
+import { useDeleteCardgroup } from "@/components/cardgroups/use-delete-cardgroup";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,7 +27,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet } from "@/components/ui/form-sheet";
-import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 
 type Props = {
@@ -44,8 +42,7 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
   const [renaming, setRenaming] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  const [deleteCardgroup, { loading: deleting, error: deleteError }] =
-    useMutation(DeleteCardgroupMutation);
+  const { deleteCardgroup, deleting, error: deleteError } = useDeleteCardgroup();
 
   const deleteBannerError = getBackendErrorBanner(deleteError);
 
@@ -57,42 +54,8 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
   }, []);
 
   async function handleDelete() {
-    const result = await deleteCardgroup({
-      variables: { id: cardgroup.id },
-      update(cache, { data }) {
-        if (!data?.deleteCardgroup) return;
-
-        const existingConnection = cache.readQuery({
-          query: MyCardgroupsConnectionDocument,
-          variables: CARDGROUPS_DEFAULT_VARS,
-        });
-        if (existingConnection) {
-          cache.writeQuery({
-            query: MyCardgroupsConnectionDocument,
-            variables: CARDGROUPS_DEFAULT_VARS,
-            data: {
-              myCardgroupsConnection: {
-                ...existingConnection.myCardgroupsConnection,
-                edges: existingConnection.myCardgroupsConnection.edges.filter(
-                  (edge) => edge.node.id !== cardgroup.id,
-                ),
-                totalCount: Math.max(0, existingConnection.myCardgroupsConnection.totalCount - 1),
-              },
-            },
-          });
-        }
-
-        cache.evict({
-          id: cache.identify({ __typename: "Cardgroup", id: cardgroup.id }),
-        });
-        cache.gc();
-      },
-    }).catch((err) => {
-      console.error("[CardgroupHeader] delete rejection", err);
-      return null;
-    });
-
-    if (result?.data?.deleteCardgroup === true) {
+    const deleted = await deleteCardgroup(cardgroup.id);
+    if (deleted) {
       setDeleteDialogOpen(false);
       router.push("/cardgroups");
       router.refresh();
