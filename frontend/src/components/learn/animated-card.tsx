@@ -187,10 +187,12 @@ export function AnimatedCard({
 
   const flyOut = useCallback(
     (direction: SwipeDirection) => {
-      if (!revealed) return;
+      // Rating no longer requires revealing first: the learner may rate a card
+      // (rating buttons / arrow keys) while it is still front-only. Tapping to
+      // reveal stays available as an optional way to check the answer.
       runExit(direction);
     },
-    [revealed, runExit],
+    [runExit],
   );
 
   useImperativeHandle(handleRef, () => ({ flyOut }), [flyOut]);
@@ -220,9 +222,11 @@ export function AnimatedCard({
         vy,
         yDir,
       });
-      onSwipeProgress?.(revealed && active ? direction : null, revealed && active ? progress : 0);
+      // Swiping rates the card whether or not it is revealed — the learner can
+      // swipe a front-only card directly, or reveal it first to check the answer.
+      onSwipeProgress?.(active ? direction : null, active ? progress : 0);
 
-      if (shouldSwipe && direction && revealed) {
+      if (shouldSwipe && direction) {
         runExit(direction);
         return;
       }

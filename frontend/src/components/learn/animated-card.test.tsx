@@ -183,18 +183,25 @@ describe("<AnimatedCard> — front-only reveal phase", () => {
     expect(onSwipe).not.toHaveBeenCalled();
   });
 
-  it("suppresses rating swipes while the active card is front-only", async () => {
+  it("allows rating swipes while the active card is front-only (reveal is optional)", async () => {
+    // Reveal no longer gates rating: a committing swipe on a front-only card
+    // flies it off and commits, exactly as it does once revealed.
     const onSwipe = vi.fn();
     render(
       <AnimatedCard card={CARD} isActive revealed={false} onReveal={vi.fn()} onSwipe={onSwipe} />,
     );
 
-    act(() => {
+    await act(async () => {
       fireCommittingSwipeDown(getCard());
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(onSwipe).not.toHaveBeenCalled();
+    await waitFor(
+      () => {
+        expect(onSwipe).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 2000 },
+    );
+    expect(onSwipe).toHaveBeenCalledWith(CARD, "down");
   });
 });
 

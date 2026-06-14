@@ -197,61 +197,32 @@ describe("SwipeCardStack — active-card reveal phase", () => {
     expect(status).toHaveTextContent("Answer shown");
   });
 
-  it("reports onActiveRevealedChange false on mount, true on reveal, and false again on advance (FLIP_TO_REVEAL)", () => {
+  it("commits a swipe in flip mode even when the active card is not revealed", () => {
+    // Reveal no longer gates rating: triggerSwipe (rating buttons / arrow keys)
+    // commits a front-only card without a prior reveal.
     const onCardSwiped = vi.fn();
-    const onActiveRevealedChange = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    const { rerender } = renderWithIntl(
+    renderWithIntl(
       <SwipeCardStack
         cards={[cardA, cardB]}
         displayMode="FLIP_TO_REVEAL"
         onCardSwiped={onCardSwiped}
-        onActiveRevealedChange={onActiveRevealedChange}
         ref={ref}
       />,
     );
 
-    // Active card starts front_only — the parent is told the buttons stay disabled.
-    expect(onActiveRevealedChange).toHaveBeenLastCalledWith(false);
+    // The active card is still front-only — its back is not shown.
+    expect(screen.queryByText(cardA.back)).not.toBeInTheDocument();
 
-    // Revealing the active card flips the reported state to true.
-    fireEvent.click(screen.getByTestId("reveal-card-a"));
-    expect(onActiveRevealedChange).toHaveBeenLastCalledWith(true);
-
-    // Advancing the deck resets the new active card to front_only — reported false.
     act(() => {
       ref.current?.triggerSwipe("right");
     });
     act(() => {
       settleFlyOuts();
     });
-    rerender(
-      <SwipeCardStack
-        cards={[cardB]}
-        displayMode="FLIP_TO_REVEAL"
-        onCardSwiped={onCardSwiped}
-        onActiveRevealedChange={onActiveRevealedChange}
-        ref={ref}
-      />,
-    );
 
-    expect(onActiveRevealedChange).toHaveBeenLastCalledWith(false);
-  });
-
-  it("reports onActiveRevealedChange true from mount (ALWAYS_VISIBLE)", () => {
-    const onActiveRevealedChange = vi.fn();
-
-    renderWithIntl(
-      <SwipeCardStack
-        cards={[cardA]}
-        displayMode="ALWAYS_VISIBLE"
-        onCardSwiped={vi.fn()}
-        onActiveRevealedChange={onActiveRevealedChange}
-      />,
-    );
-
-    expect(onActiveRevealedChange).toHaveBeenLastCalledWith(true);
+    expect(onCardSwiped).toHaveBeenCalledWith(cardA, "right");
   });
 });
 

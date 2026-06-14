@@ -57,12 +57,13 @@ test("swipes easy cards and advances through the deck", async ({ page }) => {
   for (let i = 0; i < 3; i += 1) {
     const before = await activeCard.getAttribute("aria-label");
     if (before) seen.push(before);
-    // The default display mode is flip_to_reveal: the back stays hidden and the
-    // rating buttons stay disabled until the active card is revealed. Reveal is a
-    // card tap / Space on the focused card (never a swipe). Each freshly-advanced
-    // card resets to front_only, so reveal again every iteration.
-    await activeCard.click();
+    // The default display mode is flip_to_reveal: the back starts hidden. Rating
+    // no longer requires revealing first — the rating buttons are enabled from the
+    // start, so assert that before any reveal. Tapping the focused card still
+    // reveals the answer (the optional flip), which we exercise before rating.
+    // Each freshly-advanced card resets to front_only.
     await expect(easyButton).toBeEnabled();
+    await activeCard.click();
     await easyButton.click();
     await expect(activeCard).not.toHaveAttribute("aria-label", before ?? "");
   }
