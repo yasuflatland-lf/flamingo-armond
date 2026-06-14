@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { Button } from "@/components/ui/button";
 import { FormSheet } from "@/components/ui/form-sheet";
+import { Input } from "@/components/ui/input";
 import type { AdminMastersQuery as AdminMastersQueryResult } from "@/generated/graphql";
 import { classifyQueryError, getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
@@ -357,12 +358,11 @@ export function AdminMastersClient() {
       }
     >
       <div>
-        <input
+        <Input
           type="search"
           placeholder={t("searchPlaceholder")}
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={t("searchLabel")}
         />
       </div>
@@ -501,9 +501,12 @@ export function AdminMastersClient() {
               onDelete={handleDelete}
             />
           ) : (
-            <p className="text-sm text-muted-foreground" data-testid="admin-masters-edit-not-found">
-              {t("masterNotFound")}
-            </p>
+            <div
+              className="flex flex-col items-center justify-center gap-1 py-12 text-center"
+              data-testid="admin-masters-edit-not-found"
+            >
+              <p className="text-sm font-medium text-muted-foreground">{t("masterNotFound")}</p>
+            </div>
           )
         ) : null}
       </FormSheet>

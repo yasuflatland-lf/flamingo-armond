@@ -252,7 +252,7 @@ export function AdminMasterForm({
         )}
       </form.Field>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 border-t pt-4">
         <Button
           type="submit"
           variant="brand"
