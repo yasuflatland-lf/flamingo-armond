@@ -89,9 +89,6 @@ func (emptyUserRoleRepoStub) HasRole(_ context.Context, _ string, _ domain.RoleN
 func (emptyUserRoleRepoStub) AssignToUser(_ context.Context, _, _ string) error {
 	panic("emptyUserRoleRepoStub.AssignToUser not expected")
 }
-func (emptyUserRoleRepoStub) RevokeFromUser(_ context.Context, _, _ string) error {
-	panic("emptyUserRoleRepoStub.RevokeFromUser not expected")
-}
 func (emptyUserRoleRepoStub) SetUserRolesTx(_ context.Context, _ *gorm.DB, _ string, _ []string) error {
 	panic("emptyUserRoleRepoStub.SetUserRolesTx not expected")
 }
@@ -123,9 +120,6 @@ func (r *countingCardgroupRepo) FindByID(_ context.Context, _ string) (*domain.C
 }
 func (r *countingCardgroupRepo) FindByName(_ context.Context, _, _ string) (*domain.Cardgroup, error) {
 	panic("countingCardgroupRepo.FindByName not configured")
-}
-func (r *countingCardgroupRepo) FindByOwner(_ context.Context, _ string) ([]*domain.Cardgroup, error) {
-	panic("countingCardgroupRepo.FindByOwner not configured")
 }
 func (r *countingCardgroupRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Cardgroup, error) {
 	if r.findByIDs == nil {

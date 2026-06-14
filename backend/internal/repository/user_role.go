@@ -39,12 +39,6 @@ type UserRoleRepository interface {
 	// also satisfy errors.Is(_, ErrNotFound) for backward-compatible matching.
 	AssignToUser(ctx context.Context, userID, roleID string) error
 
-	// RevokeFromUser deletes the (user_id, role_id) row. Validates that the
-	// user and role exist; returns ErrUserNotFound / ErrRoleNotFound when
-	// either is missing. When both exist but no assignment link is present,
-	// returns nil without error (idempotent on the assignment row).
-	RevokeFromUser(ctx context.Context, userID, roleID string) error
-
 	// SetUserRolesTx replaces the user's role set inside the supplied
 	// transaction. roleIDs is the final declarative state; an empty slice
 	// removes every role assignment for the user.
@@ -134,23 +128,6 @@ func (r *userRoleRepo) AssignToUser(ctx context.Context, userID, roleID string) 
 			return classified
 		}
 		return eris.Wrap(err, "repository: user role: assign to user")
-	}
-	return nil
-}
-
-// RevokeFromUser deletes the (user_id, role_id) row.
-func (r *userRoleRepo) RevokeFromUser(ctx context.Context, userID, roleID string) error {
-	if err := r.requireExists(ctx, "users", userID, "repository: user role: revoke: check user", ErrUserNotFound); err != nil {
-		return err
-	}
-	if err := r.requireExists(ctx, "roles", roleID, "repository: user role: revoke: check role", ErrRoleNotFound); err != nil {
-		return err
-	}
-
-	if err := r.db.WithContext(ctx).
-		Where("user_id = ? AND role_id = ?", userID, roleID).
-		Delete(&gormUserRole{}).Error; err != nil {
-		return eris.Wrap(err, "repository: user role: revoke from user")
 	}
 	return nil
 }

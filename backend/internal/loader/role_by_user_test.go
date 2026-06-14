@@ -29,10 +29,6 @@ func (s *roleBatchRepoStub) AssignToUser(_ context.Context, _, _ string) error {
 	panic("roleBatchRepoStub.AssignToUser not configured")
 }
 
-func (s *roleBatchRepoStub) RevokeFromUser(_ context.Context, _, _ string) error {
-	panic("roleBatchRepoStub.RevokeFromUser not configured")
-}
-
 func (s *roleBatchRepoStub) SetUserRolesTx(_ context.Context, _ *gorm.DB, _ string, _ []string) error {
 	panic("roleBatchRepoStub.SetUserRolesTx not configured")
 }
