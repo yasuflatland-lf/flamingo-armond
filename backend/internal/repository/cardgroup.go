@@ -58,7 +58,6 @@ type CardgroupUpdate struct {
 type CardgroupRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
 	FindByName(ctx context.Context, ownerID, name string) (*domain.Cardgroup, error)
-	FindByOwner(ctx context.Context, ownerID string) ([]*domain.Cardgroup, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Cardgroup, error)
 	// FindPageByOwner returns a window of cardgroups owned by ownerID
 	// ordered by (orderBy, id). Forward paging uses (after, first); backward
@@ -121,23 +120,6 @@ func (r *cardgroupRepo) FindByName(ctx context.Context, ownerID, name string) (*
 		return nil, eris.Wrap(err, "repository: find cardgroup by name")
 	}
 	return cardgroupToDomain(row), nil
-}
-
-// FindByOwner returns all cardgroups owned by ownerID, ordered by updated_at
-// DESC. Returns an empty slice when none are found.
-func (r *cardgroupRepo) FindByOwner(ctx context.Context, ownerID string) ([]*domain.Cardgroup, error) {
-	var rows []gormCardgroup
-	if err := r.db.WithContext(ctx).
-		Where("owner_id = ?", ownerID).
-		Order("updated_at DESC").
-		Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: find cardgroups by owner")
-	}
-	out := make([]*domain.Cardgroup, len(rows))
-	for i := range rows {
-		out[i] = cardgroupToDomain(rows[i])
-	}
-	return out, nil
 }
 
 // FindPageByOwner implements the cursor-paginated cardgroup list scoped to

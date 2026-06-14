@@ -472,8 +472,8 @@ func TestAdminUser_List_Page1(t *testing.T) {
 		t.Fatalf("EndCursor = %v, want u-ccc", out.PageInfo.EndCursor)
 	}
 	// Default page size: usecase asks repo for 100+1=101 rows.
-	if users.lastListFirst != adminUserMaxPageSize+1 {
-		t.Fatalf("repo first arg = %d, want %d", users.lastListFirst, adminUserMaxPageSize+1)
+	if users.lastListFirst != maxPageSize+1 {
+		t.Fatalf("repo first arg = %d, want %d", users.lastListFirst, maxPageSize+1)
 	}
 	if users.lastListLast != 0 {
 		t.Fatalf("repo last arg = %d, want 0", users.lastListLast)
@@ -631,7 +631,7 @@ func TestAdminUser_List_FirstOverCap(t *testing.T) {
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
-	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(adminUserMaxPageSize+1), nil, nil, nil, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(maxPageSize+1), nil, nil, nil, nil)
 	assertValidationError(t, err, "first", "")
 }
 

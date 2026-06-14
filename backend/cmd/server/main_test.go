@@ -2157,9 +2157,6 @@ func (panicUserRoleRepo) HasRole(_ context.Context, _ string, _ domain.RoleName)
 func (panicUserRoleRepo) AssignToUser(_ context.Context, _, _ string) error {
 	panic("not used in this test")
 }
-func (panicUserRoleRepo) RevokeFromUser(_ context.Context, _, _ string) error {
-	panic("not used in this test")
-}
 func (panicUserRoleRepo) SetUserRolesTx(_ context.Context, _ *gorm.DB, _ string, _ []string) error {
 	panic("not used in this test")
 }

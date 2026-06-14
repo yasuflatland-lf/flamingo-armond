@@ -24,12 +24,6 @@ import (
 // caller.
 var errGuardAbort = errors.New("usecase: admin user edit: guard abort")
 
-// adminUserMaxPageSize is the user-facing cap on AdminUser.List page size.
-// Mirrors the repository-level maxUserPageSize (100). The asymmetry between
-// this value and userPageCap (101) at the repository layer enables the
-// usecase-level "+1 fetch" trick without truncating a maximum-sized page.
-const adminUserMaxPageSize = 100
-
 // AdminUserConnection is the usecase-level Relay-style page result for
 // AdminUser.List. The resolver wraps it into model.UserConnection.
 type AdminUserConnection struct {
@@ -205,8 +199,8 @@ func NewAdminUserWithDeps(
 
 // List paginates the users table with Relay-style cursors. Forward paging
 // uses (first, after); backward uses (last, before). The two are mutually
-// exclusive. Default page size is adminUserMaxPageSize (100); the same
-// value is the absolute cap for either direction.
+// exclusive. Default page size is maxPageSize (100); the same value is the
+// absolute cap for either direction.
 //
 // Cursor-direction cross-validation: per the Relay spec, after pairs with
 // first (forward) and before pairs with last (backward). Mixing them or
@@ -563,22 +557,24 @@ func (u *adminUserUsecase) refetchUser(ctx context.Context, id, wrap string) (*d
 }
 
 // resolveAdminPageSize enforces the (first XOR last) constraint and clamps
-// each value to [0, adminUserMaxPageSize]. When both are nil, defaults to
-// (adminUserMaxPageSize, 0) — the requirement to default forward paging at
-// the documented maximum keeps single-page admin queries simple.
+// each value to [0, maxPageSize]. When both are nil, defaults to
+// (maxPageSize, 0) — unlike the other resolvers (which default to
+// defaultPageSize=20), admin queries default forward paging at the documented
+// maximum to keep single-page admin views simple. maxPageSize is the
+// package-wide cap shared with the card/cardgroup/master-catalog resolvers.
 func resolveAdminPageSize(first, last *int) (int, int, error) {
 	if first != nil && last != nil {
 		return 0, 0, ucerr.NewValidationError("first", "specify either first or last")
 	}
 	if first == nil && last == nil {
-		return adminUserMaxPageSize, 0, nil
+		return maxPageSize, 0, nil
 	}
 	check := func(field string, v int) error {
 		if v < 0 {
 			return ucerr.NewValidationError(field, fmt.Sprintf("%s must be >= 0", field))
 		}
-		if v > adminUserMaxPageSize {
-			return ucerr.NewValidationError(field, fmt.Sprintf("%s must be <= %d", field, adminUserMaxPageSize))
+		if v > maxPageSize {
+			return ucerr.NewValidationError(field, fmt.Sprintf("%s must be <= %d", field, maxPageSize))
 		}
 		return nil
 	}

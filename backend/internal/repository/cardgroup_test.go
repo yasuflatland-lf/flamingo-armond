@@ -50,34 +50,6 @@ func TestCardgroupRepository_CreateAndFindByID(t *testing.T) {
 	require.False(t, got.UpdatedAt.IsZero())
 }
 
-func TestCardgroupRepository_FindByOwner_ScopedToOwner(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	owner1 := insertAuthUser(t, ctx)
-	owner2 := insertAuthUser(t, ctx)
-	repo := repository.NewCardgroupRepository(testDB.GORM)
-
-	cg1 := newCardgroup(owner1, "Owner1 Group")
-	cg2 := newCardgroup(owner2, "Owner2 Group")
-	require.NoError(t, repo.Create(ctx, cg1))
-	require.NoError(t, repo.Create(ctx, cg2))
-
-	result1, err := repo.FindByOwner(ctx, owner1)
-	require.NoError(t, err)
-
-	// Filter to only the groups we created in this test to avoid cross-test
-	// interference from parallel tests that share the same DB.
-	ids1 := cardgroupIDSet(result1)
-	require.Contains(t, ids1, cg1.ID, "owner1 should see their own group")
-	require.NotContains(t, ids1, cg2.ID, "owner1 should not see owner2's group")
-
-	result2, err := repo.FindByOwner(ctx, owner2)
-	require.NoError(t, err)
-	ids2 := cardgroupIDSet(result2)
-	require.Contains(t, ids2, cg2.ID, "owner2 should see their own group")
-	require.NotContains(t, ids2, cg1.ID, "owner2 should not see owner1's group")
-}
-
 func TestCardgroupRepository_FindByName_ScopedToOwner(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -100,50 +72,6 @@ func TestCardgroupRepository_FindByName_ScopedToOwner(t *testing.T) {
 
 	_, err = repo.FindByName(ctx, ownerA, "Missing")
 	require.ErrorIs(t, err, repository.ErrNotFound)
-}
-
-func cardgroupIDSet(cgs []*domain.Cardgroup) map[string]struct{} {
-	m := make(map[string]struct{}, len(cgs))
-	for _, cg := range cgs {
-		m[cg.ID] = struct{}{}
-	}
-	return m
-}
-
-func TestCardgroupRepository_FindByOwner_OrderedByUpdatedAtDesc(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardgroupRepository(testDB.GORM)
-
-	cg1 := newCardgroup(ownerID, "First")
-	cg2 := newCardgroup(ownerID, "Second")
-	cg3 := newCardgroup(ownerID, "Third")
-	require.NoError(t, repo.Create(ctx, cg1))
-	require.NoError(t, repo.Create(ctx, cg2))
-	require.NoError(t, repo.Create(ctx, cg3))
-
-	// Advance time so the trigger fires a strictly later updated_at.
-	time.Sleep(5 * time.Millisecond)
-	updated := "Second Updated"
-	_, err := repo.Update(ctx, cg2.ID, repository.CardgroupUpdate{Name: &updated})
-	require.NoError(t, err)
-
-	result, err := repo.FindByOwner(ctx, ownerID)
-	require.NoError(t, err)
-
-	// Find positions of our three groups inside the (potentially larger) result.
-	pos := make(map[string]int, 3)
-	for i, cg := range result {
-		switch cg.ID {
-		case cg1.ID, cg2.ID, cg3.ID:
-			pos[cg.ID] = i
-		}
-	}
-	require.Len(t, pos, 3, "all three created cardgroups should be present")
-	// cg2 was updated last, so it must appear before cg1 and cg3.
-	require.Less(t, pos[cg2.ID], pos[cg1.ID], "updated group should sort before cg1")
-	require.Less(t, pos[cg2.ID], pos[cg3.ID], "updated group should sort before cg3")
 }
 
 func TestCardgroupRepository_FindByIDs_AllFound(t *testing.T) {

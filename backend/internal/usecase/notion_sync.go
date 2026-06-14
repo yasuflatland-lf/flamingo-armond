@@ -183,10 +183,14 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 	}
 
 	rows, parseErrs = dedupeParsedRows(rows, parseErrs)
-	cards := masterCardsFromParsedRows(cardgroup.ID, rows)
-	notionFronts := make(map[string]struct{}, len(rows))
-	for _, row := range rows {
-		notionFronts[row.Front] = struct{}{}
+	cards := u.masterCardsFromParsedRows(ctx, cardgroup.ID, rows)
+	// Derive the keep-set from the validated cards' (trimmed) fronts so the
+	// diff-prune step stays consistent with what was actually upserted: rows
+	// dropped by ParseCardText validation are absent here and so are pruned if
+	// a stale card with the same front exists.
+	notionFronts := make(map[string]struct{}, len(cards))
+	for _, card := range cards {
+		notionFronts[card.Front.String()] = struct{}{}
 	}
 
 	out := MasterNotionSyncOutput{
@@ -326,21 +330,51 @@ func dedupeParsedRows(rows []ParsedRow, errs []CardImportError) ([]ParsedRow, []
 
 // masterCardsFromParsedRows builds master cards from deduped, document-order
 // parsed rows. Position is the index in the deduped slice (0..n-1) so the
-// catalog reflects the original Notion document position.
-func masterCardsFromParsedRows(masterCardgroupID string, rows []ParsedRow) []*domain.MasterCard {
+// catalog reflects the original Notion document position. Each row's Front and
+// Back are validated and normalized through domain.ParseCardText; a row whose
+// front or back is empty/whitespace-only or exceeds CardTextMax graphemes is
+// skipped (not persisted) and a structured warn is emitted so the rest of the
+// sync still imports the valid rows. See
+// docs/backend/error-wrapping/log-structured-event-when-batch-item-fails.md.
+func (u *MasterNotionSyncUsecase) masterCardsFromParsedRows(
+	ctx context.Context, masterCardgroupID string, rows []ParsedRow,
+) []*domain.MasterCard {
 	now := time.Now().UTC()
 	cards := make([]*domain.MasterCard, 0, len(rows))
 	for i, row := range rows {
+		front, err := domain.ParseCardText(row.Front, domain.ErrCardFrontRequired, domain.ErrCardFrontTooLong)
+		if err != nil {
+			u.warnSkippedMasterRow(ctx, masterCardgroupID, i, "front", err)
+			continue
+		}
+		back, err := domain.ParseCardText(row.Back, domain.ErrCardBackRequired, domain.ErrCardBackTooLong)
+		if err != nil {
+			u.warnSkippedMasterRow(ctx, masterCardgroupID, i, "back", err)
+			continue
+		}
 		cards = append(cards, &domain.MasterCard{
 			MasterCardgroupID: masterCardgroupID,
-			Front:             domain.CardText(row.Front),
-			Back:              domain.CardText(row.Back),
+			Front:             front,
+			Back:              back,
 			Position:          i,
 			CreatedAt:         now,
 			UpdatedAt:         now,
 		})
 	}
 	return cards
+}
+
+// warnSkippedMasterRow emits a structured warn for a master-card row that failed
+// CardText validation and was dropped from the import.
+func (u *MasterNotionSyncUsecase) warnSkippedMasterRow(
+	ctx context.Context, masterCardgroupID string, position int, field string, reason error,
+) {
+	u.logger.WarnContext(ctx, "notion sync: skipping invalid master card row",
+		"cardgroupID", masterCardgroupID,
+		"position", position,
+		"field", field,
+		"reason", reason.Error(),
+	)
 }
 
 func frontsToDelete(current []string, notionFronts map[string]struct{}) []string {

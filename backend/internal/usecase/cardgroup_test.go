@@ -1245,7 +1245,7 @@ func TestCardgroupUC_Connection_DefaultPageSize_WhenAllNil(t *testing.T) {
 }
 
 // TestCardgroupUC_Connection_PageSize_Clamp verifies that an out-of-range
-// first is clamped to cardgroupMaxPageSize before the +1 fetch is added.
+// first is clamped to maxPageSize before the +1 fetch is added.
 func TestCardgroupUC_Connection_PageSize_Clamp(t *testing.T) {
 	t.Parallel()
 
@@ -1255,7 +1255,7 @@ func TestCardgroupUC_Connection_PageSize_Clamp(t *testing.T) {
 	}
 	uc := NewCardgroupUsecase(repo, cgDefaultAdmin(), newTestLogger())
 
-	first := 200 // above cardgroupMaxPageSize=100
+	first := 200 // above maxPageSize=100
 	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("u1"), CardgroupConnectionInput{
 		First: &first,
 	})
@@ -1263,9 +1263,9 @@ func TestCardgroupUC_Connection_PageSize_Clamp(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// 200 -> clamped to 100 -> repo sees 100+1=101 (= pageCap).
-	if repo.findPageCalls[0].First != cardgroupMaxPageSize+1 {
-		t.Fatalf("expected first=cardgroupMaxPageSize+1=%d, got %d",
-			cardgroupMaxPageSize+1, repo.findPageCalls[0].First)
+	if repo.findPageCalls[0].First != maxPageSize+1 {
+		t.Fatalf("expected first=maxPageSize+1=%d, got %d",
+			maxPageSize+1, repo.findPageCalls[0].First)
 	}
 }
 
@@ -1594,7 +1594,7 @@ func TestResolveCardgroupOrderBy_InvalidDirection(t *testing.T) {
 }
 
 // TestResolveCardgroupPageSize_LastClamp verifies that the "last only" branch
-// clamps an oversized last to cardgroupMaxPageSize.
+// clamps an oversized last to maxPageSize.
 func TestResolveCardgroupPageSize_LastClamp(t *testing.T) {
 	t.Parallel()
 
@@ -1606,8 +1606,8 @@ func TestResolveCardgroupPageSize_LastClamp(t *testing.T) {
 	if first != 0 {
 		t.Fatalf("expected first=0, got %d", first)
 	}
-	if gotLast != cardgroupMaxPageSize {
-		t.Fatalf("expected last=%d (clamped), got %d", cardgroupMaxPageSize, gotLast)
+	if gotLast != maxPageSize {
+		t.Fatalf("expected last=%d (clamped), got %d", maxPageSize, gotLast)
 	}
 }
 

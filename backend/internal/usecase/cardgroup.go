@@ -402,11 +402,6 @@ func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 	return out, nil
 }
 
-// cardgroupMaxPageSize is the user-facing cap on
-// myCardgroupsConnection page size. The repository-level cap (pageCap=101)
-// is one greater so the "+1 fetch" trick survives a maximum-sized request.
-const cardgroupMaxPageSize = 100
-
 // resolveCardgroupOrderBy maps the typed usecase enums to the repository
 // allowlist. Defaults match the schema (UPDATED_AT, DESC) when both inputs
 // are nil. The default switch arm is defense in depth — gqlgen
@@ -443,9 +438,10 @@ func resolveCardgroupOrderBy(
 	return field, d, nil
 }
 
-// resolveCardgroupPageSize clamps first/last to [0, cardgroupMaxPageSize]
-// and rejects passing both. Defaults first=defaultPageSize (20) when
-// neither is provided, matching the schema's documented default.
+// resolveCardgroupPageSize clamps first/last to [0, maxPageSize] and rejects
+// passing both. Defaults first=defaultPageSize (20) when neither is provided,
+// matching the schema's documented default. maxPageSize is the package-wide
+// cap shared with the card/master-catalog resolvers.
 func resolveCardgroupPageSize(first, last *int) (int, int, error) {
 	if first != nil && last != nil {
 		return 0, 0, ucerr.NewValidationError("first", "specify either first or last, not both")
@@ -457,8 +453,8 @@ func resolveCardgroupPageSize(first, last *int) (int, int, error) {
 		if v < 0 {
 			return 0
 		}
-		if v > cardgroupMaxPageSize {
-			return cardgroupMaxPageSize
+		if v > maxPageSize {
+			return maxPageSize
 		}
 		return v
 	}
