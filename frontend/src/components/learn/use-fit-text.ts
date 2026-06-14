@@ -42,44 +42,122 @@ export function computeFitFontSize({
 }
 
 /**
- * Shrinks a wrapping text element only when a single word is too wide for its
- * content box, so that word fits on one line instead of overflowing — multi-word
- * content still wraps normally at word boundaries and is left at `maxPx`. Attach
- * `ref` to the text element (it should wrap at word boundaries, e.g. Tailwind
- * `break-normal`) and apply the returned `fontPx` as its `font-size`.
+ * Largest integer font size in `[minPx, maxPx]` for which `fits(px)` is true.
  *
- * The element is measured at `maxPx` via `scrollWidth` — for wrappable content
- * this equals `clientWidth` unless a single unbreakable word overflows, in which
- * case it is that word's width. It is compared against the width the element is
- * allowed to occupy (`clientWidth`, which a `max-width: 100%` text element caps
- * at its parent's content box — so the surrounding padding is respected
- * automatically). Re-fits whenever the parent container resizes (viewport change
- * / rotation) and whenever `text` changes.
+ * `fits` is a monotone predicate — if a size fits, every smaller size fits too
+ * (a smaller font wraps to fewer/shorter lines, so its rendered line count never
+ * grows). A binary search over the monotone predicate finds the answer in
+ * `O(log range)` measurements; returns `minPx` when even the smallest size does
+ * not fit. Pure: the DOM-measuring `fits` closure is injected, so the search is
+ * unit tested without a layout engine.
+ */
+export function solveFitBySearch(
+  fits: (px: number) => boolean,
+  minPx: number,
+  maxPx: number,
+): number {
+  let lo = minPx;
+  let hi = Math.floor(maxPx);
+  let best = minPx;
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (fits(mid)) {
+      best = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return best;
+}
+
+/**
+ * Number of wrapped lines the element currently occupies, derived from its
+ * rendered height and computed line-height. Returns 0 when the element is not
+ * laid out (jsdom / pre-layout: `scrollHeight === 0`), which callers treat as
+ * "unmeasured, skip the line-count constraint".
+ */
+function measureLineCount(el: HTMLElement, fontPx: number): number {
+  if (el.scrollHeight <= 0) return 0;
+  let lineHeightPx = Number.parseFloat(getComputedStyle(el).lineHeight);
+  if (!Number.isFinite(lineHeightPx) || lineHeightPx <= 0) {
+    // `line-height: normal` / unmeasured — approximate with the tight ratio the
+    // headword uses (leading-tight = 1.25). The exact value only needs to be
+    // close enough to bucket scrollHeight into the right number of lines.
+    lineHeightPx = fontPx * 1.25;
+  }
+  return Math.round(el.scrollHeight / lineHeightPx);
+}
+
+/**
+ * Shrinks a wrapping text element to fit its width and, optionally, a maximum
+ * number of wrapped lines. Attach `ref` to the text element (it should wrap at
+ * word boundaries, e.g. Tailwind `break-normal`) and apply the returned `fontPx`
+ * as its `font-size`.
+ *
+ * Two downscale constraints, applied in order:
+ *
+ * 1. Width (proportional). Measured at `maxPx` via `scrollWidth` — for wrappable
+ *    content this equals `clientWidth` unless a single unbreakable word
+ *    overflows, in which case it is that word's width. `computeFitFontSize`
+ *    shrinks proportionally so the widest word fits one line.
+ * 2. Line count (binary search). When `maxLines` is given and the element is
+ *    laid out, the size is shrunk further — via `solveFitBySearch` over
+ *    `lineCount <= maxLines` — so the text wraps to at most `maxLines` lines.
+ *    Callers derive `maxLines` from the word count (e.g. `ceil(words / 3)`) so a
+ *    multi-word phrase wraps to fuller lines instead of stranding a lone word on
+ *    its own line; pair it with `text-wrap: balance` on the element so the words
+ *    spread evenly across those lines. A non-laid-out element (jsdom /
+ *    pre-layout) reports 0 lines, so the constraint is skipped and only the
+ *    width fit applies — preserving the downscale-only, jsdom-safe contract.
+ *
+ * Re-fits whenever the parent container resizes (viewport change / rotation) and
+ * whenever `text` or `maxLines` changes.
  */
 export function useFitText<T extends HTMLElement>(
   text: string,
   maxPx: number,
   minPx: number,
+  maxLines?: number,
 ): { ref: React.RefObject<T | null>; fontPx: number } {
   const ref = useRef<T>(null);
   const [fontPx, setFontPx] = useState(maxPx);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `text` is a trigger-only dependency; the effect re-measures `scrollWidth` when the card term changes but does not reference `text` in its body. Removing it (Biome's offered fix) would pin the font to the previous term's width.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `text` is a trigger-only dependency; the effect re-measures `scrollWidth`/`scrollHeight` when the card term changes but does not reference `text` in its body. Removing it (Biome's offered fix) would pin the font to the previous term's dimensions.
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
 
     const measure = () => {
-      // Measure intrinsic width at a fixed reference size so the ratio is
-      // stable regardless of the size currently applied.
+      // Width fit: measure intrinsic width at a fixed reference size so the ratio
+      // is stable regardless of the size currently applied.
       el.style.fontSize = `${maxPx}px`;
-      const next = computeFitFontSize({
+      const widthFit = computeFitFontSize({
         availableWidth: el.clientWidth,
         intrinsicWidth: el.scrollWidth,
         maxPx,
         minPx,
       });
-      // Apply imperatively (no paint at the reference size) and keep React in
+
+      // Line-count fit: shrink further so the text wraps to at most `maxLines`
+      // lines. Skipped when `maxLines` is absent or the element is not laid out
+      // (jsdom / pre-layout: measureLineCount returns 0).
+      let next = widthFit;
+      if (maxLines && maxLines > 0) {
+        el.style.fontSize = `${widthFit}px`;
+        if (measureLineCount(el, widthFit) > maxLines) {
+          next = solveFitBySearch(
+            (px) => {
+              el.style.fontSize = `${px}px`;
+              return measureLineCount(el, px) <= maxLines;
+            },
+            minPx,
+            widthFit,
+          );
+        }
+      }
+
+      // Apply imperatively (no paint at an intermediate size) and keep React in
       // sync for declarative re-renders.
       el.style.fontSize = `${next}px`;
       setFontPx(next);
@@ -97,7 +175,7 @@ export function useFitText<T extends HTMLElement>(
     const observer = new ResizeObserver(measure);
     observer.observe(target);
     return () => observer.disconnect();
-  }, [text, maxPx, minPx]);
+  }, [text, maxPx, minPx, maxLines]);
 
   return { ref, fontPx };
 }

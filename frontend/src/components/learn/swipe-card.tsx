@@ -8,17 +8,27 @@ import { CefrBadge } from "./cefr-badge";
 import type { SwipeDirection } from "./types";
 import { useFitText } from "./use-fit-text";
 
-// Front-term auto-fit bounds (px). The front wraps at word boundaries
-// (`break-normal` — never mid-word); useFitText shrinks the font only when a
-// single word is wider than the card (e.g. "cardiovascular"), so that word fits
-// one line instead of overflowing, while multi-word fronts still wrap normally.
-// `maxPx` mirrors the previous largest static size (`sm:text-5xl`). The SAME
-// ceiling is used whether or not the card is revealed, so the headword keeps a
-// constant size when the card is flipped — revealing only adds the translation
-// below it, it never resizes the term. `minPx` is the floor below which an
-// exceptionally long word is clipped by the card rather than shrunk to an
-// unreadable size.
+// Headword auto-fit bounds (px). The headword wraps at word boundaries
+// (`break-normal` — never mid-word) and is shrunk by useFitText to fit both the
+// card width (so a single long word like "cardiovascular" fits one line) AND a
+// maximum line count derived from the word count (see MIN_WORDS_PER_LINE). The
+// SAME ceiling is used whether or not the card is revealed, so the headword
+// keeps a constant size when the card is flipped — revealing only adds the
+// translation below it, it never resizes the term. `minPx` is the floor below
+// which an exceptionally long headword is clipped by the card rather than shrunk
+// to an unreadable size.
 const FRONT_FIT = { maxPx: 48, minPx: 20 };
+
+// Target line density for the headword: shrink the font so the phrase wraps to
+// at most ceil(wordCount / MIN_WORDS_PER_LINE) lines. This keeps each line
+// fuller (~3 words) and, paired with `text-wrap: balance`, prevents a lone word
+// stranded on its own line. A 1–3 word headword targets one line; a 4–6 word
+// phrase targets two balanced lines; and so on.
+const MIN_WORDS_PER_LINE = 3;
+
+function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
 
 export type { AnimatedCardHandle } from "./animated-card";
 
@@ -66,10 +76,15 @@ const AnimatedCard = dynamic(() => import("./animated-card").then((m) => m.Anima
 
 // CardContent is exported so animated-card.tsx can share the same presentational layer.
 export function CardContent({ card, revealed }: { card: SwipeCardData; revealed: boolean }) {
+  // Cap the wrapped line count so the headword averages ~MIN_WORDS_PER_LINE
+  // words per line; useFitText shrinks the font until it fits within that many
+  // lines. `text-wrap: balance` on the element then spreads the words evenly.
+  const headwordMaxLines = Math.max(1, Math.ceil(countWords(card.front) / MIN_WORDS_PER_LINE));
   const { ref: frontRef, fontPx } = useFitText<HTMLParagraphElement>(
     card.front,
     FRONT_FIT.maxPx,
     FRONT_FIT.minPx,
+    headwordMaxLines,
   );
 
   return (
@@ -92,13 +107,14 @@ export function CardContent({ card, revealed }: { card: SwipeCardData; revealed:
         <p
           ref={frontRef}
           // `break-normal` wraps at word boundaries and never breaks a word
-          // mid-character. useFitText measures the term at `maxPx` and shrinks
-          // the inline font-size (set via style — a measured pixel value, not a
-          // Tailwind step) only when the widest single word would overflow the
-          // card width; multi-word fronts wrap across lines instead. The outer
-          // card is `overflow-hidden`, so a word still too wide at the `minPx`
-          // floor is clipped rather than spilling past the card edge.
-          className="max-w-full break-normal font-semibold leading-tight text-foreground"
+          // mid-character; `text-balance` spreads the words evenly across lines.
+          // useFitText measures the term at `maxPx` and shrinks the inline
+          // font-size (a measured pixel value, not a Tailwind step) to fit both
+          // the card width and the target line count (headwordMaxLines), so a
+          // multi-word phrase wraps to fuller, balanced lines instead of
+          // stranding a lone word. The outer card is `overflow-hidden`, so a term
+          // still too large at the `minPx` floor is clipped rather than spilling.
+          className="max-w-full text-balance break-normal font-semibold leading-tight text-foreground"
           style={{ fontSize: `${fontPx}px` }}
         >
           {card.front}
