@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { FormSheet } from "@/components/ui/form-sheet";
 import { Input } from "@/components/ui/input";
 import type { AdminMastersQuery as AdminMastersQueryResult } from "@/generated/graphql";
-import { classifyQueryError, getBackendErrorBanner } from "@/lib/apollo/errors";
+import { classifyQueryError, getBackendErrorBanner, mutationAuthBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import type { FetchNextPageInput } from "@/lib/pagination/types";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
@@ -170,11 +170,11 @@ export function AdminMastersClient() {
           codes,
         });
         toast.error(
-          codes.includes("FORBIDDEN")
-            ? t("forbidden")
-            : codes.includes("UNAUTHENTICATED")
-              ? t("unauthenticated")
-              : t("unexpectedError"),
+          mutationAuthBanner(err, {
+            forbidden: t("forbidden"),
+            unauthenticated: t("unauthenticated"),
+            fallback: t("unexpectedError"),
+          }),
         );
         return null;
       });
@@ -255,11 +255,11 @@ export function AdminMastersClient() {
           codes,
         });
         toast.error(
-          codes.includes("FORBIDDEN")
-            ? t("forbidden")
-            : codes.includes("UNAUTHENTICATED")
-              ? t("unauthenticated")
-              : t("unexpectedError"),
+          mutationAuthBanner(err, {
+            forbidden: t("forbidden"),
+            unauthenticated: t("unauthenticated"),
+            fallback: t("unexpectedError"),
+          }),
         );
         return null;
       });
@@ -324,11 +324,11 @@ export function AdminMastersClient() {
           codes,
         });
         toast.error(
-          codes.includes("FORBIDDEN")
-            ? t("forbidden")
-            : codes.includes("UNAUTHENTICATED")
-              ? t("unauthenticated")
-              : t("deleteMasterFailed"),
+          mutationAuthBanner(err, {
+            forbidden: t("forbidden"),
+            unauthenticated: t("unauthenticated"),
+            fallback: t("deleteMasterFailed"),
+          }),
         );
       }
     },
@@ -381,11 +381,11 @@ export function AdminMastersClient() {
           codes,
         });
         toast.error(
-          codes.includes("FORBIDDEN")
-            ? t("forbidden")
-            : codes.includes("UNAUTHENTICATED")
-              ? t("unauthenticated")
-              : t("unexpectedError"),
+          mutationAuthBanner(err, {
+            forbidden: t("forbidden"),
+            unauthenticated: t("unauthenticated"),
+            fallback: t("unexpectedError"),
+          }),
         );
       }
     },
