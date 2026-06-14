@@ -1,13 +1,8 @@
 import { z } from "zod";
+import { graphemeCount } from "./grapheme";
 
 // Mirrors UpdateProfileInput in schema/schema.graphql; bio: undefined = unchanged, "" = explicit clear.
 // UAX #29 grapheme cluster counting keeps FE and BE length rules in sync.
-const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-
-function graphemeCount(s: string): number {
-  return Array.from(segmenter.segment(s)).length;
-}
-
 const displayName = z
   .string()
   .trim()
