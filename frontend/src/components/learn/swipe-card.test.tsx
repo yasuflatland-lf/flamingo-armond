@@ -30,6 +30,22 @@ describe("<CardContent>", () => {
     expect(screen.queryByText("Hola")).not.toBeInTheDocument();
   });
 
+  it("shows the tap-affordance hint only while the card is un-revealed", () => {
+    const { rerender } = render(<CardContent card={CARD} revealed={false} />);
+
+    const hint = screen.getByTestId("tap-hint");
+    expect(hint).toBeInTheDocument();
+    // Decorative-only: never exposed to assistive tech.
+    expect(hint).toHaveAttribute("aria-hidden", "true");
+    // The pulse runs only when motion is allowed; a static faint dot remains
+    // for prefers-reduced-motion users so the hint never disappears.
+    expect(hint).toHaveClass("motion-safe:animate-tap-pulse");
+    expect(hint).toHaveClass("motion-reduce:opacity-40");
+
+    rerender(<CardContent card={CARD} revealed={true} />);
+    expect(screen.queryByTestId("tap-hint")).not.toBeInTheDocument();
+  });
+
   it("does not render rating buttons inside the card", () => {
     render(<CardContent card={CARD} revealed={true} />);
 
