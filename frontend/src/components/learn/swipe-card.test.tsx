@@ -70,6 +70,59 @@ describe("<CardContent>", () => {
     expect(screen.getByText("Hola")).toBeInTheDocument();
   });
 
+  it("wraps the front term at word boundaries, never mid-word (break-normal, not break-words/nowrap)", () => {
+    // A multi-word front wraps across lines at spaces; a single overflowing
+    // word is shrunk by useFitText rather than broken mid-word. The structural
+    // precondition is `break-normal` (word-break: normal; overflow-wrap:
+    // normal) — NOT `break-words` (breaks mid-word) and NOT `whitespace-nowrap`
+    // (forbids the multi-line wrap the user asked for). jsdom has no layout
+    // engine, so the shrink math is unit-tested in use-fit-text.test.ts.
+    render(<CardContent card={{ ...CARD, front: "cardiovascular" }} revealed={false} />);
+
+    const frontEl = screen.getByText("cardiovascular");
+    expect(frontEl).toHaveClass("break-normal");
+    expect(frontEl).not.toHaveClass("break-words");
+    expect(frontEl).not.toHaveClass("break-all");
+    expect(frontEl).not.toHaveClass("whitespace-nowrap");
+  });
+
+  it("wraps the back translation at word boundaries too, never mid-word", () => {
+    render(<CardContent card={{ ...CARD, back: "electroencephalographically" }} revealed={true} />);
+
+    const backEl = screen.getByText("electroencephalographically");
+    expect(backEl).toHaveClass("break-normal");
+    expect(backEl).not.toHaveClass("break-words");
+    expect(backEl).not.toHaveClass("break-all");
+  });
+
+  it("applies the fixed front-fit ceiling (maxPx=48) as an inline font size when unrevealed", () => {
+    // jsdom reports clientWidth/scrollWidth = 0, so useFitText returns the
+    // ceiling unchanged — letting us pin the bounds and the style wiring
+    // without a layout engine.
+    render(<CardContent card={{ ...CARD, front: "Hello" }} revealed={false} />);
+
+    expect(screen.getByText("Hello")).toHaveStyle({ fontSize: "48px" });
+  });
+
+  it("keeps the same front-fit ceiling (48px) when revealed — the headword does not shrink on flip", () => {
+    render(<CardContent card={{ ...CARD, front: "Hello" }} revealed={true} />);
+
+    expect(screen.getByText("Hello")).toHaveStyle({ fontSize: "48px" });
+  });
+
+  it("keeps the front size constant across an in-place reveal (reveal must not resize the headword)", () => {
+    // The reduced-motion path keeps ONE CardContent instance and flips
+    // `revealed` false→true in place. The headword size must stay constant
+    // (48px → 48px); revealing only adds the translation below it.
+    const { rerender } = render(
+      <CardContent card={{ ...CARD, front: "Hello" }} revealed={false} />,
+    );
+    expect(screen.getByText("Hello")).toHaveStyle({ fontSize: "48px" });
+
+    rerender(<CardContent card={{ ...CARD, front: "Hello" }} revealed={true} />);
+    expect(screen.getByText("Hello")).toHaveStyle({ fontSize: "48px" });
+  });
+
   it("reserves horizontal padding so a long front term cannot slide under the badge", () => {
     // jsdom has no real layout engine, so the overlap is guarded structurally:
     // the centered content block must carry the horizontal-padding utility that
