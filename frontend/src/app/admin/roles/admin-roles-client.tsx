@@ -292,11 +292,17 @@ export function AdminRolesClient({ initialRoles }: Props) {
       commitDelete: () => deleteRoleMutate({ variables: { id } }),
       onCommitFailed: (err) => {
         const codes = liftGraphQLCodes(err);
-        // UNAUTHENTICATED collapses to a generic sign-in prompt — the user has
-        // no actionable detail to recover from. FORBIDDEN keeps the server's
-        // specific reason because the same code covers system-role races where
-        // the backend message ("cannot delete a protected role") is what the
-        // operator needs to see.
+        // This branch deliberately does NOT use the shared
+        // classifyMutationAuthError / mutationAuthBanner helpers (used by the
+        // create/update branches): those are kind-only and would discard the
+        // server's FORBIDDEN message. UNAUTHENTICATED collapses to a generic
+        // sign-in prompt — the user has no actionable detail to recover from.
+        // FORBIDDEN keeps the server's specific reason because the same code
+        // covers system-role protection, where the backend message
+        // (`cannot delete system role "admin"`) is what the operator needs to
+        // see. deleteRole returns Boolean! (no typed outcome union), so this
+        // FORBIDDEN passthrough is the only channel for that message — unlike
+        // update, whose system-role guard travels via CannotModifySystemRoleError.
         if (codes.includes("UNAUTHENTICATED")) {
           setDeleteError(t("deleteAuthFailed"));
           console.warn("[admin/roles] deleteRole auth failure", { roleId: id, codes });
