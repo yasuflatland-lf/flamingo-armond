@@ -10,6 +10,7 @@
 | `/login` (`app/login/page.tsx`) | render `LoginButton` | `/` (delegating the post-login routing decision back to HomePage) |
 | `/auth/callback?code=...` (`app/auth/callback/route.ts`) | n/a | `next` query value, defaulting to `/` (so HomePage owns the post-OAuth landing decision) |
 | `/onboarding` (`app/onboarding/page.tsx`) | `/login` | render `OnboardingForm`; already-onboarded users redirect to `/` (self-guard via `isUserOnboarded`) |
+| `/onboarding/start` (`app/onboarding/start/page.tsx`) | `/login` | first-deck chooser: import a master-catalog deck (→ `/learn/{id}`) or create your own (→ `/cardgroups/new?welcome=1`); not-onboarded self-guard → `/onboarding`; empty catalog → `/cardgroups/new?welcome=1` |
 | `/cards/new?cardgroup=<id>` | `/login` | render chip + `CardForm`; resolves cardgroup via 4-priority chain (see `/cards/new` below) |
 | `/cardgroups/new?welcome=1` | `/login` | render new-cardgroup form with welcome copy (post-onboarding entry) |
 | Admin entry (rail item, admin only) | hidden | `/admin/<sub>` (no `/admin` shim — see "Unified admin layout" in [`profile-page-profile.md`](./profile-page-profile.md)) |
@@ -24,8 +25,10 @@ HomePage (/)
 ├─ !isUserOnboarded(me)           → /onboarding          (highest signed-in priority)
 ├─ me.lastViewedCardgroup != null → /learn/{id}
 ├─ myCardgroupsConnection.totalCount > 0 → /cardgroups
-└─ else                           → /cardgroups/new?welcome=1
+└─ else                           → /onboarding/start
 ```
+
+The terminal `else` (onboarded, no `lastViewedCardgroup`, zero cardgroups) lands on `/onboarding/start`, the first-deck chooser — see its row in the table above. The chooser lets the user import a master-catalog deck or create their own; when the master catalog is empty it falls through to `/cardgroups/new?welcome=1`.
 
 Why `isUserOnboarded` is the highest signed-in priority: a user whose `displayName` was nulled by an admin (or who completed OAuth but never finished `/onboarding`) would otherwise land on `/learn/{lastViewedCardgroup}` or `/cardgroups` with an empty profile — visible to other users — and have no in-product affordance to fix it. The gate sits ahead of the cardgroup branches so the empty-`displayName` state is structurally unreachable on any signed-in surface.
 
@@ -50,7 +53,7 @@ On the `/cards/new?cardgroup=<id>` targets above, the id is supplied by the orig
 1. `searchParams.cardgroup` — accepted only if the id appears in the user's `myCardgroupsConnection` edges. A non-owned id silently falls through (no `BAD_USER_INPUT` surface) so a stale URL after sharing or revoke does not 500.
 2. `me.lastViewedCardgroup.id` — same ownership check (defensive; the FK already cascades).
 3. User has cardgroups but neither (1) nor (2) resolved → render the chip in undetermined state and **force the picker open** so the user explicitly chooses.
-4. `myCardgroupsConnection.totalCount === 0` → `redirect("/cardgroups/new?welcome=1")` — the same target as HomePage's "no cardgroups yet" branch.
+4. `myCardgroupsConnection.totalCount === 0` → `redirect("/cardgroups/new?welcome=1")` — the post-onboarding first-cardgroup screen. (HomePage's "no cardgroups yet" branch routes through `/onboarding/start` first, which falls through to this same screen when the catalog is empty or the user chooses to create their own.)
 
 The URL `?cardgroup=<id>` is the **single source of truth** for the chip + form pair: the picker calls `router.replace("/cards/new?cardgroup=<newId>", { scroll: false })`, and chip / form re-render against the new URL. No client-side state holds a duplicate "selected cardgroup" — eliminates the chip-vs-form drift class of bugs.
 
@@ -121,11 +124,11 @@ Every other surface uses shadcn's slate-based defaults (`--primary`, `--secondar
 
 ### Welcome copy on `/cardgroups/new?welcome=1`
 
-The `?welcome=1` query parameter makes `/cardgroups/new` (already the cardgroup-create page) double as the post-onboarding "first cardgroup" screen by conditionally rendering a welcome banner above the form. The HomePage `else` branch and the `/cards/new` "no cardgroups" priority both target this URL — and so does `OnboardingForm`'s success redirect, since the user has just finished filling in `displayName` and the natural next step is to create their first cardgroup. Without the query parameter, the page renders only the form — same behaviour as before. Driving the difference from the URL keeps the welcome surface statelessly bookmarkable / sharable and avoids a separate `/welcome` route whose only difference would be the copy.
+The `?welcome=1` query parameter makes `/cardgroups/new` (already the cardgroup-create page) double as the post-onboarding "first cardgroup" screen by conditionally rendering a welcome banner above the form. The `/cards/new` "no cardgroups" priority targets this URL directly, as does `/onboarding/start` — both its "create your own" link and its empty-catalog fallback. The HomePage `else` branch and `OnboardingForm`'s success redirect now route through `/onboarding/start` first, landing here when the catalog is empty or the user chooses to create their own. Without the query parameter, the page renders only the form — same behaviour as before. Driving the difference from the URL keeps the welcome surface statelessly bookmarkable / sharable and avoids a separate `/welcome` route whose only difference would be the copy.
 
 ### Bare-shell routes (no `AppShell`)
 
-The root layout in `app/layout.tsx` short-circuits `AppShell` for routes that own the entire viewport without nav chrome. The current bypass set is `/login` and `/onboarding` — `/login` because the sign-in screen owns the viewport, `/onboarding` because the user has no `displayName` yet so a header showing their email next to an empty name slot would surface the very state the page is asking them to fix. Both routes render their own `<main>` landmark — see [`rsc-error-handling/pages-bypassing-appshell-must-render-main.md`](./rsc-error-handling/pages-bypassing-appshell-must-render-main.md).
+`ConditionalShell` (`frontend/src/components/conditional-shell.tsx`) short-circuits `AppShell` for routes that own the entire viewport without nav chrome. The current bypass set (`BARE_ROUTES`) is `/login`, `/onboarding`, `/onboarding/start`, `/terms`, and `/privacy` — `/login` because the sign-in screen owns the viewport; `/onboarding` because the user has no `displayName` yet, so a header showing their email next to an empty name slot would surface the very state the page is asking them to fix; `/onboarding/start` because a deckless user's nav rail would point at empty destinations, and it is part of the same focused onboarding flow; `/terms` and `/privacy` because they are public legal pages. Every bare route renders its own `<main>` landmark — see [`rsc-error-handling/pages-bypassing-appshell-must-render-main.md`](./rsc-error-handling/pages-bypassing-appshell-must-render-main.md).
 
 ### Sign-in page layout (`/login`)
 
