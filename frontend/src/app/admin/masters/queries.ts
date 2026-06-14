@@ -3,6 +3,18 @@ import { graphql } from "@/generated";
 /** Default page size for the admin masters connection. Keep in sync with cache reads. */
 export const ADMIN_MASTERS_PAGE_SIZE = 20;
 
+/**
+ * Base variables for the admin masters connection (everything except `search`).
+ * Single source of truth shared by the client's useConnectionPagination query and
+ * the create-cache write in useMasterMutations — they MUST match exactly or the
+ * prepended edge is written under a different cache key and never appears.
+ */
+export const ADMIN_MASTERS_BASE_VARS = {
+  first: ADMIN_MASTERS_PAGE_SIZE,
+  orderBy: "SORT_ORDER" as const,
+  orderDirection: "ASC" as const,
+};
+
 export const AdminMastersQuery = graphql(`
   query AdminMasters(
     $first: Int
