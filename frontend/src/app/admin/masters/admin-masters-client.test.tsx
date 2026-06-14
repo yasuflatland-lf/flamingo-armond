@@ -15,6 +15,7 @@ import {
   AdminCreateMasterMutation,
   AdminDeleteMasterMutation,
   AdminMastersQuery,
+  AdminPublishMasterMutation,
   AdminUpdateMasterMutation,
 } from "./queries";
 
@@ -244,6 +245,30 @@ describe("AdminMastersClient", () => {
     await user.click(await screen.findByTestId("master-delete-dialog-confirm"));
     await waitFor(() => expect(screen.queryByText("Deck m-1")).not.toBeInTheDocument());
     expect(toast.success).toHaveBeenCalled();
+  });
+
+  it("publishes a master from the edit drawer and toasts success", async () => {
+    sheetState = { mode: "edit", id: "m-1" };
+    const user = userEvent.setup();
+    const publishMock = {
+      request: { query: AdminPublishMasterMutation, variables: { id: "m-1" } },
+      result: {
+        data: {
+          adminPublishMasterCardgroup: {
+            __typename: "PublishMasterCardgroupSuccess",
+            master: node("m-1", { status: "PUBLISHED", version: 2 }),
+          },
+        },
+      },
+    };
+    renderWithIntl(
+      <MockedProvider mocks={[listMock(["m-1"]), publishMock]}>
+        <AdminMastersClient />
+      </MockedProvider>,
+    );
+    const toggle = await screen.findByTestId("master-publish-toggle");
+    await user.click(toggle);
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
   });
 
   it("updates a master and toasts success", async () => {

@@ -25,6 +25,8 @@ import {
   AdminCreateMasterMutation,
   AdminDeleteMasterMutation,
   AdminMastersQuery,
+  AdminPublishMasterMutation,
+  AdminUnpublishMasterMutation,
   AdminUpdateMasterMutation,
 } from "./queries";
 
@@ -99,6 +101,8 @@ export function AdminMastersClient() {
   const [runUpdate, { loading: updating, reset: resetUpdate }] =
     useMutation(AdminUpdateMasterMutation);
   const [runDelete] = useMutation(AdminDeleteMasterMutation);
+  const [runPublish] = useMutation(AdminPublishMasterMutation);
+  const [runUnpublish] = useMutation(AdminUnpublishMasterMutation);
 
   const editId = sheet.state.mode === "edit" ? sheet.state.id : null;
   // Resolve the edit target by node.id, never by `cursor`: the backend emits an
@@ -331,6 +335,63 @@ export function AdminMastersClient() {
     [apolloClient, runDelete, sheet, t],
   );
 
+  // Publish / unpublish from the edit panel. Both mutations return the updated
+  // node keyed by `id`, so Apollo normalization propagates the new status to the
+  // list row badge and the form's `master.status` — no manual cache write needed.
+  // Catches its own errors (toast) so the form's click handler never sees a
+  // rejection beyond logging.
+  const handlePublishToggle = useCallback(
+    async (id: string, currentlyPublished: boolean) => {
+      try {
+        if (currentlyPublished) {
+          const result = await runUnpublish({ variables: { id } });
+          if (!result.data?.adminUnpublishMasterCardgroup) {
+            console.warn("[admin-masters] unpublish returned null payload", { masterId: id });
+            toast.error(t("unexpectedError"));
+            return;
+          }
+          toast.success(t("unpublishSuccess"));
+          return;
+        }
+        const result = await runPublish({ variables: { id } });
+        const payload = result.data?.adminPublishMasterCardgroup;
+        // Capture the typename before narrowing exhausts the union type below.
+        const typename = payload?.__typename ?? "null";
+        if (payload?.__typename === "PublishMasterCardgroupSuccess") {
+          toast.success(t("publishSuccess"));
+          return;
+        }
+        if (payload?.__typename === "MasterCardgroupEmptyError") {
+          // Backstop: the form disables Publish for 0-card drafts, but cardCount
+          // may be stale. Surface the backend's empty-deck rejection.
+          toast.error(t("publishEmptyToast"));
+          return;
+        }
+        // Unexpected payload shape (null or unknown variant) — never fail silently.
+        console.warn("[admin-masters] publish returned unexpected payload", {
+          masterId: id,
+          typename,
+        });
+        toast.error(t("unexpectedError"));
+      } catch (err) {
+        const codes = liftGraphQLCodes(err);
+        console.warn("[admin-masters] publish toggle failed", {
+          masterId: id,
+          name: err instanceof Error ? err.name : "unknown",
+          codes,
+        });
+        toast.error(
+          codes.includes("FORBIDDEN")
+            ? t("forbidden")
+            : codes.includes("UNAUTHENTICATED")
+              ? t("unauthenticated")
+              : t("unexpectedError"),
+        );
+      }
+    },
+    [runPublish, runUnpublish, t],
+  );
+
   const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
   const initialLoading = networkStatus === NetworkStatus.loading && edges.length === 0;
 
@@ -499,6 +560,7 @@ export function AdminMastersClient() {
               submit={handleUpdate}
               validationError={editValidationError}
               onDelete={handleDelete}
+              onPublishToggle={handlePublishToggle}
             />
           ) : (
             <div

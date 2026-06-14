@@ -124,4 +124,66 @@ describe("AdminMasterForm", () => {
     );
     expect(screen.getByText("name is taken")).toBeInTheDocument();
   });
+
+  it("renders no Publishing section in create mode", () => {
+    renderWithIntl(<AdminMasterForm mode="create" submitting={false} submit={vi.fn()} />);
+    expect(screen.queryByTestId("master-publish-section")).not.toBeInTheDocument();
+  });
+
+  it("publishes a DRAFT with cards from the Publishing section", async () => {
+    const onPublishToggle = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderWithIntl(
+      <AdminMasterForm
+        mode="edit"
+        master={EXISTING}
+        submitting={false}
+        submit={vi.fn()}
+        onPublishToggle={onPublishToggle}
+      />,
+    );
+    const toggle = screen.getByTestId("master-publish-toggle");
+    expect(toggle).toHaveAccessibleName(/publish/i);
+    expect(toggle).not.toBeDisabled();
+    await user.click(toggle);
+    expect(onPublishToggle).toHaveBeenCalledWith("m-1", false);
+  });
+
+  it("renders an Unpublish control for a PUBLISHED master", async () => {
+    const onPublishToggle = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderWithIntl(
+      <AdminMasterForm
+        mode="edit"
+        master={{ ...EXISTING, status: "PUBLISHED" }}
+        submitting={false}
+        submit={vi.fn()}
+        onPublishToggle={onPublishToggle}
+      />,
+    );
+    const toggle = screen.getByTestId("master-publish-toggle");
+    expect(toggle).toHaveAccessibleName(/unpublish/i);
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await user.click(toggle);
+    expect(onPublishToggle).toHaveBeenCalledWith("m-1", true);
+  });
+
+  it("disables Publish and shows an inline hint for a DRAFT with 0 cards", async () => {
+    const onPublishToggle = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderWithIntl(
+      <AdminMasterForm
+        mode="edit"
+        master={{ ...EXISTING, cardCount: 0 }}
+        submitting={false}
+        submit={vi.fn()}
+        onPublishToggle={onPublishToggle}
+      />,
+    );
+    expect(screen.getByTestId("master-publish-empty-hint")).toBeInTheDocument();
+    const toggle = screen.getByTestId("master-publish-toggle");
+    expect(toggle).toBeDisabled();
+    await user.click(toggle);
+    expect(onPublishToggle).not.toHaveBeenCalled();
+  });
 });
