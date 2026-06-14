@@ -4,13 +4,14 @@ import { NetworkStatus } from "@apollo/client";
 import { useLazyQuery, useQuery } from "@apollo/client/react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { useFragment } from "@/generated/fragment-masking";
 import type {
   AdminUsersQuery as AdminUsersQueryResult,
   AdminUsersQueryVariables,
 } from "@/generated/graphql";
+import { useDebouncedSearch } from "@/hooks/use-debounced-search";
 import {
   classifyQueryError,
   getBackendErrorBanner,
@@ -103,17 +104,9 @@ export function AdminUsersClient() {
   const t = useTranslations("Admin");
   const tCommon = useTranslations("Common");
   const tNav = useTranslations("Nav");
-  const [searchInput, setSearchInput] = useState("");
-  const [searchQuery, setSearchQuery] = useState<string | null>(null);
+  const search = useDebouncedSearch();
+  const searchQuery = search.query;
   const sheet = useSheetSearchParam();
-
-  // Debounce: update searchQuery 300ms after the last keystroke.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setSearchQuery(searchInput.trim() || null);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchInput]);
 
   // The cache key is { first, search }; memoize on searchQuery so the hook's
   // useQuery does not re-subscribe on unrelated re-renders.
@@ -250,8 +243,8 @@ export function AdminUsersClient() {
         <input
           type="search"
           placeholder={t("searchPlaceholder")}
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
+          value={search.input}
+          onChange={(e) => search.setInput(e.target.value)}
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={t("searchLabel")}
         />
