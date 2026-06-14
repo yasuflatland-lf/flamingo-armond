@@ -14,16 +14,6 @@ import (
 	"backend/internal/usecase/ucerr"
 )
 
-// errGuardAbort is a control-flow-only sentinel used to roll back the EditUser
-// transaction when the self-demotion guard decides the edit must not proceed.
-// It never escapes EditUser: the caller-visible result travels in the
-// closure-captured guard outcome, not in this error. The guarantee holds
-// because every `return errGuardAbort` site also sets guardHit = true, and the
-// post-tx `if guardHit { return guard, nil }` check runs before the `if err !=
-// nil` branch — so the sentinel is consumed and a nil error is returned to the
-// caller.
-var errGuardAbort = errors.New("usecase: admin user edit: guard abort")
-
 // AdminUserConnection is the usecase-level Relay-style page result for
 // AdminUser.List. The resolver wraps it into model.UserConnection.
 type AdminUserConnection struct {
@@ -254,11 +244,13 @@ func (u *adminUserUsecase) List(
 	out.PageInfo.HasPreviousPage = hasPrev
 	out.Edges = make([]AdminUserEdge, len(users))
 	for i, user := range users {
-		out.Edges[i] = AdminUserEdge{Cursor: user.ID, Node: user}
+		out.Edges[i] = AdminUserEdge{Cursor: string(user.ID), Node: user}
 	}
 	if len(users) > 0 {
-		out.PageInfo.StartCursor = &users[0].ID
-		out.PageInfo.EndCursor = &users[len(users)-1].ID
+		start := string(users[0].ID)
+		end := string(users[len(users)-1].ID)
+		out.PageInfo.StartCursor = &start
+		out.PageInfo.EndCursor = &end
 	}
 	return out, nil
 }
@@ -298,7 +290,11 @@ func (u *adminUserUsecase) Get(ctx context.Context, id string) (*domain.User, er
 // names with a FOR UPDATE lock (FindByIDsTx), so the role-name read is atomic
 // with the role-set write. This closes the TOCTOU window where a concurrent
 // admin could rename or delete the admin role between the guard read and the
-// role-set replacement.
+// role-set replacement. When the guard blocks (self-demotion or an unknown
+// submitted role) it returns nil from the tx closure after capturing the
+// outcome in earlyOutcome — there is no write to roll back, so no control-flow
+// sentinel is needed; the post-tx code returns the captured outcome before
+// inspecting the transaction error.
 func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminEditUserInput) (AdminEditUserOutcome, error) {
 	callerID, err := u.adminGate.Require(ctx, "usecase: admin user: check admin")
 	if err != nil {
@@ -339,13 +335,16 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 		return AdminEditUserOutcome{}, eris.New("usecase: admin user edit: tx runner not configured")
 	}
 
-	// guard carries the self-demotion outcome out of the tx closure. When
-	// guardHit is set, the closure returned errGuardAbort to roll back the
-	// transaction; the caller-visible result is guard, not the sentinel error.
-	var guard AdminEditUserOutcome
-	guardHit := false
+	// earlyOutcome carries a pre-write guard result (self-demotion blocked, or an
+	// unknown submitted role) out of the tx closure. The guard runs before any
+	// write, so blocking is an early `return nil` — there is nothing to roll back,
+	// and no control-flow sentinel is needed.
+	var earlyOutcome *AdminEditUserOutcome
 
 	err = u.tx(ctx, func(tx *gorm.DB) error {
+		// No write may be inserted ahead of this guard: the guard blocks via an
+		// early `return nil`, which commits the transaction, so any prior write
+		// would be persisted despite the block.
 		if callerID == id {
 			keepsAdmin := false
 			if len(roleIDs) > 0 {
@@ -356,26 +355,22 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 					}
 					return eris.Wrap(lerr, "usecase: admin user edit: lookup roles")
 				}
-				// If any submitted roleId is unknown, surface that as a validation
-				// failure rather than misclassifying the request as a self-demotion.
-				// The downstream SetUserRolesTx would also reject the unknown id,
+				// An unknown submitted roleId is a validation failure, not a
+				// self-demotion: the downstream SetUserRolesTx would also reject it,
 				// but only after passing the keepsAdmin check on the partial map.
 				if len(roles) != len(roleIDs) {
-					guard = AdminEditUserOutcome{Validation: NewInputValidationInfo("roleIds", "role not found")}
-					guardHit = true
-					return errGuardAbort
+					earlyOutcome = &AdminEditUserOutcome{Validation: NewInputValidationInfo("roleIds", "role not found")}
+					return nil
 				}
-				for _, roleID := range roleIDs {
-					if role, ok := roles[roleID]; ok && role.Name == domain.AdminRoleName {
-						keepsAdmin = true
-						break
-					}
+				set := make(domain.RoleSet, 0, len(roles))
+				for _, r := range roles {
+					set = append(set, *r)
 				}
+				keepsAdmin = set.ContainsAdmin()
 			}
 			if !keepsAdmin {
-				guard = AdminEditUserOutcome{CannotRevokeOwnAdmin: true}
-				guardHit = true
-				return errGuardAbort
+				earlyOutcome = &AdminEditUserOutcome{CannotRevokeOwnAdmin: true}
+				return nil
 			}
 		}
 
@@ -394,9 +389,8 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 		return nil
 	})
 
-	// Guard outcome takes precedence over the sentinel error it rode out on.
-	if guardHit {
-		return guard, nil
+	if earlyOutcome != nil {
+		return *earlyOutcome, nil
 	}
 	if err != nil {
 		if isContextDone(err) {

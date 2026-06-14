@@ -29,10 +29,10 @@ func TestCardgroupRepository_CreateTx(t *testing.T) {
 		return repo.CreateTx(ctx, tx, cg)
 	}))
 
-	got, err := repo.FindByID(ctx, cg.ID)
+	got, err := repo.FindByID(ctx, string(cg.ID))
 	require.NoError(t, err)
 	require.Equal(t, cg.ID, got.ID)
-	require.Equal(t, ownerID, got.OwnerID, "owner_id is persisted")
+	require.Equal(t, ownerID, string(got.OwnerID), "owner_id is persisted")
 	require.Equal(t, domain.CardgroupName("CreateTx Group"), got.Name, "name is persisted")
 }
 
@@ -58,6 +58,6 @@ func TestCardgroupRepository_CreateTx_RollsBackOnError(t *testing.T) {
 	})
 	require.ErrorIs(t, err, wantErr)
 
-	_, err = repo.FindByID(ctx, cg.ID)
+	_, err = repo.FindByID(ctx, string(cg.ID))
 	require.ErrorIs(t, err, repository.ErrNotFound, "the insert was rolled back with the transaction")
 }

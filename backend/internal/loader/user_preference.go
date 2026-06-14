@@ -44,7 +44,7 @@ func userPreferenceBatchFunc(repo userPreferenceReader) dataloader.BatchFunc[str
 
 		byUserID := make(map[string]*domain.UserPreference, len(prefs))
 		for _, p := range prefs {
-			byUserID[p.UserID] = p
+			byUserID[string(p.UserID)] = p
 		}
 
 		// Missing keys yield nil data with nil error: absence means "no preference

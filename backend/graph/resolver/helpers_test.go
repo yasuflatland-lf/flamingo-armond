@@ -43,7 +43,7 @@ func TestToCardModels_FiltersNil(t *testing.T) {
 		ID:          "c1",
 		Front:       "Q",
 		Back:        "A",
-		CardgroupID: "cg1",
+		CardgroupID: domain.CardgroupID("cg1"),
 	}
 	cards := []*domain.Card{nil, validCard, nil}
 
@@ -86,8 +86,8 @@ func TestToRoleModels_Empty(t *testing.T) {
 func TestToCardConnectionModel_Cursors(t *testing.T) {
 	t.Parallel()
 
-	c1 := &domain.Card{ID: "c1", Front: "Q1", Back: "A1", CardgroupID: "cg1"}
-	c2 := &domain.Card{ID: "c2", Front: "Q2", Back: "A2", CardgroupID: "cg1"}
+	c1 := &domain.Card{ID: "c1", Front: "Q1", Back: "A1", CardgroupID: domain.CardgroupID("cg1")}
+	c2 := &domain.Card{ID: "c2", Front: "Q2", Back: "A2", CardgroupID: domain.CardgroupID("cg1")}
 	out := &usecase.CardConnectionOutput{
 		Cards:    []*domain.Card{c1, c2},
 		StartCur: "c1",
@@ -116,7 +116,7 @@ func TestToCardConnectionModel_Cursors(t *testing.T) {
 func TestToCardConnectionModel_EmptyCursors(t *testing.T) {
 	t.Parallel()
 
-	c1 := &domain.Card{ID: "c1", Front: "Q1", Back: "A1", CardgroupID: "cg1"}
+	c1 := &domain.Card{ID: "c1", Front: "Q1", Back: "A1", CardgroupID: domain.CardgroupID("cg1")}
 	out := &usecase.CardConnectionOutput{
 		Cards:    []*domain.Card{c1},
 		StartCur: "",
@@ -138,8 +138,8 @@ func TestToCardConnectionModel_EmptyCursors(t *testing.T) {
 func TestToCardgroupConnectionModel_Cursors(t *testing.T) {
 	t.Parallel()
 
-	cg1 := &domain.Cardgroup{ID: "cg1", Name: "Alpha", OwnerID: "u1"}
-	cg2 := &domain.Cardgroup{ID: "cg2", Name: "Beta", OwnerID: "u1"}
+	cg1 := &domain.Cardgroup{ID: domain.CardgroupID("cg1"), Name: "Alpha", OwnerID: "u1"}
+	cg2 := &domain.Cardgroup{ID: domain.CardgroupID("cg2"), Name: "Beta", OwnerID: "u1"}
 	out := &usecase.CardgroupConnectionOutput{
 		Cardgroups: []*domain.Cardgroup{cg1, cg2},
 		StartCur:   "cg1",
@@ -168,7 +168,7 @@ func TestToCardgroupConnectionModel_Cursors(t *testing.T) {
 func TestToCardgroupConnectionModel_EmptyCursors(t *testing.T) {
 	t.Parallel()
 
-	cg1 := &domain.Cardgroup{ID: "cg1", Name: "Alpha", OwnerID: "u1"}
+	cg1 := &domain.Cardgroup{ID: domain.CardgroupID("cg1"), Name: "Alpha", OwnerID: "u1"}
 	out := &usecase.CardgroupConnectionOutput{
 		Cardgroups: []*domain.Cardgroup{cg1},
 		StartCur:   "",
@@ -192,7 +192,7 @@ func TestToCardgroupConnectionModel_EmptyCursors(t *testing.T) {
 func TestToCardConnectionModel_FiltersNilNodes(t *testing.T) {
 	t.Parallel()
 
-	validCard := &domain.Card{ID: "c1", Front: "Q", Back: "A", CardgroupID: "cg1"}
+	validCard := &domain.Card{ID: "c1", Front: "Q", Back: "A", CardgroupID: domain.CardgroupID("cg1")}
 	out := &usecase.CardConnectionOutput{
 		Cards:      []*domain.Card{nil, validCard, nil},
 		TotalCount: 1,
@@ -238,7 +238,7 @@ func TestToCEFRLevelModel_AllLevels(t *testing.T) {
 func TestToCardgroupConnectionModel_FiltersNilNodes(t *testing.T) {
 	t.Parallel()
 
-	validCG := &domain.Cardgroup{ID: "cg1", Name: "valid", OwnerID: "u1"}
+	validCG := &domain.Cardgroup{ID: domain.CardgroupID("cg1"), Name: "valid", OwnerID: "u1"}
 	out := &usecase.CardgroupConnectionOutput{
 		Cardgroups: []*domain.Cardgroup{nil, validCG, nil},
 		TotalCount: 1,

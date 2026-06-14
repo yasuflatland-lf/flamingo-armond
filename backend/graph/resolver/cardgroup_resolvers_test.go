@@ -117,11 +117,11 @@ func TestResolver_MyCardgroupsConnection_Authenticated_DelegatesToUsecase(t *tes
 	t.Parallel()
 
 	cgs := []*domain.Cardgroup{
-		{ID: "cg1", OwnerID: "u1", Name: "Alpha"},
-		{ID: "cg2", OwnerID: "u1", Name: "Beta"},
+		{ID: domain.CardgroupID("cg1"), OwnerID: "u1", Name: "Alpha"},
+		{ID: domain.CardgroupID("cg2"), OwnerID: "u1", Name: "Beta"},
 		// The third row is the "+1" fetch the usecase requests so it can
 		// detect hasNextPage; the resolver response should NOT include it.
-		{ID: "cg3", OwnerID: "u1", Name: "Gamma"},
+		{ID: domain.CardgroupID("cg3"), OwnerID: "u1", Name: "Gamma"},
 	}
 	repo := &mockCardgroupRepoForResolver{
 		findPageResult: cgs,
@@ -287,7 +287,7 @@ func TestResolver_MyCardgroupsConnection_OrderByName_PassesThrough(t *testing.T)
 	t.Parallel()
 
 	cgs := []*domain.Cardgroup{
-		{ID: "cg-a", OwnerID: "u1", Name: "Apple"},
+		{ID: domain.CardgroupID("cg-a"), OwnerID: "u1", Name: "Apple"},
 	}
 	captureRepo := &capturingCardgroupRepo{
 		mockCardgroupRepoForResolver: mockCardgroupRepoForResolver{
@@ -513,9 +513,9 @@ func updateCardgroupMutation(id, name string) string {
 func TestResolver_UpdateCardgroup_HappyPath(t *testing.T) {
 	t.Parallel()
 
-	updatedCG := &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1", Name: "NewName"}
+	updatedCG := &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1", Name: "NewName"}
 	repo := &mockCardgroupRepoForResolver{
-		findByIDResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1", Name: "OldName"},
+		findByIDResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1", Name: "OldName"},
 		updateResult:   updatedCG,
 	}
 	srv := newCardgroupSrv(repo)
@@ -552,7 +552,7 @@ func TestResolver_UpdateCardgroup_InputValidation(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockCardgroupRepoForResolver{
-		findByIDResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1", Name: "OldName"},
+		findByIDResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1", Name: "OldName"},
 	}
 	srv := newCardgroupSrv(repo)
 
@@ -600,7 +600,7 @@ func TestResolver_UpdateCardgroup_NilVariant_ReturnsInternal(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockCardgroupRepoForResolver{
-		findByIDResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1", Name: "OldName"},
+		findByIDResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1", Name: "OldName"},
 		updateResult:   nil, // triggers nil-variant path
 	}
 	srv := newCardgroupSrv(repo)

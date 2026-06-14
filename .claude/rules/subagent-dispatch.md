@@ -115,6 +115,20 @@ Worked example from issue #181 Phase 1:
 
 Parallel agents can still run, but each handles a **distinct symbol move**. Two agents touching the same symbol — one adding, one deleting — would race on the build state. If a symbol move is the *only* edit in a phase, a single sequential agent is sufficient; parallelism pays off only when several independent symbol moves share the phase.
 
+### Compiler-driven fan-out has an unknowable file set — don't pair it with same-tree siblings
+
+The per-file safety guarantee above assumes the migration's file set is known before dispatch. A compiler-driven migration — where the exact files to edit are enumerated by `go build ./...` naming each failing cast or type site — breaks that assumption. The fan-out set is revealed only as the agent works, not at dispatch time. Any file the compiler names is fair game for the migration agent, including files a sibling parallel agent was assigned.
+
+Mitigation:
+
+- **Treat a compiler-driven agent as owning the entire tree for its migration.** Do not assign any file that could plausibly appear in the compiler's error output to a sibling agent running in parallel. If the compiler could name it, the migration agent may edit it.
+- **When the fan-out set is unknowable, choose one of:** (a) serialize the compiler-driven agent before or after all sibling agents; or (b) scope sibling agents strictly to files provably outside the fan-out — brand-new files, or a package the migration does not reference at all (verify via `go list`).
+- **Verify post-hoc that both agents' changes landed in any shared file.** A lost concurrent write is silent: the file compiles, the agent self-reports done, and the missing edit is discovered only when the behaviour it was supposed to fix still appears. After all agents complete, grep for each expected edit in every file the sibling agents shared.
+
+Worked example (issue #438): a typed-ID migration agent (compiler-driven cast fan-out for `domain.UserID` / `domain.CardgroupID`) and a separate "review-nits" agent ran in parallel. The migration agent needed to cast a `HandleSwipeInput` literal inside `backend/cmd/server/main_test.go`; the nits agent was simultaneously adding a new test (`TestBuildResolver_NotionEnabledRetryConfigError`) to the **same file**. Both edits happened to survive, but it was a genuine same-file concurrent-write race — had the writes interleaved differently, one edit would have silently overwritten the other. A single pre-dispatch `go build ./...` dry-run would have revealed that `main_test.go` was in the compiler's error list, placing it off-limits for the sibling agent.
+
+The ["When per-concern split forces same-file overlap, consolidate into one agent"](#when-per-concern-split-forces-same-file-overlap-consolidate-into-one-agent) subsection above handles the case where the file set IS known but two concern-based splits collide — use that rule when you can enumerate the overlap up front, and this rule when the overlap is only discoverable at compile time.
+
 ## Pair reviewers with non-overlapping blind spots
 
 A single review agent does not exhaust the failure modes of a change. `comment-analyzer` is keyed on identifier-level staleness (a function name in prose that no longer exists in code) while `code-reviewer` is keyed on structural and tier-discipline regressions (duplicate `##` headings, files in the wrong tier, missing cross-references). Either one alone misses what the other catches. For doc-cleanup or refactor passes that touch both prose accuracy and structural shape, run both review agents and merge their findings before acting. Worked example: a doc-cleanup pass surfaced a stale identifier reference only via `comment-analyzer` and a duplicate-heading regression only via `code-reviewer` — running just one would have shipped one of the two defects.

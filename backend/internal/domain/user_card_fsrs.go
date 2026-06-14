@@ -8,7 +8,7 @@ import (
 
 // UserCardFSRS is the per-user scheduling aggregate for a card.
 type UserCardFSRS struct {
-	UserID    string
+	UserID    UserID
 	CardID    string
 	State     FSRSState
 	CreatedAt time.Time
@@ -21,7 +21,7 @@ type FSRSScheduler interface {
 	Apply(state FSRSState, rating Rating, now time.Time) FSRSState
 }
 
-func NewUserCardFSRSForNewCard(userID, cardID string, now time.Time) *UserCardFSRS {
+func NewUserCardFSRSForNewCard(userID UserID, cardID string, now time.Time) *UserCardFSRS {
 	if userID == "" || cardID == "" {
 		panic("user_card_fsrs: userID and cardID must not be empty")
 	}

@@ -284,7 +284,7 @@ func (r *cardgroupRepo) FindByIDs(ctx context.Context, ids []string) (map[string
 	out := make(map[string]*domain.Cardgroup, len(rows))
 	for i := range rows {
 		cg := cardgroupToDomain(rows[i])
-		out[cg.ID] = cg
+		out[string(cg.ID)] = cg
 	}
 	return out, nil
 }
@@ -395,8 +395,8 @@ func (r *cardgroupRepo) Delete(ctx context.Context, id string) error {
 
 func cardgroupToRow(cg *domain.Cardgroup) *gormCardgroup {
 	return &gormCardgroup{
-		ID:        cg.ID,
-		OwnerID:   cg.OwnerID,
+		ID:        string(cg.ID),
+		OwnerID:   string(cg.OwnerID),
 		Name:      string(cg.Name),
 		CreatedAt: cg.CreatedAt,
 		UpdatedAt: cg.UpdatedAt,
@@ -405,8 +405,8 @@ func cardgroupToRow(cg *domain.Cardgroup) *gormCardgroup {
 
 func cardgroupToDomain(g gormCardgroup) *domain.Cardgroup {
 	return &domain.Cardgroup{
-		ID:        g.ID,
-		OwnerID:   g.OwnerID,
+		ID:        domain.CardgroupID(g.ID),
+		OwnerID:   domain.UserID(g.OwnerID),
 		Name:      domain.CardgroupName(g.Name),
 		CreatedAt: g.CreatedAt,
 		UpdatedAt: g.UpdatedAt,

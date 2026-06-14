@@ -105,9 +105,9 @@ func (r *swipeRecordRepo) CreateTx(ctx context.Context, tx *gorm.DB, sr *domain.
 func swipeRecordToRow(sr *domain.SwipeRecord) *gormSwipeRecord {
 	return &gormSwipeRecord{
 		ID:            sr.ID,
-		UserID:        sr.UserID,
+		UserID:        string(sr.UserID),
 		CardID:        sr.CardID,
-		CardgroupID:   sr.CardgroupID,
+		CardgroupID:   string(sr.CardgroupID),
 		Rating:        int(sr.Rating),
 		ReviewedAt:    sr.ReviewedAt,
 		Due:           sr.StateAfter.Due,
@@ -125,9 +125,9 @@ func swipeRecordToRow(sr *domain.SwipeRecord) *gormSwipeRecord {
 func swipeRecordToDomain(row gormSwipeRecord) *domain.SwipeRecord {
 	return &domain.SwipeRecord{
 		ID:          row.ID,
-		UserID:      row.UserID,
+		UserID:      domain.UserID(row.UserID),
 		CardID:      row.CardID,
-		CardgroupID: row.CardgroupID,
+		CardgroupID: domain.CardgroupID(row.CardgroupID),
 		Rating:      domain.Rating(row.Rating),
 		ReviewedAt:  row.ReviewedAt,
 		StateAfter: domain.FSRSState{

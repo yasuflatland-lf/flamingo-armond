@@ -160,7 +160,7 @@ func dueCardsFromRows(rows []dueCardRow) ([]domain.DueCard, error) {
 	for i, r := range rows {
 		c := &domain.Card{
 			ID:          r.ID,
-			CardgroupID: r.CardgroupID,
+			CardgroupID: domain.CardgroupID(r.CardgroupID),
 			Front:       domain.CardText(r.Front),
 			Back:        domain.CardText(r.Back),
 			CreatedAt:   r.CreatedAt,

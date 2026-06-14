@@ -43,7 +43,7 @@ func TestCardRepository_UpsertManyTx(t *testing.T) {
 		require.Equal(t, int64(5), result.Inserted)
 		require.Equal(t, int64(0), result.Updated)
 
-		stored, err := repo.FindByCardgroup(ctx, cg.ID)
+		stored, err := repo.FindByCardgroup(ctx, string(cg.ID))
 		require.NoError(t, err)
 		require.Len(t, stored, 5)
 	})
@@ -94,7 +94,7 @@ func TestCardRepository_UpsertManyTx(t *testing.T) {
 		}
 
 		// Final cardgroup row count: 3 pre-existing + 2 newly inserted.
-		stored, err := repo.FindByCardgroup(ctx, cg.ID)
+		stored, err := repo.FindByCardgroup(ctx, string(cg.ID))
 		require.NoError(t, err)
 		require.Len(t, stored, 5)
 	})
@@ -114,7 +114,7 @@ func TestCardRepository_UpsertManyTx(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, repository.UpsertManyTxResult{}, result)
 
-		stored, err := repo.FindByCardgroup(ctx, cg.ID)
+		stored, err := repo.FindByCardgroup(ctx, string(cg.ID))
 		require.NoError(t, err)
 		require.Empty(t, stored)
 	})
@@ -149,13 +149,13 @@ func TestCardRepository_UpsertManyTx(t *testing.T) {
 		require.Equal(t, int64(1), result.Inserted)
 		require.Equal(t, int64(0), result.Updated)
 
-		storedA, err := repo.FindByCardgroup(ctx, cgA.ID)
+		storedA, err := repo.FindByCardgroup(ctx, string(cgA.ID))
 		require.NoError(t, err)
 		require.Len(t, storedA, 1)
 		require.Equal(t, domain.CardText("hello"), storedA[0].Front)
 		require.Equal(t, domain.CardText("back-A"), storedA[0].Back)
 
-		storedB, err := repo.FindByCardgroup(ctx, cgB.ID)
+		storedB, err := repo.FindByCardgroup(ctx, string(cgB.ID))
 		require.NoError(t, err)
 		require.Len(t, storedB, 1)
 		require.Equal(t, domain.CardText("hello"), storedB[0].Front)
@@ -195,7 +195,7 @@ func TestCardRepository_UpsertManyTx_UpdatesPositionOnConflict(t *testing.T) {
 	require.NoError(t, err)
 
 	for i, front := range fronts {
-		got, err := repo.FindByCardgroupAndFront(ctx, cg.ID, front)
+		got, err := repo.FindByCardgroupAndFront(ctx, string(cg.ID), front)
 		require.NoError(t, err)
 		require.Equal(t, i, got.Position, "initial position for %q", front)
 	}
@@ -209,7 +209,7 @@ func TestCardRepository_UpsertManyTx_UpdatesPositionOnConflict(t *testing.T) {
 	require.NoError(t, err)
 
 	for i, front := range fronts {
-		got, err := repo.FindByCardgroupAndFront(ctx, cg.ID, front)
+		got, err := repo.FindByCardgroupAndFront(ctx, string(cg.ID), front)
 		require.NoError(t, err)
 		require.Equal(t, 10+i, got.Position,
 			"position for %q must be refreshed by the conflict path", front)

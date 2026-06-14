@@ -147,7 +147,7 @@ func handleSwipeMutation(cardID, cardgroupID string, mode int) string {
 func TestResolver_HandleSwipe_HappyPath(t *testing.T) {
 	t.Parallel()
 
-	card := &domain.Card{ID: "c-1", CardgroupID: "cg-1", Front: "Q", Back: "A"}
+	card := &domain.Card{ID: "c-1", CardgroupID: domain.CardgroupID("cg-1"), Front: "Q", Back: "A"}
 
 	cardRepo := &swipeCardRepo{
 		findByIDTxResult: card,
@@ -257,7 +257,7 @@ func TestResolver_HandleSwipe_InfrastructureError_ReturnsInternal(t *testing.T) 
 	swipeUC := usecase.NewSwipeUsecaseWithTx(
 		&swipeCardRepo{},
 		&swipeCGRepo{
-			findByIDResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"},
+			findByIDResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"},
 		},
 		&swipeRecordRepo{},
 		nil,

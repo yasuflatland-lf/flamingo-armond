@@ -7,6 +7,7 @@ package resolver
 
 import (
 	"backend/graph/model"
+	"backend/internal/domain"
 	"backend/internal/gqlerr"
 	"backend/internal/usecase"
 	"context"
@@ -23,7 +24,7 @@ import (
 func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.HandleSwipeInput) (model.HandleSwipeResult, error) {
 	outcome, err := r.SwipeUC.HandleSwipe(ctx, usecase.HandleSwipeInput{
 		CardID:      input.CardID,
-		CardgroupID: input.CardgroupID,
+		CardgroupID: domain.CardgroupID(input.CardgroupID),
 		Mode:        input.Mode,
 	})
 	if err != nil {

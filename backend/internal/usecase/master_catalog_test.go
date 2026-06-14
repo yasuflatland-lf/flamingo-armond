@@ -572,7 +572,7 @@ func TestImportMaster_Published_CopiesAndReturnsCardgroup(t *testing.T) {
 			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Deck"), Status: domain.MasterStatusPublished}, nil
 		},
 	}
-	want := &domain.Cardgroup{ID: "new-cg", OwnerID: "u1", Name: domain.CardgroupName("Deck")}
+	want := &domain.Cardgroup{ID: domain.CardgroupID("new-cg"), OwnerID: "u1", Name: domain.CardgroupName("Deck")}
 	var gotMaster, gotOwner string
 	copyUC := &mockCopyMasterToUserUC{fn: func(_ context.Context, masterID, ownerID string) (*domain.Cardgroup, error) {
 		gotMaster, gotOwner = masterID, ownerID

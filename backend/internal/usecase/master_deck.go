@@ -248,8 +248,8 @@ func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx *gorm.DB,
 
 	now := time.Now().UTC()
 	newCG := &domain.Cardgroup{
-		ID:        newCGID,
-		OwnerID:   ownerID,
+		ID:        domain.CardgroupID(newCGID),
+		OwnerID:   domain.UserID(ownerID),
 		Name:      master.Name,
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -262,7 +262,7 @@ func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx *gorm.DB,
 	for _, mc := range cards {
 		// The source master cards are already valid; the constructor re-parses
 		// the text (idempotent) and generates the new user-card ID.
-		card, err := domain.NewCard(newCGID, mc.Front.String(), mc.Back.String(), mc.Position)
+		card, err := domain.NewCard(domain.CardgroupID(newCGID), mc.Front.String(), mc.Back.String(), mc.Position)
 		if err != nil {
 			return nil, eris.Wrap(err, "new card from master")
 		}

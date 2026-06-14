@@ -24,7 +24,7 @@ func TestUserCardFSRSRepository_UpsertTxAndFindByUserAndCardIDs(t *testing.T) {
 	require.NoError(t, cardRepo.Create(ctx, card))
 
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	first := domain.NewUserCardFSRSForNewCard(ownerID, card.ID, now)
+	first := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), card.ID, now)
 	first.State.Reps = 1
 	first.State.Due = now.Add(time.Hour)
 
@@ -38,7 +38,7 @@ func TestUserCardFSRSRepository_UpsertTxAndFindByUserAndCardIDs(t *testing.T) {
 	require.Equal(t, 1, got[card.ID].State.Reps)
 	require.True(t, got[card.ID].State.Due.Equal(first.State.Due))
 
-	second := domain.NewUserCardFSRSForNewCard(ownerID, card.ID, now.Add(time.Minute))
+	second := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), card.ID, now.Add(time.Minute))
 	second.State.Reps = 2
 	second.State.Lapses = 1
 	second.State.Due = now.Add(24 * time.Hour)
@@ -75,7 +75,7 @@ func TestUserCardFSRSRepository_OnCardDelete_CascadesFSRSRow(t *testing.T) {
 	require.NoError(t, cardRepo.Create(ctx, card))
 
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	state := domain.NewUserCardFSRSForNewCard(ownerID, card.ID, now)
+	state := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), card.ID, now)
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return ucsRepo.UpsertTx(ctx, tx, state)
 	}))
@@ -107,9 +107,9 @@ func TestUserCardFSRSRepository_FindByUserAndCardIDs_ScopesByViewer(t *testing.T
 	require.NoError(t, cardRepo.Create(ctx, card))
 
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	ownerState := domain.NewUserCardFSRSForNewCard(ownerID, card.ID, now)
+	ownerState := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), card.ID, now)
 	ownerState.State.Reps = 1
-	otherState := domain.NewUserCardFSRSForNewCard(otherUserID, card.ID, now)
+	otherState := domain.NewUserCardFSRSForNewCard(domain.UserID(otherUserID), card.ID, now)
 	otherState.State.Reps = 7
 
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

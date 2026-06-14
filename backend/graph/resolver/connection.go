@@ -53,7 +53,7 @@ func toCardgroupConnectionModel(ctx context.Context, out *usecase.CardgroupConne
 			slog.WarnContext(ctx, "toCardgroupConnectionModel: skipping nil entry")
 			continue
 		}
-		edges = append(edges, &model.CardgroupEdge{Cursor: cursor.Encode(cg.ID), Node: cgm})
+		edges = append(edges, &model.CardgroupEdge{Cursor: cursor.Encode(string(cg.ID)), Node: cgm})
 	}
 	return &model.CardgroupConnection{
 		Edges: edges,

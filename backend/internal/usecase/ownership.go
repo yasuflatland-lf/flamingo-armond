@@ -24,9 +24,10 @@ type CardgroupOwnershipFinder interface {
 func authorizeCardgroupOrBadInput(
 	ctx context.Context,
 	repo CardgroupOwnershipFinder,
-	id, userID string,
+	id domain.CardgroupID,
+	userID domain.UserID,
 ) error {
-	cg, err := repo.FindByID(ctx, id)
+	cg, err := repo.FindByID(ctx, string(id))
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ucerr.NewValidationError("cardgroupId", "cardgroup not found")
@@ -50,9 +51,10 @@ func authorizeCardgroupOrBadInput(
 func authorizeCardgroupOrUnauthenticated(
 	ctx context.Context,
 	repo CardgroupOwnershipFinder,
-	id, userID string,
+	id domain.CardgroupID,
+	userID domain.UserID,
 ) error {
-	cg, err := repo.FindByID(ctx, id)
+	cg, err := repo.FindByID(ctx, string(id))
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ucerr.ErrUnauthenticated

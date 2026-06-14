@@ -42,7 +42,7 @@ func TestUserPreferenceLoader_BatchesNCallsIntoOne(t *testing.T) {
 			receivedIDs = userIDs
 			out := make([]*domain.UserPreference, len(userIDs))
 			for i, id := range userIDs {
-				out[i] = &domain.UserPreference{UserID: id}
+				out[i] = &domain.UserPreference{UserID: domain.UserID(id)}
 			}
 			return out, nil
 		},
@@ -59,7 +59,7 @@ func TestUserPreferenceLoader_BatchesNCallsIntoOne(t *testing.T) {
 		if results[i] == nil {
 			t.Fatalf("load %d: nil result", i)
 		}
-		if results[i].UserID != ids[i] {
+		if string(results[i].UserID) != ids[i] {
 			t.Fatalf("load %d: UserID mismatch: got %q want %q", i, results[i].UserID, ids[i])
 		}
 	}
@@ -101,7 +101,7 @@ func TestUserPreferenceLoader_MissingUserReturnsNilData(t *testing.T) {
 			out := []*domain.UserPreference{}
 			for _, id := range userIDs {
 				if id == "present" {
-					out = append(out, &domain.UserPreference{UserID: id})
+					out = append(out, &domain.UserPreference{UserID: domain.UserID(id)})
 				}
 			}
 			return out, nil

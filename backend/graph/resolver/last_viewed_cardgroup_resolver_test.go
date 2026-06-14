@@ -289,7 +289,7 @@ func TestUserLastViewedCardgroup_PopulatedResolvesViaDataLoader(t *testing.T) {
 		"u-1": {UserID: "u-1", LastViewedCardgroupID: &cgID},
 	}
 	cgs := map[string]*domain.Cardgroup{
-		cgID: {ID: cgID, OwnerID: "u-1", Name: "My Group"},
+		cgID: {ID: domain.CardgroupID(cgID), OwnerID: "u-1", Name: "My Group"},
 	}
 	ctx := ctxWithBothLoaders(authedCtx("u-1"), prefs, cgs)
 	body := `{"query":"{ me { id lastViewedCardgroup { id name } } }"}`

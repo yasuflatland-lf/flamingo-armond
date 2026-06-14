@@ -190,7 +190,7 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 	if input.CardgroupID == "" {
 		return ImportCardsOutput{}, ucerr.NewValidationError("cardgroupId", "cardgroupId is required")
 	}
-	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, input.CardgroupID, caller.Sub); err != nil {
+	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, domain.CardgroupID(input.CardgroupID), domain.UserID(caller.Sub)); err != nil {
 		return ImportCardsOutput{}, err
 	}
 
@@ -258,7 +258,7 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 		// present, so the realistic failure is the length cap; surface it as a
 		// typed validation error (the DB CHECK would otherwise abort the tx with
 		// an opaque constraint violation).
-		c, err := domain.NewCard(input.CardgroupID, w.Front, w.Back, 0)
+		c, err := domain.NewCard(domain.CardgroupID(input.CardgroupID), w.Front, w.Back, 0)
 		if err != nil {
 			return ImportCardsOutput{}, translateCardErr(err)
 		}

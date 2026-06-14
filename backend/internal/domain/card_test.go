@@ -18,7 +18,7 @@ func TestCardShape(t *testing.T) {
 	cardType := reflect.TypeFor[Card]()
 	want := map[string]reflect.Type{
 		"ID":          reflect.TypeFor[string](),
-		"CardgroupID": reflect.TypeFor[string](),
+		"CardgroupID": reflect.TypeFor[CardgroupID](),
 		"Front":       reflect.TypeFor[CardText](),
 		"Back":        reflect.TypeFor[CardText](),
 		"CreatedAt":   reflect.TypeFor[time.Time](),
@@ -45,7 +45,7 @@ func TestNewCard(t *testing.T) {
 		c, err := NewCard("cg-1", "  front  ", "back", 7)
 		require.NoError(t, err)
 		require.NotEmpty(t, c.ID, "constructor must generate an ID")
-		require.Equal(t, "cg-1", c.CardgroupID)
+		require.Equal(t, CardgroupID("cg-1"), c.CardgroupID)
 		require.Equal(t, CardText("front"), c.Front, "front must be trimmed via ParseCardText")
 		require.Equal(t, CardText("back"), c.Back)
 		require.Equal(t, 7, c.Position)
@@ -105,31 +105,31 @@ func TestCardBelongsToCardgroup(t *testing.T) {
 	cases := []struct {
 		name        string
 		card        Card
-		cardgroupID string
+		cardgroupID CardgroupID
 		want        bool
 	}{
 		{
 			name:        "matching cardgroup returns true",
-			card:        Card{CardgroupID: "cg-1"},
-			cardgroupID: "cg-1",
+			card:        Card{CardgroupID: CardgroupID("cg-1")},
+			cardgroupID: CardgroupID("cg-1"),
 			want:        true,
 		},
 		{
 			name:        "empty cardgroupID returns false",
-			card:        Card{CardgroupID: "cg-1"},
-			cardgroupID: "",
+			card:        Card{CardgroupID: CardgroupID("cg-1")},
+			cardgroupID: CardgroupID(""),
 			want:        false,
 		},
 		{
 			name:        "mismatched cardgroupID returns false",
-			card:        Card{CardgroupID: "cg-1"},
-			cardgroupID: "cg-2",
+			card:        Card{CardgroupID: CardgroupID("cg-1")},
+			cardgroupID: CardgroupID("cg-2"),
 			want:        false,
 		},
 		{
 			name:        "both empty returns false",
-			card:        Card{CardgroupID: ""},
-			cardgroupID: "",
+			card:        Card{CardgroupID: CardgroupID("")},
+			cardgroupID: CardgroupID(""),
 			want:        false,
 		},
 	}
@@ -140,6 +140,14 @@ func TestCardBelongsToCardgroup(t *testing.T) {
 			require.Equal(t, tc.want, tc.card.BelongsToCardgroup(tc.cardgroupID))
 		})
 	}
+}
+
+func TestCard_BelongsToCardgroup_TypedEmptyHandle(t *testing.T) {
+	t.Parallel()
+	c := Card{ID: "card-1", CardgroupID: CardgroupID("cg-1")}
+	require.True(t, c.BelongsToCardgroup(CardgroupID("cg-1")))
+	require.False(t, c.BelongsToCardgroup(CardgroupID("cg-2")))
+	require.False(t, c.BelongsToCardgroup(CardgroupID("")), "empty CardgroupID never matches")
 }
 
 func TestNewFSRSStateForNewCard(t *testing.T) {
@@ -201,7 +209,7 @@ func TestCardUpdateFront(t *testing.T) {
 	}{
 		{
 			name:      "empty CardText rejected with ErrCardFrontRequired",
-			initial:   Card{ID: "c", CardgroupID: "cg", Front: "front", Back: "back"},
+			initial:   Card{ID: "c", CardgroupID: CardgroupID("cg"), Front: "front", Back: "back"},
 			newFront:  "",
 			wantErr:   ErrCardFrontRequired,
 			wantFront: "front", // unchanged on error
@@ -209,7 +217,7 @@ func TestCardUpdateFront(t *testing.T) {
 		},
 		{
 			name:      "valid CardText updates Front and returns nil",
-			initial:   Card{ID: "c", CardgroupID: "cg", Front: "front", Back: "back"},
+			initial:   Card{ID: "c", CardgroupID: CardgroupID("cg"), Front: "front", Back: "back"},
 			newFront:  "new front",
 			wantErr:   nil,
 			wantFront: "new front",
@@ -249,7 +257,7 @@ func TestCardUpdateBack(t *testing.T) {
 	}{
 		{
 			name:      "empty CardText rejected with ErrCardBackRequired",
-			initial:   Card{ID: "c", CardgroupID: "cg", Front: "front", Back: "back"},
+			initial:   Card{ID: "c", CardgroupID: CardgroupID("cg"), Front: "front", Back: "back"},
 			newBack:   "",
 			wantErr:   ErrCardBackRequired,
 			wantFront: "front",
@@ -257,7 +265,7 @@ func TestCardUpdateBack(t *testing.T) {
 		},
 		{
 			name:      "valid CardText updates Back and returns nil",
-			initial:   Card{ID: "c", CardgroupID: "cg", Front: "front", Back: "back"},
+			initial:   Card{ID: "c", CardgroupID: CardgroupID("cg"), Front: "front", Back: "back"},
 			newBack:   "new back",
 			wantErr:   nil,
 			wantFront: "front",

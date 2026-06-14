@@ -24,8 +24,8 @@ import (
 func newCardgroup(ownerID, name string) *domain.Cardgroup {
 	now := time.Now().UTC()
 	return &domain.Cardgroup{
-		ID:        uuid.NewString(),
-		OwnerID:   ownerID,
+		ID:        domain.CardgroupID(uuid.NewString()),
+		OwnerID:   domain.UserID(ownerID),
 		Name:      domain.CardgroupName(name),
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -41,10 +41,10 @@ func TestCardgroupRepository_CreateAndFindByID(t *testing.T) {
 	cg := newCardgroup(ownerID, "My Flashcards")
 	require.NoError(t, repo.Create(ctx, cg))
 
-	got, err := repo.FindByID(ctx, cg.ID)
+	got, err := repo.FindByID(ctx, string(cg.ID))
 	require.NoError(t, err)
 	require.Equal(t, cg.ID, got.ID)
-	require.Equal(t, ownerID, got.OwnerID)
+	require.Equal(t, ownerID, string(got.OwnerID))
 	require.Equal(t, "My Flashcards", got.Name.String())
 	require.False(t, got.CreatedAt.IsZero())
 	require.False(t, got.UpdatedAt.IsZero())
@@ -87,12 +87,12 @@ func TestCardgroupRepository_FindByIDs_AllFound(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, cg2))
 	require.NoError(t, repo.Create(ctx, cg3))
 
-	got, err := repo.FindByIDs(ctx, []string{cg1.ID, cg2.ID, cg3.ID})
+	got, err := repo.FindByIDs(ctx, []string{string(cg1.ID), string(cg2.ID), string(cg3.ID)})
 	require.NoError(t, err)
 	require.Len(t, got, 3)
-	require.NotNil(t, got[cg1.ID])
-	require.NotNil(t, got[cg2.ID])
-	require.NotNil(t, got[cg3.ID])
+	require.NotNil(t, got[string(cg1.ID)])
+	require.NotNil(t, got[string(cg2.ID)])
+	require.NotNil(t, got[string(cg3.ID)])
 }
 
 func TestCardgroupRepository_FindByIDs_PartialMissing(t *testing.T) {
@@ -105,10 +105,10 @@ func TestCardgroupRepository_FindByIDs_PartialMissing(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, cg))
 
 	missing := uuid.NewString()
-	got, err := repo.FindByIDs(ctx, []string{cg.ID, missing})
+	got, err := repo.FindByIDs(ctx, []string{string(cg.ID), missing})
 	require.NoError(t, err)
 	require.Len(t, got, 1)
-	require.NotNil(t, got[cg.ID])
+	require.NotNil(t, got[string(cg.ID)])
 	require.Nil(t, got[missing])
 }
 
@@ -134,7 +134,7 @@ func TestCardgroupRepository_Update_NameOnly(t *testing.T) {
 	time.Sleep(5 * time.Millisecond)
 
 	newName := "Renamed"
-	got, err := repo.Update(ctx, cg.ID, repository.CardgroupUpdate{Name: &newName})
+	got, err := repo.Update(ctx, string(cg.ID), repository.CardgroupUpdate{Name: &newName})
 	require.NoError(t, err)
 	require.Equal(t, "Renamed", got.Name.String())
 	require.True(t, got.UpdatedAt.After(cg.CreatedAt),
@@ -150,10 +150,10 @@ func TestCardgroupRepository_Update_EmptyPatchReturnsCurrent(t *testing.T) {
 	cg := newCardgroup(ownerID, "Stable")
 	require.NoError(t, repo.Create(ctx, cg))
 
-	before, err := repo.FindByID(ctx, cg.ID)
+	before, err := repo.FindByID(ctx, string(cg.ID))
 	require.NoError(t, err)
 
-	after, err := repo.Update(ctx, cg.ID, repository.CardgroupUpdate{})
+	after, err := repo.Update(ctx, string(cg.ID), repository.CardgroupUpdate{})
 	require.NoError(t, err)
 	require.Equal(t, before.UpdatedAt.UnixNano(), after.UpdatedAt.UnixNano(),
 		"empty patch must not bump updated_at")
@@ -180,9 +180,9 @@ func TestCardgroupRepository_Delete_Success(t *testing.T) {
 	cg := newCardgroup(ownerID, "To Delete")
 	require.NoError(t, repo.Create(ctx, cg))
 
-	require.NoError(t, repo.Delete(ctx, cg.ID))
+	require.NoError(t, repo.Delete(ctx, string(cg.ID)))
 
-	_, err := repo.FindByID(ctx, cg.ID)
+	_, err := repo.FindByID(ctx, string(cg.ID))
 	require.True(t, errors.Is(err, repository.ErrNotFound),
 		"deleted cardgroup should not be found")
 }
@@ -211,7 +211,7 @@ func TestCardgroupRepository_OnUserDeleteCascade(t *testing.T) {
 	_, err := sqlDB.ExecContext(ctx, `DELETE FROM auth.users WHERE id = $1`, ownerID)
 	require.NoError(t, err)
 
-	_, err = repo.FindByID(ctx, cg.ID)
+	_, err = repo.FindByID(ctx, string(cg.ID))
 	require.True(t, errors.Is(err, repository.ErrNotFound),
 		"cardgroup should be gone after cascade delete of owning user")
 }
@@ -255,7 +255,7 @@ func TestCardgroupRepository_EnsureByName_Create(t *testing.T) {
 
 	got, err := repo.EnsureByName(ctx, ownerID, "Ensure Create")
 	require.NoError(t, err)
-	require.Equal(t, ownerID, got.OwnerID)
+	require.Equal(t, ownerID, string(got.OwnerID))
 	require.Equal(t, "Ensure Create", got.Name.String())
 	require.NotEmpty(t, got.ID)
 
@@ -338,8 +338,8 @@ func insertNamedCardgroups(t *testing.T, ctx context.Context, ownerID string, na
 	for i, name := range names {
 		now := time.Now().UTC().Add(time.Duration(i) * time.Millisecond)
 		cg := &domain.Cardgroup{
-			ID:        uuid.NewString(),
-			OwnerID:   ownerID,
+			ID:        domain.CardgroupID(uuid.NewString()),
+			OwnerID:   domain.UserID(ownerID),
 			Name:      domain.CardgroupName(name),
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -374,7 +374,7 @@ func cardgroupNameSet(cgs []*domain.Cardgroup) map[string]struct{} {
 func cardgroupIDSetFromSlice(cgs []*domain.Cardgroup) map[string]struct{} {
 	m := make(map[string]struct{}, len(cgs))
 	for _, cg := range cgs {
-		m[cg.ID] = struct{}{}
+		m[string(cg.ID)] = struct{}{}
 	}
 	return m
 }
@@ -563,7 +563,7 @@ func TestCardgroupRepo_FindPageByOwner_CrossTenant(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, cgA := range gotA {
-		require.NotContains(t, idsB, cgA.ID,
+		require.NotContains(t, idsB, string(cgA.ID),
 			"ownerA's cardgroup %q must not appear in ownerB's page results", cgA.Name.String())
 	}
 
@@ -601,7 +601,7 @@ func TestCardgroupRepo_FindPageByOwner_PlusOneFetch(t *testing.T) {
 
 	// Verify the rows are in ASC order and belong to the right owner.
 	for _, cg := range got {
-		require.Equal(t, ownerID, cg.OwnerID)
+		require.Equal(t, ownerID, string(cg.OwnerID))
 	}
 	sortedGot := make([]*domain.Cardgroup, len(got))
 	copy(sortedGot, got)
@@ -621,7 +621,7 @@ func TestCardgroupRepo_FindPageByOwner_PlusOneFetch(t *testing.T) {
 func pickOwnerCardgroups(got []*domain.Cardgroup, expectIDs map[string]struct{}) []*domain.Cardgroup {
 	out := make([]*domain.Cardgroup, 0, len(expectIDs))
 	for _, cg := range got {
-		if _, ok := expectIDs[cg.ID]; ok {
+		if _, ok := expectIDs[string(cg.ID)]; ok {
 			out = append(out, cg)
 		}
 	}
@@ -638,7 +638,7 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_Name_Asc(t *testing.T) {
 
 	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"Charlie", "Alpha", "Bravo"})
 	want := map[string]struct{}{
-		cgs[0].ID: {}, cgs[1].ID: {}, cgs[2].ID: {},
+		string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {},
 	}
 
 	got, err := repo.FindPageByOwner(
@@ -663,7 +663,7 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_Name_Desc(t *testing.T) {
 
 	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"Bravo", "Alpha", "Charlie"})
 	want := map[string]struct{}{
-		cgs[0].ID: {}, cgs[1].ID: {}, cgs[2].ID: {},
+		string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {},
 	}
 
 	got, err := repo.FindPageByOwner(
@@ -691,10 +691,10 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_UpdatedAt_Desc(t *testing.T) {
 	// Wait then bump second so it has the latest updated_at.
 	time.Sleep(5 * time.Millisecond)
 	updated := "second updated"
-	_, err := repo.Update(ctx, cgs[1].ID, repository.CardgroupUpdate{Name: &updated})
+	_, err := repo.Update(ctx, string(cgs[1].ID), repository.CardgroupUpdate{Name: &updated})
 	require.NoError(t, err)
 
-	want := map[string]struct{}{cgs[0].ID: {}, cgs[1].ID: {}, cgs[2].ID: {}}
+	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
 	got, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 100, 0,
 		repository.CardgroupOrderByUpdatedAt, repository.SortDesc, nil,
@@ -717,10 +717,10 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_UpdatedAt_Asc(t *testing.T) {
 	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"first", "second", "third"})
 	time.Sleep(5 * time.Millisecond)
 	updated := "third updated"
-	_, err := repo.Update(ctx, cgs[2].ID, repository.CardgroupUpdate{Name: &updated})
+	_, err := repo.Update(ctx, string(cgs[2].ID), repository.CardgroupUpdate{Name: &updated})
 	require.NoError(t, err)
 
-	want := map[string]struct{}{cgs[0].ID: {}, cgs[1].ID: {}, cgs[2].ID: {}}
+	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
 	got, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 100, 0,
 		repository.CardgroupOrderByUpdatedAt, repository.SortAsc, nil,
@@ -743,7 +743,7 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_CreatedAt_Desc(t *testing.T) {
 
 	// insertNamedCardgroups staggers CreatedAt by 1ms, so cgs[2] is newest.
 	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"a", "b", "c"})
-	want := map[string]struct{}{cgs[0].ID: {}, cgs[1].ID: {}, cgs[2].ID: {}}
+	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
 
 	got, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 100, 0,
@@ -766,7 +766,7 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_ID_Desc(t *testing.T) {
 	repo := repository.NewCardgroupRepository(testDB.GORM)
 
 	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"a", "b", "c"})
-	want := map[string]struct{}{cgs[0].ID: {}, cgs[1].ID: {}, cgs[2].ID: {}}
+	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
 
 	got, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 100, 0,
@@ -795,12 +795,12 @@ func TestCardgroupRepo_FindPageByOwner_Cursor_AfterByName(t *testing.T) {
 	repo := repository.NewCardgroupRepository(testDB.GORM)
 
 	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"Apple", "Banana", "Cherry"})
-	want := map[string]struct{}{cgs[0].ID: {}, cgs[1].ID: {}, cgs[2].ID: {}}
+	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
 
 	// Cursor at "Banana"; expect only "Cherry" after it.
 	bananaName := cgs[1].Name.String()
 	cursor := &repository.CardgroupCursor{
-		ID:   cgs[1].ID,
+		ID:   string(cgs[1].ID),
 		Name: &bananaName,
 	}
 	got, err := repo.FindPageByOwner(
@@ -825,12 +825,12 @@ func TestCardgroupRepo_FindPageByOwner_Cursor_BackwardByCreatedAt(t *testing.T) 
 
 	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"a", "b", "c", "d", "e"})
 	want := map[string]struct{}{
-		cgs[0].ID: {}, cgs[1].ID: {}, cgs[2].ID: {}, cgs[3].ID: {}, cgs[4].ID: {},
+		string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}, string(cgs[3].ID): {}, string(cgs[4].ID): {},
 	}
 
 	// last=2, before=cgs[3] under created_at ASC — expect cgs[1], cgs[2].
 	cursor := &repository.CardgroupCursor{
-		ID:        cgs[3].ID,
+		ID:        string(cgs[3].ID),
 		CreatedAt: &cgs[3].CreatedAt,
 	}
 	got, err := repo.FindPageByOwner(
@@ -853,11 +853,11 @@ func TestCardgroupRepo_FindPageByOwner_Cursor_AfterByID(t *testing.T) {
 	repo := repository.NewCardgroupRepository(testDB.GORM)
 
 	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"a", "b", "c"})
-	want := map[string]struct{}{cgs[0].ID: {}, cgs[1].ID: {}, cgs[2].ID: {}}
+	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
 
 	// Sort our IDs so we know which one is "first" under id ASC.
 	sortedIDs := make([]string, 3)
-	copy(sortedIDs, []string{cgs[0].ID, cgs[1].ID, cgs[2].ID})
+	copy(sortedIDs, []string{string(cgs[0].ID), string(cgs[1].ID), string(cgs[2].ID)})
 	sort.Strings(sortedIDs)
 
 	cursor := &repository.CardgroupCursor{ID: sortedIDs[0]}
@@ -868,8 +868,8 @@ func TestCardgroupRepo_FindPageByOwner_Cursor_AfterByID(t *testing.T) {
 	require.NoError(t, err)
 	mine := pickOwnerCardgroups(got, want)
 	require.Len(t, mine, 2, "two rows after the first cursor")
-	require.Equal(t, sortedIDs[1], mine[0].ID)
-	require.Equal(t, sortedIDs[2], mine[1].ID)
+	require.Equal(t, domain.CardgroupID(sortedIDs[1]), mine[0].ID)
+	require.Equal(t, domain.CardgroupID(sortedIDs[2]), mine[1].ID)
 }
 
 // TestCardgroupRepo_FindPageByOwner_Cursor_NameTie_TupleComparison verifies
@@ -883,7 +883,7 @@ func TestCardgroupRepo_FindPageByOwner_Cursor_NameTie_TupleComparison(t *testing
 
 	// Three cardgroups, two share the name "Tie".
 	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"Tie", "Tie", "Zebra"})
-	want := map[string]struct{}{cgs[0].ID: {}, cgs[1].ID: {}, cgs[2].ID: {}}
+	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
 
 	// Page 1: first=1 under name ASC — must be one of the two Ties.
 	page1, err := repo.FindPageByOwner(
@@ -916,7 +916,7 @@ func TestCardgroupRepo_FindPageByOwner_Cursor_NameTie_TupleComparison(t *testing
 	// row must be the OTHER tie row, then Zebra. The tuple compare keeps
 	// the second tie reachable; without it, `name > 'Tie'` would skip past it.
 	tieName := mine[0].Name.String()
-	cursor := &repository.CardgroupCursor{ID: mine[0].ID, Name: &tieName}
+	cursor := &repository.CardgroupCursor{ID: string(mine[0].ID), Name: &tieName}
 	pageAfter, err := repo.FindPageByOwner(
 		ctx, ownerID, cursor, nil, 100, 0,
 		repository.CardgroupOrderByName, repository.SortAsc, nil,
@@ -975,7 +975,7 @@ func TestCardgroupRepo_FindPageByOwner_EmptySearchTreatedAsNil(t *testing.T) {
 	repo := repository.NewCardgroupRepository(testDB.GORM)
 
 	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"x", "y"})
-	want := map[string]struct{}{cgs[0].ID: {}, cgs[1].ID: {}}
+	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}}
 
 	whitespace := "   "
 	got, err := repo.FindPageByOwner(

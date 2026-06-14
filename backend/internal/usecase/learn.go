@@ -149,7 +149,7 @@ func (u *learnUsecase) authorizeCardgroupForLearn(ctx context.Context, cardgroup
 		}
 		return nil, eris.Wrap(err, "usecase: find cardgroup by id")
 	}
-	if !cg.IsOwnedBy(user.Sub) {
+	if !cg.IsOwnedBy(domain.UserID(user.Sub)) {
 		return nil, ucerr.ErrUnauthenticated
 	}
 	return user, nil

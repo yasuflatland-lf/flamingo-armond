@@ -17,7 +17,7 @@ func toUserModel(user *domain.User) *model.User {
 		return nil
 	}
 	return &model.User{
-		ID:          user.ID,
+		ID:          string(user.ID),
 		DisplayName: (*string)(user.DisplayName),
 		Bio:         user.Bio.Ptr(),
 		AvatarURL:   user.AvatarURL,
@@ -30,9 +30,9 @@ func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 		return nil
 	}
 	return &model.Cardgroup{
-		ID:        cg.ID,
+		ID:        string(cg.ID),
 		Name:      cg.Name.String(),
-		OwnerID:   cg.OwnerID,
+		OwnerID:   string(cg.OwnerID),
 		CreatedAt: cg.CreatedAt,
 		UpdatedAt: cg.UpdatedAt,
 	}
@@ -96,7 +96,7 @@ func toCardModel(card *domain.Card) *model.Card {
 		ID:          card.ID,
 		Front:       string(card.Front),
 		Back:        string(card.Back),
-		CardgroupID: card.CardgroupID,
+		CardgroupID: string(card.CardgroupID),
 		CreatedAt:   card.CreatedAt,
 		UpdatedAt:   card.UpdatedAt,
 	}

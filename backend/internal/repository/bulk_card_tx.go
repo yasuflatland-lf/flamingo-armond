@@ -37,7 +37,7 @@ func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domai
 	for i, c := range cards {
 		rows[i] = upsertCardRow{
 			ID:        c.ID,
-			GroupID:   c.CardgroupID,
+			GroupID:   string(c.CardgroupID),
 			Front:     string(c.Front),
 			Back:      string(c.Back),
 			Position:  c.Position,

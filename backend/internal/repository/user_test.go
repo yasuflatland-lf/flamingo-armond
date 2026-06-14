@@ -155,7 +155,7 @@ func TestFindByID_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindByID: %v", err)
 	}
-	if got.ID != id {
+	if string(got.ID) != id {
 		t.Fatalf("ID: got %q, want %q", got.ID, id)
 	}
 	if got.DisplayName != nil {
@@ -625,7 +625,7 @@ func TestFindByIDs_AllFound(t *testing.T) {
 		if !ok {
 			t.Fatalf("missing id %q in result", id)
 		}
-		if p.ID != id {
+		if string(p.ID) != id {
 			t.Fatalf("user ID mismatch: got %q, want %q", p.ID, id)
 		}
 	}

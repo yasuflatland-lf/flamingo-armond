@@ -1,4 +1,4 @@
-# TOCTOU authorization guard: lock the read rows with `FOR UPDATE`, abort via a control-flow sentinel
+# TOCTOU authorization guard: lock the read rows with `FOR UPDATE`, surface guard outcomes via a captured variable
 
 > Part of the [Go library gotchas](../../../.claude/rules/go-library-gotchas.md) rules.
 
@@ -25,28 +25,37 @@ if lock {
 
 Precedent in this repo: `backend/internal/repository/card.go` — `FindByIDTx` acquires `clause.Locking{Strength: "UPDATE"}`, proven by `backend/internal/repository/card_test.go` (`TestCardRepository_FindByIDTx_LocksRowForUpdate`, which asserts a second `FOR UPDATE NOWAIT` fails). The role analogue is `backend/internal/repository/role.go` — `FindByIDsTx` delegates to `findRolesByIDs(..., lock=true)`. The narrow interface consumed by the usecase (`backend/internal/usecase/admin_user.go`) must also declare the `Tx` variant so the closure can call it; see the shared-helper pattern in [Tx and non-Tx repository methods share a private helper to avoid drift](repo-tx-and-nontx-share-private-helper.md).
 
-## Aborting the tx while returning a business outcome — the control-flow sentinel
+## Returning a business outcome from a guard that runs before any write
 
-The guard sits at the front of the transaction. When it decides the edit must **not** proceed (self-demotion, or an unknown role id), it must roll back — no write — yet return a *non-error* business outcome to the caller (a `CannotRevokeOwnAdminRoleError` or an `InputValidationError` variant). GORM's `db.Transaction(fn)` rolls back exactly when `fn` returns a non-nil error, and returns that error **verbatim** to the caller. So there is no in-band way to say "roll back, but the result is a success-shaped outcome."
+When the caller is editing their own row (`callerID == id`), the guard sits at the front of the transaction. When it decides the edit must **not** proceed (self-demotion, or an unknown role id), it wants to return a *non-error* business outcome to the caller (a `CannotRevokeOwnAdmin` or a `Validation` field on the outcome struct) without performing any write. Because the guard runs **before** any `UpdateTxVersioned` or `SetUserRolesTx` call, returning `nil` from the closure commits an empty transaction — there is nothing to roll back.
 
-The pattern uses an out-of-band channel:
+The pattern captures the guard result in a variable declared outside the closure:
 
-1. A package-private control-flow sentinel — plain `errors.New`, never `eris` — returned from the closure to force the rollback:
-   ```go
-   var errGuardAbort = errors.New("usecase: admin user edit: guard abort")
-   ```
-2. The real outcome captured in a closure variable (`guard`), with a flag (`guardHit`) set at every `return errGuardAbort` site.
-3. **Critically, the caller checks the captured-outcome flag before the tx error**, so the sentinel never reaches the error-classification path:
-   ```go
-   err = u.tx(ctx, func(tx *gorm.DB) error {
-       // ... guard sets guard = ...; guardHit = true; return errGuardAbort
-   })
-   if guardHit {
-       return guard, nil // sentinel consumed here; never classified
-   }
-   if err != nil { /* real infra/context errors */ }
-   ```
+```go
+var earlyOutcome *AdminEditUserOutcome
 
-**The Why:** because GORM hands the closure's error back verbatim on rollback, the real result needs a side channel (closure capture). The ordering invariant — `guardHit` checked before `err` — is what keeps the sentinel out of the error path (`gqlerr.FromUsecaseError`), where a plain `errors.New` with no `extensions.code` would misclassify as `INTERNAL` and 5xx the request. Using a plain `errors.New` rather than an `eris` wrap keeps the sentinel cheap and identity-matchable; it is deliberately not part of the wire-error vocabulary because it is never meant to reach the wire.
+err = u.tx(ctx, func(tx *gorm.DB) error {
+    if callerID == id {
+        // ... look up roles with FOR UPDATE lock ...
+        if len(roles) != len(roleIDs) {
+            earlyOutcome = &AdminEditUserOutcome{Validation: NewInputValidationInfo("roleIds", "role not found")}
+            return nil // commit empty tx; nothing was written
+        }
+        if !keepsAdmin {
+            earlyOutcome = &AdminEditUserOutcome{CannotRevokeOwnAdmin: true}
+            return nil // same: empty commit, real outcome in earlyOutcome
+        }
+    }
+    // ... UpdateTxVersioned, SetUserRolesTx ...
+    return nil
+})
 
-Reference: `backend/internal/usecase/admin_user.go` — `errGuardAbort`, the `EditUser` transaction closure, and the post-tx `if guardHit { return guard, nil }` check that runs before `if err != nil`.
+if earlyOutcome != nil {
+    return *earlyOutcome, nil // checked before err
+}
+if err != nil { /* real infra/context errors */ }
+```
+
+**The Why:** because the guard runs before any write, a `return nil` from the closure is safe — GORM commits, but the transaction is empty. The real outcome travels in the closure-captured `earlyOutcome` pointer, checked before `err` in the post-tx code so it is never handed to the error-classification path. No control-flow sentinel is needed: the nil-commit approach avoids the rollback entirely, so there is no error for GORM to propagate. A non-nil `earlyOutcome` is the in-band signal that the guard fired; any non-nil `err` after that check is a real infrastructure or context error.
+
+Reference: `backend/internal/usecase/admin_user.go` — `earlyOutcome`, the `EditUser` transaction closure, and the post-tx `if earlyOutcome != nil { return *earlyOutcome, nil }` check that runs before `if err != nil`.

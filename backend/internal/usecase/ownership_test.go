@@ -85,7 +85,7 @@ func TestAuthorizeCardgroupOrUnauthenticated_NotFound_ReturnsUnauthenticated(t *
 // the post-lookup ownership check.
 func TestAuthorizeCardgroupOrBadInput_NonOwner_ReturnsUnauthenticated(t *testing.T) {
 	t.Parallel()
-	repo := &mockOwnershipFinder{result: &domain.Cardgroup{ID: "cg-1", OwnerID: "other-user"}}
+	repo := &mockOwnershipFinder{result: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "other-user"}}
 	err := authorizeCardgroupOrBadInput(context.Background(), repo, "cg-1", "u-1")
 	assertUnauthenticated(t, err)
 }
@@ -109,7 +109,7 @@ func TestAuthorizeCardgroupOrUnauthenticated_PropagatesDeadlineExceeded(t *testi
 // isContextDone guard insertion cannot perturb it.
 func TestAuthorizeCardgroupOrUnauthenticated_NonOwner_ReturnsUnauthenticated(t *testing.T) {
 	t.Parallel()
-	repo := &mockOwnershipFinder{result: &domain.Cardgroup{ID: "cg-1", OwnerID: "other-user"}}
+	repo := &mockOwnershipFinder{result: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "other-user"}}
 	err := authorizeCardgroupOrUnauthenticated(context.Background(), repo, "cg-1", "u-1")
 	assertUnauthenticated(t, err)
 }
@@ -118,7 +118,7 @@ func TestAuthorizeCardgroupOrUnauthenticated_NonOwner_ReturnsUnauthenticated(t *
 // returns nil when the repository finds the cardgroup and the caller is its owner.
 func TestAuthorizeCardgroupOrBadInput_Success_ReturnsNil(t *testing.T) {
 	t.Parallel()
-	repo := &mockOwnershipFinder{result: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}}
+	repo := &mockOwnershipFinder{result: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}}
 	err := authorizeCardgroupOrBadInput(context.Background(), repo, "cg-1", "u-1")
 	require.NoError(t, err)
 }
@@ -139,7 +139,7 @@ func TestAuthorizeCardgroupOrBadInput_InfraError_WrappedAsInternal(t *testing.T)
 // its owner.
 func TestAuthorizeCardgroupOrUnauthenticated_Success_ReturnsNil(t *testing.T) {
 	t.Parallel()
-	repo := &mockOwnershipFinder{result: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}}
+	repo := &mockOwnershipFinder{result: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}}
 	err := authorizeCardgroupOrUnauthenticated(context.Background(), repo, "cg-1", "u-1")
 	require.NoError(t, err)
 }

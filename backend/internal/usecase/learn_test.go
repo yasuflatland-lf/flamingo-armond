@@ -79,7 +79,7 @@ func TestLearnUsecaseNextDueCards(t *testing.T) {
 	cardRepo := &mockLearnCardRepo{rows: []domain.DueCard{first, second}}
 	uc := NewLearnUsecase(
 		cardRepo,
-		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 		service.NewOrderingPolicy(),
 		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 		20,
@@ -142,7 +142,7 @@ func TestLearnUsecaseNextDueCardsAuthAndCardgroupErrors(t *testing.T) {
 		t.Parallel()
 		uc := NewLearnUsecase(
 			&mockLearnCardRepo{},
-			&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-2"}},
+			&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-2"}},
 			service.NewOrderingPolicy(),
 			func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 			20,
@@ -178,7 +178,7 @@ func TestLearnUsecaseNextDueCardsLimitClampAndEmpty(t *testing.T) {
 			cardRepo := &mockLearnCardRepo{rows: []domain.DueCard{}}
 			uc := NewLearnUsecase(
 				cardRepo,
-				&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+				&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 				service.NewOrderingPolicy(),
 				func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 				20,
@@ -203,7 +203,7 @@ func TestLearnUsecaseNextDueCardsRepoError(t *testing.T) {
 	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
 	uc := NewLearnUsecase(
 		&mockLearnCardRepo{err: errors.New("db down")},
-		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 		service.NewOrderingPolicy(),
 		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 		20,
@@ -284,7 +284,7 @@ func TestLearnUsecaseNextDueCards_TruncatesToDueLimit(t *testing.T) {
 	cardRepo := &mockLearnCardRepo{rows: rows}
 	uc := NewLearnUsecase(
 		cardRepo,
-		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 		service.NewOrderingPolicy(),
 		func() *rand.Rand { return rand.New(rand.NewSource(42)) },
 		20,
@@ -322,7 +322,7 @@ func TestLearnUsecaseNextDueCards_HappyPathReviewOnly(t *testing.T) {
 	cardRepo := &mockLearnCardRepo{rows: rows}
 	uc := NewLearnUsecase(
 		cardRepo,
-		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 		service.NewOrderingPolicy(),
 		func() *rand.Rand { return rand.New(rand.NewSource(7)) },
 		20,
@@ -380,7 +380,7 @@ func TestLearnUsecasePracticeTodaysCardsAuthAndCardgroupErrors(t *testing.T) {
 		t.Parallel()
 		uc := newPracticeUsecase(
 			&mockLearnCardRepo{},
-			&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-2"}},
+			&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-2"}},
 			now,
 		)
 		_, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
@@ -405,7 +405,7 @@ func TestLearnUsecasePracticeTodaysCardsCardRepoInfraError(t *testing.T) {
 	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
 	uc := newPracticeUsecase(
 		&mockLearnCardRepo{practiceErr: errors.New("db down")},
-		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 		now,
 	)
 	_, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
@@ -420,7 +420,7 @@ func TestLearnUsecasePracticeTodaysCards_PropagatesCancelled(t *testing.T) {
 	cardRepo := &mockLearnCardRepo{practiceErr: context.Canceled}
 	uc := newPracticeUsecase(
 		cardRepo,
-		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 		time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC),
 	)
 	_, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", nil)
@@ -450,7 +450,7 @@ func TestLearnUsecasePracticeTodaysCardsLimitClamp(t *testing.T) {
 			cardRepo := &mockLearnCardRepo{practiceRows: []domain.DueCard{}}
 			uc := newPracticeUsecase(
 				cardRepo,
-				&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+				&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 				now,
 			)
 			_, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", tc.in)
@@ -473,7 +473,7 @@ func TestLearnUsecasePracticeTodaysCards_PassesJSTStartOfDayAsReviewedAfter(t *t
 	cardRepo := &mockLearnCardRepo{}
 	uc := newPracticeUsecase(
 		cardRepo,
-		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 		now,
 	)
 	_, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
@@ -492,7 +492,7 @@ func TestLearnUsecasePracticeTodaysCards_EmptyIsNonNilSlice(t *testing.T) {
 	cardRepo := &mockLearnCardRepo{practiceRows: []domain.DueCard{}}
 	uc := newPracticeUsecase(
 		cardRepo,
-		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 		time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC),
 	)
 	got, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", nil)
@@ -521,7 +521,7 @@ func TestLearnUsecasePracticeTodaysCards_PreservesRepoOrderAndPointers(t *testin
 	cardRepo := &mockLearnCardRepo{practiceRows: rows}
 	uc := newPracticeUsecase(
 		cardRepo,
-		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 		now,
 	)
 	got, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", nil)
@@ -579,7 +579,7 @@ func TestLearnUsecase_NextDueCards_FindCardgroup_PropagatesCancelled(t *testing.
 func TestLearnUsecase_NextDueCards_FindDueCards_PropagatesDeadlineExceeded(t *testing.T) {
 	t.Parallel()
 	cardRepo := &mockLearnCardRepo{err: context.DeadlineExceeded}
-	cgRepo := &mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}}
+	cgRepo := &mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}}
 	uc := NewLearnUsecase(
 		cardRepo,
 		cgRepo,
@@ -622,7 +622,7 @@ func TestLearnUsecaseNextDueCards_PassesJSTStartOfDayAsReviewedBefore(t *testing
 			cardRepo := &mockLearnCardRepo{}
 			uc := NewLearnUsecase(
 				cardRepo,
-				&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+				&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 				service.NewOrderingPolicy(),
 				func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 				20,

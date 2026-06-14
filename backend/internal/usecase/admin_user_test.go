@@ -433,9 +433,9 @@ func TestAdminUser_List_Page1(t *testing.T) {
 	t.Parallel()
 
 	page := []*domain.User{
-		{ID: "u-aaa"},
-		{ID: "u-bbb"},
-		{ID: "u-ccc"},
+		{ID: domain.UserID("u-aaa")},
+		{ID: domain.UserID("u-bbb")},
+		{ID: domain.UserID("u-ccc")},
 	}
 	users := &mockAdminUserRepository{listResult: page, listTotal: 3}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
@@ -452,7 +452,7 @@ func TestAdminUser_List_Page1(t *testing.T) {
 		t.Fatalf("len(Edges) = %d, want 3", len(out.Edges))
 	}
 	for i, edge := range out.Edges {
-		if edge.Cursor != page[i].ID {
+		if edge.Cursor != string(page[i].ID) {
 			t.Fatalf("edge[%d].Cursor = %q, want %q", i, edge.Cursor, page[i].ID)
 		}
 		if edge.Node != page[i] {
@@ -490,9 +490,9 @@ func TestAdminUser_List_ForwardPage2(t *testing.T) {
 	// first=2 → repo asked for 3; repo returns 3 rows so the trailing one
 	// is trimmed and HasNextPage flips on.
 	page := []*domain.User{
-		{ID: "u-2"},
-		{ID: "u-3"},
-		{ID: "u-4"},
+		{ID: domain.UserID("u-2")},
+		{ID: domain.UserID("u-3")},
+		{ID: domain.UserID("u-4")},
 	}
 	users := &mockAdminUserRepository{listResult: page, listTotal: 10}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
@@ -532,9 +532,9 @@ func TestAdminUser_List_Backward(t *testing.T) {
 	// last=2 → repo asked for 3; repo returns 3 rows in display order.
 	// The leading extra row is trimmed and HasPreviousPage flips on.
 	page := []*domain.User{
-		{ID: "u-prev"}, // extra leading row, will be trimmed
-		{ID: "u-x"},
-		{ID: "u-y"},
+		{ID: domain.UserID("u-prev")}, // extra leading row, will be trimmed
+		{ID: domain.UserID("u-x")},
+		{ID: domain.UserID("u-y")},
 	}
 	users := &mockAdminUserRepository{listResult: page, listTotal: 10}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
@@ -950,10 +950,10 @@ func TestAdminUser_EditUser_CannotRevokeOwnAdmin(t *testing.T) {
 		t.Fatalf("CannotRevokeOwnAdmin = false, want true")
 	}
 	// The guard now runs at the front of the transaction (FOR UPDATE lock on
-	// the role rows), so the tx runner is invoked once; the closure aborts via
-	// errGuardAbort before any write, rolling the transaction back.
+	// the role rows), so the tx runner is invoked once; the closure returns its
+	// outcome via an early return nil before any write, so no write is committed.
 	if *txCalls != 1 {
-		t.Fatalf("tx calls = %d, want 1 (guard runs inside tx, then rolls back)", *txCalls)
+		t.Fatalf("tx calls = %d, want 1 (guard runs inside tx, returns nil before any write)", *txCalls)
 	}
 	if userRoles.setCalls != 0 {
 		t.Fatalf("SetUserRolesTx calls = %d, want 0", userRoles.setCalls)
@@ -963,9 +963,9 @@ func TestAdminUser_EditUser_CannotRevokeOwnAdmin(t *testing.T) {
 // TestAdminUser_EditUser_Self_NoRolesSubmitted_CannotRevokeOwnAdmin covers the
 // zero-roleIDs sub-path of the self-demotion guard: when callerID == id and the
 // submitted final role set is empty, FindByIDsTx is skipped (len(roleIDs) == 0),
-// keepsAdmin stays false, and the guard aborts the transaction via errGuardAbort
-// before any write. The sentinel must not escape — err is nil and the outcome
-// carries CannotRevokeOwnAdmin.
+// keepsAdmin stays false, and the guard captures its outcome and returns nil
+// from the tx closure before any write. The guard outcome is returned without
+// erroring — err is nil and the outcome carries CannotRevokeOwnAdmin.
 func TestAdminUser_EditUser_Self_NoRolesSubmitted_CannotRevokeOwnAdmin(t *testing.T) {
 	t.Parallel()
 
@@ -981,18 +981,19 @@ func TestAdminUser_EditUser_Self_NoRolesSubmitted_CannotRevokeOwnAdmin(t *testin
 	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "admin-1", AdminEditUserInput{
 		RoleIDs: nil,
 	})
-	// The control-flow sentinel must not leak to the caller.
+	// The guard returns its outcome before any write; it must not surface as an
+	// error to the caller.
 	if err != nil {
-		t.Fatalf("unexpected error (errGuardAbort must not escape): %v", err)
+		t.Fatalf("unexpected error (guard must not surface as an error): %v", err)
 	}
 	assertAdminEditUserOutcomeXOR(t, outcome)
 	if !outcome.CannotRevokeOwnAdmin {
 		t.Fatalf("CannotRevokeOwnAdmin = false, want true")
 	}
 	// The guard runs at the front of the transaction, so the tx runner is
-	// invoked once; the closure aborts via errGuardAbort before any write.
+	// invoked once; the closure returns nil before any write.
 	if *txCalls != 1 {
-		t.Fatalf("tx calls = %d, want 1 (guard runs inside tx, then rolls back)", *txCalls)
+		t.Fatalf("tx calls = %d, want 1 (guard runs inside tx, returns nil before any write)", *txCalls)
 	}
 	// With zero roleIDs the locking lookup is skipped entirely.
 	if roles.findCalls != 0 {
@@ -1361,8 +1362,8 @@ func TestAdminUser_EditUser_Self_FindByIDsCancelled(t *testing.T) {
 // error pointing at roleIds, NOT a CannotRevokeOwnAdmin outcome. Without the
 // fix, the keepsAdmin loop would still report the missing role as a
 // self-demotion attempt and surface the wrong banner. The partial-map check now
-// runs inside the transaction via the FOR UPDATE lookup, so the guard aborts the
-// tx (via errGuardAbort) before any write.
+// runs inside the transaction via the FOR UPDATE lookup, so the guard captures
+// its outcome and returns nil from the tx closure before any write.
 func TestAdminUser_EditUser_Self_UnknownRoleIDValidation(t *testing.T) {
 	t.Parallel()
 
@@ -1391,9 +1392,9 @@ func TestAdminUser_EditUser_Self_UnknownRoleIDValidation(t *testing.T) {
 		t.Fatalf("CannotRevokeOwnAdmin = true, want false (the issue is unknown role, not self-demotion)")
 	}
 	// The partial-map check runs inside the transaction, so the tx runner is
-	// invoked once; the guard aborts via errGuardAbort before any write.
+	// invoked once; the guard returns nil from the closure before any write.
 	if *txCalls != 1 {
-		t.Fatalf("tx calls = %d, want 1 (guard runs inside tx, then rolls back)", *txCalls)
+		t.Fatalf("tx calls = %d, want 1 (guard runs inside tx, returns nil before any write)", *txCalls)
 	}
 	if userRoles.setCalls != 0 {
 		t.Fatalf("SetUserRolesTx calls = %d, want 0", userRoles.setCalls)
@@ -1404,8 +1405,8 @@ func TestAdminUser_EditUser_Self_UnknownRoleIDValidation(t *testing.T) {
 // self-edit path (len(roles) != len(roleIDs)) is driven by the in-transaction,
 // row-locking FindByIDsTx lookup. The role stub must be reached exactly once
 // via the tx-scoped lookup, the partial map must yield a roleIds validation
-// outcome, and the errGuardAbort sentinel that rolled the tx back must never
-// escape EditUser (err is nil; the outcome carries the result).
+// outcome, and the guard that returns nil from the tx closure must never
+// surface as an error from EditUser (err is nil; the outcome carries the result).
 func TestAdminUser_EditUser_Self_UnknownRoleViaTxLookup(t *testing.T) {
 	t.Parallel()
 
@@ -1423,9 +1424,10 @@ func TestAdminUser_EditUser_Self_UnknownRoleViaTxLookup(t *testing.T) {
 	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "admin-1", AdminEditUserInput{
 		RoleIDs: []string{"r-admin", "r-missing"},
 	})
-	// The control-flow sentinel must not leak to the caller.
+	// The guard returns its outcome before any write; it must not surface as an
+	// error to the caller.
 	if err != nil {
-		t.Fatalf("unexpected error (errGuardAbort must not escape): %v", err)
+		t.Fatalf("unexpected error (guard must not surface as an error): %v", err)
 	}
 	assertAdminEditUserOutcomeXOR(t, outcome)
 	if outcome.Validation == nil || outcome.Validation.Field != "roleIds" {

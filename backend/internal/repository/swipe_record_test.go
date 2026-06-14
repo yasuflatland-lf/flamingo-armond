@@ -25,7 +25,7 @@ func TestSwipeRecordRepository_CreateTxAndFind(t *testing.T) {
 	reviewedAt := time.Now().UTC()
 	state := domain.NewFSRSStateForNewCard(reviewedAt)
 	state.Reps = 1
-	sr, err := domain.NewSwipeRecord(ownerID, card.ID, cg.ID, domain.RatingEasy, reviewedAt, state)
+	sr, err := domain.NewSwipeRecord(domain.UserID(ownerID), card.ID, cg.ID, domain.RatingEasy, reviewedAt, state)
 	require.NoError(t, err)
 
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -40,7 +40,7 @@ func TestSwipeRecordRepository_CreateTxAndFind(t *testing.T) {
 	require.Equal(t, domain.RatingEasy, byID[sr.ID].Rating)
 	require.Equal(t, state.Reps, byID[sr.ID].StateAfter.Reps)
 
-	history, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, cg.ID)
+	history, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cg.ID))
 	require.NoError(t, err)
 	require.Len(t, history, 1)
 	require.Equal(t, sr.ID, history[0].ID)
@@ -60,20 +60,20 @@ func TestSwipeRecordRepository_FindByUserAndCardgroup_UsesDenormalizedCardgroup(
 	require.NoError(t, cardRepo.Create(ctx, card))
 	reviewedAt := time.Now().UTC().Truncate(time.Microsecond)
 	state := domain.NewFSRSStateForNewCard(reviewedAt)
-	sr, err := domain.NewSwipeRecord(ownerID, card.ID, cgAtSwipe.ID, domain.RatingGood, reviewedAt, state)
+	sr, err := domain.NewSwipeRecord(domain.UserID(ownerID), card.ID, cgAtSwipe.ID, domain.RatingGood, reviewedAt, state)
 	require.NoError(t, err)
 
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return swipeRepo.CreateTx(ctx, tx, sr)
 	}))
 
-	historyAtSwipe, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, cgAtSwipe.ID)
+	historyAtSwipe, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cgAtSwipe.ID))
 	require.NoError(t, err)
 	require.Len(t, historyAtSwipe, 1)
 	require.Equal(t, sr.ID, historyAtSwipe[0].ID)
 	require.Equal(t, cgAtSwipe.ID, historyAtSwipe[0].CardgroupID)
 
-	historyCurrent, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, cgCurrent.ID)
+	historyCurrent, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cgCurrent.ID))
 	require.NoError(t, err)
 	require.Empty(t, historyCurrent)
 }
@@ -99,10 +99,10 @@ func TestSwipeRecordRepository_ListRecentByUser_OrdersAndScopes(t *testing.T) {
 	sameReviewTime := base
 	newest := base.Add(time.Hour)
 
-	seed := func(id, userID, cardID, cardgroupID string, reviewedAt time.Time) *domain.SwipeRecord {
+	seed := func(id, userID, cardID string, cardgroupID domain.CardgroupID, reviewedAt time.Time) *domain.SwipeRecord {
 		return &domain.SwipeRecord{
 			ID:          id,
-			UserID:      userID,
+			UserID:      domain.UserID(userID),
 			CardID:      cardID,
 			CardgroupID: cardgroupID,
 			Rating:      domain.RatingEasy,
@@ -134,7 +134,7 @@ func TestSwipeRecordRepository_ListRecentByUser_OrdersAndScopes(t *testing.T) {
 	require.Equal(t, "00000000-0000-0000-0000-000000000002", got[2].ID)
 	require.Equal(t, "00000000-0000-0000-0000-000000000001", got[3].ID)
 	for _, sr := range got {
-		require.Equal(t, ownerID, sr.UserID)
+		require.Equal(t, ownerID, string(sr.UserID))
 	}
 
 	limited, err := swipeRepo.ListRecentByUser(ctx, ownerID, 2)

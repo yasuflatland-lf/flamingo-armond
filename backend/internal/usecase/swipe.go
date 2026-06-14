@@ -51,14 +51,14 @@ type swipeUsecase struct {
 	userFSRSRepo   UserCardFSRSRepoForSwipe
 	scheduler      *service.FSRSScheduler
 	applyRating    func(current *domain.UserCardFSRS, scheduler domain.FSRSScheduler, rating domain.Rating, now time.Time) error
-	newSwipeRecord func(userID, cardID, cardgroupID string, rating domain.Rating, reviewedAt time.Time, stateAfter domain.FSRSState) (*domain.SwipeRecord, error)
+	newSwipeRecord func(userID domain.UserID, cardID string, cardgroupID domain.CardgroupID, rating domain.Rating, reviewedAt time.Time, stateAfter domain.FSRSState) (*domain.SwipeRecord, error)
 	tx             txRunner
 	logger         *slog.Logger
 }
 
 type HandleSwipeInput struct {
 	CardID      string
-	CardgroupID string
+	CardgroupID domain.CardgroupID
 	Mode        int
 }
 
@@ -139,7 +139,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		// prefix ("rating: unknown swipe mode N") that is not appropriate on the wire.
 		return HandleSwipeOutcome{Validation: NewInputValidationInfo("mode", "unknown swipe mode")}, nil
 	}
-	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, in.CardgroupID, user.Sub); err != nil {
+	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, in.CardgroupID, domain.UserID(user.Sub)); err != nil {
 		// authorizeCardgroupOrBadInput returns ucerr.NewValidationError("cardgroupId", ...) for
 		// not-found and ucerr.ErrUnauthenticated for non-owner. The not-found case
 		// is a validation variant; the non-owner case stays on the error channel.
@@ -184,7 +184,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		}
 		current := byCardID[card.ID]
 		if current == nil {
-			current = domain.NewUserCardFSRSForNewCard(user.Sub, card.ID, now)
+			current = domain.NewUserCardFSRSForNewCard(domain.UserID(user.Sub), card.ID, now)
 		}
 		if err := u.applyRating(current, u.scheduler, rating, now); err != nil {
 			return eris.Wrap(err, "usecase: swipe: apply rating")
@@ -195,7 +195,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			}
 			return eris.Wrap(err, "usecase: swipe: upsert user-card fsrs")
 		}
-		sr, err := u.newSwipeRecord(user.Sub, card.ID, card.CardgroupID, rating, now, current.State)
+		sr, err := u.newSwipeRecord(domain.UserID(user.Sub), card.ID, card.CardgroupID, rating, now, current.State)
 		if err != nil {
 			return eris.Wrap(err, "usecase: swipe: new swipe record")
 		}

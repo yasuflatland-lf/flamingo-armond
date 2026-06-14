@@ -23,7 +23,7 @@ var (
 // aggregate therefore does not re-check CardgroupID presence in NewCard.
 type Card struct {
 	ID          string
-	CardgroupID string
+	CardgroupID CardgroupID
 	Front       CardText
 	Back        CardText
 	CreatedAt   time.Time
@@ -38,7 +38,7 @@ type Card struct {
 // BelongsToCardgroup reports whether this card belongs to the cardgroup identified by
 // cardgroupID. Empty cardgroupID always returns false so callers do not need a redundant
 // nil/empty guard.
-func (c *Card) BelongsToCardgroup(cardgroupID string) bool {
+func (c *Card) BelongsToCardgroup(cardgroupID CardgroupID) bool {
 	return cardgroupID != "" && c.CardgroupID == cardgroupID
 }
 
@@ -49,7 +49,7 @@ func (c *Card) BelongsToCardgroup(cardgroupID string) bool {
 // before persisting. Returns the field-specific CardText sentinel (e.g.
 // ErrCardFrontRequired) on invalid input — callers translate it via
 // translateCardErr — or a wrapped error when ID generation fails.
-func NewCard(cardgroupID, front, back string, position int) (*Card, error) {
+func NewCard(cardgroupID CardgroupID, front, back string, position int) (*Card, error) {
 	frontVO, err := ParseCardText(front, ErrCardFrontRequired, ErrCardFrontTooLong)
 	if err != nil {
 		return nil, err
