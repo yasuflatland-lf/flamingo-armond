@@ -45,3 +45,27 @@ type MasterCardgroup struct {
 func (m *MasterCardgroup) IsPublished() bool {
 	return m.Status == MasterStatusPublished
 }
+
+// Publish transitions the master cardgroup to the published state. It is
+// idempotent: publishing an already-published group is a no-op and leaves the
+// version untouched, so two concurrent publishes (serialized by the
+// repository's row lock) increment the version exactly once. The version is
+// bumped ONLY on the draft -> published transition; this asymmetry with
+// Unpublish (which never touches the version) is the core publication rule and
+// is encoded here, in the aggregate, rather than in repository SQL.
+func (m *MasterCardgroup) Publish() error {
+	if m.IsPublished() {
+		return nil
+	}
+	m.Status = MasterStatusPublished
+	m.Version++
+	return nil
+}
+
+// Unpublish transitions the master cardgroup back to the draft state. The
+// version is deliberately left unchanged — only Publish bumps it — so the
+// version counter tracks publication events, not unpublications.
+func (m *MasterCardgroup) Unpublish() error {
+	m.Status = MasterStatusDraft
+	return nil
+}
