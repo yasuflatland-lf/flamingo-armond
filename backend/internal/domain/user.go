@@ -10,7 +10,7 @@ import "time"
 // an explicit empty-string value or non-empty text. The trinary's "no change"
 // meaning applies in the UpdateProfileInput patch context, not here.
 type User struct {
-	ID          string
+	ID          UserID
 	DisplayName *DisplayName
 	Bio         Bio
 	AvatarURL   *string

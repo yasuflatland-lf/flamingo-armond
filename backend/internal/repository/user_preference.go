@@ -166,7 +166,7 @@ func toDomainUserPreference(g gormUserPreference) *domain.UserPreference {
 		mode = parsed
 	}
 	return &domain.UserPreference{
-		UserID:                g.UserID,
+		UserID:                domain.UserID(g.UserID),
 		LastViewedCardgroupID: g.LastViewedCardgroupID,
 		LearnDisplayMode:      mode,
 		UpdatedAt:             g.UpdatedAt,

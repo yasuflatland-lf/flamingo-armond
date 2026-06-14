@@ -348,7 +348,7 @@ func TestUserLoader_BatchesNCallsIntoOne(t *testing.T) {
 			batchCalls.Add(1)
 			out := make(map[string]*domain.User, len(ids))
 			for _, id := range ids {
-				out[id] = &domain.User{ID: id}
+				out[id] = &domain.User{ID: domain.UserID(id)}
 			}
 			return out, nil
 		},
@@ -364,7 +364,7 @@ func TestUserLoader_BatchesNCallsIntoOne(t *testing.T) {
 		if results[i] == nil {
 			t.Fatalf("load %d: nil result", i)
 		}
-		if results[i].ID != ids[i] {
+		if string(results[i].ID) != ids[i] {
 			t.Fatalf("load %d: ID mismatch: got %q want %q", i, results[i].ID, ids[i])
 		}
 	}
@@ -383,7 +383,7 @@ func TestUserLoader_PartialNotFound(t *testing.T) {
 				if id == "missing" {
 					continue
 				}
-				out[id] = &domain.User{ID: id}
+				out[id] = &domain.User{ID: domain.UserID(id)}
 			}
 			return out, nil
 		},

@@ -75,7 +75,7 @@ func (u *userUsecase) Me(ctx context.Context) (*domain.User, error) {
 		// handle_new_user trigger should have provisioned the row; degrade gracefully.
 		u.logger.WarnContext(ctx, "user row missing for authenticated user; returning empty user",
 			"user_id", user.Sub)
-		return &domain.User{ID: user.Sub}, nil
+		return &domain.User{ID: domain.UserID(user.Sub)}, nil
 	}
 	return nil, eris.Wrap(err, "usecase: Me: find user by ID")
 }

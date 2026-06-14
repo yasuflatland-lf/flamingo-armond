@@ -25,7 +25,7 @@ func newCardgroup(ownerID, name string) *domain.Cardgroup {
 	now := time.Now().UTC()
 	return &domain.Cardgroup{
 		ID:        domain.CardgroupID(uuid.NewString()),
-		OwnerID:   ownerID,
+		OwnerID:   domain.UserID(ownerID),
 		Name:      domain.CardgroupName(name),
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -44,7 +44,7 @@ func TestCardgroupRepository_CreateAndFindByID(t *testing.T) {
 	got, err := repo.FindByID(ctx, string(cg.ID))
 	require.NoError(t, err)
 	require.Equal(t, cg.ID, got.ID)
-	require.Equal(t, ownerID, got.OwnerID)
+	require.Equal(t, ownerID, string(got.OwnerID))
 	require.Equal(t, "My Flashcards", got.Name.String())
 	require.False(t, got.CreatedAt.IsZero())
 	require.False(t, got.UpdatedAt.IsZero())
@@ -255,7 +255,7 @@ func TestCardgroupRepository_EnsureByName_Create(t *testing.T) {
 
 	got, err := repo.EnsureByName(ctx, ownerID, "Ensure Create")
 	require.NoError(t, err)
-	require.Equal(t, ownerID, got.OwnerID)
+	require.Equal(t, ownerID, string(got.OwnerID))
 	require.Equal(t, "Ensure Create", got.Name.String())
 	require.NotEmpty(t, got.ID)
 
@@ -339,7 +339,7 @@ func insertNamedCardgroups(t *testing.T, ctx context.Context, ownerID string, na
 		now := time.Now().UTC().Add(time.Duration(i) * time.Millisecond)
 		cg := &domain.Cardgroup{
 			ID:        domain.CardgroupID(uuid.NewString()),
-			OwnerID:   ownerID,
+			OwnerID:   domain.UserID(ownerID),
 			Name:      domain.CardgroupName(name),
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -601,7 +601,7 @@ func TestCardgroupRepo_FindPageByOwner_PlusOneFetch(t *testing.T) {
 
 	// Verify the rows are in ASC order and belong to the right owner.
 	for _, cg := range got {
-		require.Equal(t, ownerID, cg.OwnerID)
+		require.Equal(t, ownerID, string(cg.OwnerID))
 	}
 	sortedGot := make([]*domain.Cardgroup, len(got))
 	copy(sortedGot, got)

@@ -70,7 +70,7 @@ func expectedListOrder(users []*domain.User) []string {
 	})
 	out := make([]string, len(cp))
 	for i, u := range cp {
-		out[i] = u.ID
+		out[i] = string(u.ID)
 	}
 	return out
 }
@@ -120,9 +120,9 @@ func TestUserPagination_ForwardPageOne(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(5), total)
 	require.Len(t, got, 3)
-	require.Equal(t, want[0], got[0].ID)
-	require.Equal(t, want[1], got[1].ID)
-	require.Equal(t, want[2], got[2].ID)
+	require.Equal(t, want[0], string(got[0].ID))
+	require.Equal(t, want[1], string(got[1].ID))
+	require.Equal(t, want[2], string(got[2].ID))
 }
 
 // TestUserPagination_ForwardPageTwo verifies that the cursor is exclusive:
@@ -150,16 +150,16 @@ func TestUserPagination_ForwardPageTwo(t *testing.T) {
 	page1, _, err := repo.ListPage(ctx, nil, nil, 2, 0, ptrStr(tag))
 	require.NoError(t, err)
 	require.Len(t, page1, 2)
-	require.Equal(t, want[0], page1[0].ID)
-	require.Equal(t, want[1], page1[1].ID)
+	require.Equal(t, want[0], string(page1[0].ID))
+	require.Equal(t, want[1], string(page1[1].ID))
 
 	// Page 2: after = last cursor of page 1, first=2 → want[2..3].
-	cursor := page1[1].ID
+	cursor := string(page1[1].ID)
 	page2, _, err := repo.ListPage(ctx, &cursor, nil, 2, 0, ptrStr(tag))
 	require.NoError(t, err)
 	require.Len(t, page2, 2)
-	require.Equal(t, want[2], page2[0].ID)
-	require.Equal(t, want[3], page2[1].ID)
+	require.Equal(t, want[2], string(page2[0].ID))
+	require.Equal(t, want[3], string(page2[1].ID))
 }
 
 // TestUserPagination_BackwardBeforeCursor verifies that backward pagination
@@ -192,8 +192,8 @@ func TestUserPagination_BackwardBeforeCursor(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(5), total)
 	require.Len(t, got, 2)
-	require.Equal(t, want[1], got[0].ID)
-	require.Equal(t, want[2], got[1].ID)
+	require.Equal(t, want[1], string(got[0].ID))
+	require.Equal(t, want[2], string(got[1].ID))
 }
 
 // TestUserPagination_SearchSubstring verifies that ILIKE substring match is

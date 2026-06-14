@@ -130,7 +130,7 @@ func TestCardRepository_FindDueCards_UsesPerUserFSRSRows(t *testing.T) {
 	// futureCard has THIS user's FSRS row scheduled tomorrow → not due.
 	// dueCard has no row → surfaces through the new-card window.
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		state := domain.NewUserCardFSRSForNewCard(ownerID, futureCard.ID, now)
+		state := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), futureCard.ID, now)
 		state.State.Due = now.Add(24 * time.Hour)
 		state.State.Reps = 1
 		return ucsRepo.UpsertTx(ctx, tx, state)
@@ -163,7 +163,7 @@ func TestCardRepository_FindDueCards_IgnoresOtherUsersFSRSRows(t *testing.T) {
 	// leaked other users' rows, this would push the card into the review
 	// window (future due → not due for any user) or worse exclude it entirely.
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		state := domain.NewUserCardFSRSForNewCard(otherUserID, card.ID, now)
+		state := domain.NewUserCardFSRSForNewCard(domain.UserID(otherUserID), card.ID, now)
 		state.State.Due = now.Add(24 * time.Hour)
 		state.State.Reps = 1
 		return ucsRepo.UpsertTx(ctx, tx, state)
@@ -229,7 +229,7 @@ func TestCardRepository_FindDueCards_ScopedAndLimited(t *testing.T) {
 			future:     now.Add(time.Hour),
 			otherGroup: now.Add(-3 * time.Hour),
 		} {
-			state := domain.NewUserCardFSRSForNewCard(ownerID, card.ID, now)
+			state := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), card.ID, now)
 			state.State.Due = due
 			if err := ucsRepo.UpsertTx(ctx, tx, state); err != nil {
 				return err
@@ -310,7 +310,7 @@ func TestCardRepository_FindDueCards_FSRSStateMapping(t *testing.T) {
 
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for i, tc := range cases {
-			ucs := domain.NewUserCardFSRSForNewCard(ownerID, cards[i].ID, now)
+			ucs := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), cards[i].ID, now)
 			ucs.State.State = tc.state
 			ucs.State.Due = now.Add(-time.Minute) // ensure it is due
 			if err := ucsRepo.UpsertTx(ctx, tx, ucs); err != nil {
@@ -844,7 +844,7 @@ func TestCardRepository_FindDueCards_ReviewRowsPrecedeNewRows(t *testing.T) {
 	// NewUserCardFSRSForNewCard sets LastReview == now; a cutoff strictly after
 	// now keeps the review row inside the window.
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		state := domain.NewUserCardFSRSForNewCard(ownerID, reviewEarly.ID, now)
+		state := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), reviewEarly.ID, now)
 		state.State.Due = now.Add(-2 * time.Hour)
 		state.State.Reps = 1
 		return ucsRepo.UpsertTx(ctx, tx, state)
@@ -925,7 +925,7 @@ func TestCardRepository_FindDueCards_ReviewsNotStarvedByNewBacklog(t *testing.T)
 			reviewEarlier: now.Add(-2 * time.Hour),
 			reviewLater:   now.Add(-1 * time.Hour),
 		} {
-			state := domain.NewUserCardFSRSForNewCard(ownerID, card.ID, now)
+			state := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), card.ID, now)
 			state.State.Due = due
 			if err := ucsRepo.UpsertTx(ctx, tx, state); err != nil {
 				return err
@@ -974,14 +974,14 @@ func TestCardRepository_FindDueCards_ExcludesCardsReviewedToday(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, reviewedAtBoundary))
 
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		old := domain.NewUserCardFSRSForNewCard(ownerID, reviewedYesterday.ID, now)
+		old := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), reviewedYesterday.ID, now)
 		old.State.State = domain.FSRSStateLearning
 		old.State.Due = now.Add(-time.Hour)
 		old.State.LastReview = startOfToday.Add(-time.Hour) // before boundary → included
 		if err := ucsRepo.UpsertTx(ctx, tx, old); err != nil {
 			return err
 		}
-		fresh := domain.NewUserCardFSRSForNewCard(ownerID, reviewedToday.ID, now)
+		fresh := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), reviewedToday.ID, now)
 		fresh.State.State = domain.FSRSStateLearning
 		fresh.State.Due = now.Add(-time.Hour)
 		fresh.State.LastReview = startOfToday.Add(time.Hour) // after boundary → excluded
@@ -990,7 +990,7 @@ func TestCardRepository_FindDueCards_ExcludesCardsReviewedToday(t *testing.T) {
 		}
 		// Exact-boundary case: last_review == startOfToday; predicate is strict <
 		// so equality is false and the card must be excluded.
-		boundary := domain.NewUserCardFSRSForNewCard(ownerID, reviewedAtBoundary.ID, now)
+		boundary := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), reviewedAtBoundary.ID, now)
 		boundary.State.State = domain.FSRSStateLearning
 		boundary.State.Due = now.Add(-time.Hour)
 		boundary.State.LastReview = startOfToday // exactly at boundary → excluded
@@ -1020,7 +1020,7 @@ func TestCardRepository_FindDueCards_LearningPhaseWinsReviewSlots(t *testing.T) 
 		c := newCard(cg.ID, front, "back")
 		require.NoError(t, repo.Create(ctx, c))
 		require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			s := domain.NewUserCardFSRSForNewCard(ownerID, c.ID, now)
+			s := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), c.ID, now)
 			s.State.State = st
 			s.State.Due = now.Add(-time.Hour)
 			s.State.LastReview = now.Add(-24 * time.Hour)
@@ -1105,7 +1105,7 @@ func TestCardRepository_FindPracticeCards_BoundaryComplementarity(t *testing.T) 
 	require.NoError(t, repo.Create(ctx, neverReviewed))
 
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		yesterday := domain.NewUserCardFSRSForNewCard(ownerID, reviewedYesterday.ID, now)
+		yesterday := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), reviewedYesterday.ID, now)
 		yesterday.State.State = domain.FSRSStateLearning
 		yesterday.State.Due = now.Add(-time.Hour)                  // due has arrived
 		yesterday.State.LastReview = boundary.Add(-24 * time.Hour) // before boundary → learn window
@@ -1115,14 +1115,14 @@ func TestCardRepository_FindPracticeCards_BoundaryComplementarity(t *testing.T) 
 		// Exact-boundary case: last_review == boundary. The practice predicate is
 		// `>=` so equality is TRUE and the card is part of the practice pool. This
 		// pins the inclusive comparator — flipping `>=` to `>` drops this card.
-		atBoundary := domain.NewUserCardFSRSForNewCard(ownerID, reviewedAtBoundary.ID, now)
+		atBoundary := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), reviewedAtBoundary.ID, now)
 		atBoundary.State.State = domain.FSRSStateLearning
 		atBoundary.State.Due = now.Add(-time.Hour)
 		atBoundary.State.LastReview = boundary // exactly at boundary → practice pool (>=)
 		if err := ucsRepo.UpsertTx(ctx, tx, atBoundary); err != nil {
 			return err
 		}
-		today := domain.NewUserCardFSRSForNewCard(ownerID, reviewedToday.ID, now)
+		today := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), reviewedToday.ID, now)
 		today.State.State = domain.FSRSStateLearning
 		today.State.Due = now.Add(-time.Hour)
 		today.State.LastReview = boundary.Add(time.Hour) // after boundary → practice pool
@@ -1169,7 +1169,7 @@ func TestCardRepository_FindPracticeCards_IgnoresOtherUsersFSRSRows(t *testing.T
 	// otherUser reviewed the card after the boundary (today). ownerID has no
 	// FSRS row for the card.
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		state := domain.NewUserCardFSRSForNewCard(otherUserID, card.ID, now)
+		state := domain.NewUserCardFSRSForNewCard(domain.UserID(otherUserID), card.ID, now)
 		state.State.LastReview = boundary.Add(time.Hour)
 		state.State.Reps = 1
 		return ucsRepo.UpsertTx(ctx, tx, state)
@@ -1202,7 +1202,7 @@ func TestCardRepository_FindPracticeCards_CardgroupScoped(t *testing.T) {
 
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for _, c := range []*domain.Card{inGroup, otherGroup} {
-			state := domain.NewUserCardFSRSForNewCard(ownerID, c.ID, now)
+			state := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), c.ID, now)
 			state.State.LastReview = boundary.Add(time.Hour) // reviewed today
 			state.State.Reps = 1
 			if err := ucsRepo.UpsertTx(ctx, tx, state); err != nil {
@@ -1242,7 +1242,7 @@ func TestCardRepository_FindPracticeCards_Limited(t *testing.T) {
 	}
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for _, c := range cards {
-			state := domain.NewUserCardFSRSForNewCard(ownerID, c.ID, now)
+			state := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), c.ID, now)
 			state.State.LastReview = boundary.Add(time.Hour) // reviewed today
 			state.State.Reps = 1
 			if err := ucsRepo.UpsertTx(ctx, tx, state); err != nil {

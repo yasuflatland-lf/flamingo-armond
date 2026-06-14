@@ -9,7 +9,7 @@ import (
 // SwipeRecord is an immutable domain event. Append-only; never updated.
 type SwipeRecord struct {
 	ID          string
-	UserID      string
+	UserID      UserID
 	CardID      string
 	CardgroupID CardgroupID
 	Rating      Rating
@@ -18,7 +18,7 @@ type SwipeRecord struct {
 }
 
 // NewSwipeRecord creates a swipe event with a fresh UUID v7.
-func NewSwipeRecord(userID, cardID string, cardgroupID CardgroupID, rating Rating, reviewedAt time.Time, stateAfter FSRSState) (*SwipeRecord, error) {
+func NewSwipeRecord(userID UserID, cardID string, cardgroupID CardgroupID, rating Rating, reviewedAt time.Time, stateAfter FSRSState) (*SwipeRecord, error) {
 	if cardgroupID == "" {
 		return nil, eris.New("swipe record: cardgroupID is required")
 	}

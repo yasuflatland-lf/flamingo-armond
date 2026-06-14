@@ -14,7 +14,7 @@ func TestCardgroupShape(t *testing.T) {
 	cgType := reflect.TypeOf(Cardgroup{})
 	want := map[string]reflect.Type{
 		"ID":        reflect.TypeOf(CardgroupID("")),
-		"OwnerID":   reflect.TypeOf(""),
+		"OwnerID":   reflect.TypeOf(UserID("")),
 		"Name":      reflect.TypeOf(CardgroupName("")),
 		"CreatedAt": reflect.TypeOf(time.Time{}),
 		"UpdatedAt": reflect.TypeOf(time.Time{}),
@@ -68,7 +68,7 @@ func TestCardgroup_Rename(t *testing.T) {
 
 			cg := &Cardgroup{
 				ID:        CardgroupID("cg-id-001"),
-				OwnerID:   "owner-001",
+				OwnerID:   UserID("owner-001"),
 				Name:      tc.initial,
 				CreatedAt: fixedTime,
 				UpdatedAt: fixedTime,
@@ -85,7 +85,7 @@ func TestCardgroup_Rename(t *testing.T) {
 
 			// Rename must not mutate ID, OwnerID, CreatedAt, or UpdatedAt.
 			require.Equal(t, CardgroupID("cg-id-001"), cg.ID)
-			require.Equal(t, "owner-001", cg.OwnerID)
+			require.Equal(t, UserID("owner-001"), cg.OwnerID)
 			require.Equal(t, fixedTime, cg.CreatedAt)
 			require.Equal(t, fixedTime, cg.UpdatedAt)
 		})
@@ -125,8 +125,16 @@ func TestCardgroup_IsOwnedBy(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			cg := &Cardgroup{OwnerID: tc.owner}
-			require.Equal(t, tc.want, cg.IsOwnedBy(tc.userID))
+			cg := &Cardgroup{OwnerID: UserID(tc.owner)}
+			require.Equal(t, tc.want, cg.IsOwnedBy(UserID(tc.userID)))
 		})
 	}
+}
+
+func TestCardgroup_IsOwnedBy_TypedEmptyHandle(t *testing.T) {
+	t.Parallel()
+	cg := Cardgroup{ID: CardgroupID("cg-1"), OwnerID: UserID("u-1")}
+	require.True(t, cg.IsOwnedBy(UserID("u-1")))
+	require.False(t, cg.IsOwnedBy(UserID("u-2")))
+	require.False(t, cg.IsOwnedBy(UserID("")), "empty UserID never matches")
 }

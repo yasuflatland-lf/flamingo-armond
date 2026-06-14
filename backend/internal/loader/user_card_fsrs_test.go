@@ -67,7 +67,7 @@ func TestUserCardFSRSLoader_BatchesNCallsIntoOne(t *testing.T) {
 			out := make(map[string]*domain.UserCardFSRS, len(ids))
 			now := time.Now().UTC()
 			for _, id := range ids {
-				out[id] = domain.NewUserCardFSRSForNewCard(userID, id, now)
+				out[id] = domain.NewUserCardFSRSForNewCard(domain.UserID(userID), id, now)
 			}
 			return out, nil
 		},
@@ -85,7 +85,7 @@ func TestUserCardFSRSLoader_BatchesNCallsIntoOne(t *testing.T) {
 		if err != nil {
 			t.Fatalf("load %d: unexpected error: %v", i, err)
 		}
-		if results[i] == nil || results[i].CardID != ids[i] || results[i].UserID != viewerID {
+		if results[i] == nil || results[i].CardID != ids[i] || string(results[i].UserID) != viewerID {
 			t.Fatalf("load %d: bad result %+v", i, results[i])
 		}
 	}
@@ -109,7 +109,7 @@ func TestUserCardFSRSLoader_MissingRowsReturnNilData(t *testing.T) {
 			now := time.Now().UTC()
 			for _, id := range ids {
 				if id != "missing" {
-					out[id] = domain.NewUserCardFSRSForNewCard(userID, id, now)
+					out[id] = domain.NewUserCardFSRSForNewCard(domain.UserID(userID), id, now)
 				}
 			}
 			return out, nil

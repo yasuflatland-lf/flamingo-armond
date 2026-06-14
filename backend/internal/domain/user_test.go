@@ -11,7 +11,7 @@ func TestUserShape(t *testing.T) {
 
 	userType := reflect.TypeOf(User{})
 	want := map[string]reflect.Type{
-		"ID":          reflect.TypeOf(""),
+		"ID":          reflect.TypeOf(UserID("")),
 		"DisplayName": reflect.TypeOf((*DisplayName)(nil)),
 		"Bio":         reflect.TypeOf(Bio{}),
 		"AvatarURL":   reflect.TypeOf((*string)(nil)),

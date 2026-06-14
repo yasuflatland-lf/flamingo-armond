@@ -75,7 +75,7 @@ func (m *mockCardImportCardgroupRepo) FindByID(_ context.Context, _ string) (*do
 
 func ownedCardImportCardgroupRepo(ownerID string) *mockCardImportCardgroupRepo {
 	return &mockCardImportCardgroupRepo{
-		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-target"), OwnerID: ownerID},
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-target"), OwnerID: domain.UserID(ownerID)},
 	}
 }
 

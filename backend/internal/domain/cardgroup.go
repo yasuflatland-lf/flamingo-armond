@@ -23,7 +23,7 @@ var (
 // only its OwnerID, never an embedded *User.
 type Cardgroup struct {
 	ID        CardgroupID
-	OwnerID   string
+	OwnerID   UserID
 	Name      CardgroupName
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -31,7 +31,7 @@ type Cardgroup struct {
 
 // IsOwnedBy reports whether the cardgroup belongs to the user identified by userID.
 // Empty userID always returns false so callers do not need a redundant nil/empty guard.
-func (c Cardgroup) IsOwnedBy(userID string) bool {
+func (c Cardgroup) IsOwnedBy(userID UserID) bool {
 	return userID != "" && c.OwnerID == userID
 }
 

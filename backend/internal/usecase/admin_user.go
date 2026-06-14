@@ -244,11 +244,13 @@ func (u *adminUserUsecase) List(
 	out.PageInfo.HasPreviousPage = hasPrev
 	out.Edges = make([]AdminUserEdge, len(users))
 	for i, user := range users {
-		out.Edges[i] = AdminUserEdge{Cursor: user.ID, Node: user}
+		out.Edges[i] = AdminUserEdge{Cursor: string(user.ID), Node: user}
 	}
 	if len(users) > 0 {
-		out.PageInfo.StartCursor = &users[0].ID
-		out.PageInfo.EndCursor = &users[len(users)-1].ID
+		start := string(users[0].ID)
+		end := string(users[len(users)-1].ID)
+		out.PageInfo.StartCursor = &start
+		out.PageInfo.EndCursor = &end
 	}
 	return out, nil
 }

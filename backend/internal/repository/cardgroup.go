@@ -396,7 +396,7 @@ func (r *cardgroupRepo) Delete(ctx context.Context, id string) error {
 func cardgroupToRow(cg *domain.Cardgroup) *gormCardgroup {
 	return &gormCardgroup{
 		ID:        string(cg.ID),
-		OwnerID:   cg.OwnerID,
+		OwnerID:   string(cg.OwnerID),
 		Name:      string(cg.Name),
 		CreatedAt: cg.CreatedAt,
 		UpdatedAt: cg.UpdatedAt,
@@ -406,7 +406,7 @@ func cardgroupToRow(cg *domain.Cardgroup) *gormCardgroup {
 func cardgroupToDomain(g gormCardgroup) *domain.Cardgroup {
 	return &domain.Cardgroup{
 		ID:        domain.CardgroupID(g.ID),
-		OwnerID:   g.OwnerID,
+		OwnerID:   domain.UserID(g.OwnerID),
 		Name:      domain.CardgroupName(g.Name),
 		CreatedAt: g.CreatedAt,
 		UpdatedAt: g.UpdatedAt,

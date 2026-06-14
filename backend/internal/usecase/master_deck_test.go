@@ -288,7 +288,7 @@ func TestCopyMasterToUser_CopiesContentWithFreshIDsAndPositions(t *testing.T) {
 	// New cardgroup: fresh id (UUID v7), owner set, name copied from master.
 	require.NotNil(t, got)
 	assert.NotEmpty(t, got.ID)
-	assert.Equal(t, "owner-1", got.OwnerID)
+	assert.Equal(t, domain.UserID("owner-1"), got.OwnerID)
 	assert.Equal(t, domain.CardgroupName("Starter Deck"), got.Name)
 
 	require.Len(t, user.captured, 1)

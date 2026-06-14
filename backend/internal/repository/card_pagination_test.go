@@ -160,7 +160,7 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue(t *testing.T) {
 	}
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for i, card := range cards {
-			state := domain.NewUserCardFSRSForNewCard(ownerID, card.ID, dueValues[i])
+			state := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), card.ID, dueValues[i])
 			state.State.Due = dueValues[i]
 			if err := ucsRepo.UpsertTx(ctx, tx, state); err != nil {
 				return err
@@ -279,7 +279,7 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue(t *tes
 	dueT := now
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for _, card := range cards {
-			state := domain.NewUserCardFSRSForNewCard(ownerID, card.ID, now)
+			state := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), card.ID, now)
 			state.State.Due = dueT
 			if err := ucsRepo.UpsertTx(ctx, tx, state); err != nil {
 				return err

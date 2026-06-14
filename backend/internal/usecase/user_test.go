@@ -144,7 +144,7 @@ func TestUserUsecase_Me(t *testing.T) {
 			if p == nil {
 				t.Fatal("expected user, got nil")
 			}
-			if p.ID != tc.wantID {
+			if string(p.ID) != tc.wantID {
 				t.Fatalf("expected user.ID=%q, got %q", tc.wantID, p.ID)
 			}
 		})

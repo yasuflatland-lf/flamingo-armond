@@ -102,7 +102,7 @@ func rowsToUserCardFSRSMap(rows []gormUserCardFSRS) (map[string]*domain.UserCard
 
 func userCardFSRSToRow(u *domain.UserCardFSRS) *gormUserCardFSRS {
 	return &gormUserCardFSRS{
-		UserID:        u.UserID,
+		UserID:        string(u.UserID),
 		CardID:        u.CardID,
 		State:         int(u.State.State),
 		Due:           u.State.Due,
@@ -124,7 +124,7 @@ func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
 		return nil, eris.Errorf("repository: invalid FSRSCardState value %d for card %s", row.State, row.CardID)
 	}
 	return &domain.UserCardFSRS{
-		UserID: row.UserID,
+		UserID: domain.UserID(row.UserID),
 		CardID: row.CardID,
 		State: domain.FSRSState{
 			Due:           row.Due,

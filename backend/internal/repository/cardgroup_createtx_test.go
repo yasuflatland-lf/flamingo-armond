@@ -32,7 +32,7 @@ func TestCardgroupRepository_CreateTx(t *testing.T) {
 	got, err := repo.FindByID(ctx, string(cg.ID))
 	require.NoError(t, err)
 	require.Equal(t, cg.ID, got.ID)
-	require.Equal(t, ownerID, got.OwnerID, "owner_id is persisted")
+	require.Equal(t, ownerID, string(got.OwnerID), "owner_id is persisted")
 	require.Equal(t, domain.CardgroupName("CreateTx Group"), got.Name, "name is persisted")
 }
 

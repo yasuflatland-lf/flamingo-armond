@@ -433,9 +433,9 @@ func TestAdminUser_List_Page1(t *testing.T) {
 	t.Parallel()
 
 	page := []*domain.User{
-		{ID: "u-aaa"},
-		{ID: "u-bbb"},
-		{ID: "u-ccc"},
+		{ID: domain.UserID("u-aaa")},
+		{ID: domain.UserID("u-bbb")},
+		{ID: domain.UserID("u-ccc")},
 	}
 	users := &mockAdminUserRepository{listResult: page, listTotal: 3}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
@@ -452,7 +452,7 @@ func TestAdminUser_List_Page1(t *testing.T) {
 		t.Fatalf("len(Edges) = %d, want 3", len(out.Edges))
 	}
 	for i, edge := range out.Edges {
-		if edge.Cursor != page[i].ID {
+		if edge.Cursor != string(page[i].ID) {
 			t.Fatalf("edge[%d].Cursor = %q, want %q", i, edge.Cursor, page[i].ID)
 		}
 		if edge.Node != page[i] {
@@ -490,9 +490,9 @@ func TestAdminUser_List_ForwardPage2(t *testing.T) {
 	// first=2 → repo asked for 3; repo returns 3 rows so the trailing one
 	// is trimmed and HasNextPage flips on.
 	page := []*domain.User{
-		{ID: "u-2"},
-		{ID: "u-3"},
-		{ID: "u-4"},
+		{ID: domain.UserID("u-2")},
+		{ID: domain.UserID("u-3")},
+		{ID: domain.UserID("u-4")},
 	}
 	users := &mockAdminUserRepository{listResult: page, listTotal: 10}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
@@ -532,9 +532,9 @@ func TestAdminUser_List_Backward(t *testing.T) {
 	// last=2 → repo asked for 3; repo returns 3 rows in display order.
 	// The leading extra row is trimmed and HasPreviousPage flips on.
 	page := []*domain.User{
-		{ID: "u-prev"}, // extra leading row, will be trimmed
-		{ID: "u-x"},
-		{ID: "u-y"},
+		{ID: domain.UserID("u-prev")}, // extra leading row, will be trimmed
+		{ID: domain.UserID("u-x")},
+		{ID: domain.UserID("u-y")},
 	}
 	users := &mockAdminUserRepository{listResult: page, listTotal: 10}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}

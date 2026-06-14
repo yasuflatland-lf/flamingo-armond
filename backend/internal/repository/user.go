@@ -130,7 +130,7 @@ func (r *userRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*dom
 	out := make(map[string]*domain.User, len(rows))
 	for i := range rows {
 		u := userToDomain(rows[i])
-		out[u.ID] = u
+		out[string(u.ID)] = u
 	}
 	return out, nil
 }
@@ -373,7 +373,7 @@ func userToDomain(g gormUser) *domain.User {
 	// trinary VO; BioFromPtr maps a NULL column to Bio{} (IsSet=false) and a
 	// text column to a set Bio whose Ptr() returns a defensive copy with the same string value.
 	return &domain.User{
-		ID:          g.ID,
+		ID:          domain.UserID(g.ID),
 		DisplayName: (*domain.DisplayName)(g.DisplayName),
 		Bio:         domain.BioFromPtr(g.Bio),
 		AvatarURL:   g.AvatarURL,

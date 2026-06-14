@@ -20,7 +20,7 @@ func TestNewSwipeRecord(t *testing.T) {
 
 	require.NotEmpty(t, first.ID)
 	require.NotEqual(t, first.ID, second.ID)
-	require.Equal(t, "user-1", first.UserID)
+	require.Equal(t, UserID("user-1"), first.UserID)
 	require.Equal(t, "card-1", first.CardID)
 	require.Equal(t, CardgroupID("cg-1"), first.CardgroupID)
 	require.Equal(t, RatingEasy, first.Rating)

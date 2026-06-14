@@ -36,7 +36,7 @@ func authorizeCardgroupOrBadInput(
 		}
 		return eris.Wrap(err, "usecase: authorize cardgroup: find by id")
 	}
-	if !cg.IsOwnedBy(userID) {
+	if !cg.IsOwnedBy(domain.UserID(userID)) {
 		return ucerr.ErrUnauthenticated
 	}
 	return nil
@@ -62,7 +62,7 @@ func authorizeCardgroupOrUnauthenticated(
 		}
 		return eris.Wrap(err, "usecase: authorize cardgroup: find by id")
 	}
-	if !cg.IsOwnedBy(userID) {
+	if !cg.IsOwnedBy(domain.UserID(userID)) {
 		return ucerr.ErrUnauthenticated
 	}
 	return nil

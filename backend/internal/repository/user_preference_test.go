@@ -204,7 +204,7 @@ func TestUserPreferenceRepository_FindByUserID_Found(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindByUserID: %v", err)
 	}
-	if got.UserID != userID {
+	if string(got.UserID) != userID {
 		t.Fatalf("UserID = %q, want %q", got.UserID, userID)
 	}
 	if got.LastViewedCardgroupID == nil || *got.LastViewedCardgroupID != cgID {
@@ -250,7 +250,7 @@ func TestUserPreferenceRepository_FindByUserIDs_Found(t *testing.T) {
 	}
 	byUser := make(map[string]*struct{}, 2)
 	for _, p := range prefs {
-		byUser[p.UserID] = &struct{}{}
+		byUser[string(p.UserID)] = &struct{}{}
 	}
 	for _, uid := range []string{userA, userB} {
 		if _, ok := byUser[uid]; !ok {
@@ -278,7 +278,7 @@ func TestUserPreferenceRepository_FindByUserIDs_MissingUser(t *testing.T) {
 	if len(prefs) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(prefs))
 	}
-	if prefs[0].UserID != userID {
+	if string(prefs[0].UserID) != userID {
 		t.Fatalf("result UserID = %q, want %q", prefs[0].UserID, userID)
 	}
 }

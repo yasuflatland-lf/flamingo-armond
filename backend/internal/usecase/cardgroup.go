@@ -116,7 +116,7 @@ func (u *cardgroupUsecase) Cardgroup(ctx context.Context, id string) (*domain.Ca
 		}
 		return nil, eris.Wrap(err, "usecase: cardgroup: find by id")
 	}
-	if !cg.IsOwnedBy(user.Sub) {
+	if !cg.IsOwnedBy(domain.UserID(user.Sub)) {
 		return nil, ucerr.ErrUnauthenticated
 	}
 	return cg, nil
@@ -216,7 +216,7 @@ func (u *cardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 	now := time.Now().UTC()
 	cg := &domain.Cardgroup{
 		ID:        domain.CardgroupID(id),
-		OwnerID:   user.Sub,
+		OwnerID:   domain.UserID(user.Sub),
 		Name:      name,
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -258,7 +258,7 @@ func (u *cardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 		}
 		return UpdateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: find for update")
 	}
-	if !existing.IsOwnedBy(user.Sub) {
+	if !existing.IsOwnedBy(domain.UserID(user.Sub)) {
 		return UpdateCardgroupOutcome{}, ucerr.ErrUnauthenticated
 	}
 
@@ -303,7 +303,7 @@ func (u *cardgroupUsecase) Delete(ctx context.Context, id string) error {
 		}
 		return eris.Wrap(err, "usecase: cardgroup: find for delete")
 	}
-	if !existing.IsOwnedBy(user.Sub) {
+	if !existing.IsOwnedBy(domain.UserID(user.Sub)) {
 		return ucerr.ErrUnauthenticated
 	}
 
@@ -474,7 +474,7 @@ func (u *cardgroupUsecase) resolveCardgroupCursor(
 		}
 		return nil, eris.Wrap(err, "usecase: cardgroup: hydrate cursor")
 	}
-	if !cg.IsOwnedBy(ownerID) {
+	if !cg.IsOwnedBy(domain.UserID(ownerID)) {
 		return nil, ucerr.NewValidationError(field, "cursor not found")
 	}
 

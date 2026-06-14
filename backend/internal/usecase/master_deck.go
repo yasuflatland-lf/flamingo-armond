@@ -249,7 +249,7 @@ func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx *gorm.DB,
 	now := time.Now().UTC()
 	newCG := &domain.Cardgroup{
 		ID:        domain.CardgroupID(newCGID),
-		OwnerID:   ownerID,
+		OwnerID:   domain.UserID(ownerID),
 		Name:      master.Name,
 		CreatedAt: now,
 		UpdatedAt: now,
