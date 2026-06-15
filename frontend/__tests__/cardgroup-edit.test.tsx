@@ -152,16 +152,16 @@ describe("EditCardgroupPage — broad integration (RSC + management screen)", ()
     expect(screen.getByText("front-003")).toBeInTheDocument();
   });
 
-  it("renders the kebab button and card count in the page header", async () => {
-    // Settings and Danger zone were moved into the kebab DropdownMenu.
-    // The count chip was removed from the toolbar; the count now shows as muted
-    // metadata text beneath the h1 title (no Badge pill).
+  it("renders the kebab button and card count Badge in the page header", async () => {
+    // Settings and Danger zone were moved into the kebab DropdownMenu (Task 1).
+    // The count chip was removed from the toolbar (Task 2); count shows in the
+    // page-level Badge next to the h1 instead.
     mockEditPageGql(POPULATED_CONNECTION);
     await renderPage(POPULATED_CONNECTION);
 
     // The kebab trigger button is present.
     expect(screen.getByRole("button", { name: /cardgroup options/i })).toBeInTheDocument();
-    // The card count metadata is present (3 cards in POPULATED_CONNECTION).
+    // The Badge with the card count is present (3 cards in POPULATED_CONNECTION).
     expect(screen.getByText("3 cards")).toBeInTheDocument();
   });
 

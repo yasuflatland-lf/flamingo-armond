@@ -57,22 +57,18 @@ export function CardgroupCardsSection({
   }) => (
     <div>
       {renderPageHeader?.({ totalCount, onBatchImport })}
-      <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-end">
-        {/* Primary CTA: full-width brand hero on mobile (h-11 = 44px tap target),
-            compact on desktop. Add card on mobile is provided by the global "+"
-            header action, so no Add button is duplicated here on small screens. */}
-        <Button asChild variant="brand" className="h-11 w-full px-8 md:h-9 md:w-auto md:px-4">
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+        <Button asChild variant="outline" size="sm">
           <Link href={learnHref}>
-            <Play aria-hidden="true" className="h-4 w-4" />
-            {t("startLearning")}
+            Start learning
+            <Play aria-hidden="true" className="ml-1.5 h-4 w-4" />
           </Link>
         </Button>
-        {/* Desktop split button: secondary Add card + dropdown with Batch import.
-            Demoted to outline so Start learning is the single brand primary CTA. */}
+        {/* Desktop split button: primary Add card + dropdown with Batch import */}
         <div className="hidden md:inline-flex">
           <Button
             type="button"
-            variant="outline"
+            variant="brand"
             size="sm"
             className="rounded-r-none"
             onClick={onAddCard}
@@ -83,7 +79,7 @@ export function CardgroupCardsSection({
             <DropdownMenuTrigger asChild>
               <Button
                 type="button"
-                variant="outline"
+                variant="brand"
                 size="sm"
                 className="rounded-l-none border-l px-2"
                 aria-label={t("addMoreOptions")}

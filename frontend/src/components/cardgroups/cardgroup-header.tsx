@@ -16,6 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -63,52 +64,48 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
 
   return (
     <>
-      <div className="mb-6 flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold leading-tight break-words">{cardgroup.name}</h1>
-          {/* Count demoted from a Badge to muted metadata so the title is the
-              unambiguous anchor of the header. */}
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t("cardsCount", { count: totalCount })}
-          </p>
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <h1 className="text-2xl font-semibold">{cardgroup.name}</h1>
+        <Badge variant="secondary">{totalCount} cards</Badge>
+        <div className="ml-auto">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label={t("cardgroupOptions")}>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setRenameOpen(true)} className="gap-2">
+                <Pencil className="h-4 w-4" />
+                {t("rename")}
+              </DropdownMenuItem>
+              {onBatchImport && (
+                <>
+                  <DropdownMenuSeparator />
+                  {/* Batch import is shown here for mobile users;
+                      the desktop split button (hidden md:inline-flex) covers desktop. */}
+                  <DropdownMenuItem onSelect={onBatchImport} className="gap-2 md:hidden">
+                    <Import className="h-4 w-4" />
+                    {t("batchImport")}
+                  </DropdownMenuItem>
+                </>
+              )}
+              <DropdownMenuSeparator />
+              {/* Future reserved items (not yet implemented):
+                  <DropdownMenuItem disabled>Export to TextDic</DropdownMenuItem>
+                  <DropdownMenuItem disabled>Duplicate</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+              */}
+              <DropdownMenuItem
+                onSelect={() => setDeleteDialogOpen(true)}
+                className="gap-2 text-destructive focus:text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+                {t("deleteCardgroupTitle")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label={t("cardgroupOptions")}>
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={() => setRenameOpen(true)} className="gap-2">
-              <Pencil className="h-4 w-4" />
-              {t("rename")}
-            </DropdownMenuItem>
-            {onBatchImport && (
-              <>
-                <DropdownMenuSeparator />
-                {/* Batch import is shown here for mobile users;
-                    the desktop split button (hidden md:inline-flex) covers desktop. */}
-                <DropdownMenuItem onSelect={onBatchImport} className="gap-2 md:hidden">
-                  <Import className="h-4 w-4" />
-                  {t("batchImport")}
-                </DropdownMenuItem>
-              </>
-            )}
-            <DropdownMenuSeparator />
-            {/* Future reserved items (not yet implemented):
-                <DropdownMenuItem disabled>Export to TextDic</DropdownMenuItem>
-                <DropdownMenuItem disabled>Duplicate</DropdownMenuItem>
-                <DropdownMenuSeparator />
-            */}
-            <DropdownMenuItem
-              onSelect={() => setDeleteDialogOpen(true)}
-              className="gap-2 text-destructive focus:text-destructive"
-            >
-              <Trash2 className="h-4 w-4" />
-              {t("deleteCardgroupTitle")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
 
       <FormSheet

@@ -52,7 +52,7 @@ describe("<CardgroupHeader>", () => {
     expect(screen.getByRole("heading", { level: 1, name: /spanish vocab/i })).toBeInTheDocument();
   });
 
-  it("renders the totalCount as muted metadata text below the title", () => {
+  it("renders a Badge with the totalCount", () => {
     renderHeader([], 42);
     expect(screen.getByText("42 cards")).toBeInTheDocument();
   });
