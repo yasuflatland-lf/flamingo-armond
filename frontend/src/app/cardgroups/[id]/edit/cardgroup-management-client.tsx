@@ -22,8 +22,13 @@ export function CardgroupManagementClient({
   const t = useTranslations("Cardgroups");
   return (
     <main className="p-4 md:p-8">
-      <div className="mb-4">
-        <Link href="/cardgroups" className="text-sm text-muted-foreground hover:underline">
+      {/* Compact breadcrumb: tight to the title below so the back link reads as
+          a sibling of the header, not a floating standalone row. */}
+      <div className="mb-2">
+        <Link
+          href="/cardgroups"
+          className="inline-flex text-sm text-muted-foreground hover:text-foreground hover:underline"
+        >
           {t("backLink")}
         </Link>
       </div>

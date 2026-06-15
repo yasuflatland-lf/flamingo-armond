@@ -122,6 +122,8 @@
     "createNewCardgroup": "新規カードグループを作成…",
     "addMoreOptions": "追加オプション",
     "addCardButton": "カードを追加 +",
+    "startLearning": "学習を開始",
+    "cardsCount": "{count} 枚",
     "addACard": "カードを追加",
     "batchImport": "一括インポート",
     "nameLabel": "名前",
