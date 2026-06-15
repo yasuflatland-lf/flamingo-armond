@@ -6,11 +6,15 @@
 
 File: `frontend/src/lib/apollo/server.ts`.
 
-Exports `gqlFetch(doc, { variables?, revalidate? })` — a plain `fetch` POST to `${env.BACKEND_URL}/query`. It serializes the document via `print(doc)` from the `graphql` package and returns typed data.
+Exports `gqlFetch(doc, { variables?, revalidate? })` — a plain `fetch` POST to `${env.BACKEND_URL}/query`. It serializes the document via `print(addTypenameToDocument(doc))` from the `graphql` package + `@apollo/client/utilities`, and returns typed data.
 
 **Why not Apollo's RSC mode**: Next 16's `fetch` already handles dedup, revalidation, and caching. Adding Apollo's normalization layer on top would double-cache. `gqlFetch` stays thin.
 
 **Why `env.BACKEND_URL` directly (not `/api/graphql`)**: RSC runs server-side and does not pass through Next rewrites — see Gotchas below.
+
+**Why `__typename` is force-added (not a bare `print(doc)`)**: graphql-codegen's client-preset (v6) does **not** inject `__typename` into the document. The browser path relies on Apollo Client's links to add it at request time, but `gqlFetch` prints the raw document and bypasses those links — so without the transform the SSR response carries no `__typename`. Any RSC result then seeded into the `InMemoryCache` via `writeQuery` (the SSR-seed pattern used by `/catalog`, `/onboarding/start`, and every list screen) cannot resolve a type-conditioned fragment (`...Fragment on Type`): the cache keeps only the directly-selected `id` and silently drops every fragment field. The user-visible symptom was `/catalog` rendering the card count as "NaN" (an `undefined` `cardCount` fed to an ICU `#` placeholder) with a blank deck name. The fix lives once in `gqlFetch`, so it covers every fragment-spreading RSC query.
+
+> Test-harness note: cache-roundtrip / `MockedProvider` tests build `__typename`-bearing mock nodes, so they normalize correctly and never reproduced this gap — only the `__typename`-less SSR path did. The regression guard therefore lives at the `gqlFetch` seam (`server.test.ts` asserts the serialized query contains `__typename`), not in a component render test. Data masking is **off** in this app (`dataMasking: !!undefined` resolves to `false` in `client.ts`), so the dropped fields are a normalization artifact, not masking.
 
 ### Browser (`ApolloNextAppProvider`)
 
