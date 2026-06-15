@@ -4,7 +4,6 @@ import dynamic from "next/dynamic";
 import type { RefObject } from "react";
 import type { CefrLevel } from "@/generated/graphql";
 import type { AnimatedCardHandle } from "./animated-card";
-import { CefrBadge } from "./cefr-badge";
 import type { SwipeDirection } from "./types";
 import { useFitText } from "./use-fit-text";
 
@@ -88,18 +87,14 @@ export function CardContent({ card, revealed }: { card: SwipeCardData; revealed:
   );
 
   return (
-    // `relative` anchors the absolutely-positioned CefrBadge to this card.
-    // The TOP-RIGHT corner is reserved for the CEFR badge; future FSRS badges
-    // (#276 / #277) MUST claim a DIFFERENT corner so the two never collide.
+    // `relative` anchors the tap-hint dot below. The CEFR badge is NOT rendered
+    // here — AnimatedCard overlays it outside the flip rotator (see there). The
+    // top-right corner stays reserved for it; future FSRS badges (#276 / #277)
+    // must claim a different corner.
     <div className="relative flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card p-6 shadow-lg">
       {/*
-        The badge is `position: absolute`, so it never participates in the
-        flow and CLS is zero by construction.
-      */}
-      <CefrBadge level={card.cefrLevel} />
-      {/*
         Reserve horizontal space (`px-10`) on the centered content block so a
-        long wrapped `front` term cannot slide UNDER the right-pinned badge on
+        long wrapped `front` term cannot slide UNDER the top-right CEFR badge on
         a narrow (~320px) viewport. Padding does not reflow the absolute badge,
         so CLS stays zero.
       */}

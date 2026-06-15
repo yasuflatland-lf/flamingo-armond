@@ -539,3 +539,55 @@ describe("<AnimatedCard> — React StrictMode double-mount", () => {
     expect(onSwipe).toHaveBeenCalledWith(CARD, "right");
   });
 });
+
+describe("<AnimatedCard> — CEFR badge does not duplicate across the flipped faces", () => {
+  // Regression for the mirrored top-left badge bug. In the non-reduced-motion
+  // reveal flip the card renders a front face (revealed=false) AND a back face
+  // (revealed=true, rotateY 180). When the badge lived inside CardContent, BOTH
+  // faces carried a CefrBadge; after the half-turn flip the front face is turned
+  // away (rotateY -180 = horizontally mirrored) and its badge leaked through
+  // `[backface-visibility:hidden]` — an absolutely-positioned, z-indexed child
+  // forms its own stacking context that the ancestor's backface-visibility does
+  // not clip in WebKit — surfacing as a mirrored badge in the TOP-LEFT corner.
+  // The fix lifts the badge OUT of the flip rotator, so exactly one badge
+  // renders regardless of flip state.
+  it("renders exactly one CEFR badge when revealed (no mirrored backface duplicate)", () => {
+    render(
+      <AnimatedCard
+        card={{ ...CARD, cefrLevel: "C2" }}
+        isActive
+        onSwipe={vi.fn()}
+        {...revealedProps()}
+      />,
+    );
+
+    expect(screen.getAllByLabelText("CEFR level C2")).toHaveLength(1);
+  });
+
+  it("renders the badge once even when the card is front-only (not yet revealed)", () => {
+    render(
+      <AnimatedCard
+        card={{ ...CARD, cefrLevel: "C2" }}
+        isActive
+        revealed={false}
+        onReveal={vi.fn()}
+        onSwipe={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByLabelText("CEFR level C2")).toHaveLength(1);
+  });
+
+  it("renders no CEFR badge when the card has no level (null)", () => {
+    render(
+      <AnimatedCard
+        card={{ ...CARD, cefrLevel: null }}
+        isActive
+        onSwipe={vi.fn()}
+        {...revealedProps()}
+      />,
+    );
+
+    expect(screen.queryByLabelText(/CEFR level/)).toBeNull();
+  });
+});

@@ -7,6 +7,7 @@ import { GraphQLError } from "graphql";
 import { type RefObject, useImperativeHandle, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LEARN_PAGE_LIMIT } from "@/app/learn/queries";
+import { CefrBadge } from "@/components/learn/cefr-badge";
 import { CardContent, type SwipeCardData } from "@/components/learn/swipe-card";
 import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import type { LearnDisplayMode } from "@/components/learn/types";
@@ -83,11 +84,18 @@ vi.mock("@/components/learn/swipe-card-stack", () => ({
         </div>
       );
     }
-    // Render CardContent (the real presentational layer) so badge-render
-    // integration tests can assert the full LearnClient → SwipeCardStack →
-    // CardContent → CefrBadge pipeline without the next/dynamic AnimatedCard
-    // chunk. CardContent is purely presentational and needs no providers.
-    return <CardContent card={activeCard} revealed={props.displayMode === "ALWAYS_VISIBLE"} />;
+    // Render the real presentational layer so badge-render integration tests can
+    // assert the full LearnClient → SwipeCardStack → card pipeline without the
+    // next/dynamic AnimatedCard chunk. The real AnimatedCard overlays the
+    // CefrBadge OUTSIDE the flip rotator (so the reveal flip cannot duplicate it);
+    // this mock mirrors that layout — CardContent for the content, CefrBadge
+    // alongside it.
+    return (
+      <>
+        <CardContent card={activeCard} revealed={props.displayMode === "ALWAYS_VISIBLE"} />
+        <CefrBadge level={activeCard.cefrLevel} />
+      </>
+    );
   },
 }));
 
@@ -625,12 +633,13 @@ describe("<LearnClient>", () => {
     });
   });
 
-  it("renders the CefrBadge for a card whose cefrLevel is non-null (end-to-end through CardContent)", async () => {
+  it("renders the CefrBadge for a card whose cefrLevel is non-null (end-to-end)", async () => {
     // End-to-end acceptance criterion: a card with a non-null cefrLevel must
     // show a CEFR badge on the learn page. The path exercised here is:
-    //   LearnClient (state) → SwipeCardStack mock → CardContent → CefrBadge
-    // The SwipeCardStack mock renders the real CardContent component so the
-    // badge pipeline is exercised without the next/dynamic AnimatedCard chunk.
+    //   LearnClient (state) → SwipeCardStack mock → card content + CefrBadge
+    // The mock mirrors the real AnimatedCard layout (badge overlaid outside the
+    // flip rotator) so the badge pipeline is exercised without the next/dynamic
+    // AnimatedCard chunk.
     //
     // `renderLearnClient`'s `initialCards` parameter is inferred from the
     // default `[CARD_1]`, which narrows `cefrLevel` to `null`. Inline the render
