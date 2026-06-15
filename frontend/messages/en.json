@@ -256,6 +256,7 @@
   },
   "Onboarding": {
     "welcome": "Welcome to Flamingo Armond",
+    "subtitle": "Let's set up how your name appears.",
     "displayName": "Display name",
     "displayNameHint": "1–50 characters; visible to other users.",
     "continue": "Continue",

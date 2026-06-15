@@ -7,7 +7,7 @@ import { type CSSProperties, useCallback, useState } from "react";
 import { CatalogCard } from "@/app/catalog/catalog-card";
 import type { CatalogCardFieldsFragment } from "@/app/catalog/queries";
 import { useImportMaster } from "@/app/catalog/use-import-master";
-import { FlamingoMark } from "@/components/brand/flamingo-mark";
+import { OnboardingShell } from "@/components/onboarding/onboarding-shell";
 import { BrandSplash } from "@/components/pwa/brand-splash";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -90,15 +90,7 @@ export function OnboardingStartClient({ cardgroups }: OnboardingStartClientProps
         </BrandSplash>
       ) : null}
 
-      <div className="mx-auto max-w-2xl px-6 py-12 text-center sm:py-16">
-        <FlamingoMark aria-hidden="true" className="mx-auto size-12" />
-        <h1 className="mt-4 text-3xl font-semibold leading-[1.35] tracking-normal sm:text-4xl">
-          {t("heading")}
-        </h1>
-        <p className="mt-3 text-base leading-[1.7] tracking-[0.01em] text-muted-foreground sm:text-[17px]">
-          {t("subline")}
-        </p>
-
+      <OnboardingShell heading={t("heading")} subline={t("subline")}>
         {hasBanner && (
           <div className="mt-6 space-y-6 text-left">
             {importAuthError ? (
@@ -156,7 +148,7 @@ export function OnboardingStartClient({ cardgroups }: OnboardingStartClientProps
             </Link>
           </Button>
         </p>
-      </div>
+      </OnboardingShell>
     </>
   );
 }
