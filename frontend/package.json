@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/stamp-sw-version.mjs",
+    "predev": "pnpm codegen && node scripts/stamp-sw-version.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
