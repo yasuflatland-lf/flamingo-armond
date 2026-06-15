@@ -32,7 +32,7 @@ vi.mock("@/app/catalog/use-import-master", () => ({
   useImportMaster: () => ({ importMasterCardgroup: mockImport, loading: false }),
 }));
 
-// Each deck carries a top-level `id` (read for React keys + per-deck `importing`
+// Each cardgroup carries a top-level `id` (read for React keys + per-cardgroup `importing`
 // state) plus a masked `CatalogCardFields` ref the chooser hands to `CatalogCard`
 // — mirroring the `OnboardingStartQuery` node shape. `makeFragmentData` is
 // identity at runtime, so the card's `useFragment` still sees every field.
@@ -58,7 +58,7 @@ const M2_FIELDS = {
   cardCount: 100,
 };
 
-const DECKS = [
+const CARDGROUPS = [
   { id: M1_FIELDS.id, ...makeFragmentData(M1_FIELDS, CatalogCardFieldsFragment) },
   { id: M2_FIELDS.id, ...makeFragmentData(M2_FIELDS, CatalogCardFieldsFragment) },
 ];
@@ -71,8 +71,8 @@ afterEach(() => {
 });
 
 describe("<OnboardingStartClient>", () => {
-  it("renders a card per deck and the create-your-own link", () => {
-    renderWithIntl(<OnboardingStartClient decks={DECKS} />);
+  it("renders a card per cardgroup and the create-your-own link", () => {
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
 
     expect(screen.getByTestId("onboarding-deck-m-1")).toBeInTheDocument();
     expect(screen.getByTestId("onboarding-deck-m-2")).toBeInTheDocument();
@@ -83,7 +83,22 @@ describe("<OnboardingStartClient>", () => {
     );
   });
 
-  it("imports the chosen deck and navigates to /learn/{id} on success", async () => {
+  it("renders the preset hero: logo, heading, subline, and preset label", () => {
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Pick your first cardgroup",
+    );
+    expect(screen.getByText("Pick a preset and start learning right away.")).toBeInTheDocument();
+    // The preset panel's section label (rendered as an h2).
+    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("Presets");
+    // The FlamingoMark logo renders a decorative (aria-hidden) <svg>; query the
+    // document directly so the assertion does not depend on renderWithIntl's
+    // return shape.
+    expect(document.querySelector("svg")).not.toBeNull();
+  });
+
+  it("imports the chosen cardgroup and navigates to /learn/{id} on success", async () => {
     const user = userEvent.setup();
     mockImport.mockResolvedValueOnce({
       status: "success",
@@ -91,7 +106,7 @@ describe("<OnboardingStartClient>", () => {
       cardgroupName: "Business English",
     });
 
-    renderWithIntl(<OnboardingStartClient decks={DECKS} />);
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
     await user.click(screen.getByTestId("onboarding-deck-m-1"));
 
     expect(mockImport).toHaveBeenCalledWith("m-1");
@@ -109,8 +124,8 @@ describe("<OnboardingStartClient>", () => {
       }),
     );
 
-    renderWithIntl(<OnboardingStartClient decks={DECKS} />);
-    // No splash before the user picks a deck.
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
+    // No splash before the user picks a cardgroup.
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
 
     await user.click(screen.getByTestId("onboarding-deck-m-1"));
@@ -135,7 +150,7 @@ describe("<OnboardingStartClient>", () => {
       }),
     );
 
-    renderWithIntl(<OnboardingStartClient decks={DECKS} />);
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
     await user.click(screen.getByTestId("onboarding-deck-m-1"));
 
     // Splash is up while the import is in flight...
@@ -154,7 +169,7 @@ describe("<OnboardingStartClient>", () => {
     const user = userEvent.setup();
     mockImport.mockResolvedValueOnce({ status: "rejected" });
 
-    renderWithIntl(<OnboardingStartClient decks={DECKS} />);
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
     await user.click(screen.getByTestId("onboarding-deck-m-1"));
 
     await waitFor(() => {
@@ -167,7 +182,7 @@ describe("<OnboardingStartClient>", () => {
     const user = userEvent.setup();
     mockImport.mockResolvedValueOnce({ status: "not_found" });
 
-    renderWithIntl(<OnboardingStartClient decks={DECKS} />);
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
     await user.click(screen.getByTestId("onboarding-deck-m-1"));
 
     await waitFor(() => {
@@ -182,7 +197,7 @@ describe("<OnboardingStartClient>", () => {
     const user = userEvent.setup();
     mockImport.mockResolvedValueOnce({ status: "auth", kind: "unauthenticated" });
 
-    renderWithIntl(<OnboardingStartClient decks={DECKS} />);
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
     await user.click(screen.getByTestId("onboarding-deck-m-1"));
 
     const banner = await screen.findByTestId("onboarding-import-auth-error");
@@ -194,7 +209,7 @@ describe("<OnboardingStartClient>", () => {
     const user = userEvent.setup();
     mockImport.mockResolvedValueOnce({ status: "auth", kind: "forbidden" });
 
-    renderWithIntl(<OnboardingStartClient decks={DECKS} />);
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
     await user.click(screen.getByTestId("onboarding-deck-m-1"));
 
     const banner = await screen.findByTestId("onboarding-import-auth-error");
@@ -211,7 +226,7 @@ describe("<OnboardingStartClient>", () => {
       }),
     );
 
-    renderWithIntl(<OnboardingStartClient decks={DECKS} />);
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
     await user.click(screen.getByTestId("onboarding-deck-m-1"));
     await user.click(screen.getByTestId("onboarding-deck-m-2"));
 
