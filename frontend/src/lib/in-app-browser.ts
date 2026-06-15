@@ -53,3 +53,14 @@ export function detectInAppBrowser(userAgent: string): InAppBrowser | null {
   }
   return null;
 }
+
+/**
+ * True for app-specific in-app-browser signatures (high-confidence detections
+ * such as LINE, Instagram, Facebook); false for the generic Android WebView
+ * token, which can false-positive on legitimate browsers. The login page shows
+ * the blocking modal only for app-specific detections and keeps a low-key inline
+ * banner for the generic WebView case.
+ */
+export function isAppSpecificInAppBrowser(browser: InAppBrowser): boolean {
+  return browser !== "webview";
+}

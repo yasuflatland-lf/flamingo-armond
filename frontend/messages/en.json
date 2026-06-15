@@ -201,6 +201,7 @@
     "signInFailed": "Sign-in failed: {error}",
     "googleButton": "Continue with Google",
     "inAppBrowserWarning": "Google sign-in does not work inside in-app browsers. Open this page in your browser (Safari or Chrome) to sign in.",
+    "inAppBrowserModalTitle": "Open in your browser to sign in",
     "openInBrowser": "Open in browser",
     "copyLink": "Copy page link",
     "linkCopied": "Copied — paste into Safari or Chrome",
