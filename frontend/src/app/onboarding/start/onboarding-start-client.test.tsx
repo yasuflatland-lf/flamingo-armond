@@ -115,6 +115,56 @@ describe("<OnboardingStartClient>", () => {
     });
   });
 
+  it("shows the coral loading splash on press and keeps it through a successful import", async () => {
+    const user = userEvent.setup();
+    let resolve: ((o: ImportMasterOutcome) => void) | undefined;
+    mockImport.mockReturnValueOnce(
+      new Promise<ImportMasterOutcome>((r) => {
+        resolve = r;
+      }),
+    );
+
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
+    // No splash before the user picks a cardgroup.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("onboarding-deck-m-1"));
+
+    // The branded coral splash appears immediately while the import is in flight.
+    expect(screen.getByRole("status", { name: /starting/i })).toBeInTheDocument();
+
+    // It stays through the success navigation (importingId is held until unmount).
+    resolve?.({ status: "success", cardgroupId: "cg-9", cardgroupName: "x" });
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/learn/cg-9");
+    });
+    expect(screen.getByRole("status", { name: /starting/i })).toBeInTheDocument();
+  });
+
+  it("removes the coral splash and shows the error banner when the import fails", async () => {
+    const user = userEvent.setup();
+    let resolve: ((o: ImportMasterOutcome) => void) | undefined;
+    mockImport.mockReturnValueOnce(
+      new Promise<ImportMasterOutcome>((r) => {
+        resolve = r;
+      }),
+    );
+
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
+    await user.click(screen.getByTestId("onboarding-deck-m-1"));
+
+    // Splash is up while the import is in flight...
+    expect(screen.getByRole("status", { name: /starting/i })).toBeInTheDocument();
+
+    // ...and is torn down when the import fails, leaving the error banner behind.
+    resolve?.({ status: "rejected" });
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-import-error")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
   it("shows a generic error banner and does not navigate on a rejected import", async () => {
     const user = userEvent.setup();
     mockImport.mockResolvedValueOnce({ status: "rejected" });

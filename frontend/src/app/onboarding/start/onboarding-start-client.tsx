@@ -8,6 +8,7 @@ import { CatalogCard } from "@/app/catalog/catalog-card";
 import type { CatalogCardFieldsFragment } from "@/app/catalog/queries";
 import { useImportMaster } from "@/app/catalog/use-import-master";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
+import { BrandSplash } from "@/components/pwa/brand-splash";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import type { FragmentType } from "@/generated/fragment-masking";
@@ -76,72 +77,86 @@ export function OnboardingStartClient({ cardgroups }: OnboardingStartClientProps
   const hasBanner = importAuthError !== null || importError !== null;
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-12 text-center sm:py-16">
-      <FlamingoMark aria-hidden="true" className="mx-auto size-12" />
-      <h1 className="mt-4 text-3xl font-semibold leading-[1.35] tracking-normal sm:text-4xl">
-        {t("heading")}
-      </h1>
-      <p className="mt-3 text-base leading-[1.7] tracking-[0.01em] text-muted-foreground sm:text-[17px]">
-        {t("subline")}
-      </p>
+    <>
+      {/* Full-viewport coral splash held from the moment a cardgroup import
+          starts until this component unmounts on the success navigation to
+          /learn/{id}. On any failure outcome, handleStart resets importingId,
+          tearing the splash down so the error banner becomes visible. Rendered
+          outside the hero container so the fixed overlay never participates in
+          its flow. */}
+      {importingId !== null ? (
+        <BrandSplash label={t("starting")}>
+          <p className="text-sm opacity-80">{t("starting")}</p>
+        </BrandSplash>
+      ) : null}
 
-      {hasBanner && (
-        <div className="mt-6 space-y-6 text-left">
-          {importAuthError ? (
-            <ErrorBanner data-testid="onboarding-import-auth-error">
-              <span>{t("sessionExpired")}</span>
-              <Link href="/login" className="underline">
-                {t("signInAgain")}
-              </Link>
-            </ErrorBanner>
-          ) : null}
-          {importError ? (
-            <ErrorBanner data-testid="onboarding-import-error">{importError}</ErrorBanner>
-          ) : null}
-        </div>
-      )}
+      <div className="mx-auto max-w-2xl px-6 py-12 text-center sm:py-16">
+        <FlamingoMark aria-hidden="true" className="mx-auto size-12" />
+        <h1 className="mt-4 text-3xl font-semibold leading-[1.35] tracking-normal sm:text-4xl">
+          {t("heading")}
+        </h1>
+        <p className="mt-3 text-base leading-[1.7] tracking-[0.01em] text-muted-foreground sm:text-[17px]">
+          {t("subline")}
+        </p>
 
-      <section className="mt-11" aria-labelledby="onboarding-preset-title">
-        <div className="mx-auto w-fit max-w-full rounded-2xl border border-brand-tint-border bg-brand-tint p-6 text-left">
-          <h2
-            id="onboarding-preset-title"
-            className="text-xs font-semibold uppercase tracking-[0.08em] text-brand-tint-foreground"
-          >
-            {t("presetLabel")}
-          </h2>
-          <ul
-            className="mt-4 flex flex-wrap justify-center gap-4 sm:gap-5"
-            data-testid="onboarding-deck-list"
-          >
-            {cardgroups.map((node, index) => (
-              <CatalogCard
-                key={node.id}
-                node={node}
-                importing={importingId === node.id}
-                imported={false}
-                onImport={handleStart}
-                labels={{
-                  action: t("startWithDeck"),
-                  inProgress: t("starting"),
-                  done: t("imported"),
-                }}
-                testIdPrefix="onboarding-deck"
-                className="w-[17rem] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-500"
-                style={{ animationDelay: `${Math.min(index, 5) * 70}ms` } satisfies CSSProperties}
-              />
-            ))}
-          </ul>
-        </div>
-      </section>
+        {hasBanner && (
+          <div className="mt-6 space-y-6 text-left">
+            {importAuthError ? (
+              <ErrorBanner data-testid="onboarding-import-auth-error">
+                <span>{t("sessionExpired")}</span>
+                <Link href="/login" className="underline">
+                  {t("signInAgain")}
+                </Link>
+              </ErrorBanner>
+            ) : null}
+            {importError ? (
+              <ErrorBanner data-testid="onboarding-import-error">{importError}</ErrorBanner>
+            ) : null}
+          </div>
+        )}
 
-      <p className="mt-8 text-sm text-muted-foreground">
-        {t("or")}{" "}
-        <Button asChild variant="link" className="h-auto p-0 align-baseline text-sm font-medium">
-          <Link href="/cardgroups/new?welcome=1" data-testid="onboarding-create-link">
-            {t("createCta")} →
-          </Link>
-        </Button>
-      </p>
-    </div>
+        <section className="mt-11" aria-labelledby="onboarding-preset-title">
+          <div className="mx-auto w-fit max-w-full rounded-2xl border border-brand-tint-border bg-brand-tint p-6 text-left">
+            <h2
+              id="onboarding-preset-title"
+              className="text-xs font-semibold uppercase tracking-[0.08em] text-brand-tint-foreground"
+            >
+              {t("presetLabel")}
+            </h2>
+            <ul
+              className="mt-4 flex flex-wrap justify-center gap-4 sm:gap-5"
+              data-testid="onboarding-deck-list"
+            >
+              {cardgroups.map((node, index) => (
+                <CatalogCard
+                  key={node.id}
+                  node={node}
+                  importing={importingId === node.id}
+                  imported={false}
+                  onImport={handleStart}
+                  labels={{
+                    action: t("startWithDeck"),
+                    inProgress: t("starting"),
+                    done: t("imported"),
+                  }}
+                  testIdPrefix="onboarding-deck"
+                  className="w-[17rem] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-500"
+                  style={{ animationDelay: `${Math.min(index, 5) * 70}ms` } satisfies CSSProperties}
+                />
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        <p className="mt-8 text-sm text-muted-foreground">
+          {t("or")}{" "}
+          <Button asChild variant="link" className="h-auto p-0 align-baseline text-sm font-medium">
+            <Link href="/cardgroups/new?welcome=1" data-testid="onboarding-create-link">
+              {t("createCta")} →
+            </Link>
+          </Button>
+        </p>
+      </div>
+    </>
   );
 }
