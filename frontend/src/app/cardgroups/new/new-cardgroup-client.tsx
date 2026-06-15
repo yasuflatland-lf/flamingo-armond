@@ -1,11 +1,11 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { useCreateCardgroup } from "@/app/cardgroups/use-create-cardgroup";
+import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
 import { ErrorBanner } from "@/components/ui/error-banner";
 
@@ -91,12 +91,12 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
           className="mb-8 rounded-2xl border border-brand-tint-border bg-brand-tint p-6 sm:p-8"
         >
           <div className="flex items-start gap-4">
-            <Sparkles aria-hidden className="mt-1 h-6 w-6 shrink-0 text-brand-primary" />
+            <FlamingoMark aria-hidden="true" className="size-10 shrink-0" />
             <div>
-              <h1 id="welcome-heading" className="text-lg font-semibold tracking-tight">
+              <h1 id="welcome-heading" className="text-2xl font-semibold tracking-tight">
                 {t("welcomeHeading")}
               </h1>
-              <p className="mt-1 text-sm text-muted-foreground">{t("welcomeDesc")}</p>
+              <p className="mt-2 text-sm text-muted-foreground">{t("welcomeDesc")}</p>
             </div>
           </div>
         </section>
