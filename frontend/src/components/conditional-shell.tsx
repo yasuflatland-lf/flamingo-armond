@@ -6,13 +6,30 @@ import { AuthShell } from "./auth-shell";
 import { AppleInstallHint } from "./pwa/apple-install-hint";
 
 /**
- * Routes that own the entire viewport and must render without the navigation
- * shell. /login is the sign-in screen, /onboarding the display-name gate,
- * /onboarding/start the first-deck chooser (a deckless user's rail would point
- * at empty destinations), and /terms + /privacy the public legal pages (each
- * renders its own `<main>`).
+ * Routes that must render without the navigation shell.
+ *
+ * Most are full-screen pages that own the entire viewport: /login is the
+ * sign-in screen, /onboarding the display-name gate, /onboarding/start the
+ * first-deck chooser (a deckless user's rail would point at empty
+ * destinations), and /terms + /privacy the public legal pages (each renders
+ * its own `<main>`).
+ *
+ * `/` is a redirect-only dispatcher, not a viewport-owning page: `app/page.tsx`
+ * always `redirect()`s and never renders content (see
+ * docs/frontend/routing-topology.md). Mounting the shell there flashes the nav
+ * rail for the brief moment `/` resolves and redirects — most visibly on a new
+ * user's first login (`/` → `/onboarding`), where the rail appears then
+ * vanishes. Keeping `/` bare means the rail only mounts once a real content
+ * route (`/cardgroups`, `/learn/{id}`) commits.
  */
-const BARE_ROUTES = new Set(["/login", "/onboarding", "/onboarding/start", "/terms", "/privacy"]);
+const BARE_ROUTES = new Set([
+  "/",
+  "/login",
+  "/onboarding",
+  "/onboarding/start",
+  "/terms",
+  "/privacy",
+]);
 
 interface ConditionalShellProps {
   /** Shell display identity, or null for the anonymous shell. */

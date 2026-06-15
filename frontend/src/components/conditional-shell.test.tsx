@@ -37,8 +37,9 @@ afterEach(() => {
 });
 
 describe("<ConditionalShell>", () => {
-  describe("bare routes (/login, /onboarding, /terms, /privacy)", () => {
+  describe("bare routes (/, /login, /onboarding, /terms, /privacy)", () => {
     it.each([
+      "/",
       "/login",
       "/onboarding",
       "/onboarding/start",
@@ -58,6 +59,7 @@ describe("<ConditionalShell>", () => {
     });
 
     it.each([
+      "/",
       "/login",
       "/onboarding",
       "/onboarding/start",
@@ -65,8 +67,11 @@ describe("<ConditionalShell>", () => {
       // A soft navigation can reach a bare route while the layout-computed
       // identity is still authenticated; the shell must stay hidden regardless
       // of identity. /onboarding and /onboarding/start are both reached WHILE
-      // authenticated (the display-name gate and the first-deck chooser), so the
-      // authenticated case matters there.
+      // authenticated (the display-name gate and the first-deck chooser), and `/`
+      // is the post-login redirect-only dispatcher reached WHILE authenticated —
+      // mounting the shell there flashes the nav rail before `/` redirects (the
+      // first-login `/` → `/onboarding` rail flash). The authenticated case is the
+      // one that matters for all three.
       mockUsePathname.mockReturnValue(pathname);
       render(
         <ConditionalShell user={{ email: "a@b.c" }} isAdmin={true}>
@@ -80,7 +85,6 @@ describe("<ConditionalShell>", () => {
 
   describe("full-shell routes", () => {
     it.each([
-      "/",
       "/cardgroups",
       "/cardgroups/123",
       "/admin/users",
