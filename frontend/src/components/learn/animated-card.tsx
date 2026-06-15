@@ -4,6 +4,7 @@ import { animated, easings, useSpring, useSpringRef } from "@react-spring/web";
 import { useDrag } from "@use-gesture/react";
 import { type RefObject, useCallback, useEffect, useImperativeHandle, useRef } from "react";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
+import { CefrBadge } from "./cefr-badge";
 import { evaluateSwipeGesture } from "./gesture-evaluation";
 import type { SwipeCardData } from "./swipe-card";
 import { CardContent } from "./swipe-card";
@@ -292,6 +293,14 @@ export function AnimatedCard({
           )}
         </animated.div>
       )}
+      {/*
+        CEFR badge is overlaid OUTSIDE the flip rotator (not inside each
+        CardContent face), so the half-turn reveal flip cannot duplicate it —
+        otherwise the turned-away front face's badge leaks through
+        `[backface-visibility:hidden]` as a mirrored top-left badge. Anchors to
+        this positioned `article` (filled via `inset-0`).
+      */}
+      <CefrBadge level={card.cefrLevel} />
     </animated.article>
   );
 }
