@@ -15,11 +15,12 @@
   "prConcurrentLimit": 10,
   "packageRules": [
     {
-      "description": "Backend (Go modules)",
+      "description": "Backend (Go modules). gomodTidy runs `go mod tidy` after each bump so go.sum is reconciled in the same PR. A bare version bump updates only the changed module's go.sum hashes; indirect-dep additions/removals it leaves behind would otherwise fail `go mod download` / `go mod verify` in CI and block auto-merge. postUpdateOptions is a normal repo-config option (NOT the self-hosted-only postUpgradeTasks command allowlist), so it works on the hosted Mend app.",
       "matchManagers": ["gomod"],
       "groupName": "backend dependencies",
       "addLabels": ["backend", "dependencies"],
-      "semanticCommitScope": "backend"
+      "semanticCommitScope": "backend",
+      "postUpdateOptions": ["gomodTidy"]
     },
     {
       "description": "Frontend (npm / pnpm). Override rangeStrategy to 'replace' so engines constraints (e.g. node >=24.0.0 <25.0.0) and caret ranges are only rewritten when the new version no longer satisfies them; the top-level 'bump' default would otherwise churn lower bounds on every patch.",
