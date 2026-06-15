@@ -15,21 +15,21 @@ import type { FragmentType } from "@/generated/fragment-masking";
 // `id` is read at this level (React keys, per-cardgroup `importing` state); the
 // rest of the fields travel as a masked `CatalogCardFields` ref that `CatalogCard`
 // unmasks — the same fragment the /catalog gallery feeds it.
-type MasterDeckNode = { id: string } & FragmentType<typeof CatalogCardFieldsFragment>;
+type MasterCardgroupNode = { id: string } & FragmentType<typeof CatalogCardFieldsFragment>;
 
 interface OnboardingStartClientProps {
-  decks: MasterDeckNode[];
+  cardgroups: MasterCardgroupNode[];
 }
 
 /**
- * First-run chooser for a deckless, just-onboarded user. Centered hero: the real
+ * First-run chooser for a just-onboarded user with no cardgroup yet. Centered hero: the real
  * FlamingoMark, the heading + subline, then a content-hugging brand-tint panel of
  * preset cardgroups (the hero path), and a subtle "create your own" link. Single
  * selection — each card imports that preset via `useImportMaster` and, on success,
  * navigates to `/learn/{id}`. Imports are serialized to one at a time via
  * `importingId`.
  */
-export function OnboardingStartClient({ decks }: OnboardingStartClientProps) {
+export function OnboardingStartClient({ cardgroups }: OnboardingStartClientProps) {
   const t = useTranslations("OnboardingStart");
   const router = useRouter();
   const { importMasterCardgroup } = useImportMaster();
@@ -113,7 +113,7 @@ export function OnboardingStartClient({ decks }: OnboardingStartClientProps) {
             className="mt-4 flex flex-wrap justify-center gap-4 sm:gap-5"
             data-testid="onboarding-deck-list"
           >
-            {decks.map((node, index) => (
+            {cardgroups.map((node, index) => (
               <CatalogCard
                 key={node.id}
                 node={node}

@@ -12,7 +12,7 @@ import { OnboardingStartQuery } from "./queries";
 export const metadata: Metadata = { title: "Get started" };
 
 /**
- * Chooser step for a just-onboarded, deckless user. Reached from the HomePage
+ * Chooser step for a just-onboarded user with no cardgroup yet. Reached from the HomePage
  * redirect chain and from OnboardingForm success. Self-guards the
  * not-onboarded direct-URL bypass and falls back to the create screen when the
  * catalog is empty. Bypasses AppShell (bare route), so it renders its own
@@ -45,11 +45,11 @@ export default async function OnboardingStartPage() {
   }
   if (catalog.totalCount === 0) redirect("/cardgroups/new?welcome=1");
 
-  const decks = catalog.edges.map((edge) => edge.node);
+  const cardgroups = catalog.edges.map((edge) => edge.node);
 
   return (
     <main>
-      <OnboardingStartClient decks={decks} />
+      <OnboardingStartClient cardgroups={cardgroups} />
     </main>
   );
 }
