@@ -1,5 +1,6 @@
 "use client";
 
+import { LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,18 @@ export function LogoutButton() {
   }
 
   return (
-    <Button onClick={handleLogout} type="button" variant="outline" size="sm">
+    // Quiet secondary sign-out, tuned to the drawer's nav-row rhythm (under the
+    // Profile link). The desktop rail's SidebarMenuButton rows run a touch
+    // tighter — the small cross-surface mismatch is intentional, not worth
+    // re-spelling per surface.
+    <Button
+      onClick={handleLogout}
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="w-full justify-start gap-3 font-normal text-foreground/70 hover:text-foreground"
+    >
+      <LogOut aria-hidden="true" />
       {t("logout")}
     </Button>
   );

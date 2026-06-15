@@ -28,14 +28,11 @@ export function OnboardingShell({ heading, subline, headingId, children }: Onboa
   return (
     <div className="mx-auto max-w-2xl px-6 py-12 text-center sm:py-16">
       <FlamingoMark aria-hidden="true" className="mx-auto size-12" />
-      <h1
-        id={headingId}
-        className="mt-4 text-3xl font-semibold leading-[1.35] tracking-normal sm:text-4xl"
-      >
+      <h1 id={headingId} className="mt-5 text-2xl font-semibold leading-[1.35] sm:text-3xl">
         {heading}
       </h1>
       {subline ? (
-        <p className="mt-3 text-base leading-[1.7] tracking-[0.01em] text-muted-foreground sm:text-[17px]">
+        <p className="mt-2 text-base leading-[1.7] tracking-[0.01em] text-muted-foreground sm:text-[17px]">
           {subline}
         </p>
       ) : null}
