@@ -114,6 +114,39 @@ describe("<OnboardingForm>", () => {
     });
   });
 
+  it("holds the button in the saving state through the success navigation (no flicker back to Continue)", async () => {
+    const user = userEvent.setup();
+
+    const mocks = [makeUpdateProfileMock({ input: { displayName: "Alice" } })];
+
+    renderWithIntl(
+      <MockedProvider mocks={mocks}>
+        <OnboardingForm />
+      </MockedProvider>,
+    );
+
+    const displayNameInput = screen.getByLabelText(/display name/i);
+    await user.click(displayNameInput);
+    await user.type(displayNameInput, "Alice");
+    await user.click(screen.getByRole("button", { name: /continue/i }));
+
+    // The success navigation has been initiated.
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/onboarding/start");
+    });
+
+    // The mutation has resolved (Apollo `loading` is back to false), but the
+    // App Router navigation to /onboarding/start is still settling and the form
+    // stays mounted until it completes. The button MUST remain "Saving..." and
+    // disabled — it must NOT flicker back to an enabled "Continue" (regression:
+    // loading-only gating reverted the button mid-navigation).
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-submit")).toBeDisabled();
+    });
+    expect(screen.getByTestId("onboarding-submit")).toHaveTextContent(/saving/i);
+    expect(screen.queryByRole("button", { name: /continue/i })).not.toBeInTheDocument();
+  });
+
   it("InputValidationError variant surfaces field error in the form", async () => {
     const user = userEvent.setup();
 

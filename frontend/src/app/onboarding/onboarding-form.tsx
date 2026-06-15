@@ -27,6 +27,16 @@ export function OnboardingForm() {
   // Mid-session auth failures or unexpected payloads. Cleared on each submission.
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
 
+  // Held true from a successful save until this component unmounts on the
+  // `router.push("/onboarding/start")` navigation. Apollo's `loading` flips back
+  // to false the instant the mutation resolves — before the App Router
+  // navigation (RSC fetch + transition) completes — so gating the button on
+  // `loading` alone makes it flicker from "Saving…" back to an enabled
+  // "Continue" while the form is still mounted. Mirrors how OnboardingStartClient
+  // holds `importingId` through its unmounting navigation. Set only on the
+  // success path; every failure branch leaves it false so the user can resubmit.
+  const [navigating, setNavigating] = useState(false);
+
   const { submit, loading } = useUpdateProfile();
 
   const displayNameSchema = updateProfileSchema.shape.displayName;
@@ -45,6 +55,10 @@ export function OnboardingForm() {
 
       switch (outcome.status) {
         case "success":
+          // Keep the button in its "Saving…"/disabled state through the
+          // navigation that unmounts this component, so it does not flicker back
+          // to "Continue" once Apollo's `loading` clears.
+          setNavigating(true);
           router.push("/onboarding/start");
           return;
         case "validation":
@@ -110,8 +124,13 @@ export function OnboardingForm() {
         )}
       </form.Field>
 
-      <Button type="submit" variant="brand" disabled={loading} data-testid="onboarding-submit">
-        {loading ? tCommon("saving") : t("continue")}
+      <Button
+        type="submit"
+        variant="brand"
+        disabled={loading || navigating}
+        data-testid="onboarding-submit"
+      >
+        {loading || navigating ? tCommon("saving") : t("continue")}
       </Button>
 
       {/* Hidden sentinel used by tests to observe formState.isSubmitSuccessful */}
