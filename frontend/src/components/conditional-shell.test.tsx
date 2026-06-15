@@ -83,10 +83,41 @@ describe("<ConditionalShell>", () => {
     });
   });
 
+  // Regression lock for the onboarding-404 nav-rail bug: an unknown path renders
+  // app/not-found.tsx under the arbitrary pathname the user typed. Because the
+  // shell is gated by a content-route allowlist (SHELL_ROUTE_PREFIXES), every
+  // unknown path is bare — so a not-yet-onboarded user who mistypes a URL and
+  // lands on the 404 page never sees the nav rail. "/cardgroupsX" pins the `/`
+  // prefix boundary: a near-miss must NOT match the /cardgroups content route.
+  describe("unknown routes (404) render bare", () => {
+    it.each([
+      "/this-route-does-not-exist",
+      "/foobar",
+      "/some/deep/unknown/path",
+      "/cardgroupsX",
+    ])("renders children directly without the navigation shell on %s", (pathname) => {
+      mockUsePathname.mockReturnValue(pathname);
+      render(
+        <ConditionalShell user={{ email: "a@b.c" }} isAdmin={false}>
+          <div data-testid="page" />
+        </ConditionalShell>,
+      );
+
+      expect(screen.getByTestId("page")).toBeInTheDocument();
+      expect(screen.queryByTestId("auth-shell")).toBeNull();
+      expect(screen.queryByTestId("apple-install-hint")).toBeNull();
+    });
+  });
+
   describe("full-shell routes", () => {
     it.each([
       "/cardgroups",
       "/cardgroups/123",
+      "/cards",
+      "/cards/new",
+      "/catalog",
+      "/learn/123",
+      "/profile",
       "/admin/users",
     ])("mounts the navigation shell and install hint on %s", (pathname) => {
       mockUsePathname.mockReturnValue(pathname);
