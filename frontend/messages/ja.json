@@ -201,6 +201,7 @@
     "signInFailed": "ログインに失敗しました: {error}",
     "googleButton": "Google で続行",
     "inAppBrowserWarning": "アプリ内ブラウザでは Google ログインを利用できません。ログインするには、このページを標準ブラウザ（Safari または Chrome）で開いてください。",
+    "inAppBrowserModalTitle": "ブラウザで開いてログイン",
     "openInBrowser": "ブラウザで開く",
     "copyLink": "ページのリンクをコピー",
     "linkCopied": "コピーしました。Safari または Chrome に貼り付けてください",
