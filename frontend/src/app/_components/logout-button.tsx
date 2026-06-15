@@ -26,18 +26,10 @@ export function LogoutButton() {
   }
 
   return (
-    // Quiet, full-width utility action that sits in the nav-row rhythm of the
-    // drawer / rail footer above it (the Profile link): same gap-3 / px-3 (from
-    // size="sm") and hover:bg-accent. font-normal + text-foreground/70 keep it a
-    // step below the Profile link's full-strength font-medium label, so it reads
-    // as a secondary sign-out rather than another navigation destination — but
-    // stays clearly interactive (muted-foreground sat at the AA contrast floor
-    // and read closer to "disabled"). Darkens to the full foreground on hover.
-    // The spacing is tuned to the drawer's gap-3 / px-3 nav rhythm; the desktop
-    // rail's SidebarMenuButton rows run a few px tighter (gap-2 / p-2), so the
-    // two surfaces differ slightly by design rather than re-spelling per-surface
-    // classes. The leading icon is decorative (the label already names the
-    // action), so it is aria-hidden.
+    // Quiet secondary sign-out, tuned to the drawer's nav-row rhythm (under the
+    // Profile link). The desktop rail's SidebarMenuButton rows run a touch
+    // tighter — the small cross-surface mismatch is intentional, not worth
+    // re-spelling per surface.
     <Button
       onClick={handleLogout}
       type="button"
