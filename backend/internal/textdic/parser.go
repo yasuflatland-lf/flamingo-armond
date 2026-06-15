@@ -159,8 +159,8 @@ var yyAct = [...]int8{
 }
 
 var yyPact = [...]int16{
-	-2, -1000, 1, -1000, -5, 3, -1000, -1000, -1000, -1000,
-	-1000,
+	-2, -32768, 1, -32768, -5, 3, -32768, -32768, -32768, -32768,
+	-32768,
 }
 
 var yyPgo = [...]int8{
@@ -176,7 +176,7 @@ var yyR2 = [...]int8{
 }
 
 var yyChk = [...]int16{
-	-1000, -3, -2, -1, 2, 4, 5, 6, -1, 6,
+	-32768, -3, -2, -1, 2, 4, 5, 6, -1, 6,
 	5,
 }
 
@@ -236,7 +236,7 @@ func yyNewParser() yyParser {
 	return &yyParserImpl{}
 }
 
-const yyFlag = -1000
+const yyFlag = -32768
 
 func yyTokname(c int) string {
 	if c >= 1 && c-1 < len(yyToknames) {
