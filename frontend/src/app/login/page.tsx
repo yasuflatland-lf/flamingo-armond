@@ -52,20 +52,21 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
         {/* Right-edge vignette: a hint of depth where the panel meets the form. */}
         <div className="pointer-events-none absolute inset-y-0 right-0 w-32 bg-gradient-to-l from-[rgba(120,20,40,0.16)] to-transparent" />
 
-        {/* Centered vertical lockup: the bare app-mark (no badge, no shadow) over
-            the wordmark and tagline. The three sizes 144 / 55 / 21 are alternating
-            Fibonacci numbers, so each step is φ² (≈2.618) — the mark reads as the
-            golden-ratio counterpart of the wordmark. Vertical gaps 34 / 13 are the
-            same φ² step on the Fibonacci ladder. */}
-        <div className="relative flex flex-col items-center gap-[34px] px-[55px] text-center">
-          <FlamingoMark background={false} className="size-[144px]" />
-          <div className="flex flex-col items-center gap-[13px]">
+        {/* Centered vertical lockup: bare app-mark over wordmark + tagline. Sizes
+            follow a ~2.5x modular scale — tagline 16 → wordmark 40 → mark 104 — so
+            the hierarchy steps cleanly without the wordmark shouting. Scaled down
+            from the earlier oversized lockup and tightened to mirror apple.com/jp's
+            restraint: a small 8px gap binds the wordmark to its tagline, a larger
+            24px gap sets that text block apart from the mark above. */}
+        <div className="relative flex flex-col items-center gap-[24px] px-[48px] text-center">
+          <FlamingoMark background={false} className="size-[104px]" />
+          <div className="flex flex-col items-center gap-[8px]">
             {/* Wordmark is always Latin → tight Apple-display negative tracking. */}
-            <span className="text-[55px] font-semibold leading-[1.05] tracking-[-0.02em] text-white drop-shadow-[0_2px_12px_rgba(120,20,40,0.45)]">
+            <span className="text-[40px] font-semibold leading-[1.1] tracking-[-0.02em] text-white drop-shadow-[0_1px_8px_rgba(120,20,40,0.4)]">
               Flamingo Armond
             </span>
             <span
-              className={`text-[21px] font-medium text-white/90 drop-shadow-[0_1px_6px_rgba(120,20,40,0.35)] ${
+              className={`text-[16px] font-medium text-white/90 drop-shadow-[0_1px_4px_rgba(120,20,40,0.3)] ${
                 isJa ? "leading-[1.6] tracking-[0.03em]" : "leading-[1.45] tracking-[-0.01em]"
               }`}
             >
