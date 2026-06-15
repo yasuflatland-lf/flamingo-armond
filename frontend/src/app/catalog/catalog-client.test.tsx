@@ -268,7 +268,7 @@ describe("<CatalogClient>", () => {
     await user.click(await screen.findByTestId("catalog-import-m-1"));
 
     expect(await screen.findByTestId("catalog-import-error")).toHaveTextContent(
-      "This deck is no longer available.",
+      "This cardgroup is no longer available.",
     );
     // The button is NOT marked imported on a not-found outcome.
     expect(screen.getByTestId("catalog-import-m-1")).not.toBeDisabled();
@@ -318,7 +318,7 @@ describe("<CatalogClient>", () => {
     fireIntersect();
 
     const banner = await screen.findByTestId("catalog-fetch-more-error");
-    expect(banner).toHaveTextContent("Could not load more decks.");
+    expect(banner).toHaveTextContent("Could not load more cardgroups.");
 
     // Retry re-runs fetchMore and succeeds.
     await user.click(screen.getByRole("button", { name: "Retry" }));
@@ -341,7 +341,7 @@ describe("<CatalogClient>", () => {
     await user.click(await screen.findByTestId("catalog-import-m-1"));
 
     expect(await screen.findByTestId("catalog-import-error")).toHaveTextContent(
-      "Could not import the deck.",
+      "Could not import the cardgroup.",
     );
     expect(screen.getByTestId("catalog-import-m-1")).not.toBeDisabled();
   });
@@ -491,7 +491,7 @@ describe("<CatalogClient>", () => {
     await user.click(await screen.findByTestId("catalog-import-m-1"));
 
     expect(await screen.findByTestId("catalog-import-error")).toHaveTextContent(
-      "Could not import the deck.",
+      "Could not import the cardgroup.",
     );
     expect(screen.getByTestId("catalog-import-m-1")).not.toBeDisabled();
   });
