@@ -9,12 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestNewID does NOT call t.Parallel(): its "failure path" subtest swaps the
+// package-level newV7 seam, and a parallel top-level test would run concurrently
+// with that swap. Any other parallel test that calls NewID() (directly or via a
+// constructor like NewSwipeRecord / NewMasterCard) would then race on newV7.
+// Keeping the whole test sequential isolates the swap to the non-parallel phase.
 func TestNewID(t *testing.T) {
-	t.Parallel()
-
 	t.Run("happy path: valid UUID v7 string", func(t *testing.T) {
-		t.Parallel()
-
 		got, err := NewID()
 		require.NoError(t, err)
 		require.NotEmpty(t, got)
