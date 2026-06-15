@@ -3,30 +3,33 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useCallback, useState } from "react";
+import { type CSSProperties, useCallback, useState } from "react";
 import { CatalogCard } from "@/app/catalog/catalog-card";
 import type { CatalogCardFieldsFragment } from "@/app/catalog/queries";
 import { useImportMaster } from "@/app/catalog/use-import-master";
+import { FlamingoMark } from "@/components/brand/flamingo-mark";
+import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import type { FragmentType } from "@/generated/fragment-masking";
 
-// `id` is read at this level (React keys, per-deck `importing` state); the rest
-// of the card's fields travel as a masked `CatalogCardFields` ref that
-// `CatalogCard` unmasks — the same fragment the /catalog gallery feeds it.
-type MasterDeckNode = { id: string } & FragmentType<typeof CatalogCardFieldsFragment>;
+// `id` is read at this level (React keys, per-cardgroup `importing` state); the
+// rest of the fields travel as a masked `CatalogCardFields` ref that `CatalogCard`
+// unmasks — the same fragment the /catalog gallery feeds it.
+type MasterCardgroupNode = { id: string } & FragmentType<typeof CatalogCardFieldsFragment>;
 
 interface OnboardingStartClientProps {
-  decks: MasterDeckNode[];
+  cardgroups: MasterCardgroupNode[];
 }
 
 /**
- * Onboarding chooser for a deckless, just-onboarded user. Presents two
- * first-class paths: import a ready-made master deck (primary) or create an
- * empty cardgroup (secondary). Single selection — each card's button imports
- * that deck via `useImportMaster` and, on success, navigates straight to
- * `/learn/{id}`. Imports are serialized to one at a time via `importingId`.
+ * First-run chooser for a just-onboarded user with no cardgroup yet. Centered hero: the real
+ * FlamingoMark, the heading + subline, then a content-hugging brand-tint panel of
+ * preset cardgroups (the hero path), and a subtle "create your own" link. Single
+ * selection — each card imports that preset via `useImportMaster` and, on success,
+ * navigates to `/learn/{id}`. Imports are serialized to one at a time via
+ * `importingId`.
  */
-export function OnboardingStartClient({ decks }: OnboardingStartClientProps) {
+export function OnboardingStartClient({ cardgroups }: OnboardingStartClientProps) {
   const t = useTranslations("OnboardingStart");
   const router = useRouter();
   const { importMasterCardgroup } = useImportMaster();
@@ -70,75 +73,75 @@ export function OnboardingStartClient({ decks }: OnboardingStartClientProps) {
     [importingId, importMasterCardgroup, router, t],
   );
 
+  const hasBanner = importAuthError !== null || importError !== null;
+
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
-      <h1 className="text-2xl font-semibold">{t("heading")}</h1>
+    <div className="mx-auto max-w-2xl px-6 py-12 text-center sm:py-16">
+      <FlamingoMark aria-hidden="true" className="mx-auto size-12" />
+      <h1 className="mt-4 text-3xl font-semibold leading-[1.35] tracking-normal sm:text-4xl">
+        {t("heading")}
+      </h1>
+      <p className="mt-3 text-base leading-[1.7] tracking-[0.01em] text-muted-foreground sm:text-[17px]">
+        {t("subline")}
+      </p>
 
-      {importAuthError ? (
-        <ErrorBanner data-testid="onboarding-import-auth-error">
-          <span>{t("sessionExpired")}</span>
-          <Link href="/login" className="underline">
-            {t("signInAgain")}
+      {hasBanner && (
+        <div className="mt-6 space-y-6 text-left">
+          {importAuthError ? (
+            <ErrorBanner data-testid="onboarding-import-auth-error">
+              <span>{t("sessionExpired")}</span>
+              <Link href="/login" className="underline">
+                {t("signInAgain")}
+              </Link>
+            </ErrorBanner>
+          ) : null}
+          {importError ? (
+            <ErrorBanner data-testid="onboarding-import-error">{importError}</ErrorBanner>
+          ) : null}
+        </div>
+      )}
+
+      <section className="mt-11" aria-labelledby="onboarding-preset-title">
+        <div className="mx-auto w-fit max-w-full rounded-2xl border border-brand-tint-border bg-brand-tint p-6 text-left">
+          <h2
+            id="onboarding-preset-title"
+            className="text-xs font-semibold uppercase tracking-[0.08em] text-brand-tint-foreground"
+          >
+            {t("presetLabel")}
+          </h2>
+          <ul
+            className="mt-4 flex flex-wrap justify-center gap-4 sm:gap-5"
+            data-testid="onboarding-deck-list"
+          >
+            {cardgroups.map((node, index) => (
+              <CatalogCard
+                key={node.id}
+                node={node}
+                importing={importingId === node.id}
+                imported={false}
+                onImport={handleStart}
+                labels={{
+                  action: t("startWithDeck"),
+                  inProgress: t("starting"),
+                  done: t("imported"),
+                }}
+                testIdPrefix="onboarding-deck"
+                className="w-[17rem] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-500"
+                style={{ animationDelay: `${Math.min(index, 5) * 70}ms` } satisfies CSSProperties}
+              />
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <p className="mt-8 text-sm text-muted-foreground">
+        {t("or")}{" "}
+        <Button asChild variant="link" className="h-auto p-0 align-baseline text-sm font-medium">
+          <Link href="/cardgroups/new?welcome=1" data-testid="onboarding-create-link">
+            {t("createCta")} →
           </Link>
-        </ErrorBanner>
-      ) : null}
-
-      {importError ? (
-        <ErrorBanner data-testid="onboarding-import-error">{importError}</ErrorBanner>
-      ) : null}
-
-      <section className="space-y-3" aria-labelledby="onboarding-catalog-title">
-        <h2 id="onboarding-catalog-title" className="text-lg font-medium">
-          {t("catalogTitle")}
-        </h2>
-        <p className="text-sm text-muted-foreground">{t("catalogDescription")}</p>
-        <ul
-          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-          data-testid="onboarding-deck-list"
-        >
-          {decks.map((node) => (
-            <CatalogCard
-              key={node.id}
-              node={node}
-              importing={importingId === node.id}
-              imported={false}
-              onImport={handleStart}
-              labels={{
-                action: t("startWithDeck"),
-                inProgress: t("starting"),
-                done: t("imported"),
-              }}
-              testIdPrefix="onboarding-deck"
-            />
-          ))}
-        </ul>
-      </section>
-
-      <div
-        className="flex items-center gap-3 text-xs uppercase text-muted-foreground"
-        aria-hidden="true"
-      >
-        <span className="h-px flex-1 bg-border" />
-        {t("or")}
-        <span className="h-px flex-1 bg-border" />
-      </div>
-
-      <section
-        className="space-y-3 rounded-lg border border-border p-4"
-        aria-labelledby="onboarding-create-title"
-      >
-        <h2 id="onboarding-create-title" className="text-lg font-medium">
-          {t("createTitle")}
-        </h2>
-        <p className="text-sm text-muted-foreground">{t("createDescription")}</p>
-        <Link
-          href="/cardgroups/new?welcome=1"
-          className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-          data-testid="onboarding-create-link"
-        >
-          {t("createCta")}
-        </Link>
-      </section>
+        </Button>
+      </p>
     </div>
   );
 }
