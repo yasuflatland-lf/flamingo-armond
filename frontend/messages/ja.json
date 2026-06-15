@@ -267,7 +267,7 @@
     "or": "または",
     "createCta": "空のカードグループを自分で作る",
     "startWithDeck": "学習を始める",
-    "starting": "開始中...",
+    "starting": "環境を構成中...",
     "imported": "追加済み",
     "importError": "このカードグループで開始できませんでした。もう一度お試しください。",
     "importNotFound": "このカードグループは利用できなくなりました。",

@@ -267,7 +267,7 @@
     "or": "or",
     "createCta": "create your own empty cardgroup",
     "startWithDeck": "Start learning",
-    "starting": "Starting...",
+    "starting": "Setting up your environment...",
     "imported": "Added",
     "importError": "Could not start with that cardgroup. Please try again.",
     "importNotFound": "This cardgroup is no longer available.",
