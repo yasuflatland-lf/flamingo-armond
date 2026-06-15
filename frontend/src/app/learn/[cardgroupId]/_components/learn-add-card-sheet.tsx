@@ -1,9 +1,9 @@
 "use client";
 
-import { useMutation } from "@apollo/client/react";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useState } from "react";
-import { CreateCardMutation } from "@/app/cardgroups/queries";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { cardsDefaultVars } from "@/app/cardgroups/[id]/cards/queries";
+import { useCardMutations } from "@/app/cardgroups/[id]/cards/use-card-mutations";
 import { CardForm } from "@/components/cardgroups/card-form";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 
@@ -56,8 +56,14 @@ export function LearnAddCardSheet({ cardgroupId }: { cardgroupId: string }) {
     message: string;
   } | null>(null);
 
-  const [createCard, { loading: creating, error: createError, reset: resetCreateCard }] =
-    useMutation(CreateCardMutation);
+  // The Learn screen has no cards-connection subscription of its own, so the
+  // shared hook's create path seeds the cardgroup's default-vars connection
+  // (search: null) — the same create slice the cards screen uses.
+  const queryVariables = useMemo(() => cardsDefaultVars(cardgroupId), [cardgroupId]);
+  const { createCard, creating, createError, resetCreateCard } = useCardMutations({
+    cardgroupId,
+    queryVariables,
+  });
 
   const openSheet = useCallback(() => {
     resetCreateCard();
@@ -83,33 +89,18 @@ export function LearnAddCardSheet({ cardgroupId }: { cardgroupId: string }) {
   async function handleCreate(values: { front: string; back: string }) {
     resetCreateCard();
     setValidationError(null);
-    const result = await createCard({
-      variables: { input: { cardgroupId, front: values.front, back: values.back } },
-    }).catch((err) => {
-      // err.message is omitted — backend messages may echo user-authored content.
-      console.error("[LearnAddCardSheet] create rejection", {
-        name: err instanceof Error ? err.name : "unknown",
-        cardgroupId,
-      });
-      return null;
-    });
-    if (!result) return;
-
-    const payload = result.data?.createCard;
-    if (payload?.__typename === "CreateCardSuccess") {
+    const outcome = await createCard(values);
+    if (outcome.status === "success") {
       setDirty(false);
       setValidationError(null);
       setOpen(false);
-    } else if (payload?.__typename === "CardDuplicateFrontError") {
-      setValidationError({ field: "front", message: payload.message });
-    } else {
-      const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
-      console.warn("[LearnAddCardSheet] unexpected createCard payload", {
-        typename: unknownPayload?.__typename ?? null,
-        cardgroupId,
-      });
+    } else if (outcome.status === "validation") {
+      setValidationError({ field: outcome.field, message: outcome.message });
+    } else if (outcome.status === "unexpected") {
       setValidationError({ field: "front", message: "Add failed. Please try again." });
     }
+    // outcome.status === "rejected": the hook already logged the rejection;
+    // leave the sheet open so the user can retry.
   }
 
   return (

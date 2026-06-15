@@ -4,6 +4,7 @@ import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CreateCardDocument } from "@/generated/graphql";
+import { UndoDeleteProvider } from "@/lib/undo-delete";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { LearnAddCardSheet } from "./learn-add-card-sheet";
 
@@ -32,7 +33,9 @@ describe("<LearnAddCardSheet>", () => {
   it("opens the add-card drawer when the event targets this cardgroup", async () => {
     renderWithIntl(
       <MockedProvider mocks={[]}>
-        <LearnAddCardSheet cardgroupId="cg-1" />
+        <UndoDeleteProvider>
+          <LearnAddCardSheet cardgroupId="cg-1" />
+        </UndoDeleteProvider>
       </MockedProvider>,
     );
 
@@ -46,7 +49,9 @@ describe("<LearnAddCardSheet>", () => {
   it("ignores an add-card event for a different cardgroup", () => {
     renderWithIntl(
       <MockedProvider mocks={[]}>
-        <LearnAddCardSheet cardgroupId="cg-1" />
+        <UndoDeleteProvider>
+          <LearnAddCardSheet cardgroupId="cg-1" />
+        </UndoDeleteProvider>
       </MockedProvider>,
     );
 
@@ -82,7 +87,9 @@ describe("<LearnAddCardSheet>", () => {
 
     renderWithIntl(
       <MockedProvider mocks={[createMock]}>
-        <LearnAddCardSheet cardgroupId="cg-1" />
+        <UndoDeleteProvider>
+          <LearnAddCardSheet cardgroupId="cg-1" />
+        </UndoDeleteProvider>
       </MockedProvider>,
     );
 
