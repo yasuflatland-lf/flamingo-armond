@@ -131,14 +131,18 @@ describe("<OnboardingStartClient>", () => {
     await user.click(screen.getByTestId("onboarding-deck-m-1"));
 
     // The branded coral splash appears immediately while the import is in flight.
-    expect(screen.getByRole("status", { name: /starting/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: /setting up your environment/i }),
+    ).toBeInTheDocument();
 
     // It stays through the success navigation (importingId is held until unmount).
     resolve?.({ status: "success", cardgroupId: "cg-9", cardgroupName: "x" });
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith("/learn/cg-9");
     });
-    expect(screen.getByRole("status", { name: /starting/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: /setting up your environment/i }),
+    ).toBeInTheDocument();
   });
 
   it("removes the coral splash and shows the error banner when the import fails", async () => {
@@ -154,7 +158,9 @@ describe("<OnboardingStartClient>", () => {
     await user.click(screen.getByTestId("onboarding-deck-m-1"));
 
     // Splash is up while the import is in flight...
-    expect(screen.getByRole("status", { name: /starting/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: /setting up your environment/i }),
+    ).toBeInTheDocument();
 
     // ...and is torn down when the import fails, leaving the error banner behind.
     resolve?.({ status: "rejected" });
