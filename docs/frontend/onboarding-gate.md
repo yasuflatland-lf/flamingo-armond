@@ -27,6 +27,6 @@ The form (`frontend/src/app/onboarding/onboarding-form.tsx`) follows the same Ta
 
 ## Why `/onboarding` bypasses `AppShell`
 
-`/onboarding` is in `ConditionalShell`'s `BARE_ROUTES` set (`frontend/src/components/conditional-shell.tsx`) alongside `/login` and the first-deck chooser `/onboarding/start`. The user has no `displayName` yet — a header that shows their email next to an empty name slot would surface the very state the page is asking them to fix, and the rail's Profile link would offer a competing edit path that has nothing to do with the onboarding flow. Bare-shell focuses the viewport on the single decision the user needs to make.
+`/onboarding` is not in `ConditionalShell`'s content-route allowlist (`SHELL_ROUTE_PREFIXES` in `frontend/src/components/conditional-shell.tsx`), so it renders bare — alongside `/login` and the first-deck chooser `/onboarding/start`. The user has no `displayName` yet — a header that shows their email next to an empty name slot would surface the very state the page is asking them to fix, and the rail's Profile link would offer a competing edit path that has nothing to do with the onboarding flow. Bare-shell focuses the viewport on the single decision the user needs to make.
 
 Because the page bypasses `AppShell`, it renders its own `<main>` landmark — see [`rsc-error-handling/pages-bypassing-appshell-must-render-main.md`](./rsc-error-handling/pages-bypassing-appshell-must-render-main.md).
