@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { graphql } from "@/generated";
+import { MasterCatalogDocument } from "@/generated/graphql";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { gqlFetch } from "./server";
 
@@ -42,6 +43,28 @@ describe("gqlFetch", () => {
     expect(url).toMatch(/\/query$/);
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body as string).query).toContain("health");
+  });
+
+  it("adds __typename to nested selections so RSC-seeded data normalizes in the Apollo cache", async () => {
+    // Regression: client-preset v6 does not inject __typename; Apollo's client
+    // links add it at runtime, but this RSC path prints the raw document. Without
+    // __typename the InMemoryCache drops type-conditioned fragment fields on
+    // writeQuery, surfacing as e.g. "NaN cards" on /catalog. The SSR query MUST
+    // request __typename like the browser path does.
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ data: { masterCatalog: { edges: [], pageInfo: {}, totalCount: 0 } } }),
+        ),
+      );
+
+    await gqlFetch(MasterCatalogDocument, { variables: { first: 20, search: null } });
+
+    const body = JSON.parse((fetchSpy.mock.calls[0]?.[1] as RequestInit).body as string);
+    // The MasterCatalog node selection spreads `...CatalogCardFields on MasterCardgroup`,
+    // a type-conditioned fragment the cache cannot resolve without __typename.
+    expect(body.query).toContain("__typename");
   });
 
   it("throws on non-200", async () => {
