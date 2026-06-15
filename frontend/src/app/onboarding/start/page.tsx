@@ -48,7 +48,7 @@ export default async function OnboardingStartPage() {
   const decks = catalog.edges.map((edge) => edge.node);
 
   return (
-    <main className="p-8">
+    <main>
       <OnboardingStartClient decks={decks} />
     </main>
   );

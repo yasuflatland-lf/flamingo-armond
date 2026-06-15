@@ -83,6 +83,21 @@ describe("<OnboardingStartClient>", () => {
     );
   });
 
+  it("renders the preset hero: logo, heading, subline, and preset label", () => {
+    renderWithIntl(<OnboardingStartClient decks={DECKS} />);
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Pick your first cardgroup",
+    );
+    expect(screen.getByText("Pick a preset and start learning right away.")).toBeInTheDocument();
+    // The preset panel's section label (rendered as an h2).
+    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("Presets");
+    // The FlamingoMark logo renders a decorative (aria-hidden) <svg>; query the
+    // document directly so the assertion does not depend on renderWithIntl's
+    // return shape.
+    expect(document.querySelector("svg")).not.toBeNull();
+  });
+
   it("imports the chosen deck and navigates to /learn/{id} on success", async () => {
     const user = userEvent.setup();
     mockImport.mockResolvedValueOnce({
