@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectInAppBrowser } from "./in-app-browser";
+import { detectInAppBrowser, isAppSpecificInAppBrowser } from "./in-app-browser";
 
 // Representative user-agent strings captured from real devices. The exact
 // version numbers are irrelevant — only the app-identifying tokens matter.
@@ -75,5 +75,17 @@ describe("detectInAppBrowser", () => {
 
   it("returns null for an empty user-agent", () => {
     expect(detectInAppBrowser("")).toBeNull();
+  });
+});
+
+describe("isAppSpecificInAppBrowser", () => {
+  it("returns true for app-specific signatures", () => {
+    expect(isAppSpecificInAppBrowser("line")).toBe(true);
+    expect(isAppSpecificInAppBrowser("instagram")).toBe(true);
+    expect(isAppSpecificInAppBrowser("facebook")).toBe(true);
+  });
+
+  it("returns false for the generic Android WebView token", () => {
+    expect(isAppSpecificInAppBrowser("webview")).toBe(false);
   });
 });
