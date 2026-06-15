@@ -26,9 +26,10 @@ export default async function OnboardingPage() {
 
   if (isUserOnboarded(data.me)) redirect("/");
 
-  // This page bypasses AppShell, so it renders its own <main> landmark.
+  // This page bypasses AppShell, so it renders its own <main> landmark. The
+  // OnboardingShell owns the centered hero layout, so <main> carries no padding.
   return (
-    <main className="p-8">
+    <main>
       <OnboardingForm />
     </main>
   );

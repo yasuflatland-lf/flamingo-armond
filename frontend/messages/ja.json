@@ -256,6 +256,7 @@
   },
   "Onboarding": {
     "welcome": "Flamingo Armond へようこそ",
+    "subtitle": "あなたの表示名を決めましょう。",
     "displayName": "表示名",
     "displayNameHint": "1〜50文字。他のユーザーに表示されます。",
     "continue": "続ける",
