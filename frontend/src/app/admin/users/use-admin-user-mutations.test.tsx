@@ -24,6 +24,7 @@ function userEdge(id: string) {
       displayName: `User ${id}`,
       bio: null,
       avatarUrl: null,
+      lastSignInAt: null,
       roles: [],
     },
   };

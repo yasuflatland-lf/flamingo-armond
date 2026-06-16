@@ -21,24 +21,26 @@ type userCardFSRSReader interface {
 type contextKey struct{}
 
 type Loaders struct {
-	User           *dataloader.Loader[string, *domain.User]
-	Role           *dataloader.Loader[string, *domain.Role]
-	RoleByUserID   *RoleByUserIDLoader
-	Cardgroup      *dataloader.Loader[string, *domain.Cardgroup]
-	Card           *dataloader.Loader[string, *domain.Card]
-	SwipeRecord    *dataloader.Loader[string, *domain.SwipeRecord]
-	UserCardFSRS   *dataloader.Loader[string, *domain.UserCardFSRS]
-	UserPreference *UserPreferenceLoader
+	User               *dataloader.Loader[string, *domain.User]
+	Role               *dataloader.Loader[string, *domain.Role]
+	RoleByUserID       *RoleByUserIDLoader
+	LastSignInByUserID *LastSignInByUserIDLoader
+	Cardgroup          *dataloader.Loader[string, *domain.Cardgroup]
+	Card               *dataloader.Loader[string, *domain.Card]
+	SwipeRecord        *dataloader.Loader[string, *domain.SwipeRecord]
+	UserCardFSRS       *dataloader.Loader[string, *domain.UserCardFSRS]
+	UserPreference     *UserPreferenceLoader
 }
 
 func New(userRepo repository.UserRepository, roleRepo repository.RoleRepository, userRoleRepo repository.UserRoleRepository, cardgroupRepo repository.CardgroupRepository, cardRepo repository.CardReadRepository, userPreferenceRepo repository.UserPreferenceRepository, swipeRecordRepo ...repository.SwipeRecordRepository) *Loaders {
 	loaders := &Loaders{
-		User:           dataloader.NewBatchedLoader(userBatchFunc(userRepo)),
-		Role:           dataloader.NewBatchedLoader(roleBatchFunc(roleRepo)),
-		RoleByUserID:   dataloader.NewBatchedLoader(roleByUserIDBatchFunc(userRoleRepo)),
-		Cardgroup:      dataloader.NewBatchedLoader(cardgroupBatchFunc(cardgroupRepo)),
-		Card:           dataloader.NewBatchedLoader(cardBatchFunc(cardRepo)),
-		UserPreference: NewUserPreferenceLoader(userPreferenceRepo),
+		User:               dataloader.NewBatchedLoader(userBatchFunc(userRepo)),
+		Role:               dataloader.NewBatchedLoader(roleBatchFunc(roleRepo)),
+		RoleByUserID:       dataloader.NewBatchedLoader(roleByUserIDBatchFunc(userRoleRepo)),
+		LastSignInByUserID: dataloader.NewBatchedLoader(lastSignInByUserIDBatchFunc(userRepo)),
+		Cardgroup:          dataloader.NewBatchedLoader(cardgroupBatchFunc(cardgroupRepo)),
+		Card:               dataloader.NewBatchedLoader(cardBatchFunc(cardRepo)),
+		UserPreference:     NewUserPreferenceLoader(userPreferenceRepo),
 	}
 	if len(swipeRecordRepo) > 0 && swipeRecordRepo[0] != nil {
 		loaders.SwipeRecord = dataloader.NewBatchedLoader(swipeRecordBatchFunc(swipeRecordRepo[0]))

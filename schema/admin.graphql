@@ -83,6 +83,8 @@ union CreateRoleResult =
 extend type User {
   """Roles assigned to this user. Resolved via the per-request RoleByUserID DataLoader."""
   roles: [Role!]!
+  """Last successful sign-in (auth.users.last_sign_in_at). Null = never signed in. Resolved via the per-request LastSignInByUserID DataLoader."""
+  lastSignInAt: Time
 }
 
 """One element in a UserConnection."""

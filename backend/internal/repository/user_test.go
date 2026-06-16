@@ -723,3 +723,47 @@ func TestUserRoleRepository_HasRole(t *testing.T) {
 		t.Fatal("expected user to have admin role")
 	}
 }
+
+func TestUserRepo_LastSignInByUserIDs(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewUserRepository(testDB.GORM)
+	sqlDB := sqlDBHandle(t)
+
+	// A user with a recorded last sign-in.
+	withTS := uuid.NewString()
+	ts := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
+	if _, err := sqlDB.ExecContext(ctx,
+		`INSERT INTO auth.users (id, email, last_sign_in_at) VALUES ($1, $2, $3)`,
+		withTS, fmt.Sprintf("%s@test", withTS), ts); err != nil {
+		t.Fatalf("insert withTS: %v", err)
+	}
+
+	// A user that has never signed in (last_sign_in_at NULL).
+	noTS := insertAuthUser(t, ctx)
+	// An id with no auth.users row at all.
+	unknown := uuid.NewString()
+
+	got, err := repo.LastSignInByUserIDs(ctx, []string{withTS, noTS, unknown})
+	if err != nil {
+		t.Fatalf("LastSignInByUserIDs: %v", err)
+	}
+
+	if got[withTS] == nil || !got[withTS].Equal(ts) {
+		t.Errorf("withTS = %v, want %v", got[withTS], ts)
+	}
+	if v, ok := got[noTS]; !ok || v != nil {
+		t.Errorf("noTS = (%v, ok=%v), want (nil, ok=true)", v, ok)
+	}
+	if _, ok := got[unknown]; ok {
+		t.Errorf("unknown id should be absent from the map, but it was present")
+	}
+
+	empty, err := repo.LastSignInByUserIDs(ctx, nil)
+	if err != nil {
+		t.Fatalf("empty ids: %v", err)
+	}
+	if len(empty) != 0 {
+		t.Errorf("empty ids returned %d entries, want 0", len(empty))
+	}
+}

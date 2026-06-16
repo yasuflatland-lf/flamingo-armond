@@ -38,7 +38,8 @@ func BootstrapAuthSchema(ctx context.Context, dsn string) error {
         CREATE SCHEMA IF NOT EXISTS auth;
         CREATE TABLE IF NOT EXISTS auth.users (
             id uuid PRIMARY KEY,
-            email text
+            email text,
+            last_sign_in_at timestamptz
         );
         CREATE OR REPLACE FUNCTION auth.uid()
         RETURNS uuid

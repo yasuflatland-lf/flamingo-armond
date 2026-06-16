@@ -690,6 +690,10 @@ func (c *countingUserRepo) DeleteAuthUser(ctx context.Context, id string) error 
 	return c.inner.DeleteAuthUser(ctx, id)
 }
 
+func (c *countingUserRepo) LastSignInByUserIDs(ctx context.Context, ids []string) (map[string]*time.Time, error) {
+	return c.inner.LastSignInByUserIDs(ctx, ids)
+}
+
 // insertAuthUser inserts a row into auth.users so the handle_new_user trigger
 // creates the matching public.users row. Returns the generated user id.
 func insertAuthUser(t *testing.T, ctx context.Context) string {

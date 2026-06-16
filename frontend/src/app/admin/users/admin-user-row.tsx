@@ -2,9 +2,10 @@
 
 import { Pencil } from "lucide-react";
 import Image from "next/image";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
+import { formatDateTime } from "@/lib/format";
 
 export type AdminUserRole = {
   id: string;
@@ -22,6 +23,7 @@ export type AdminUserListItem = {
   displayName: string | null;
   bio: string | null;
   avatarUrl: string | null;
+  lastSignInAt: string | null;
   roles: AdminUserRole[];
 };
 
@@ -33,6 +35,7 @@ type Props = {
 export function AdminUserRow({ user, onEdit }: Props) {
   const t = useTranslations("Admin");
   const tCommon = useTranslations("Common");
+  const locale = useLocale();
   const avatarFallback = useMemo(
     () => (user.displayName ?? "?").charAt(0).toUpperCase(),
     [user.displayName],
@@ -67,6 +70,10 @@ export function AdminUserRow({ user, onEdit }: Props) {
               {user.displayName ?? (
                 <span className="italic text-muted-foreground">{t("noName")}</span>
               )}
+            </p>
+            <p className="text-xs text-muted-foreground" data-testid="admin-user-last-sign-in">
+              {t("lastSignInLabel")}:{" "}
+              {user.lastSignInAt ? formatDateTime(user.lastSignInAt, locale) : t("neverSignedIn")}
             </p>
             {user.bio && <p className="truncate text-sm text-muted-foreground">{user.bio}</p>}
           </div>

@@ -82,6 +82,7 @@ const USER_1 = {
   displayName: "Alice",
   bio: null,
   avatarUrl: null,
+  lastSignInAt: null,
   roles: [],
 };
 
@@ -92,6 +93,7 @@ const USER_2 = {
   displayName: "Bob",
   bio: null,
   avatarUrl: null,
+  lastSignInAt: null,
   roles: [],
 };
 

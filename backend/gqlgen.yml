@@ -44,3 +44,5 @@ models:
         resolver: true
       lastViewedCardgroup:
         resolver: true
+      lastSignInAt:
+        resolver: true

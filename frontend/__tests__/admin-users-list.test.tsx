@@ -69,6 +69,7 @@ type UserNode = {
   displayName: string;
   bio: null;
   avatarUrl: null;
+  lastSignInAt: null;
   roles: Array<{ __typename: "Role"; id: string; name: string }>;
 };
 
@@ -94,6 +95,7 @@ function makeUser(i: number): UserNode {
     displayName: `User ${i}`,
     bio: null,
     avatarUrl: null,
+    lastSignInAt: null,
     roles: [{ __typename: "Role", id: `role-general`, name: "general" }],
   };
 }
@@ -243,6 +245,7 @@ describe("AdminUsersClient", () => {
         displayName: "Alice",
         bio: null,
         avatarUrl: null,
+        lastSignInAt: null,
         roles: [{ __typename: "Role" as const, id: "role-general", name: "general" }],
       },
     ];

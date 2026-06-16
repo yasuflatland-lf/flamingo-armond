@@ -8,9 +8,12 @@ package resolver
 import (
 	"backend/graph/model"
 	"backend/internal/gqlerr"
+	"backend/internal/loader"
 	"backend/internal/usecase"
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/rotisserie/eris"
 )
@@ -154,4 +157,22 @@ func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Rol
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toRoleModels(ctx, roles), nil
+}
+
+// LastSignInAt resolves auth.users.last_sign_in_at via the per-request
+// LastSignInByUserID DataLoader (batched, so the admin user list issues one
+// auth.users read per page). A nil result means the user has never signed in.
+func (r *userResolver) LastSignInAt(ctx context.Context, obj *model.User) (*time.Time, error) {
+	loaders := loader.For(ctx)
+	if loaders == nil {
+		return nil, gqlerr.Internal(ctx, eris.New("loader: middleware not installed for /query"))
+	}
+	t, err := loaders.LastSignInByUserID.Load(ctx, obj.ID)()
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, gqlerr.Cancelled(ctx, err)
+		}
+		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "resolver: last sign in"))
+	}
+	return t, nil
 }

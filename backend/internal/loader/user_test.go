@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
@@ -20,9 +21,10 @@ import (
 // countingRepo is a function-table test double for repository.UserRepository.
 // Unconfigured methods panic so an unexpected call fails loudly.
 type countingRepo struct {
-	findByID  func(ctx context.Context, id string) (*domain.User, error)
-	findByIDs func(ctx context.Context, ids []string) (map[string]*domain.User, error)
-	update    func(ctx context.Context, id string, patch repository.UserUpdate) (*domain.User, error)
+	findByID            func(ctx context.Context, id string) (*domain.User, error)
+	findByIDs           func(ctx context.Context, ids []string) (map[string]*domain.User, error)
+	update              func(ctx context.Context, id string, patch repository.UserUpdate) (*domain.User, error)
+	lastSignInByUserIDs func(ctx context.Context, ids []string) (map[string]*time.Time, error)
 }
 
 type countingRoleRepo struct {
@@ -276,6 +278,17 @@ func (r *countingRepo) ListPage(
 // invoke account deletion; panic if called so accidental coupling is surfaced.
 func (r *countingRepo) DeleteAuthUser(_ context.Context, _ string) error {
 	panic("countingRepo.DeleteAuthUser not configured")
+}
+
+// LastSignInByUserIDs satisfies repository.UserRepository. Configure the
+// lastSignInByUserIDs func to exercise the LastSignInByUserID loader; the
+// card/cardgroup loader tests leave it nil and panic if it is unexpectedly
+// invoked.
+func (r *countingRepo) LastSignInByUserIDs(ctx context.Context, ids []string) (map[string]*time.Time, error) {
+	if r.lastSignInByUserIDs == nil {
+		panic("countingRepo.LastSignInByUserIDs not configured")
+	}
+	return r.lastSignInByUserIDs(ctx, ids)
 }
 
 // SetLastViewedCardgroup satisfies repository.UserRepository. Loader-layer
