@@ -12,6 +12,7 @@ import { BrandSplash } from "@/components/pwa/brand-splash";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import type { FragmentType } from "@/generated/fragment-masking";
+import { useSeedDefaultStarters } from "./use-seed-default-starters";
 
 // `id` is read at this level (React keys, per-cardgroup `importing` state); the
 // rest of the fields travel as a masked `CatalogCardFields` ref that `CatalogCard`
@@ -34,8 +35,10 @@ export function OnboardingStartClient({ cardgroups }: OnboardingStartClientProps
   const t = useTranslations("OnboardingStart");
   const router = useRouter();
   const { importMasterCardgroup } = useImportMaster();
+  const { seedDefaultStarters } = useSeedDefaultStarters();
 
   const [importingId, setImportingId] = useState<string | null>(null);
+  const [seeding, setSeeding] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importAuthError, setImportAuthError] = useState<"unauthenticated" | "forbidden" | null>(
     null,
@@ -43,8 +46,8 @@ export function OnboardingStartClient({ cardgroups }: OnboardingStartClientProps
 
   const handleStart = useCallback(
     async (id: string) => {
-      // Serialize: ignore a second click while another import is in flight.
-      if (importingId !== null) return;
+      // Serialize: ignore a second click while another import or a seed is in flight.
+      if (importingId !== null || seeding) return;
       setImportError(null);
       setImportAuthError(null);
       setImportingId(id);
@@ -71,20 +74,45 @@ export function OnboardingStartClient({ cardgroups }: OnboardingStartClientProps
           return;
       }
     },
-    [importingId, importMasterCardgroup, router, t],
+    [importingId, seeding, importMasterCardgroup, router, t],
   );
+
+  const handleStartWithDefaults = useCallback(async () => {
+    // Serialize: ignore if a preset import or another seed is in flight.
+    if (importingId !== null || seeding) return;
+    setImportError(null);
+    setImportAuthError(null);
+    setSeeding(true);
+
+    const outcome = await seedDefaultStarters();
+
+    switch (outcome.status) {
+      case "success":
+        // Leave seeding true — the navigation will unmount this component.
+        router.push("/cardgroups");
+        return;
+      case "auth":
+        setImportAuthError(outcome.kind);
+        setSeeding(false);
+        return;
+      case "rejected":
+        setImportError(t("seedError"));
+        setSeeding(false);
+        return;
+    }
+  }, [importingId, seeding, seedDefaultStarters, router, t]);
 
   const hasBanner = importAuthError !== null || importError !== null;
 
   return (
     <>
-      {/* Full-viewport coral splash held from the moment a cardgroup import
-          starts until this component unmounts on the success navigation to
-          /learn/{id}. On any failure outcome, handleStart resets importingId,
-          tearing the splash down so the error banner becomes visible. Rendered
-          outside the hero container so the fixed overlay never participates in
-          its flow. */}
-      {importingId !== null ? (
+      {/* Full-viewport coral splash held from the moment a cardgroup import or
+          default-deck seed starts until this component unmounts on the success
+          navigation. On any failure outcome, the handler resets importingId /
+          seeding, tearing the splash down so the error banner becomes visible.
+          Rendered outside the hero container so the fixed overlay never
+          participates in its flow. */}
+      {importingId !== null || seeding ? (
         <BrandSplash label={t("starting")}>
           <p className="text-sm opacity-80">{t("starting")}</p>
         </BrandSplash>
@@ -142,10 +170,14 @@ export function OnboardingStartClient({ cardgroups }: OnboardingStartClientProps
 
         <p className="mt-8 text-sm text-muted-foreground">
           {t("or")}{" "}
-          <Button asChild variant="link" className="h-auto p-0 align-baseline text-sm font-medium">
-            <Link href="/cardgroups/new?welcome=1" data-testid="onboarding-create-link">
-              {t("createCta")} →
-            </Link>
+          <Button
+            variant="link"
+            className="h-auto p-0 align-baseline text-sm font-medium"
+            onClick={handleStartWithDefaults}
+            disabled={importingId !== null || seeding}
+            data-testid="onboarding-start-defaults"
+          >
+            {t("startWithDefaults")} →
           </Button>
         </p>
       </OnboardingShell>

@@ -7,6 +7,7 @@ import type { ImportMasterOutcome } from "@/app/catalog/use-import-master";
 import { makeFragmentData } from "@/generated/fragment-masking";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { OnboardingStartClient } from "./onboarding-start-client";
+import type { SeedDefaultStartersOutcome } from "./use-seed-default-starters";
 
 const mockPush = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mockPush }) }));
@@ -30,6 +31,11 @@ vi.mock("next/link", () => ({
 const mockImport = vi.fn<(id: string) => Promise<ImportMasterOutcome>>();
 vi.mock("@/app/catalog/use-import-master", () => ({
   useImportMaster: () => ({ importMasterCardgroup: mockImport, loading: false }),
+}));
+
+const mockSeed = vi.fn<() => Promise<SeedDefaultStartersOutcome>>();
+vi.mock("./use-seed-default-starters", () => ({
+  useSeedDefaultStarters: () => ({ seedDefaultStarters: mockSeed, loading: false }),
 }));
 
 // Each cardgroup carries a top-level `id` (read for React keys + per-cardgroup `importing`
@@ -71,16 +77,13 @@ afterEach(() => {
 });
 
 describe("<OnboardingStartClient>", () => {
-  it("renders a card per cardgroup and the create-your-own link", () => {
+  it("renders a card per cardgroup and the start-with-defaults button", () => {
     renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
 
     expect(screen.getByTestId("onboarding-deck-m-1")).toBeInTheDocument();
     expect(screen.getByTestId("onboarding-deck-m-2")).toBeInTheDocument();
     expect(screen.getByText("Business English")).toBeInTheDocument();
-    expect(screen.getByTestId("onboarding-create-link")).toHaveAttribute(
-      "href",
-      "/cardgroups/new?welcome=1",
-    );
+    expect(screen.getByTestId("onboarding-start-defaults")).toBeInTheDocument();
   });
 
   it("renders the preset hero: logo, heading, subline, and preset label", () => {
@@ -237,6 +240,105 @@ describe("<OnboardingStartClient>", () => {
     await user.click(screen.getByTestId("onboarding-deck-m-2"));
 
     expect(mockImport).toHaveBeenCalledTimes(1);
+
+    resolve?.({ status: "success", cardgroupId: "cg-9", cardgroupName: "x" });
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/learn/cg-9");
+    });
+  });
+
+  // --- start-with-defaults path ---
+
+  it("clicking start-with-defaults calls seedDefaultStarters and navigates to /cardgroups on success", async () => {
+    const user = userEvent.setup();
+    mockSeed.mockResolvedValueOnce({ status: "success", count: 2 });
+
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
+    await user.click(screen.getByTestId("onboarding-start-defaults"));
+
+    expect(mockSeed).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/cardgroups");
+    });
+  });
+
+  it("shows the coral splash while seeding and keeps it through the navigation", async () => {
+    const user = userEvent.setup();
+    let resolve: ((o: SeedDefaultStartersOutcome) => void) | undefined;
+    mockSeed.mockReturnValueOnce(
+      new Promise<SeedDefaultStartersOutcome>((r) => {
+        resolve = r;
+      }),
+    );
+
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("onboarding-start-defaults"));
+    expect(screen.getByRole("status", { name: /setting up/i })).toBeInTheDocument();
+
+    resolve?.({ status: "success", count: 0 });
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/cardgroups");
+    });
+    // Splash stays through unmounting navigation.
+    expect(screen.getByRole("status", { name: /setting up/i })).toBeInTheDocument();
+  });
+
+  it("shows seedError banner and tears down splash on a rejected seed outcome", async () => {
+    const user = userEvent.setup();
+    let resolve: ((o: SeedDefaultStartersOutcome) => void) | undefined;
+    mockSeed.mockReturnValueOnce(
+      new Promise<SeedDefaultStartersOutcome>((r) => {
+        resolve = r;
+      }),
+    );
+
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
+    await user.click(screen.getByTestId("onboarding-start-defaults"));
+    expect(screen.getByRole("status", { name: /setting up/i })).toBeInTheDocument();
+
+    resolve?.({ status: "rejected" });
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-import-error")).toHaveTextContent(
+        /could not set up the default decks/i,
+      );
+    });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("shows auth banner on a seed auth outcome", async () => {
+    const user = userEvent.setup();
+    mockSeed.mockResolvedValueOnce({ status: "auth", kind: "unauthenticated" });
+
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
+    await user.click(screen.getByTestId("onboarding-start-defaults"));
+
+    const banner = await screen.findByTestId("onboarding-import-auth-error");
+    expect(banner.querySelector("a")).toHaveAttribute("href", "/login");
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("re-entry guard: clicking start-with-defaults while a preset import is in flight is ignored", async () => {
+    const user = userEvent.setup();
+    let resolve: ((o: ImportMasterOutcome) => void) | undefined;
+    mockImport.mockReturnValueOnce(
+      new Promise<ImportMasterOutcome>((r) => {
+        resolve = r;
+      }),
+    );
+
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
+    await user.click(screen.getByTestId("onboarding-deck-m-1"));
+
+    // Start-with-defaults button is disabled while import is in flight.
+    const defaultsBtn = screen.getByTestId("onboarding-start-defaults");
+    expect(defaultsBtn).toBeDisabled();
+
+    // Clicking it does not call seedDefaultStarters.
+    await user.click(defaultsBtn);
+    expect(mockSeed).not.toHaveBeenCalled();
 
     resolve?.({ status: "success", cardgroupId: "cg-9", cardgroupName: "x" });
     await waitFor(() => {
