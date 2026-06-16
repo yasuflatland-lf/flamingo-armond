@@ -182,6 +182,48 @@ func TestMasterCardRepository_UpsertManyTx_AllUpdates(t *testing.T) {
 	require.Equal(t, domain.CardText("new-b2"), byFront[domain.CardText("UpsertUpd-f2")].Back)
 }
 
+// TestMasterCardRepository_UpsertManyTx_CaseInsensitiveFront verifies the citext
+// front column: upserting a case-variant of an existing front ("drive" when
+// "Drive" exists) UPDATES the existing row rather than inserting a second one,
+// and the stored case is preserved (ON CONFLICT DO UPDATE does not touch front).
+func TestMasterCardRepository_UpsertManyTx_CaseInsensitiveFront(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "Upsert-CaseInsensitive-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	// Seed the capitalized variant.
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		_, txErr := repo.UpsertManyTx(ctx, tx, []*domain.MasterCard{
+			newMasterCard(mcg.ID, "Drive", "old-back", 0),
+		})
+		return txErr
+	})
+	require.NoError(t, err)
+
+	// Upsert the lowercase variant with a new back.
+	var result repository.UpsertManyTxResult
+	err = testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var txErr error
+		result, txErr = repo.UpsertManyTx(ctx, tx, []*domain.MasterCard{
+			newMasterCard(mcg.ID, "drive", "new-back", 0),
+		})
+		return txErr
+	})
+	require.NoError(t, err)
+	// Matched case-insensitively: update, not a second insert.
+	require.Equal(t, int64(0), result.Inserted)
+	require.Equal(t, int64(1), result.Updated)
+
+	stored, err := repo.ListByMasterCardgroup(ctx, mcg.ID)
+	require.NoError(t, err)
+	require.Len(t, stored, 1)
+	// Back is overwritten; the stored front keeps its original case (citext
+	// preserves storage case, and ON CONFLICT DO UPDATE leaves front untouched).
+	require.Equal(t, domain.CardText("new-back"), stored[0].Back)
+	require.Equal(t, domain.CardText("Drive"), stored[0].Front)
+}
+
 // TestMasterCardRepository_UpsertManyTx_Mixed verifies that a batch containing
 // both new fronts and existing fronts reports the correct Inserted/Updated split.
 func TestMasterCardRepository_UpsertManyTx_Mixed(t *testing.T) {
