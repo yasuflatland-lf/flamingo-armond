@@ -26,6 +26,14 @@ type gormUser struct {
 
 func (gormUser) TableName() string { return "users" }
 
+// authUserLastSignIn is the projection for the auth.users last-sign-in read.
+// It is not a full auth.users mapping — only the columns LastSignInByUserIDs
+// needs.
+type authUserLastSignIn struct {
+	ID           string     `gorm:"column:id"`
+	LastSignInAt *time.Time `gorm:"column:last_sign_in_at"`
+}
+
 // ErrNotFound is returned when a lookup or update targets a row that does not
 // exist.
 var ErrNotFound = errors.New("repository: not found")
@@ -100,6 +108,18 @@ type UserRepository interface {
 	// is the single isolation point for auth-account deletion: swapping to the
 	// Supabase Admin REST API is a change to this method body alone.
 	DeleteAuthUser(ctx context.Context, id string) error
+
+	// LastSignInByUserIDs reads auth.users.last_sign_in_at for the given user
+	// ids. Each known id maps to its *time.Time (nil when the column is NULL,
+	// i.e. the user has never signed in); ids without an auth.users row are
+	// omitted from the map. Empty ids returns an empty map (GORM turns
+	// "WHERE id IN ()" into an unfiltered full scan, so the call is
+	// short-circuited).
+	//
+	// Like DeleteAuthUser, this is an isolated auth.users access point; it
+	// requires the connection role to have SELECT on auth.users (the
+	// production postgres role has it).
+	LastSignInByUserIDs(ctx context.Context, ids []string) (map[string]*time.Time, error)
 }
 
 type userRepo struct{ db *gorm.DB }
@@ -206,6 +226,27 @@ func (r *userRepo) DeleteAuthUser(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (r *userRepo) LastSignInByUserIDs(ctx context.Context, ids []string) (map[string]*time.Time, error) {
+	// GORM turns "WHERE id IN ()" into an unfiltered full scan, so short-circuit
+	// empty input.
+	if len(ids) == 0 {
+		return map[string]*time.Time{}, nil
+	}
+	var rows []authUserLastSignIn
+	if err := r.db.WithContext(ctx).
+		Table("auth.users").
+		Select("id", "last_sign_in_at").
+		Where("id IN ?", ids).
+		Find(&rows).Error; err != nil {
+		return nil, eris.Wrap(err, "repository: last sign-in by user ids")
+	}
+	out := make(map[string]*time.Time, len(rows))
+	for i := range rows {
+		out[rows[i].ID] = rows[i].LastSignInAt
+	}
+	return out, nil
 }
 
 func userUpdates(patch UserUpdate) map[string]any {

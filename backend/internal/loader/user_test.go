@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
@@ -276,6 +277,13 @@ func (r *countingRepo) ListPage(
 // invoke account deletion; panic if called so accidental coupling is surfaced.
 func (r *countingRepo) DeleteAuthUser(_ context.Context, _ string) error {
 	panic("countingRepo.DeleteAuthUser not configured")
+}
+
+// LastSignInByUserIDs satisfies repository.UserRepository. Loader-layer tests
+// that need last-sign-in data exercise the dedicated last_sign_in loader test;
+// the card/cardgroup loader tests never invoke this path, so panic if called.
+func (r *countingRepo) LastSignInByUserIDs(_ context.Context, _ []string) (map[string]*time.Time, error) {
+	panic("countingRepo.LastSignInByUserIDs not configured")
 }
 
 // SetLastViewedCardgroup satisfies repository.UserRepository. Loader-layer
