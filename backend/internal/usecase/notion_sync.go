@@ -187,10 +187,11 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 	// Derive the keep-set from the validated cards' (trimmed) fronts so the
 	// diff-prune step stays consistent with what was actually upserted: rows
 	// dropped by ParseCardText validation are absent here and so are pruned if
-	// a stale card with the same front exists.
+	// a stale card with the same front exists. Keyed by frontMatchKey so the
+	// prune is case-insensitive, matching the citext master_cards.front column.
 	notionFronts := make(map[string]struct{}, len(cards))
 	for _, card := range cards {
-		notionFronts[card.Front.String()] = struct{}{}
+		notionFronts[frontMatchKey(card.Front.String())] = struct{}{}
 	}
 
 	out := MasterNotionSyncOutput{
@@ -306,14 +307,29 @@ func parseNotionPages(ctx context.Context, logger *slog.Logger, pages []notion.P
 	return rows, errs, nil
 }
 
+// frontMatchKey is the case-insensitive key used to match Notion fronts against
+// each other (dedupe) and against existing master_cards rows (prune). It mirrors
+// the citext semantics of the master_cards.front column, whose unique index and
+// upsert conflict target compare case-insensitively. Fronts are ASCII by
+// construction — the textdic lexer restricts the front token to ASCII letters —
+// so strings.ToLower agrees with Postgres lower() with no locale ambiguity.
+func frontMatchKey(front string) string {
+	return strings.ToLower(front)
+}
+
 func dedupeParsedRows(rows []ParsedRow, errs []CardImportError) ([]ParsedRow, []CardImportError) {
+	// Keyed by frontMatchKey so case-variant fronts (e.g. "Drive" / "drive")
+	// collapse to one row. This is mandatory, not cosmetic: feeding two
+	// case-variant rows into the citext upsert would make a single multi-row
+	// INSERT hit the same ON CONFLICT target twice ("cannot affect row a second
+	// time"). The last occurrence wins, keeping its original case for storage.
 	lastIndex := make(map[string]int, len(rows))
 	for i, row := range rows {
-		lastIndex[row.Front] = i
+		lastIndex[frontMatchKey(row.Front)] = i
 	}
 	out := make([]ParsedRow, 0, len(rows))
 	for i, row := range rows {
-		if lastIndex[row.Front] != i {
+		if lastIndex[frontMatchKey(row.Front)] != i {
 			errs = append(errs, CardImportError{
 				Line:    row.Line,
 				Message: "duplicate front in Notion pages (later occurrence wins)",
@@ -384,9 +400,14 @@ func masterRowErrorField(err error) string {
 }
 
 func frontsToDelete(current []string, notionFronts map[string]struct{}) []string {
+	// Compare case-insensitively (frontMatchKey) so an existing row whose stored
+	// case differs from the current Notion line (e.g. DB "Drive" vs Notion
+	// "drive", reconciled by the citext upsert) is not mistaken for stale and
+	// pruned. The original stored front is passed to the delete so the
+	// WHERE front IN (...) targets the exact row.
 	deleteFronts := make([]string, 0, len(current))
 	for _, front := range current {
-		if _, ok := notionFronts[front]; !ok {
+		if _, ok := notionFronts[frontMatchKey(front)]; !ok {
 			deleteFronts = append(deleteFronts, front)
 		}
 	}

@@ -262,6 +262,84 @@ func TestMasterNotionSyncUsecase_DuplicateFrontSamePageLastWins(t *testing.T) {
 	}
 }
 
+func TestMasterNotionSyncUsecase_CaseInsensitiveDedupe(t *testing.T) {
+	t.Parallel()
+
+	// Two case-variant fronts in one sync ("Drive" then "drive") must collapse to
+	// a single row. Without case-insensitive dedupe both rows would reach the
+	// citext upsert and a single multi-row INSERT would hit the same ON CONFLICT
+	// target twice ("cannot affect row a second time"). The later occurrence wins.
+	fetcher := &stubNotionFetcher{pages: []notion.Page{
+		{ID: "page-1", Text: "Drive " + uniqueBack(1) + "\ndrive " + uniqueBack(2) + "\n"},
+	}}
+	cardgroups := &mockMasterCardgroupRepo{cg: &domain.MasterCardgroup{ID: "mcg-target"}}
+	cards := &mockMasterCardRepo{upsertResult: repository.UpsertManyTxResult{Inserted: 1}}
+	tx, txCalls := dictTxRunner()
+	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+
+	out, err := uc.Sync(context.Background(), SyncToMasterInput{
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
+	})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if len(out.Parsed) != 1 {
+		t.Fatalf("Parsed len = %d, want 1 (case variants collapse)", len(out.Parsed))
+	}
+	if out.Parsed[0].Front != "drive" {
+		t.Fatalf("kept Front = %q, want %q (later occurrence)", out.Parsed[0].Front, "drive")
+	}
+	if len(cards.upserted) != 1 {
+		t.Fatalf("upserted len = %d, want 1", len(cards.upserted))
+	}
+	if string(cards.upserted[0].Front) != "drive" || string(cards.upserted[0].Back) != uniqueBack(2) {
+		t.Fatalf("upserted = (%q,%q), want (drive,%q)",
+			cards.upserted[0].Front, cards.upserted[0].Back, uniqueBack(2))
+	}
+	if len(out.ParseErrors) != 1 {
+		t.Fatalf("ParseErrors len = %d, want 1 duplicate warning", len(out.ParseErrors))
+	}
+	if out.ParseErrors[0].Front != "Drive" {
+		t.Fatalf("ParseErrors[0].Front = %q, want %q (the discarded variant's original case)",
+			out.ParseErrors[0].Front, "Drive")
+	}
+	if *txCalls != 1 {
+		t.Fatalf("txCalls = %d, want 1", *txCalls)
+	}
+}
+
+func TestMasterNotionSyncUsecase_CaseInsensitivePrune(t *testing.T) {
+	t.Parallel()
+
+	// The DB stored "Apple" (capitalized). Notion now has "apple" (lowercase),
+	// which the citext upsert reconciles onto the same row. The diff-prune must
+	// NOT treat "Apple" as stale just because its stored case differs from the
+	// Notion line. A genuinely absent front ("stale") is still pruned.
+	fetcher := &stubNotionFetcher{pages: []notion.Page{
+		{ID: "page-1", Text: "apple " + uniqueBack(1) + "\n"},
+	}}
+	cardgroups := &mockMasterCardgroupRepo{cg: &domain.MasterCardgroup{ID: "mcg-target"}}
+	cards := &mockMasterCardRepo{
+		existingFronts: []string{"Apple", "stale"},
+		upsertResult:   repository.UpsertManyTxResult{Updated: 1},
+	}
+	tx, _ := dictTxRunner()
+	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+
+	_, err := uc.Sync(context.Background(), SyncToMasterInput{
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
+	})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if len(cards.deletedFronts) != 1 || cards.deletedFronts[0] != "stale" {
+		t.Fatalf("deleted fronts = %v, want [stale] (Apple matched case-insensitively)",
+			cards.deletedFronts)
+	}
+}
+
 func TestMasterNotionSyncUsecase_InputValidation(t *testing.T) {
 	t.Parallel()
 
@@ -803,11 +881,11 @@ func TestMasterCardsFromParsedRows_SkipsInvalidRowsWithWarn(t *testing.T) {
 	uc := NewMasterNotionSyncUsecaseWithTx(nil, nil, nil, nil, logger)
 
 	rows := []ParsedRow{
-		{Front: "apple", Back: "fruit", SourcePageID: "page-1", Line: 1},     // valid
-		{Front: "   ", Back: "fruit", SourcePageID: "page-1", Line: 2},       // empty front -> skip
-		{Front: "carrot", Back: "", SourcePageID: "page-1", Line: 3},         // empty back -> skip
-		{Front: strings.Repeat("x", 501), Back: "ok", Line: 4},              // oversized front -> skip
-		{Front: "banana", Back: "fruit", SourcePageID: "page-1", Line: 5},    // valid
+		{Front: "apple", Back: "fruit", SourcePageID: "page-1", Line: 1},  // valid
+		{Front: "   ", Back: "fruit", SourcePageID: "page-1", Line: 2},    // empty front -> skip
+		{Front: "carrot", Back: "", SourcePageID: "page-1", Line: 3},      // empty back -> skip
+		{Front: strings.Repeat("x", 501), Back: "ok", Line: 4},            // oversized front -> skip
+		{Front: "banana", Back: "fruit", SourcePageID: "page-1", Line: 5}, // valid
 	}
 
 	const masterCardgroupID = "mcg-skip"
