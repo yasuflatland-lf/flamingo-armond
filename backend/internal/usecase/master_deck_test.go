@@ -416,6 +416,7 @@ func TestSeedForNewUser_SecondCall_NoOps(t *testing.T) {
 	seeded, err := uc.SeedForNewUser(context.Background(), "returning-user")
 	require.NoError(t, err)
 	require.Equal(t, 1, *calls, "the guard still runs inside a transaction (advisory lock)")
+	require.NotNil(t, seeded, "no-op path returns a non-nil empty slice, not nil")
 	require.Empty(t, seeded, "no cardgroups seeded on no-op path")
 
 	// Guard short-circuits before listing starters or copying anything.
@@ -462,6 +463,7 @@ func TestSeedForNewUser_NoStarters_NoCopies(t *testing.T) {
 
 	seeded, err := uc.SeedForNewUser(context.Background(), "no-starter-user")
 	require.NoError(t, err)
+	require.NotNil(t, seeded, "no-defaults path returns a non-nil empty slice, not nil")
 	require.Empty(t, seeded, "no cardgroups seeded when no default starters exist")
 	assert.Equal(t, 1, cg.startersCall)
 	assert.Empty(t, user.captured)
