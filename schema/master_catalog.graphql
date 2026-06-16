@@ -161,6 +161,11 @@ type MasterNotFoundError implements UserError {
 """Result of `importMasterCardgroup`: the imported cardgroup, or a typed not-found error returned as data."""
 union ImportMasterCardgroupResult = ImportMasterCardgroupSuccess | MasterNotFoundError
 
+"""Payload of `seedDefaultStarterCardgroups`: the user cardgroups created by the seed (empty if none, or if the caller already owns a cardgroup)."""
+type SeedDefaultStartersPayload {
+  cardgroups: [Cardgroup!]!
+}
+
 extend type Mutation {
   """Admin-only. Create a DRAFT master cardgroup. Non-admin callers receive FORBIDDEN."""
   adminCreateMasterCardgroup(input: CreateMasterCardgroupInput!): CreateMasterCardgroupResult!
@@ -179,4 +184,11 @@ extend type Mutation {
   Unauthenticated callers receive UNAUTHENTICATED.
   """
   importMasterCardgroup(masterCardgroupId: ID!): ImportMasterCardgroupResult!
+  """
+  Copy the published default-starter master decks into the authenticated caller's
+  own cardgroups as one-time snapshots. Idempotent: a no-op if the caller already
+  owns a cardgroup. Backs the onboarding "start with the default decks" path.
+  Unauthenticated callers receive UNAUTHENTICATED.
+  """
+  seedDefaultStarterCardgroups: SeedDefaultStartersPayload!
 }

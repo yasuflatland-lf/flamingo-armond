@@ -139,6 +139,21 @@ func (r *mutationResolver) ImportMasterCardgroup(ctx context.Context, masterCard
 	}, nil
 }
 
+// SeedDefaultStarterCardgroups is the resolver for the seedDefaultStarterCardgroups field.
+// Copies the published default-starter master decks into the caller's cardgroups
+// (idempotent). Backs the onboarding "start with the default decks" path.
+func (r *mutationResolver) SeedDefaultStarterCardgroups(ctx context.Context) (*model.SeedDefaultStartersPayload, error) {
+	cgs, err := r.MasterCatalogUC.SeedDefaultStarters(ctx)
+	if err != nil {
+		return nil, gqlerr.FromUsecaseError(ctx, err)
+	}
+	out := make([]*model.Cardgroup, 0, len(cgs))
+	for _, cg := range cgs {
+		out = append(out, toCardgroupModel(cg))
+	}
+	return &model.SeedDefaultStartersPayload{Cardgroups: out}, nil
+}
+
 // MasterCatalog is the resolver for the masterCatalog field.
 func (r *queryResolver) MasterCatalog(ctx context.Context, first *int, after *string, last *int, before *string, search *string, orderBy *model.MasterCatalogOrderBy, orderDirection *model.SortOrder) (*model.MasterCatalogConnection, error) {
 	out, err := r.MasterCatalogUC.ListPublishedConnection(ctx, usecase.MasterCatalogConnectionInput{

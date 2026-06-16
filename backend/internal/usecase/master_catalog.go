@@ -85,12 +85,21 @@ type MasterCatalogConnectionOutput struct {
 	EndCur     string
 }
 
+// masterDeckUsecaseFacade is the master-deck capability the catalog consumes:
+// snapshot a single published master (import), and seed all default starters for
+// the caller. *masterDeckUsecase satisfies both halves.
+type masterDeckUsecaseFacade interface {
+	CopyMasterToUserUsecase
+	SeedForNewUserUsecase
+}
+
 // MasterCatalogUsecase is the published-catalog surface plus the admin
 // management operations. Every method requires an authenticated caller;
 // admin methods additionally require AdminGate.Require to pass.
 type MasterCatalogUsecase interface {
 	ListPublishedConnection(ctx context.Context, in MasterCatalogConnectionInput) (*MasterCatalogConnectionOutput, error)
 	ImportMaster(ctx context.Context, masterID string) (ImportMasterOutcome, error)
+	SeedDefaultStarters(ctx context.Context) ([]*domain.Cardgroup, error)
 
 	// admin-gated management surface
 	ListAdminConnection(ctx context.Context, in MasterCatalogConnectionInput) (*MasterCatalogConnectionOutput, error)
@@ -120,23 +129,24 @@ type ImportMasterOutcome struct {
 
 type masterCatalogUsecase struct {
 	repo      MasterCatalogRepository
-	copyUC    CopyMasterToUserUsecase
+	deckUC    masterDeckUsecaseFacade
 	adminGate *AdminGate
 	logger    *slog.Logger
 }
 
 // NewMasterCatalogUsecase constructs a MasterCatalogUsecase backed by the given
-// repository. copyUC is the copy primitive (CopyMasterToUserUsecase) used by
-// ImportMaster; adminGate gates every admin-management method. The public
+// repository. deckUC is the combined deck facade (CopyMasterToUserUsecase +
+// SeedForNewUserUsecase) used by ImportMaster and SeedDefaultStarters;
+// adminGate gates every admin-management method. The public
 // ListPublishedConnection is gated by authentication only. Panics when repo,
-// copyUC, adminGate, or logger is nil — a nil required dependency is a wiring bug
+// deckUC, adminGate, or logger is nil — a nil required dependency is a wiring bug
 // that must fail at startup, not at first use.
-func NewMasterCatalogUsecase(repo MasterCatalogRepository, copyUC CopyMasterToUserUsecase, adminGate *AdminGate, logger *slog.Logger) MasterCatalogUsecase {
+func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsecaseFacade, adminGate *AdminGate, logger *slog.Logger) MasterCatalogUsecase {
 	if repo == nil {
 		panic("usecase: master catalog: repo is required")
 	}
-	if copyUC == nil {
-		panic("usecase: master catalog: copyUC is required")
+	if deckUC == nil {
+		panic("usecase: master catalog: deckUC is required")
 	}
 	if adminGate == nil {
 		panic("usecase: master catalog: adminGate is required")
@@ -144,7 +154,7 @@ func NewMasterCatalogUsecase(repo MasterCatalogRepository, copyUC CopyMasterToUs
 	if logger == nil {
 		panic("usecase: master catalog: logger is required")
 	}
-	return &masterCatalogUsecase{repo: repo, copyUC: copyUC, adminGate: adminGate, logger: logger}
+	return &masterCatalogUsecase{repo: repo, deckUC: deckUC, adminGate: adminGate, logger: logger}
 }
 
 // ListPublishedConnection paginates the published master catalog with
@@ -652,7 +662,7 @@ func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string
 		return ImportMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: import: verify published")
 	}
 
-	cg, err := u.copyUC.CopyMasterToUser(ctx, masterID, caller.Sub)
+	cg, err := u.deckUC.CopyMasterToUser(ctx, masterID, caller.Sub)
 	if err != nil {
 		if isContextDone(err) {
 			return ImportMasterOutcome{}, err
@@ -660,4 +670,22 @@ func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string
 		return ImportMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: import: copy master to user")
 	}
 	return ImportMasterOutcome{Cardgroup: cg}, nil
+}
+
+// SeedDefaultStarters copies the published default-starter master decks into the
+// authenticated caller's own cardgroups (idempotent — a no-op if the caller
+// already owns a cardgroup). Unauthenticated callers receive ucerr.ErrUnauthenticated.
+func (u *masterCatalogUsecase) SeedDefaultStarters(ctx context.Context) ([]*domain.Cardgroup, error) {
+	caller := auth.UserFrom(ctx)
+	if err := requireCallerSub(caller); err != nil {
+		return nil, err
+	}
+	seeded, err := u.deckUC.SeedForNewUser(ctx, caller.Sub)
+	if err != nil {
+		if isContextDone(err) {
+			return nil, err
+		}
+		return nil, eris.Wrap(err, "usecase: master catalog: seed default starters")
+	}
+	return seeded, nil
 }

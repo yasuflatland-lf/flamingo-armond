@@ -78,6 +78,30 @@ guards (see
 are independent — they catch missing inputs, not helper-delegated emission
 in present-but-correctly-parsed source.
 
+### Auth-only bare mutations gate via `requireCallerSub`, not a direct `ucerr.ErrUnauthenticated` return
+
+The body-only walk has a deliberate, correct flip-side. When a NEW mutation's only
+typed-error emission is the authentication gate — no `NewValidationError` /
+`NewForbiddenError` *data* variant — a bare payload is the right shape: `UNAUTHENTICATED`
+is a wire code, not errors-as-data, so there is no variant to union. Acquire the caller
+through the shared `requireCallerSub(caller)` helper (which returns
+`ucerr.ErrUnauthenticated`) rather than writing `return …, ucerr.ErrUnauthenticated`
+inline. Because `ast.Inspect` does not recurse into `requireCallerSub`, the helper form
+passes the gate with **no** single-member union and **no** allowlist entry — matching how
+every other auth-only bare mutation (`deleteMyAccount`, `updateLearnDisplayMode`,
+`adminDeleteMasterCardgroup`, …) already gates auth. A direct inline
+`ucerr.ErrUnauthenticated` reference trips `emitsTypedError` and would force a needless
+union or allowlist line.
+
+This is **not** the false-negative above: that warning is about a helper hiding a real
+*data*-error variant that should be unioned; here there is genuinely nothing to union, so
+helper-routed auth is the canonical idiom, not a coverage gap. The allowlist is reserved
+for the pre-existing bare-emit mutations frozen at the gate's introduction — new mutations
+use a union (when they emit a data variant) or the `requireCallerSub` form (when auth is
+their only emission). Worked example: `seedDefaultStarterCardgroups` /
+`MasterCatalogUsecase.SeedDefaultStarters` returns the bare `SeedDefaultStartersPayload!`
+and gates auth via `requireCallerSub`, so it passes the gate without an allowlist entry.
+
 ## Why allowlist (stop-the-bleeding philosophy)
 
 The allowlist at `backend/cmd/schema-lint/allowlist.txt` follows the same

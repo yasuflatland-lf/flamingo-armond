@@ -377,9 +377,10 @@ func TestSeedForNewUser_CopiesAllDefaultStarters(t *testing.T) {
 
 	uc, _, calls := newSeedUsecase(t, cg, card, user, userCG)
 
-	err := uc.SeedForNewUser(context.Background(), "new-user")
+	seeded, err := uc.SeedForNewUser(context.Background(), "new-user")
 	require.NoError(t, err)
 	require.Equal(t, 1, *calls, "the whole batch runs in a single transaction")
+	require.Len(t, seeded, 2, "one cardgroup per default starter")
 
 	// Idempotency guard consulted once with the seeded user id.
 	assert.Equal(t, 1, userCG.calls)
@@ -412,9 +413,11 @@ func TestSeedForNewUser_SecondCall_NoOps(t *testing.T) {
 
 	uc, _, calls := newSeedUsecase(t, cg, card, user, userCG)
 
-	err := uc.SeedForNewUser(context.Background(), "returning-user")
+	seeded, err := uc.SeedForNewUser(context.Background(), "returning-user")
 	require.NoError(t, err)
 	require.Equal(t, 1, *calls, "the guard still runs inside a transaction (advisory lock)")
+	require.NotNil(t, seeded, "no-op path returns a non-nil empty slice, not nil")
+	require.Empty(t, seeded, "no cardgroups seeded on no-op path")
 
 	// Guard short-circuits before listing starters or copying anything.
 	assert.Equal(t, 1, userCG.calls)
@@ -434,7 +437,7 @@ func TestSeedForNewUser_TakesAdvisoryLockBeforeCounting(t *testing.T) {
 
 	uc, pool, _ := newSeedUsecase(t, cg, card, user, userCG)
 
-	err := uc.SeedForNewUser(context.Background(), "lock-user")
+	_, err := uc.SeedForNewUser(context.Background(), "lock-user")
 	require.NoError(t, err)
 
 	// The first statement executed against the tx is the transaction-scoped
@@ -458,8 +461,10 @@ func TestSeedForNewUser_NoStarters_NoCopies(t *testing.T) {
 
 	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
 
-	err := uc.SeedForNewUser(context.Background(), "no-starter-user")
+	seeded, err := uc.SeedForNewUser(context.Background(), "no-starter-user")
 	require.NoError(t, err)
+	require.NotNil(t, seeded, "no-defaults path returns a non-nil empty slice, not nil")
+	require.Empty(t, seeded, "no cardgroups seeded when no default starters exist")
 	assert.Equal(t, 1, cg.startersCall)
 	assert.Empty(t, user.captured)
 }
@@ -474,7 +479,7 @@ func TestSeedForNewUser_CountError_Propagates(t *testing.T) {
 
 	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
 
-	err := uc.SeedForNewUser(context.Background(), "err-user")
+	_, err := uc.SeedForNewUser(context.Background(), "err-user")
 	require.Error(t, err)
 	assertInternalChain(t, err, "usecase: master deck: seed for new user")
 	assert.Empty(t, user.captured)
@@ -490,7 +495,7 @@ func TestSeedForNewUser_ListStartersError_PropagatesChain(t *testing.T) {
 
 	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
 
-	err := uc.SeedForNewUser(context.Background(), "starter-err-user")
+	_, err := uc.SeedForNewUser(context.Background(), "starter-err-user")
 	require.Error(t, err)
 	assertInternalChain(t, err, "usecase: master deck: seed for new user")
 	assert.Equal(t, 1, cg.startersCall, "ListDefaultStarters was attempted")
@@ -513,7 +518,7 @@ func TestSeedForNewUser_MidLoopCopyFailure_AbortsBatch(t *testing.T) {
 
 	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
 
-	err := uc.SeedForNewUser(context.Background(), "mid-loop-user")
+	_, err := uc.SeedForNewUser(context.Background(), "mid-loop-user")
 	// The loop aborts on the second starter (m2 is absent from byID, so FindByID
 	// returns ErrNotFound). The whole batch fails. The real transaction rollback
 	// is exercised by the integration test; here we prove the loop stops.
@@ -533,7 +538,7 @@ func TestSeedForNewUser_ContextCancelled_PassesThrough(t *testing.T) {
 
 	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
 
-	err := uc.SeedForNewUser(context.Background(), "cancelled-user")
+	_, err := uc.SeedForNewUser(context.Background(), "cancelled-user")
 	require.Error(t, err)
 	assertCancelled(t, err)
 }
