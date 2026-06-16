@@ -262,6 +262,19 @@ describe("<OnboardingStartClient>", () => {
     });
   });
 
+  it("falls back to the create flow when zero default starters were seeded (count === 0)", async () => {
+    const user = userEvent.setup();
+    mockSeed.mockResolvedValueOnce({ status: "success", count: 0 });
+
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
+    await user.click(screen.getByTestId("onboarding-start-defaults"));
+
+    expect(mockSeed).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/cardgroups/new?welcome=1");
+    });
+  });
+
   it("shows the coral splash while seeding and keeps it through the navigation", async () => {
     const user = userEvent.setup();
     let resolve: ((o: SeedDefaultStartersOutcome) => void) | undefined;
@@ -277,7 +290,7 @@ describe("<OnboardingStartClient>", () => {
     await user.click(screen.getByTestId("onboarding-start-defaults"));
     expect(screen.getByRole("status", { name: /setting up/i })).toBeInTheDocument();
 
-    resolve?.({ status: "success", count: 0 });
+    resolve?.({ status: "success", count: 2 });
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith("/cardgroups");
     });

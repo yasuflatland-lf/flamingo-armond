@@ -26,10 +26,12 @@ interface OnboardingStartClientProps {
 /**
  * First-run chooser for a just-onboarded user with no cardgroup yet. Centered hero: the real
  * FlamingoMark, the heading + subline, then a content-hugging brand-tint panel of
- * preset cardgroups (the hero path), and a subtle "create your own" link. Single
- * selection — each card imports that preset via `useImportMaster` and, on success,
- * navigates to `/learn/{id}`. Imports are serialized to one at a time via
- * `importingId`.
+ * preset cardgroups (the hero path), and a subtle "start with our default decks" action.
+ * Each preset card imports that preset via `useImportMaster` and, on success, navigates to
+ * `/learn/{id}`; the secondary action seeds the published default-starter decks via
+ * `useSeedDefaultStarters` and navigates to `/cardgroups` (or, when no default starters were
+ * seeded, falls back to the create flow at `/cardgroups/new?welcome=1`). The preset imports and
+ * the seed are serialized one at a time via `importingId` / `seeding`.
  */
 export function OnboardingStartClient({ cardgroups }: OnboardingStartClientProps) {
   const t = useTranslations("OnboardingStart");
@@ -89,7 +91,10 @@ export function OnboardingStartClient({ cardgroups }: OnboardingStartClientProps
     switch (outcome.status) {
       case "success":
         // Leave seeding true — the navigation will unmount this component.
-        router.push("/cardgroups");
+        // count === 0 means no default starters were seeded (none configured, or the
+        // idempotency no-op), so fall back to the create flow rather than stranding the
+        // user on a possibly-empty /cardgroups list.
+        router.push(outcome.count === 0 ? "/cardgroups/new?welcome=1" : "/cardgroups");
         return;
       case "auth":
         setImportAuthError(outcome.kind);

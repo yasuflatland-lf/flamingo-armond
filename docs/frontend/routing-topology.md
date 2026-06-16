@@ -10,7 +10,7 @@
 | `/login` (`app/login/page.tsx`) | render `LoginButton` | `/` (delegating the post-login routing decision back to HomePage) |
 | `/auth/callback?code=...` (`app/auth/callback/route.ts`) | n/a | `next` query value, defaulting to `/` (so HomePage owns the post-OAuth landing decision) |
 | `/onboarding` (`app/onboarding/page.tsx`) | `/login` | render `OnboardingForm`; already-onboarded users redirect to `/` (self-guard via `isUserOnboarded`) |
-| `/onboarding/start` (`app/onboarding/start/page.tsx`) | `/login` | first-deck chooser: import a master-catalog deck (→ `/learn/{id}`) or create your own (→ `/cardgroups/new?welcome=1`); not-onboarded self-guard → `/onboarding`; empty catalog → `/cardgroups/new?welcome=1` |
+| `/onboarding/start` (`app/onboarding/start/page.tsx`) | `/login` | first-deck chooser: import a master-catalog deck (→ `/learn/{id}`) or start with the default decks (seeds the `is_default_starter` decks → `/cardgroups`, or → `/cardgroups/new?welcome=1` when zero were seeded); not-onboarded self-guard → `/onboarding`; empty catalog → `/cardgroups/new?welcome=1` |
 | `/cards/new?cardgroup=<id>` | `/login` | render chip + `CardForm`; resolves cardgroup via 4-priority chain (see `/cards/new` below) |
 | `/cardgroups/new?welcome=1` | `/login` | render new-cardgroup form with welcome copy (post-onboarding entry) |
 | Admin entry (rail item, admin only) | hidden | `/admin/<sub>` (no `/admin` shim — see "Unified admin layout" in [`profile-page-profile.md`](./profile-page-profile.md)) |
@@ -28,7 +28,7 @@ HomePage (/)
 └─ else                           → /onboarding/start
 ```
 
-The terminal `else` (onboarded, no `lastViewedCardgroup`, zero cardgroups) lands on `/onboarding/start`, the first-deck chooser — see its row in the table above. The chooser lets the user import a master-catalog deck or create their own; when the master catalog is empty it falls through to `/cardgroups/new?welcome=1`.
+The terminal `else` (onboarded, no `lastViewedCardgroup`, zero cardgroups) lands on `/onboarding/start`, the first-deck chooser — see its row in the table above. The chooser lets the user import a master-catalog deck (→ `/learn/{id}`) or seed the published default-starter decks (landing on `/cardgroups`, or on `/cardgroups/new?welcome=1` when zero defaults were seeded); when the master catalog is empty the page falls through to `/cardgroups/new?welcome=1`.
 
 Why `isUserOnboarded` is the highest signed-in priority: a user whose `displayName` was nulled by an admin (or who completed OAuth but never finished `/onboarding`) would otherwise land on `/learn/{lastViewedCardgroup}` or `/cardgroups` with an empty profile — visible to other users — and have no in-product affordance to fix it. The gate sits ahead of the cardgroup branches so the empty-`displayName` state is structurally unreachable on any signed-in surface.
 
@@ -124,7 +124,7 @@ Every other surface uses shadcn's slate-based defaults (`--primary`, `--secondar
 
 ### Welcome copy on `/cardgroups/new?welcome=1`
 
-The `?welcome=1` query parameter makes `/cardgroups/new` (already the cardgroup-create page) double as the post-onboarding "first cardgroup" screen by conditionally rendering a welcome banner above the form. The `/cards/new` "no cardgroups" priority targets this URL directly, as does `/onboarding/start` — both its "create your own" link and its empty-catalog fallback. The HomePage `else` branch and `OnboardingForm`'s success redirect now route through `/onboarding/start` first, landing here when the catalog is empty or the user chooses to create their own. Without the query parameter, the page renders only the form — same behaviour as before. Driving the difference from the URL keeps the welcome surface statelessly bookmarkable / sharable and avoids a separate `/welcome` route whose only difference would be the copy.
+The `?welcome=1` query parameter makes `/cardgroups/new` (already the cardgroup-create page) double as the post-onboarding "first cardgroup" screen by conditionally rendering a welcome banner above the form. The `/cards/new` "no cardgroups" priority targets this URL directly, as does `/onboarding/start` — via its empty-catalog fallback (zero published masters) and via its "start with the default decks" action when zero default starters were seeded (`count === 0`). The HomePage `else` branch and `OnboardingForm`'s success redirect route through `/onboarding/start` first, landing here when the catalog is empty or when the default-starter seed produced no decks. Without the query parameter, the page renders only the form — same behaviour as before. Driving the difference from the URL keeps the welcome surface statelessly bookmarkable / sharable and avoids a separate `/welcome` route whose only difference would be the copy.
 
 ### Bare-shell routes (no `AppShell`)
 
