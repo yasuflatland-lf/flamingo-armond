@@ -2,6 +2,7 @@ package resolver_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -68,5 +69,42 @@ func TestUserResolver_LastSignInAt_MissingLoaderMiddlewareInternal(t *testing.T)
 	}
 	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
 		t.Fatalf("want INTERNAL wire code, got %v", err)
+	}
+}
+
+// ctxWithLastSignInLoaderError installs a LastSignInByUserID loader whose batch
+// function fails every key with loadErr.
+func ctxWithLastSignInLoaderError(base context.Context, loadErr error) context.Context {
+	loaders := &loader.Loaders{
+		LastSignInByUserID: dataloader.NewBatchedLoader(
+			func(_ context.Context, keys []string) []*dataloader.Result[*time.Time] {
+				out := make([]*dataloader.Result[*time.Time], len(keys))
+				for i := range keys {
+					out[i] = &dataloader.Result[*time.Time]{Error: loadErr}
+				}
+				return out
+			},
+		),
+	}
+	return loader.WithContext(base, loaders)
+}
+
+func TestUserResolver_LastSignInAt_ContextCancelledReturnsCancelled(t *testing.T) {
+	t.Parallel()
+
+	ctx := ctxWithLastSignInLoaderError(context.Background(), context.Canceled)
+	_, err := (&resolver.Resolver{}).User().LastSignInAt(ctx, &model.User{ID: "u-1"})
+	if !gqlerr.IsCode(err, gqlerr.CodeCancelled) {
+		t.Fatalf("want CANCELLED wire code for context.Canceled loader error, got %v", err)
+	}
+}
+
+func TestUserResolver_LastSignInAt_GenericLoaderErrorReturnsInternal(t *testing.T) {
+	t.Parallel()
+
+	ctx := ctxWithLastSignInLoaderError(context.Background(), errors.New("db down"))
+	_, err := (&resolver.Resolver{}).User().LastSignInAt(ctx, &model.User{ID: "u-1"})
+	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+		t.Fatalf("want INTERNAL wire code for a generic loader error, got %v", err)
 	}
 }

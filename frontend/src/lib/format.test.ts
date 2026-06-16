@@ -42,6 +42,13 @@ describe("formatDateTime", () => {
     expect(ja).not.toBe(formatDateTime(iso, "en-US"));
   });
 
+  it('accepts the app\'s bare locale tags ("ja"), as passed by useLocale()', () => {
+    // The admin row passes next-intl's bare "ja"/"en" tags, not "ja-JP".
+    const ja = formatDateTime(iso, "ja");
+    expect(ja).toMatch(/^2026/);
+    expect(ja).not.toBe(formatDateTime(iso, "en"));
+  });
+
   it("defaults to en-US when no locale is passed", () => {
     expect(formatDateTime(iso)).toMatch(/\d{1,2}:\d{2}/);
   });
