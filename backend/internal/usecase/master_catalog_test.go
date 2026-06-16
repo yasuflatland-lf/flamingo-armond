@@ -176,10 +176,10 @@ func TestNewMasterCatalogUsecase_NilRepoPanics(t *testing.T) {
 	NewMasterCatalogUsecase(nil, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
 }
 
-func TestNewMasterCatalogUsecase_NilCopyUCPanics(t *testing.T) {
+func TestNewMasterCatalogUsecase_NilDeckUCPanics(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
-			t.Fatal("expected panic on nil copyUC")
+			t.Fatal("expected panic on nil deckUC")
 		}
 	}()
 	NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, nil, newTestAdminGate(true), newTestLogger())
@@ -520,9 +520,12 @@ func TestResolveMasterCatalogPageSize_DefaultWhenAbsent(t *testing.T) {
 // ImportMaster
 // ---------------------------------------------------------------------------
 
-// mockCopyMasterToUserUC stubs the copy primitive (CopyMasterToUserUsecase) for ImportMaster tests.
+// mockCopyMasterToUserUC stubs the masterDeckUsecaseFacade for ImportMaster and
+// SeedDefaultStarters tests.
 type mockCopyMasterToUserUC struct {
-	fn func(ctx context.Context, masterID, ownerID string) (*domain.Cardgroup, error)
+	fn         func(ctx context.Context, masterID, ownerID string) (*domain.Cardgroup, error)
+	seedResult []*domain.Cardgroup
+	seedErr    error
 }
 
 func (m *mockCopyMasterToUserUC) CopyMasterToUser(ctx context.Context, masterID, ownerID string) (*domain.Cardgroup, error) {
@@ -533,6 +536,10 @@ func (m *mockCopyMasterToUserUC) CopyMasterToUser(ctx context.Context, masterID,
 		return nil, eris.New("mockCopyMasterToUserUC: fn not set")
 	}
 	return m.fn(ctx, masterID, ownerID)
+}
+
+func (m *mockCopyMasterToUserUC) SeedForNewUser(_ context.Context, _ string) ([]*domain.Cardgroup, error) {
+	return m.seedResult, m.seedErr
 }
 
 func TestImportMaster_Unauthenticated(t *testing.T) {
@@ -691,5 +698,61 @@ func TestListAdminConnection_AfterWithLast_Rejected(t *testing.T) {
 	var ve *ucerr.ValidationError
 	if !errors.As(err, &ve) {
 		t.Fatalf("want ValidationError for after+last, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SeedDefaultStarters
+// ---------------------------------------------------------------------------
+
+func TestSeedDefaultStarters_Unauthenticated_ReturnsErrUnauthenticated(t *testing.T) {
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	_, err := uc.SeedDefaultStarters(context.Background())
+	if !errors.Is(err, ucerr.ErrUnauthenticated) {
+		t.Fatalf("expected ErrUnauthenticated, got %v", err)
+	}
+}
+
+func TestSeedDefaultStarters_HappyPath_ReturnsSeededCardgroups(t *testing.T) {
+	want := []*domain.Cardgroup{{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1", Name: domain.CardgroupName("Starter")}}
+	deck := &mockCopyMasterToUserUC{seedResult: want}
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, deck, newTestAdminGate(true), newTestLogger())
+	got, err := uc.SeedDefaultStarters(authedCtx("user-1"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "cg-1" {
+		t.Fatalf("expected seeded cardgroup cg-1, got %+v", got)
+	}
+}
+
+func TestSeedDefaultStarters_NoDefaults_ReturnsEmpty(t *testing.T) {
+	deck := &mockCopyMasterToUserUC{seedResult: nil}
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, deck, newTestAdminGate(true), newTestLogger())
+	got, err := uc.SeedDefaultStarters(authedCtx("user-1"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected empty slice, got %+v", got)
+	}
+}
+
+func TestSeedDefaultStarters_InfraError_WrapsChain(t *testing.T) {
+	deck := &mockCopyMasterToUserUC{seedErr: eris.New("db down")}
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, deck, newTestAdminGate(true), newTestLogger())
+	_, err := uc.SeedDefaultStarters(authedCtx("user-1"))
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	assertInternalChain(t, err, "usecase: master catalog: seed default starters")
+}
+
+func TestSeedDefaultStarters_ContextCancelled_PassesThrough(t *testing.T) {
+	deck := &mockCopyMasterToUserUC{seedErr: context.Canceled}
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, deck, newTestAdminGate(true), newTestLogger())
+	_, err := uc.SeedDefaultStarters(authedCtx("user-1"))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
 	}
 }

@@ -120,7 +120,7 @@ func TestUserUsecase_Me(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			repo := &mockUserRepository{findResult: tc.findResult, findErr: tc.findErr}
-			uc := NewUserUsecase(repo, nil, nil, nil, newTestLogger())
+			uc := NewUserUsecase(repo, nil, nil, newTestLogger())
 
 			p, err := uc.Me(tc.ctx)
 
@@ -160,7 +160,7 @@ func TestUserUsecase_RolesFor(t *testing.T) {
 		t.Parallel()
 		roleRepo := &mockUserRolesRepository{roles: roles}
 		authChk := &mockAdminChecker{isAdmin: false}
-		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, nil, newTestLogger())
+		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, newTestLogger())
 
 		got, err := uc.RolesFor(authedCtx("u-self"), "u-self")
 
@@ -182,7 +182,7 @@ func TestUserUsecase_RolesFor(t *testing.T) {
 		t.Parallel()
 		roleRepo := &mockUserRolesRepository{roles: roles}
 		authChk := &mockAdminChecker{isAdmin: true}
-		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, nil, newTestLogger())
+		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, newTestLogger())
 
 		got, err := uc.RolesFor(authedCtx("admin-1"), "u-target")
 
@@ -204,7 +204,7 @@ func TestUserUsecase_RolesFor(t *testing.T) {
 		t.Parallel()
 		roleRepo := &mockUserRolesRepository{roles: roles}
 		authChk := &mockAdminChecker{isAdmin: false}
-		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, nil, newTestLogger())
+		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, newTestLogger())
 
 		_, err := uc.RolesFor(authedCtx("user-1"), "u-target")
 
@@ -218,7 +218,7 @@ func TestUserUsecase_RolesFor(t *testing.T) {
 		t.Parallel()
 		roleRepo := &mockUserRolesRepository{roles: roles}
 		authChk := &mockAdminChecker{isAdmin: true}
-		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, nil, newTestLogger())
+		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, newTestLogger())
 
 		_, err := uc.RolesFor(anonCtx(), "u-target")
 
@@ -232,7 +232,7 @@ func TestUserUsecase_RolesFor(t *testing.T) {
 		t.Parallel()
 		roleRepo := &mockUserRolesRepository{roles: roles}
 		authChk := &mockAdminChecker{err: errors.New("db down")}
-		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, nil, newTestLogger())
+		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, newTestLogger())
 
 		_, err := uc.RolesFor(authedCtx("admin-1"), "u-target")
 
@@ -243,7 +243,7 @@ func TestUserUsecase_RolesFor(t *testing.T) {
 		t.Parallel()
 		roleRepo := &mockUserRolesRepository{err: errors.New("roles db down")}
 		authChk := &mockAdminChecker{isAdmin: true}
-		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, nil, newTestLogger())
+		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, newTestLogger())
 
 		_, err := uc.RolesFor(authedCtx("admin-1"), "u-target")
 
@@ -399,7 +399,7 @@ func TestUserUsecase_UpdateUser(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			repo := &mockUserRepository{updateResult: tc.repoResult, updateErr: tc.repoErr}
-			uc := NewUserUsecase(repo, nil, nil, nil, newTestLogger())
+			uc := NewUserUsecase(repo, nil, nil, newTestLogger())
 
 			outcome, err := uc.UpdateUser(tc.ctx, tc.input)
 
@@ -473,7 +473,7 @@ func TestUserUsecase_UpdateUser_SuccessVariant(t *testing.T) {
 
 	returned := &domain.User{ID: "u1", DisplayName: dnPtr("Alice")}
 	repo := &mockUserRepository{updateResult: returned}
-	uc := NewUserUsecase(repo, nil, nil, nil, newTestLogger())
+	uc := NewUserUsecase(repo, nil, nil, newTestLogger())
 
 	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: "Alice"})
 
@@ -492,7 +492,7 @@ func TestUserUsecase_UpdateUser_ValidationVariant_DisplayName(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockUserRepository{}
-	uc := NewUserUsecase(repo, nil, nil, nil, newTestLogger())
+	uc := NewUserUsecase(repo, nil, nil, newTestLogger())
 
 	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: ""})
 
@@ -517,7 +517,7 @@ func TestUserUsecase_UpdateUser_ValidationVariant_Bio(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockUserRepository{}
-	uc := NewUserUsecase(repo, nil, nil, nil, newTestLogger())
+	uc := NewUserUsecase(repo, nil, nil, newTestLogger())
 
 	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{
 		DisplayName: "Alice",
@@ -545,7 +545,7 @@ func TestUserUsecase_UpdateUser_RepoError_InfraChannel(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockUserRepository{updateErr: errors.New("db: storage failure")}
-	uc := NewUserUsecase(repo, nil, nil, nil, newTestLogger())
+	uc := NewUserUsecase(repo, nil, nil, newTestLogger())
 
 	_, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: "Alice"})
 
@@ -564,7 +564,7 @@ func TestUserUsecase_DeleteMyAccount(t *testing.T) {
 
 	t.Run("unauthenticated", func(t *testing.T) {
 		t.Parallel()
-		uc := NewUserUsecase(&mockUserRepository{}, &mockUserRolesRepository{}, &mockAdminChecker{}, nil, newTestLogger())
+		uc := NewUserUsecase(&mockUserRepository{}, &mockUserRolesRepository{}, &mockAdminChecker{}, newTestLogger())
 		assertUnauthenticated(t, uc.DeleteMyAccount(anonCtx()))
 	})
 
@@ -573,7 +573,7 @@ func TestUserUsecase_DeleteMyAccount(t *testing.T) {
 		repo := &mockUserRepository{}
 		// adminCount is a blocking value to prove it is never consulted for non-admins.
 		roles := &mockUserRolesRepository{adminCount: 1}
-		uc := NewUserUsecase(repo, roles, &mockAdminChecker{isAdmin: false}, nil, newTestLogger())
+		uc := NewUserUsecase(repo, roles, &mockAdminChecker{isAdmin: false}, newTestLogger())
 
 		if err := uc.DeleteMyAccount(authedCtx(caller)); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -587,7 +587,7 @@ func TestUserUsecase_DeleteMyAccount(t *testing.T) {
 		t.Parallel()
 		repo := &mockUserRepository{}
 		roles := &mockUserRolesRepository{adminCount: 2}
-		uc := NewUserUsecase(repo, roles, &mockAdminChecker{isAdmin: true}, nil, newTestLogger())
+		uc := NewUserUsecase(repo, roles, &mockAdminChecker{isAdmin: true}, newTestLogger())
 
 		if err := uc.DeleteMyAccount(authedCtx(caller)); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -601,7 +601,7 @@ func TestUserUsecase_DeleteMyAccount(t *testing.T) {
 		t.Parallel()
 		repo := &mockUserRepository{}
 		roles := &mockUserRolesRepository{adminCount: 1}
-		uc := NewUserUsecase(repo, roles, &mockAdminChecker{isAdmin: true}, nil, newTestLogger())
+		uc := NewUserUsecase(repo, roles, &mockAdminChecker{isAdmin: true}, newTestLogger())
 
 		err := uc.DeleteMyAccount(authedCtx(caller))
 
@@ -615,7 +615,7 @@ func TestUserUsecase_DeleteMyAccount(t *testing.T) {
 		t.Parallel()
 		repo := &mockUserRepository{deleteAuthErr: repository.ErrNotFound}
 		roles := &mockUserRolesRepository{}
-		uc := NewUserUsecase(repo, roles, &mockAdminChecker{isAdmin: false}, nil, newTestLogger())
+		uc := NewUserUsecase(repo, roles, &mockAdminChecker{isAdmin: false}, newTestLogger())
 
 		if err := uc.DeleteMyAccount(authedCtx(caller)); err != nil {
 			t.Fatalf("expected nil (idempotent), got %v", err)
@@ -626,121 +626,25 @@ func TestUserUsecase_DeleteMyAccount(t *testing.T) {
 		t.Parallel()
 		repo := &mockUserRepository{deleteAuthErr: errors.New("boom")}
 		roles := &mockUserRolesRepository{}
-		uc := NewUserUsecase(repo, roles, &mockAdminChecker{isAdmin: false}, nil, newTestLogger())
+		uc := NewUserUsecase(repo, roles, &mockAdminChecker{isAdmin: false}, newTestLogger())
 
 		assertInternalChain(t, uc.DeleteMyAccount(authedCtx(caller)), "usecase: user: delete my account")
 	})
 
 	t.Run("context cancellation propagates", func(t *testing.T) {
 		t.Parallel()
-		uc := NewUserUsecase(&mockUserRepository{}, &mockUserRolesRepository{}, &mockAdminChecker{err: context.Canceled}, nil, newTestLogger())
+		uc := NewUserUsecase(&mockUserRepository{}, &mockUserRolesRepository{}, &mockAdminChecker{err: context.Canceled}, newTestLogger())
 		assertCancelled(t, uc.DeleteMyAccount(authedCtx(caller)))
 	})
 
 	t.Run("missing guard deps fail safe", func(t *testing.T) {
 		t.Parallel()
 		repo := &mockUserRepository{}
-		uc := NewUserUsecase(repo, nil, &mockAdminChecker{}, nil, newTestLogger())
+		uc := NewUserUsecase(repo, nil, &mockAdminChecker{}, newTestLogger())
 
 		assertInternalChain(t, uc.DeleteMyAccount(authedCtx(caller)), "admin guard deps not configured")
 		if repo.deleteAuthCalls != 0 {
 			t.Fatalf("DeleteAuthUser must not run when guard deps are missing, got %d calls", repo.deleteAuthCalls)
 		}
 	})
-}
-
-// --- seed-on-onboarding (UpdateUser → SeedForNewUser) ----------------------
-
-// mockSeedUC records SeedForNewUser invocations so UpdateUser tests can assert
-// that the post-patch seed fires exactly once with the caller's sub.
-type mockSeedUC struct {
-	calls   int
-	lastID  string
-	returns error
-}
-
-func (m *mockSeedUC) SeedForNewUser(_ context.Context, userID string) error {
-	m.calls++
-	m.lastID = userID
-	return m.returns
-}
-
-func TestUserUsecase_UpdateUser_SeedsOnSuccess(t *testing.T) {
-	t.Parallel()
-
-	returned := &domain.User{ID: "u1", DisplayName: dnPtr("Alice")}
-	repo := &mockUserRepository{updateResult: returned}
-	seed := &mockSeedUC{}
-	uc := NewUserUsecase(repo, nil, nil, seed, newTestLogger())
-
-	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: "Alice"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if outcome.User == nil {
-		t.Fatal("expected non-nil User on success")
-	}
-	if seed.calls != 1 {
-		t.Fatalf("expected SeedForNewUser to run exactly once, got %d", seed.calls)
-	}
-	if seed.lastID != "u1" {
-		t.Fatalf("expected SeedForNewUser called with caller sub %q, got %q", "u1", seed.lastID)
-	}
-}
-
-func TestUserUsecase_UpdateUser_SeedError_DoesNotFailMutation(t *testing.T) {
-	t.Parallel()
-
-	returned := &domain.User{ID: "u1", DisplayName: dnPtr("Alice")}
-	repo := &mockUserRepository{updateResult: returned}
-	seed := &mockSeedUC{returns: errors.New("seed exploded")}
-	uc := NewUserUsecase(repo, nil, nil, seed, newTestLogger())
-
-	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: "Alice"})
-	if err != nil {
-		t.Fatalf("seed failure must not surface on the mutation, got: %v", err)
-	}
-	if outcome.User == nil {
-		t.Fatal("expected non-nil User even when the seed fails")
-	}
-	if seed.calls != 1 {
-		t.Fatalf("expected SeedForNewUser to run once, got %d", seed.calls)
-	}
-}
-
-func TestUserUsecase_UpdateUser_SeedSkippedOnValidationFailure(t *testing.T) {
-	t.Parallel()
-
-	repo := &mockUserRepository{}
-	seed := &mockSeedUC{}
-	uc := NewUserUsecase(repo, nil, nil, seed, newTestLogger())
-
-	// An empty display name fails validation before the profile patch commits,
-	// so the seed must not run.
-	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: ""})
-	if err != nil {
-		t.Fatalf("validation failures go to the outcome, not the error channel: %v", err)
-	}
-	if outcome.Validation == nil {
-		t.Fatal("expected validation outcome for empty display name")
-	}
-	if seed.calls != 0 {
-		t.Fatalf("seed must not run when validation fails, got %d calls", seed.calls)
-	}
-}
-
-func TestUserUsecase_UpdateUser_NilSeed_NoPanic(t *testing.T) {
-	t.Parallel()
-
-	returned := &domain.User{ID: "u1", DisplayName: dnPtr("Alice")}
-	repo := &mockUserRepository{updateResult: returned}
-	uc := NewUserUsecase(repo, nil, nil, nil, newTestLogger())
-
-	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: "Alice"})
-	if err != nil {
-		t.Fatalf("unexpected error with nil seedUC: %v", err)
-	}
-	if outcome.User == nil {
-		t.Fatal("expected non-nil User on success with nil seedUC")
-	}
 }

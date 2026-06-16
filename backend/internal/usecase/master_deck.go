@@ -44,10 +44,11 @@ type masterDeckUserCardgroupRepo interface {
 }
 
 // SeedForNewUserUsecase auto-provisions the published default-starter master
-// decks into a newly-onboarded user's cardgroups. Wired into UserUsecase as an
-// optional dependency: a nil seedUC disables the behaviour.
+// decks into a newly-onboarded user's cardgroups. Returns the cardgroups created
+// by this call (empty when no default starters exist, or when the idempotency
+// guard short-circuits because the caller already owns a cardgroup).
 type SeedForNewUserUsecase interface {
-	SeedForNewUser(ctx context.Context, userID string) error
+	SeedForNewUser(ctx context.Context, userID string) ([]*domain.Cardgroup, error)
 }
 
 // CopyMasterToUserUsecase snapshots a single master deck into a user-owned
@@ -177,8 +178,11 @@ func (u *masterDeckUsecase) CopyMasterToUser(ctx context.Context, masterID, owne
 // transaction-scoped advisory lock keyed on the user id so two concurrent seed
 // attempts (e.g. a double onboarding submit) serialize. The idempotency guard
 // short-circuits when the user already owns at least one cardgroup, so a retry
-// after a partially-applied previous attempt does not double-seed.
-func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) error {
+// after a partially-applied previous attempt does not double-seed. Returns the
+// cardgroups created by this call (empty when no defaults exist or the guard
+// short-circuits).
+func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) ([]*domain.Cardgroup, error) {
+	var seeded []*domain.Cardgroup
 	if err := u.tx(ctx, func(tx *gorm.DB) error {
 		// hashtext returns int4; pg_advisory_xact_lock(0, hashtext(userID)) keys
 		// the lock on the user within a fixed namespace so unrelated callers do
@@ -204,18 +208,20 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) e
 			// The helper returns its error bare; the outer tx-return wrap below
 			// applies the single "seed for new user" prefix, so wrapping here
 			// would duplicate that frame in the error chain.
-			if _, err := u.copyMasterToUserTx(ctx, tx, m.ID, userID); err != nil {
+			cg, err := u.copyMasterToUserTx(ctx, tx, m.ID, userID)
+			if err != nil {
 				return err
 			}
+			seeded = append(seeded, cg)
 		}
 		return nil
 	}); err != nil {
 		if isContextDone(err) {
-			return err
+			return nil, err
 		}
-		return eris.Wrap(err, "usecase: master deck: seed for new user")
+		return nil, eris.Wrap(err, "usecase: master deck: seed for new user")
 	}
-	return nil
+	return seeded, nil
 }
 
 // copyMasterToUserTx is the shared tx-aware copy core used by both

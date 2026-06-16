@@ -41,6 +41,9 @@ type stubMasterCatalogUC struct {
 	importOut usecase.ImportMasterOutcome
 	importErr error
 	gotImport string
+
+	seedOut []*domain.Cardgroup
+	seedErr error
 }
 
 func (s *stubMasterCatalogUC) ListPublishedConnection(
@@ -75,6 +78,10 @@ func (s *stubMasterCatalogUC) DeleteMaster(_ context.Context, _ string) error { 
 func (s *stubMasterCatalogUC) ImportMaster(_ context.Context, masterID string) (usecase.ImportMasterOutcome, error) {
 	s.gotImport = masterID
 	return s.importOut, s.importErr
+}
+
+func (s *stubMasterCatalogUC) SeedDefaultStarters(_ context.Context) ([]*domain.Cardgroup, error) {
+	return s.seedOut, s.seedErr
 }
 
 // TestQueryResolver_MasterCatalog_Success verifies the resolver maps the model
