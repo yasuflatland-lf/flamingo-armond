@@ -345,6 +345,8 @@
     "noName": "名前なし",
     "editAriaLabel": "{name}を編集",
     "userAvatarAlt": "ユーザーアバター",
+    "lastSignInLabel": "最終ログイン",
+    "neverSignedIn": "未ログイン",
     "forbidden": "権限がありません。",
     "unauthenticated": "セッションの有効期限が切れました。再度ログインしてください。",
     "unexpectedError": "予期しないエラーが発生しました。もう一度お試しください。",

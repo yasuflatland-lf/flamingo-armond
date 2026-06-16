@@ -46,6 +46,7 @@ const cardgroupFixture: Cardgroup = {
     displayName: "Admin User",
     bio: null,
     avatarUrl: null,
+    lastSignInAt: null,
     lastViewedCardgroup: null,
     learnDisplayMode: LearnDisplayMode.FlipToReveal,
     roles: [],

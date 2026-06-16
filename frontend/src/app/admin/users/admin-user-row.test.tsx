@@ -21,6 +21,7 @@ function makeUser(overrides: Partial<AdminUserListItem> = {}): AdminUserListItem
     displayName: "Alice",
     bio: "bio text",
     avatarUrl: null,
+    lastSignInAt: null,
     roles: [{ id: "r-admin", name: "admin" }],
     ...overrides,
   };
@@ -44,5 +45,30 @@ describe("AdminUserRow", () => {
     await user.click(screen.getByRole("button", { name: /edit alice/i }));
 
     expect(onEdit).toHaveBeenCalledWith("u-1");
+  });
+
+  it("renders the formatted last sign-in datetime", () => {
+    renderWithIntl(
+      <ul>
+        <AdminUserRow
+          user={makeUser({ lastSignInAt: "2026-06-15T10:30:00.000Z" })}
+          onEdit={vi.fn()}
+        />
+      </ul>,
+    );
+
+    const line = screen.getByTestId("admin-user-last-sign-in");
+    expect(line).toHaveTextContent(/Last sign-in/);
+    expect(line).toHaveTextContent(/2026/);
+  });
+
+  it("renders the never-signed-in placeholder when lastSignInAt is null", () => {
+    renderWithIntl(
+      <ul>
+        <AdminUserRow user={makeUser({ lastSignInAt: null })} onEdit={vi.fn()} />
+      </ul>,
+    );
+
+    expect(screen.getByTestId("admin-user-last-sign-in")).toHaveTextContent(/Never signed in/);
   });
 });

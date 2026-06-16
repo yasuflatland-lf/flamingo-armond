@@ -345,6 +345,8 @@
     "noName": "No name",
     "editAriaLabel": "Edit {name}",
     "userAvatarAlt": "User avatar",
+    "lastSignInLabel": "Last sign-in",
+    "neverSignedIn": "Never signed in",
     "forbidden": "You do not have permission.",
     "unauthenticated": "Your session has expired. Sign in again.",
     "unexpectedError": "An unexpected error occurred. Please try again.",

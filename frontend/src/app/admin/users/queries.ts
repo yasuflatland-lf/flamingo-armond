@@ -9,6 +9,7 @@ export const AdminUserFieldsFragment = graphql(`
     displayName
     bio
     avatarUrl
+    lastSignInAt
   }
 `);
 

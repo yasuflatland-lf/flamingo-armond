@@ -70,6 +70,7 @@ function UserRow({ edge, onEdit }: { edge: Edge; onEdit: (id: string) => void })
     displayName: user.displayName ?? null,
     bio: user.bio ?? null,
     avatarUrl: user.avatarUrl ?? null,
+    lastSignInAt: user.lastSignInAt ?? null,
     roles: roles.map((role) => ({ id: role.id, name: role.name })),
   };
 
@@ -179,6 +180,9 @@ export function AdminUsersClient() {
         displayName: editUserFields.displayName ?? null,
         bio: editUserFields.bio ?? null,
         avatarUrl: editUserFields.avatarUrl ?? null,
+        // The edit sheet does not display last sign-in; the list path is the
+        // only consumer of AdminUserListItem.lastSignInAt.
+        lastSignInAt: null,
         roles: editUserRoles.map((role) => ({ id: role.id, name: role.name })),
       }
     : null;

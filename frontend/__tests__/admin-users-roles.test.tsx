@@ -37,6 +37,7 @@ function makeUser(overrides: Partial<AdminUserListItem> = {}): AdminUserListItem
     displayName: "User 1",
     bio: null,
     avatarUrl: null,
+    lastSignInAt: null,
     roles: [GENERAL_ROLE],
     ...overrides,
   };
