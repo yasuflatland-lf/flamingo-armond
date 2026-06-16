@@ -88,7 +88,7 @@
          <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="master_cardgroup_id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
             <parent column="id" foreignKey="master_cards_master_cardgroup_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="master_cardgroups"/>
          </column>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="2" name="front" nullable="false" remarks="" size="2147483647" type="text" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="2" name="front" nullable="false" remarks="" size="2147483647" type="citext" typeCode="1111"/>
          <column autoUpdated="false" defaultValue="null" digits="0" id="3" name="back" nullable="false" remarks="" size="2147483647" type="text" typeCode="12"/>
          <column autoUpdated="false" defaultValue="0" digits="0" id="4" name="position" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
          <column autoUpdated="false" defaultValue="now()" digits="6" id="5" name="created_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
@@ -262,6 +262,182 @@
       </table>
    </tables>
    <routines>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext(boolean)" returnType="citext" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="internal"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="boolean"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext(character)" returnType="citext" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="internal"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="character"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext(inet)" returnType="citext" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="internal"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="inet"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext_cmp(citext, citext)" returnType="integer" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="c"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext_eq(citext, citext)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="c"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext_ge(citext, citext)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="c"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext_gt(citext, citext)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="c"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext_hash(citext)" returnType="integer" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="c"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext_hash_extended(citext, bigint)" returnType="bigint" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="c"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="bigint"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext_larger(citext, citext)" returnType="citext" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="c"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext_le(citext, citext)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="c"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext_lt(citext, citext)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="c"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext_ne(citext, citext)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="c"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext_pattern_cmp(citext, citext)" returnType="integer" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="c"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext_pattern_ge(citext, citext)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="c"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext_pattern_gt(citext, citext)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="c"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext_pattern_le(citext, citext)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="c"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext_pattern_lt(citext, citext)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="c"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citext_smaller(citext, citext)" returnType="citext" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="c"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citextin(cstring)" returnType="citext" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="internal"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="cstring"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="citextout(citext)" returnType="cstring" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="internal"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="false" name="citextrecv(internal)" returnType="citext" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="internal"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="internal"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="false" name="citextsend(citext)" returnType="bytea" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="internal"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
       <routine dataAccess="MODIFIES" deterministic="false" name="custom_access_token_hook(event jsonb)" returnType="jsonb" securityType="DEFINER" type="FUNCTION">
          <comment/>
          <definition language="plpgsql"><![CDATA[Redacted, use --include-routine-definition]]></definition>
@@ -274,6 +450,116 @@
          <definition language="plpgsql"><![CDATA[Redacted, use --include-routine-definition]]></definition>
          <parameters>
             <parameter mode="IN"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="max(citext)" returnType="citext" securityType="INVOKER" type="AGGREGATE">
+         <comment/>
+         <definition language="internal"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="min(citext)" returnType="citext" securityType="INVOKER" type="AGGREGATE">
+         <comment/>
+         <definition language="internal"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="regexp_match(string citext, pattern citext)" returnType="text[]" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="sql"/>
+         <parameters>
+            <parameter mode="IN" name="string" type="citext"/>
+            <parameter mode="IN" name="pattern" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="regexp_match(string citext, pattern citext, flags text)" returnType="text[]" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="sql"/>
+         <parameters>
+            <parameter mode="IN" name="string" type="citext"/>
+            <parameter mode="IN" name="pattern" type="citext"/>
+            <parameter mode="IN" name="flags" type="text"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="regexp_matches(string citext, pattern citext)" returnType="SETOF text[]" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="sql"/>
+         <parameters>
+            <parameter mode="IN" name="string" type="citext"/>
+            <parameter mode="IN" name="pattern" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="regexp_matches(string citext, pattern citext, flags text)" returnType="SETOF text[]" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="sql"/>
+         <parameters>
+            <parameter mode="IN" name="string" type="citext"/>
+            <parameter mode="IN" name="pattern" type="citext"/>
+            <parameter mode="IN" name="flags" type="text"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="regexp_replace(string citext, pattern citext, replacement text)" returnType="text" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="sql"/>
+         <parameters>
+            <parameter mode="IN" name="string" type="citext"/>
+            <parameter mode="IN" name="pattern" type="citext"/>
+            <parameter mode="IN" name="replacement" type="text"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="regexp_replace(string citext, pattern citext, replacement text, flags text)" returnType="text" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="sql"/>
+         <parameters>
+            <parameter mode="IN" name="string" type="citext"/>
+            <parameter mode="IN" name="pattern" type="citext"/>
+            <parameter mode="IN" name="replacement" type="text"/>
+            <parameter mode="IN" name="flags" type="text"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="regexp_split_to_array(string citext, pattern citext)" returnType="text[]" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="sql"/>
+         <parameters>
+            <parameter mode="IN" name="string" type="citext"/>
+            <parameter mode="IN" name="pattern" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="regexp_split_to_array(string citext, pattern citext, flags text)" returnType="text[]" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="sql"/>
+         <parameters>
+            <parameter mode="IN" name="string" type="citext"/>
+            <parameter mode="IN" name="pattern" type="citext"/>
+            <parameter mode="IN" name="flags" type="text"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="regexp_split_to_table(string citext, pattern citext)" returnType="SETOF text" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="sql"/>
+         <parameters>
+            <parameter mode="IN" name="string" type="citext"/>
+            <parameter mode="IN" name="pattern" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="regexp_split_to_table(string citext, pattern citext, flags text)" returnType="SETOF text" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="sql"/>
+         <parameters>
+            <parameter mode="IN" name="string" type="citext"/>
+            <parameter mode="IN" name="pattern" type="citext"/>
+            <parameter mode="IN" name="flags" type="text"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="replace(citext, citext, citext)" returnType="text" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="sql"/>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
          </parameters>
       </routine>
       <routine dataAccess="MODIFIES" deterministic="false" name="set_cardgroups_updated_at()" returnType="trigger" securityType="INVOKER" type="FUNCTION">
@@ -316,6 +602,96 @@
          <definition language="plpgsql"><![CDATA[Redacted, use --include-routine-definition]]></definition>
          <parameters>
             <parameter mode="IN"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="split_part(citext, citext, integer)" returnType="text" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="sql"/>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="integer"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="strpos(citext, citext)" returnType="integer" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="sql"/>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="texticlike(citext, citext)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="internal"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="texticlike(citext, text)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="internal"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="text"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="texticnlike(citext, citext)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="internal"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="texticnlike(citext, text)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="internal"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="text"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="texticregexeq(citext, citext)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="internal"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="texticregexeq(citext, text)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="internal"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="text"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="texticregexne(citext, citext)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="internal"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="texticregexne(citext, text)" returnType="boolean" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="internal"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="text"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="true" name="translate(citext, citext, text)" returnType="text" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="sql"/>
+         <parameters>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="citext"/>
+            <parameter mode="IN" type="text"/>
          </parameters>
       </routine>
    </routines>
