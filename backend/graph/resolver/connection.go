@@ -90,6 +90,26 @@ func toMasterCatalogConnectionModel(ctx context.Context, out *usecase.MasterCata
 	}
 }
 
+func toMasterCardConnectionModel(ctx context.Context, out *usecase.MasterCardConnectionOutput) *model.MasterCardConnection {
+	if out == nil {
+		return &model.MasterCardConnection{Edges: []*model.MasterCardEdge{}, PageInfo: &model.PageInfo{}}
+	}
+	edges := make([]*model.MasterCardEdge, 0, len(out.Cards))
+	for _, c := range out.Cards {
+		cm := toMasterCardModel(c)
+		if cm == nil {
+			slog.WarnContext(ctx, "toMasterCardConnectionModel: skipping nil entry")
+			continue
+		}
+		edges = append(edges, &model.MasterCardEdge{Cursor: cursor.Encode(c.ID), Node: cm})
+	}
+	return &model.MasterCardConnection{
+		Edges:      edges,
+		PageInfo:   buildPageInfo(out.HasNext, out.HasPrev, encodeCursor(out.StartCur), encodeCursor(out.EndCur)),
+		TotalCount: int(out.TotalCount),
+	}
+}
+
 func toUserConnectionModel(ctx context.Context, uc *usecase.AdminUserConnection) *model.UserConnection {
 	if uc == nil {
 		return &model.UserConnection{Edges: []*model.UserEdge{}, PageInfo: &model.PageInfo{}}

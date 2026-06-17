@@ -18,7 +18,7 @@ func newCEFRResolver(t *testing.T) *resolver.Resolver {
 	t.Helper()
 	classifier := service.NewCEFRClassifier(cefr.NewWordList())
 	cefrUC := usecase.NewCEFRUsecase(classifier)
-	return resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, cefrUC, nil)
+	return resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, cefrUC, nil, nil)
 }
 
 func TestCardResolver_CefrLevel_KnownWord(t *testing.T) {

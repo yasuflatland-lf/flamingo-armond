@@ -7,16 +7,34 @@ package resolver
 
 import (
 	"backend/graph/model"
+	"backend/internal/gqlerr"
+	"backend/internal/usecase"
 	"context"
-	"fmt"
 )
 
 // AdminMaster is the resolver for the adminMaster field.
 func (r *queryResolver) AdminMaster(ctx context.Context, id string) (*model.MasterCardgroup, error) {
-	panic(fmt.Errorf("not implemented: AdminMaster - adminMaster"))
+	out, err := r.MasterCardUC.AdminMaster(ctx, id)
+	if err != nil {
+		return nil, gqlerr.FromUsecaseError(ctx, err)
+	}
+	return toMasterCardgroupModelFromParts(out.Master, int(out.CardCount)), nil
 }
 
 // AdminMasterCardsConnection is the resolver for the adminMasterCardsConnection field.
 func (r *queryResolver) AdminMasterCardsConnection(ctx context.Context, masterCardgroupID string, first *int, after *string, last *int, before *string, search *string, orderBy *model.MasterCardOrderBy, orderDirection *model.SortOrder) (*model.MasterCardConnection, error) {
-	panic(fmt.Errorf("not implemented: AdminMasterCardsConnection - adminMasterCardsConnection"))
+	out, err := r.MasterCardUC.ListMasterCards(ctx, usecase.MasterCardConnectionInput{
+		MasterCardgroupID: masterCardgroupID,
+		First:             first,
+		Last:              last,
+		After:             after,
+		Before:            before,
+		Search:            search,
+		OrderBy:           toUsecaseMasterCardOrderBy(orderBy),
+		OrderDirection:    toUsecaseSortOrder(orderDirection),
+	})
+	if err != nil {
+		return nil, gqlerr.FromUsecaseError(ctx, err)
+	}
+	return toMasterCardConnectionModel(ctx, out), nil
 }

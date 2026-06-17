@@ -109,6 +109,21 @@ func toCardModel(card *domain.Card) *model.Card {
 	}
 }
 
+func toMasterCardModel(card *domain.MasterCard) *model.MasterCard {
+	if card == nil {
+		return nil
+	}
+	return &model.MasterCard{
+		ID:                card.ID,
+		MasterCardgroupID: card.MasterCardgroupID,
+		Front:             string(card.Front),
+		Back:              string(card.Back),
+		Position:          card.Position,
+		CreatedAt:         card.CreatedAt,
+		UpdatedAt:         card.UpdatedAt,
+	}
+}
+
 func toModelUserCardState(ucs *domain.UserCardFSRS) *model.UserCardState {
 	if ucs == nil {
 		return nil
@@ -227,6 +242,14 @@ func toUsecaseMasterCatalogOrderBy(o *model.MasterCatalogOrderBy) *usecase.Maste
 		return nil
 	}
 	v := usecase.MasterCatalogOrderBy(*o)
+	return &v
+}
+
+func toUsecaseMasterCardOrderBy(o *model.MasterCardOrderBy) *usecase.MasterCardOrderBy {
+	if o == nil {
+		return nil
+	}
+	v := usecase.MasterCardOrderBy(*o)
 	return &v
 }
 

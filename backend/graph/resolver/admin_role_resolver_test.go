@@ -51,7 +51,7 @@ func (m *mockAdminRoleUsecase) Delete(_ context.Context, _ string) error {
 // AdminRoleUsecase. Other usecase fields are nil — only admin-role resolvers
 // are exercised here.
 func newAdminRoleSrv(roleUC usecase.AdminRoleUsecase) *handler.Server {
-	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, roleUC, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, roleUC, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv

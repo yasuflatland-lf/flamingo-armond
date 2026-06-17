@@ -116,7 +116,7 @@ func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil, nil), loaderDeps{}, ping.New(nil, "test-token"), nil, serverConfigFromEnv(slog.Default()).introspectionEnabled))
+	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil, nil), loaderDeps{}, ping.New(nil, "test-token"), nil, serverConfigFromEnv(slog.Default()).introspectionEnabled))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -624,7 +624,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
-	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil, nil), loaderDeps{
+	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil, nil), loaderDeps{
 		user:           userRepo,
 		role:           roleRepo,
 		userRole:       userRoleRepo,
@@ -898,7 +898,7 @@ func TestComplexityLimit_Rejects(t *testing.T) {
 
 func newIntrospectionTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newGraphQLServer(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), serverConfigFromEnv(slog.Default()).introspectionEnabled))
+	ts := httptest.NewServer(newGraphQLServer(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), serverConfigFromEnv(slog.Default()).introspectionEnabled))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -1831,7 +1831,7 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 	lastViewedUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	e := newRouter(
-		resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, lastViewedUC, nil, nil, nil, nil),
+		resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, lastViewedUC, nil, nil, nil, nil, nil),
 		mw,
 		auth.NewSuperUserPromoter(nil, "", nil, nil, nil),
 		loaderDeps{
@@ -2606,7 +2606,7 @@ type panicResolverRoot struct {
 }
 
 func newPanicResolverRoot() *panicResolverRoot {
-	return &panicResolverRoot{inner: resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)}
+	return &panicResolverRoot{inner: resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)}
 }
 
 func (p *panicResolverRoot) Card() generated.CardResolver           { return p.inner.Card() }
