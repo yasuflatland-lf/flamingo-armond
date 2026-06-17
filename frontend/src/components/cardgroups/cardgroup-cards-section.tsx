@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Play } from "lucide-react";
+import { ChevronDown, Import, Play, Plus } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
@@ -93,11 +93,16 @@ export function CardgroupCardsSection({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={onAddCard}>{t("addACard")}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={onAddCard} className="gap-2">
+                <Plus aria-hidden="true" className="h-4 w-4" />
+                {t("addACard")}
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={onBatchImport}
                 data-testid="cardgroup-batch-import-menuitem"
+                className="gap-2"
               >
+                <Import aria-hidden="true" className="h-4 w-4" />
                 {t("batchImport")}
               </DropdownMenuItem>
             </DropdownMenuContent>
