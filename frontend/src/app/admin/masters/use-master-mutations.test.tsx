@@ -88,7 +88,7 @@ describe("useMasterMutations.createMaster", () => {
           data: {
             adminCreateMasterCardgroup: {
               __typename: "CreateMasterCardgroupSuccess",
-              master: masterNode("m-1"),
+              master: masterNode("m-created-1"),
             },
           },
         },
@@ -101,11 +101,11 @@ describe("useMasterMutations.createMaster", () => {
       outcome = await result.current.createMaster(VALUES);
     });
 
-    expect(outcome).toEqual({ status: "success" });
+    expect(outcome).toEqual({ status: "success", id: "m-created-1" });
     const conn = readConnection(cache);
     expect(conn?.adminMasters.totalCount).toBe(1);
     expect(conn?.adminMasters.edges).toHaveLength(1);
-    expect(conn?.adminMasters.edges.at(0)?.node.id).toBe("m-1");
+    expect(conn?.adminMasters.edges.at(0)?.node.id).toBe("m-created-1");
   });
 
   it("prepends onto a warm-cache connection and bumps totalCount", async () => {
