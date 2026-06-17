@@ -97,15 +97,15 @@ extend type Mutation {
   Returns `InputValidationError` when a provided field is empty or oversized.
   """
   adminUpdateMasterCard(id: ID!, input: UpdateMasterCardInput!): UpdateMasterCardResult!
-  """Delete a master card by ID. Admin-only. Returns true when a row was deleted."""
+  """Delete a master card by ID. Admin-only. Returns true on success. A missing id is a BAD_USER_INPUT error."""
   adminDeleteMasterCard(id: ID!): Boolean!
   """Bulk-delete master cards by ID. Admin-only. Returns the number of rows deleted."""
   adminDeleteMasterCards(ids: [ID!]!): Int!
   """
   Persist parsed cards into a master deck. Admin-only. Caps payload at 5,000 parsed rows;
-  larger payloads return BAD_USER_INPUT. Conflict key is (master_cardgroup_id, front);
-  conflicting rows have their `back` text updated, others are inserted. Per-line parse errors
-  are returned in `ImportCardsPayload.errors`.
+  larger payloads return BAD_USER_INPUT. Conflict key is (master_cardgroup_id, front) and is
+  case-insensitive (citext); conflicting rows have their `back` text and `position` updated,
+  others are inserted. Per-line parse errors are returned in `ImportCardsPayload.errors`.
   """
   adminImportMasterCards(input: ImportMasterCardsInput!): ImportCardsPayload!
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/rotisserie/eris"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -140,6 +141,28 @@ func TestAdminUpdateMasterCard_WrapsForbidden(t *testing.T) {
 	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
 }
 
+func TestAdminUpdateMasterCard_WrapsValidation(t *testing.T) {
+	t.Parallel()
+	stub := &stubMasterCardUC{updateErr: ucerr.NewValidationError("id", "master card not found")}
+	mr := &mutationResolver{&Resolver{MasterCardUC: stub}}
+
+	front := "f"
+	_, err := mr.AdminUpdateMasterCard(context.Background(), "missing", model.UpdateMasterCardInput{Front: &front})
+	require.Error(t, err)
+	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeBadUserInput), "want BAD_USER_INPUT wire code")
+}
+
+func TestAdminUpdateMasterCard_WrapsInternal(t *testing.T) {
+	t.Parallel()
+	stub := &stubMasterCardUC{updateErr: eris.New("usecase: master card: update: db timeout")}
+	mr := &mutationResolver{&Resolver{MasterCardUC: stub}}
+
+	front := "f"
+	_, err := mr.AdminUpdateMasterCard(context.Background(), "id-1", model.UpdateMasterCardInput{Front: &front})
+	require.Error(t, err)
+	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
+}
+
 func TestAdminUpdateMasterCard_NoVariantIsInternal(t *testing.T) {
 	t.Parallel()
 	stub := &stubMasterCardUC{updateOut: usecase.UpdateMasterCardOutcome{}}
@@ -175,6 +198,28 @@ func TestAdminDeleteMasterCard_WrapsValidation(t *testing.T) {
 	require.Error(t, err)
 	assert.False(t, got)
 	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeBadUserInput), "want BAD_USER_INPUT wire code")
+}
+
+func TestAdminDeleteMasterCard_WrapsForbidden(t *testing.T) {
+	t.Parallel()
+	stub := &stubMasterCardUC{deleteErr: ucerr.NewForbiddenError("admin only")}
+	mr := &mutationResolver{&Resolver{MasterCardUC: stub}}
+
+	got, err := mr.AdminDeleteMasterCard(context.Background(), "id-1")
+	require.Error(t, err)
+	assert.False(t, got)
+	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
+}
+
+func TestAdminDeleteMasterCard_WrapsInternal(t *testing.T) {
+	t.Parallel()
+	stub := &stubMasterCardUC{deleteErr: eris.New("usecase: master card: delete: db timeout")}
+	mr := &mutationResolver{&Resolver{MasterCardUC: stub}}
+
+	got, err := mr.AdminDeleteMasterCard(context.Background(), "id-1")
+	require.Error(t, err)
+	assert.False(t, got)
+	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
 }
 
 func TestAdminDeleteMasterCards_Success(t *testing.T) {

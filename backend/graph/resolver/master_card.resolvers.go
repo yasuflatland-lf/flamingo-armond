@@ -46,8 +46,10 @@ func (r *mutationResolver) AdminCreateMasterCard(ctx context.Context, input mode
 // AdminUpdateMasterCard is the resolver for the adminUpdateMasterCard field.
 //
 // Returns a union: `model.UpdateMasterCardSuccess` on the happy path, or
-// `model.InputValidationError` when front/back fails validation. Validation
-// failures are "errors as data" — the error return is reserved for auth and
+// `model.InputValidationError` when a supplied front/back fails content
+// validation (empty / oversized). Those field-content failures are "errors as
+// data" via the union variant. A missing id surfaces as a BAD_USER_INPUT
+// GraphQL error through the second return value, alongside auth and
 // infrastructure failures.
 func (r *mutationResolver) AdminUpdateMasterCard(ctx context.Context, id string, input model.UpdateMasterCardInput) (model.UpdateMasterCardResult, error) {
 	outcome, err := r.MasterCardUC.UpdateMasterCard(ctx, id, usecase.UpdateMasterCardInput{

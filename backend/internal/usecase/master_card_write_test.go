@@ -244,6 +244,17 @@ func TestMasterCard_CreateMasterCard_DuplicateLookup_PropagatesCancelled(t *test
 	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
 }
 
+// An empty masterCardgroupId is surfaced as a validation error on
+// "masterCardgroupId" before any domain/repo work, mirroring the guard
+// ImportMasterCards already applies — otherwise the empty id reaches the DB and
+// the FK violation is mis-classified as INTERNAL.
+func TestMasterCard_CreateMasterCard_EmptyGroupIDValidation(t *testing.T) {
+	t.Parallel()
+	uc := newMasterCardWriteUC(t, &mockMasterCardWriteRepo{}, true)
+	_, err := uc.CreateMasterCard(authedCtx("admin1"), CreateMasterCardInput{MasterCardgroupID: "", Front: "f", Back: "b"})
+	assertValidationError(t, err, "masterCardgroupId", "")
+}
+
 func TestMasterCard_CreateMasterCard_FrontEmptyValidation(t *testing.T) {
 	t.Parallel()
 	uc := newMasterCardWriteUC(t, &mockMasterCardWriteRepo{}, true)
@@ -267,6 +278,17 @@ func TestMasterCard_CreateMasterCard_RepoErrorWrapped(t *testing.T) {
 	uc := newMasterCardWriteUC(t, mc, true)
 	_, err := uc.CreateMasterCard(authedCtx("admin1"), CreateMasterCardInput{MasterCardgroupID: "m1", Front: "f", Back: "b"})
 	assertInternalChain(t, err, "usecase: master card: create")
+}
+
+// A context cancellation from the non-duplicate repo.Create path passes through
+// unwrapped so the caller's errors.Is identity check succeeds.
+func TestMasterCard_CreateMasterCard_CreateRepo_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+	mc := &mockMasterCardWriteRepo{createErr: context.Canceled}
+	uc := newMasterCardWriteUC(t, mc, true)
+	_, err := uc.CreateMasterCard(authedCtx("admin1"), CreateMasterCardInput{MasterCardgroupID: "m1", Front: "f", Back: "b"})
+	assertCancelled(t, err)
+	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
 }
 
 // ---------------------------------------------------------------------------
@@ -360,6 +382,25 @@ func TestMasterCard_UpdateMasterCard_RepoErrorWrapped(t *testing.T) {
 	assertInternalChain(t, err, "usecase: master card: update")
 }
 
+func TestMasterCard_UpdateMasterCard_Anonymous(t *testing.T) {
+	t.Parallel()
+	uc := newMasterCardWriteUC(t, &mockMasterCardWriteRepo{}, true)
+	front := "f"
+	_, err := uc.UpdateMasterCard(anonCtx(), "id-1", UpdateMasterCardInput{Front: &front})
+	assertUnauthenticated(t, err)
+}
+
+// A context cancellation from repo.Update passes through unwrapped.
+func TestMasterCard_UpdateMasterCard_Update_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+	mc := &mockMasterCardWriteRepo{updateErr: context.Canceled}
+	uc := newMasterCardWriteUC(t, mc, true)
+	front := "f"
+	_, err := uc.UpdateMasterCard(authedCtx("admin1"), "id-1", UpdateMasterCardInput{Front: &front})
+	assertCancelled(t, err)
+	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
+}
+
 // ---------------------------------------------------------------------------
 // DeleteMasterCard
 // ---------------------------------------------------------------------------
@@ -397,6 +438,23 @@ func TestMasterCard_DeleteMasterCard_RepoErrorWrapped(t *testing.T) {
 	uc := newMasterCardWriteUC(t, mc, true)
 	err := uc.DeleteMasterCard(authedCtx("admin1"), "id-1")
 	assertInternalChain(t, err, "usecase: master card: delete")
+}
+
+func TestMasterCard_DeleteMasterCard_Anonymous(t *testing.T) {
+	t.Parallel()
+	uc := newMasterCardWriteUC(t, &mockMasterCardWriteRepo{}, true)
+	err := uc.DeleteMasterCard(anonCtx(), "id-1")
+	assertUnauthenticated(t, err)
+}
+
+// A context cancellation from repo.Delete passes through unwrapped.
+func TestMasterCard_DeleteMasterCard_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+	mc := &mockMasterCardWriteRepo{deleteErr: context.Canceled}
+	uc := newMasterCardWriteUC(t, mc, true)
+	err := uc.DeleteMasterCard(authedCtx("admin1"), "id-1")
+	assertCancelled(t, err)
+	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
 }
 
 // ---------------------------------------------------------------------------
@@ -459,6 +517,23 @@ func TestMasterCard_DeleteMasterCards_RepoErrorWrapped(t *testing.T) {
 	uc := newMasterCardWriteUC(t, mc, true)
 	_, err := uc.DeleteMasterCards(authedCtx("admin1"), []string{"a"})
 	assertInternalChain(t, err, "usecase: master card: bulk delete")
+}
+
+func TestMasterCard_DeleteMasterCards_Anonymous(t *testing.T) {
+	t.Parallel()
+	uc := newMasterCardWriteUC(t, &mockMasterCardWriteRepo{}, true)
+	_, err := uc.DeleteMasterCards(anonCtx(), []string{"a"})
+	assertUnauthenticated(t, err)
+}
+
+// A context cancellation from repo.DeleteMany passes through unwrapped.
+func TestMasterCard_DeleteMasterCards_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+	mc := &mockMasterCardWriteRepo{deleteManyErr: context.Canceled}
+	uc := newMasterCardWriteUC(t, mc, true)
+	_, err := uc.DeleteMasterCards(authedCtx("admin1"), []string{"a"})
+	assertCancelled(t, err)
+	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
 }
 
 // ---------------------------------------------------------------------------
@@ -593,6 +668,31 @@ func TestMasterCard_ImportMasterCards_DeduplicatesByFront(t *testing.T) {
 	if len(out.Errors) != 1 || out.Errors[0].Kind != CardImportErrKindDuplicate {
 		t.Fatalf("expected 1 DUPLICATE error, got %+v", out.Errors)
 	}
+}
+
+// master_cards.front is citext, so "Apple" and "apple" collide on the
+// uq_master_cards_cg_front unique index. They MUST be deduplicated before the
+// single ON CONFLICT INSERT in upsertManyTx — otherwise Postgres raises 21000
+// ("ON CONFLICT DO UPDATE command cannot affect row a second time") and the whole
+// import aborts. The Go-side dedup key is therefore case-folded; last wins.
+func TestMasterCard_ImportMasterCards_DeduplicatesCaseInsensitiveFront(t *testing.T) {
+	t.Parallel()
+	process := func(string) ([]textdic.ParsedWord, []textdic.ValidationError, error) {
+		return []textdic.ParsedWord{
+			{Front: "Apple", Back: "first", Line: 1},
+			{Front: "apple", Back: "second", Line: 2},
+		}, nil, nil
+	}
+	mc := &mockMasterCardWriteRepo{upsertResult: repository.UpsertManyTxResult{Inserted: 1}}
+	tx, _ := dictTxRunner()
+	uc := newMasterCardImportUC(t, mc, tx, true, process)
+
+	out, err := uc.ImportMasterCards(authedCtx("admin1"), ImportMasterCardsInput{MasterCardgroupID: "m1", Payload: b64("ignored")})
+	require.NoError(t, err)
+	require.Len(t, mc.upsertCaptured, 1, "case-differing fronts must dedup to one row (citext)")
+	require.Equal(t, domain.CardText("second"), mc.upsertCaptured[0].Back, "last occurrence wins")
+	require.Len(t, out.Errors, 1)
+	require.Equal(t, CardImportErrKindDuplicate, out.Errors[0].Kind)
 }
 
 func TestMasterCard_ImportMasterCards_OverCap(t *testing.T) {

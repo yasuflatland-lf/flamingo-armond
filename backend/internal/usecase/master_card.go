@@ -19,12 +19,12 @@ import (
 	"backend/internal/usecase/ucerr"
 )
 
-// MasterCardUsecase is the admin-only READ surface for master cards: a single
-// master deck (incl. DRAFT) with its card count, and the master deck's cards as
-// a Relay-style paginated connection. Master cards carry no per-viewer / FSRS
-// state, so neither method takes a user-card argument. Both methods require the
-// AdminGate to pass; non-admin callers receive FORBIDDEN, anonymous callers
-// receive UNAUTHENTICATED.
+// MasterCardUsecase is the admin-only surface for master cards. Reads: a single
+// master deck (incl. DRAFT) with its card count, and the deck's cards as a
+// Relay-style paginated connection. Writes: create, update, delete, bulk-delete,
+// and batch import. Master cards carry no per-viewer / FSRS state, so no method
+// takes a user-card argument. Every method requires the AdminGate to pass;
+// non-admin callers receive FORBIDDEN, anonymous callers receive UNAUTHENTICATED.
 type MasterCardUsecase interface {
 	// AdminMaster returns the master cardgroup with the given id INCLUDING DRAFT
 	// decks, bundled with its current card count. Admin-only. A missing row is a
@@ -185,7 +185,10 @@ type CreateMasterCardInput struct {
 // MasterCardDuplicateFrontError union variant. DuplicateCardInfo is shared with
 // the user-card create path (card.go).
 type CreateMasterCardOutcome struct {
-	Card      *domain.MasterCard
+	// Card is the newly persisted master card on the happy path. Non-nil iff Duplicate is nil.
+	Card *domain.MasterCard
+	// Duplicate carries the existing card's identity when the (master_cardgroup_id,
+	// front) unique index is violated. Non-nil iff Card is nil.
 	Duplicate *DuplicateCardInfo
 }
 
@@ -229,6 +232,12 @@ type ImportMasterCardsOutput struct {
 func (u *masterCardUsecase) CreateMasterCard(ctx context.Context, in CreateMasterCardInput) (CreateMasterCardOutcome, error) {
 	if _, err := u.adminGate.Require(ctx, "usecase: master card: create"); err != nil {
 		return CreateMasterCardOutcome{}, err
+	}
+	// Gate the FK column at the boundary: an empty masterCardgroupId would
+	// otherwise reach the INSERT and surface the FK violation as INTERNAL instead
+	// of BAD_USER_INPUT (mirrors the explicit guard in ImportMasterCards).
+	if in.MasterCardgroupID == "" {
+		return CreateMasterCardOutcome{}, ucerr.NewValidationError("masterCardgroupId", "masterCardgroupId is required")
 	}
 	card, err := domain.NewMasterCard(in.MasterCardgroupID, in.Front, in.Back, 0)
 	if err != nil {
@@ -389,16 +398,19 @@ func (u *masterCardUsecase) ImportMasterCards(ctx context.Context, in ImportMast
 	mappedErrs := cardImportErrorsFromTextdic(parseErrs)
 
 	// Deduplicate parsed words by front within this payload (last occurrence
-	// wins); earlier occurrences are dropped and reported. Mirrors the user-card
-	// import: Postgres error 21000 fires when a conflict key repeats in one
-	// INSERT, so the dedupe must happen before UpsertManyTx.
+	// wins); earlier occurrences are dropped and reported. Postgres error 21000
+	// fires when a conflict key repeats in one INSERT, so the dedupe must happen
+	// before UpsertManyTx. master_cards.front is citext, so the conflict key is
+	// case-insensitive — the map key is therefore case-folded (unlike the
+	// plain-text cards.front mirror in card_import.go) so "Apple" and "apple"
+	// collapse to one row rather than both reaching the ON CONFLICT INSERT.
 	lastIndex := make(map[string]int, len(words))
 	for i, w := range words {
-		lastIndex[w.Front] = i
+		lastIndex[strings.ToLower(w.Front)] = i
 	}
 	deduped := make([]textdic.ParsedWord, 0, len(words))
 	for i, w := range words {
-		if lastIndex[w.Front] != i {
+		if lastIndex[strings.ToLower(w.Front)] != i {
 			winningBack := words[lastIndex[w.Front]].Back
 			mappedErrs = append(mappedErrs, CardImportError{
 				Line:    w.Line,
