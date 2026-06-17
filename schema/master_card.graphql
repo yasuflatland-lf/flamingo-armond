@@ -1,5 +1,8 @@
+"""A single card in a master deck. Master cards carry no per-viewer FSRS state."""
 type MasterCard {
   id: ID!
+  """Foreign key to the owning master cardgroup. The `masterCardgroup` prefix names the related type, not a stutter of the parent type."""
+  # eslint-disable-next-line @graphql-eslint/no-typename-prefix
   masterCardgroupId: ID!
   front: String!
   back: String!
@@ -8,9 +11,13 @@ type MasterCard {
   updatedAt: Time!
 }
 
+"""Sort key for an `adminMasterCardsConnection` page."""
 enum MasterCardOrderBy { ID  POSITION  CREATED_AT  UPDATED_AT }
 
+"""A Relay edge pairing an opaque cursor with a `MasterCard` node."""
 type MasterCardEdge { cursor: ID!  node: MasterCard! }
+
+"""A Relay connection over the cards in a master deck."""
 type MasterCardConnection { edges: [MasterCardEdge!]!  pageInfo: PageInfo!  totalCount: Int! }
 
 extend type Query {
