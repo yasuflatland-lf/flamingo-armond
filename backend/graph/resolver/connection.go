@@ -18,9 +18,11 @@ func encodeCursor(id string) *string {
 }
 
 // buildPageInfo assembles the Relay PageInfo from the boundary flags and the
-// already-encoded start/end cursor strings. Each caller computes its own
-// start/end (some encode via cursor.Encode, others carry a pre-encoded value)
-// and passes the final strings in.
+// start/end cursor strings. Every caller passes the raw boundary id through
+// encodeCursor, which applies cursor.Encode exactly once: the usecase
+// connection output carries RAW ids, never pre-encoded cursors. Encoding in
+// the usecase layer would double-encode the PageInfo cursors (see the
+// "Cursor encoding happens exactly once" rule in .claude/rules/pagination.md).
 func buildPageInfo(hasNext, hasPrev bool, start, end *string) *model.PageInfo {
 	return &model.PageInfo{
 		HasNextPage:     hasNext,
@@ -84,6 +86,26 @@ func toMasterCatalogConnectionModel(ctx context.Context, out *usecase.MasterCata
 		edges = append(edges, &model.MasterCatalogEdge{Cursor: cursor.Encode(item.Cardgroup.ID), Node: mm})
 	}
 	return &model.MasterCatalogConnection{
+		Edges:      edges,
+		PageInfo:   buildPageInfo(out.HasNext, out.HasPrev, encodeCursor(out.StartCur), encodeCursor(out.EndCur)),
+		TotalCount: int(out.TotalCount),
+	}
+}
+
+func toMasterCardConnectionModel(ctx context.Context, out *usecase.MasterCardConnectionOutput) *model.MasterCardConnection {
+	if out == nil {
+		return &model.MasterCardConnection{Edges: []*model.MasterCardEdge{}, PageInfo: &model.PageInfo{}}
+	}
+	edges := make([]*model.MasterCardEdge, 0, len(out.Cards))
+	for _, c := range out.Cards {
+		cm := toMasterCardModel(c)
+		if cm == nil {
+			slog.WarnContext(ctx, "toMasterCardConnectionModel: skipping nil entry")
+			continue
+		}
+		edges = append(edges, &model.MasterCardEdge{Cursor: cursor.Encode(c.ID), Node: cm})
+	}
+	return &model.MasterCardConnection{
 		Edges:      edges,
 		PageInfo:   buildPageInfo(out.HasNext, out.HasPrev, encodeCursor(out.StartCur), encodeCursor(out.EndCur)),
 		TotalCount: int(out.TotalCount),

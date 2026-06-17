@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -27,12 +28,61 @@ type gormMasterCard struct {
 
 func (gormMasterCard) TableName() string { return "master_cards" }
 
+// MasterCardOrderBy is the allowlist of columns paginated master-card queries may
+// sort by, mirroring CardOrderBy. The string values are the snake_case column
+// names; the GraphQL MasterCardOrderBy enum (ID / POSITION / CREATED_AT /
+// UPDATED_AT) maps onto these in the usecase layer. Lexicographic tuple order is
+// always (orderField, id) so cursors stay deterministic even when the order field
+// has duplicate values.
+type MasterCardOrderBy string
+
+const (
+	MasterCardOrderByID        MasterCardOrderBy = "id"
+	MasterCardOrderByPosition  MasterCardOrderBy = "position"
+	MasterCardOrderByCreatedAt MasterCardOrderBy = "created_at"
+	MasterCardOrderByUpdatedAt MasterCardOrderBy = "updated_at"
+)
+
+// MasterCardCursor is an opaque cursor for paginated master-card queries,
+// mirroring CardCursor. Only the field relevant to the active OrderBy needs to be
+// populated; ID is always populated and acts as the secondary key in the tuple
+// comparison. Position is an int (the POSITION ordering column), so it has its own
+// field separate from the time-typed columns.
+type MasterCardCursor struct {
+	ID        string
+	Position  *int
+	CreatedAt *time.Time
+	UpdatedAt *time.Time
+}
+
 // MasterCardRepository provides persistence operations for the MasterCard
 // aggregate. The bulk Tx methods share the table-parameterized helpers in
 // card.go (upsertManyTx / listFrontsByCardgroupTx / deleteByCardgroupAndFrontsTx)
 // with "master_cards" and "master_cardgroup_id".
 type MasterCardRepository interface {
 	ListByMasterCardgroup(ctx context.Context, masterCardgroupID string) ([]*domain.MasterCard, error)
+	// FindByID returns the master card with the given primary key, or ErrNotFound
+	// when no such row exists. The usecase uses it to hydrate a pagination cursor's
+	// ordering column (position / created_at / updated_at) for a single decoded
+	// cursor id; the cross-group guard is enforced by the usecase, not here.
+	FindByID(ctx context.Context, id string) (*domain.MasterCard, error)
+	// FindPageByMasterCardgroup returns a window of master cards for a master
+	// cardgroup ordered by (orderField, id). Forward paging uses after + first;
+	// backward paging uses before + last. The returned totalCount is search-aware:
+	// it reflects every row in the group AND the search filter when one is active,
+	// not just the page. The usecase consumes this totalCount directly. The return
+	// shape mirrors cardRepo.FindPageByCardgroupForUser so the usecase page helpers
+	// (assemblePage / TrimAndDetect) consume it identically — master cards carry no
+	// per-viewer / FSRS state, so there is no userID parameter.
+	FindPageByMasterCardgroup(
+		ctx context.Context,
+		masterCardgroupID string,
+		after, before *MasterCardCursor,
+		first, last int,
+		orderBy MasterCardOrderBy,
+		dir SortOrder,
+		search *string,
+	) (cards []*domain.MasterCard, totalCount int64, err error)
 	Create(ctx context.Context, c *domain.MasterCard) error
 	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.MasterCard) (UpsertManyTxResult, error)
 	ListFrontsByMasterCardgroupTx(ctx context.Context, tx *gorm.DB, masterCardgroupID string) ([]string, error)
@@ -65,6 +115,156 @@ func (r *masterCardRepo) ListByMasterCardgroup(ctx context.Context, masterCardgr
 		out[i] = masterCardToDomain(rows[i])
 	}
 	return out, nil
+}
+
+// FindByID returns the master card with the given primary key, or ErrNotFound
+// when no row matches. Single-row PK lookup mirroring cardRepo.FindByID.
+func (r *masterCardRepo) FindByID(ctx context.Context, id string) (*domain.MasterCard, error) {
+	var row gormMasterCard
+	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, eris.Wrap(err, "repository: master card: find by id")
+	}
+	return masterCardToDomain(row), nil
+}
+
+// FindPageByMasterCardgroup paginates the master cards of a single group with
+// Relay-style cursors. The window is ordered by (orderField, id); when orderBy is
+// ID only `id` appears in the ORDER BY, otherwise `, id <dir>` is appended so the
+// ordering is always total. Backward paging executes the query with the inverted
+// direction and reverses the slice afterwards (direction-flip + ReverseSlice).
+// totalCount comes from a separate COUNT(*) scoped to the group and the optional
+// search filter, computed before the no-rows short-circuit so a first=0 && last=0
+// request still observes the real count.
+func (r *masterCardRepo) FindPageByMasterCardgroup(
+	ctx context.Context,
+	masterCardgroupID string,
+	after, before *MasterCardCursor,
+	first, last int,
+	orderBy MasterCardOrderBy,
+	dir SortOrder,
+	search *string,
+) ([]*domain.MasterCard, int64, error) {
+	first = ClampPageSize(first)
+	last = ClampPageSize(last)
+
+	// Base query scoped to the master cardgroup.
+	base := r.db.WithContext(ctx).Model(&gormMasterCard{}).Where("master_cards.master_cardgroup_id = ?", masterCardgroupID)
+
+	// Non-nil search is guaranteed by the usecase to be non-empty and trimmed.
+	// escapeLikePattern guards against LIKE metacharacter injection. The front
+	// column is citext (case-insensitive); ILIKE on both columns keeps the
+	// front/back search consistently case-insensitive.
+	if search != nil {
+		pattern := "%" + escapeLikePattern(*search) + "%"
+		base = base.Where("(master_cards.front ILIKE ? OR master_cards.back ILIKE ?)", pattern, pattern)
+	}
+
+	// totalCount from a separate COUNT(*), computed before the no-rows
+	// short-circuit so callers passing first=0 still observe the real count.
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, eris.Wrap(err, "repository: master card: count page by master cardgroup")
+	}
+
+	if first == 0 && last == 0 {
+		return []*domain.MasterCard{}, total, nil
+	}
+
+	// Backward paging executes with the inverted direction and reverses the
+	// returned slice so the page boundary stays at the tail.
+	effectiveDir := dir
+	limit := first
+	cur := after
+	reverse := false
+	if last > 0 {
+		effectiveDir = InvertDir(dir)
+		limit = last
+		cur = before
+		reverse = true
+	}
+
+	q := base.Order(masterCardOrderClause(orderBy, effectiveDir))
+
+	if cur != nil {
+		clauseStr, args, err := masterCardCursorWhere(orderBy, effectiveDir, cur)
+		if err != nil {
+			return nil, 0, eris.Wrap(err, "repository: master card: build cursor where")
+		}
+		q = q.Where(clauseStr, args...)
+	}
+
+	q = q.Limit(limit)
+
+	var rows []gormMasterCard
+	if err := q.Find(&rows).Error; err != nil {
+		return nil, 0, eris.Wrap(err, "repository: master card: find page by master cardgroup")
+	}
+
+	if reverse {
+		ReverseSlice(rows)
+	}
+
+	out := make([]*domain.MasterCard, len(rows))
+	for i := range rows {
+		out[i] = masterCardToDomain(rows[i])
+	}
+	return out, total, nil
+}
+
+// masterCardOrderClause renders the SQL ORDER BY tail. When orderBy is `id` only
+// one column appears; otherwise the secondary `id` keeps order deterministic.
+func masterCardOrderClause(orderBy MasterCardOrderBy, dir SortOrder) string {
+	d := string(dir)
+	if orderBy == MasterCardOrderByID {
+		return "master_cards.id " + d
+	}
+	return "master_cards." + string(orderBy) + " " + d + ", master_cards.id " + d
+}
+
+// masterCardCursorWhere builds the tuple-comparison WHERE for the supplied cursor
+// and direction. ASC yields `>`, DESC yields `<`. Returns an error when the cursor
+// lacks the column required by the active orderBy.
+func masterCardCursorWhere(orderBy MasterCardOrderBy, dir SortOrder, c *MasterCardCursor) (string, []any, error) {
+	op := ">"
+	if dir == SortDesc {
+		op = "<"
+	}
+	if orderBy == MasterCardOrderByID {
+		return "master_cards.id " + op + " ?", []any{c.ID}, nil
+	}
+	field := "master_cards." + string(orderBy)
+	val, err := masterCardCursorFieldValue(orderBy, c)
+	if err != nil {
+		return "", nil, err
+	}
+	// Tuple compare: (field, id) op (val, c.ID).
+	return "(" + field + " " + op + " ? OR (" + field + " = ? AND master_cards.id " + op + " ?))",
+		[]any{val, val, c.ID}, nil
+}
+
+// masterCardCursorFieldValue returns the cursor value for the active orderBy
+// field. An unset column is a caller bug — the usecase layer hydrates the relevant
+// field before calling — so this returns an error rather than a zero value.
+func masterCardCursorFieldValue(orderBy MasterCardOrderBy, c *MasterCardCursor) (any, error) {
+	switch orderBy {
+	case MasterCardOrderByPosition:
+		if c.Position != nil {
+			return *c.Position, nil
+		}
+	case MasterCardOrderByCreatedAt:
+		if c.CreatedAt != nil {
+			return *c.CreatedAt, nil
+		}
+	case MasterCardOrderByUpdatedAt:
+		if c.UpdatedAt != nil {
+			return *c.UpdatedAt, nil
+		}
+	}
+	return nil, eris.Errorf("repository: master card: cursor missing %s column", orderBy)
 }
 
 // Create inserts a single master card. When the ID is empty a UUID v7 is

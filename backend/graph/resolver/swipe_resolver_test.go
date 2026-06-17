@@ -105,7 +105,7 @@ func newSwipeSrv(
 		userFSRSRepo,
 		newDiscardLogger(),
 	)
-	r := resolver.NewResolver(nil, nil, nil, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(nil, nil, nil, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -265,7 +265,7 @@ func TestResolver_HandleSwipe_InfrastructureError_ReturnsInternal(t *testing.T) 
 		&userCardFSRSRepo{},
 		newDiscardLogger(),
 	)
-	r := resolver.NewResolver(nil, nil, nil, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(nil, nil, nil, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 

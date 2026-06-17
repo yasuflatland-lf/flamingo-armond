@@ -5,6 +5,7 @@ package repository_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -399,6 +400,370 @@ func TestMasterCardRepository_Create_DuplicateFront(t *testing.T) {
 	stored, listErr := repo.ListByMasterCardgroup(ctx, mcg.ID)
 	require.NoError(t, listErr)
 	require.Len(t, stored, 1)
+}
+
+// insertMasterCardsSeq creates n master cards in masterCardgroupID with
+// deterministic fronts ("<prefix>-front-0".."<prefix>-front-n-1") at positions
+// 0..n-1 and staggered created_at so insertion order matches creation order. It
+// re-fetches each row so the returned cards carry DB-rounded timestamps (Postgres
+// truncates to microsecond precision; cursor comparisons must use those values).
+// The prefix is the per-test isolation token: paginated queries on the shared
+// parallel DB scope themselves via a search predicate on this prefix so rows from
+// other parallel tests never leak into a no-cursor first=N window (see
+// `.claude/rules/go-library-gotchas.md` shared-parallel-db rule).
+func insertMasterCardsSeq(t *testing.T, ctx context.Context, repo repository.MasterCardRepository, mcgID, prefix string, n int) []*domain.MasterCard {
+	t.Helper()
+	now := time.Now().UTC()
+	cards := make([]*domain.MasterCard, n)
+	for i := 0; i < n; i++ {
+		c := newMasterCard(mcgID, fmt.Sprintf("%s-front-%d", prefix, i), "back", i)
+		// Stagger timestamps by 1 hour so created_at ordering is unambiguous.
+		c.CreatedAt = now.Add(time.Duration(i) * time.Hour)
+		c.UpdatedAt = c.CreatedAt
+		require.NoError(t, repo.Create(ctx, c))
+		cards[i] = c
+	}
+	for i, c := range cards {
+		got, err := repo.ListByMasterCardgroup(ctx, mcgID)
+		require.NoError(t, err)
+		// ListByMasterCardgroup is position-ordered; find the matching id to pick
+		// up the DB-rounded timestamps.
+		for _, g := range got {
+			if g.ID == c.ID {
+				cards[i] = g
+				break
+			}
+		}
+	}
+	return cards
+}
+
+// sortMasterByID returns a copy of cards sorted by ID ascending.
+func sortMasterByID(cards []*domain.MasterCard) []*domain.MasterCard {
+	out := make([]*domain.MasterCard, len(cards))
+	copy(out, cards)
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j-1].ID > out[j].ID; j-- {
+			out[j-1], out[j] = out[j], out[j-1]
+		}
+	}
+	return out
+}
+
+// TestMasterCardRepository_FindPageByMasterCardgroup_ForwardByPosition seeds N
+// master cards and asserts the forward page returns the requested window in
+// position order, totalCount reflects every row in the group, and the cursor walk
+// advances correctly without skipping or duplicating rows.
+func TestMasterCardRepository_FindPageByMasterCardgroup_ForwardByPosition(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "MCPage-ForwardPos-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	cards := insertMasterCardsSeq(t, ctx, repo, mcg.ID, "MCPage-ForwardPos", 5)
+
+	// Page 1: first=2, no cursor → positions 0, 1.
+	got, total, err := repo.FindPageByMasterCardgroup(
+		ctx, mcg.ID, nil, nil, 2, 0, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(5), total)
+	require.Len(t, got, 2)
+	require.Equal(t, cards[0].ID, got[0].ID)
+	require.Equal(t, cards[1].ID, got[1].ID)
+
+	// Page 2: after the position-1 cursor → positions 2, 3.
+	pos1 := cards[1].Position
+	got, total, err = repo.FindPageByMasterCardgroup(
+		ctx, mcg.ID,
+		&repository.MasterCardCursor{ID: cards[1].ID, Position: &pos1}, nil,
+		2, 0, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(5), total)
+	require.Len(t, got, 2)
+	require.Equal(t, cards[2].ID, got[0].ID)
+	require.Equal(t, cards[3].ID, got[1].ID)
+
+	// Page 3: after position-3 → only position 4 remains.
+	pos3 := cards[3].Position
+	got, total, err = repo.FindPageByMasterCardgroup(
+		ctx, mcg.ID,
+		&repository.MasterCardCursor{ID: cards[3].ID, Position: &pos3}, nil,
+		2, 0, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(5), total)
+	require.Len(t, got, 1)
+	require.Equal(t, cards[4].ID, got[0].ID)
+}
+
+// TestMasterCardRepository_FindPageByMasterCardgroup_HasNextViaPlusOne verifies
+// the +1 fetch trick: requesting want+1 rows returns the trailing extra row so the
+// usecase can detect hasNextPage, and the last page (want+1 rows but only `want`
+// remaining) reports no extra row. The repository itself only applies the LIMIT;
+// the usecase trims, so the test asserts the row-count signal the trim consumes.
+func TestMasterCardRepository_FindPageByMasterCardgroup_HasNextViaPlusOne(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "MCPage-PlusOne-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	cards := insertMasterCardsSeq(t, ctx, repo, mcg.ID, "MCPage-PlusOne", 3)
+	sorted := sortMasterByID(cards)
+
+	// want=2 → request 3 (want+1). With 3 rows total the result has 3 rows, so the
+	// trailing extra row signals hasNextPage=true. Order by ID for a stable expectation.
+	page1, total, err := repo.FindPageByMasterCardgroup(
+		ctx, mcg.ID, nil, nil, 3, 0, repository.MasterCardOrderByID, repository.SortAsc, nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total)
+	require.Len(t, page1, 3, "+1 fetch returns the trailing extra row")
+	require.True(t, len(page1) > 2, "extra row signals hasNextPage=true")
+
+	// The trimmed page (first 2) is the real window; the 3rd is the boundary row.
+	require.Equal(t, sorted[0].ID, page1[0].ID)
+	require.Equal(t, sorted[1].ID, page1[1].ID)
+
+	// Last page: after the position-1 cursor, want=2 → request 3, only 1 row
+	// remains, so no extra row and hasNextPage=false.
+	page2, _, err := repo.FindPageByMasterCardgroup(
+		ctx, mcg.ID,
+		&repository.MasterCardCursor{ID: sorted[1].ID}, nil,
+		3, 0, repository.MasterCardOrderByID, repository.SortAsc, nil,
+	)
+	require.NoError(t, err)
+	require.Len(t, page2, 1, "last page returns fewer than want+1 rows")
+	require.False(t, len(page2) > 2, "no extra row signals hasNextPage=false")
+	require.Equal(t, sorted[2].ID, page2[0].ID)
+}
+
+// TestMasterCardRepository_FindPageByMasterCardgroup_BackwardByPosition verifies
+// backward paging (last/before): the repository inverts the ORDER BY direction,
+// applies LIMIT, then reverses the slice so the returned rows are in forward order
+// with the boundary at the tail.
+func TestMasterCardRepository_FindPageByMasterCardgroup_BackwardByPosition(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "MCPage-Backward-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	cards := insertMasterCardsSeq(t, ctx, repo, mcg.ID, "MCPage-Backward", 5)
+
+	// last=2, before=nil → the final two positions in ASC order (3, 4).
+	got, total, err := repo.FindPageByMasterCardgroup(
+		ctx, mcg.ID, nil, nil, 0, 2, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(5), total)
+	require.Len(t, got, 2)
+	require.Equal(t, cards[3].ID, got[0].ID)
+	require.Equal(t, cards[4].ID, got[1].ID)
+
+	// last=2, before=position-3 cursor → positions 1, 2 in ASC order.
+	pos3 := cards[3].Position
+	got, _, err = repo.FindPageByMasterCardgroup(
+		ctx, mcg.ID,
+		nil, &repository.MasterCardCursor{ID: cards[3].ID, Position: &pos3},
+		0, 2, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
+	)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, cards[1].ID, got[0].ID)
+	require.Equal(t, cards[2].ID, got[1].ID)
+}
+
+// TestMasterCardRepository_FindPageByMasterCardgroup_OrderByCreatedAtDesc verifies
+// a non-ID, non-position order (created_at DESC) with the secondary id tie-break,
+// and that the created_at cursor advances correctly.
+func TestMasterCardRepository_FindPageByMasterCardgroup_OrderByCreatedAtDesc(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "MCPage-CreatedDesc-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	cards := insertMasterCardsSeq(t, ctx, repo, mcg.ID, "MCPage-CreatedDesc", 4)
+	// DESC: newest created_at first → cards[3], cards[2], cards[1], cards[0].
+
+	got, total, err := repo.FindPageByMasterCardgroup(
+		ctx, mcg.ID, nil, nil, 2, 0, repository.MasterCardOrderByCreatedAt, repository.SortDesc, nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(4), total)
+	require.Len(t, got, 2)
+	require.Equal(t, cards[3].ID, got[0].ID)
+	require.Equal(t, cards[2].ID, got[1].ID)
+
+	cur := &repository.MasterCardCursor{ID: cards[2].ID, CreatedAt: &cards[2].CreatedAt}
+	got, _, err = repo.FindPageByMasterCardgroup(
+		ctx, mcg.ID, cur, nil, 2, 0, repository.MasterCardOrderByCreatedAt, repository.SortDesc, nil,
+	)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, cards[1].ID, got[0].ID)
+	require.Equal(t, cards[0].ID, got[1].ID)
+}
+
+// TestMasterCardRepository_FindPageByMasterCardgroup_Search verifies the
+// case-insensitive substring match on front OR back, and that the ILIKE escaping
+// treats %/_ as literals (so a row whose text contains those characters is matched
+// only by a search that also contains them, never by an unescaped wildcard).
+func TestMasterCardRepository_FindPageByMasterCardgroup_Search(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "MCPage-Search-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	// Rows: one matches on FRONT (uppercase to prove case-insensitivity), one
+	// matches on BACK, two do not match the search term at all.
+	frontMatch := newMasterCard(mcg.ID, "MCPage-Search-APPLE-front", "no-hit-back", 0)
+	backMatch := newMasterCard(mcg.ID, "MCPage-Search-other-front", "ripe apple here", 1)
+	miss1 := newMasterCard(mcg.ID, "MCPage-Search-banana", "yellow", 2)
+	miss2 := newMasterCard(mcg.ID, "MCPage-Search-cherry", "red", 3)
+	for _, c := range []*domain.MasterCard{frontMatch, backMatch, miss1, miss2} {
+		require.NoError(t, repo.Create(ctx, c))
+	}
+
+	search := "apple"
+	got, total, err := repo.FindPageByMasterCardgroup(
+		ctx, mcg.ID, nil, nil, 10, 0, repository.MasterCardOrderByPosition, repository.SortAsc, &search,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), total, "search totalCount counts only matching rows")
+	require.Len(t, got, 2)
+	gotIDs := map[string]bool{got[0].ID: true, got[1].ID: true}
+	require.True(t, gotIDs[frontMatch.ID], "front 'APPLE' must match case-insensitively")
+	require.True(t, gotIDs[backMatch.ID], "back 'apple' must match")
+	require.False(t, gotIDs[miss1.ID])
+	require.False(t, gotIDs[miss2.ID])
+
+	// ILIKE escaping: a literal '%' in a front must NOT be matched by a search of
+	// "%" (which, unescaped, would match every row). Seed a row containing a
+	// literal percent and a literal underscore.
+	pctRow := newMasterCard(mcg.ID, "MCPage-Search-50%off", "disc_ount", 4)
+	require.NoError(t, repo.Create(ctx, pctRow))
+
+	// Search for a bare "%": escaped to a literal, so it matches ONLY the row that
+	// actually contains a '%' — not every row in the group.
+	pct := "%"
+	gotPct, totalPct, err := repo.FindPageByMasterCardgroup(
+		ctx, mcg.ID, nil, nil, 10, 0, repository.MasterCardOrderByPosition, repository.SortAsc, &pct,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), totalPct, "literal '%%' must match exactly the one row containing it, not all rows")
+	require.Len(t, gotPct, 1)
+	require.Equal(t, pctRow.ID, gotPct[0].ID)
+
+	// Search for a bare "_": escaped, matches only the row whose back contains '_'.
+	und := "_"
+	gotUnd, totalUnd, err := repo.FindPageByMasterCardgroup(
+		ctx, mcg.ID, nil, nil, 10, 0, repository.MasterCardOrderByPosition, repository.SortAsc, &und,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), totalUnd, "literal '_' must not act as a single-char wildcard")
+	require.Len(t, gotUnd, 1)
+	require.Equal(t, pctRow.ID, gotUnd[0].ID)
+}
+
+// TestMasterCardRepository_FindPageByMasterCardgroup_TotalCountScopedToGroup
+// verifies totalCount is scoped to the requested master cardgroup and does not
+// count rows in other groups (which other parallel tests may also be inserting).
+func TestMasterCardRepository_FindPageByMasterCardgroup_TotalCountScopedToGroup(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+	mcg1 := insertMCGForCardTest(t, ctx, "MCPage-Scope-Group1")
+	mcg2 := insertMCGForCardTest(t, ctx, "MCPage-Scope-Group2")
+
+	insertMasterCardsSeq(t, ctx, repo, mcg1.ID, "MCPage-Scope1", 3)
+	insertMasterCardsSeq(t, ctx, repo, mcg2.ID, "MCPage-Scope2", 5)
+
+	_, total1, err := repo.FindPageByMasterCardgroup(
+		ctx, mcg1.ID, nil, nil, 100, 0, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total1)
+
+	_, total2, err := repo.FindPageByMasterCardgroup(
+		ctx, mcg2.ID, nil, nil, 100, 0, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(5), total2)
+}
+
+// TestMasterCardRepository_FindPageByMasterCardgroup_ZeroPageReturnsTotal
+// verifies first=0 && last=0 short-circuits the row fetch but still returns the
+// real totalCount from the separate COUNT(*), and that the slice is non-nil.
+func TestMasterCardRepository_FindPageByMasterCardgroup_ZeroPageReturnsTotal(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "MCPage-ZeroPage-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	insertMasterCardsSeq(t, ctx, repo, mcg.ID, "MCPage-ZeroPage", 4)
+
+	cards, total, err := repo.FindPageByMasterCardgroup(
+		ctx, mcg.ID, nil, nil, 0, 0, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, cards)
+	require.Empty(t, cards)
+	require.Equal(t, int64(4), total)
+}
+
+// TestMasterCardRepository_FindPageByMasterCardgroup_PageCapAllowsMaxPlusOne
+// verifies PageCap (101) accepts first=101 so the usecase's +1 trick can detect a
+// next page when the caller requests the documented maximum of 100. The group is
+// isolated from other parallel tests' rows by the per-test search prefix.
+func TestMasterCardRepository_FindPageByMasterCardgroup_PageCapAllowsMaxPlusOne(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "MCPage-PageCap-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	insertMasterCardsSeq(t, ctx, repo, mcg.ID, "MCPage-PageCap", 101)
+	// Scope every query to this test's rows via the unique search prefix so rows
+	// from other parallel tests in the same shared DB cannot leak into the window.
+	prefix := "MCPage-PageCap"
+
+	cards101, total101, err := repo.FindPageByMasterCardgroup(
+		ctx, mcg.ID, nil, nil, 101, 0, repository.MasterCardOrderByPosition, repository.SortAsc, &prefix,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(101), total101)
+	require.Len(t, cards101, 101, "first=101 returns all rows because PageCap == 101")
+
+	cards100, total100, err := repo.FindPageByMasterCardgroup(
+		ctx, mcg.ID, nil, nil, 100, 0, repository.MasterCardOrderByPosition, repository.SortAsc, &prefix,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(101), total100)
+	require.Len(t, cards100, 100, "first=100 is capped to 100 rows")
+}
+
+// TestMasterCardRepository_FindByID verifies the single-row PK lookup: an
+// existing id returns the row with its columns round-tripped, and an unknown id
+// returns ErrNotFound.
+func TestMasterCardRepository_FindByID(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "MCFindByID-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	card := newMasterCard(mcg.ID, "MCFindByID-front", "back", 5)
+	require.NoError(t, repo.Create(ctx, card))
+
+	got, err := repo.FindByID(ctx, card.ID)
+	require.NoError(t, err)
+	require.Equal(t, card.ID, got.ID)
+	require.Equal(t, mcg.ID, got.MasterCardgroupID)
+	require.Equal(t, domain.CardText("MCFindByID-front"), got.Front)
+	require.Equal(t, 5, got.Position)
+
+	// Unknown id returns ErrNotFound.
+	_, err = repo.FindByID(ctx, uuid.NewString())
+	require.ErrorIs(t, err, repository.ErrNotFound)
 }
 
 // TestMasterCardRepository_Delete verifies Delete by primary key: the row is
