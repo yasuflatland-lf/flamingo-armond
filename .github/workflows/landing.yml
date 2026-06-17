@@ -11,9 +11,20 @@ name: landing
 # skip building the gh-pages branch) and site/public/.nojekyll. clean-exclude
 # below preserves er-chart/ (owned by er-chart.yml, not by this workflow) when
 # this workflow cleans the gh-pages root.
+#
+# The `lint` job runs Biome + Knip over site/ on every PR (and before publish),
+# mirroring the frontend CI gate. The `publish` job only runs on a push to main
+# (or manual dispatch) and waits on `lint`. Node + pnpm are provisioned by
+# jdx/mise-action from the repo-root .tool-versions, the same as the other JS
+# workflows (frontend, e2e, mutation).
 
 on:
   push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/landing.yml'
+  pull_request:
     branches: [main]
     paths:
       - 'site/**'
@@ -24,24 +35,67 @@ concurrency:
   group: landing-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: write          # github-pages-deploy-action needs push access to the gh-pages branch
-
 jobs:
-  publish:
+  lint:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
 
-      # Node version mirrors the repo-root .tool-versions; pnpm is provisioned by
-      # corepack from site/package.json's "packageManager" field. This avoids the
-      # full mise toolchain (Rust/mprocs) that the landing build does not need.
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .tool-versions
+      - name: Set up mise (Node + pnpm from .tool-versions)
+        uses: jdx/mise-action@v4
 
-      - name: Enable corepack (pnpm)
-        run: corepack enable
+      - name: Resolve pnpm store path
+        id: pnpm-store
+        working-directory: site
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-pnpm-site-${{ hashFiles('site/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-site-
+
+      - name: Install dependencies
+        working-directory: site
+        run: pnpm install --frozen-lockfile
+
+      - name: Biome (lint + format check)
+        working-directory: site
+        run: pnpm lint
+
+      - name: Knip (unused files / deps / exports)
+        working-directory: site
+        run: pnpm knip
+
+  publish:
+    needs: lint
+    # Build + deploy only on a push to main or a manual dispatch; PRs run lint only.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write          # github-pages-deploy-action needs push access to the gh-pages branch
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up mise (Node + pnpm from .tool-versions)
+        uses: jdx/mise-action@v4
+
+      - name: Resolve pnpm store path
+        id: pnpm-store
+        working-directory: site
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-pnpm-site-${{ hashFiles('site/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-site-
 
       - name: Install dependencies
         working-directory: site

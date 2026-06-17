@@ -31,6 +31,15 @@
       "rangeStrategy": "replace"
     },
     {
+      "description": "Landing page (site/). It is its own pnpm workspace with its own lockfile and deploy cadence (landing.yml publishes site/dist to gh-pages), so it gets its own group/scope/labels instead of riding the catch-all 'frontend dependencies' rule above. Renovate has no dedicated pnpm manager: the npm manager handles pnpm, pnpm-lock.yaml and pnpm-workspace.yaml, so matchManagers stays 'npm' and matchFileNames scopes the rule to site/. Placed before the pnpm-toolchain rule below so site/package.json's 'packageManager' pnpm pin still groups into 'pnpm toolchain'. rangeStrategy 'replace' mirrors the frontend rule.",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["site/**"],
+      "groupName": "landing dependencies",
+      "addLabels": ["landing", "dependencies"],
+      "semanticCommitScope": "site",
+      "rangeStrategy": "replace"
+    },
+    {
       "description": "GitHub Actions",
       "matchManagers": ["github-actions"],
       "groupName": "github actions",
