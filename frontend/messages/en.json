@@ -330,7 +330,11 @@
     "deleteMasterConfirmButton": "Delete master",
     "deleteMasterDeleting": "Deleting...",
     "deleteMasterSuccess": "Master deleted.",
-    "deleteMasterFailed": "Could not delete the master. Please try again."
+    "deleteMasterFailed": "Could not delete the master. Please try again.",
+    "deckSettingsButton": "Deck settings",
+    "deckSettingsTitle": "Deck settings",
+    "backToList": "Back to masters",
+    "masterOptions": "Deck options"
   },
   "Admin": {
     "searchPlaceholder": "Search users...",
