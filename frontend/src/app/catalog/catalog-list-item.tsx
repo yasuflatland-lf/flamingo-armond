@@ -10,14 +10,20 @@ import { type FragmentType, useFragment } from "@/generated/fragment-masking";
 export type CatalogListItemProps = {
   /** A masked `CatalogCardFields` ref — unmasked once via `useFragment` below. */
   node: FragmentType<typeof CatalogCardFieldsFragment>;
-  /** True while this cardgroup's import mutation is in flight. */
+  /**
+   * True while this cardgroup's import mutation is in flight. Invariant:
+   * `importing` and `imported` are never both true; if they are, the imported
+   * (done) state wins and the in-flight label is not shown.
+   */
   importing: boolean;
   /** True once this cardgroup has been imported in the current session. */
   imported: boolean;
   onImport: (id: string) => void;
   /**
-   * Optional button label overrides. Defaults reproduce the `/catalog` copy
-   * (`Catalog` namespace) so existing call sites are unaffected.
+   * Optional button label overrides. When omitted, the labels default to the
+   * `/catalog` copy (`Catalog` namespace); pass an explicit object to reuse this
+   * row in another context (e.g. an onboarding chooser). All three keys must be
+   * supplied together — partial override is not supported.
    */
   labels?: { action: string; inProgress: string; done: string };
   /** Optional `data-testid` prefix on the Import button. Defaults to `"catalog-import"`. */

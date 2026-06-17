@@ -119,4 +119,17 @@ describe("<CatalogListItem>", () => {
     expect(btn).toHaveTextContent("Start with this deck");
     expect(screen.queryByTestId("catalog-import-m-1")).toBeNull();
   });
+
+  it("does not call onImport when the button is in the imported state", async () => {
+    const user = userEvent.setup();
+    const onImport = vi.fn();
+    renderItem(FULL_NODE, { imported: true, onImport });
+    await user.click(screen.getByTestId("catalog-import-m-1"));
+    expect(onImport).not.toHaveBeenCalled();
+  });
+
+  it("exposes a locale-independent row testId on the list item", () => {
+    renderItem(FULL_NODE);
+    expect(screen.getByTestId("catalog-row-m-1")).toBeInTheDocument();
+  });
 });

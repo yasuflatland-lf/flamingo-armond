@@ -52,7 +52,7 @@ function mergeCatalogConnection(
 }
 
 /**
- * Client component for the /catalog gallery.
+ * Client component for the /catalog list.
  *
  * Wires:
  *  - SSR seed: writes initialConnection into the cache once synchronously during
