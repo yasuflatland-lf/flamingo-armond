@@ -17,7 +17,7 @@ import {
 import { useDebouncedSearch } from "@/hooks/use-debounced-search";
 import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
-import { CatalogCard } from "./catalog-card";
+import { CatalogListItem } from "./catalog-list-item";
 import { CATALOG_DEFAULT_VARS } from "./queries";
 import { useImportMaster } from "./use-import-master";
 
@@ -52,7 +52,7 @@ function mergeCatalogConnection(
 }
 
 /**
- * Client component for the /catalog gallery.
+ * Client component for the /catalog list.
  *
  * Wires:
  *  - SSR seed: writes initialConnection into the cache once synchronously during
@@ -243,12 +243,9 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
       )}
 
       {edges.length > 0 && (
-        <ul
-          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-          data-testid="catalog-list"
-        >
+        <ul className="space-y-2" data-testid="catalog-list">
           {edges.map((edge) => (
-            <CatalogCard
+            <CatalogListItem
               key={edge.cursor}
               node={edge.node}
               importing={importingId === edge.node.id}
