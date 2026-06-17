@@ -1,6 +1,8 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+/* Keep the existing JavaScript theme (flamingo palette, fonts, keyframes,
+   animations). Tailwind v4 no longer auto-loads tailwind.config.js, so it is
+   referenced explicitly here. Path is relative to this CSS file. */
+@config "../tailwind.config.js";
 
 html {
   scroll-behavior: smooth;
