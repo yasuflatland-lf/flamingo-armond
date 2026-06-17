@@ -217,6 +217,7 @@ afterEach(() => {
 
 describe("AdminMastersClient (broad page test)", () => {
   // T1: Initial list render — several master nodes render and the list container is present.
+  // Each row is now a Link to /admin/masters/<id>/edit (no edit sheet).
   test("renders the master rows and the list container after the initial query", async () => {
     const masters = Array.from({ length: 3 }, (_, i) => makeMaster(i + 1));
     const connection = makeConnection(masters, false);
@@ -254,6 +255,12 @@ describe("AdminMastersClient (broad page test)", () => {
 
     // totalCount shown (3 in parens).
     expect(screen.getByText("(3)")).toBeInTheDocument();
+
+    // Each row links to the edit page — no edit sheet.
+    expect(screen.getByRole("link", { name: /edit deck m-1/i })).toHaveAttribute(
+      "href",
+      expect.stringMatching(/^\/admin\/masters\/.+\/edit$/),
+    );
   });
 
   // T2: Debounced search — typing into the search input issues a second query
