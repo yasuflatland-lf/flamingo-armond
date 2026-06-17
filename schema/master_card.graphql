@@ -1,0 +1,28 @@
+type MasterCard {
+  id: ID!
+  masterCardgroupId: ID!
+  front: String!
+  back: String!
+  position: Int!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+enum MasterCardOrderBy { ID  POSITION  CREATED_AT  UPDATED_AT }
+
+type MasterCardEdge { cursor: ID!  node: MasterCard! }
+type MasterCardConnection { edges: [MasterCardEdge!]!  pageInfo: PageInfo!  totalCount: Int! }
+
+extend type Query {
+  """Admin-only single master cardgroup incl. DRAFT. Non-admin callers receive FORBIDDEN."""
+  adminMaster(id: ID!): MasterCardgroup
+  """
+  Admin-only paginated cards in a master deck. Forward (first, after) / backward (last, before).
+  Cursor is the master card UUID. Default page size 20; max 100. Optional case-insensitive
+  substring search on front OR back.
+  """
+  adminMasterCardsConnection(
+    masterCardgroupId: ID!, first: Int, after: ID, last: Int, before: ID,
+    search: String, orderBy: MasterCardOrderBy = POSITION, orderDirection: SortOrder = ASC
+  ): MasterCardConnection!
+}
