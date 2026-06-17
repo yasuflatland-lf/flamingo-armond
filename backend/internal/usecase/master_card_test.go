@@ -769,3 +769,65 @@ func TestMasterCard_ListMasterCards_CursorHydrationInfraErrorWrapped(t *testing.
 	})
 	assertInternalChain(t, err, "usecase: master card: resolve cursor")
 }
+
+// After-cursor for UPDATED_AT ordering hydrates the updated_at time column and
+// leaves created_at and position nil — a future regression that hydrates the
+// wrong column would fail the nil assertions.
+func TestMasterCard_ListMasterCards_CursorHydratesUpdatedAt(t *testing.T) {
+	t.Parallel()
+	cursorCard := masterCardFixture("cur-3", "id-1", 0)
+	mc := &mockMasterCardReadRepo{
+		findByIDFn: func(string) (*domain.MasterCard, error) { return cursorCard, nil },
+	}
+	uc := newMasterCardUC(t, mc, &mockMasterCardgroupReadRepo{}, true)
+	ob := MasterCardOrderByUpdatedAt
+	after := cursor.Encode("cur-3")
+	_, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
+		MasterCardgroupID: "id-1",
+		First:             intPtr(5),
+		After:             &after,
+		OrderBy:           &ob,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	gotAfter := mc.findPageCalls[0].After
+	if gotAfter == nil {
+		t.Fatal("expected non-nil after cursor passed to repo")
+	}
+	if gotAfter.UpdatedAt == nil {
+		t.Fatal("after cursor must hydrate updated_at, got nil")
+	}
+	if !gotAfter.UpdatedAt.Equal(cursorCard.UpdatedAt) {
+		t.Fatalf("updated_at: want %v, got %v", cursorCard.UpdatedAt, *gotAfter.UpdatedAt)
+	}
+	// Only the UPDATED_AT column must be set; the others must remain nil so a
+	// regression that also hydrates created_at or position is caught immediately.
+	if gotAfter.CreatedAt != nil {
+		t.Fatalf("created_at must be nil for UPDATED_AT cursor, got %v", *gotAfter.CreatedAt)
+	}
+	if gotAfter.Position != nil {
+		t.Fatalf("position must be nil for UPDATED_AT cursor, got %v", *gotAfter.Position)
+	}
+}
+
+// A corrupt Before cursor is rejected with a validation error whose Field is
+// "before" — proving that the field label is wired correctly for the before
+// path (the after path is covered by TestMasterCard_ListMasterCards_CursorCorruptRejected).
+func TestMasterCard_ListMasterCards_CursorBeforeFieldLabel(t *testing.T) {
+	t.Parallel()
+	mc := &mockMasterCardReadRepo{}
+	uc := newMasterCardUC(t, mc, &mockMasterCardgroupReadRepo{}, true)
+	ob := MasterCardOrderByPosition
+	before := "v1:!!!not-valid-base64!!!" // v1 prefix + malformed base64 payload
+	_, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
+		MasterCardgroupID: "id-1",
+		Last:              intPtr(5),
+		Before:            &before,
+		OrderBy:           &ob,
+	})
+	assertValidationError(t, err, "before", "invalid cursor")
+	if len(mc.findByIDCalls) != 0 {
+		t.Fatalf("corrupt cursor must be rejected before FindByID, got %d calls", len(mc.findByIDCalls))
+	}
+}
