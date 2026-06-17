@@ -48,6 +48,7 @@ var interfaceToImpl = map[string]string{
 	"CardImportUsecase":          "cardImportUsecase",
 	"LastViewedCardgroupUsecase": "lastViewedCardgroupUsecase",
 	"MasterCatalogUsecase":       "masterCatalogUsecase",
+	"MasterCardUsecase":          "masterCardUsecase",
 }
 
 func main() {

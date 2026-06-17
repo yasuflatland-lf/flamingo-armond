@@ -26,6 +26,26 @@ type stubMasterCardUC struct {
 	gotListInput usecase.MasterCardConnectionInput
 	listOut      *usecase.MasterCardConnectionOutput
 	listErr      error
+
+	gotCreateInput usecase.CreateMasterCardInput
+	createOut      usecase.CreateMasterCardOutcome
+	createErr      error
+
+	gotUpdateID    string
+	gotUpdateInput usecase.UpdateMasterCardInput
+	updateOut      usecase.UpdateMasterCardOutcome
+	updateErr      error
+
+	gotDeleteID string
+	deleteErr   error
+
+	gotBulkIDs    []string
+	bulkCount     int64
+	bulkDeleteErr error
+
+	gotImportInput usecase.ImportMasterCardsInput
+	importOut      usecase.ImportMasterCardsOutput
+	importErr      error
 }
 
 func (s *stubMasterCardUC) AdminMaster(_ context.Context, _ string) (*usecase.MasterWithCount, error) {
@@ -35,6 +55,32 @@ func (s *stubMasterCardUC) AdminMaster(_ context.Context, _ string) (*usecase.Ma
 func (s *stubMasterCardUC) ListMasterCards(_ context.Context, in usecase.MasterCardConnectionInput) (*usecase.MasterCardConnectionOutput, error) {
 	s.gotListInput = in
 	return s.listOut, s.listErr
+}
+
+func (s *stubMasterCardUC) CreateMasterCard(_ context.Context, in usecase.CreateMasterCardInput) (usecase.CreateMasterCardOutcome, error) {
+	s.gotCreateInput = in
+	return s.createOut, s.createErr
+}
+
+func (s *stubMasterCardUC) UpdateMasterCard(_ context.Context, id string, in usecase.UpdateMasterCardInput) (usecase.UpdateMasterCardOutcome, error) {
+	s.gotUpdateID = id
+	s.gotUpdateInput = in
+	return s.updateOut, s.updateErr
+}
+
+func (s *stubMasterCardUC) DeleteMasterCard(_ context.Context, id string) error {
+	s.gotDeleteID = id
+	return s.deleteErr
+}
+
+func (s *stubMasterCardUC) DeleteMasterCards(_ context.Context, ids []string) (int64, error) {
+	s.gotBulkIDs = ids
+	return s.bulkCount, s.bulkDeleteErr
+}
+
+func (s *stubMasterCardUC) ImportMasterCards(_ context.Context, in usecase.ImportMasterCardsInput) (usecase.ImportMasterCardsOutput, error) {
+	s.gotImportInput = in
+	return s.importOut, s.importErr
 }
 
 // TestAdminMaster_Success verifies the resolver maps the MasterWithCount carrier

@@ -192,7 +192,7 @@ func buildResolver(
 	cefrClassifier := service.NewCEFRClassifier(cefrWords)
 	cefrUC := usecase.NewCEFRUsecase(cefrClassifier)
 	masterCatalogUC := usecase.NewMasterCatalogUsecase(repos.masterCardgroup, masterDeckUC, adminGate, logger)
-	masterCardUC := usecase.NewMasterCardUsecase(repos.masterCard, repos.masterCardgroup, adminGate, logger)
+	masterCardUC := usecase.NewMasterCardUsecase(repos.gorm, repos.masterCard, repos.masterCardgroup, adminGate, logger)
 
 	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, updateLearnDisplayModeUC, learnUC, cefrUC, masterCatalogUC, masterCardUC)
 	return resolvers, pingHandler, notionSyncHandler, nil
