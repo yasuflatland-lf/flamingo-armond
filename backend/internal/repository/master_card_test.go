@@ -377,12 +377,10 @@ func TestMasterCardRepository_DeleteByMasterCardgroupAndFrontsTx(t *testing.T) {
 	require.Equal(t, int64(0), noopAffected)
 }
 
-// TestMasterCardRepository_Create_DuplicateFront pins the current pass-through
-// behavior: Create on a duplicate (master_cardgroup_id, front) pair returns a
-// non-nil error because the uq_master_cards_cg_front unique constraint is
-// enforced. Unlike cardRepo.Create, masterCardRepo.Create intentionally does not
-// classify the 23505 conflict into a sentinel today (deferred to the future admin
-// consumer); callers receive the raw wrapped error.
+// TestMasterCardRepository_Create_DuplicateFront verifies Create classifies the
+// uq_master_cards_cg_front 23505 conflict into the repository.ErrCardDuplicateFront
+// sentinel (mirroring cardRepo.Create) so the admin usecase can surface the
+// duplicate-front collision as typed data rather than an opaque internal error.
 func TestMasterCardRepository_Create_DuplicateFront(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -394,12 +392,141 @@ func TestMasterCardRepository_Create_DuplicateFront(t *testing.T) {
 
 	second := newMasterCard(mcg.ID, "DupFront-same-front", "back-two", 1)
 	err := repo.Create(ctx, second)
-	require.Error(t, err, "Create with duplicate (master_cardgroup_id, front) must return an error")
+	require.ErrorIs(t, err, repository.ErrCardDuplicateFront,
+		"Create with duplicate (master_cardgroup_id, front) must return ErrCardDuplicateFront")
 
 	// Only one row for that front exists — the duplicate was rejected.
 	stored, listErr := repo.ListByMasterCardgroup(ctx, mcg.ID)
 	require.NoError(t, listErr)
 	require.Len(t, stored, 1)
+}
+
+// TestMasterCardRepository_Create_DuplicateFront_CaseInsensitive proves the
+// duplicate-front classification is case-insensitive: master_cards.front is
+// citext, so inserting "cat" after "Cat" violates uq_master_cards_cg_front and
+// Create returns ErrCardDuplicateFront.
+func TestMasterCardRepository_Create_DuplicateFront_CaseInsensitive(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "DupFront-CI-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	first := newMasterCard(mcg.ID, "DupCI-Cat", "back-cap", 0)
+	require.NoError(t, repo.Create(ctx, first))
+
+	// Differs only by letter case; citext treats it as the same front.
+	second := newMasterCard(mcg.ID, "dupci-cat", "back-lower", 1)
+	err := repo.Create(ctx, second)
+	require.ErrorIs(t, err, repository.ErrCardDuplicateFront,
+		"case-only-differing front must collide on the citext unique index")
+
+	stored, listErr := repo.ListByMasterCardgroup(ctx, mcg.ID)
+	require.NoError(t, listErr)
+	require.Len(t, stored, 1)
+}
+
+// TestMasterCardRepository_Update verifies the field-patch semantics: a non-nil
+// Front/Back is written and the updated row returned; an all-nil patch is a no-op
+// that returns the current row; a missing id returns ErrNotFound.
+func TestMasterCardRepository_Update(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "Update-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	card := newMasterCard(mcg.ID, "Update-front", "Update-back", 0)
+	require.NoError(t, repo.Create(ctx, card))
+
+	// Patch both fields.
+	newFront := "Update-front-2"
+	newBack := "Update-back-2"
+	updated, err := repo.Update(ctx, card.ID, repository.MasterCardUpdate{Front: &newFront, Back: &newBack})
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	require.Equal(t, domain.CardText(newFront), updated.Front)
+	require.Equal(t, domain.CardText(newBack), updated.Back)
+
+	// Patch only Back; Front is preserved.
+	newBackOnly := "Update-back-3"
+	updated2, err := repo.Update(ctx, card.ID, repository.MasterCardUpdate{Back: &newBackOnly})
+	require.NoError(t, err)
+	require.Equal(t, domain.CardText(newFront), updated2.Front, "Front must be preserved when only Back is patched")
+	require.Equal(t, domain.CardText(newBackOnly), updated2.Back)
+
+	// All-nil patch is a no-op returning the current row.
+	noop, err := repo.Update(ctx, card.ID, repository.MasterCardUpdate{})
+	require.NoError(t, err)
+	require.Equal(t, domain.CardText(newFront), noop.Front)
+	require.Equal(t, domain.CardText(newBackOnly), noop.Back)
+
+	// Missing id returns ErrNotFound.
+	_, err = repo.Update(ctx, uuid.NewString(), repository.MasterCardUpdate{Front: &newFront})
+	require.ErrorIs(t, err, repository.ErrNotFound)
+}
+
+// TestMasterCardRepository_DeleteMany verifies the bulk delete returns the count
+// of rows actually deleted, ignores ids that do not exist, and short-circuits an
+// empty slice to (0, nil) without issuing an unbounded mass delete.
+func TestMasterCardRepository_DeleteMany(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "DeleteMany-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	c0 := newMasterCard(mcg.ID, "DeleteMany-front-0", "back", 0)
+	c1 := newMasterCard(mcg.ID, "DeleteMany-front-1", "back", 1)
+	c2 := newMasterCard(mcg.ID, "DeleteMany-front-2", "back", 2)
+	require.NoError(t, repo.Create(ctx, c0))
+	require.NoError(t, repo.Create(ctx, c1))
+	require.NoError(t, repo.Create(ctx, c2))
+
+	// Delete two of the three (one id is a non-existent uuid, silently skipped).
+	n, err := repo.DeleteMany(ctx, []string{c0.ID, c1.ID, uuid.NewString()})
+	require.NoError(t, err)
+	require.Equal(t, int64(2), n, "only the two existing ids count toward the delete")
+
+	stored, err := repo.ListByMasterCardgroup(ctx, mcg.ID)
+	require.NoError(t, err)
+	require.Len(t, stored, 1)
+	require.Equal(t, c2.ID, stored[0].ID)
+
+	// Empty slice is a no-op: (0, nil) and the surviving row is untouched.
+	n, err = repo.DeleteMany(ctx, nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), n)
+	stored, err = repo.ListByMasterCardgroup(ctx, mcg.ID)
+	require.NoError(t, err)
+	require.Len(t, stored, 1, "empty-slice DeleteMany must not delete every row")
+}
+
+// TestMasterCardRepository_FindByMasterCardgroupAndFront verifies the
+// (master_cardgroup_id, front) lookup the duplicate-as-data path relies on: the
+// match is case-insensitive (citext), a missing front returns ErrNotFound, and a
+// front in a different deck is not visible.
+func TestMasterCardRepository_FindByMasterCardgroupAndFront(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "FindByFront-Group")
+	other := insertMCGForCardTest(t, ctx, "FindByFront-Other")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	card := newMasterCard(mcg.ID, "FindByFront-Cat", "cat-back", 0)
+	require.NoError(t, repo.Create(ctx, card))
+
+	// Case-insensitive match (citext): "findbyfront-cat" finds "FindByFront-Cat".
+	got, err := repo.FindByMasterCardgroupAndFront(ctx, mcg.ID, "findbyfront-cat")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, card.ID, got.ID)
+	require.Equal(t, domain.CardText("cat-back"), got.Back)
+
+	// Missing front returns ErrNotFound.
+	_, err = repo.FindByMasterCardgroupAndFront(ctx, mcg.ID, "FindByFront-NoSuchFront")
+	require.ErrorIs(t, err, repository.ErrNotFound)
+
+	// A front that exists in a different deck is not visible from this group.
+	_, err = repo.FindByMasterCardgroupAndFront(ctx, other.ID, "FindByFront-Cat")
+	require.ErrorIs(t, err, repository.ErrNotFound)
 }
 
 // insertMasterCardsSeq creates n master cards in masterCardgroupID with

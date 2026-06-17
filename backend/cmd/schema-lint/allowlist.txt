@@ -11,3 +11,4 @@
 # 7-step promotion checklist.
 
 importCards            # uses ImportCardsPayload — different shape
+adminImportMasterCards # uses ImportCardsPayload — mirrors importCards (admin-gated)

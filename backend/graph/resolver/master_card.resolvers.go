@@ -10,7 +10,97 @@ import (
 	"backend/internal/gqlerr"
 	"backend/internal/usecase"
 	"context"
+
+	"github.com/rotisserie/eris"
 )
+
+// AdminCreateMasterCard is the resolver for the adminCreateMasterCard field.
+//
+// Returns a union: `model.CreateMasterCardSuccess` on the happy path, or
+// `model.MasterCardDuplicateFrontError` when the (master_cardgroup_id, front)
+// unique index is violated. The duplicate case is "errors as data" — the second
+// return value is reserved for real errors (auth, validation, internal).
+func (r *mutationResolver) AdminCreateMasterCard(ctx context.Context, input model.NewMasterCardInput) (model.CreateMasterCardResult, error) {
+	outcome, err := r.MasterCardUC.CreateMasterCard(ctx, usecase.CreateMasterCardInput{
+		MasterCardgroupID: input.MasterCardgroupID,
+		Front:             input.Front,
+		Back:              input.Back,
+	})
+	if err != nil {
+		return nil, gqlerr.FromUsecaseError(ctx, err)
+	}
+	if outcome.Duplicate != nil {
+		return model.MasterCardDuplicateFrontError{
+			Message:        "A master card with this front already exists in this deck",
+			ExistingCardID: outcome.Duplicate.ExistingID,
+			ExistingBack:   outcome.Duplicate.ExistingBack,
+		}, nil
+	}
+	if outcome.Card == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: CreateMasterCardOutcome has no variant set"))
+	}
+	return model.CreateMasterCardSuccess{MasterCard: toMasterCardModel(outcome.Card)}, nil
+}
+
+// AdminUpdateMasterCard is the resolver for the adminUpdateMasterCard field.
+//
+// Returns a union: `model.UpdateMasterCardSuccess` on the happy path, or
+// `model.InputValidationError` when a supplied front/back fails content
+// validation (empty / oversized). Those field-content failures are "errors as
+// data" via the union variant. A missing id surfaces as a BAD_USER_INPUT
+// GraphQL error through the second return value, alongside auth and
+// infrastructure failures.
+func (r *mutationResolver) AdminUpdateMasterCard(ctx context.Context, id string, input model.UpdateMasterCardInput) (model.UpdateMasterCardResult, error) {
+	outcome, err := r.MasterCardUC.UpdateMasterCard(ctx, id, usecase.UpdateMasterCardInput{
+		Front: input.Front,
+		Back:  input.Back,
+	})
+	if err != nil {
+		return nil, gqlerr.FromUsecaseError(ctx, err)
+	}
+	if outcome.Validation != nil {
+		return toInputValidationError(outcome.Validation), nil
+	}
+	if outcome.Card == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: UpdateMasterCardOutcome has no variant set"))
+	}
+	return model.UpdateMasterCardSuccess{MasterCard: toMasterCardModel(outcome.Card)}, nil
+}
+
+// AdminDeleteMasterCard is the resolver for the adminDeleteMasterCard field.
+func (r *mutationResolver) AdminDeleteMasterCard(ctx context.Context, id string) (bool, error) {
+	if err := r.MasterCardUC.DeleteMasterCard(ctx, id); err != nil {
+		return false, gqlerr.FromUsecaseError(ctx, err)
+	}
+	return true, nil
+}
+
+// AdminDeleteMasterCards is the resolver for the adminDeleteMasterCards field.
+func (r *mutationResolver) AdminDeleteMasterCards(ctx context.Context, ids []string) (int, error) {
+	n, err := r.MasterCardUC.DeleteMasterCards(ctx, ids)
+	if err != nil {
+		return 0, gqlerr.FromUsecaseError(ctx, err)
+	}
+	return int(n), nil
+}
+
+// AdminImportMasterCards is the resolver for the adminImportMasterCards field.
+func (r *mutationResolver) AdminImportMasterCards(ctx context.Context, input model.ImportMasterCardsInput) (*model.ImportCardsPayload, error) {
+	out, err := r.MasterCardUC.ImportMasterCards(ctx, usecase.ImportMasterCardsInput{
+		MasterCardgroupID: input.MasterCardgroupID,
+		Payload:           input.Payload,
+	})
+	if err != nil {
+		return nil, gqlerr.FromUsecaseError(ctx, err)
+	}
+	return &model.ImportCardsPayload{
+		Inserted: int(out.Inserted),
+		Updated:  int(out.Updated),
+		Errors:   toCardImportErrors(ctx, out.Errors),
+	}, nil
+}
 
 // AdminMaster is the resolver for the adminMaster field.
 func (r *queryResolver) AdminMaster(ctx context.Context, id string) (*model.MasterCardgroup, error) {

@@ -3,8 +3,10 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 
@@ -55,6 +57,14 @@ type MasterCardCursor struct {
 	UpdatedAt *time.Time
 }
 
+// MasterCardUpdate is the field-patch payload for masterCardRepo.Update. A nil
+// pointer means "leave the column unchanged"; a non-nil pointer overwrites the
+// column. Mirrors repository.CardUpdate.
+type MasterCardUpdate struct {
+	Front *string
+	Back  *string
+}
+
 // MasterCardRepository provides persistence operations for the MasterCard
 // aggregate. The bulk Tx methods share the table-parameterized helpers in
 // card.go (upsertManyTx / listFrontsByCardgroupTx / deleteByCardgroupAndFrontsTx)
@@ -66,6 +76,25 @@ type MasterCardRepository interface {
 	// ordering column (position / created_at / updated_at) for a single decoded
 	// cursor id; the cross-group guard is enforced by the usecase, not here.
 	FindByID(ctx context.Context, id string) (*domain.MasterCard, error)
+	// FindByMasterCardgroupAndFront returns the master card identified by the
+	// (master_cardgroup_id, front) unique key, or ErrNotFound when no such row
+	// exists. front matches case-insensitively (the column is citext). The admin
+	// create path uses it to hydrate the existing card after a duplicate-front
+	// 23505 collision.
+	FindByMasterCardgroupAndFront(ctx context.Context, masterCardgroupID, front string) (*domain.MasterCard, error)
+	// Update applies a field patch and returns the updated row, or ErrNotFound
+	// when no row matches the id. An all-nil patch is a no-op that returns the
+	// current row. Mirrors cardRepo.Update.
+	Update(ctx context.Context, id string, patch MasterCardUpdate) (*domain.MasterCard, error)
+	// DeleteMany hard-deletes the master cards whose ids are in the list and
+	// returns the number of rows actually deleted. Master decks are admin-owned
+	// and global, so there is no owner scope (unlike cardRepo.DeleteByIDsTx).
+	//
+	// Empty ids short-circuits to (0, nil) without touching the DB. With an empty
+	// slice GORM v2 omits the `WHERE id IN (?)` clause altogether, which would
+	// convert this Delete into an unbounded mass delete — see
+	// `.claude/rules/go-library-gotchas.md` § GORM empty IN.
+	DeleteMany(ctx context.Context, ids []string) (int64, error)
 	// FindPageByMasterCardgroup returns a window of master cards for a master
 	// cardgroup ordered by (orderField, id). Forward paging uses after + first;
 	// backward paging uses before + last. The returned totalCount is search-aware:
@@ -279,9 +308,72 @@ func (r *masterCardRepo) Create(ctx context.Context, c *domain.MasterCard) error
 		c.ID = id
 	}
 	if err := r.db.WithContext(ctx).Create(masterCardToRow(c)).Error; err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" &&
+			strings.Contains(pgErr.ConstraintName, "uq_master_cards_cg_front") {
+			return ErrCardDuplicateFront
+		}
 		return eris.Wrap(err, "repository: master card: create")
 	}
 	return nil
+}
+
+// FindByMasterCardgroupAndFront returns the master card identified by the
+// (master_cardgroup_id, front) unique key, or ErrNotFound when no row matches.
+// front is matched case-insensitively because the column is citext.
+func (r *masterCardRepo) FindByMasterCardgroupAndFront(ctx context.Context, masterCardgroupID, front string) (*domain.MasterCard, error) {
+	var row gormMasterCard
+	err := r.db.WithContext(ctx).
+		Where("master_cardgroup_id = ? AND front = ?", masterCardgroupID, front).
+		Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, eris.Wrap(err, "repository: master card: find by master cardgroup and front")
+	}
+	return masterCardToDomain(row), nil
+}
+
+// Update applies the field patch and returns the updated row. An all-nil patch
+// short-circuits to a FindByID read so callers always receive the current row.
+// A missing id surfaces as ErrNotFound. Mirrors cardRepo.Update.
+func (r *masterCardRepo) Update(ctx context.Context, id string, patch MasterCardUpdate) (*domain.MasterCard, error) {
+	updates := map[string]any{}
+	if patch.Front != nil {
+		updates["front"] = *patch.Front
+	}
+	if patch.Back != nil {
+		updates["back"] = *patch.Back
+	}
+	if len(updates) == 0 {
+		return r.FindByID(ctx, id)
+	}
+
+	res := r.db.WithContext(ctx).Model(&gormMasterCard{}).Where("id = ?", id).Updates(updates)
+	if res.Error != nil {
+		return nil, eris.Wrap(res.Error, "repository: master card: update")
+	}
+	if res.RowsAffected == 0 {
+		return nil, ErrNotFound
+	}
+	return r.FindByID(ctx, id)
+}
+
+// DeleteMany hard-deletes the master cards whose ids are in the list, returning
+// the number of rows deleted. Empty ids short-circuits to (0, nil) so an empty
+// slice can never degrade into an unbounded mass delete (GORM omits an empty
+// `WHERE id IN (?)` clause; see `.claude/rules/go-library-gotchas.md` § GORM
+// empty IN). There is no owner scope — master decks are admin-owned and global.
+func (r *masterCardRepo) DeleteMany(ctx context.Context, ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	res := r.db.WithContext(ctx).Where("id IN ?", ids).Delete(&gormMasterCard{})
+	if res.Error != nil {
+		return 0, eris.Wrap(res.Error, "repository: master card: delete many")
+	}
+	return res.RowsAffected, nil
 }
 
 // UpsertManyTx upserts master cards by (master_cardgroup_id, front). Existing

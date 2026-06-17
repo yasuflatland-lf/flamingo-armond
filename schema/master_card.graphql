@@ -33,3 +33,80 @@ extend type Query {
     search: String, orderBy: MasterCardOrderBy = POSITION, orderDirection: SortOrder = ASC
   ): MasterCardConnection!
 }
+
+"""Input for creating a new master card in a master deck (admin-only)."""
+input NewMasterCardInput {
+  """Foreign key to the owning master cardgroup."""
+  masterCardgroupId: ID!
+  """1-500 grapheme clusters (length measured after trimming surrounding whitespace)."""
+  front: String!
+  """1-500 grapheme clusters (length measured after trimming surrounding whitespace)."""
+  back: String!
+}
+
+"""Input for `adminUpdateMasterCard`. Fields default to "leave unchanged" when null or omitted."""
+input UpdateMasterCardInput {
+  """null or omitted = leave unchanged."""
+  front: String
+  """null or omitted = leave unchanged."""
+  back: String
+}
+
+"""Input for `adminImportMasterCards`. Reuses the base64 text payload format of `validateCardImport`."""
+input ImportMasterCardsInput {
+  """Target master cardgroup ID. Must reference an existing master deck."""
+  masterCardgroupId: ID!
+  """Base64-encoded payload (standard alphabet, with padding). Same format as validateCardImport."""
+  payload: String!
+}
+
+"""Typed business error returned by `adminCreateMasterCard` when a master card in the same deck already has the same (case-insensitive) front."""
+type MasterCardDuplicateFrontError implements UserError {
+  message: String!
+  existingCardId: ID!
+  existingBack: String!
+}
+
+"""Success result of `adminCreateMasterCard`. Carries the created master card."""
+type CreateMasterCardSuccess {
+  masterCard: MasterCard!
+}
+
+"""Result of `adminCreateMasterCard`. Either the created master card, or a typed duplicate-front error returned as data."""
+union CreateMasterCardResult = CreateMasterCardSuccess | MasterCardDuplicateFrontError
+
+"""Success result of `adminUpdateMasterCard`. Carries the updated master card so clients can refresh local state without a follow-up query."""
+type UpdateMasterCardSuccess {
+  masterCard: MasterCard!
+}
+
+"""Result of `adminUpdateMasterCard`. Either the updated master card or an input-validation failure."""
+union UpdateMasterCardResult =
+    UpdateMasterCardSuccess
+  | InputValidationError
+
+extend type Mutation {
+  """
+  Create a master card in a master deck. Admin-only.
+  Returns `CreateMasterCardSuccess`, or `MasterCardDuplicateFrontError` when a card with the
+  same (case-insensitive) front already exists in the deck (typed "error as data").
+  """
+  adminCreateMasterCard(input: NewMasterCardInput!): CreateMasterCardResult!
+  """
+  Update a master card's front/back. Admin-only.
+  Returns `InputValidationError` when a provided field is empty or oversized.
+  A missing or unknown id is a BAD_USER_INPUT error.
+  """
+  adminUpdateMasterCard(id: ID!, input: UpdateMasterCardInput!): UpdateMasterCardResult!
+  """Delete a master card by ID. Admin-only. Returns true on success. A missing id is a BAD_USER_INPUT error."""
+  adminDeleteMasterCard(id: ID!): Boolean!
+  """Bulk-delete master cards by ID. Admin-only. Returns the number of rows deleted."""
+  adminDeleteMasterCards(ids: [ID!]!): Int!
+  """
+  Persist parsed cards into a master deck. Admin-only. Caps payload at 5,000 parsed rows;
+  larger payloads return BAD_USER_INPUT. Conflict key is (master_cardgroup_id, front) and is
+  case-insensitive (citext); conflicting rows have their `back` text and `position` updated,
+  others are inserted. Per-line parse errors are returned in `ImportCardsPayload.errors`.
+  """
+  adminImportMasterCards(input: ImportMasterCardsInput!): ImportCardsPayload!
+}

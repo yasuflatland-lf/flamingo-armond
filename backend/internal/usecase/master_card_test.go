@@ -59,6 +59,18 @@ func (panicMasterCardRepo) Delete(_ context.Context, _ string) error {
 	panic("not used in this test")
 }
 
+func (panicMasterCardRepo) FindByMasterCardgroupAndFront(_ context.Context, _, _ string) (*domain.MasterCard, error) {
+	panic("not used in this test")
+}
+
+func (panicMasterCardRepo) Update(_ context.Context, _ string, _ repository.MasterCardUpdate) (*domain.MasterCard, error) {
+	panic("not used in this test")
+}
+
+func (panicMasterCardRepo) DeleteMany(_ context.Context, _ []string) (int64, error) {
+	panic("not used in this test")
+}
+
 // findPageByMasterCardgroupCall captures the translated arguments passed to
 // FindPageByMasterCardgroup so a test can assert the usecase translated the
 // orderBy / direction and clamped the page size correctly.
@@ -227,7 +239,7 @@ func masterCardFixture(id, mcgID string, pos int) *domain.MasterCard {
 
 func newMasterCardUC(t *testing.T, mc repository.MasterCardRepository, mcg repository.MasterCardgroupRepository, isAdmin bool) MasterCardUsecase {
 	t.Helper()
-	return NewMasterCardUsecase(mc, mcg, newTestAdminGate(isAdmin), newTestLogger())
+	return NewMasterCardUsecase(nil, mc, mcg, newTestAdminGate(isAdmin), newTestLogger())
 }
 
 // ---------------------------------------------------------------------------
@@ -240,16 +252,16 @@ func TestNewMasterCardUsecase_NilDepsPanic(t *testing.T) {
 	logger := newTestLogger()
 	cases := map[string]func(){
 		"nil masterCard": func() {
-			NewMasterCardUsecase(nil, &mockMasterCardgroupReadRepo{}, gate, logger)
+			NewMasterCardUsecase(nil, nil, &mockMasterCardgroupReadRepo{}, gate, logger)
 		},
 		"nil masterCardgroup": func() {
-			NewMasterCardUsecase(&mockMasterCardReadRepo{}, nil, gate, logger)
+			NewMasterCardUsecase(nil, &mockMasterCardReadRepo{}, nil, gate, logger)
 		},
 		"nil adminGate": func() {
-			NewMasterCardUsecase(&mockMasterCardReadRepo{}, &mockMasterCardgroupReadRepo{}, nil, logger)
+			NewMasterCardUsecase(nil, &mockMasterCardReadRepo{}, &mockMasterCardgroupReadRepo{}, nil, logger)
 		},
 		"nil logger": func() {
-			NewMasterCardUsecase(&mockMasterCardReadRepo{}, &mockMasterCardgroupReadRepo{}, gate, nil)
+			NewMasterCardUsecase(nil, &mockMasterCardReadRepo{}, &mockMasterCardgroupReadRepo{}, gate, nil)
 		},
 	}
 	for name, fn := range cases {
