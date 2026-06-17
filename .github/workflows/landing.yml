@@ -1,15 +1,16 @@
 name: landing
 
-# Publishes the marketing landing page (site/) to the root of the gh-pages
-# branch. The ER chart workflow (er-chart.yml) publishes to gh-pages/er-chart,
-# so both coexist on the same Pages site:
+# Builds the marketing landing page (site/) with Vite and publishes the built
+# output (site/dist/) to the root of the gh-pages branch. The ER chart workflow
+# (er-chart.yml) publishes to gh-pages/er-chart, so both coexist on the same
+# Pages site:
 #   https://yasuflatland-lf.github.io/flamingo-armond/           <- landing (this workflow)
 #   https://yasuflatland-lf.github.io/flamingo-armond/er-chart/  <- ER chart
-# site/ is the single source of truth for the gh-pages root, including
-# site/vercel.json (ignoreCommand "exit 0"), which tells Vercel to skip building
-# the gh-pages branch (it carries only static Pages assets, not the Next.js app).
-# clean-exclude below preserves er-chart/ (owned by er-chart.yml, not by site/)
-# when this workflow cleans the gh-pages root.
+# site/public/ carries the gh-pages root extras Vite copies verbatim into the
+# build: site/public/vercel.json (ignoreCommand "exit 0", which tells Vercel to
+# skip building the gh-pages branch) and site/public/.nojekyll. clean-exclude
+# below preserves er-chart/ (owned by er-chart.yml, not by this workflow) when
+# this workflow cleans the gh-pages root.
 
 on:
   push:
@@ -32,25 +33,46 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Verify the site has an index and externalized assets
+      # Node version mirrors the repo-root .tool-versions; pnpm is provisioned by
+      # corepack from site/package.json's "packageManager" field. This avoids the
+      # full mise toolchain (Rust/mprocs) that the landing build does not need.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .tool-versions
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        working-directory: site
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        working-directory: site
+        run: pnpm build
+
+      - name: Verify the built site has an index and externalized assets
         run: |
           set -euo pipefail
-          test -f site/index.html || { echo "::error::site/index.html missing" >&2; exit 1; }
+          test -f site/dist/index.html || { echo "::error::site/dist/index.html missing - the build did not emit an entry." >&2; exit 1; }
           # The landing page must reference videos by path, never re-embed base64
-          # blobs (which would balloon the HTML and wreck LCP).
-          if grep -q 'data:video/mp4;base64' site/index.html; then
-            echo "::error::site/index.html still embeds a base64 video - externalize it under site/videos/." >&2
+          # blobs (which would balloon the bundle and wreck LCP).
+          if grep -rq 'data:video/mp4;base64' site/dist; then
+            echo "::error::built site embeds a base64 video - externalize it under site/public/videos/." >&2
             exit 1
           fi
-          for v in site/videos/learn-demo.mp4 site/videos/cardgroup-demo.mp4; do
+          for v in site/dist/videos/learn-demo.mp4 site/dist/videos/cardgroup-demo.mp4; do
             test -f "$v" || { echo "::error::missing $v" >&2; exit 1; }
           done
+          # .nojekyll disables Jekyll processing for the whole Pages root; it
+          # rides along from site/public/ so the build keeps publishing it.
+          test -f site/dist/.nojekyll || { echo "::error::site/dist/.nojekyll missing - keep it under site/public/." >&2; exit 1; }
 
-      - name: Publish site/ to gh-pages root
+      - name: Publish site/dist to gh-pages root
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           branch: gh-pages
-          folder: site
+          folder: site/dist
           clean: true
           clean-exclude: |
             er-chart

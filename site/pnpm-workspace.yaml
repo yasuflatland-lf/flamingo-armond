@@ -1,0 +1,9 @@
+# Marks site/ as its own pnpm workspace root, independent of the repo-root
+# workspace (which only contains frontend). Keeping the landing page isolated
+# means its dependency tree and lockfile never mix with the Next.js app.
+packages: []
+
+# Vite's bundler (esbuild) ships a native binary installed via a build script;
+# pnpm blocks build scripts by default, so allow this one explicitly.
+allowBuilds:
+  esbuild: true
