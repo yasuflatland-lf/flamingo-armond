@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/rotisserie/eris"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
 	"backend/internal/cursor"
@@ -830,4 +831,85 @@ func TestMasterCard_ListMasterCards_CursorBeforeFieldLabel(t *testing.T) {
 	if len(mc.findByIDCalls) != 0 {
 		t.Fatalf("corrupt cursor must be rejected before FindByID, got %d calls", len(mc.findByIDCalls))
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Context-cancellation pass-through tests
+//
+// Each of the four isContextDone branches in master_card.go must return the
+// raw context error unwrapped so callers can check identity via
+// errors.Is(err, context.Canceled). The assertion convention mirrors
+// ownership_test.go: assertCancelled (errors.Is chain check) AND
+// require.Equal (pointer-identity check that the error is NOT eris-wrapped).
+// ---------------------------------------------------------------------------
+
+// TestMasterCard_AdminMaster_FindByID_PropagatesCancelled verifies that a
+// context.Canceled returned by masterCardgroupRepo.FindByID passes through
+// unwrapped from AdminMaster so the caller's identity check succeeds.
+func TestMasterCard_AdminMaster_FindByID_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+	mcg := &mockMasterCardgroupReadRepo{
+		findByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, context.Canceled },
+	}
+	uc := newMasterCardUC(t, &mockMasterCardReadRepo{}, mcg, true)
+	_, err := uc.AdminMaster(authedCtx("admin1"), "id-1")
+
+	assertCancelled(t, err)
+	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
+}
+
+// TestMasterCard_AdminMaster_CountCards_PropagatesCancelled verifies that a
+// context.Canceled returned by masterCardgroupRepo.CountCards passes through
+// unwrapped from AdminMaster so the caller's identity check succeeds.
+func TestMasterCard_AdminMaster_CountCards_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+	draft := masterCardgroup("id-1")
+	mcg := &mockMasterCardgroupReadRepo{
+		findByIDFn:    func(string) (*domain.MasterCardgroup, error) { return draft, nil },
+		countCardsErr: context.Canceled,
+	}
+	uc := newMasterCardUC(t, &mockMasterCardReadRepo{}, mcg, true)
+	_, err := uc.AdminMaster(authedCtx("admin1"), "id-1")
+
+	assertCancelled(t, err)
+	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
+}
+
+// TestMasterCard_ListMasterCards_FindPage_PropagatesCancelled verifies that a
+// context.Canceled returned by masterCardRepo.FindPageByMasterCardgroup passes
+// through unwrapped from ListMasterCards so the caller's identity check succeeds.
+func TestMasterCard_ListMasterCards_FindPage_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+	mc := &mockMasterCardReadRepo{findPageErr: context.Canceled}
+	uc := newMasterCardUC(t, mc, &mockMasterCardgroupReadRepo{}, true)
+	_, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
+		MasterCardgroupID: "id-1",
+		First:             intPtr(5),
+	})
+
+	assertCancelled(t, err)
+	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
+}
+
+// TestMasterCard_ListMasterCards_CursorHydration_PropagatesCancelled verifies
+// that a context.Canceled returned by masterCardRepo.FindByID during cursor
+// hydration (resolveMasterCardCursor, reached when orderBy is non-ID) passes
+// through unwrapped from ListMasterCards so the caller's identity check succeeds.
+func TestMasterCard_ListMasterCards_CursorHydration_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+	mc := &mockMasterCardReadRepo{
+		findByIDFn: func(string) (*domain.MasterCard, error) { return nil, context.Canceled },
+	}
+	uc := newMasterCardUC(t, mc, &mockMasterCardgroupReadRepo{}, true)
+	ob := MasterCardOrderByPosition // non-ID ordering triggers FindByID in resolveMasterCardCursor
+	after := cursor.Encode("cur-1")
+	_, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
+		MasterCardgroupID: "id-1",
+		First:             intPtr(5),
+		After:             &after,
+		OrderBy:           &ob,
+	})
+
+	assertCancelled(t, err)
+	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
 }
