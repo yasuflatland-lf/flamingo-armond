@@ -77,6 +77,7 @@ describe("<CatalogListItem>", () => {
     expect(screen.getByText("100 cards")).toBeInTheDocument();
     expect(screen.queryByText(/^Level /)).not.toBeInTheDocument();
     expect(screen.queryByText("Business")).not.toBeInTheDocument();
+    expect(screen.queryByText("en")).not.toBeInTheDocument();
   });
 
   it("disables the button and shows the in-flight label while importing", () => {
