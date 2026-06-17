@@ -27,14 +27,14 @@ func (panicMasterCardRepo) ListByMasterCardgroup(_ context.Context, _ string) ([
 	panic("not used in this test")
 }
 
+func (panicMasterCardRepo) FindByID(_ context.Context, _ string) (*domain.MasterCard, error) {
+	panic("not used in this test")
+}
+
 func (panicMasterCardRepo) FindPageByMasterCardgroup(
 	_ context.Context, _ string, _, _ *repository.MasterCardCursor, _, _ int,
 	_ repository.MasterCardOrderBy, _ repository.SortOrder, _ *string,
 ) ([]*domain.MasterCard, int64, error) {
-	panic("not used in this test")
-}
-
-func (panicMasterCardRepo) CountByMasterCardgroup(_ context.Context, _ string) (int64, error) {
 	panic("not used in this test")
 }
 
@@ -81,9 +81,10 @@ type mockMasterCardReadRepo struct {
 	findPageErr   error
 	findPageCalls []findPageByMasterCardgroupCall
 
-	countRes   int64
-	countErr   error
-	countCalls int
+	// findByIDFn backs FindByID for cursor-hydration tests. When nil, FindByID
+	// returns repository.ErrNotFound.
+	findByIDFn    func(id string) (*domain.MasterCard, error)
+	findByIDCalls []string
 }
 
 func (m *mockMasterCardReadRepo) FindPageByMasterCardgroup(
@@ -111,12 +112,12 @@ func (m *mockMasterCardReadRepo) FindPageByMasterCardgroup(
 	return m.findPageRows, m.findPageTotal, nil
 }
 
-func (m *mockMasterCardReadRepo) CountByMasterCardgroup(_ context.Context, _ string) (int64, error) {
-	m.countCalls++
-	if m.countErr != nil {
-		return 0, m.countErr
+func (m *mockMasterCardReadRepo) FindByID(_ context.Context, id string) (*domain.MasterCard, error) {
+	m.findByIDCalls = append(m.findByIDCalls, id)
+	if m.findByIDFn != nil {
+		return m.findByIDFn(id)
 	}
-	return m.countRes, nil
+	return nil, repository.ErrNotFound
 }
 
 // panicMasterCardgroupRepo satisfies repository.MasterCardgroupRepository with
@@ -315,6 +316,31 @@ func TestMasterCard_AdminMaster_NotFound(t *testing.T) {
 	assertValidationError(t, err, "id", "")
 }
 
+// A non-NotFound FindByID error wraps into the internal eris chain.
+func TestMasterCard_AdminMaster_FindByIDInfraErrorWrapped(t *testing.T) {
+	t.Parallel()
+	boom := eris.New("db down")
+	mcg := &mockMasterCardgroupReadRepo{
+		findByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, boom },
+	}
+	uc := newMasterCardUC(t, &mockMasterCardReadRepo{}, mcg, true)
+	_, err := uc.AdminMaster(authedCtx("admin1"), "id-1")
+	assertInternalChain(t, err, "usecase: master card: admin master")
+}
+
+// A CountCards error wraps into the internal eris chain.
+func TestMasterCard_AdminMaster_CountCardsInfraErrorWrapped(t *testing.T) {
+	t.Parallel()
+	draft := masterCardgroup("id-1")
+	mcg := &mockMasterCardgroupReadRepo{
+		findByIDFn:    func(string) (*domain.MasterCardgroup, error) { return draft, nil },
+		countCardsErr: eris.New("count down"),
+	}
+	uc := newMasterCardUC(t, &mockMasterCardReadRepo{}, mcg, true)
+	_, err := uc.AdminMaster(authedCtx("admin1"), "id-1")
+	assertInternalChain(t, err, "usecase: master card: admin master")
+}
+
 // ---------------------------------------------------------------------------
 // ListMasterCards
 // ---------------------------------------------------------------------------
@@ -436,9 +462,10 @@ func TestMasterCard_ListMasterCards_OrderByDefault(t *testing.T) {
 func TestMasterCard_ListMasterCards_TotalCountOnly(t *testing.T) {
 	t.Parallel()
 	// first==0 && last==0 short-circuit: totalCount must still surface, the row
-	// fetch returns no edges. totalCount comes from CountByMasterCardgroup (the
-	// separate count), computed before the short-circuit.
-	mc := &mockMasterCardReadRepo{countRes: 17}
+	// fetch returns no edges. totalCount is the search-aware count returned by
+	// FindPageByMasterCardgroup, which the repository computes before its own
+	// no-rows short-circuit (so a (0,0) request still observes the real count).
+	mc := &mockMasterCardReadRepo{findPageTotal: 17}
 	uc := newMasterCardUC(t, mc, &mockMasterCardgroupReadRepo{}, true)
 	out, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
 		MasterCardgroupID: "id-1",
@@ -468,7 +495,7 @@ func TestMasterCard_ListMasterCards_ReturnsEdgesAndCursors(t *testing.T) {
 		masterCardFixture("a", "id-1", 1),
 		masterCardFixture("b", "id-1", 2),
 	}
-	mc := &mockMasterCardReadRepo{findPageRows: rows, countRes: 2}
+	mc := &mockMasterCardReadRepo{findPageRows: rows, findPageTotal: 2}
 	uc := newMasterCardUC(t, mc, &mockMasterCardgroupReadRepo{}, true)
 	out, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
 		MasterCardgroupID: "id-1",
@@ -483,13 +510,19 @@ func TestMasterCard_ListMasterCards_ReturnsEdgesAndCursors(t *testing.T) {
 	if len(out.Cards) != 2 {
 		t.Fatalf("expected 2 cards, got %d", len(out.Cards))
 	}
-	// Cursors are the opaque v1 envelope over the node id (the cursor encoder used
-	// by ListCardsByCardgroupConnection).
-	if out.StartCur != cursor.Encode("a") {
-		t.Fatalf("StartCur: want %q, got %q", cursor.Encode("a"), out.StartCur)
+	// StartCur / EndCur MUST be the RAW node ids, NOT cursor.Encode(...). The
+	// resolver's connection layer applies the cursor encoder once; storing the
+	// encoded value here would double-encode (mirrors ListCardsByCardgroupConnection).
+	if out.StartCur != "a" {
+		t.Fatalf("StartCur: want raw id %q, got %q", "a", out.StartCur)
 	}
-	if out.EndCur != cursor.Encode("b") {
-		t.Fatalf("EndCur: want %q, got %q", cursor.Encode("b"), out.EndCur)
+	if out.EndCur != "b" {
+		t.Fatalf("EndCur: want raw id %q, got %q", "b", out.EndCur)
+	}
+	// Guard against regressing to double-encode: the stored cursors must NOT be the
+	// encoded envelope.
+	if out.StartCur == cursor.Encode("a") || out.EndCur == cursor.Encode("b") {
+		t.Fatalf("cursors must not be cursor.Encode(...)-encoded; got StartCur=%q EndCur=%q", out.StartCur, out.EndCur)
 	}
 }
 
@@ -542,14 +575,197 @@ func TestMasterCard_ListMasterCards_RepoErrorWrapped(t *testing.T) {
 	assertInternalChain(t, err, "usecase: master card: list")
 }
 
-func TestMasterCard_ListMasterCards_CountErrorWrapped(t *testing.T) {
+// I1 regression guard: with an active search, TotalCount must equal the
+// search-FILTERED count returned by FindPageByMasterCardgroup, never an
+// unfiltered count. The mock returns findPageTotal=2 for a 2-match/4-card
+// scenario; before the fix the usecase used a separate search-unaware count.
+func TestMasterCard_ListMasterCards_SearchAwareTotalCount(t *testing.T) {
 	t.Parallel()
-	sentinel := eris.New("count boom")
-	mc := &mockMasterCardReadRepo{countErr: sentinel}
+	rows := []*domain.MasterCard{
+		masterCardFixture("m1", "id-1", 0),
+		masterCardFixture("m2", "id-1", 1),
+	}
+	// findPageTotal=2 models the repository's COUNT(*) WHERE ... ILIKE search,
+	// i.e. only the matching rows. The group holds 4 cards in total, but the
+	// search filter narrows the count to 2.
+	mc := &mockMasterCardReadRepo{findPageRows: rows, findPageTotal: 2}
 	uc := newMasterCardUC(t, mc, &mockMasterCardgroupReadRepo{}, true)
+	search := "apple"
+	out, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
+		MasterCardgroupID: "id-1",
+		First:             intPtr(10),
+		Search:            &search,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.TotalCount != 2 {
+		t.Fatalf("expected search-filtered TotalCount 2, got %d", out.TotalCount)
+	}
+	// The search reached the repository (trimmed, non-nil).
+	got := mc.findPageCalls[0].Search
+	if got == nil || *got != "apple" {
+		t.Fatalf("expected search %q to reach repo, got %v", "apple", got)
+	}
+}
+
+// Mixed-direction (First AND Last both non-nil) is rejected with BAD_USER_INPUT
+// before any repository access (mirrors card.go's BothFirstAndLast rejection).
+func TestMasterCard_ListMasterCards_BothFirstAndLast(t *testing.T) {
+	t.Parallel()
+	uc := newMasterCardUC(t, &mockMasterCardReadRepo{}, &mockMasterCardgroupReadRepo{}, true)
 	_, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
 		MasterCardgroupID: "id-1",
 		First:             intPtr(5),
+		Last:              intPtr(5),
 	})
-	assertInternalChain(t, err, "usecase: master card: list")
+	assertValidationError(t, err, "first", "")
+}
+
+// ---------------------------------------------------------------------------
+// resolveMasterCardOrderBy
+// ---------------------------------------------------------------------------
+
+func TestMasterCard_ResolveMasterCardOrderBy_Invalid(t *testing.T) {
+	t.Parallel()
+	t.Run("invalid orderBy", func(t *testing.T) {
+		t.Parallel()
+		bad := MasterCardOrderBy("NOPE")
+		_, _, err := resolveMasterCardOrderBy(&bad, nil)
+		assertValidationError(t, err, "orderBy", "")
+	})
+	t.Run("invalid orderDirection", func(t *testing.T) {
+		t.Parallel()
+		badDir := SortOrder("SIDEWAYS")
+		_, _, err := resolveMasterCardOrderBy(nil, &badDir)
+		assertValidationError(t, err, "orderDirection", "")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Cursor hydration (resolveMasterCardCursor via ListMasterCards)
+// ---------------------------------------------------------------------------
+
+// After-cursor for POSITION ordering hydrates the position column from FindByID
+// and forwards the populated cursor to the repository page query.
+func TestMasterCard_ListMasterCards_CursorHydratesPosition(t *testing.T) {
+	t.Parallel()
+	cursorCard := masterCardFixture("cur-1", "id-1", 7)
+	mc := &mockMasterCardReadRepo{
+		findByIDFn: func(string) (*domain.MasterCard, error) { return cursorCard, nil },
+	}
+	uc := newMasterCardUC(t, mc, &mockMasterCardgroupReadRepo{}, true)
+	ob := MasterCardOrderByPosition
+	after := cursor.Encode("cur-1")
+	_, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
+		MasterCardgroupID: "id-1",
+		First:             intPtr(5),
+		After:             &after,
+		OrderBy:           &ob,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	gotAfter := mc.findPageCalls[0].After
+	if gotAfter == nil {
+		t.Fatal("expected non-nil after cursor passed to repo")
+	}
+	if gotAfter.ID != "cur-1" {
+		t.Fatalf("after cursor ID: want cur-1, got %q", gotAfter.ID)
+	}
+	if gotAfter.Position == nil || *gotAfter.Position != 7 {
+		t.Fatalf("after cursor must hydrate position 7, got %v", gotAfter.Position)
+	}
+}
+
+// After-cursor for CREATED_AT ordering hydrates the created_at time column.
+func TestMasterCard_ListMasterCards_CursorHydratesCreatedAt(t *testing.T) {
+	t.Parallel()
+	cursorCard := masterCardFixture("cur-2", "id-1", 0)
+	mc := &mockMasterCardReadRepo{
+		findByIDFn: func(string) (*domain.MasterCard, error) { return cursorCard, nil },
+	}
+	uc := newMasterCardUC(t, mc, &mockMasterCardgroupReadRepo{}, true)
+	ob := MasterCardOrderByCreatedAt
+	after := cursor.Encode("cur-2")
+	_, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
+		MasterCardgroupID: "id-1",
+		First:             intPtr(5),
+		After:             &after,
+		OrderBy:           &ob,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	gotAfter := mc.findPageCalls[0].After
+	if gotAfter == nil || gotAfter.CreatedAt == nil {
+		t.Fatalf("after cursor must hydrate created_at, got %+v", gotAfter)
+	}
+	if !gotAfter.CreatedAt.Equal(cursorCard.CreatedAt) {
+		t.Fatalf("created_at: want %v, got %v", cursorCard.CreatedAt, *gotAfter.CreatedAt)
+	}
+}
+
+// A cursor whose card belongs to a DIFFERENT master cardgroup is rejected with
+// BAD_USER_INPUT — FindByID is group-agnostic, so the cross-group guard is
+// explicit.
+func TestMasterCard_ListMasterCards_CursorCrossGroupRejected(t *testing.T) {
+	t.Parallel()
+	foreign := masterCardFixture("foreign-1", "other-group", 3)
+	mc := &mockMasterCardReadRepo{
+		findByIDFn: func(string) (*domain.MasterCard, error) { return foreign, nil },
+	}
+	uc := newMasterCardUC(t, mc, &mockMasterCardgroupReadRepo{}, true)
+	ob := MasterCardOrderByPosition
+	after := cursor.Encode("foreign-1")
+	_, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
+		MasterCardgroupID: "id-1",
+		First:             intPtr(5),
+		After:             &after,
+		OrderBy:           &ob,
+	})
+	assertValidationError(t, err, "after", "")
+}
+
+// A corrupt / undecodable cursor (a v1 envelope with a malformed base64
+// payload) is rejected with BAD_USER_INPUT ("invalid cursor") before any
+// FindByID lookup. A bare-id cursor is NOT a decode error — cursor.Decode passes
+// it through and the cross-group/not-found guard handles it — so the corrupt
+// fixture must use the v1 envelope to exercise the decode-failure branch.
+func TestMasterCard_ListMasterCards_CursorCorruptRejected(t *testing.T) {
+	t.Parallel()
+	mc := &mockMasterCardReadRepo{}
+	uc := newMasterCardUC(t, mc, &mockMasterCardgroupReadRepo{}, true)
+	ob := MasterCardOrderByPosition
+	after := "v1:!!!not-valid-base64!!!" // v1 prefix + malformed base64 payload
+	_, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
+		MasterCardgroupID: "id-1",
+		First:             intPtr(5),
+		After:             &after,
+		OrderBy:           &ob,
+	})
+	assertValidationError(t, err, "after", "invalid cursor")
+	if len(mc.findByIDCalls) != 0 {
+		t.Fatalf("corrupt cursor must be rejected before FindByID, got %d calls", len(mc.findByIDCalls))
+	}
+}
+
+// A FindByID infrastructure error during cursor hydration surfaces as an
+// internal eris-chain wrap, not a validation/forbidden error.
+func TestMasterCard_ListMasterCards_CursorHydrationInfraErrorWrapped(t *testing.T) {
+	t.Parallel()
+	boom := eris.New("db down")
+	mc := &mockMasterCardReadRepo{
+		findByIDFn: func(string) (*domain.MasterCard, error) { return nil, boom },
+	}
+	uc := newMasterCardUC(t, mc, &mockMasterCardgroupReadRepo{}, true)
+	ob := MasterCardOrderByPosition
+	after := cursor.Encode("cur-x")
+	_, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
+		MasterCardgroupID: "id-1",
+		First:             intPtr(5),
+		After:             &after,
+		OrderBy:           &ob,
+	})
+	assertInternalChain(t, err, "usecase: master card: resolve cursor")
 }

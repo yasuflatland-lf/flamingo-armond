@@ -742,31 +742,28 @@ func TestMasterCardRepository_FindPageByMasterCardgroup_PageCapAllowsMaxPlusOne(
 	require.Len(t, cards100, 100, "first=100 is capped to 100 rows")
 }
 
-// TestMasterCardRepository_CountByMasterCardgroup verifies the standalone count is
-// scoped to the requested group and returns 0 for an empty group.
-func TestMasterCardRepository_CountByMasterCardgroup(t *testing.T) {
+// TestMasterCardRepository_FindByID verifies the single-row PK lookup: an
+// existing id returns the row with its columns round-tripped, and an unknown id
+// returns ErrNotFound.
+func TestMasterCardRepository_FindByID(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "MCFindByID-Group")
 	repo := repository.NewMasterCardRepository(testDB.GORM)
-	mcgA := insertMCGForCardTest(t, ctx, "MCCount-GroupA")
-	mcgB := insertMCGForCardTest(t, ctx, "MCCount-GroupB")
 
-	insertMasterCardsSeq(t, ctx, repo, mcgA.ID, "MCCountA", 4)
-	insertMasterCardsSeq(t, ctx, repo, mcgB.ID, "MCCountB", 7)
+	card := newMasterCard(mcg.ID, "MCFindByID-front", "back", 5)
+	require.NoError(t, repo.Create(ctx, card))
 
-	countA, err := repo.CountByMasterCardgroup(ctx, mcgA.ID)
+	got, err := repo.FindByID(ctx, card.ID)
 	require.NoError(t, err)
-	require.Equal(t, int64(4), countA)
+	require.Equal(t, card.ID, got.ID)
+	require.Equal(t, mcg.ID, got.MasterCardgroupID)
+	require.Equal(t, domain.CardText("MCFindByID-front"), got.Front)
+	require.Equal(t, 5, got.Position)
 
-	countB, err := repo.CountByMasterCardgroup(ctx, mcgB.ID)
-	require.NoError(t, err)
-	require.Equal(t, int64(7), countB)
-
-	// An empty (fresh) group counts 0.
-	mcgEmpty := insertMCGForCardTest(t, ctx, "MCCount-Empty")
-	countEmpty, err := repo.CountByMasterCardgroup(ctx, mcgEmpty.ID)
-	require.NoError(t, err)
-	require.Equal(t, int64(0), countEmpty)
+	// Unknown id returns ErrNotFound.
+	_, err = repo.FindByID(ctx, uuid.NewString())
+	require.ErrorIs(t, err, repository.ErrNotFound)
 }
 
 // TestMasterCardRepository_Delete verifies Delete by primary key: the row is

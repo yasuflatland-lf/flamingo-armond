@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -60,13 +61,19 @@ type MasterCardCursor struct {
 // with "master_cards" and "master_cardgroup_id".
 type MasterCardRepository interface {
 	ListByMasterCardgroup(ctx context.Context, masterCardgroupID string) ([]*domain.MasterCard, error)
+	// FindByID returns the master card with the given primary key, or ErrNotFound
+	// when no such row exists. The usecase uses it to hydrate a pagination cursor's
+	// ordering column (position / created_at / updated_at) for a single decoded
+	// cursor id; the cross-group guard is enforced by the usecase, not here.
+	FindByID(ctx context.Context, id string) (*domain.MasterCard, error)
 	// FindPageByMasterCardgroup returns a window of master cards for a master
 	// cardgroup ordered by (orderField, id). Forward paging uses after + first;
-	// backward paging uses before + last. The returned totalCount reflects every
-	// row in the group (and the search filter, if active), not just the page. The
-	// return shape mirrors cardRepo.FindPageByCardgroupForUser so the usecase page
-	// helpers (assemblePage / TrimAndDetect) consume it identically — master cards
-	// carry no per-viewer / FSRS state, so there is no userID parameter.
+	// backward paging uses before + last. The returned totalCount is search-aware:
+	// it reflects every row in the group AND the search filter when one is active,
+	// not just the page. The usecase consumes this totalCount directly. The return
+	// shape mirrors cardRepo.FindPageByCardgroupForUser so the usecase page helpers
+	// (assemblePage / TrimAndDetect) consume it identically — master cards carry no
+	// per-viewer / FSRS state, so there is no userID parameter.
 	FindPageByMasterCardgroup(
 		ctx context.Context,
 		masterCardgroupID string,
@@ -76,10 +83,6 @@ type MasterCardRepository interface {
 		dir SortOrder,
 		search *string,
 	) (cards []*domain.MasterCard, totalCount int64, err error)
-	// CountByMasterCardgroup returns the number of master cards in the group via a
-	// separate COUNT(*) scoped by master_cardgroup_id. Mirrors the separate-count
-	// pattern used by the master-catalog read methods.
-	CountByMasterCardgroup(ctx context.Context, masterCardgroupID string) (int64, error)
 	Create(ctx context.Context, c *domain.MasterCard) error
 	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.MasterCard) (UpsertManyTxResult, error)
 	ListFrontsByMasterCardgroupTx(ctx context.Context, tx *gorm.DB, masterCardgroupID string) ([]string, error)
@@ -112,6 +115,20 @@ func (r *masterCardRepo) ListByMasterCardgroup(ctx context.Context, masterCardgr
 		out[i] = masterCardToDomain(rows[i])
 	}
 	return out, nil
+}
+
+// FindByID returns the master card with the given primary key, or ErrNotFound
+// when no row matches. Single-row PK lookup mirroring cardRepo.FindByID.
+func (r *masterCardRepo) FindByID(ctx context.Context, id string) (*domain.MasterCard, error) {
+	var row gormMasterCard
+	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, eris.Wrap(err, "repository: master card: find by id")
+	}
+	return masterCardToDomain(row), nil
 }
 
 // FindPageByMasterCardgroup paginates the master cards of a single group with
@@ -196,19 +213,6 @@ func (r *masterCardRepo) FindPageByMasterCardgroup(
 		out[i] = masterCardToDomain(rows[i])
 	}
 	return out, total, nil
-}
-
-// CountByMasterCardgroup returns the number of master cards in the group via a
-// separate COUNT(*) scoped by master_cardgroup_id.
-func (r *masterCardRepo) CountByMasterCardgroup(ctx context.Context, masterCardgroupID string) (int64, error) {
-	var total int64
-	if err := r.db.WithContext(ctx).
-		Model(&gormMasterCard{}).
-		Where("master_cardgroup_id = ?", masterCardgroupID).
-		Count(&total).Error; err != nil {
-		return 0, eris.Wrap(err, "repository: master card: count by master cardgroup")
-	}
-	return total, nil
 }
 
 // masterCardOrderClause renders the SQL ORDER BY tail. When orderBy is `id` only

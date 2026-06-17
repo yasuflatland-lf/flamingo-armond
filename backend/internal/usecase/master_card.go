@@ -135,9 +135,10 @@ func (u *masterCardUsecase) AdminMaster(ctx context.Context, id string) (*Master
 // ListMasterCards paginates a master deck's cards using Relay-style forward
 // (first/after) or backward (last/before) cursors. Admin-only. The mixed
 // direction combinations are rejected with BAD_USER_INPUT before any repository
-// access. totalCount comes from a separate COUNT(*) computed before the
-// first==0 && last==0 short-circuit so a totalCount-only request still observes
-// the real count.
+// access. totalCount is the search-aware count returned by
+// FindPageByMasterCardgroup (its internal COUNT(*) applies the active search
+// filter); the repository computes it before the first==0 && last==0
+// short-circuit so a totalCount-only request still observes the real count.
 func (u *masterCardUsecase) ListMasterCards(
 	ctx context.Context, in MasterCardConnectionInput,
 ) (*MasterCardConnectionOutput, error) {
@@ -177,19 +178,14 @@ func (u *masterCardUsecase) ListMasterCards(
 		}
 	}
 
-	// totalCount via a separate COUNT(*), computed before the page fetch so a
-	// totalCount-only request (first==0 && last==0) still observes the real count.
-	total, err := u.masterCardRepo.CountByMasterCardgroup(ctx, in.MasterCardgroupID)
-	if err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: master card: list: count by master cardgroup")
-	}
-
+	// totalCount is the search-aware count returned by FindPageByMasterCardgroup
+	// (captured inside the assemblePage closure). The repository computes it
+	// before its own no-rows short-circuit, so a totalCount-only request
+	// (first==0 && last==0) still observes the real, search-filtered count.
+	var total int64
 	cards, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
 		func(wantFirst, wantLast int) ([]*domain.MasterCard, error) {
-			rows, _, e := u.masterCardRepo.FindPageByMasterCardgroup(
+			rows, t, e := u.masterCardRepo.FindPageByMasterCardgroup(
 				ctx, in.MasterCardgroupID, after, before, wantFirst, wantLast, orderBy, dir, search,
 			)
 			if e != nil {
@@ -198,6 +194,7 @@ func (u *masterCardUsecase) ListMasterCards(
 				}
 				return nil, eris.Wrap(e, "usecase: master card: list: find page")
 			}
+			total = t
 			return rows, nil
 		},
 	)
@@ -205,10 +202,12 @@ func (u *masterCardUsecase) ListMasterCards(
 		return nil, err
 	}
 
+	// StartCur / EndCur carry the RAW node id; the resolver's connection layer
+	// applies the cursor encoder once. Encoding here would double-encode.
 	out := &MasterCardConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Cards: cards}
 	if len(cards) > 0 {
-		out.StartCur = cursor.Encode(cards[0].ID)
-		out.EndCur = cursor.Encode(cards[len(cards)-1].ID)
+		out.StartCur = cards[0].ID
+		out.EndCur = cards[len(cards)-1].ID
 	}
 	return out, nil
 }
@@ -255,12 +254,13 @@ func resolveMasterCardOrderBy(
 // master card cannot be found, or it belongs to a different master cardgroup.
 //
 // For MasterCardOrderByID no column hydration is needed — the decoded id is the
-// full cursor. For the time/position orderings the column value must be
-// hydrated; the MasterCardRepository contract offers no single-card lookup, so
-// the cursor row is located within ListByMasterCardgroup (master decks are
-// bounded admin templates). A missing column for the active orderBy is a
-// caller/internal bug surfaced as an error, never a silent zero-value (which
-// would generate a wrong-but-valid SQL predicate and quietly skip rows).
+// full cursor. For the time/position orderings the column value is hydrated via
+// a single-row FindByID lookup. FindByID is group-agnostic, so the cross-group
+// guard is explicit: a card whose MasterCardgroupID differs from the requested
+// group is treated as cursor-not-found, never leaked into the page query. A
+// missing column for the active orderBy is a caller/internal bug surfaced as an
+// error, never a silent zero-value (which would generate a wrong-but-valid SQL
+// predicate and quietly skip rows).
 func (u *masterCardUsecase) resolveMasterCardCursor(
 	ctx context.Context,
 	cursorStr *string,
@@ -280,11 +280,20 @@ func (u *masterCardUsecase) resolveMasterCardCursor(
 		return c, nil
 	}
 
-	card, err := u.findMasterCardInGroup(ctx, masterCardgroupID, id)
+	card, err := u.masterCardRepo.FindByID(ctx, id)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ucerr.NewValidationError(field, "cursor not found")
+		}
+		if isContextDone(err) {
+			return nil, err
+		}
+		return nil, eris.Wrap(err, "usecase: master card: resolve cursor: find by id")
 	}
-	if card == nil {
+	// FindByID is group-agnostic — reject a cursor whose card belongs to a
+	// different master cardgroup so the cursor cannot reference rows outside the
+	// requested deck.
+	if card.MasterCardgroupID != masterCardgroupID {
 		return nil, ucerr.NewValidationError(field, "cursor not found")
 	}
 
@@ -302,27 +311,4 @@ func (u *masterCardUsecase) resolveMasterCardCursor(
 		return nil, eris.Errorf("usecase: master card: unhandled orderBy %q", orderBy)
 	}
 	return c, nil
-}
-
-// findMasterCardInGroup returns the master card with the given id from the
-// supplied group, or (nil, nil) when no card in the group matches. The
-// MasterCardRepository contract has no single-card lookup; ListByMasterCardgroup
-// scoped to the group is the cross-aggregate guard (a cursor id from a different
-// deck never appears in the result and so is treated as not-found).
-func (u *masterCardUsecase) findMasterCardInGroup(
-	ctx context.Context, masterCardgroupID, id string,
-) (*domain.MasterCard, error) {
-	cards, err := u.masterCardRepo.ListByMasterCardgroup(ctx, masterCardgroupID)
-	if err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: master card: hydrate cursor: list by master cardgroup")
-	}
-	for _, card := range cards {
-		if card.ID == id {
-			return card, nil
-		}
-	}
-	return nil, nil
 }
