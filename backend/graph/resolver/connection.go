@@ -18,9 +18,11 @@ func encodeCursor(id string) *string {
 }
 
 // buildPageInfo assembles the Relay PageInfo from the boundary flags and the
-// already-encoded start/end cursor strings. Each caller computes its own
-// start/end (some encode via cursor.Encode, others carry a pre-encoded value)
-// and passes the final strings in.
+// start/end cursor strings. Every caller passes the raw boundary id through
+// encodeCursor, which applies cursor.Encode exactly once: the usecase
+// connection output carries RAW ids, never pre-encoded cursors. Encoding in
+// the usecase layer would double-encode the PageInfo cursors (see the
+// "Cursor encoding happens exactly once" rule in .claude/rules/pagination.md).
 func buildPageInfo(hasNext, hasPrev bool, start, end *string) *model.PageInfo {
 	return &model.PageInfo{
 		HasNextPage:     hasNext,
