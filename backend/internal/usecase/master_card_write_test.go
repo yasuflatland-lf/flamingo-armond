@@ -693,6 +693,12 @@ func TestMasterCard_ImportMasterCards_DeduplicatesCaseInsensitiveFront(t *testin
 	require.Equal(t, domain.CardText("second"), mc.upsertCaptured[0].Back, "last occurrence wins")
 	require.Len(t, out.Errors, 1)
 	require.Equal(t, CardImportErrKindDuplicate, out.Errors[0].Kind)
+	// The dropped row is the earlier "Apple"; its back is "first".
+	require.Equal(t, "first", out.Errors[0].Back)
+	// The diagnostic must name the WINNING back ("second"), not the dropped
+	// row's own back — the winningBack lookup must use the same case-folded key
+	// as the dedup map.
+	require.Contains(t, out.Errors[0].Message, "second", "diagnostic must reference the winning back")
 }
 
 func TestMasterCard_ImportMasterCards_OverCap(t *testing.T) {
@@ -732,6 +738,22 @@ func TestMasterCard_ImportMasterCards_EmptyParseNoPersist(t *testing.T) {
 	if *calls != 0 || mc.upsertCalls != 0 {
 		t.Fatalf("empty parse must not open a tx or upsert, got calls=%d upserts=%d", *calls, mc.upsertCalls)
 	}
+}
+
+// A context cancellation surfacing from UpsertManyTx propagates so the resolver
+// classifies it as CANCELLED. The tx closure eris-wraps the repo error, but the
+// outer isContextDone guard still detects the cancellation via errors.Is and
+// returns it (errors.Is-matchable), mirroring card_import.go's Import path.
+func TestMasterCard_ImportMasterCards_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+	process := func(string) ([]textdic.ParsedWord, []textdic.ValidationError, error) {
+		return []textdic.ParsedWord{{Front: "Apple", Back: "back-a", Line: 1}}, nil, nil
+	}
+	mc := &mockMasterCardWriteRepo{upsertErr: context.Canceled}
+	tx, _ := dictTxRunner()
+	uc := newMasterCardImportUC(t, mc, tx, true, process)
+	_, err := uc.ImportMasterCards(authedCtx("admin1"), ImportMasterCardsInput{MasterCardgroupID: "m1", Payload: b64("ignored")})
+	assertCancelled(t, err)
 }
 
 func TestMasterCard_ImportMasterCards_RepoErrorWrapped(t *testing.T) {

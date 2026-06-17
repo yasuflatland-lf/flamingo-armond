@@ -411,7 +411,7 @@ func (u *masterCardUsecase) ImportMasterCards(ctx context.Context, in ImportMast
 	deduped := make([]textdic.ParsedWord, 0, len(words))
 	for i, w := range words {
 		if lastIndex[strings.ToLower(w.Front)] != i {
-			winningBack := words[lastIndex[w.Front]].Back
+			winningBack := words[lastIndex[strings.ToLower(w.Front)]].Back
 			mappedErrs = append(mappedErrs, CardImportError{
 				Line:    w.Line,
 				Message: fmt.Sprintf("duplicated front (%s) was overridden with the new back (%s)", w.Front, winningBack),

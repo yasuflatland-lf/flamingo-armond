@@ -95,6 +95,7 @@ extend type Mutation {
   """
   Update a master card's front/back. Admin-only.
   Returns `InputValidationError` when a provided field is empty or oversized.
+  A missing or unknown id is a BAD_USER_INPUT error.
   """
   adminUpdateMasterCard(id: ID!, input: UpdateMasterCardInput!): UpdateMasterCardResult!
   """Delete a master card by ID. Admin-only. Returns true on success. A missing id is a BAD_USER_INPUT error."""
