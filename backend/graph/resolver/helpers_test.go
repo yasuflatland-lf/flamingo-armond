@@ -251,3 +251,35 @@ func TestToCardgroupConnectionModel_FiltersNilNodes(t *testing.T) {
 	assert.Equal(t, "cg1", conn.Edges[0].Node.ID)
 	assert.Equal(t, 1, conn.TotalCount, "TotalCount should pass through from output")
 }
+
+// ---------------------------------------------------------------------------
+// toMasterCardConnectionModel — nil-node filtering (test item 5)
+// ---------------------------------------------------------------------------
+
+// TestToMasterCardConnectionModel_FiltersNilNodes verifies that
+// toMasterCardConnectionModel skips nil domain.MasterCard entries and only
+// emits edges with non-nil nodes. This is critical because the schema declares
+// node: MasterCard! (non-null) on MasterCardEdge, so a nil node would violate
+// the schema contract.
+func TestToMasterCardConnectionModel_FiltersNilNodes(t *testing.T) {
+	t.Parallel()
+
+	validCard := &domain.MasterCard{
+		ID:                "mc1",
+		MasterCardgroupID: "mg1",
+		Front:             domain.CardText("Front"),
+		Back:              domain.CardText("Back"),
+		Position:          1,
+	}
+	out := &usecase.MasterCardConnectionOutput{
+		Cards:      []*domain.MasterCard{nil, validCard, nil},
+		TotalCount: 1,
+	}
+
+	conn := toMasterCardConnectionModel(context.Background(), out)
+
+	require.Len(t, conn.Edges, 1, "expected 1 edge after nil filter")
+	assert.NotNil(t, conn.Edges[0].Node, "edge.Node must be non-nil to satisfy MasterCardEdge schema constraint")
+	assert.Equal(t, "mc1", conn.Edges[0].Node.ID)
+	assert.Equal(t, 1, conn.TotalCount, "TotalCount should pass through from output")
+}
