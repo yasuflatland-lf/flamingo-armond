@@ -226,6 +226,33 @@ export async function loginAs(
   );
 }
 
+type SeedMasterInput = {
+  name: string;
+  status?: "DRAFT" | "PUBLISHED";
+  cards?: { front: string; back: string }[];
+};
+
+export async function seedMaster({ name, status = "DRAFT", cards = [] }: SeedMasterInput) {
+  const { data, error } = await adminClient
+    .from("master_cardgroups")
+    .insert({ name, status: status.toLowerCase() })
+    .select("id, name")
+    .single();
+  if (error) throw new Error(`seedMaster(${name}): ${error.message}`);
+
+  if (cards.length > 0) {
+    const rows = cards.map((c, i) => ({
+      master_cardgroup_id: data.id,
+      front: c.front,
+      back: c.back,
+      position: i,
+    }));
+    const { error: cardErr } = await adminClient.from("master_cards").insert(rows);
+    if (cardErr) throw new Error(`seedMaster cards(${name}): ${cardErr.message}`);
+  }
+  return data;
+}
+
 async function ensureRole(role: RoleName) {
   const { error } = await adminClient.from("roles").upsert({ name: role }, { onConflict: "name" });
   if (error) throw error;
