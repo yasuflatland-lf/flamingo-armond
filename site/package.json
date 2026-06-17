@@ -1,0 +1,24 @@
+{
+  "name": "flamingo-armond-landing",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Static marketing landing page for flamingo-armond, built with Vite and published to GitHub Pages.",
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "3.4.17",
+    "vite": "^6.0.7"
+  }
+}
