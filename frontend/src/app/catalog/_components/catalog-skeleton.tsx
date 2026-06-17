@@ -26,7 +26,7 @@ export function CatalogSkeleton() {
               <Skeleton className="h-5 w-full sm:w-auto sm:flex-1" />
               <Skeleton className="h-5 w-12 shrink-0" />
               <Skeleton className="h-4 w-16 shrink-0" />
-              <Skeleton className="ml-auto h-9 w-24 shrink-0" />
+              <Skeleton className="ml-auto h-10 w-24 shrink-0" />
             </div>
           </li>
         ))}

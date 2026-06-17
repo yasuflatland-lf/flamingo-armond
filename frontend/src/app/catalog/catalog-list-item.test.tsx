@@ -132,4 +132,12 @@ describe("<CatalogListItem>", () => {
     renderItem(FULL_NODE);
     expect(screen.getByTestId("catalog-row-m-1")).toBeInTheDocument();
   });
+
+  it("shows the imported label when both importing and imported are true (imported wins)", () => {
+    renderItem(FULL_NODE, { importing: true, imported: true });
+    const btn = screen.getByTestId("catalog-import-m-1");
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveTextContent("Imported");
+    expect(btn).not.toHaveTextContent("Importing...");
+  });
 });
