@@ -99,6 +99,23 @@ describe("MasterEditHeader", () => {
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
   });
 
+  it("unpublishes the deck and refreshes the route", async () => {
+    const user = userEvent.setup();
+    const mocks = [
+      {
+        request: { query: AdminUnpublishMasterMutation, variables: { id: "m-1" } },
+        result: {
+          data: {
+            adminUnpublishMasterCardgroup: { ...DECK, status: "DRAFT" },
+          },
+        },
+      },
+    ];
+    renderHeader({ ...DECK, status: "PUBLISHED" }, mocks);
+    await user.click(screen.getByTestId("master-edit-publish"));
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+  });
+
   it("delete confirm carries the destructive variant and navigates to the list on success", async () => {
     const user = userEvent.setup();
     const mocks = [

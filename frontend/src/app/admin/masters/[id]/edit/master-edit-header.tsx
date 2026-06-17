@@ -96,8 +96,8 @@ export function MasterEditHeader({ master }: Props) {
             return;
           default:
             toast.error(t("unexpectedError"));
+            return;
         }
-        return;
       }
       const outcome = await publishMaster(master.id);
       switch (outcome.status) {
@@ -121,20 +121,22 @@ export function MasterEditHeader({ master }: Props) {
 
   const handleConfirmDelete = useCallback(async () => {
     setDeleting(true);
-    const outcome = await deleteMaster(master.id);
-    switch (outcome.status) {
-      case "success":
-        toast.success(t("deleteMasterSuccess"));
-        setDeleteOpen(false);
-        router.push("/admin/masters");
-        return;
-      case "auth":
-        authToast(outcome.kind);
-        setDeleting(false);
-        return;
-      default:
-        toast.error(t("deleteMasterFailed"));
-        setDeleting(false);
+    try {
+      const outcome = await deleteMaster(master.id);
+      switch (outcome.status) {
+        case "success":
+          toast.success(t("deleteMasterSuccess"));
+          setDeleteOpen(false);
+          router.push("/admin/masters");
+          return;
+        case "auth":
+          authToast(outcome.kind);
+          return;
+        default:
+          toast.error(t("deleteMasterFailed"));
+      }
+    } finally {
+      setDeleting(false);
     }
   }, [deleteMaster, master.id, t, authToast, router]);
 
