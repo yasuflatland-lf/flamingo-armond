@@ -19,7 +19,7 @@ import {
   type MyCardgroupsConnectionQuery,
   type MyCardgroupsConnectionQueryVariables,
 } from "@/generated/graphql";
-import { useDebouncedSearch } from "@/hooks/use-debounced-search";
+import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useUndoDelete } from "@/lib/undo-delete";
@@ -139,40 +139,8 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   const apollo = useApolloClient();
   const t = useTranslations("Cardgroups");
   const tCommon = useTranslations("Common");
-  const search = useDebouncedSearch();
+  const search = useHeaderTakeoverSearch();
   const searchQuery = search.query;
-  const [searchOpen, setSearchOpen] = useState(false);
-
-  // The nav-header search trigger dispatches this; open the takeover in place.
-  useEffect(() => {
-    function handleOpenSearch() {
-      setSearchOpen(true);
-    }
-    window.addEventListener("flamingo:open-search", handleOpenSearch);
-    return () => window.removeEventListener("flamingo:open-search", handleOpenSearch);
-  }, []);
-
-  // Report filter state back to the header trigger (active dot + aria-expanded).
-  useEffect(() => {
-    window.dispatchEvent(
-      new CustomEvent("flamingo:search-state", {
-        detail: { active: searchQuery !== null && searchQuery !== "", visible: searchOpen },
-      }),
-    );
-  }, [searchQuery, searchOpen]);
-
-  // Reset the header trigger when leaving /cardgroups.
-  useEffect(() => {
-    return () => {
-      window.dispatchEvent(
-        new CustomEvent("flamingo:search-state", {
-          detail: { active: false, visible: false },
-        }),
-      );
-    };
-  }, []);
-
-  const closeSearch = useCallback(() => setSearchOpen(false), []);
 
   const [deleteCommitError, setDeleteCommitError] = useState<string | null>(null);
 
@@ -373,11 +341,11 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   return (
     <>
       <SearchTakeoverBar
-        open={searchOpen}
+        open={search.searchOpen}
         value={search.input}
         onChange={search.setInput}
         onClear={search.clear}
-        onClose={closeSearch}
+        onClose={search.closeSearch}
         placeholder={t("filterPlaceholder")}
         ariaLabel={t("filterAriaLabel")}
       />
