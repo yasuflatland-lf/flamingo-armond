@@ -14,7 +14,7 @@ A worked example: a god component at 727 lines had hook extraction applied first
 ## Wrong: stop after hook extraction when the file is still over 400 lines
 
 ```
-// cards/page.tsx — 546 lines after hook extraction.
+// <feature>/page.tsx — 546 lines after hook extraction.
 // The per-row renderer (CardRow) and bulk action bar are still inline.
 // The file is responsible for rendering, row state, and multi-select wiring
 // simultaneously — two SRP violations remain.
@@ -36,15 +36,15 @@ export function CardsPage() {
 ## Right: extract view fragments to `<feature>/components/`
 
 ```
-// cards/components/card-row.tsx
+// <feature>/components/card-row.tsx
 export interface CardRowProps { card: Card; onEdit: () => void; }
 export function CardRow({ card, onEdit }: CardRowProps) { /* pure JSX */ }
 
-// cards/components/bulk-action-bar.tsx
+// <feature>/components/bulk-action-bar.tsx
 export interface BulkActionBarProps { selectedCount: number; onDelete: () => void; }
 export function BulkActionBar(props: BulkActionBarProps) { /* pure JSX */ }
 
-// cards/page.tsx — 388 lines; host is now coordination-only.
+// <feature>/page.tsx — 388 lines; host is now coordination-only.
 import { CardRow } from "./components/card-row";
 import { BulkActionBar } from "./components/bulk-action-bar";
 

@@ -4,7 +4,9 @@ import { Search } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { BulkActionBar } from "@/components/cardgroups/bulk-action-bar";
 import { CardForm } from "@/components/cardgroups/card-form";
+import { CardRow } from "@/components/cardgroups/card-row";
 import type { SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -14,8 +16,6 @@ import { useBulkSelection } from "@/hooks/use-bulk-selection";
 import { useDebouncedSearch } from "@/hooks/use-debounced-search";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { MasterBatchImportForm } from "./master-batch-import-form";
-import { MasterBulkActionBar } from "./master-bulk-action-bar";
-import { MasterCardRow } from "./master-card-row";
 import { useMasterCardMutations } from "./use-master-card-mutations";
 import { useMasterCardsConnection } from "./use-master-cards-connection";
 
@@ -343,7 +343,7 @@ export function MasterCardsClient({
         <SearchInput value={search.input} onChange={search.setInput} />
 
         {selection.count > 0 && (
-          <MasterBulkActionBar
+          <BulkActionBar
             count={selection.count}
             busy={bulkDeleting}
             onConfirm={handleBulkDelete}
@@ -359,7 +359,7 @@ export function MasterCardsClient({
               const card = edge.node;
               return (
                 <li key={card.id} className="rounded-md border border-border overflow-hidden">
-                  <MasterCardRow
+                  <CardRow
                     card={card}
                     rowRef={(() => {
                       if (!rowRefs.current.has(card.id)) {

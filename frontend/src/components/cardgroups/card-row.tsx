@@ -3,8 +3,8 @@
 import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { RefObject } from "react";
-import { SwipeableRow, type SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
 import { Button } from "@/components/ui/button";
+import { SwipeableRow, type SwipeableRowHandle } from "./swipeable-row";
 
 export type CardRowProps = {
   card: { id: string; front: string; back: string };
