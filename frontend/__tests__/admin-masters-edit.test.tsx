@@ -67,7 +67,20 @@ afterEach(() => vi.clearAllMocks());
 
 describe("EditMasterPage — broad integration", () => {
   it("renders the deck name as the h1 and mounts the cards-section placeholder", async () => {
-    vi.mocked(gqlFetch).mockResolvedValueOnce({ adminMaster: DECK } as never);
+    vi.mocked(gqlFetch)
+      .mockResolvedValueOnce({ adminMaster: DECK } as never)
+      .mockResolvedValueOnce({
+        adminMasterCardsConnection: {
+          edges: [],
+          pageInfo: {
+            hasNextPage: false,
+            hasPreviousPage: false,
+            startCursor: null,
+            endCursor: null,
+          },
+          totalCount: 4,
+        },
+      } as never);
     await renderPage();
     expect(screen.getByRole("heading", { level: 1, name: "Integration Deck" })).toBeInTheDocument();
     expect(screen.getByTestId("master-cards-section")).toBeInTheDocument();

@@ -3,23 +3,26 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
+import type { MasterCardConnectionPageInfo, MasterCardEdge } from "./cards/master-cards-client";
 import { MasterCardsSection } from "./master-cards-section";
 import { MasterEditHeader } from "./master-edit-header";
 import type { AdminMasterDeck } from "./queries";
 
-type Props = { master: AdminMasterDeck };
-
-const EMPTY_PAGE_INFO = {
-  __typename: "PageInfo" as const,
-  hasNextPage: false,
-  hasPreviousPage: false,
-  startCursor: null,
-  endCursor: null,
+type Props = {
+  master: AdminMasterDeck;
+  initialEdges: MasterCardEdge[];
+  initialPageInfo: MasterCardConnectionPageInfo;
+  initialTotalCount: number;
 };
 
-export function MasterManagementClient({ master }: Props) {
+export function MasterManagementClient({
+  master,
+  initialEdges,
+  initialPageInfo,
+  initialTotalCount,
+}: Props) {
   const t = useTranslations("AdminMasters");
-  const [liveCount, setLiveCount] = useState(master.cardCount);
+  const [liveCount, setLiveCount] = useState(initialTotalCount);
   return (
     <main className="p-4 md:p-8">
       <div className="mb-2">
@@ -35,9 +38,9 @@ export function MasterManagementClient({ master }: Props) {
       <MasterCardsSection
         masterId={master.id}
         deckName={master.name}
-        initialEdges={[]}
-        initialPageInfo={EMPTY_PAGE_INFO}
-        initialTotalCount={master.cardCount}
+        initialEdges={initialEdges}
+        initialPageInfo={initialPageInfo}
+        initialTotalCount={initialTotalCount}
         onTotalCountChange={setLiveCount}
       />
     </main>
