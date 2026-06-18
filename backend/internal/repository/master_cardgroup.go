@@ -185,21 +185,11 @@ func (r *masterCardgroupRepo) EnsureByName(ctx context.Context, name string) (*d
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: lookup")
 		}
 
-		id, err := domain.NewID()
+		m, err := domain.NewMasterCardgroup(domain.CardgroupName(name), nil, nil, nil, nil, nil, nil, false, 0)
 		if err != nil {
-			return eris.Wrap(err, "repository: master cardgroup: ensure by name: id")
+			return eris.Wrap(err, "repository: master cardgroup: ensure by name: construct")
 		}
-		now := time.Now().UTC()
-		row = gormMasterCardgroup{
-			ID:               id,
-			Name:             name,
-			Version:          1,
-			Status:           string(domain.MasterStatusDraft),
-			IsDefaultStarter: false,
-			SortOrder:        0,
-			CreatedAt:        now,
-			UpdatedAt:        now,
-		}
+		row = masterCardgroupFromDomain(m)
 		if err := tx.Create(&row).Error; err != nil {
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: create")
 		}
@@ -213,7 +203,8 @@ func (r *masterCardgroupRepo) EnsureByName(ctx context.Context, name string) (*d
 }
 
 // Create inserts a new master cardgroup row. The caller is responsible for
-// pre-filling m.ID (uuid v7 via domain.NewID) and both timestamps.
+// supplying a fully-formed value (ID and both timestamps set); build it via
+// domain.NewMasterCardgroup.
 func (r *masterCardgroupRepo) Create(ctx context.Context, m *domain.MasterCardgroup) error {
 	row := masterCardgroupFromDomain(m)
 	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {

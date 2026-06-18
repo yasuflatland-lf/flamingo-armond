@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/rotisserie/eris"
 
@@ -443,26 +442,19 @@ func (u *masterCatalogUsecase) CreateMaster(ctx context.Context, in CreateMaster
 		return CreateMasterOutcome{Validation: info}, nil
 	}
 
-	id, err := domain.NewID()
+	m, err := domain.NewMasterCardgroup(
+		name,
+		in.Description,
+		in.Language,
+		in.Level,
+		in.Category,
+		in.CoverImageURL,
+		in.Source,
+		derefOr(in.IsDefaultStarter, false),
+		derefOr(in.SortOrder, 0),
+	)
 	if err != nil {
-		return CreateMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: create master: id")
-	}
-	now := time.Now().UTC()
-	m := &domain.MasterCardgroup{
-		ID:               id,
-		Name:             name,
-		Description:      in.Description,
-		Language:         in.Language,
-		Level:            in.Level,
-		Category:         in.Category,
-		CoverImageURL:    in.CoverImageURL,
-		Source:           in.Source,
-		Version:          1,
-		Status:           domain.MasterStatusDraft,
-		IsDefaultStarter: derefOr(in.IsDefaultStarter, false),
-		SortOrder:        derefOr(in.SortOrder, 0),
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		return CreateMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: create master: construct")
 	}
 	if err := u.repo.Create(ctx, m); err != nil {
 		return CreateMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: create master")
