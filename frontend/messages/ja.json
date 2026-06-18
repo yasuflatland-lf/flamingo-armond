@@ -306,9 +306,7 @@
     "publishSectionPublishedDescription": "このデッキは公開カタログに表示されています。非公開にすると下書きに戻ります。",
     "editAriaLabel": "{name} を編集",
     "createMasterTitle": "新規マスター",
-    "editMasterTitle": "マスターを編集",
     "createMaster": "作成",
-    "masterNotFound": "マスターが見つかりません。",
     "nameLabel": "名前",
     "namePlaceholder": "デッキ名",
     "descriptionLabel": "説明",
@@ -330,7 +328,11 @@
     "deleteMasterConfirmButton": "マスターを削除",
     "deleteMasterDeleting": "削除中...",
     "deleteMasterSuccess": "マスターを削除しました。",
-    "deleteMasterFailed": "マスターを削除できませんでした。もう一度お試しください。"
+    "deleteMasterFailed": "マスターを削除できませんでした。もう一度お試しください。",
+    "deckSettingsButton": "デッキ設定",
+    "deckSettingsTitle": "デッキ設定",
+    "backToList": "一覧へ戻る",
+    "masterOptions": "デッキ操作"
   },
   "Admin": {
     "searchPlaceholder": "ユーザーを検索...",

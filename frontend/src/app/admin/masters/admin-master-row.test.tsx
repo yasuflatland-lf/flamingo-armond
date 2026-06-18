@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 
 import { screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { type AdminMasterListItem, AdminMasterRow } from "./admin-master-row";
 
@@ -22,13 +21,12 @@ const BASE: AdminMasterListItem = {
   cardCount: 42,
 };
 
-function renderRow(master: AdminMasterListItem, onEdit = vi.fn()) {
+function renderRow(master: AdminMasterListItem) {
   renderWithIntl(
     <ul>
-      <AdminMasterRow master={master} onEdit={onEdit} />
+      <AdminMasterRow master={master} />
     </ul>,
   );
-  return { onEdit };
 }
 
 describe("AdminMasterRow", () => {
@@ -49,10 +47,9 @@ describe("AdminMasterRow", () => {
     expect(screen.queryByTestId("master-row-publish-toggle")).not.toBeInTheDocument();
   });
 
-  it("invokes onEdit when the Edit button is clicked", async () => {
-    const user = userEvent.setup();
-    const { onEdit } = renderRow(BASE);
-    await user.click(screen.getByTestId("master-row-edit"));
-    expect(onEdit).toHaveBeenCalledWith("m-1");
+  it("links the whole row to the edit route", () => {
+    renderRow(BASE);
+    const link = screen.getByRole("link", { name: /edit spanish a1/i });
+    expect(link).toHaveAttribute("href", "/admin/masters/m-1/edit");
   });
 });

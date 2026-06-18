@@ -2,20 +2,7 @@
 
 import { useForm } from "@tanstack/react-form";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,8 +32,6 @@ type Props = {
   submit: (values: MasterFormValues) => Promise<void>;
   validationError?: { field: string; message: string } | null;
   onDirtyChange?: (dirty: boolean) => void;
-  onDelete?: (id: string) => Promise<void>;
-  onPublishToggle?: (id: string, currentlyPublished: boolean) => Promise<void>;
 };
 
 function emptyToNull(s: string): string | null {
@@ -61,20 +46,10 @@ export function AdminMasterForm({
   submit,
   validationError,
   onDirtyChange,
-  onDelete,
-  onPublishToggle,
 }: Props) {
   const t = useTranslations("AdminMasters");
   const tCommon = useTranslations("Common");
   const nameSchema = masterSchema.shape.name;
-  const [deleting, setDeleting] = useState(false);
-  const [publishing, setPublishing] = useState(false);
-
-  const published = master?.status === "PUBLISHED";
-  // A draft with no cards cannot be published; the guard is rendered inline (a
-  // disabled button + a reason) instead of firing a mutation that the backend
-  // would reject with MasterCardgroupEmptyError.
-  const emptyDraft = master?.status === "DRAFT" && master.cardCount === 0;
 
   const form = useForm({
     defaultValues: {
@@ -112,42 +87,6 @@ export function AdminMasterForm({
       });
     },
   });
-
-  async function handleConfirmDelete() {
-    if (!master || !onDelete) return;
-    setDeleting(true);
-    try {
-      await onDelete(master.id);
-    } catch (err) {
-      // Parent (client) owns the user-facing error toast; log here (redacted)
-      // so the rejection is handled and never surfaces as an unhandled rejection
-      // at the async onClick boundary. err.message omitted — may carry content.
-      console.warn("[admin-master-form] delete rejected", {
-        masterId: master.id,
-        name: err instanceof Error ? err.name : "unknown",
-      });
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  async function handlePublishToggle() {
-    if (!master || !onPublishToggle) return;
-    setPublishing(true);
-    try {
-      await onPublishToggle(master.id, published);
-    } catch (err) {
-      // Parent (client) owns the user-facing error toast; log here (redacted)
-      // so the rejection is handled and never surfaces as an unhandled rejection
-      // at the async onClick boundary. err.message omitted — may carry content.
-      console.warn("[admin-master-form] publish toggle rejected", {
-        masterId: master.id,
-        name: err instanceof Error ? err.name : "unknown",
-      });
-    } finally {
-      setPublishing(false);
-    }
-  }
 
   const nameFieldError = validationError?.field === "name" ? validationError.message : undefined;
 
@@ -273,79 +212,6 @@ export function AdminMasterForm({
           {submitting ? tCommon("saving") : mode === "create" ? t("createMaster") : tCommon("save")}
         </Button>
       </div>
-
-      {mode === "edit" && master && onPublishToggle ? (
-        <section
-          className="mt-8 space-y-2 rounded-md border p-4"
-          data-testid="master-publish-section"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold">{t("publishSectionHeading")}</h2>
-            <Badge
-              variant={published ? "default" : "secondary"}
-              role="status"
-              data-testid="master-publish-status-badge"
-            >
-              {published ? t("statusPublished") : t("statusDraft")}
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {published
-              ? t("publishSectionPublishedDescription")
-              : t("publishSectionDraftDescription")}
-          </p>
-          {emptyDraft ? (
-            <p className="text-sm text-muted-foreground" data-testid="master-publish-empty-hint">
-              {t("publishEmptyHint")}
-            </p>
-          ) : null}
-          <Button
-            type="button"
-            variant={published ? "outline" : "brand"}
-            data-testid="master-publish-toggle"
-            aria-pressed={published}
-            disabled={publishing || emptyDraft}
-            onClick={handlePublishToggle}
-          >
-            {publishing ? tCommon("loading") : published ? t("unpublish") : t("publish")}
-          </Button>
-        </section>
-      ) : null}
-
-      {mode === "edit" && master && onDelete ? (
-        <div className="mt-8 space-y-2 rounded-md border border-destructive/40 p-4">
-          <h2 className="text-sm font-semibold text-destructive">{t("deleteMasterHeading")}</h2>
-          <p className="text-sm text-muted-foreground">{t("deleteMasterDescription")}</p>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button type="button" variant="destructive" data-testid="master-row-delete-trigger">
-                {deleting ? t("deleteMasterDeleting") : t("deleteMasterButton")}
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent data-testid="master-delete-dialog">
-              <AlertDialogHeader>
-                <AlertDialogTitle>{t("deleteMasterDialogTitle")}</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {t("deleteMasterDialogDescription")}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel data-testid="master-delete-dialog-cancel">
-                  {tCommon("cancel")}
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  className={buttonVariants({ variant: "destructive" })}
-                  data-testid="master-delete-dialog-confirm"
-                  disabled={deleting}
-                  onClick={handleConfirmDelete}
-                >
-                  {t("deleteMasterConfirmButton")}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      ) : null}
 
       <form.Subscribe selector={(state) => state.isDirty}>
         {(dirty) => <DirtyStateBridge dirty={dirty} onDirtyChange={onDirtyChange} />}

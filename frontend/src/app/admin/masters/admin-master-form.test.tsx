@@ -61,35 +61,11 @@ describe("AdminMasterForm", () => {
     expect(firstCallArg).toMatchObject({ name: "New Deck", sortOrder: 7 });
   });
 
-  it("prefills edit mode and shows the Danger zone", () => {
+  it("prefills edit mode fields", () => {
     renderWithIntl(
-      <AdminMasterForm
-        mode="edit"
-        master={EXISTING}
-        submitting={false}
-        submit={vi.fn()}
-        onDelete={vi.fn()}
-      />,
+      <AdminMasterForm mode="edit" master={EXISTING} submitting={false} submit={vi.fn()} />,
     );
     expect(screen.getByTestId("master-field-name")).toHaveValue("Spanish A1");
-    expect(screen.getByTestId("master-row-delete-trigger")).toBeInTheDocument();
-  });
-
-  it("calls onDelete after confirming in the dialog", async () => {
-    const onDelete = vi.fn().mockResolvedValue(undefined);
-    const user = userEvent.setup();
-    renderWithIntl(
-      <AdminMasterForm
-        mode="edit"
-        master={EXISTING}
-        submitting={false}
-        submit={vi.fn()}
-        onDelete={onDelete}
-      />,
-    );
-    await user.click(screen.getByTestId("master-row-delete-trigger"));
-    await user.click(screen.getByTestId("master-delete-dialog-confirm"));
-    await waitFor(() => expect(onDelete).toHaveBeenCalledWith("m-1"));
   });
 
   it("collapses empty optional fields to null and empty sortOrder to null", async () => {
@@ -128,62 +104,5 @@ describe("AdminMasterForm", () => {
   it("renders no Publishing section in create mode", () => {
     renderWithIntl(<AdminMasterForm mode="create" submitting={false} submit={vi.fn()} />);
     expect(screen.queryByTestId("master-publish-section")).not.toBeInTheDocument();
-  });
-
-  it("publishes a DRAFT with cards from the Publishing section", async () => {
-    const onPublishToggle = vi.fn().mockResolvedValue(undefined);
-    const user = userEvent.setup();
-    renderWithIntl(
-      <AdminMasterForm
-        mode="edit"
-        master={EXISTING}
-        submitting={false}
-        submit={vi.fn()}
-        onPublishToggle={onPublishToggle}
-      />,
-    );
-    const toggle = screen.getByTestId("master-publish-toggle");
-    expect(toggle).toHaveAccessibleName(/publish/i);
-    expect(toggle).not.toBeDisabled();
-    await user.click(toggle);
-    expect(onPublishToggle).toHaveBeenCalledWith("m-1", false);
-  });
-
-  it("renders an Unpublish control for a PUBLISHED master", async () => {
-    const onPublishToggle = vi.fn().mockResolvedValue(undefined);
-    const user = userEvent.setup();
-    renderWithIntl(
-      <AdminMasterForm
-        mode="edit"
-        master={{ ...EXISTING, status: "PUBLISHED" }}
-        submitting={false}
-        submit={vi.fn()}
-        onPublishToggle={onPublishToggle}
-      />,
-    );
-    const toggle = screen.getByTestId("master-publish-toggle");
-    expect(toggle).toHaveAccessibleName(/unpublish/i);
-    expect(toggle).toHaveAttribute("aria-pressed", "true");
-    await user.click(toggle);
-    expect(onPublishToggle).toHaveBeenCalledWith("m-1", true);
-  });
-
-  it("disables Publish and shows an inline hint for a DRAFT with 0 cards", async () => {
-    const onPublishToggle = vi.fn().mockResolvedValue(undefined);
-    const user = userEvent.setup();
-    renderWithIntl(
-      <AdminMasterForm
-        mode="edit"
-        master={{ ...EXISTING, cardCount: 0 }}
-        submitting={false}
-        submit={vi.fn()}
-        onPublishToggle={onPublishToggle}
-      />,
-    );
-    expect(screen.getByTestId("master-publish-empty-hint")).toBeInTheDocument();
-    const toggle = screen.getByTestId("master-publish-toggle");
-    expect(toggle).toBeDisabled();
-    await user.click(toggle);
-    expect(onPublishToggle).not.toHaveBeenCalled();
   });
 });

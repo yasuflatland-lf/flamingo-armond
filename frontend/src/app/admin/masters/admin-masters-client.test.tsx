@@ -13,19 +13,17 @@ import {
 } from "../../../../__tests__/utils/mock-apollo-paginated";
 import enMessages from "../../../../messages/en.json";
 import { AdminMastersClient } from "./admin-masters-client";
-import {
-  ADMIN_MASTERS_PAGE_SIZE,
-  AdminCreateMasterMutation,
-  AdminDeleteMasterMutation,
-  AdminMastersQuery,
-  AdminPublishMasterMutation,
-  AdminUnpublishMasterMutation,
-  AdminUpdateMasterMutation,
-} from "./queries";
+import { ADMIN_MASTERS_PAGE_SIZE, AdminCreateMasterMutation, AdminMastersQuery } from "./queries";
 
 const M = enMessages.AdminMasters;
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+const push = vi.fn();
+vi.mock("next/navigation", async (orig) => ({
+  ...(await orig<typeof import("next/navigation")>()),
+  useRouter: () => ({ push, refresh: vi.fn() }),
+}));
 
 let sheetState: { mode: "closed" } | { mode: "new" } | { mode: "edit"; id: string } = {
   mode: "closed",
@@ -39,6 +37,7 @@ beforeEach(() => {
   sheetState = { mode: "closed" };
   sheetOpen.mockClear();
   sheetClose.mockClear();
+  push.mockClear();
 });
 
 class FakeIO {
@@ -169,7 +168,7 @@ describe("AdminMastersClient", () => {
     expect(await screen.findByTestId("admin-masters-query-error")).toBeInTheDocument();
   });
 
-  it("prepends the newly created deck to the list", async () => {
+  it("navigates to the edit route after a successful create", async () => {
     sheetState = { mode: "new" };
     const user = userEvent.setup();
     const createInput = {
@@ -191,7 +190,7 @@ describe("AdminMastersClient", () => {
             __typename: "CreateMasterCardgroupSuccess" as const,
             master: {
               __typename: "MasterCardgroup" as const,
-              id: "new-1",
+              id: "m-created-1",
               name: "Brand New",
               description: null,
               language: null,
@@ -214,170 +213,11 @@ describe("AdminMastersClient", () => {
         <AdminMastersClient />
       </MockedProvider>,
     );
-    // The create drawer renders the form.
     const nameField = await screen.findByTestId("master-field-name");
     await user.type(nameField, "Brand New");
     await user.click(screen.getByTestId("master-form-submit"));
-    // The writeQuery prepend updates the search:null connection the list reads.
-    expect(await screen.findByText("Brand New")).toBeInTheDocument();
-    expect(sheetClose).toHaveBeenCalled();
-  });
-
-  it("opens the edit drawer resolved by node.id even when the edge cursor is opaque", async () => {
-    // The backend emits an opaque encoded cursor ("v1:...") per edge, which is NOT
-    // the raw master id. The client must resolve the edit target by node.id; resolving
-    // by cursor renders "Master not found." for every master. Regression guard.
-    sheetState = { mode: "edit", id: "m-1" };
-    renderWithIntl(
-      <MockedProvider mocks={[listMock(["m-1"])]}>
-        <AdminMastersClient />
-      </MockedProvider>,
-    );
-    expect(await screen.findByTestId("master-field-name")).toBeInTheDocument();
-    expect(screen.queryByTestId("admin-masters-edit-not-found")).not.toBeInTheDocument();
-  });
-
-  it("removes the deleted deck from the list", async () => {
-    sheetState = { mode: "edit", id: "m-1" };
-    const user = userEvent.setup();
-    const deleteMock = {
-      request: { query: AdminDeleteMasterMutation, variables: { id: "m-1" } },
-      result: { data: { adminDeleteMasterCardgroup: true } },
-    };
-    renderWithIntl(
-      <MockedProvider mocks={[listMock(["m-1"]), deleteMock]}>
-        <AdminMastersClient />
-      </MockedProvider>,
-    );
-    // Wait for the loaded deck so the edit drawer's danger zone renders.
-    expect(await screen.findByText("Deck m-1")).toBeInTheDocument();
-    await user.click(screen.getByTestId("master-row-delete-trigger"));
-    await user.click(await screen.findByTestId("master-delete-dialog-confirm"));
-    await waitFor(() => expect(screen.queryByText("Deck m-1")).not.toBeInTheDocument());
-    expect(toast.success).toHaveBeenCalled();
-  });
-
-  it("publishes a master from the edit drawer and toasts success", async () => {
-    sheetState = { mode: "edit", id: "m-1" };
-    const user = userEvent.setup();
-    const publishMock = {
-      request: { query: AdminPublishMasterMutation, variables: { id: "m-1" } },
-      result: {
-        data: {
-          adminPublishMasterCardgroup: {
-            __typename: "PublishMasterCardgroupSuccess",
-            master: node("m-1", { status: "PUBLISHED", version: 2 }),
-          },
-        },
-      },
-    };
-    renderWithIntl(
-      <MockedProvider mocks={[listMock(["m-1"]), publishMock]}>
-        <AdminMastersClient />
-      </MockedProvider>,
-    );
-    const toggle = await screen.findByTestId("master-publish-toggle");
-    await user.click(toggle);
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(M.publishSuccess));
-  });
-
-  it("unpublishes a published master from the edit drawer and toasts success", async () => {
-    sheetState = { mode: "edit", id: "m-1" };
-    const user = userEvent.setup();
-    const unpublishMock = {
-      request: { query: AdminUnpublishMasterMutation, variables: { id: "m-1" } },
-      result: {
-        data: { adminUnpublishMasterCardgroup: node("m-1", { status: "DRAFT", version: 2 }) },
-      },
-    };
-    renderWithIntl(
-      <MockedProvider
-        mocks={[listMock(["m-1"], { "m-1": { status: "PUBLISHED" } }), unpublishMock]}
-      >
-        <AdminMastersClient />
-      </MockedProvider>,
-    );
-    const toggle = await screen.findByTestId("master-publish-toggle");
-    await user.click(toggle);
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(M.unpublishSuccess));
-  });
-
-  it("toasts the empty-deck error when publish returns MasterCardgroupEmptyError", async () => {
-    // Backstop: the form disables Publish for 0-card drafts, but cardCount may be
-    // stale (deck enabled here with cardCount 5), so the backend's typed empty-deck
-    // rejection must still surface as a toast. Re-homed from the deleted row test.
-    sheetState = { mode: "edit", id: "m-1" };
-    const user = userEvent.setup();
-    const publishMock = {
-      request: { query: AdminPublishMasterMutation, variables: { id: "m-1" } },
-      result: {
-        data: {
-          adminPublishMasterCardgroup: {
-            __typename: "MasterCardgroupEmptyError",
-            message: "deck has no cards",
-          },
-        },
-      },
-    };
-    renderWithIntl(
-      <MockedProvider mocks={[listMock(["m-1"]), publishMock]}>
-        <AdminMastersClient />
-      </MockedProvider>,
-    );
-    const toggle = await screen.findByTestId("master-publish-toggle");
-    await user.click(toggle);
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(M.publishEmptyToast));
-  });
-
-  it("toasts the forbidden message when publish fails with FORBIDDEN", async () => {
-    sheetState = { mode: "edit", id: "m-1" };
-    const user = userEvent.setup();
-    const publishMock = {
-      request: { query: AdminPublishMasterMutation, variables: { id: "m-1" } },
-      result: { errors: [{ message: "forbidden", extensions: { code: "FORBIDDEN" } }] },
-    };
-    renderWithIntl(
-      <MockedProvider mocks={[listMock(["m-1"]), publishMock]}>
-        <AdminMastersClient />
-      </MockedProvider>,
-    );
-    const toggle = await screen.findByTestId("master-publish-toggle");
-    await user.click(toggle);
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(M.forbidden));
-  });
-
-  it("toasts the session-expired message when publish fails with UNAUTHENTICATED", async () => {
-    sheetState = { mode: "edit", id: "m-1" };
-    const user = userEvent.setup();
-    const publishMock = {
-      request: { query: AdminPublishMasterMutation, variables: { id: "m-1" } },
-      result: { errors: [{ message: "unauthenticated", extensions: { code: "UNAUTHENTICATED" } }] },
-    };
-    renderWithIntl(
-      <MockedProvider mocks={[listMock(["m-1"]), publishMock]}>
-        <AdminMastersClient />
-      </MockedProvider>,
-    );
-    const toggle = await screen.findByTestId("master-publish-toggle");
-    await user.click(toggle);
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(M.unauthenticated));
-  });
-
-  it("toasts a generic error when publish rejects with a non-GraphQL error", async () => {
-    sheetState = { mode: "edit", id: "m-1" };
-    const user = userEvent.setup();
-    const publishMock = {
-      request: { query: AdminPublishMasterMutation, variables: { id: "m-1" } },
-      error: new Error("network down"),
-    };
-    renderWithIntl(
-      <MockedProvider mocks={[listMock(["m-1"]), publishMock]}>
-        <AdminMastersClient />
-      </MockedProvider>,
-    );
-    const toggle = await screen.findByTestId("master-publish-toggle");
-    await user.click(toggle);
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(M.unexpectedError));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/admin/masters/m-created-1/edit"));
+    expect(toast.success).toHaveBeenCalledWith(M.createSuccess);
   });
 
   it("does not carry optimisticResponse in the publish or unpublish mutation calls", () => {
@@ -398,136 +238,5 @@ describe("AdminMastersClient", () => {
       expect(end).toBeGreaterThan(start);
       expect(source.slice(start, end)).not.toContain("optimisticResponse");
     }
-  });
-
-  it("updates a master and toasts success", async () => {
-    sheetState = { mode: "edit", id: "m-1" };
-    const user = userEvent.setup();
-    const updateMock = {
-      request: {
-        query: AdminUpdateMasterMutation,
-        variables: {
-          id: "m-1",
-          input: {
-            name: "Renamed",
-            description: null,
-            language: null,
-            level: null,
-            category: null,
-            coverImageUrl: null,
-            source: null,
-            isDefaultStarter: false,
-            sortOrder: 0,
-          },
-        },
-      },
-      result: {
-        data: {
-          adminUpdateMasterCardgroup: {
-            __typename: "UpdateMasterCardgroupSuccess",
-            master: node("m-1", { name: "Renamed" }),
-          },
-        },
-      },
-    };
-    renderWithIntl(
-      <MockedProvider mocks={[listMock(["m-1"]), updateMock]}>
-        <AdminMastersClient />
-      </MockedProvider>,
-    );
-    const nameInput = await screen.findByTestId("master-field-name");
-    await user.clear(nameInput);
-    await user.type(nameInput, "Renamed");
-    await user.click(screen.getByTestId("master-form-submit"));
-    const { toast } = await import("sonner");
-    await waitFor(() => expect(toast.success).toHaveBeenCalled());
-  });
-
-  it("shows the name field error when update returns InputValidationError on name", async () => {
-    sheetState = { mode: "edit", id: "m-1" };
-    const user = userEvent.setup();
-    const updateMock = {
-      request: {
-        query: AdminUpdateMasterMutation,
-        variables: {
-          id: "m-1",
-          input: {
-            name: "Renamed",
-            description: null,
-            language: null,
-            level: null,
-            category: null,
-            coverImageUrl: null,
-            source: null,
-            isDefaultStarter: false,
-            sortOrder: 0,
-          },
-        },
-      },
-      result: {
-        data: {
-          adminUpdateMasterCardgroup: {
-            __typename: "InputValidationError",
-            field: "name",
-            message: "name is taken",
-          },
-        },
-      },
-    };
-    renderWithIntl(
-      <MockedProvider mocks={[listMock(["m-1"]), updateMock]}>
-        <AdminMastersClient />
-      </MockedProvider>,
-    );
-    const nameInput = await screen.findByTestId("master-field-name");
-    await user.clear(nameInput);
-    await user.type(nameInput, "Renamed");
-    await user.click(screen.getByTestId("master-form-submit"));
-    expect(await screen.findByText("name is taken")).toBeInTheDocument();
-  });
-
-  it("shows a drawer banner when update returns InputValidationError on a non-name field (master not found)", async () => {
-    sheetState = { mode: "edit", id: "m-1" };
-    const user = userEvent.setup();
-    const updateMock = {
-      request: {
-        query: AdminUpdateMasterMutation,
-        variables: {
-          id: "m-1",
-          input: {
-            name: "Renamed",
-            description: null,
-            language: null,
-            level: null,
-            category: null,
-            coverImageUrl: null,
-            source: null,
-            isDefaultStarter: false,
-            sortOrder: 0,
-          },
-        },
-      },
-      result: {
-        data: {
-          adminUpdateMasterCardgroup: {
-            __typename: "InputValidationError",
-            field: "id",
-            message: "master cardgroup not found",
-          },
-        },
-      },
-    };
-    renderWithIntl(
-      <MockedProvider mocks={[listMock(["m-1"]), updateMock]}>
-        <AdminMastersClient />
-      </MockedProvider>,
-    );
-    const nameInput = await screen.findByTestId("master-field-name");
-    await user.clear(nameInput);
-    await user.type(nameInput, "Renamed");
-    await user.click(screen.getByTestId("master-form-submit"));
-    expect(await screen.findByTestId("master-form-error")).toHaveTextContent(
-      "master cardgroup not found",
-    );
   });
 });

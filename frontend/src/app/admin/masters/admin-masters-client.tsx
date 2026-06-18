@@ -3,6 +3,7 @@
 import { NetworkStatus } from "@apollo/client";
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -24,7 +25,7 @@ import { AdminMasterForm, type MasterFormValues } from "./admin-master-form";
 import { AdminMasterRow } from "./admin-master-row";
 import { AdminMastersSkeleton } from "./admin-masters-skeleton";
 import { ADMIN_MASTERS_BASE_VARS, AdminMastersQuery } from "./queries";
-import { type AuthKind, useMasterMutations } from "./use-master-mutations";
+import { useMasterMutations } from "./use-master-mutations";
 
 type Connection = AdminMastersQueryResult["adminMasters"];
 type Edge = Connection["edges"][number];
@@ -55,14 +56,11 @@ function mergeMastersConnection(
 export function AdminMastersClient() {
   const t = useTranslations("AdminMasters");
   const tCommon = useTranslations("Common");
+  const router = useRouter();
   const search = useDebouncedSearch();
   const searchQuery = search.query;
   const [createDirty, setCreateDirty] = useState(false);
   const [createValidationError, setCreateValidationError] = useState<{
-    field: string;
-    message: string;
-  } | null>(null);
-  const [editValidationError, setEditValidationError] = useState<{
     field: string;
     message: string;
   } | null>(null);
@@ -103,29 +101,7 @@ export function AdminMastersClient() {
   const queryErrorKind = classifyQueryError(queryError);
   const queryBannerError = queryErrorKind?.kind === "banner" ? queryErrorKind.message : undefined;
 
-  const {
-    createMaster,
-    updateMaster,
-    deleteMaster,
-    publishMaster,
-    unpublishMaster,
-    creating,
-    updating,
-    resetCreate,
-    resetUpdate,
-  } = useMasterMutations();
-
-  const editId = sheet.state.mode === "edit" ? sheet.state.id : null;
-  // Resolve the edit target by node.id, never by `cursor`: the backend emits an
-  // opaque encoded cursor ("v1:..."), so matching against the raw id always misses.
-  const editEdge = editId ? edges.find((e) => e.node.id === editId) : undefined;
-
-  const authToast = useCallback(
-    (kind: AuthKind) => {
-      toast.error(kind === "forbidden" ? t("forbidden") : t("unauthenticated"));
-    },
-    [t],
-  );
+  const { createMaster, creating, resetCreate } = useMasterMutations();
 
   const handleCreate = useCallback(
     async (values: MasterFormValues) => {
@@ -137,94 +113,17 @@ export function AdminMastersClient() {
           return;
         case "success":
           toast.success(t("createSuccess"));
-          resetCreate();
           setCreateDirty(false);
-          sheet.close({ refresh: true });
+          router.push(`/admin/masters/${outcome.id}/edit`);
           return;
         case "auth":
-          authToast(outcome.kind);
+          toast.error(outcome.kind === "forbidden" ? t("forbidden") : t("unauthenticated"));
           return;
         default:
           toast.error(t("unexpectedError"));
       }
     },
-    [createMaster, resetCreate, sheet, t, authToast],
-  );
-
-  const handleUpdate = useCallback(
-    async (values: MasterFormValues) => {
-      if (!editId) return;
-      setEditValidationError(null);
-      const outcome = await updateMaster(editId, values);
-      switch (outcome.status) {
-        case "validation":
-          setEditValidationError({ field: outcome.field, message: outcome.message });
-          return;
-        case "success":
-          toast.success(t("updateSuccess"));
-          resetUpdate();
-          sheet.close({ refresh: true });
-          return;
-        case "auth":
-          authToast(outcome.kind);
-          return;
-        default:
-          toast.error(t("unexpectedError"));
-      }
-    },
-    [editId, updateMaster, resetUpdate, sheet, t, authToast],
-  );
-
-  const handleDelete = useCallback(
-    async (id: string) => {
-      const outcome = await deleteMaster(id);
-      switch (outcome.status) {
-        case "success":
-          toast.success(t("deleteMasterSuccess"));
-          sheet.close();
-          return;
-        case "auth":
-          authToast(outcome.kind);
-          return;
-        default:
-          toast.error(t("deleteMasterFailed"));
-      }
-    },
-    [deleteMaster, sheet, t, authToast],
-  );
-
-  const handlePublishToggle = useCallback(
-    async (id: string, currentlyPublished: boolean) => {
-      if (currentlyPublished) {
-        const outcome = await unpublishMaster(id);
-        switch (outcome.status) {
-          case "success":
-            toast.success(t("unpublishSuccess"));
-            return;
-          case "auth":
-            authToast(outcome.kind);
-            return;
-          default:
-            toast.error(t("unexpectedError"));
-        }
-        return;
-      }
-      const outcome = await publishMaster(id);
-      switch (outcome.status) {
-        case "success":
-          toast.success(t("publishSuccess"));
-          return;
-        case "empty":
-          toast.error(t("publishEmptyToast"));
-          return;
-        case "auth":
-          authToast(outcome.kind);
-          return;
-        default:
-          toast.error(t("unexpectedError"));
-      }
-    },
-    [publishMaster, unpublishMaster, t, authToast],
+    [createMaster, router, t],
   );
 
   const initialLoading = networkStatus === NetworkStatus.loading && edges.length === 0;
@@ -294,11 +193,7 @@ export function AdminMastersClient() {
       {edges.length > 0 && (
         <ul className="space-y-3" data-testid="admin-masters-list">
           {edges.map((edge) => (
-            <AdminMasterRow
-              key={edge.cursor}
-              master={edge.node}
-              onEdit={(id) => sheet.open({ mode: "edit", id })}
-            />
+            <AdminMasterRow key={edge.cursor} master={edge.node} />
           ))}
         </ul>
       )}
@@ -353,40 +248,6 @@ export function AdminMastersClient() {
             validationError={createValidationError}
             onDirtyChange={setCreateDirty}
           />
-        ) : null}
-      </FormSheet>
-
-      <FormSheet
-        title={t("editMasterTitle")}
-        open={sheet.state.mode === "edit"}
-        onOpenChange={(next) => {
-          if (!next) {
-            resetUpdate();
-            setEditValidationError(null);
-            sheet.close();
-          }
-        }}
-        submitting={updating}
-      >
-        {sheet.state.mode === "edit" ? (
-          editEdge ? (
-            <AdminMasterForm
-              mode="edit"
-              master={editEdge.node}
-              submitting={updating}
-              submit={handleUpdate}
-              validationError={editValidationError}
-              onDelete={handleDelete}
-              onPublishToggle={handlePublishToggle}
-            />
-          ) : (
-            <div
-              className="flex flex-col items-center justify-center gap-1 py-12 text-center"
-              data-testid="admin-masters-edit-not-found"
-            >
-              <p className="text-sm font-medium text-muted-foreground">{t("masterNotFound")}</p>
-            </div>
-          )
         ) : null}
       </FormSheet>
     </ListingPageShell>

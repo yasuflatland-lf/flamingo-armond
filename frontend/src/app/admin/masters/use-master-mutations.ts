@@ -21,7 +21,7 @@ import {
 export type AuthKind = "forbidden" | "unauthenticated";
 
 export type CreateMasterOutcome =
-  | { status: "success" }
+  | { status: "success"; id: string }
   | { status: "validation"; field: string; message: string }
   | { status: "auth"; kind: AuthKind }
   | { status: "unexpected" }
@@ -139,7 +139,7 @@ export function useMasterMutations() {
           return { status: "validation", field: payload.field, message: payload.message };
         }
         if (payload?.__typename === "CreateMasterCardgroupSuccess") {
-          return { status: "success" };
+          return { status: "success", id: payload.master.id };
         }
         console.warn("[useMasterMutations] unexpected createMaster payload", { typename });
         return { status: "unexpected" };
