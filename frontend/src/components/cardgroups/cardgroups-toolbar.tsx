@@ -15,7 +15,7 @@ export function CardgroupsToolbar({ searchInput, onSearchInputChange }: Cardgrou
   const t = useTranslations("Cardgroups");
 
   return (
-    <div className="mb-6">
+    <div className="mb-6 hidden md:block">
       <input
         type="search"
         placeholder={t("filterPlaceholder")}

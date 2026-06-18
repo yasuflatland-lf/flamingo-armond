@@ -1100,6 +1100,38 @@ describe("<CardgroupsClient> connection cache update (readQuery + writeQuery)", 
 });
 
 // ---------------------------------------------------------------------------
+// Mobile search takeover — flamingo:open-search / flamingo:search-state
+// ---------------------------------------------------------------------------
+
+describe("<CardgroupsClient> mobile search takeover", () => {
+  it("opens the takeover on flamingo:open-search and renders the input", async () => {
+    renderClient([], makeConnection([CG_1]));
+    // Flush the SSR seed render.
+    await screen.findByText("Spanish Vocab");
+
+    expect(screen.queryByTestId("search-takeover")).not.toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("flamingo:open-search"));
+    });
+
+    expect(screen.getByTestId("search-takeover")).toBeInTheDocument();
+    expect(screen.getByTestId("search-takeover-input")).toBeInTheDocument();
+  });
+
+  it("dispatches flamingo:search-state on mount with active:false, visible:false", () => {
+    const detail = vi.fn();
+    function onState(e: Event) {
+      detail((e as CustomEvent).detail);
+    }
+    window.addEventListener("flamingo:search-state", onState);
+    renderClient([], makeConnection([CG_1]));
+    expect(detail).toHaveBeenCalledWith({ active: false, visible: false });
+    window.removeEventListener("flamingo:search-state", onState);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // S-create-limit: in-list drawer surfaces CardgroupLimitReachedError via
 // the dedicated `cardgroup-create-limit-error` testid, not the overloaded
 // unexpected-error banner.
