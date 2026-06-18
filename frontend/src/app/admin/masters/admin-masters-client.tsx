@@ -2,11 +2,11 @@
 
 import { NetworkStatus } from "@apollo/client";
 import { Plus } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { AdminQueryErrorBanner } from "@/components/admin/admin-query-error-banner";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -99,7 +99,6 @@ export function AdminMastersClient() {
   const hasNextPage = pageInfo.hasNextPage;
 
   const queryErrorKind = classifyQueryError(queryError);
-  const queryBannerError = queryErrorKind?.kind === "banner" ? queryErrorKind.message : undefined;
 
   const { createMaster, creating, resetCreate } = useMasterMutations();
 
@@ -162,27 +161,17 @@ export function AdminMastersClient() {
         />
       </div>
 
-      {queryErrorKind?.kind === "forbidden" && (
-        <ErrorBanner data-testid="admin-masters-query-error">{t("viewForbidden")}</ErrorBanner>
-      )}
-
-      {queryErrorKind?.kind === "unauthenticated" && (
-        <ErrorBanner data-testid="admin-masters-query-error">
-          <span>{t("sessionExpired")}</span>{" "}
-          <Link href="/login" className="underline">
-            {t("pleaseSignInAgain")}
-          </Link>
-        </ErrorBanner>
-      )}
-
-      {queryBannerError && (
-        <ErrorBanner data-testid="admin-masters-query-error">
-          <span>{queryBannerError}</span>
-          <button type="button" className="ml-3 underline" onClick={() => refetch()}>
-            {tCommon("retry")}
-          </button>
-        </ErrorBanner>
-      )}
+      <AdminQueryErrorBanner
+        kind={queryErrorKind}
+        onRetry={refetch}
+        testId="admin-masters-query-error"
+        copy={{
+          viewForbidden: t("viewForbidden"),
+          sessionExpired: t("sessionExpired"),
+          signInAgain: t("pleaseSignInAgain"),
+          retry: tCommon("retry"),
+        }}
+      />
 
       {!initialLoading && !queryErrorKind && edges.length === 0 && (
         <p className="text-sm text-muted-foreground" data-testid="admin-masters-empty">
