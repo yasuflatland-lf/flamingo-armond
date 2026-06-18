@@ -448,6 +448,18 @@ grep -rn "ModeBadge" frontend/ --include="*.ts" --include="*.tsx"
 
 **Worked example: header auth degradation branches.** When the header auth logic moved into `app/layout.tsx`, the old `global-header.test.tsx` suite was deleted alongside the deleted component — but eight branches asserting that the root layout degrades silently on `getUser()` failure / `gqlFetch` `UNAUTHENTICATED` / `me`-fetch failure went with it. Those branches still exist in the replacement implementation and can still fail, so the audit step is to re-home them. The fix was `app/layout.test.tsx` (`frontend/src/app/layout.test.tsx`), which re-asserts every branch against the post-refactor implementation. Without that re-homing the branches would have stayed silently uncovered until a regression surfaced in production.
 
+### Consolidating components relocates coverage: audit the it-map
+
+The audit above triggers on **deletion**; it triggers just as hard on **consolidation**. When two near-identical components are unified into one shared component plus thin wrappers (see [`shared-stateful-component-extraction-seam.md`](typescript-conventions/shared-stateful-component-extraction-seam.md)), the generic behavioural suite relocates to the shared component's test and each wrapper test shrinks to feature-wiring. The relocation is hand-done, so behavioural `it(...)` blocks are silently dropped — and a green suite plus a green `typecheck` / `lint` / `knip` / `build` gate does **not** catch it, because the dropped cases simply no longer exist to fail.
+
+The guard is a `git`-backed `it`-coverage map, not a test run:
+
+1. `git show <merge-base>:<old-test-file>` — list every `it(...)` / `test(...)` block in the pre-consolidation test.
+2. For each, confirm the asserted behaviour is covered **somewhere** in the post-consolidation set (the shared component's test, or a wrapper's wiring test). Pure-logic units and a footer/layout block legitimately move to the shared test; the per-feature wiring (correct mutation + refetch document) moves to the wrapper test.
+3. Any block covered **nowhere** is a hole in the safety net — restore it before merge. A "zero behaviour change" refactor whose own coverage shrank cannot prove its claim.
+
+**Worked example (BatchImportWizard, #544).** Consolidating the two batch-import forms dropped ~8 behavioural cases that ended up covered nowhere: validate transport-error → banner, edit-after-valid reverts the forward button, progress-segment click returns to step 1, post-import back-to-edit re-requires validate, the DUPLICATE/amber **warning**-row rendering (the restored `HARD` red-error test never exercised `isWarningKind`), the single-`<label>` assertion, and two validate-status text-content assertions. The suite was green at 1441 tests the whole time; the gap surfaced only when a reviewer built the `git show main:<old-test>` it-map, and two restore rounds re-homed every block.
+
 ### Fake timer hygiene: use `beforeEach` / `afterEach` for setup and teardown
 
 Inline calls to `vi.useFakeTimers()` inside a single `it(...)` block are leak-prone. If that test throws before reaching `vi.useRealTimers()`, every subsequent test in the file inherits the fake clock — `userEvent` interactions hang (their internal `setTimeout(0)` never fires), `MockedProvider` async resolution stalls, and the suite times out with no stack pointing at the offending test.
