@@ -359,7 +359,7 @@ This tests the behavioral contract (tab from `addLink` lands on `menuButton`) wi
 
 Use `await user.tab()` from a fixed anchor any time you need to assert that one interactive element is reachable immediately after another in keyboard navigation order.
 
-`compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING` is wrong for keyboard tab order — for exactly the reason above — but it is the correct, intended tool for asserting **visual left/right layout order** in a `flex justify-between` two-slot row. jsdom has no layout engine, so DOM source order is the right proxy for visual position in a standard LTR flex container where slots are fixed in source order. The assertion is wrong only for keyboard navigation (because `tabindex` decouples tab order from DOM order) and would also not catch a CSS-only `flex-row-reverse` regression (which jsdom cannot compute). For DOM-order-as-visual-order checks, the pattern is sound. Reference: the `describe("CardgroupBatchImportForm footer layout")` block in `frontend/src/components/cardgroups/cardgroup-batch-import-form.test.tsx` uses `compareDocumentPosition` to pin Cancel→primary, Back→Import, and Back→Done slot order in the `WizardFooter` component.
+`compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING` is wrong for keyboard tab order — for exactly the reason above — but it is the correct, intended tool for asserting **visual left/right layout order** in a `flex justify-between` two-slot row. jsdom has no layout engine, so DOM source order is the right proxy for visual position in a standard LTR flex container where slots are fixed in source order. The assertion is wrong only for keyboard navigation (because `tabindex` decouples tab order from DOM order) and would also not catch a CSS-only `flex-row-reverse` regression (which jsdom cannot compute). For DOM-order-as-visual-order checks, the pattern is sound. Reference: the `describe("BatchImportWizard footer layout")` block in `frontend/src/components/batch-import/batch-import-wizard.test.tsx` uses `compareDocumentPosition` to pin Cancel→primary, Back→Import, and Back→Done slot order in the `WizardFooter` component.
 
 ### Pin specific `indexOf` positions in DOM-order tests
 
@@ -447,6 +447,18 @@ grep -rn "ModeBadge" frontend/ --include="*.ts" --include="*.tsx"
 3. For each behaviour that no longer exists, the deletion is correct — but say so in the commit message so reviewers can verify intent rather than guess.
 
 **Worked example: header auth degradation branches.** When the header auth logic moved into `app/layout.tsx`, the old `global-header.test.tsx` suite was deleted alongside the deleted component — but eight branches asserting that the root layout degrades silently on `getUser()` failure / `gqlFetch` `UNAUTHENTICATED` / `me`-fetch failure went with it. Those branches still exist in the replacement implementation and can still fail, so the audit step is to re-home them. The fix was `app/layout.test.tsx` (`frontend/src/app/layout.test.tsx`), which re-asserts every branch against the post-refactor implementation. Without that re-homing the branches would have stayed silently uncovered until a regression surfaced in production.
+
+### Consolidating components relocates coverage: audit the it-map
+
+The audit above triggers on **deletion**; it triggers just as hard on **consolidation**. When two near-identical components are unified into one shared component plus thin wrappers (see [`shared-stateful-component-extraction-seam.md`](typescript-conventions/shared-stateful-component-extraction-seam.md)), the generic behavioural suite relocates to the shared component's test and each wrapper test shrinks to feature-wiring. The relocation is hand-done, so behavioural `it(...)` blocks are silently dropped — and a green suite plus a green `typecheck` / `lint` / `knip` / `build` gate does **not** catch it, because the dropped cases simply no longer exist to fail.
+
+The guard is a `git`-backed `it`-coverage map, not a test run:
+
+1. `git show <merge-base>:<old-test-file>` — list every `it(...)` / `test(...)` block in the pre-consolidation test.
+2. For each, confirm the asserted behaviour is covered **somewhere** in the post-consolidation set (the shared component's test, or a wrapper's wiring test). Pure-logic units and a footer/layout block legitimately move to the shared test; the per-feature wiring (correct mutation + refetch document) moves to the wrapper test.
+3. Any block covered **nowhere** is a hole in the safety net — restore it before merge. A "zero behaviour change" refactor whose own coverage shrank cannot prove its claim.
+
+**Worked example (BatchImportWizard, #544).** Consolidating the two batch-import forms dropped ~8 behavioural cases that ended up covered nowhere: validate transport-error → banner, edit-after-valid reverts the forward button, progress-segment click returns to step 1, post-import back-to-edit re-requires validate, the DUPLICATE/amber **warning**-row rendering (the restored `HARD` red-error test never exercised `isWarningKind`), the single-`<label>` assertion, and two validate-status text-content assertions. The suite was green at 1441 tests the whole time; the gap surfaced only when a reviewer built the `git show main:<old-test>` it-map, and two restore rounds re-homed every block.
 
 ### Fake timer hygiene: use `beforeEach` / `afterEach` for setup and teardown
 
@@ -599,5 +611,5 @@ To assert that content is hidden while collapsed, assert `not.toBeInTheDocument(
 
 In Playwright, click the trigger before asserting cells: `await page.getByRole("button", { name: /Show preview/ }).click()`, then `await expect(page.getByRole("cell", { name: frontA })).toBeVisible()`.
 
-Worked example: `frontend/src/components/cardgroups/cardgroup-batch-import-form.test.tsx` (valid-validate test, lines 188–200) asserts `queryByText("apple")` is `null` before clicking the "Show preview (2)" trigger and present after. `frontend/e2e/cardgroup-import.spec.ts` (lines 69–71) clicks the trigger before asserting cells.
+Worked example: `frontend/src/components/batch-import/batch-import-wizard.test.tsx` (valid-validate test, lines 182–197) asserts `queryByText("apple")` is `null` before clicking the `batch-import-preview-toggle` trigger and present after `waitFor`. `frontend/e2e/cardgroup-import.spec.ts` (lines 69–71) clicks the trigger before asserting cells.
 
