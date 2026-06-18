@@ -35,7 +35,7 @@ vi.mock("next/link", () => ({
     </a>
   ),
 }));
-// MasterCardRow wraps each card in SwipeableRow; stub it to avoid gesture-lib load.
+// CardRow wraps each card in SwipeableRow; stub it to avoid gesture-lib load.
 vi.mock("@/components/cardgroups/swipeable-row", async () => {
   const { forwardRef } = await import("react");
   return {

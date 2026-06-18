@@ -4,7 +4,9 @@ import { Search } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { ReactNode, RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { BulkActionBar } from "@/components/cardgroups/bulk-action-bar";
 import { CardForm } from "@/components/cardgroups/card-form";
+import { CardRow } from "@/components/cardgroups/card-row";
 import { CardgroupBatchImportForm } from "@/components/cardgroups/cardgroup-batch-import-form";
 import type { SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
 import { Button } from "@/components/ui/button";
@@ -14,8 +16,6 @@ import type { CardsByCardgroupConnectionQuery } from "@/generated/graphql";
 import { useBulkSelection } from "@/hooks/use-bulk-selection";
 import { useDebouncedSearch } from "@/hooks/use-debounced-search";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
-import { BulkActionBar } from "./components/bulk-action-bar";
-import { CardRow } from "./components/card-row";
 import { useCardMutations } from "./use-card-mutations";
 import { useCardsConnection } from "./use-cards-connection";
 
