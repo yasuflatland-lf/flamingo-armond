@@ -2,6 +2,7 @@ import { safeDecodePathSegment } from "@/lib/safe-decode-path-segment";
 
 const CARDGROUP_EDIT_RE = /^\/cardgroups\/([^/]+)\/edit(\/|$)/;
 const LEARN_RE = /^\/learn\/([^/]+)(\/|$)/;
+const MASTER_EDIT_RE = /^\/admin\/masters\/([^/]+)\/edit(\/|$)/;
 
 export type HeaderCreateAction =
   | { kind: "cardgroup"; label: "Add new cardgroup"; href: "/cardgroups/new" }
@@ -22,7 +23,12 @@ export type HeaderCreateAction =
   | { kind: "role"; label: "Add new role" }
   // No href: master creation opens the create sheet the same way as role —
   // ?new=true on the current path (via useSheetSearchParam).
-  | { kind: "master"; label: "Add new master" };
+  | { kind: "master"; label: "Add new master" }
+  // No href: adding a card to a master deck has no separate-page target (unlike
+  // a user cardgroup, which can fall back to /cards/new). The '+' dispatches a
+  // cancelable flamingo:add-master-card event that the in-page MasterCardsClient
+  // claims; there is no navigation fallback.
+  | { kind: "master-card"; label: "Add new card"; masterId: string };
 
 /**
  * Build a `card-with-group` action for the /cardgroups/:id/edit route.
@@ -67,9 +73,10 @@ function cardWithGroupFromLearn(
  * - `/cardgroups`          -> create new cardgroup
  * - `/cardgroups/:id/edit` -> create card pre-filled with the cardgroup
  * - `/learn/:id`           -> create card pre-filled with the cardgroup + return param
- * - `/admin/roles`         -> create new role
- * - `/admin/masters`       -> create new master
- * - anything else          -> `null`
+ * - `/admin/roles`            -> create new role
+ * - `/admin/masters`          -> create new master
+ * - `/admin/masters/:id/edit` -> add card to the master deck
+ * - anything else             -> `null`
  */
 export function resolveHeaderCreateAction(pathname: string): HeaderCreateAction | null {
   if (pathname === "/cardgroups") {
@@ -98,6 +105,13 @@ export function resolveHeaderCreateAction(pathname: string): HeaderCreateAction 
 
   if (pathname === "/admin/masters") {
     return { kind: "master", label: "Add new master" };
+  }
+
+  const masterEditMatch = MASTER_EDIT_RE.exec(pathname);
+  if (masterEditMatch) {
+    const rawId = safeDecodePathSegment(masterEditMatch[1] as string);
+    if (rawId === null) return null;
+    return { kind: "master-card", label: "Add new card", masterId: rawId };
   }
 
   return null;

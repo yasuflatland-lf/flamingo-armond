@@ -332,6 +332,42 @@ describe("<LogoDrawer>", () => {
     expect(target).toContain("new=true");
   });
 
+  it("S-ME1: on /admin/masters/:id/edit the '+' (Add new card) dispatches add-master-card with the decoded masterId and does not navigate", async () => {
+    const user = userEvent.setup();
+    mockUsePathname.mockReturnValue("/admin/masters/m-1/edit");
+    const listener = vi.fn();
+    window.addEventListener("flamingo:add-master-card", listener);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={true} />);
+
+    await user.click(screen.getByRole("button", { name: /add new card/i }));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    const event = listener.mock.calls[0]?.[0] as CustomEvent<{ masterId: string }>;
+    expect(event.cancelable).toBe(true);
+    expect(event.detail).toEqual({ masterId: "m-1" });
+    // Master cards have no separate-page create target, so the '+' never falls
+    // back to a route push the way the cardgroup add-card '+' does.
+    expect(mockPush).not.toHaveBeenCalled();
+
+    window.removeEventListener("flamingo:add-master-card", listener);
+  });
+
+  it("S-ME2: master-edit '+' decodes a percent-encoded masterId for the event detail", async () => {
+    const user = userEvent.setup();
+    mockUsePathname.mockReturnValue("/admin/masters/a%26b/edit");
+    const listener = vi.fn();
+    window.addEventListener("flamingo:add-master-card", listener);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={true} />);
+
+    await user.click(screen.getByRole("button", { name: /add new card/i }));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    const event = listener.mock.calls[0]?.[0] as CustomEvent<{ masterId: string }>;
+    expect(event.detail).toEqual({ masterId: "a&b" });
+
+    window.removeEventListener("flamingo:add-master-card", listener);
+  });
+
   it("S-G1: on an unknown route (/profile) the '+' button is not rendered", () => {
     mockUsePathname.mockReturnValue("/profile");
     renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);

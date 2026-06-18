@@ -68,6 +68,18 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
         open({ mode: "new" });
         return;
       }
+      // Adding a card to a master deck has no separate-page fallback: the
+      // in-page MasterCardsClient is always mounted on the edit screen and
+      // claims this event to open its add-card sheet. No router.push fallback.
+      case "master-card": {
+        window.dispatchEvent(
+          new CustomEvent("flamingo:add-master-card", {
+            cancelable: true,
+            detail: { masterId: createAction.masterId },
+          }),
+        );
+        return;
+      }
       default: {
         const _exhaustive: never = createAction;
         console.error("[LogoDrawer] unhandled createAction kind", createAction);
