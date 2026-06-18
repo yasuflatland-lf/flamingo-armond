@@ -28,9 +28,9 @@ import {
 import { FormSheet } from "@/components/ui/form-sheet";
 import type { AdminMasterDeck } from "./queries";
 
-type Props = { master: AdminMasterDeck };
+type Props = { master: AdminMasterDeck; cardCount: number };
 
-export function MasterEditHeader({ master }: Props) {
+export function MasterEditHeader({ master, cardCount }: Props) {
   const t = useTranslations("AdminMasters");
   const tCommon = useTranslations("Common");
   const router = useRouter();
@@ -48,7 +48,7 @@ export function MasterEditHeader({ master }: Props) {
     useMasterMutations();
 
   const published = master.status === "PUBLISHED";
-  const emptyDraft = master.status === "DRAFT" && master.cardCount === 0;
+  const emptyDraft = master.status === "DRAFT" && cardCount === 0;
 
   const authToast = useCallback(
     (kind: AuthKind) => {
@@ -154,7 +154,7 @@ export function MasterEditHeader({ master }: Props) {
               {published ? t("statusPublished") : t("statusDraft")}
             </Badge>
             <span className="text-sm text-muted-foreground">
-              {t("cardCount", { count: master.cardCount })}
+              {t("cardCount", { count: cardCount })}
             </span>
           </div>
           {emptyDraft ? (

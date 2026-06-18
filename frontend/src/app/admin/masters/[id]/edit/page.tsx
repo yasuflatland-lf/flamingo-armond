@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import type { AdminMasterQuery } from "@/generated/graphql";
+import type {
+  AdminMasterCardsConnectionQuery as AdminMasterCardsConnectionQueryType,
+  AdminMasterQuery,
+} from "@/generated/graphql";
 import {
   isForbiddenGraphQLError,
   isUnauthenticatedGraphQLError,
 } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { readAuthContext } from "@/lib/supabase/auth-status";
+import { AdminMasterCardsConnectionQuery, masterCardsDefaultVars } from "./cards/queries";
 import { MasterManagementClient } from "./master-management-client";
 import { AdminMasterQueryDocument } from "./queries";
 
@@ -22,9 +26,16 @@ export default async function EditMasterPage({ params }: Props) {
   // Defense-in-depth under the admin layout: redirect to / for stale/anonymous.
   if (readAuthContext(await headers()).status !== "authenticated") redirect("/");
 
-  let data: AdminMasterQuery | null = null;
+  let deckData: AdminMasterQuery | null = null;
+  let connectionData: AdminMasterCardsConnectionQueryType | null = null;
   try {
-    data = await gqlFetch(AdminMasterQueryDocument, { variables: { id }, revalidate: 0 });
+    [deckData, connectionData] = await Promise.all([
+      gqlFetch(AdminMasterQueryDocument, { variables: { id }, revalidate: 0 }),
+      gqlFetch(AdminMasterCardsConnectionQuery, {
+        variables: masterCardsDefaultVars(id),
+        revalidate: 0,
+      }),
+    ]);
   } catch (err) {
     if (isUnauthenticatedGraphQLError(err) || isForbiddenGraphQLError(err)) redirect("/");
     console.error("[admin/masters/:id/edit] gqlFetch failed:", {
@@ -33,7 +44,25 @@ export default async function EditMasterPage({ params }: Props) {
     throw err;
   }
 
-  if (!data?.adminMaster) notFound();
+  if (!deckData?.adminMaster) notFound();
 
-  return <MasterManagementClient master={data.adminMaster} />;
+  const conn = connectionData?.adminMasterCardsConnection;
+  const initialEdges = conn?.edges ?? [];
+  const initialPageInfo = conn?.pageInfo ?? {
+    __typename: "PageInfo" as const,
+    hasNextPage: false,
+    hasPreviousPage: false,
+    startCursor: null,
+    endCursor: null,
+  };
+  const initialTotalCount = conn?.totalCount ?? 0;
+
+  return (
+    <MasterManagementClient
+      master={deckData.adminMaster}
+      initialEdges={initialEdges}
+      initialPageInfo={initialPageInfo}
+      initialTotalCount={initialTotalCount}
+    />
+  );
 }

@@ -61,7 +61,7 @@ function renderHeader(deck: AdminMasterDeck, mocks: ReadonlyArray<unknown> = [])
   return render(
     <MockedProvider mocks={mocks as never}>
       <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
-        <MasterEditHeader master={deck} />
+        <MasterEditHeader master={deck} cardCount={deck.cardCount} />
       </NextIntlClientProvider>
     </MockedProvider>,
   );
@@ -234,5 +234,17 @@ describe("MasterEditHeader", () => {
     const settingsItem = await screen.findByRole("menuitem", { name: /deck settings/i });
     await user.click(settingsItem);
     expect(await screen.findByTestId("master-field-name")).toBeInTheDocument();
+  });
+
+  it("displays the cardCount prop (live count), not master.cardCount", () => {
+    render(
+      <MockedProvider mocks={[]}>
+        <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
+          <MasterEditHeader master={{ ...DECK, cardCount: 0 }} cardCount={5} />
+        </NextIntlClientProvider>
+      </MockedProvider>,
+    );
+    // Publish is enabled because the LIVE count is 5, even though master.cardCount is 0.
+    expect(screen.getByTestId("master-edit-publish")).not.toBeDisabled();
   });
 });
