@@ -134,6 +134,7 @@
     "noMatch": "「{search}」に一致するカードがありません",
     "clearSearch": "検索をクリア",
     "loadingMore": "カードをさらに読み込んでいます...",
+    "fetchMoreFailed": "カードの追加読み込みに失敗しました。もう一度お試しください。",
     "addCard": "カードを追加",
     "editCard": "カードを編集",
     "batchImportSrOnly": "一括インポート先: ",
