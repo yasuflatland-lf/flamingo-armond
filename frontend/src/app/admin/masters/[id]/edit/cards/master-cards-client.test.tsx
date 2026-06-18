@@ -90,4 +90,11 @@ describe("<MasterCardsClient>", () => {
     await userEvent.click(screen.getByRole("button", { name: /add card/i }));
     expect(screen.getByLabelText(/front/i)).toBeInTheDocument();
   });
+
+  it("opens the batch-import sheet from the mobile toolbar button", async () => {
+    render();
+    await userEvent.click(screen.getByTestId("master-batch-import"));
+    // The shared batch-import wizard renders its paste textarea inside the sheet.
+    expect(await screen.findByTestId("batch-import-payload")).toBeInTheDocument();
+  });
 });

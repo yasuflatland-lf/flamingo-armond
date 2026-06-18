@@ -90,6 +90,8 @@ describe("MasterEditHeader", () => {
   it("opens the deck-settings dialog with the metadata form (no publish/delete sections)", async () => {
     const user = userEvent.setup();
     renderHeader(DECK);
+    // Deck settings now lives in the desktop split-button dropdown.
+    await user.click(screen.getByTestId("master-edit-more-options"));
     await user.click(screen.getByTestId("master-edit-deck-settings"));
     expect(await screen.findByTestId("master-field-name")).toBeInTheDocument();
     // Metadata-only: the form's in-dialog publish/delete sections are absent.
@@ -143,6 +145,8 @@ describe("MasterEditHeader", () => {
       },
     ];
     renderHeader(DECK, mocks);
+    // Delete now lives in the desktop split-button dropdown.
+    await user.click(screen.getByTestId("master-edit-more-options"));
     await user.click(screen.getByTestId("master-edit-delete"));
     const confirm = await screen.findByTestId("master-delete-dialog-confirm");
     expect(confirm.className).toContain("bg-destructive");
@@ -169,7 +173,8 @@ describe("MasterEditHeader", () => {
       },
     ];
     renderHeader(DECK, mocks);
-    // Open the deck-settings dialog.
+    // Open the deck-settings dialog from the desktop split-button dropdown.
+    await user.click(screen.getByTestId("master-edit-more-options"));
     await user.click(screen.getByTestId("master-edit-deck-settings"));
     expect(await screen.findByTestId("master-field-name")).toBeInTheDocument();
     // Submit the form without changing values (form submits prefilled values).
@@ -199,6 +204,7 @@ describe("MasterEditHeader", () => {
       },
     ];
     renderHeader(DECK, mocks);
+    await user.click(screen.getByTestId("master-edit-more-options"));
     await user.click(screen.getByTestId("master-edit-deck-settings"));
     expect(await screen.findByTestId("master-field-name")).toBeInTheDocument();
     await user.click(screen.getByTestId("master-form-submit"));
@@ -234,6 +240,27 @@ describe("MasterEditHeader", () => {
     const settingsItem = await screen.findByRole("menuitem", { name: /deck settings/i });
     await user.click(settingsItem);
     expect(await screen.findByTestId("master-field-name")).toBeInTheDocument();
+  });
+
+  it("overflow menu (mobile): the publish toggle publishes the deck and refreshes", async () => {
+    const user = userEvent.setup();
+    const mocks = [
+      {
+        request: { query: AdminPublishMasterMutation, variables: { id: "m-1" } },
+        result: {
+          data: {
+            adminPublishMasterCardgroup: {
+              __typename: "PublishMasterCardgroupSuccess",
+              master: { ...DECK, status: "PUBLISHED" },
+            },
+          },
+        },
+      },
+    ];
+    renderHeader(DECK, mocks);
+    await user.click(screen.getByTestId("master-edit-overflow"));
+    await user.click(await screen.findByTestId("master-edit-publish-mobile"));
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
   });
 
   it("displays the cardCount prop (live count), not master.cardCount", () => {

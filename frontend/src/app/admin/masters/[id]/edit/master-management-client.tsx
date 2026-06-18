@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
@@ -28,9 +29,10 @@ export function MasterManagementClient({
       <div className="mb-2">
         <Link
           href="/admin/masters"
-          className="inline-flex text-sm text-muted-foreground hover:text-foreground hover:underline"
+          className="inline-flex items-center text-muted-foreground hover:text-foreground"
         >
-          {t("backToList")}
+          <ChevronLeft aria-hidden="true" className="h-5 w-5" />
+          <span className="sr-only">{t("backToList")}</span>
         </Link>
       </div>
 
