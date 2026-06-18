@@ -19,7 +19,7 @@ Because the `cardgroup(id:)` query returns `UNAUTHENTICATED` to non-owners, the 
 
 ## Worked example
 
-`frontend/src/components/cardgroups/cardgroup-batch-import-form.tsx` routes every caught error through `getBackendErrorBanner` (`@/lib/apollo/errors`) with a single generic fallback. It has **no** FORBIDDEN-specific banner and no UNAUTHENTICATED-specific branch — the page-level redirect already handled the non-owner case before this component mounted. Adding a FORBIDDEN banner here would be dead code, and lobbying for the backend to emit FORBIDDEN to "activate" it would undo the anti-enumeration design.
+`frontend/src/components/batch-import/batch-import-wizard.tsx` routes every caught error through `getBackendErrorBanner` (`@/lib/apollo/errors`) with a single generic fallback. It has **no** FORBIDDEN-specific banner and no UNAUTHENTICATED-specific branch — the page-level redirect already handled the non-owner case before this component mounted (the cardgroup wrapper `CardgroupBatchImportForm` in `frontend/src/components/cardgroups/cardgroup-batch-import-form.tsx` supplies the owner-scoped `importCards` mutation). Adding a FORBIDDEN banner here would be dead code, and lobbying for the backend to emit FORBIDDEN to "activate" it would undo the anti-enumeration design.
 
 ## Related rules
 

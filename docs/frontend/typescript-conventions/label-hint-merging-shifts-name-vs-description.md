@@ -36,4 +36,4 @@ The merge is appropriate when:
 
 For longer, context-sensitive hints (e.g. password-strength rules that vary by policy), keep the hint in a separate element referenced by `aria-describedby` so the description is announced on demand and the name stays brief.
 
-Reference: `frontend/src/components/cardgroups/cardgroup-batch-import-form.tsx` (label for `batch-import-payload`), and the corresponding assertion in `cardgroup-batch-import-form.test.tsx`.
+Reference: `frontend/src/components/batch-import/batch-import-wizard.tsx` (label for `batch-import-payload`), and the corresponding assertion in `batch-import-wizard.test.tsx`.

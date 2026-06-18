@@ -32,4 +32,4 @@ The exact expansion (`py-2` = 8 px per side, total 20 px) brings the practical t
 
 ## Reference
 
-`frontend/src/components/cardgroups/cardgroup-batch-import-form.tsx` — `ImportStepper`, the step-1 back button. The non-clickable step-2 bar is a plain `<div>` with only `h-1`; only the interactive step-1 bar (when rendering step 2) requires the hit-area expansion.
+`frontend/src/components/batch-import/batch-import-wizard.tsx` — `ImportStepper`, the step-1 back button. The non-clickable step-2 bar is a plain `<div>` with only `h-1`; only the interactive step-1 bar (when rendering step 2) requires the hit-area expansion.

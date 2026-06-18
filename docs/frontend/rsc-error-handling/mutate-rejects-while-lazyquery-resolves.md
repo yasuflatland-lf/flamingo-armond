@@ -11,10 +11,10 @@ The consequence: an `if (result.error)` branch written after `await runMutation(
 
 ## Worked example
 
-`frontend/src/components/cardgroups/cardgroup-batch-import-form.tsx` exercises both shapes side by side:
+`frontend/src/components/batch-import/batch-import-wizard.tsx` exercises both shapes side by side:
 
 - `handleValidate` calls `useLazyQuery`'s `runValidate` and correctly keeps **both** `if (result.error)` and a `catch` — the resolve path populates `result.error`, the reject path lands in `catch`.
-- `handleImport` calls `useMutation`'s `runImport` and relies on the `catch` **only** — there is no `if (result.error)` branch, because that branch could never run for a mutation. The success path reads `result.data?.importCards` and treats a missing payload as its own banner case; everything else is a rejection caught by `catch`.
+- `handleImport` calls the injected `onImport` callback (which in the cardgroup wrapper `CardgroupBatchImportForm` calls `useMutation`'s `runImport` and reads `result.data?.importCards`) and relies on the `catch` **only** — there is no `if (result.error)` branch, because that branch could never run for a mutation. The success path treats a `null` return from `onImport` as its own banner case; everything else is a rejection caught by `catch`.
 
 Both handlers route the caught/returned error through the shared `getBackendErrorBanner` helper (`@/lib/apollo/errors`), so the user-facing copy stays consistent regardless of which channel the error arrived on.
 

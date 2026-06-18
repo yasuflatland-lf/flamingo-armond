@@ -28,4 +28,4 @@ Add `block` to the label's `className`:
 
 HTML `<label>` has `display: inline` by default — the same as `<span>` and `<a>`. When a component library or design system renders form labels it often sets `display: block` via a CSS reset or a wrapper class, masking the default. Hand-written labels that skip the component wrapper and apply only text-styling classes (e.g. `text-xs font-medium`) do not get that reset, so the inline default is in effect and `space-y-*` silently does nothing.
 
-Reference: `frontend/src/components/cardgroups/cardgroup-batch-import-form.tsx`, the `batch-import-payload` label block.
+Reference: `frontend/src/components/batch-import/batch-import-wizard.tsx`, the `batch-import-payload` label block.
