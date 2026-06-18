@@ -449,6 +449,8 @@ describe("<LogoDrawer>", () => {
         }),
       );
     });
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
     act(() => {
       window.dispatchEvent(
         new CustomEvent("flamingo:search-state", {
@@ -456,6 +458,7 @@ describe("<LogoDrawer>", () => {
         }),
       );
     });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
 
     expect(trigger).toHaveFocus();
   });
