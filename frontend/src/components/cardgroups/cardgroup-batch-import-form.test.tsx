@@ -58,6 +58,16 @@ const importMock: MockedResponse = {
   },
 };
 
+async function advanceToStep2(user: ReturnType<typeof userEvent.setup>) {
+  const textarea = screen.getByLabelText(/cards to import/i);
+  await user.click(textarea);
+  await user.paste(TWO_LINE_TEXT);
+  await user.click(screen.getByRole("button", { name: /^validate$/i }));
+  const importButton = await screen.findByRole("button", { name: /^import$/i });
+  await waitFor(() => expect(importButton).toBeEnabled());
+  await user.click(importButton);
+}
+
 describe("<CardgroupBatchImportForm> wiring", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -91,5 +101,30 @@ describe("<CardgroupBatchImportForm> wiring", () => {
 
     await waitFor(() => expect(onImported).toHaveBeenCalledTimes(1));
     expect(refetchSpy).toHaveBeenCalledWith({ include: [CardsByCardgroupConnectionDocument] });
+  });
+
+  it("step 2 back button is disabled while the import mutation is in flight", async () => {
+    const user = userEvent.setup();
+    // delay: Infinity keeps the mutation in flight so we can observe the disabled state.
+    const delayedImportMock: MockedResponse = {
+      ...importMock,
+      delay: Infinity,
+    };
+    vi.spyOn(ApolloClient.prototype, "refetchQueries")
+      // biome-ignore lint/suspicious/noExplicitAny: test stub for refetchQueries return
+      .mockResolvedValue([] as any);
+    renderWithIntl(
+      <MockedProvider mocks={[validateMock, delayedImportMock]}>
+        <CardgroupBatchImportForm cardgroupId={CARDGROUP_ID} cardgroupName={CARDGROUP_NAME} />
+      </MockedProvider>,
+    );
+    await advanceToStep2(user);
+    // Back button is enabled before the import starts.
+    expect(screen.getByRole("button", { name: /paste & review/i })).not.toBeDisabled();
+    // Fire the import confirm and immediately check that the back button becomes disabled.
+    void user.click(await screen.findByTestId("batch-import-confirm-btn"));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /paste & review/i })).toBeDisabled();
+    });
   });
 });

@@ -599,5 +599,5 @@ To assert that content is hidden while collapsed, assert `not.toBeInTheDocument(
 
 In Playwright, click the trigger before asserting cells: `await page.getByRole("button", { name: /Show preview/ }).click()`, then `await expect(page.getByRole("cell", { name: frontA })).toBeVisible()`.
 
-Worked example: `frontend/src/components/batch-import/batch-import-wizard.test.tsx` (valid-validate test, lines 188–200) asserts `queryByText("apple")` is `null` before clicking the "Show preview (2)" trigger and present after. `frontend/e2e/cardgroup-import.spec.ts` (lines 69–71) clicks the trigger before asserting cells.
+Worked example: `frontend/src/components/batch-import/batch-import-wizard.test.tsx` (valid-validate test, lines 182–197) asserts `queryByText("apple")` is `null` before clicking the `batch-import-preview-toggle` trigger and present after `waitFor`. `frontend/e2e/cardgroup-import.spec.ts` (lines 69–71) clicks the trigger before asserting cells.
 

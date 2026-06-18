@@ -172,14 +172,45 @@ describe("<BatchImportWizard>", () => {
     expect(screen.getByText(/paste & review/i)).toBeInTheDocument();
   });
 
+  it("accessible name of the textarea contains both the label and the separator rule", () => {
+    renderWizard();
+    expect(screen.getByLabelText(/cards to import/i)).toHaveAccessibleName(
+      /cards to import.*separate each pair with a tab/i,
+    );
+  });
+
   it("valid validate: shows valid status, a collapsed preview, and an Import button", async () => {
     const user = userEvent.setup();
     renderWizard({ mocks: [validateMock(TWO_LINE_TEXT, VALID_RESULT)] });
     await typePayload(user, TWO_LINE_TEXT);
     await user.click(screen.getByRole("button", { name: /^validate$/i }));
     expect(await screen.findByTestId("batch-import-validate-status")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/✓ Valid — 2 cards parsed/i);
     expect(await screen.findByRole("button", { name: /^import$/i })).toBeEnabled();
+    // Preview is collapsed by default.
     expect(screen.queryByText("apple")).toBeNull();
+    // Expanding the collapsible reveals the preview rows.
+    await user.click(screen.getByRole("button", { name: /show preview \(2\)/i }));
+    await waitFor(() => {
+      expect(screen.getByText("apple")).toBeInTheDocument();
+    });
+  });
+
+  it("editing the textarea after a valid validate reverts the button to Validate", async () => {
+    const user = userEvent.setup();
+    renderWizard({ mocks: [validateMock(TWO_LINE_TEXT, VALID_RESULT)] });
+    await typePayload(user, TWO_LINE_TEXT);
+    await user.click(screen.getByRole("button", { name: /^validate$/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^import$/i })).toBeEnabled();
+    });
+    // Append text — validatedPayload now differs from payloadText.
+    await user.click(screen.getByLabelText(/cards to import/i));
+    await user.paste("\ncherry\tcherry");
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /^import$/i })).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /^validate$/i })).toBeEnabled();
   });
 
   it("invalid validate: shows invalid status and an open error list; button stays Validate", async () => {
@@ -188,6 +219,7 @@ describe("<BatchImportWizard>", () => {
     await typePayload(user, TWO_LINE_TEXT);
     await user.click(screen.getByRole("button", { name: /^validate$/i }));
     expect(await screen.findByText(/missing tab separator/i)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/✕ Invalid — 1 error/i);
     expect(screen.getByTestId("batch-import-step1-btn")).toHaveTextContent(/validate/i);
   });
 
@@ -254,6 +286,39 @@ describe("<BatchImportWizard>", () => {
     expect(onImported).not.toHaveBeenCalled();
   });
 
+  it("clicking the completed progress-bar segment also returns to step 1", async () => {
+    const user = userEvent.setup();
+    renderWizard({ mocks: [validateMock(TWO_LINE_TEXT, VALID_RESULT)] });
+    await advanceToStep2(user);
+    await user.click(screen.getByRole("button", { name: /paste & review/i }));
+    // Back on step 1: textarea content preserved.
+    expect(screen.getByTestId("batch-import-payload")).toHaveValue(TWO_LINE_TEXT);
+  });
+
+  it("validate transport/network error shows a banner and leaves the forward action disabled", async () => {
+    const user = userEvent.setup();
+    renderWizard({
+      mocks: [
+        {
+          request: {
+            query: ValidateCardImportDocument,
+            variables: { input: { payload: encodePayload(TWO_LINE_TEXT) } },
+          },
+          error: new Error("network error"),
+        },
+      ],
+    });
+    await typePayload(user, TWO_LINE_TEXT);
+    await user.click(screen.getByRole("button", { name: /^validate$/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+    // No preview rows rendered after a network error.
+    expect(screen.queryByText("apple")).not.toBeInTheDocument();
+    // Forward action is not in the import-enabled state.
+    expect(screen.queryByRole("button", { name: /^import$/i })).not.toBeInTheDocument();
+  });
+
   it("all-failed import shows the destructive banner; Done still closes", async () => {
     const user = userEvent.setup();
     vi.spyOn(ApolloClient.prototype, "refetchQueries")
@@ -272,6 +337,10 @@ describe("<BatchImportWizard>", () => {
     });
     await advanceToStep2(user);
     await user.click(await screen.findByTestId("batch-import-confirm-btn"));
+    await waitFor(() =>
+      expect(screen.getByText(/import failed: no cards persisted/i)).toBeInTheDocument(),
+    );
+    expect(onImported).not.toHaveBeenCalled();
     await user.click(await screen.findByRole("button", { name: /done/i }));
     expect(onImported).toHaveBeenCalledTimes(1);
   });
@@ -293,6 +362,34 @@ describe("<BatchImportWizard>", () => {
     });
     expect(await screen.findByTestId("batch-import-confirm-btn")).toBeInTheDocument();
     expect(onImported).not.toHaveBeenCalled();
+  });
+
+  it("post-import '← Back to edit' returns to step 1 and re-requires a validate", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(ApolloClient.prototype, "refetchQueries")
+      // biome-ignore lint/suspicious/noExplicitAny: test stub for refetchQueries return
+      .mockResolvedValue([] as any);
+    // Partial failure keeps the sheet open on the result panel.
+    const onImport = vi.fn(
+      async (): Promise<ImportResult> => ({
+        inserted: 1,
+        updated: 0,
+        errors: [{ line: 2, message: "duplicate front", kind: "DUPLICATE" as const }],
+      }),
+    );
+    renderWizard({ mocks: [validateMock(TWO_LINE_TEXT, VALID_RESULT)], onImport });
+    await advanceToStep2(user);
+    await user.click(await screen.findByTestId("batch-import-confirm-btn"));
+    // Result banner visible.
+    await waitFor(() => {
+      expect(screen.getByText(/duplicate front/i)).toBeInTheDocument();
+    });
+    // Back to edit from the result panel returns to step 1.
+    await user.click(screen.getByRole("button", { name: /back to edit/i }));
+    // setValidatedPayload(null) ran on success, so the forward button reverts to Validate.
+    const validateButton = screen.getByRole("button", { name: /^validate$/i });
+    expect(validateButton).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /^import$/i })).not.toBeInTheDocument();
   });
 
   it("the back link returns to step 1 preserving the textarea content", async () => {

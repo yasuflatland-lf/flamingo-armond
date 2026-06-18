@@ -17,9 +17,9 @@ import { cn } from "@/lib/utils";
 
 /**
  * Encode a UTF-8 string to base64 using the standard alphabet (with padding).
- * Matches the server contract for `payload` in ValidateCardImportInput and the
- * feature import input: base64-encoded text, one tab-separated front/back pair
- * per line.
+ * Matches the server contract for `payload` in `ValidateCardImportInput`,
+ * `ImportCardsInput`, and `ImportMasterCardsInput`: base64-encoded text, one
+ * tab-separated front/back pair per line.
  */
 function encodePayload(text: string): string {
   // encodeURIComponent escapes all non-ASCII bytes; unescape maps them back to
@@ -276,7 +276,7 @@ export function BatchImportWizard(props: {
   // last successful validate call completed. resolveStep1Button compares this
   // against the current payloadText (the isStale flag) to prevent continuing to
   // import a stale/edited payload without re-validating. It is also cleared after
-  // each import attempt so a re-import requires re-validation.
+  // each successful import attempt so a re-import requires re-validation.
   const [validatedPayload, setValidatedPayload] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [bannerError, setBannerError] = useState<string>("");
@@ -498,7 +498,9 @@ export function BatchImportWizard(props: {
                   <Button
                     type="button"
                     variant="brand"
-                    onClick={handleImport}
+                    onClick={() => {
+                      void handleImport();
+                    }}
                     disabled={importing}
                     data-testid="batch-import-confirm-btn"
                   >
