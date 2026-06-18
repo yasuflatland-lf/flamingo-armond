@@ -50,6 +50,10 @@
     "heading": "設定",
     "description": "環境設定を管理します。"
   },
+  "Search": {
+    "back": "検索を閉じる",
+    "clear": "検索をクリア"
+  },
   "Learn": {
     "completeHeading": "本日の学習が完了しました",
     "completeMessage": "このグループのすべてのカードを復習しました。次の復習時期になったらまたお越しください。",

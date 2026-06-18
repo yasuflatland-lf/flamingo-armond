@@ -50,6 +50,10 @@
     "heading": "Settings",
     "description": "Manage your preferences."
   },
+  "Search": {
+    "back": "Close search",
+    "clear": "Clear search"
+  },
   "Learn": {
     "completeHeading": "Today's learning is complete",
     "completeMessage": "All cards for this group have been reviewed. Come back when the next review is due.",
