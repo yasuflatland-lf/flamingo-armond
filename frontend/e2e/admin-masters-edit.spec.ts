@@ -53,7 +53,7 @@ test.describe("admin master card CRUD", () => {
     await page.getByTestId("master-add-card").click();
     await page.locator("#add-card-front-field").fill(cardFront);
     await page.locator("#add-card-back-field").fill(cardBack);
-    await page.getByRole("dialog").locator('button[type="submit"]').click();
+    await page.locator('[data-testid="form-sheet-body"]').locator('button[type="submit"]').click();
     // Assert the new card row is now visible in the list.
     await expect(page.getByText(cardFront)).toBeVisible({ timeout: 10_000 });
 
@@ -62,9 +62,11 @@ test.describe("admin master card CRUD", () => {
     // Locate the card row by front text and click its edit-target.
     const cardRow = page.locator("li").filter({ hasText: cardFront });
     await cardRow.locator('[data-testid^="card-edit-target-"]').click();
-    const backInput = page.getByRole("dialog").locator('[id$="-back-field"]');
+    const backInput = page
+      .locator('[data-testid="form-sheet-body"]')
+      .locator('[id$="-back-field"]');
     await backInput.fill(editedBack);
-    await page.getByRole("dialog").locator('button[type="submit"]').click();
+    await page.locator('[data-testid="form-sheet-body"]').locator('button[type="submit"]').click();
     // Assert the edited back text is visible.
     await expect(page.getByText(editedBack)).toBeVisible({ timeout: 10_000 });
 
