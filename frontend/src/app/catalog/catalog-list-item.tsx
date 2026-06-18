@@ -1,10 +1,9 @@
 "use client";
 
-import { Check, Download } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { CatalogImportButton } from "@/app/catalog/_components/catalog-import-button";
 import { CatalogCardFieldsFragment } from "@/app/catalog/queries";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { type FragmentType, useFragment } from "@/generated/fragment-masking";
 
 export type CatalogListItemProps = {
@@ -50,11 +49,6 @@ export function CatalogListItem({
   const t = useTranslations("Catalog");
   const card = useFragment(CatalogCardFieldsFragment, node);
 
-  const actionLabel = labels?.action ?? t("import");
-  const inProgressLabel = labels?.inProgress ?? t("importing");
-  const doneLabel = labels?.done ?? t("imported");
-  const idPrefix = testIdPrefix ?? "catalog-import";
-
   return (
     <li
       className="rounded-md border border-border transition-colors hover:bg-accent"
@@ -97,26 +91,15 @@ export function CatalogListItem({
           </span>
         </div>
 
-        <Button
-          type="button"
-          variant={imported ? "outline" : "brand"}
-          onClick={() => onImport(card.id)}
-          disabled={importing || imported}
-          data-testid={`${idPrefix}-${card.id}`}
+        <CatalogImportButton
+          card={card}
+          importing={importing}
+          imported={imported}
+          onImport={onImport}
+          labels={labels}
+          testIdPrefix={testIdPrefix}
           className="order-3 shrink-0 sm:order-4"
-        >
-          {imported ? (
-            <>
-              <Check aria-hidden="true" className="h-4 w-4" />
-              <span className="break-keep">{doneLabel}</span>
-            </>
-          ) : (
-            <>
-              <Download aria-hidden="true" className="h-4 w-4" />
-              <span className="break-keep">{importing ? inProgressLabel : actionLabel}</span>
-            </>
-          )}
-        </Button>
+        />
       </div>
     </li>
   );
