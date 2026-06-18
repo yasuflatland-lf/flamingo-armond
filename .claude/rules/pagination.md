@@ -1,3 +1,9 @@
+---
+paths:
+  - "backend/**"
+  - "frontend/**"
+---
+
 # Pagination
 
 > Single source of truth for the Relay-style Connection design used by the cards-by-cardgroup query and the Apollo client patterns that consume it. Cross-referenced from `docs/backend.md` and `frontend/CLAUDE.md`.

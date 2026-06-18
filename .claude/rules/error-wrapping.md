@@ -1,3 +1,8 @@
+---
+paths:
+  - "backend/**"
+---
+
 # Error wrapping convention
 
 > Applies to: `backend/internal/`, `backend/cmd/`. Enforced by CI (`.github/workflows/backend.yml`).
