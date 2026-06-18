@@ -3,7 +3,7 @@
  * Broad page-level test for the MasterManagementClient tree.
  * Exercises the full card-editor integration: SSR-seeded render and
  * live-count propagation from the cards client up to the header badge
- * (onTotalCountChange → liveCount → MasterEditHeader).
+ * (MasterCardsClient totalCount → renderPageHeader render-prop → MasterEditHeader).
  *
  * Mirror: frontend/__tests__/admin-masters-edit.test.tsx (provider stack)
  * Mirror: frontend/__tests__/cards-bulk-delete.test.tsx (interaction style)
@@ -192,8 +192,8 @@ describe("MasterManagementClient — broad page integration", () => {
 
   // T2: Live count on create — open the add-card sheet, fill front + back,
   // submit with a mocked AdminCreateMasterCard success. The create's cache write
-  // bumps the connection's totalCount, which flows up via onTotalCountChange,
-  // and the header updates from "1 card" to "2 cards".
+  // bumps the connection's totalCount, which flows up through the renderPageHeader
+  // render-prop, and the header updates from "1 card" to "2 cards".
   it("updates the header count from 1 to 2 after a successful card create", async () => {
     const user = userEvent.setup();
     const C2 = "c-broad-2";
@@ -249,10 +249,10 @@ describe("MasterManagementClient — broad page integration", () => {
     // default for mode="create" when no submitLabel prop is passed).
     await user.click(screen.getByRole("button", { name: /^add$/i }));
 
-    // After a successful create the cache is updated (+1 to totalCount) and the
-    // useEffect in MasterCardsClient calls onTotalCountChange(2), which updates
-    // liveCount in MasterManagementClient and re-renders MasterEditHeader with
-    // count=2. The ICU plural for count=2 resolves to "2 cards".
+    // After a successful create the cache is updated (+1 to totalCount). The new
+    // totalCount flows from MasterCardsClient into the renderPageHeader render-prop,
+    // which re-renders MasterEditHeader with count=2. The ICU plural for count=2
+    // resolves to "2 cards".
     await waitFor(() => {
       expect(screen.getByText("2 cards")).toBeInTheDocument();
     });

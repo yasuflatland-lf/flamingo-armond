@@ -123,6 +123,39 @@ describe("resolveHeaderCreateAction", () => {
     });
   });
 
+  describe("/admin/masters/:id/edit route", () => {
+    it.each([
+      ["/admin/masters/m-1/edit", "m-1"],
+      ["/admin/masters/m-1/edit/", "m-1"],
+      [
+        "/admin/masters/0190f9f4-3ad8-7d52-b1d0-6f6b5f5a9c2c/edit",
+        "0190f9f4-3ad8-7d52-b1d0-6f6b5f5a9c2c",
+      ],
+    ])("returns master-card for %s", (pathname, masterId) => {
+      expect(resolveHeaderCreateAction(pathname)).toEqual({
+        kind: "master-card",
+        label: "Add new card",
+        masterId,
+      });
+    });
+
+    it("decodes percent-encoded segment: a%2Fb -> masterId a/b", () => {
+      expect(resolveHeaderCreateAction("/admin/masters/a%2Fb/edit")).toEqual({
+        kind: "master-card",
+        label: "Add new card",
+        masterId: "a/b",
+      });
+    });
+
+    it("returns null for malformed percent-escape in /admin/masters/:id/edit", () => {
+      expect(resolveHeaderCreateAction("/admin/masters/%ZZ/edit")).toBeNull();
+    });
+
+    it("returns null for /admin/masters/m-1 (no /edit)", () => {
+      expect(resolveHeaderCreateAction("/admin/masters/m-1")).toBeNull();
+    });
+  });
+
   describe("routes that return null", () => {
     it.each([
       ["/"],
