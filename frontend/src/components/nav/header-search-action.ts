@@ -1,5 +1,5 @@
 // Exact-match routes that show the mobile header search trigger.
-const SEARCH_EXACT = new Set<string>(["/cardgroups"]);
+const SEARCH_EXACT = new Set<string>(["/cardgroups", "/catalog", "/admin/masters", "/admin/users"]);
 // Pattern routes (e.g. parameterized segments) that show the trigger.
 const SEARCH_PATTERNS: RegExp[] = [];
 
@@ -9,7 +9,8 @@ const SEARCH_PATTERNS: RegExp[] = [];
  * effects. Mirrors `resolveHeaderCreateAction`'s exact-set + regex-array shape.
  *
  * Routing rules:
- * - `/cardgroups` -> true (the filter lives here)
+ * - `/cardgroups`, `/catalog`, `/admin/masters`, `/admin/users` -> true
+ *   (each list screen wires the header-takeover filter)
  * - anything else -> false
  *
  * Built to extend: add routes to `SEARCH_EXACT` / `SEARCH_PATTERNS` (and wire
