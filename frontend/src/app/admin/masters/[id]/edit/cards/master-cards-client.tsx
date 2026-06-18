@@ -320,10 +320,22 @@ export function MasterCardsClient({
       <section>
         {/* Inline toolbar: right-aligned Add card and Batch import buttons. */}
         <div className="mb-3 flex justify-end gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={openAddSheet}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={openAddSheet}
+            data-testid="master-add-card"
+          >
             {t("addCard")}
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={openBatchImport}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={openBatchImport}
+            data-testid="master-batch-import"
+          >
             {tCardgroups("batchImport")}
           </Button>
         </div>
