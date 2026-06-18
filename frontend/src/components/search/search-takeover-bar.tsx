@@ -63,7 +63,7 @@ export function SearchTakeoverBar({
     <div
       role="search"
       data-testid="search-takeover"
-      className="fixed inset-x-0 top-0 z-50 flex h-12 items-center gap-1 border-b bg-background px-2 md:hidden motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-2 motion-safe:duration-200"
+      className="fixed inset-x-0 top-0 z-50 flex h-18 items-center gap-1 border-b bg-background px-2 md:hidden motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-2 motion-safe:duration-200"
     >
       <button
         type="button"
