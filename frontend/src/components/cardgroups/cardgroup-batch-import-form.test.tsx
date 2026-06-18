@@ -10,16 +10,13 @@ import {
   ImportCardsDocument,
   ValidateCardImportDocument,
 } from "@/generated/graphql";
+import { encodePayload } from "@/test/batch-import-test-utils";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { CardgroupBatchImportForm } from "./cardgroup-batch-import-form";
 
 const CARDGROUP_ID = "cg-1";
 const CARDGROUP_NAME = "Spanish Vocab";
 const TWO_LINE_TEXT = "apple\tred fruit\nbanana\tyellow fruit";
-
-function encodePayload(text: string): string {
-  return btoa(unescape(encodeURIComponent(text)));
-}
 
 const validateMock: MockedResponse = {
   request: {

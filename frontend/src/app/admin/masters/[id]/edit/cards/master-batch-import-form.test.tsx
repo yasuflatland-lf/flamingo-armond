@@ -12,16 +12,13 @@ import {
   AdminMasterCardsConnectionDocument,
   ValidateCardImportDocument,
 } from "@/generated/graphql";
+import { encodePayload } from "@/test/batch-import-test-utils";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { MasterBatchImportForm } from "./master-batch-import-form";
 
 const MASTER_ID = "m-1";
 const DECK_NAME = "Core 2000";
 const TWO_LINE_TEXT = "apple\tred fruit\nbanana\tyellow fruit";
-
-function encodePayload(text: string): string {
-  return btoa(unescape(encodeURIComponent(text)));
-}
 
 const validateMock: MockedResponse = {
   request: {

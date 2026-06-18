@@ -9,16 +9,12 @@ import {
   CardsByCardgroupConnectionDocument,
   ValidateCardImportDocument,
 } from "@/generated/graphql";
+import { encodePayload } from "@/test/batch-import-test-utils";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { BatchImportWizard, type ImportResult, resolveStep1Button } from "./batch-import-wizard";
 
 const TARGET_ID = "tgt-1";
 const TARGET_NAME = "Spanish Vocab";
-
-// encodePayload mirrors the component: UTF-8 safe base64.
-function encodePayload(text: string): string {
-  return btoa(unescape(encodeURIComponent(text)));
-}
 
 const TWO_LINE_TEXT = "apple\tred fruit\nbanana\tyellow fruit";
 
