@@ -408,7 +408,7 @@ describe("<LogoDrawer>", () => {
     window.addEventListener("flamingo:open-search", openSpy);
     renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
-    await user.click(screen.getByRole("button", { name: "Filter cardgroups" }));
+    await user.click(screen.getByRole("button", { name: "Search" }));
 
     expect(openSpy).toHaveBeenCalledTimes(1);
     window.removeEventListener("flamingo:open-search", openSpy);
@@ -418,7 +418,7 @@ describe("<LogoDrawer>", () => {
     mockUsePathname.mockReturnValue("/catalog");
     renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
-    expect(screen.queryByRole("button", { name: "Filter cardgroups" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Search" })).not.toBeInTheDocument();
   });
 
   it("shows the active dot when search-state active is true", () => {
@@ -440,7 +440,7 @@ describe("<LogoDrawer>", () => {
   it("returns focus to the trigger when the bar closes (visible true -> false)", () => {
     mockUsePathname.mockReturnValue("/cardgroups");
     renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
-    const trigger = screen.getByRole("button", { name: "Filter cardgroups" });
+    const trigger = screen.getByRole("button", { name: "Search" });
 
     act(() => {
       window.dispatchEvent(
