@@ -287,6 +287,10 @@ describe("<BatchImportWizard>", () => {
     });
     await advanceToStep2(user);
     await user.click(await screen.findByTestId("batch-import-confirm-btn"));
+    // handleImport's outer catch sets bannerError -> role=alert banner.
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
     expect(await screen.findByTestId("batch-import-confirm-btn")).toBeInTheDocument();
     expect(onImported).not.toHaveBeenCalled();
   });
