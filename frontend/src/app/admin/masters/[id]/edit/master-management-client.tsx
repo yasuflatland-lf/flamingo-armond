@@ -19,7 +19,7 @@ const EMPTY_PAGE_INFO = {
 
 export function MasterManagementClient({ master }: Props) {
   const t = useTranslations("AdminMasters");
-  const [totalCount, setTotalCount] = useState(master.cardCount);
+  const [liveCount, setLiveCount] = useState(master.cardCount);
   return (
     <main className="p-4 md:p-8">
       <div className="mb-2">
@@ -31,14 +31,14 @@ export function MasterManagementClient({ master }: Props) {
         </Link>
       </div>
 
-      <MasterEditHeader master={{ ...master, cardCount: totalCount }} />
+      <MasterEditHeader master={master} cardCount={liveCount} />
       <MasterCardsSection
         masterId={master.id}
         deckName={master.name}
         initialEdges={[]}
         initialPageInfo={EMPTY_PAGE_INFO}
         initialTotalCount={master.cardCount}
-        onTotalCountChange={setTotalCount}
+        onTotalCountChange={setLiveCount}
       />
     </main>
   );
