@@ -1,8 +1,8 @@
 "use client";
 
-import { Import, Plus, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { useTranslations } from "next-intl";
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BulkActionBar } from "@/components/cardgroups/bulk-action-bar";
 import { CardForm } from "@/components/cardgroups/card-form";
@@ -11,7 +11,6 @@ import type { SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
-import { SplitButtonMenu } from "@/components/ui/split-button-menu";
 import type { AdminMasterCardsConnectionQuery } from "@/generated/graphql";
 import { useBulkSelection } from "@/hooks/use-bulk-selection";
 import { useDebouncedSearch } from "@/hooks/use-debounced-search";
@@ -152,13 +151,25 @@ const EmptyState = ({ search, onClear }: { search: string | null; onClear: () =>
   );
 };
 
+type SectionHeaderArgs = {
+  totalCount: number;
+  onAddCard: () => void;
+  onBatchImport: () => void;
+};
+
 type Props = {
   masterId: string;
   deckName: string;
   initialEdges: MasterCardEdge[];
   initialPageInfo: MasterCardConnectionPageInfo;
   initialTotalCount: number;
-  onTotalCountChange: (count: number) => void;
+  /**
+   * Page-level header rendered above the search box. Pass a render function to
+   * receive the live `totalCount` (sourced from the Apollo cache, kept in sync
+   * with create/delete/fetchMore) plus the add-card and batch-import openers,
+   * or a plain `ReactNode` to render as-is. Omitted → no header is rendered.
+   */
+  sectionHeader?: ReactNode | ((args: SectionHeaderArgs) => ReactNode);
 };
 
 export function MasterCardsClient({
@@ -167,10 +178,9 @@ export function MasterCardsClient({
   initialEdges,
   initialPageInfo,
   initialTotalCount,
-  onTotalCountChange,
+  sectionHeader,
 }: Props) {
   const t = useTranslations("Cards");
-  const tCardgroups = useTranslations("Cardgroups");
   const [addOpen, setAddOpen] = useState(false);
   const [addDirty, setAddDirty] = useState(false);
   const [batchImportOpen, setBatchImportOpen] = useState(false);
@@ -229,11 +239,6 @@ export function MasterCardsClient({
   const deleteRowBannerError =
     deleteRowError !== null ? (getBackendErrorBanner(deleteRowError) ?? t("deleteError")) : null;
 
-  // Report live total count upward so the page header stays in sync.
-  useEffect(() => {
-    onTotalCountChange(totalCount);
-  }, [totalCount, onTotalCountChange]);
-
   const closeOtherRows = useCallback((exceptCardId: string) => {
     for (const [id, ref] of rowRefs.current.entries()) {
       if (id !== exceptCardId) ref.current?.close();
@@ -251,6 +256,22 @@ export function MasterCardsClient({
 
   const openBatchImport = useCallback(() => setBatchImportOpen(true), []);
   const closeBatchImport = useCallback(() => setBatchImportOpen(false), []);
+
+  // The global header "+" (LogoDrawer) dispatches flamingo:add-master-card on
+  // the master-edit route; claim it for this deck to open the add-card sheet.
+  // Master cards have no separate-page create target, so there is no fallback
+  // navigation to preventDefault against — the listener simply opens the sheet.
+  useEffect(() => {
+    function handleAddMasterCard(event: Event) {
+      if (!(event instanceof CustomEvent)) return;
+      const detail = event.detail as { masterId?: unknown } | null;
+      if (detail?.masterId !== masterId) return;
+      event.preventDefault();
+      openAddSheet();
+    }
+    window.addEventListener("flamingo:add-master-card", handleAddMasterCard);
+    return () => window.removeEventListener("flamingo:add-master-card", handleAddMasterCard);
+  }, [masterId, openAddSheet]);
 
   async function handleCreate(values: { front: string; back: string }) {
     resetCreateCard();
@@ -320,56 +341,17 @@ export function MasterCardsClient({
       )}
 
       <section>
-        {/* Right-aligned toolbar. Desktop: an Add card split button whose
-            dropdown folds in Batch import. Mobile: Add card + Batch import as
-            two separate buttons (the chevron is hidden below sm). */}
-        <div className="mb-3 flex justify-end gap-2">
-          <div className="inline-flex">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="sm:rounded-r-none"
-              onClick={openAddSheet}
-              data-testid="master-add-card"
-            >
-              <Plus aria-hidden="true" className="h-4 w-4" />
-              {t("addCard")}
-            </Button>
-            <div className="hidden sm:inline-flex">
-              <SplitButtonMenu
-                triggerLabel={tCardgroups("addMoreOptions")}
-                data-testid="master-add-more-options"
-                items={[
-                  {
-                    key: "add",
-                    icon: <Plus aria-hidden="true" className="h-4 w-4" />,
-                    label: t("addCard"),
-                    onSelect: openAddSheet,
-                  },
-                  {
-                    key: "import",
-                    icon: <Import aria-hidden="true" className="h-4 w-4" />,
-                    label: tCardgroups("batchImport"),
-                    onSelect: openBatchImport,
-                    "data-testid": "master-batch-import-menuitem",
-                  },
-                ]}
-              />
-            </div>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="sm:hidden"
-            onClick={openBatchImport}
-            data-testid="master-batch-import"
-          >
-            <Import aria-hidden="true" className="h-4 w-4" />
-            {tCardgroups("batchImport")}
-          </Button>
-        </div>
+        {/* Page header (deck title/badge/kebab + the desktop add/import toolbar)
+            is supplied by the parent via the render-prop, so it receives the
+            live totalCount and the add/import openers. On mobile the openers are
+            reached through the global "+" header and the deck overflow menu. */}
+        {typeof sectionHeader === "function"
+          ? sectionHeader({
+              totalCount,
+              onAddCard: openAddSheet,
+              onBatchImport: openBatchImport,
+            })
+          : sectionHeader}
 
         <SearchInput value={search.input} onChange={search.setInput} />
 

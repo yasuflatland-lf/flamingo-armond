@@ -57,11 +57,15 @@ const DECK: AdminMasterDeck = {
   updatedAt: "2026-01-01T00:00:00Z",
 };
 
-function renderHeader(deck: AdminMasterDeck, mocks: ReadonlyArray<unknown> = []) {
+function renderHeader(
+  deck: AdminMasterDeck,
+  mocks: ReadonlyArray<unknown> = [],
+  onBatchImport?: () => void,
+) {
   return render(
     <MockedProvider mocks={mocks as never}>
       <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
-        <MasterEditHeader master={deck} cardCount={deck.cardCount} />
+        <MasterEditHeader master={deck} cardCount={deck.cardCount} onBatchImport={onBatchImport} />
       </NextIntlClientProvider>
     </MockedProvider>,
   );
@@ -261,6 +265,26 @@ describe("MasterEditHeader", () => {
     await user.click(screen.getByTestId("master-edit-overflow"));
     await user.click(await screen.findByTestId("master-edit-publish-mobile"));
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+  });
+
+  it("overflow menu (mobile): renders a Bulk import item that calls onBatchImport", async () => {
+    const user = userEvent.setup();
+    const onBatchImport = vi.fn();
+    renderHeader(DECK, [], onBatchImport);
+    await user.click(screen.getByTestId("master-edit-overflow"));
+    const importItem = await screen.findByTestId("master-edit-batch-import");
+    expect(importItem).toHaveTextContent(/batch import/i);
+    await user.click(importItem);
+    expect(onBatchImport).toHaveBeenCalledTimes(1);
+  });
+
+  it("overflow menu (mobile): omits the Bulk import item when onBatchImport is not provided", async () => {
+    const user = userEvent.setup();
+    renderHeader(DECK);
+    await user.click(screen.getByTestId("master-edit-overflow"));
+    // The deck-settings item proves the menu opened; the import item is absent.
+    expect(await screen.findByTestId("master-edit-deck-settings-mobile")).toBeInTheDocument();
+    expect(screen.queryByTestId("master-edit-batch-import")).not.toBeInTheDocument();
   });
 
   it("displays the cardCount prop (live count), not master.cardCount", () => {

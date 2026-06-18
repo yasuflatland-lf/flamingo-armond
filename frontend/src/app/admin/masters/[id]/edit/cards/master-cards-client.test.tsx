@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { MockedProvider } from "@apollo/client/testing/react";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminMasterCardsConnectionDocument } from "@/generated/graphql";
@@ -94,7 +94,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function render(onTotalCountChange = vi.fn()) {
+type SectionHeader =
+  | React.ReactNode
+  | ((args: {
+      totalCount: number;
+      onAddCard: () => void;
+      onBatchImport: () => void;
+    }) => React.ReactNode);
+
+function renderClient(sectionHeader?: SectionHeader) {
   renderWithIntl(
     <MockedProvider mocks={[seed]}>
       <UndoDeleteProvider>
@@ -104,30 +112,59 @@ function render(onTotalCountChange = vi.fn()) {
           initialEdges={[edge("c-1", "apple")]}
           initialPageInfo={seed.result.data.adminMasterCardsConnection.pageInfo}
           initialTotalCount={1}
-          onTotalCountChange={onTotalCountChange}
+          sectionHeader={sectionHeader}
         />
       </UndoDeleteProvider>
     </MockedProvider>,
   );
-  return onTotalCountChange;
 }
 
 describe("<MasterCardsClient>", () => {
-  it("renders the seeded card and reports the initial total count upward", async () => {
-    const onTotalCountChange = render();
+  it("renders the seeded card and passes the live total count to the section header", async () => {
+    renderClient(({ totalCount }) => <span data-testid="hdr-count">{totalCount}</span>);
     expect(screen.getByText("apple")).toBeInTheDocument();
-    await waitFor(() => expect(onTotalCountChange).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(screen.getByTestId("hdr-count")).toHaveTextContent("1"));
   });
 
-  it("opens the add-card sheet from the toolbar", async () => {
-    render();
-    await userEvent.click(screen.getByRole("button", { name: /add card/i }));
+  it("opens the add-card sheet when a flamingo:add-master-card event targets this master", async () => {
+    renderClient();
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("flamingo:add-master-card", { detail: { masterId: MASTER_ID } }),
+      );
+    });
+    expect(await screen.findByLabelText(/front/i)).toBeInTheDocument();
+  });
+
+  it("ignores a flamingo:add-master-card event addressed to a different master", async () => {
+    renderClient();
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("flamingo:add-master-card", { detail: { masterId: "other-master" } }),
+      );
+    });
+    // The card list is present, but the add-card sheet's front field never opens.
+    expect(screen.getByText("apple")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/front/i)).not.toBeInTheDocument();
+  });
+
+  it("opens the add-card sheet via the section-header onAddCard callback", async () => {
+    renderClient(({ onAddCard }) => (
+      <button type="button" data-testid="hdr-add" onClick={onAddCard}>
+        add
+      </button>
+    ));
+    await userEvent.click(screen.getByTestId("hdr-add"));
     expect(screen.getByLabelText(/front/i)).toBeInTheDocument();
   });
 
-  it("opens the batch-import sheet from the mobile toolbar button", async () => {
-    render();
-    await userEvent.click(screen.getByTestId("master-batch-import"));
+  it("opens the batch-import sheet via the section-header onBatchImport callback", async () => {
+    renderClient(({ onBatchImport }) => (
+      <button type="button" data-testid="hdr-import" onClick={onBatchImport}>
+        import
+      </button>
+    ));
+    await userEvent.click(screen.getByTestId("hdr-import"));
     // The shared batch-import wizard renders its paste textarea inside the sheet.
     expect(await screen.findByTestId("batch-import-payload")).toBeInTheDocument();
   });
@@ -183,7 +220,6 @@ describe("<MasterCardsClient>", () => {
             initialEdges={[edge("c-1", "apple")]}
             initialPageInfo={pageInfoWithNext}
             initialTotalCount={1}
-            onTotalCountChange={vi.fn()}
           />
         </UndoDeleteProvider>
       </MockedProvider>,

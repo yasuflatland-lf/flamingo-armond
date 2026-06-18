@@ -39,8 +39,7 @@ const node = {
   updatedAt: "2026-01-01T00:00:00Z",
 };
 
-it("renders MasterCardsClient with the seed and reports the count", async () => {
-  const onTotalCountChange = vi.fn();
+it("renders MasterCardsClient with the seed and exposes the live count to renderPageHeader", async () => {
   renderWithIntl(
     <MockedProvider
       mocks={[
@@ -69,11 +68,11 @@ it("renders MasterCardsClient with the seed and reports the count", async () => 
           initialEdges={[{ __typename: "MasterCardEdge", cursor: "c-1", node }]}
           initialPageInfo={pageInfo}
           initialTotalCount={1}
-          onTotalCountChange={onTotalCountChange}
+          renderPageHeader={({ totalCount }) => <span data-testid="hdr-count">{totalCount}</span>}
         />
       </UndoDeleteProvider>
     </MockedProvider>,
   );
   expect(screen.getByText("apple")).toBeInTheDocument();
-  await waitFor(() => expect(onTotalCountChange).toHaveBeenCalledWith(1));
+  await waitFor(() => expect(screen.getByTestId("hdr-count")).toHaveTextContent("1"));
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, EyeOff, MoreHorizontal, Settings, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Import, MoreHorizontal, Settings, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
@@ -23,17 +23,28 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { FormSheet } from "@/components/ui/form-sheet";
 import { SplitButtonMenu } from "@/components/ui/split-button-menu";
 import type { AdminMasterDeck } from "./queries";
 
-type Props = { master: AdminMasterDeck; cardCount: number };
+type Props = {
+  master: AdminMasterDeck;
+  cardCount: number;
+  /**
+   * Opens the batch-import sheet owned by MasterCardsClient. Wired only on the
+   * mobile overflow menu — desktop reaches batch import through the cards
+   * toolbar's split button. Omitted (e.g. in isolated tests) → no import item.
+   */
+  onBatchImport?: () => void;
+};
 
-export function MasterEditHeader({ master, cardCount }: Props) {
+export function MasterEditHeader({ master, cardCount, onBatchImport }: Props) {
   const t = useTranslations("AdminMasters");
   const tCommon = useTranslations("Common");
+  const tCardgroups = useTranslations("Cardgroups");
   const router = useRouter();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -150,11 +161,12 @@ export function MasterEditHeader({ master, cardCount }: Props) {
 
   return (
     <>
-      {/* Mobile: the title takes the full line width and the actions collapse
-          into the meta row (kebab) / move below. Desktop: title left, the
-          publish split button on the right. */}
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 sm:flex-1">
+      {/* Mobile (<md): the title takes the full line width and the actions
+          collapse into the meta row (kebab). Desktop (md+): title left, the
+          publish split button on the right. The md breakpoint matches the app
+          shell — the global header "+" shows below md, the rail at md+. */}
+      <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0 md:flex-1">
           <h1 className="text-2xl font-semibold leading-tight break-words">{master.name}</h1>
           <div className="mt-1 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -177,7 +189,7 @@ export function MasterEditHeader({ master, cardCount }: Props) {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="shrink-0 sm:hidden"
+                  className="shrink-0 md:hidden"
                   data-testid="master-edit-overflow"
                   aria-label={t("masterOptions")}
                 >
@@ -185,6 +197,23 @@ export function MasterEditHeader({ master, cardCount }: Props) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {/* Bulk import is a card-content action — grouped above a
+                    separator, apart from the deck-lifecycle items below. On
+                    mobile, "Add card" is the global header "+" and batch import
+                    lives here; desktop reaches both via the cards toolbar. */}
+                {onBatchImport ? (
+                  <>
+                    <DropdownMenuItem
+                      onSelect={onBatchImport}
+                      data-testid="master-edit-batch-import"
+                      className="gap-2"
+                    >
+                      <Import aria-hidden="true" className="h-4 w-4" />
+                      {tCardgroups("batchImport")}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                ) : null}
                 <DropdownMenuItem
                   onSelect={handlePublishToggle}
                   disabled={publishing || emptyDraft}
@@ -221,7 +250,7 @@ export function MasterEditHeader({ master, cardCount }: Props) {
         </div>
 
         {/* Desktop split button: publish primary + dropdown (deck settings, delete). */}
-        <div className="hidden shrink-0 items-center sm:flex">
+        <div className="hidden shrink-0 items-center md:flex">
           <Button
             type="button"
             variant={published ? "outline" : "brand"}
