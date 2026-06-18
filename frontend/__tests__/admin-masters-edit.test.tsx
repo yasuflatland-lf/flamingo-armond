@@ -11,6 +11,7 @@ vi.mock("next/navigation", () => ({
     throw new Error("NOT_FOUND");
   }),
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => "/admin/masters/m-int-1/edit",
 }));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
@@ -23,12 +24,26 @@ vi.mock("next/headers", () => ({
   headers: vi.fn(async () => new Headers({ "x-auth-status": "authenticated" })),
 }));
 vi.mock("@/lib/apollo/server", () => ({ gqlFetch: vi.fn() }));
+vi.mock("@/components/cardgroups/swipeable-row", async () => {
+  const { forwardRef } = await import("react");
+  return {
+    SwipeableRow: forwardRef(function Mock(
+      { children }: { children: React.ReactNode },
+      _ref: React.Ref<{ close(): void }>,
+    ) {
+      return <div>{children}</div>;
+    }),
+  };
+});
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { NextIntlClientProvider } from "next-intl";
+import { masterCardsDefaultVars } from "@/app/admin/masters/[id]/edit/cards/queries";
 import EditMasterPage from "@/app/admin/masters/[id]/edit/page";
+import { AdminMasterCardsConnectionDocument } from "@/generated/graphql";
 import { gqlFetch } from "@/lib/apollo/server";
+import { UndoDeleteProvider } from "@/lib/undo-delete";
 import enMessages from "../messages/en.json";
 
 const ID = "m-int-1";
@@ -51,12 +66,35 @@ const DECK = {
   updatedAt: "2026-01-01T00:00:00Z",
 };
 
+const connMock = {
+  request: {
+    query: AdminMasterCardsConnectionDocument,
+    variables: masterCardsDefaultVars(ID),
+  },
+  result: {
+    data: {
+      adminMasterCardsConnection: {
+        __typename: "MasterCardConnection",
+        edges: [],
+        pageInfo: {
+          __typename: "PageInfo",
+          hasNextPage: false,
+          hasPreviousPage: false,
+          startCursor: null,
+          endCursor: null,
+        },
+        totalCount: 4,
+      },
+    },
+  },
+};
+
 async function renderPage() {
   const jsx = await EditMasterPage({ params: Promise.resolve({ id: ID }) });
   render(
-    <MockedProvider mocks={[]}>
+    <MockedProvider mocks={[connMock]}>
       <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
-        {jsx as React.ReactElement}
+        <UndoDeleteProvider>{jsx as React.ReactElement}</UndoDeleteProvider>
       </NextIntlClientProvider>
     </MockedProvider>,
   );
@@ -66,7 +104,7 @@ beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.clearAllMocks());
 
 describe("EditMasterPage — broad integration", () => {
-  it("renders the deck name as the h1 and mounts the cards-section placeholder", async () => {
+  it("renders the deck name as the h1 and mounts the cards section", async () => {
     vi.mocked(gqlFetch)
       .mockResolvedValueOnce({ adminMaster: DECK } as never)
       .mockResolvedValueOnce({
