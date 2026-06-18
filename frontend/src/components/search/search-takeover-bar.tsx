@@ -59,6 +59,7 @@ export function SearchTakeoverBar({
   if (!open) return null;
 
   return (
+    // biome-ignore lint/a11y/useSemanticElements: the <search> element is not yet mapped to role "search" by the installed aria-query, breaking getByRole("search") in vitest; role="search" on a div is a valid ARIA landmark.
     <div
       role="search"
       data-testid="search-takeover"
@@ -68,6 +69,7 @@ export function SearchTakeoverBar({
         type="button"
         onClick={onClose}
         aria-label={t("back")}
+        data-testid="search-takeover-close"
         className="rounded-md p-2 hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring"
       >
         <ArrowLeft className="h-5 w-5" aria-hidden="true" />

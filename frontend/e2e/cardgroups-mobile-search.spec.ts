@@ -43,7 +43,7 @@ test.describe("cardgroups mobile search takeover", () => {
     await expect(page.getByText(`Beta ${runId}`)).toHaveCount(0);
 
     // Close: the bar disappears; the active dot remains because the query is set.
-    await page.getByTestId("search-takeover").getByRole("button").first().click();
+    await page.getByTestId("search-takeover-close").click();
     await expect(page.getByTestId("search-takeover")).toBeHidden();
     await expect(page.getByTestId("header-search-active-dot")).toBeVisible();
   });
