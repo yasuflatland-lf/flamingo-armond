@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -572,5 +572,42 @@ describe("<AdminUsersClient> delete", () => {
 
     expect(start).toBeGreaterThanOrEqual(0);
     expect(source.slice(start, end)).not.toContain("optimisticResponse");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mobile search takeover — flamingo:open-search opens the bar; the desktop
+// input is gated mobile-off so the two do not double up on mobile.
+// ---------------------------------------------------------------------------
+
+describe("<AdminUsersClient> mobile search takeover", () => {
+  it("opens the takeover on flamingo:open-search and renders the input", async () => {
+    renderWithIntl(
+      <MockedProvider mocks={[makeUsersMock(), makeRolesMock()]}>
+        <AdminUsersClient />
+      </MockedProvider>,
+    );
+    await screen.findByTestId("admin-users-list");
+
+    expect(screen.queryByTestId("search-takeover")).not.toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("flamingo:open-search"));
+    });
+
+    expect(screen.getByTestId("search-takeover")).toBeInTheDocument();
+    expect(screen.getByTestId("search-takeover-input")).toBeInTheDocument();
+  });
+
+  it("gates the desktop search input mobile-off (hidden md:block)", async () => {
+    renderWithIntl(
+      <MockedProvider mocks={[makeUsersMock(), makeRolesMock()]}>
+        <AdminUsersClient />
+      </MockedProvider>,
+    );
+    await screen.findByTestId("admin-users-list");
+
+    const desktop = screen.getByRole("searchbox", { name: /search users/i });
+    expect(desktop.parentElement).toHaveClass("hidden", "md:block");
   });
 });

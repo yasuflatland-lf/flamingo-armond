@@ -6,13 +6,14 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { AdminQueryErrorBanner } from "@/components/admin/admin-query-error-banner";
+import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { useFragment } from "@/generated/fragment-masking";
 import type {
   AdminUsersQuery as AdminUsersQueryResult,
   AdminUsersQueryVariables,
 } from "@/generated/graphql";
-import { useDebouncedSearch } from "@/hooks/use-debounced-search";
+import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
 import {
   classifyQueryError,
   getBackendErrorBanner,
@@ -99,7 +100,7 @@ export function AdminUsersClient() {
   const t = useTranslations("Admin");
   const tCommon = useTranslations("Common");
   const tNav = useTranslations("Nav");
-  const search = useDebouncedSearch();
+  const search = useHeaderTakeoverSearch();
   const searchQuery = search.query;
   const sheet = useSheetSearchParam();
 
@@ -229,25 +230,35 @@ export function AdminUsersClient() {
   }
 
   return (
-    <main className="p-8">
-      <div className="mb-6 flex items-center gap-4">
-        <h1 className="text-2xl font-semibold">{tNav("users")}</h1>
-        <span className="text-sm text-muted-foreground">({totalCount})</span>
-      </div>
+    <>
+      <SearchTakeoverBar
+        open={search.searchOpen}
+        value={search.input}
+        onChange={search.setInput}
+        onClear={search.clear}
+        onClose={search.closeSearch}
+        placeholder={t("searchPlaceholder")}
+        ariaLabel={t("searchLabel")}
+      />
+      <main className="p-8">
+        <div className="mb-6 flex items-center gap-4">
+          <h1 className="text-2xl font-semibold">{tNav("users")}</h1>
+          <span className="text-sm text-muted-foreground">({totalCount})</span>
+        </div>
 
-      {/* Search input */}
-      <div className="mb-6">
-        <input
-          type="search"
-          placeholder={t("searchPlaceholder")}
-          value={search.input}
-          onChange={(e) => search.setInput(e.target.value)}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={t("searchLabel")}
-        />
-      </div>
+        {/* Search input — desktop only; mobile uses the header takeover above. */}
+        <div className="mb-6 hidden md:block">
+          <input
+            type="search"
+            placeholder={t("searchPlaceholder")}
+            value={search.input}
+            onChange={(e) => search.setInput(e.target.value)}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={t("searchLabel")}
+          />
+        </div>
 
-      {/*
+        {/*
         Admin users query-error banner. UNAUTHENTICATED here means the session
         expired mid-page: the server-side gate in page.tsx + the admin layout
         block the initial load (redirecting to "/"), so the degraded /login
@@ -255,89 +266,90 @@ export function AdminUsersClient() {
         re-issuing the same query would fail again. See
         .claude/rules/frontend-rsc-error-handling.md.
       */}
-      <AdminQueryErrorBanner
-        kind={queryErrorKind}
-        onRetry={refetch}
-        testId="admin-users-query-error"
-        className="mb-4"
-        copy={{
-          viewForbidden: t("viewForbidden"),
-          sessionExpired: t("sessionExpired"),
-          signInAgain: t("pleaseSignInAgain"),
-          retry: tCommon("retry"),
-        }}
-      />
+        <AdminQueryErrorBanner
+          kind={queryErrorKind}
+          onRetry={refetch}
+          testId="admin-users-query-error"
+          className="mb-4"
+          copy={{
+            viewForbidden: t("viewForbidden"),
+            sessionExpired: t("sessionExpired"),
+            signInAgain: t("pleaseSignInAgain"),
+            retry: tCommon("retry"),
+          }}
+        />
 
-      {rolesBannerError && (
-        <ErrorBanner className="mb-4" data-testid="admin-users-roles-error">
-          {rolesBannerError}
-        </ErrorBanner>
-      )}
+        {rolesBannerError && (
+          <ErrorBanner className="mb-4" data-testid="admin-users-roles-error">
+            {rolesBannerError}
+          </ErrorBanner>
+        )}
 
-      {/* Empty state */}
-      {!initialLoading && !queryErrorKind && edges.length === 0 && (
-        <p className="text-sm text-muted-foreground" data-testid="admin-users-empty">
-          {t("noUsersFound")}
-        </p>
-      )}
+        {/* Empty state */}
+        {!initialLoading && !queryErrorKind && edges.length === 0 && (
+          <p className="text-sm text-muted-foreground" data-testid="admin-users-empty">
+            {t("noUsersFound")}
+          </p>
+        )}
 
-      {/* User list */}
-      {edges.length > 0 && (
-        <ul className="space-y-3" data-testid="admin-users-list">
-          {edges.map((edge) => (
-            <UserRow
-              key={edge.cursor}
-              edge={edge}
-              onEdit={(id) => sheet.open({ mode: "edit", id })}
-            />
-          ))}
-        </ul>
-      )}
+        {/* User list */}
+        {edges.length > 0 && (
+          <ul className="space-y-3" data-testid="admin-users-list">
+            {edges.map((edge) => (
+              <UserRow
+                key={edge.cursor}
+                edge={edge}
+                onEdit={(id) => sheet.open({ mode: "edit", id })}
+              />
+            ))}
+          </ul>
+        )}
 
-      {/* Intersection sentinel for infinite scroll */}
-      <div ref={sentinelRef} aria-hidden="true" data-testid="admin-users-sentinel" />
+        {/* Intersection sentinel for infinite scroll */}
+        <div ref={sentinelRef} aria-hidden="true" data-testid="admin-users-sentinel" />
 
-      {/* fetchMore error banner with Retry */}
-      {fetchMoreError && (
-        <ErrorBanner
-          className="mt-3 flex flex-col items-center gap-2"
-          data-testid="admin-users-fetch-more-error"
-        >
-          <span>{fetchMoreError}</span>
-          <button
-            type="button"
-            className="rounded-md border border-destructive/40 px-3 py-1 text-xs hover:bg-destructive/10"
-            onClick={retryFetchMore}
+        {/* fetchMore error banner with Retry */}
+        {fetchMoreError && (
+          <ErrorBanner
+            className="mt-3 flex flex-col items-center gap-2"
+            data-testid="admin-users-fetch-more-error"
           >
-            {tCommon("retry")}
-          </button>
-        </ErrorBanner>
-      )}
+            <span>{fetchMoreError}</span>
+            <button
+              type="button"
+              className="rounded-md border border-destructive/40 px-3 py-1 text-xs hover:bg-destructive/10"
+              onClick={retryFetchMore}
+            >
+              {tCommon("retry")}
+            </button>
+          </ErrorBanner>
+        )}
 
-      {/* Loading more indicator */}
-      {!fetchMoreError && fetchingMore && hasNextPage && (
-        <p
-          className="mt-3 text-center text-xs text-muted-foreground"
-          data-testid="admin-users-loading-more"
-        >
-          {t("loadingMore")}
-        </p>
-      )}
+        {/* Loading more indicator */}
+        {!fetchMoreError && fetchingMore && hasNextPage && (
+          <p
+            className="mt-3 text-center text-xs text-muted-foreground"
+            data-testid="admin-users-loading-more"
+          >
+            {t("loadingMore")}
+          </p>
+        )}
 
-      <AdminUserProfileSheet
-        open={editUserId !== null}
-        user={sheetUser}
-        loading={
-          editUserLoading ||
-          (editUserId !== null && (!editUserCalled || !editUserResultMatchesSheet))
-        }
-        allRoles={roleOptions}
-        queryError={editUserBannerError}
-        onDismiss={() => sheet.close()}
-        onSaved={() => sheet.close({ refresh: true })}
-        onReloadRequested={reloadEditedUser}
-        onDelete={handleDeleteUser}
-      />
-    </main>
+        <AdminUserProfileSheet
+          open={editUserId !== null}
+          user={sheetUser}
+          loading={
+            editUserLoading ||
+            (editUserId !== null && (!editUserCalled || !editUserResultMatchesSheet))
+          }
+          allRoles={roleOptions}
+          queryError={editUserBannerError}
+          onDismiss={() => sheet.close()}
+          onSaved={() => sheet.close({ refresh: true })}
+          onReloadRequested={reloadEditedUser}
+          onDelete={handleDeleteUser}
+        />
+      </main>
+    </>
   );
 }
