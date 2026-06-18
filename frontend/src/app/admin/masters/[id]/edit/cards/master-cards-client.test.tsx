@@ -237,3 +237,29 @@ describe("<MasterCardsClient>", () => {
     expect(banner).not.toHaveTextContent("Could not load more cards");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Mobile search takeover — flamingo:open-search
+// ---------------------------------------------------------------------------
+
+describe("<MasterCardsClient> mobile search takeover", () => {
+  it("opens the takeover on flamingo:open-search and renders the input", async () => {
+    renderClient();
+    await screen.findByText("apple");
+
+    expect(screen.queryByTestId("search-takeover")).not.toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("flamingo:open-search"));
+    });
+
+    expect(screen.getByTestId("search-takeover")).toBeInTheDocument();
+    expect(screen.getByTestId("search-takeover-input")).toBeInTheDocument();
+  });
+
+  it("hides the desktop search input on mobile via hidden md:block", () => {
+    renderClient();
+    const wrapper = screen.getByTestId("cards-search-input").closest("div.mb-3");
+    expect(wrapper).toHaveClass("hidden", "md:block");
+  });
+});
