@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreHorizontal } from "lucide-react";
+import { Eye, EyeOff, MoreHorizontal, Settings, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { FormSheet } from "@/components/ui/form-sheet";
+import { SplitButtonMenu } from "@/components/ui/split-button-menu";
 import type { AdminMasterDeck } from "./queries";
 
 type Props = { master: AdminMasterDeck; cardCount: number };
@@ -140,22 +141,77 @@ export function MasterEditHeader({ master, cardCount }: Props) {
     }
   }, [deleteMaster, master.id, t, authToast, router]);
 
+  const publishIcon = published ? (
+    <EyeOff aria-hidden="true" className="h-4 w-4" />
+  ) : (
+    <Eye aria-hidden="true" className="h-4 w-4" />
+  );
+  const publishLabel = published ? t("unpublish") : t("publish");
+
   return (
     <>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
+      {/* Mobile: the title takes the full line width and the actions collapse
+          into the meta row (kebab) / move below. Desktop: title left, the
+          publish split button on the right. */}
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 sm:flex-1">
           <h1 className="text-2xl font-semibold leading-tight break-words">{master.name}</h1>
-          <div className="mt-1 flex items-center gap-2">
-            <Badge
-              variant={published ? "default" : "secondary"}
-              role="status"
-              data-testid="master-edit-status-badge"
-            >
-              {published ? t("statusPublished") : t("statusDraft")}
-            </Badge>
-            <span className="text-sm text-muted-foreground">
-              {t("cardCount", { count: cardCount })}
-            </span>
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Badge
+                variant={published ? "default" : "secondary"}
+                role="status"
+                data-testid="master-edit-status-badge"
+              >
+                {published ? t("statusPublished") : t("statusDraft")}
+              </Badge>
+              <span className="text-sm text-muted-foreground">
+                {t("cardCount", { count: cardCount })}
+              </span>
+            </div>
+
+            {/* Mobile management menu: publish toggle + deck settings + delete. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0 sm:hidden"
+                  data-testid="master-edit-overflow"
+                  aria-label={t("masterOptions")}
+                >
+                  <MoreHorizontal aria-hidden="true" className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onSelect={handlePublishToggle}
+                  disabled={publishing || emptyDraft}
+                  data-testid="master-edit-publish-mobile"
+                  className="gap-2"
+                >
+                  {publishIcon}
+                  {publishLabel}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => setSettingsOpen(true)}
+                  data-testid="master-edit-deck-settings-mobile"
+                  className="gap-2"
+                >
+                  <Settings aria-hidden="true" className="h-4 w-4" />
+                  {t("deckSettingsButton")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => setDeleteOpen(true)}
+                  data-testid="master-edit-delete-mobile"
+                  className="gap-2 text-destructive focus:text-destructive"
+                >
+                  <Trash2 aria-hidden="true" className="h-4 w-4" />
+                  {t("deleteMasterButton")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           {emptyDraft ? (
             <p className="mt-1 text-xs text-muted-foreground" data-testid="master-edit-empty-hint">
@@ -164,63 +220,43 @@ export function MasterEditHeader({ master, cardCount }: Props) {
           ) : null}
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        {/* Desktop split button: publish primary + dropdown (deck settings, delete). */}
+        <div className="hidden shrink-0 items-center sm:flex">
           <Button
             type="button"
             variant={published ? "outline" : "brand"}
+            className="rounded-r-none"
             data-testid="master-edit-publish"
             aria-pressed={published}
             disabled={publishing || emptyDraft}
             onClick={handlePublishToggle}
           >
-            {publishing ? tCommon("loading") : published ? t("unpublish") : t("publish")}
+            {publishIcon}
+            {publishing ? tCommon("loading") : publishLabel}
           </Button>
-
-          <Button
-            type="button"
-            variant="outline"
-            className="hidden sm:inline-flex"
-            data-testid="master-edit-deck-settings"
-            onClick={() => setSettingsOpen(true)}
-          >
-            {t("deckSettingsButton")}
-          </Button>
-
-          <Button
-            type="button"
-            variant="destructive"
-            className="hidden sm:inline-flex"
-            data-testid="master-edit-delete"
-            onClick={() => setDeleteOpen(true)}
-          >
-            {t("deleteMasterButton")}
-          </Button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="sm:hidden"
-                data-testid="master-edit-overflow"
-                aria-label={t("masterOptions")}
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
-                {t("deckSettingsButton")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => setDeleteOpen(true)}
-                className="text-destructive focus:text-destructive"
-              >
-                {t("deleteMasterButton")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <SplitButtonMenu
+            triggerLabel={t("masterOptions")}
+            variant={published ? "outline" : "brand"}
+            size="default"
+            data-testid="master-edit-more-options"
+            items={[
+              {
+                key: "settings",
+                icon: <Settings aria-hidden="true" className="h-4 w-4" />,
+                label: t("deckSettingsButton"),
+                onSelect: () => setSettingsOpen(true),
+                "data-testid": "master-edit-deck-settings",
+              },
+              {
+                key: "delete",
+                icon: <Trash2 aria-hidden="true" className="h-4 w-4" />,
+                label: t("deleteMasterButton"),
+                onSelect: () => setDeleteOpen(true),
+                destructive: true,
+                "data-testid": "master-edit-delete",
+              },
+            ]}
+          />
         </div>
       </div>
 

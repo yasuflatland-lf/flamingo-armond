@@ -1,6 +1,6 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { Import, Plus, Search } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -11,6 +11,7 @@ import type { SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
+import { SplitButtonMenu } from "@/components/ui/split-button-menu";
 import type { AdminMasterCardsConnectionQuery } from "@/generated/graphql";
 import { useBulkSelection } from "@/hooks/use-bulk-selection";
 import { useDebouncedSearch } from "@/hooks/use-debounced-search";
@@ -319,24 +320,53 @@ export function MasterCardsClient({
       )}
 
       <section>
-        {/* Inline toolbar: right-aligned Add card and Batch import buttons. */}
+        {/* Right-aligned toolbar. Desktop: an Add card split button whose
+            dropdown folds in Batch import. Mobile: Add card + Batch import as
+            two separate buttons (the chevron is hidden below sm). */}
         <div className="mb-3 flex justify-end gap-2">
+          <div className="inline-flex">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="sm:rounded-r-none"
+              onClick={openAddSheet}
+              data-testid="master-add-card"
+            >
+              <Plus aria-hidden="true" className="h-4 w-4" />
+              {t("addCard")}
+            </Button>
+            <div className="hidden sm:inline-flex">
+              <SplitButtonMenu
+                triggerLabel={tCardgroups("addMoreOptions")}
+                data-testid="master-add-more-options"
+                items={[
+                  {
+                    key: "add",
+                    icon: <Plus aria-hidden="true" className="h-4 w-4" />,
+                    label: t("addCard"),
+                    onSelect: openAddSheet,
+                  },
+                  {
+                    key: "import",
+                    icon: <Import aria-hidden="true" className="h-4 w-4" />,
+                    label: tCardgroups("batchImport"),
+                    onSelect: openBatchImport,
+                    "data-testid": "master-batch-import-menuitem",
+                  },
+                ]}
+              />
+            </div>
+          </div>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={openAddSheet}
-            data-testid="master-add-card"
-          >
-            {t("addCard")}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
+            className="sm:hidden"
             onClick={openBatchImport}
             data-testid="master-batch-import"
           >
+            <Import aria-hidden="true" className="h-4 w-4" />
             {tCardgroups("batchImport")}
           </Button>
         </div>

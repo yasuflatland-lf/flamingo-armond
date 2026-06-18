@@ -105,7 +105,7 @@
     "noPermission": "権限がありません。",
     "signInAgain": "再度ログイン",
     "deleteAriaLabel": "カードグループ「{name}」を削除",
-    "backLink": "← カードグループ",
+    "backLink": "カードグループへ戻る",
     "welcomeHeading": "ようこそ！最初のカードグループを作成しましょう。",
     "welcomeDesc": "カードグループには一緒に学習するカードをまとめます。いつでも追加できます。",
     "filterPlaceholder": "カードグループを絞り込む...",

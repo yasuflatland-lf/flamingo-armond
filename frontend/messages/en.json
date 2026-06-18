@@ -105,7 +105,7 @@
     "noPermission": "You do not have permission. ",
     "signInAgain": "Sign in again",
     "deleteAriaLabel": "Delete cardgroup {name}",
-    "backLink": "← Cardgroups",
+    "backLink": "Back to cardgroups",
     "welcomeHeading": "Welcome! Let's create your first cardgroup.",
     "welcomeDesc": "A cardgroup holds the cards you study together — you can add more anytime.",
     "filterPlaceholder": "Filter cardgroups...",

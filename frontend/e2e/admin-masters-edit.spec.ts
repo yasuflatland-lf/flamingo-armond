@@ -22,7 +22,10 @@ test.describe("admin master edit navigation", () => {
     await page.getByTestId(`master-catalog-row-${deck.id}`).click();
 
     await page.waitForURL(new RegExp(`/admin/masters/${deck.id}/edit$`), { timeout: 15_000 });
-    // Deck-settings opens the metadata form (select by testid, not translated label).
+    // Deck settings now lives in the desktop split-button dropdown (e2e runs at a
+    // Desktop Chrome viewport), so open the chevron first. Select by testid, not
+    // translated label.
+    await page.getByTestId("master-edit-more-options").click();
     await page.getByTestId("master-edit-deck-settings").click();
     await expect(page.getByTestId("master-field-name")).toBeVisible();
   });

@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import type { CardConnectionPageInfo, CardEdge } from "@/app/cardgroups/[id]/cards/cards-client";
@@ -27,9 +28,10 @@ export function CardgroupManagementClient({
       <div className="mb-2">
         <Link
           href="/cardgroups"
-          className="inline-flex text-sm text-muted-foreground hover:text-foreground hover:underline"
+          className="inline-flex items-center text-muted-foreground hover:text-foreground"
         >
-          {t("backLink")}
+          <ChevronLeft aria-hidden="true" className="h-5 w-5" />
+          <span className="sr-only">{t("backLink")}</span>
         </Link>
       </div>
 
