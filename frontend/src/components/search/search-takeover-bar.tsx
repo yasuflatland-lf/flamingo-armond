@@ -63,7 +63,7 @@ export function SearchTakeoverBar({
     <div
       role="search"
       data-testid="search-takeover"
-      className="fixed inset-x-0 top-0 z-50 flex h-12 items-center gap-1 border-b bg-background px-2 md:hidden motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-2 motion-safe:duration-200"
+      className="fixed inset-x-0 top-0 z-50 flex h-14 items-center gap-2 border-b bg-background px-3 md:hidden motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-2 motion-safe:duration-200"
     >
       <button
         type="button"
@@ -87,7 +87,7 @@ export function SearchTakeoverBar({
           placeholder={placeholder}
           aria-label={ariaLabel}
           data-testid="search-takeover-input"
-          className="w-full rounded-md border border-input bg-background py-2 pl-8 pr-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="w-full rounded-md border border-input bg-background py-2.5 pl-8 pr-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
       {value !== "" && (
