@@ -2,10 +2,10 @@
 
 import { NetworkStatus } from "@apollo/client";
 import { useLazyQuery, useQuery } from "@apollo/client/react";
-import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo } from "react";
 import { toast } from "sonner";
+import { AdminQueryErrorBanner } from "@/components/admin/admin-query-error-banner";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { useFragment } from "@/generated/fragment-masking";
 import type {
@@ -158,7 +158,6 @@ export function AdminUsersClient() {
   // Fan out into three render branches: forbidden, unauthenticated, banner.
   // See `classifyQueryError` for the source of the discriminated kinds.
   const queryErrorKind = classifyQueryError(queryError);
-  const queryBannerError = queryErrorKind?.kind === "banner" ? queryErrorKind.message : undefined;
 
   const allRoles = useFragment(AdminRoleFieldsFragment, rolesData?.roles ?? []);
   const roleOptions = useMemo(
@@ -248,39 +247,26 @@ export function AdminUsersClient() {
         />
       </div>
 
-      {/* FORBIDDEN error banner — no Retry since re-issuing the query would fail again */}
-      {queryErrorKind?.kind === "forbidden" && (
-        <ErrorBanner className="mb-4" data-testid="admin-users-query-error">
-          {t("viewForbidden")}
-        </ErrorBanner>
-      )}
-
       {/*
-        UNAUTHENTICATED post-mount means the session expired while the page was
-        open. The server-side gate in page.tsx + the admin layout already block
-        the initial load (which redirects to "/"), so this only fires mid-session.
-        Render a degraded banner pointing to /login rather than calling
-        `redirect()` from a client component — see
+        Admin users query-error banner. UNAUTHENTICATED here means the session
+        expired mid-page: the server-side gate in page.tsx + the admin layout
+        block the initial load (redirecting to "/"), so the degraded /login
+        banner only fires post-mount. FORBIDDEN renders without Retry since
+        re-issuing the same query would fail again. See
         .claude/rules/frontend-rsc-error-handling.md.
       */}
-      {queryErrorKind?.kind === "unauthenticated" && (
-        <ErrorBanner className="mb-4" data-testid="admin-users-query-error">
-          <span>{t("sessionExpired")}</span>{" "}
-          <Link href="/login" className="underline">
-            {t("pleaseSignInAgain")}
-          </Link>
-        </ErrorBanner>
-      )}
-
-      {/* Generic query error banner with Retry */}
-      {queryBannerError && (
-        <ErrorBanner className="mb-4" data-testid="admin-users-query-error">
-          <span>{queryBannerError}</span>
-          <button type="button" className="ml-3 underline" onClick={() => refetch()}>
-            {tCommon("retry")}
-          </button>
-        </ErrorBanner>
-      )}
+      <AdminQueryErrorBanner
+        kind={queryErrorKind}
+        onRetry={refetch}
+        testId="admin-users-query-error"
+        className="mb-4"
+        copy={{
+          viewForbidden: t("viewForbidden"),
+          sessionExpired: t("sessionExpired"),
+          signInAgain: t("pleaseSignInAgain"),
+          retry: tCommon("retry"),
+        }}
+      />
 
       {rolesBannerError && (
         <ErrorBanner className="mb-4" data-testid="admin-users-roles-error">
