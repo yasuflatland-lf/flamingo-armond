@@ -1,9 +1,38 @@
-/**
- * Placeholder for the master-cards editing UI. #522 replaces the body with the
- * paginated cards connection and extends the props with
- * `initialEdges` / `initialPageInfo` / `initialTotalCount`. The `masterId` prop
- * name is the stable interface this file exposes — do not rename it.
- */
-export function MasterCardsSection({ masterId }: { masterId: string }) {
-  return <section data-testid="master-cards-section" data-master-id={masterId} />;
+"use client";
+
+import {
+  type MasterCardConnectionPageInfo,
+  type MasterCardEdge,
+  MasterCardsClient,
+} from "./cards/master-cards-client";
+
+type MasterCardsSectionProps = {
+  masterId: string;
+  deckName: string;
+  initialEdges: MasterCardEdge[];
+  initialPageInfo: MasterCardConnectionPageInfo;
+  initialTotalCount: number;
+  onTotalCountChange: (count: number) => void;
+};
+
+export function MasterCardsSection({
+  masterId,
+  deckName,
+  initialEdges,
+  initialPageInfo,
+  initialTotalCount,
+  onTotalCountChange,
+}: MasterCardsSectionProps) {
+  return (
+    <section data-testid="master-cards-section" data-master-id={masterId}>
+      <MasterCardsClient
+        masterId={masterId}
+        deckName={deckName}
+        initialEdges={initialEdges}
+        initialPageInfo={initialPageInfo}
+        initialTotalCount={initialTotalCount}
+        onTotalCountChange={onTotalCountChange}
+      />
+    </section>
+  );
 }

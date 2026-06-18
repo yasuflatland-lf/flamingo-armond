@@ -2,14 +2,24 @@
 
 import Link from "next/link";
 import { useTranslations } from "next-intl";
+import { useState } from "react";
 import { MasterCardsSection } from "./master-cards-section";
 import { MasterEditHeader } from "./master-edit-header";
 import type { AdminMasterDeck } from "./queries";
 
 type Props = { master: AdminMasterDeck };
 
+const EMPTY_PAGE_INFO = {
+  __typename: "PageInfo" as const,
+  hasNextPage: false,
+  hasPreviousPage: false,
+  startCursor: null,
+  endCursor: null,
+};
+
 export function MasterManagementClient({ master }: Props) {
   const t = useTranslations("AdminMasters");
+  const [totalCount, setTotalCount] = useState(master.cardCount);
   return (
     <main className="p-4 md:p-8">
       <div className="mb-2">
@@ -21,8 +31,15 @@ export function MasterManagementClient({ master }: Props) {
         </Link>
       </div>
 
-      <MasterEditHeader master={master} />
-      <MasterCardsSection masterId={master.id} />
+      <MasterEditHeader master={{ ...master, cardCount: totalCount }} />
+      <MasterCardsSection
+        masterId={master.id}
+        deckName={master.name}
+        initialEdges={[]}
+        initialPageInfo={EMPTY_PAGE_INFO}
+        initialTotalCount={master.cardCount}
+        onTotalCountChange={setTotalCount}
+      />
     </main>
   );
 }
