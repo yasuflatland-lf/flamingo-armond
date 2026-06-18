@@ -1,3 +1,8 @@
+---
+paths:
+  - "backend/**"
+---
+
 # Go library gotchas (backend)
 
 > Applies to: `backend/internal/`, `backend/cmd/`. These are library-quirk rules — counter-intuitive behaviours of `uuid`, Echo v5, GORM, `golang-jwt/v5`, `slog`, and `crypto/subtle` that must be respected anywhere the library is touched.

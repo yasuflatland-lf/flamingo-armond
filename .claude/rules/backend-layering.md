@@ -1,3 +1,8 @@
+---
+paths:
+  - "backend/**"
+---
+
 # Backend layering
 
 > Applies to: `backend/`. Source of truth: [`backend/.go-arch-lint.yml`](../../backend/.go-arch-lint.yml). Cross-cutting because every package in `backend/internal/` and `backend/cmd/` participates in the layer graph.

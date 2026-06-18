@@ -1,3 +1,8 @@
+---
+paths:
+  - "frontend/**"
+---
+
 # Frontend design system
 
 > Applies to: `frontend/src/**/*.tsx` (UI components, dialogs). Cross-cutting because the

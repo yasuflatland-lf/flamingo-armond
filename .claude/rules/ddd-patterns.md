@@ -1,3 +1,8 @@
+---
+paths:
+  - "backend/**"
+---
+
 # DDD patterns
 
 > Applies to: `backend/internal/domain/` and adjacent usecase + service layers.
