@@ -58,7 +58,7 @@ export interface UseMasterCardMutationsInput {
  * outcomes to sheet navigation, validation, and banner state. Mirrors the
  * thin-outcome-hook shape of `useMasterMutations` / `useAdminUserMutations`.
  *
- * No optimistic writes: typed errors (MasterCardDuplicateFrontError,
+ * No `optimisticResponse`: typed errors (MasterCardDuplicateFrontError,
  * InputValidationError, UNAUTHENTICATED, FORBIDDEN) can fail these mutations and
  * Apollo does not reliably roll back optimistic writes for typed GraphQL errors
  * — see .claude/rules/pagination.md.

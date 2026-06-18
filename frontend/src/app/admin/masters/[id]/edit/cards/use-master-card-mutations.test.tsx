@@ -122,11 +122,13 @@ describe("useMasterCardMutations", () => {
     expect(outcome).toEqual({ status: "validation", field: "front", message: "front is required" });
   });
 
-  it("does not carry optimisticResponse in any mutation call (static-source guard)", () => {
+  it("does not pass optimisticResponse as a mutation option (static-source guard)", () => {
     const src = readFileSync(
       join(process.cwd(), "src/app/admin/masters/[id]/edit/cards/use-master-card-mutations.ts"),
       "utf8",
     );
-    expect(src).not.toContain("optimisticResponse");
+    // Matches the option key `optimisticResponse:` passed to a mutation call;
+    // tolerates the documenting comment `optimisticResponse` (backtick, not colon, follows).
+    expect(src).not.toMatch(/optimisticResponse\s*:/);
   });
 });
