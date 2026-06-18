@@ -177,6 +177,8 @@ describe("<BatchImportWizard>", () => {
     expect(screen.getByLabelText(/cards to import/i)).toHaveAccessibleName(
       /cards to import.*separate each pair with a tab/i,
     );
+    // The accessible name comes from a single <label> whose text includes the Tab-separator hint.
+    expect(document.querySelectorAll('label[for="batch-import-payload"]')).toHaveLength(1);
   });
 
   it("valid validate: shows valid status, a collapsed preview, and an Import button", async () => {
@@ -284,6 +286,40 @@ describe("<BatchImportWizard>", () => {
     await user.click(await screen.findByTestId("batch-import-confirm-btn"));
     expect(await screen.findByText(/boom/i)).toBeInTheDocument();
     expect(onImported).not.toHaveBeenCalled();
+  });
+
+  it("import with a duplicate (warning) row shows amber styling and a warning summary; Done closes", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(ApolloClient.prototype, "refetchQueries")
+      // biome-ignore lint/suspicious/noExplicitAny: test stub for refetchQueries return
+      .mockResolvedValue([] as any);
+    const onImport = vi.fn(
+      async (): Promise<ImportResult> => ({
+        inserted: 1,
+        updated: 0,
+        errors: [{ line: 2, message: "duplicate front", kind: "DUPLICATE" as const }],
+      }),
+    );
+    const { onImported } = renderWizard({
+      mocks: [validateMock(TWO_LINE_TEXT, VALID_RESULT)],
+      onImport,
+    });
+    await advanceToStep2(user);
+    await user.click(await screen.findByTestId("batch-import-confirm-btn"));
+    await waitFor(() => expect(screen.getByText(/duplicate front/i)).toBeInTheDocument());
+    // Duplicate rows are counted and labelled as warnings, not errors (amber, not red).
+    const warningRow = screen.getByText(/duplicate front/i).closest("li");
+    expect(warningRow).toHaveClass("bg-amber-50");
+    expect(warningRow).not.toHaveClass("bg-destructive/10");
+    // The result summary counts the duplicate as a warning, not an error.
+    const statuses = screen.getAllByRole("status");
+    expect(
+      statuses.some((el) => /1 inserted, 0 updated, 1 warning/i.test(el.textContent ?? "")),
+    ).toBe(true);
+    // onImported NOT called on a partial result; Done closes the sheet.
+    expect(onImported).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /^done$/i }));
+    expect(onImported).toHaveBeenCalledTimes(1);
   });
 
   it("clicking the completed progress-bar segment also returns to step 1", async () => {
