@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -238,5 +238,40 @@ describe("AdminMastersClient", () => {
       expect(end).toBeGreaterThan(start);
       expect(source.slice(start, end)).not.toContain("optimisticResponse");
     }
+  });
+
+  // -------------------------------------------------------------------------
+  // Mobile search takeover — flamingo:open-search opens the bar; the desktop
+  // input is gated mobile-off so the two do not double up on mobile.
+  // -------------------------------------------------------------------------
+
+  it("opens the takeover on flamingo:open-search and renders the input", async () => {
+    renderWithIntl(
+      <MockedProvider mocks={[listMock(["m-1"])]}>
+        <AdminMastersClient />
+      </MockedProvider>,
+    );
+    await screen.findByTestId("admin-masters-list");
+
+    expect(screen.queryByTestId("search-takeover")).not.toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("flamingo:open-search"));
+    });
+
+    expect(screen.getByTestId("search-takeover")).toBeInTheDocument();
+    expect(screen.getByTestId("search-takeover-input")).toBeInTheDocument();
+  });
+
+  it("gates the desktop search input mobile-off (hidden md:block)", async () => {
+    renderWithIntl(
+      <MockedProvider mocks={[listMock(["m-1"])]}>
+        <AdminMastersClient />
+      </MockedProvider>,
+    );
+    await screen.findByTestId("admin-masters-list");
+
+    const desktop = screen.getByRole("searchbox", { name: /search masters/i });
+    expect(desktop.parentElement).toHaveClass("hidden", "md:block");
   });
 });

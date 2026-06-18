@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -494,5 +494,35 @@ describe("<CatalogClient>", () => {
       "Could not import the cardgroup.",
     );
     expect(screen.getByTestId("catalog-import-m-1")).not.toBeDisabled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mobile search takeover — flamingo:open-search opens the bar; the desktop
+// input is gated mobile-off so the two do not double up on mobile.
+// ---------------------------------------------------------------------------
+
+describe("<CatalogClient> mobile search takeover", () => {
+  it("opens the takeover on flamingo:open-search and renders the input", async () => {
+    const cache = new InMemoryCache();
+    renderClient([], makeConnection([M1]), cache);
+    await screen.findByText("Business English");
+
+    expect(screen.queryByTestId("search-takeover")).not.toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("flamingo:open-search"));
+    });
+
+    expect(screen.getByTestId("search-takeover")).toBeInTheDocument();
+    expect(screen.getByTestId("search-takeover-input")).toBeInTheDocument();
+  });
+
+  it("gates the desktop search input mobile-off (hidden md:block)", async () => {
+    const cache = new InMemoryCache();
+    renderClient([], makeConnection([M1]), cache);
+    await screen.findByText("Business English");
+
+    expect(screen.getByTestId("catalog-search").parentElement).toHaveClass("hidden", "md:block");
   });
 });

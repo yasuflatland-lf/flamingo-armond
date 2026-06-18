@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
+import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import {
@@ -14,7 +15,7 @@ import {
   type MasterCatalogQuery,
   type MasterCatalogQueryVariables,
 } from "@/generated/graphql";
-import { useDebouncedSearch } from "@/hooks/use-debounced-search";
+import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
 import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { CatalogListItem } from "./catalog-list-item";
@@ -75,7 +76,7 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
   const t = useTranslations("Catalog");
   const tCommon = useTranslations("Common");
 
-  const search = useDebouncedSearch();
+  const search = useHeaderTakeoverSearch();
   const searchQuery = search.query;
 
   // Import state. `importingId` serializes imports to one at a time;
@@ -194,90 +195,101 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
   const hasSearch = searchQuery !== null && searchQuery !== "";
 
   return (
-    <ListingPageShell
-      title={t("title")}
-      description={t("description")}
-      toolbar={
-        <div className="mb-2">
-          <input
-            type="search"
-            placeholder={t("searchPlaceholder")}
-            value={search.input}
-            onChange={(e) => search.setInput(e.target.value)}
-            className="w-full max-w-sm rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label={t("searchAriaLabel")}
-            data-testid="catalog-search"
-          />
-        </div>
-      }
-    >
-      {importAuthError ? (
-        <ErrorBanner data-testid="catalog-import-auth-error">
-          <span>{t("sessionExpired")}</span>
-          <Link href="/login" className="underline">
-            {t("signInAgain")}
-          </Link>
-        </ErrorBanner>
-      ) : null}
-
-      {importError ? (
-        <ErrorBanner data-testid="catalog-import-error">{importError}</ErrorBanner>
-      ) : null}
-
-      {initialLoading && (
-        <p className="text-sm text-muted-foreground" data-testid="catalog-loading">
-          {tCommon("loading")}
-        </p>
-      )}
-
-      {!initialLoading && edges.length === 0 && !hasSearch && (
-        <p className="text-sm text-muted-foreground" data-testid="catalog-empty">
-          {t("noDecks")}
-        </p>
-      )}
-
-      {!initialLoading && edges.length === 0 && hasSearch && (
-        <p className="text-sm text-muted-foreground" data-testid="catalog-empty-search">
-          {t("noMatch", { query: searchQuery })}
-        </p>
-      )}
-
-      {edges.length > 0 && (
-        <ul className="space-y-2" data-testid="catalog-list">
-          {edges.map((edge) => (
-            <CatalogListItem
-              key={edge.cursor}
-              node={edge.node}
-              importing={importingId === edge.node.id}
-              imported={importedIds.has(edge.node.id)}
-              onImport={handleImport}
+    <>
+      <SearchTakeoverBar
+        open={search.searchOpen}
+        value={search.input}
+        onChange={search.setInput}
+        onClear={search.clear}
+        onClose={search.closeSearch}
+        placeholder={t("searchPlaceholder")}
+        ariaLabel={t("searchAriaLabel")}
+      />
+      <ListingPageShell
+        title={t("title")}
+        description={t("description")}
+        toolbar={
+          <div className="mb-2 hidden md:block">
+            <input
+              type="search"
+              placeholder={t("searchPlaceholder")}
+              value={search.input}
+              onChange={(e) => search.setInput(e.target.value)}
+              className="w-full max-w-sm rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={t("searchAriaLabel")}
+              data-testid="catalog-search"
             />
-          ))}
-        </ul>
-      )}
+          </div>
+        }
+      >
+        {importAuthError ? (
+          <ErrorBanner data-testid="catalog-import-auth-error">
+            <span>{t("sessionExpired")}</span>
+            <Link href="/login" className="underline">
+              {t("signInAgain")}
+            </Link>
+          </ErrorBanner>
+        ) : null}
 
-      <div ref={sentinelRef} aria-hidden="true" data-testid="catalog-sentinel" />
+        {importError ? (
+          <ErrorBanner data-testid="catalog-import-error">{importError}</ErrorBanner>
+        ) : null}
 
-      {fetchMoreError && (
-        <ErrorBanner
-          className="mt-3 flex flex-col items-center gap-2"
-          data-testid="catalog-fetch-more-error"
-        >
-          <span>{fetchMoreError}</span>
-          <Button type="button" variant="outline" size="sm" onClick={retryFetchMore}>
-            {tCommon("retry")}
-          </Button>
-        </ErrorBanner>
-      )}
+        {initialLoading && (
+          <p className="text-sm text-muted-foreground" data-testid="catalog-loading">
+            {tCommon("loading")}
+          </p>
+        )}
 
-      {!fetchMoreError && fetchingMore && hasNextPage && (
-        <p
-          className="mt-3 text-center text-xs text-muted-foreground"
-          data-testid="catalog-loading-more"
-        >
-          {t("loadingMore")}
-        </p>
-      )}
-    </ListingPageShell>
+        {!initialLoading && edges.length === 0 && !hasSearch && (
+          <p className="text-sm text-muted-foreground" data-testid="catalog-empty">
+            {t("noDecks")}
+          </p>
+        )}
+
+        {!initialLoading && edges.length === 0 && hasSearch && (
+          <p className="text-sm text-muted-foreground" data-testid="catalog-empty-search">
+            {t("noMatch", { query: searchQuery })}
+          </p>
+        )}
+
+        {edges.length > 0 && (
+          <ul className="space-y-2" data-testid="catalog-list">
+            {edges.map((edge) => (
+              <CatalogListItem
+                key={edge.cursor}
+                node={edge.node}
+                importing={importingId === edge.node.id}
+                imported={importedIds.has(edge.node.id)}
+                onImport={handleImport}
+              />
+            ))}
+          </ul>
+        )}
+
+        <div ref={sentinelRef} aria-hidden="true" data-testid="catalog-sentinel" />
+
+        {fetchMoreError && (
+          <ErrorBanner
+            className="mt-3 flex flex-col items-center gap-2"
+            data-testid="catalog-fetch-more-error"
+          >
+            <span>{fetchMoreError}</span>
+            <Button type="button" variant="outline" size="sm" onClick={retryFetchMore}>
+              {tCommon("retry")}
+            </Button>
+          </ErrorBanner>
+        )}
+
+        {!fetchMoreError && fetchingMore && hasNextPage && (
+          <p
+            className="mt-3 text-center text-xs text-muted-foreground"
+            data-testid="catalog-loading-more"
+          >
+            {t("loadingMore")}
+          </p>
+        )}
+      </ListingPageShell>
+    </>
   );
 }

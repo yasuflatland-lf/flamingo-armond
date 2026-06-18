@@ -415,7 +415,7 @@ describe("<LogoDrawer>", () => {
   });
 
   it("hides the search trigger on a non-filterable route", () => {
-    mockUsePathname.mockReturnValue("/catalog");
+    mockUsePathname.mockReturnValue("/profile");
     renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     expect(screen.queryByRole("button", { name: "Search" })).not.toBeInTheDocument();
