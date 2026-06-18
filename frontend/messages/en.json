@@ -134,6 +134,7 @@
     "noMatch": "No cards match \"{search}\"",
     "clearSearch": "Clear search",
     "loadingMore": "Loading more cards...",
+    "fetchMoreFailed": "Could not load more cards. Please try again.",
     "addCard": "Add card",
     "editCard": "Edit card",
     "batchImportSrOnly": "Batch import into ",

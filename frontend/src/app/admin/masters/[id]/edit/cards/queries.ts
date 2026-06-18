@@ -2,7 +2,7 @@ import { graphql } from "@/generated";
 import type { AdminMasterCardsConnectionQueryVariables } from "@/generated/graphql";
 
 /** Default page size for the admin master-cards connection. Must stay in sync between SSR seed and client useQuery/cache reads. */
-const MASTER_CARDS_PAGE_SIZE = 20;
+export const MASTER_CARDS_PAGE_SIZE = 20;
 
 export const AdminMasterCardsConnectionQuery = graphql(`
   query AdminMasterCardsConnection(

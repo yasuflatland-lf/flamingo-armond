@@ -4,7 +4,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { AdminMasterCardsConnectionDocument } from "@/generated/graphql";
-import { masterCardsDefaultVars } from "./queries";
+import { MASTER_CARDS_PAGE_SIZE, masterCardsDefaultVars } from "./queries";
 import { useMasterCardsConnection } from "./use-master-cards-connection";
 
 const MASTER_ID = "m-1";
@@ -59,6 +59,12 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 describe("useMasterCardsConnection", () => {
+  it("seeds first from the exported MASTER_CARDS_PAGE_SIZE single source", () => {
+    // Pins the documented "stay in sync between SSR seed and client" invariant:
+    // every read site builds its `first` from the one exported constant.
+    expect(masterCardsDefaultVars(MASTER_ID).first).toBe(MASTER_CARDS_PAGE_SIZE);
+  });
+
   it("renders the prop-seeded edges before the query resolves and exposes queryVariables", () => {
     const { result } = renderHook(
       () =>
@@ -68,6 +74,7 @@ describe("useMasterCardsConnection", () => {
           initialEdges: [edge("c-1")],
           initialPageInfo: seedPageInfo,
           initialTotalCount: 1,
+          fetchMoreErrorMessage: "fetch-more-failed",
         }),
       { wrapper },
     );
@@ -84,6 +91,7 @@ describe("useMasterCardsConnection", () => {
           initialEdges: [],
           initialPageInfo: seedPageInfo,
           initialTotalCount: 0,
+          fetchMoreErrorMessage: "fetch-more-failed",
         }),
       { wrapper },
     );

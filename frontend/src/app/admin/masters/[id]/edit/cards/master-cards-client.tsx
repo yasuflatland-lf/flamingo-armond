@@ -205,6 +205,7 @@ export function MasterCardsClient({
     initialEdges,
     initialPageInfo,
     initialTotalCount,
+    fetchMoreErrorMessage: t("fetchMoreFailed"),
   });
 
   const {

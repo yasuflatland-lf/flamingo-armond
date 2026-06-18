@@ -22,6 +22,12 @@ export interface UseMasterCardsConnectionInput {
   initialEdges: MasterCardEdge[];
   initialPageInfo: MasterCardConnectionPageInfo;
   initialTotalCount: number;
+  /**
+   * Localized banner copy shown when a load-more page fails with no backend
+   * banner of its own. The hook has no `useTranslations`, so the caller passes
+   * the resolved `t("fetchMoreFailed")` string in (mirrors admin-masters-client).
+   */
+  fetchMoreErrorMessage: string;
 }
 
 export type UseMasterCardsConnectionResult = UseConnectionPaginationResult<
@@ -46,7 +52,14 @@ function mergeMasterCardsConnection(
 export function useMasterCardsConnection(
   input: UseMasterCardsConnectionInput,
 ): UseMasterCardsConnectionResult {
-  const { masterId, searchQuery, initialEdges, initialPageInfo, initialTotalCount } = input;
+  const {
+    masterId,
+    searchQuery,
+    initialEdges,
+    initialPageInfo,
+    initialTotalCount,
+    fetchMoreErrorMessage,
+  } = input;
 
   const variables = useMemo<AdminMasterCardsConnectionQueryVariables>(
     () =>
@@ -81,8 +94,7 @@ export function useMasterCardsConnection(
     buildFetchMoreVariables,
     mergeConnection: mergeMasterCardsConnection,
     initial: { edges: initialEdges, pageInfo: initialPageInfo, totalCount: initialTotalCount },
-    resolveFetchMoreError: (err) =>
-      getBackendErrorBanner(err) ?? "Could not load more cards. Please try again.",
+    resolveFetchMoreError: (err) => getBackendErrorBanner(err) ?? fetchMoreErrorMessage,
     logScope: "[master-cards-client]",
   });
 }
