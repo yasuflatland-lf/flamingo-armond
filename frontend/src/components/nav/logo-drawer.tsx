@@ -1,15 +1,17 @@
 "use client";
 
-import { BookOpen, LibraryBig, Plus, User } from "lucide-react";
+import { BookOpen, LibraryBig, Plus, Search, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { useEffect, useRef, useState } from "react";
 import { LogoutButton } from "@/app/_components/logout-button";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import { MobileMenuTrigger } from "@/components/nav/mobile-menu-trigger";
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { resolveHeaderCreateAction } from "./header-create-action";
+import { resolveHeaderSearchAction } from "./header-search-action";
 import { HeaderSignInLink } from "./header-sign-in-link";
 import { ADMIN_NAV_ITEMS } from "./nav-items";
 
@@ -32,6 +34,31 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
   const { open } = useSheetSearchParam();
   // Anonymous users get no '+'; the resolver returns null for unknown routes too.
   const createAction = user ? resolveHeaderCreateAction(pathname) : null;
+
+  const showSearch = user ? resolveHeaderSearchAction(pathname) : false;
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  const prevVisibleRef = useRef(false);
+  const [searchActive, setSearchActive] = useState(false);
+  const [searchVisible, setSearchVisible] = useState(false);
+
+  // The page owns the search bar + filter state; it reports back the active
+  // (filter applied) and visible (bar open) flags so the trigger can show the
+  // active dot and reflect aria-expanded. When the bar closes, return focus to
+  // the trigger.
+  useEffect(() => {
+    function onSearchState(e: Event) {
+      const detail = (e as CustomEvent<{ active: boolean; visible: boolean }>).detail;
+      if (!detail) return;
+      setSearchActive(detail.active);
+      setSearchVisible(detail.visible);
+      if (prevVisibleRef.current && !detail.visible) {
+        searchTriggerRef.current?.focus();
+      }
+      prevVisibleRef.current = detail.visible;
+    }
+    window.addEventListener("flamingo:search-state", onSearchState);
+    return () => window.removeEventListener("flamingo:search-state", onSearchState);
+  }, []);
 
   // The '+' affordance dispatches a cancelable event so an in-context drawer can
   // claim the action (LearnAddCardSheet / cardgroup / card sheets listen and call
@@ -98,6 +125,26 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
         <FlamingoMark className="size-7" aria-hidden="true" />
       </Link>
       <div className="flex items-center gap-1">
+        {showSearch && (
+          <button
+            ref={searchTriggerRef}
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("flamingo:open-search"))}
+            aria-label={t("openSearch")}
+            aria-expanded={searchVisible}
+            data-testid="header-search-trigger"
+            className="relative rounded-md p-2 hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <Search className="h-5 w-5" aria-hidden="true" />
+            {searchActive && (
+              <span
+                aria-hidden="true"
+                data-testid="header-search-active-dot"
+                className="absolute right-1 top-1 h-2 w-2 rounded-full bg-brand-primary"
+              />
+            )}
+          </button>
+        )}
         {createAction && (
           <button
             type="button"

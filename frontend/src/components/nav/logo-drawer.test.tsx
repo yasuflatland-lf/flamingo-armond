@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithIntl } from "@/test/render-with-intl";
@@ -399,5 +399,67 @@ describe("<LogoDrawer>", () => {
     renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
     expect(screen.getByRole("button", { name: /add new cardgroup/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open menu" })).toBeInTheDocument();
+  });
+
+  it("shows the search trigger on /cardgroups and dispatches flamingo:open-search on click", async () => {
+    mockUsePathname.mockReturnValue("/cardgroups");
+    const user = userEvent.setup();
+    const openSpy = vi.fn();
+    window.addEventListener("flamingo:open-search", openSpy);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+    await user.click(screen.getByRole("button", { name: "Filter cardgroups" }));
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    window.removeEventListener("flamingo:open-search", openSpy);
+  });
+
+  it("hides the search trigger on a non-filterable route", () => {
+    mockUsePathname.mockReturnValue("/catalog");
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+    expect(screen.queryByRole("button", { name: "Filter cardgroups" })).not.toBeInTheDocument();
+  });
+
+  it("shows the active dot when search-state active is true", () => {
+    mockUsePathname.mockReturnValue("/cardgroups");
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    expect(screen.queryByTestId("header-search-active-dot")).not.toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("flamingo:search-state", {
+          detail: { active: true, visible: false },
+        }),
+      );
+    });
+
+    expect(screen.getByTestId("header-search-active-dot")).toBeInTheDocument();
+  });
+
+  it("returns focus to the trigger when the bar closes (visible true -> false)", () => {
+    mockUsePathname.mockReturnValue("/cardgroups");
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    const trigger = screen.getByRole("button", { name: "Filter cardgroups" });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("flamingo:search-state", {
+          detail: { active: false, visible: true },
+        }),
+      );
+    });
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("flamingo:search-state", {
+          detail: { active: false, visible: false },
+        }),
+      );
+    });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+    expect(trigger).toHaveFocus();
   });
 });

@@ -28,6 +28,7 @@
     "flamingoHome": "Flamingo ホーム",
     "navigationMenu": "ナビゲーションメニュー",
     "openMenu": "メニューを開く",
+    "openSearch": "カードグループを絞り込む",
     "primaryNavigation": "メインナビゲーション"
   },
   "Language": {
@@ -49,6 +50,10 @@
   "Settings": {
     "heading": "設定",
     "description": "環境設定を管理します。"
+  },
+  "Search": {
+    "back": "検索を閉じる",
+    "clear": "検索をクリア"
   },
   "Learn": {
     "completeHeading": "本日の学習が完了しました",

@@ -28,6 +28,7 @@
     "flamingoHome": "Flamingo home",
     "navigationMenu": "Navigation menu",
     "openMenu": "Open menu",
+    "openSearch": "Filter cardgroups",
     "primaryNavigation": "Primary navigation"
   },
   "Language": {
@@ -49,6 +50,10 @@
   "Settings": {
     "heading": "Settings",
     "description": "Manage your preferences."
+  },
+  "Search": {
+    "back": "Close search",
+    "clear": "Clear search"
   },
   "Learn": {
     "completeHeading": "Today's learning is complete",
