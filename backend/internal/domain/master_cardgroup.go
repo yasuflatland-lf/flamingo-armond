@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/rotisserie/eris"
+)
 
 // MasterCardgroupStatus is the publication lifecycle state of a master cardgroup.
 // The zero value (MasterCardgroupStatus("")) is invalid; use MasterStatusDraft or
@@ -38,6 +42,43 @@ type MasterCardgroup struct {
 	SortOrder        int
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+}
+
+// NewMasterCardgroup constructs a MasterCardgroup aggregate in its initial
+// admin-created state: Version = 1 and Status = MasterStatusDraft. It generates a
+// fresh UUID v7 ID and stamps CreatedAt and UpdatedAt with the current UTC time.
+// The name VO is validated upstream by ParseCardgroupName; callers pass the parsed
+// CardgroupName so this constructor stays free of validation branching (mirroring
+// NewCardgroup / NewCard). The Draft/Version=1 invariant is sealed here so it
+// cannot drift across the usecase and repository call sites. Returns a wrapped
+// error when ID generation fails.
+func NewMasterCardgroup(
+	name CardgroupName,
+	description, language, level, category, coverImageURL, source *string,
+	isDefaultStarter bool,
+	sortOrder int,
+) (*MasterCardgroup, error) {
+	id, err := NewID()
+	if err != nil {
+		return nil, eris.Wrap(err, "master cardgroup: new id")
+	}
+	now := time.Now().UTC()
+	return &MasterCardgroup{
+		ID:               id,
+		Name:             name,
+		Description:      description,
+		Language:         language,
+		Level:            level,
+		Category:         category,
+		CoverImageURL:    coverImageURL,
+		Source:           source,
+		Version:          1,
+		Status:           MasterStatusDraft,
+		IsDefaultStarter: isDefaultStarter,
+		SortOrder:        sortOrder,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}, nil
 }
 
 // IsPublished reports whether the master cardgroup is in the published state
