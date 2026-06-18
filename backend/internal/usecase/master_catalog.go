@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 
 	"github.com/rotisserie/eris"
 
@@ -181,26 +182,30 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 		return nil, err
 	}
 
-	after, err := u.resolveMasterCatalogCursor(ctx, in.After, orderBy, "after")
+	after, err := u.resolveMasterCursor(ctx, in.After, orderBy, "after", true)
 	if err != nil {
 		return nil, err
 	}
-	before, err := u.resolveMasterCatalogCursor(ctx, in.Before, orderBy, "before")
+	before, err := u.resolveMasterCursor(ctx, in.Before, orderBy, "before", true)
 	if err != nil {
 		return nil, err
 	}
 
+	// Normalize search once so the count and the page query see the same filter
+	// (nil and whitespace-only both mean "no filter").
+	search := normalizeSearch(in.Search)
+
 	// totalCount comes from a separate COUNT(*) scoped to published rows and the
 	// optional search predicate. Computed before the page fetch so callers asking
 	// only for totalCount still see a real value.
-	total, err := u.repo.CountPublished(ctx, in.Search)
+	total, err := u.repo.CountPublished(ctx, search)
 	if err != nil {
 		return nil, eris.Wrap(err, "usecase: master catalog: count published")
 	}
 
 	items, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
 		func(wantFirst, wantLast int) ([]*repository.MasterCatalogItem, error) {
-			rows, e := u.repo.FindPublishedPage(ctx, after, before, wantFirst, wantLast, orderBy, dir, in.Search)
+			rows, e := u.repo.FindPublishedPage(ctx, after, before, wantFirst, wantLast, orderBy, dir, search)
 			if e != nil {
 				return nil, eris.Wrap(e, "usecase: master catalog: find published page")
 			}
@@ -253,16 +258,20 @@ func resolveMasterCatalogOrderBy(
 	return field, d, nil
 }
 
-// resolveMasterCatalogCursor decodes an opaque cursor string into a
-// *repository.MasterCatalogCursor with the column required by the active
-// orderBy populated. Returns BAD_USER_INPUT when the cursor cannot be decoded
-// or references a master cardgroup that is not a published catalog row. The
-// published-row check runs even when orderBy is missing a hydratable column.
-func (u *masterCatalogUsecase) resolveMasterCatalogCursor(
+// resolveMasterCursor decodes an opaque cursor string into a
+// *repository.MasterCatalogCursor with the column required by the active orderBy
+// populated. The publishedOnly flag selects the hydration scope: true hydrates
+// via FindPublishedByID (catalog scope — a draft or unknown id is rejected as
+// cursor-not-found so drafts never leak); false hydrates via FindByID (admin
+// scope — DRAFT decks are valid cursors). Returns BAD_USER_INPUT when the cursor
+// cannot be decoded or references a row outside the active scope. The scope check
+// runs even when orderBy is missing a hydratable column.
+func (u *masterCatalogUsecase) resolveMasterCursor(
 	ctx context.Context,
 	cursorStr *string,
 	orderBy repository.MasterCatalogOrderBy,
 	field string,
+	publishedOnly bool,
 ) (*repository.MasterCatalogCursor, error) {
 	if cursorStr == nil || *cursorStr == "" {
 		return nil, nil
@@ -271,7 +280,11 @@ func (u *masterCatalogUsecase) resolveMasterCatalogCursor(
 	if err != nil {
 		return nil, ucerr.NewValidationError(field, "invalid cursor")
 	}
-	mcg, err := u.repo.FindPublishedByID(ctx, id)
+	fetchByID := u.repo.FindByID
+	if publishedOnly {
+		fetchByID = u.repo.FindPublishedByID
+	}
+	mcg, err := fetchByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ucerr.NewValidationError(field, "cursor not found")
@@ -390,6 +403,22 @@ func derefOr[T any](p *T, def T) T {
 		return *p
 	}
 	return def
+}
+
+// normalizeSearch collapses nil and whitespace-only search inputs to nil and
+// trims a non-empty search. After this the repository receives either nil (no
+// filter) or a non-empty, trimmed string — the same invariant ListMasterCards
+// relies on. Normalizing at the usecase boundary keeps totalCount and the page
+// query in agreement instead of depending on the repository to trim.
+func normalizeSearch(search *string) *string {
+	if search == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*search)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }
 
 // ---------------------------------------------------------------------------
@@ -560,23 +589,27 @@ func (u *masterCatalogUsecase) ListAdminConnection(
 		return nil, err
 	}
 
-	after, err := u.resolveMasterAdminCursor(ctx, in.After, orderBy, "after")
+	after, err := u.resolveMasterCursor(ctx, in.After, orderBy, "after", false)
 	if err != nil {
 		return nil, err
 	}
-	before, err := u.resolveMasterAdminCursor(ctx, in.Before, orderBy, "before")
+	before, err := u.resolveMasterCursor(ctx, in.Before, orderBy, "before", false)
 	if err != nil {
 		return nil, err
 	}
 
-	total, err := u.repo.CountAdmin(ctx, in.Search)
+	// Normalize search once so the count and the page query see the same filter
+	// (nil and whitespace-only both mean "no filter").
+	search := normalizeSearch(in.Search)
+
+	total, err := u.repo.CountAdmin(ctx, search)
 	if err != nil {
 		return nil, eris.Wrap(err, "usecase: master catalog: count admin")
 	}
 
 	items, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
 		func(wantFirst, wantLast int) ([]*repository.MasterCatalogItem, error) {
-			rows, e := u.repo.FindAdminPage(ctx, after, before, wantFirst, wantLast, orderBy, dir, in.Search)
+			rows, e := u.repo.FindAdminPage(ctx, after, before, wantFirst, wantLast, orderBy, dir, search)
 			if e != nil {
 				return nil, eris.Wrap(e, "usecase: master catalog: find admin page")
 			}
@@ -593,43 +626,6 @@ func (u *masterCatalogUsecase) ListAdminConnection(
 		out.EndCur = items[len(items)-1].Cardgroup.ID
 	}
 	return out, nil
-}
-
-// resolveMasterAdminCursor decodes an opaque cursor into a repository cursor with
-// the column required by the active orderBy. Unlike resolveMasterCatalogCursor it
-// hydrates via FindByID (any status), since the admin list includes DRAFT decks.
-func (u *masterCatalogUsecase) resolveMasterAdminCursor(
-	ctx context.Context, cursorStr *string, orderBy repository.MasterCatalogOrderBy, field string,
-) (*repository.MasterCatalogCursor, error) {
-	if cursorStr == nil || *cursorStr == "" {
-		return nil, nil
-	}
-	id, err := cursor.Decode(*cursorStr)
-	if err != nil {
-		return nil, ucerr.NewValidationError(field, "invalid cursor")
-	}
-	mcg, err := u.repo.FindByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ucerr.NewValidationError(field, "cursor not found")
-		}
-		return nil, eris.Wrap(err, "usecase: master catalog: hydrate admin cursor")
-	}
-	c := &repository.MasterCatalogCursor{ID: id}
-	switch orderBy {
-	case repository.MasterCatalogOrderBySortOrder:
-		so := mcg.SortOrder
-		c.SortOrder = &so
-	case repository.MasterCatalogOrderByCreatedAt:
-		ca := mcg.CreatedAt
-		c.CreatedAt = &ca
-	case repository.MasterCatalogOrderByName:
-		name := mcg.Name.String()
-		c.Name = &name
-	default:
-		return nil, eris.Errorf("usecase: master catalog: unhandled orderBy %q", orderBy)
-	}
-	return c, nil
 }
 
 // ImportMaster copies the published master cardgroup identified by masterID into a

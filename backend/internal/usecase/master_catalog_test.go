@@ -26,14 +26,21 @@ type mockMasterCatalogRepository struct {
 	countErr    error
 	countCalls  []countPublishedCall
 
-	// FindPublishedByID (also used by published cursor resolution)
-	findByIDFn func(id string) (*domain.MasterCardgroup, error)
+	// FindByID (admin cursor resolution) and FindPublishedByID (published cursor
+	// resolution + ImportMaster's published check) are backed by separate funcs so
+	// a test can assert which scope a cursor was hydrated through. FindPublishedByID
+	// falls back to findByIDFn when findPublishedByIDFn is nil, so existing tests
+	// that only set findByIDFn keep working.
+	findByIDFn          func(id string) (*domain.MasterCardgroup, error)
+	findPublishedByIDFn func(id string) (*domain.MasterCardgroup, error)
 
 	// admin methods
-	findAdminPage []*repository.MasterCatalogItem
-	findAdminErr  error
-	countAdminRes int64
-	countAdminErr error
+	findAdminPage   []*repository.MasterCatalogItem
+	findAdminErr    error
+	findAdminCalls  []findPublishedPageCall
+	countAdminRes   int64
+	countAdminErr   error
+	countAdminCalls []countPublishedCall
 	countCardsRes int64
 	countCardsErr error
 	createCalls   []*domain.MasterCardgroup
@@ -85,6 +92,9 @@ func (m *mockMasterCatalogRepository) CountPublished(_ context.Context, search *
 }
 
 func (m *mockMasterCatalogRepository) FindPublishedByID(_ context.Context, id string) (*domain.MasterCardgroup, error) {
+	if m.findPublishedByIDFn != nil {
+		return m.findPublishedByIDFn(id)
+	}
 	if m.findByIDFn != nil {
 		return m.findByIDFn(id)
 	}
@@ -99,16 +109,25 @@ func (m *mockMasterCatalogRepository) FindByID(_ context.Context, id string) (*d
 }
 
 func (m *mockMasterCatalogRepository) FindAdminPage(
-	_ context.Context, _, _ *repository.MasterCatalogCursor, _, _ int,
-	_ repository.MasterCatalogOrderBy, _ repository.SortOrder, _ *string,
+	_ context.Context,
+	after, before *repository.MasterCatalogCursor,
+	first, last int,
+	orderBy repository.MasterCatalogOrderBy,
+	dir repository.SortOrder,
+	search *string,
 ) ([]*repository.MasterCatalogItem, error) {
+	m.findAdminCalls = append(m.findAdminCalls, findPublishedPageCall{
+		After: after, Before: before, First: first, Last: last,
+		OrderBy: orderBy, Dir: dir, Search: search,
+	})
 	if m.findAdminErr != nil {
 		return nil, m.findAdminErr
 	}
 	return m.findAdminPage, nil
 }
 
-func (m *mockMasterCatalogRepository) CountAdmin(_ context.Context, _ *string) (int64, error) {
+func (m *mockMasterCatalogRepository) CountAdmin(_ context.Context, search *string) (int64, error) {
+	m.countAdminCalls = append(m.countAdminCalls, countPublishedCall{Search: search})
 	return m.countAdminRes, m.countAdminErr
 }
 
@@ -467,6 +486,165 @@ func TestListPublishedConnection_FindPageError_Wrapped(t *testing.T) {
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(2)})
 	if err == nil {
 		t.Fatal("want error from find-page failure")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Search normalization at the usecase boundary
+//
+// nil and whitespace-only search both mean "no filter"; a non-empty search is
+// trimmed. The normalized value must reach BOTH the count and the page query so
+// totalCount and the page agree under an active filter, mirroring ListMasterCards.
+// ---------------------------------------------------------------------------
+
+func TestListPublishedConnection_SearchNormalizedToNil(t *testing.T) {
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	blank := "   "
+	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
+		First:  intPtr(5),
+		Search: &blank,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := repo.countCalls[0].Search; got != nil {
+		t.Fatalf("whitespace-only search must normalize to nil for count, got %q", *got)
+	}
+	if got := repo.findPageCalls[0].Search; got != nil {
+		t.Fatalf("whitespace-only search must normalize to nil for page, got %q", *got)
+	}
+}
+
+func TestListPublishedConnection_SearchTrimmed(t *testing.T) {
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	raw := "  hello  "
+	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
+		First:  intPtr(5),
+		Search: &raw,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := repo.countCalls[0].Search; got == nil || *got != "hello" {
+		t.Fatalf("count search must be trimmed to %q, got %v", "hello", got)
+	}
+	if got := repo.findPageCalls[0].Search; got == nil || *got != "hello" {
+		t.Fatalf("page search must be trimmed to %q, got %v", "hello", got)
+	}
+}
+
+func TestListAdminConnection_SearchNormalizedToNil(t *testing.T) {
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	blank := "   "
+	_, err := uc.ListAdminConnection(authedCtx("admin1"), MasterCatalogConnectionInput{
+		First:  intPtr(5),
+		Search: &blank,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := repo.countAdminCalls[0].Search; got != nil {
+		t.Fatalf("whitespace-only search must normalize to nil for admin count, got %q", *got)
+	}
+	if got := repo.findAdminCalls[0].Search; got != nil {
+		t.Fatalf("whitespace-only search must normalize to nil for admin page, got %q", *got)
+	}
+}
+
+func TestListAdminConnection_SearchTrimmed(t *testing.T) {
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	raw := "  hello  "
+	_, err := uc.ListAdminConnection(authedCtx("admin1"), MasterCatalogConnectionInput{
+		First:  intPtr(5),
+		Search: &raw,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := repo.countAdminCalls[0].Search; got == nil || *got != "hello" {
+		t.Fatalf("admin count search must be trimmed to %q, got %v", "hello", got)
+	}
+	if got := repo.findAdminCalls[0].Search; got == nil || *got != "hello" {
+		t.Fatalf("admin page search must be trimmed to %q, got %v", "hello", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Cursor-resolution scope (guards the published-vs-admin split through the
+// unified helper). Published cursors hydrate via FindPublishedByID (drafts are
+// rejected as cursor-not-found); admin cursors hydrate via FindByID (drafts are
+// valid). An inverted scope would swap these behaviors.
+// ---------------------------------------------------------------------------
+
+func TestListPublishedConnection_CursorRejectsDraftViaPublishedScope(t *testing.T) {
+	t.Parallel()
+	cur := cursor.Encode("draft-id")
+	repo := &mockMasterCatalogRepository{
+		// FindByID would resolve the draft (admin scope) — present to prove the
+		// published path does NOT use it.
+		findByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Draft"), Status: domain.MasterStatusDraft}, nil
+		},
+		// FindPublishedByID rejects the draft, which is the path the published list
+		// must take.
+		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) {
+			return nil, repository.ErrNotFound
+		},
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
+		First: intPtr(2),
+		After: &cur,
+	})
+	var ve *ucerr.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("published cursor must hydrate via FindPublishedByID and reject a draft, got %v", err)
+	}
+	if ve.Field != "after" {
+		t.Fatalf("want field=after, got %q", ve.Field)
+	}
+}
+
+func TestListAdminConnection_CursorAcceptsDraftViaFindByID(t *testing.T) {
+	t.Parallel()
+	cur := cursor.Encode("draft-id")
+	repo := &mockMasterCatalogRepository{
+		countAdminRes: 1,
+		findAdminPage: []*repository.MasterCatalogItem{catalogItem("x", 1)},
+		// FindByID resolves the draft — the admin list includes DRAFT decks.
+		findByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Draft"), Status: domain.MasterStatusDraft}, nil
+		},
+		// FindPublishedByID would reject the draft — present to prove the admin path
+		// does NOT use it (an inverted scope would surface as cursor-not-found).
+		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) {
+			return nil, repository.ErrNotFound
+		},
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.ListAdminConnection(authedCtx("admin1"), MasterCatalogConnectionInput{
+		Last:   intPtr(2),
+		Before: &cur,
+	})
+	if err != nil {
+		t.Fatalf("admin cursor must hydrate a draft via FindByID, got %v", err)
+	}
+	if repo.findAdminCalls[0].Before == nil || repo.findAdminCalls[0].Before.ID != "draft-id" {
+		t.Fatalf("want before cursor id=draft-id hydrated, got %+v", repo.findAdminCalls[0].Before)
 	}
 }
 
