@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Import, Play, Plus } from "lucide-react";
+import { Import, Play, Plus } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
@@ -10,12 +10,7 @@ import {
   CardsClient,
 } from "@/app/cardgroups/[id]/cards/cards-client";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { SplitButtonMenu } from "@/components/ui/split-button-menu";
 
 type Props = {
   cardgroupId: string;
@@ -79,34 +74,25 @@ export function CardgroupCardsSection({
           >
             {t("addCardButton")}
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="rounded-l-none border-l px-2"
-                aria-label={t("addMoreOptions")}
-                data-testid="cardgroup-add-more-options"
-              >
-                <ChevronDown aria-hidden="true" className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={onAddCard} className="gap-2">
-                <Plus aria-hidden="true" className="h-4 w-4" />
-                {t("addACard")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={onBatchImport}
-                data-testid="cardgroup-batch-import-menuitem"
-                className="gap-2"
-              >
-                <Import aria-hidden="true" className="h-4 w-4" />
-                {t("batchImport")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <SplitButtonMenu
+            triggerLabel={t("addMoreOptions")}
+            data-testid="cardgroup-add-more-options"
+            items={[
+              {
+                key: "add",
+                icon: <Plus aria-hidden="true" className="h-4 w-4" />,
+                label: t("addACard"),
+                onSelect: onAddCard,
+              },
+              {
+                key: "import",
+                icon: <Import aria-hidden="true" className="h-4 w-4" />,
+                label: t("batchImport"),
+                onSelect: onBatchImport,
+                "data-testid": "cardgroup-batch-import-menuitem",
+              },
+            ]}
+          />
         </div>
       </div>
     </div>
