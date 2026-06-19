@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Import, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
@@ -32,9 +32,16 @@ import { getBackendErrorBanner } from "@/lib/apollo/errors";
 type Props = {
   cardgroup: { id: string; name: string };
   totalCount: number;
+  /**
+   * Opens the batch-import sheet (owned by `CardsClient`). Surfaced here so the
+   * overflow menu can host batch import on mobile, where the standalone toolbar
+   * button was removed. Required so the wire from `CardsClient` is enforced at
+   * compile time rather than silently defaulting to a no-op.
+   */
+  onBatchImport: () => void;
 };
 
-export function CardgroupHeader({ cardgroup, totalCount }: Props) {
+export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props) {
   const router = useRouter();
   const [renameOpen, setRenameOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -68,6 +75,17 @@ export function CardgroupHeader({ cardgroup, totalCount }: Props) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        {/* Mobile-only: batch import lives here after the standalone toolbar
+            button was removed. Hidden on desktop, where the cards toolbar's
+            split-button menu still hosts batch import. */}
+        <DropdownMenuItem
+          onSelect={onBatchImport}
+          className="gap-2 md:hidden"
+          data-testid="cardgroup-import-menuitem"
+        >
+          <Import className="h-4 w-4" />
+          {t("batchImport")}
+        </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => setRenameOpen(true)} className="gap-2">
           <Pencil className="h-4 w-4" />
           {t("rename")}
