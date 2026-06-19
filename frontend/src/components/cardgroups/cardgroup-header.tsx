@@ -75,6 +75,16 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        {/* Rename — the only editable attribute of a cardgroup, hosted as the
+            top menu item. */}
+        <DropdownMenuItem
+          onSelect={() => setRenameOpen(true)}
+          className="gap-2"
+          data-testid="cardgroup-rename-menuitem"
+        >
+          <Pencil className="h-4 w-4" />
+          {t("rename")}
+        </DropdownMenuItem>
         {/* Mobile-only: batch import lives here after the standalone toolbar
             button was removed. Hidden on desktop, where the cards toolbar's
             split-button menu still hosts batch import. */}
@@ -86,11 +96,9 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
           <Import className="h-4 w-4" />
           {t("batchImport")}
         </DropdownMenuItem>
-        {/* Rename now lives on the title-row pencil; the overflow menu is
-            lifecycle-only. The separator divides the mobile-only import item
-            from delete, so it is also md:hidden — on desktop delete is the
-            sole item and a leading separator would be a stray rule. */}
-        <DropdownMenuSeparator className="md:hidden" />
+        {/* Separator divides the constructive actions (rename, import) from the
+            destructive delete. Always shown now that rename leads the menu. */}
+        <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={() => setDeleteDialogOpen(true)}
           className="gap-2 text-destructive focus:text-destructive"
@@ -122,22 +130,11 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
           <div className="justify-self-end">{actions}</div>
         </div>
 
-        {/* Row 2 — editable title: centered name + pencil that opens the rename
-            sheet (the only editable attribute of a cardgroup). */}
-        <div className="mt-1 flex items-center justify-center gap-1.5">
-          <h1 className="min-w-0 truncate text-2xl font-semibold leading-tight">
+        {/* Row 2 — title: centered name. Rename moved into the overflow menu. */}
+        <div className="mt-1 flex items-center justify-center">
+          <h1 className="min-w-0 truncate text-center text-2xl font-semibold leading-tight">
             {cardgroup.name}
           </h1>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="shrink-0 text-muted-foreground hover:text-foreground"
-            aria-label={t("rename")}
-            onClick={() => setRenameOpen(true)}
-          >
-            <Pencil className="h-5 w-5" />
-          </Button>
         </div>
       </header>
 
