@@ -43,7 +43,7 @@ const PAGE_INFO = {
 function renderSection(
   cardgroupId = "cg-1",
   initialTotalCount = 7,
-  renderPageHeader?: (args: { totalCount: number; onBatchImport: () => void }) => ReactNode,
+  renderPageHeader?: (args: { totalCount: number }) => ReactNode,
 ) {
   renderWithIntl(
     <CardgroupCardsSection
@@ -134,15 +134,10 @@ describe("<CardgroupCardsSection>", () => {
     expect(stub).toContainElement(screen.getByRole("button", { name: /add card \+/i }));
   });
 
-  it("passes onBatchImport from renderPageHeader args to the header slot", () => {
-    const _headerOnBatchImport = vi.fn();
-    renderSection("cg-1", 7, ({ onBatchImport: batchFn }) => (
-      <button type="button" data-testid="page-header-batch" onClick={batchFn}>
-        page-header batch
-      </button>
-    ));
-    // The stub always passes the mock onBatchImport. The page header slot gets
-    // the same function reference from the render-prop arg.
-    expect(screen.getByTestId("page-header-batch")).toBeInTheDocument();
+  it("exposes a mobile-visible batch-import control in the toolbar", async () => {
+    renderSection("cg-1", 4);
+    const importBtn = await screen.findByTestId("cardgroup-import-mobile");
+    expect(importBtn).toBeInTheDocument();
+    expect(importBtn.closest(".hidden")).toBeNull();
   });
 });

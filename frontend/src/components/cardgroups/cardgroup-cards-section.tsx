@@ -21,10 +21,10 @@ type Props = {
   /**
    * Optional render prop that lets the parent render a page-level header with
    * the live totalCount sourced from the Apollo cache. When provided, the
-   * render prop receives `{ totalCount, onBatchImport }` and is invoked above
-   * the toolbar row. When omitted, no page-level header is rendered.
+   * render prop receives `{ totalCount }` and is invoked above the toolbar row.
+   * When omitted, no page-level header is rendered.
    */
-  renderPageHeader?: (args: { totalCount: number; onBatchImport: () => void }) => ReactNode;
+  renderPageHeader?: (args: { totalCount: number }) => ReactNode;
 };
 
 export function CardgroupCardsSection({
@@ -51,7 +51,7 @@ export function CardgroupCardsSection({
     onBatchImport: () => void;
   }) => (
     <div>
-      {renderPageHeader?.({ totalCount, onBatchImport })}
+      {renderPageHeader?.({ totalCount })}
       <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-end">
         {/* Primary CTA: full-width brand hero on mobile (h-11 = 44px tap target),
             compact on desktop. Add card on mobile is provided by the global "+"
@@ -61,6 +61,18 @@ export function CardgroupCardsSection({
             <Play aria-hidden="true" className="h-4 w-4" />
             {t("startLearning")}
           </Link>
+        </Button>
+        {/* Mobile-only import button: restores batch-import access on small screens
+            after the kebab menu was removed from the cardgroup header (Task 6). */}
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 w-full px-8 md:hidden"
+          onClick={onBatchImport}
+          data-testid="cardgroup-import-mobile"
+        >
+          <Import aria-hidden="true" className="h-4 w-4" />
+          {t("batchImport")}
         </Button>
         {/* Desktop split button: secondary Add card + dropdown with Batch import.
             Demoted to outline so Start learning is the single brand primary CTA. */}
