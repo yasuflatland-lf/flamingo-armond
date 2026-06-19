@@ -95,7 +95,7 @@
   },
   "Cardgroups": {
     "updatedAt": "Updated {date}",
-    "myCardgroups": "My cardgroups",
+    "myCardgroups": "Cardgroups",
     "newCardgroup": "New cardgroup",
     "noCardgroupsYet": "No cardgroups yet",
     "noMatch": "No cardgroups match \"{query}\"",
