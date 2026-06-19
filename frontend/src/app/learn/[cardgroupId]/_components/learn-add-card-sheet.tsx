@@ -6,6 +6,7 @@ import { cardsDefaultVars } from "@/app/cardgroups/[id]/cards/queries";
 import { useCardMutations } from "@/app/cardgroups/[id]/cards/use-card-mutations";
 import { CardForm } from "@/components/cardgroups/card-form";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
+import { type AddCardDetail, FLAMINGO_EVENT } from "@/lib/events/flamingo-events";
 
 function AddCardSheetContent({
   submit,
@@ -73,17 +74,15 @@ export function LearnAddCardSheet({ cardgroupId }: { cardgroupId: string }) {
   }, [resetCreateCard]);
 
   useEffect(() => {
-    function handleAddCardEvent(event: Event) {
-      if (!(event instanceof CustomEvent)) return;
-      const detail = event.detail as { cardgroupId?: unknown } | null;
-      if (detail?.cardgroupId !== cardgroupId) return;
+    function handleAddCardEvent(event: CustomEvent<AddCardDetail>) {
+      if (event.detail?.cardgroupId !== cardgroupId) return;
 
       event.preventDefault();
       openSheet();
     }
 
-    window.addEventListener("flamingo:add-card", handleAddCardEvent);
-    return () => window.removeEventListener("flamingo:add-card", handleAddCardEvent);
+    window.addEventListener(FLAMINGO_EVENT.addCard, handleAddCardEvent);
+    return () => window.removeEventListener(FLAMINGO_EVENT.addCard, handleAddCardEvent);
   }, [cardgroupId, openSheet]);
 
   async function handleCreate(values: { front: string; back: string }) {

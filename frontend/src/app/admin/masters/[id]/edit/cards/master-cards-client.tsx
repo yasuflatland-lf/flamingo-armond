@@ -16,6 +16,7 @@ import type { AdminMasterCardsConnectionQuery } from "@/generated/graphql";
 import { useBulkSelection } from "@/hooks/use-bulk-selection";
 import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { type AddMasterCardDetail, FLAMINGO_EVENT } from "@/lib/events/flamingo-events";
 import { MasterBatchImportForm } from "./master-batch-import-form";
 import { useMasterCardMutations } from "./use-master-card-mutations";
 import { useMasterCardsConnection } from "./use-master-cards-connection";
@@ -264,15 +265,13 @@ export function MasterCardsClient({
   // Master cards have no separate-page create target, so there is no fallback
   // navigation to preventDefault against — the listener simply opens the sheet.
   useEffect(() => {
-    function handleAddMasterCard(event: Event) {
-      if (!(event instanceof CustomEvent)) return;
-      const detail = event.detail as { masterId?: unknown } | null;
-      if (detail?.masterId !== masterId) return;
+    function handleAddMasterCard(event: CustomEvent<AddMasterCardDetail>) {
+      if (event.detail?.masterId !== masterId) return;
       event.preventDefault();
       openAddSheet();
     }
-    window.addEventListener("flamingo:add-master-card", handleAddMasterCard);
-    return () => window.removeEventListener("flamingo:add-master-card", handleAddMasterCard);
+    window.addEventListener(FLAMINGO_EVENT.addMasterCard, handleAddMasterCard);
+    return () => window.removeEventListener(FLAMINGO_EVENT.addMasterCard, handleAddMasterCard);
   }, [masterId, openAddSheet]);
 
   async function handleCreate(values: { front: string; back: string }) {
