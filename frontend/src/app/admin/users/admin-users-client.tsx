@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { AdminQueryErrorBanner } from "@/components/admin/admin-query-error-banner";
+import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { useFragment } from "@/generated/fragment-masking";
@@ -240,24 +241,23 @@ export function AdminUsersClient() {
         placeholder={t("searchPlaceholder")}
         ariaLabel={t("searchLabel")}
       />
-      <main className="p-8">
-        <div className="mb-6 flex items-center gap-4">
-          <h1 className="text-2xl font-semibold">{tNav("users")}</h1>
-          <span className="text-sm text-muted-foreground">({totalCount})</span>
-        </div>
-
-        {/* Search input — desktop only; mobile uses the header takeover above. */}
-        <div className="mb-6 hidden md:block">
-          <input
-            type="search"
-            placeholder={t("searchPlaceholder")}
-            value={search.input}
-            onChange={(e) => search.setInput(e.target.value)}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label={t("searchLabel")}
-          />
-        </div>
-
+      <ListingPageShell
+        title={tNav("users")}
+        count={totalCount}
+        toolbar={
+          // Desktop-only search input; mobile uses the header takeover above.
+          <div className="hidden md:block">
+            <input
+              type="search"
+              placeholder={t("searchPlaceholder")}
+              value={search.input}
+              onChange={(e) => search.setInput(e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={t("searchLabel")}
+            />
+          </div>
+        }
+      >
         {/*
         Admin users query-error banner. UNAUTHENTICATED here means the session
         expired mid-page: the server-side gate in page.tsx + the admin layout
@@ -349,7 +349,7 @@ export function AdminUsersClient() {
           onReloadRequested={reloadEditedUser}
           onDelete={handleDeleteUser}
         />
-      </main>
+      </ListingPageShell>
     </>
   );
 }
