@@ -165,6 +165,27 @@ describe("<AppShell>", () => {
     });
   });
 
+  describe("S7 — content column carries min-w-0 to prevent horizontal overflow", () => {
+    it("the column wrapping the mobile header + main content has the min-w-0 class", () => {
+      renderWithIntl(
+        <AppShell user={SIGNED_IN_USER} isAdmin={false}>
+          <div />
+        </AppShell>,
+      );
+
+      // The content column is a flex child of the SidebarProvider row. Without
+      // min-w-0 its min-width defaults to `auto` (content-based), so a long
+      // unbreakable token on any page forces the column wider than the viewport
+      // and `truncate`/`break-words` cannot clamp — the whole page overflows
+      // horizontally. This guards that the load-bearing min-w-0 stays in place.
+      // jsdom has no layout engine, so the class (not a measured width) is the
+      // assertion. The column is the parent of the mobile header.
+      const contentColumn = screen.getByTestId("mobile-header").parentElement;
+      expect(contentColumn).not.toBeNull();
+      expect(contentColumn?.className).toContain("min-w-0");
+    });
+  });
+
   describe("S6 — isAdmin=true: Admin sub-links appear in both rail and drawer", () => {
     it("the rail body contains the admin sub-links (Users, Roles) when isAdmin=true", () => {
       mockUsePathname.mockReturnValue("/");
