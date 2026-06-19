@@ -48,8 +48,7 @@
     "message": "An unexpected error occurred. Please try again."
   },
   "Settings": {
-    "heading": "Settings",
-    "description": "Manage your preferences."
+    "heading": "Settings"
   },
   "Search": {
     "back": "Close search",
@@ -77,7 +76,6 @@
   },
   "Catalog": {
     "title": "Catalog",
-    "description": "Browse published cardgroups and import them.",
     "searchPlaceholder": "Search cardgroups...",
     "searchAriaLabel": "Search catalog cardgroups",
     "import": "Import",
@@ -98,7 +96,6 @@
   "Cardgroups": {
     "updatedAt": "Updated {date}",
     "myCardgroups": "My cardgroups",
-    "browseManage": "Browse and manage the cardgroups you have created.",
     "newCardgroup": "New cardgroup",
     "noCardgroupsYet": "No cardgroups yet",
     "noMatch": "No cardgroups match \"{query}\"",
@@ -285,7 +282,6 @@
   },
   "AdminMasters": {
     "title": "Masters",
-    "description": "Manage master decks shown in the public catalog.",
     "searchPlaceholder": "Search masters...",
     "searchLabel": "Search masters",
     "newMaster": "New master",
@@ -376,7 +372,6 @@
     "systemRoleBanner": "This is a system role. Its name cannot be changed.",
     "newRole": "New role",
     "noRolesYet": "No roles yet",
-    "rolesDescription": "Manage roles available to assign to users.",
     "editRoleTitle": "Edit role",
     "createRole": "Create",
     "deleteAuthFailed": "Your session has expired. Please sign in again.",

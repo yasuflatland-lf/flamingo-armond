@@ -352,7 +352,6 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
       />
       <ListingPageShell
         title={t("myCardgroups")}
-        description={t("browseManage")}
         primaryActions={
           <Button
             type="button"

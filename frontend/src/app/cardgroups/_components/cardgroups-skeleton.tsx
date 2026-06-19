@@ -9,7 +9,6 @@ export function CardgroupsSkeleton() {
   return (
     <ListingPageShell
       title={<Skeleton className="h-8 w-48" />}
-      description={<Skeleton className="mt-2 h-4 w-72" />}
       primaryActions={<Skeleton className="hidden h-10 w-40 md:inline-flex" />}
       toolbar={<Skeleton className="h-10 w-full max-w-sm" />}
     >

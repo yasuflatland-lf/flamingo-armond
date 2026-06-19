@@ -408,7 +408,6 @@ export function AdminRolesClient({ initialRoles }: Props) {
   return (
     <ListingPageShell
       title={tNav("roles")}
-      description={t("rolesDescription")}
       primaryActions={
         <Button
           type="button"

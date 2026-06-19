@@ -207,7 +207,6 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
       />
       <ListingPageShell
         title={t("title")}
-        description={t("description")}
         toolbar={
           <div className="mb-2 hidden md:block">
             <input

@@ -148,7 +148,6 @@ export function AdminMastersClient() {
             <span className="text-sm font-normal text-muted-foreground">({totalCount})</span>
           </span>
         }
-        description={t("description")}
         primaryActions={
           <Button
             type="button"
