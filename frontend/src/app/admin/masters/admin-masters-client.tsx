@@ -142,12 +142,8 @@ export function AdminMastersClient() {
         ariaLabel={t("searchLabel")}
       />
       <ListingPageShell
-        title={
-          <span className="flex items-center gap-3">
-            {t("title")}
-            <span className="text-sm font-normal text-muted-foreground">({totalCount})</span>
-          </span>
-        }
+        title={t("title")}
+        count={totalCount}
         primaryActions={
           <Button
             type="button"

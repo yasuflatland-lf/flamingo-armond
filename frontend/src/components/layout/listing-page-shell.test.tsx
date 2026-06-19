@@ -79,4 +79,35 @@ describe("<ListingPageShell>", () => {
     // The base liquid-layout classes are preserved.
     expect(main?.className).toContain("p-8");
   });
+
+  it("renders the count as a parenthesized muted subtitle when count is provided", () => {
+    render(
+      <ListingPageShell title="Users" count={42}>
+        <div />
+      </ListingPageShell>,
+    );
+
+    expect(screen.getByText("(42)")).toBeInTheDocument();
+  });
+
+  it("renders the title with the shared page-title type token", () => {
+    render(
+      <ListingPageShell title="Users">
+        <div />
+      </ListingPageShell>,
+    );
+
+    expect(screen.getByRole("heading", { level: 1, name: "Users" })).toHaveClass("text-page-title");
+  });
+
+  it("centers the header block so the title, count, and actions stack centered", () => {
+    render(
+      <ListingPageShell title="Users">
+        <div />
+      </ListingPageShell>,
+    );
+
+    const heading = screen.getByRole("heading", { level: 1, name: "Users" });
+    expect(heading.parentElement).toHaveClass("items-center", "text-center");
+  });
 });

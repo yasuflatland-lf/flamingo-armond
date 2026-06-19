@@ -2,11 +2,13 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 interface ListingPageShellProps {
-  /** Page title shown as the leading heading. */
+  /** Page title shown as the centered heading. */
   title: ReactNode;
+  /** Optional total-count badge rendered as a muted `(N)` subtitle under the title. */
+  count?: number;
   /** Optional supporting copy under the title. */
   description?: ReactNode;
-  /** Optional CTA cluster aligned to the trailing edge of the header row. */
+  /** Optional CTA cluster centered below the title (desktop create button etc.). */
   primaryActions?: ReactNode;
   /** Optional toolbar slot rendered between the header row and the content. */
   toolbar?: ReactNode;
@@ -30,6 +32,7 @@ interface ListingPageShellProps {
  */
 export function ListingPageShell({
   title,
+  count,
   description,
   primaryActions,
   toolbar,
@@ -38,12 +41,13 @@ export function ListingPageShell({
 }: ListingPageShellProps) {
   return (
     <main className={cn("flex flex-1 flex-col gap-4 p-8 sm:gap-6", className)}>
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-          {description != null && <div className="text-muted-foreground">{description}</div>}
-        </div>
-        {primaryActions != null && <div className="flex items-center gap-2">{primaryActions}</div>}
+      <div className="flex flex-col items-center gap-2 text-center">
+        <h1 className="text-page-title font-bold leading-tight tracking-normal">{title}</h1>
+        {count != null && <p className="text-sm text-muted-foreground">({count})</p>}
+        {description != null && <div className="text-muted-foreground">{description}</div>}
+        {primaryActions != null && (
+          <div className="flex items-center justify-center gap-2">{primaryActions}</div>
+        )}
       </div>
       {toolbar != null && <div data-slot="toolbar">{toolbar}</div>}
       {children}
