@@ -164,8 +164,12 @@ export function MasterEditHeader({ master, cardCount, onBatchImport }: Props) {
 
   const meta = (
     <>
-      {/* Mobile: interactive status chip (publish trigger) + muted count. */}
-      <div className="flex items-center justify-between gap-2 md:hidden">
+      {/* Mobile: muted count + interactive status chip (publish trigger),
+          centered in the app-bar row beside the count. */}
+      <div className="flex items-center justify-center gap-2 md:hidden">
+        <span className="text-sm text-muted-foreground">
+          {t("cardCount", { count: cardCount })}
+        </span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -185,7 +189,7 @@ export function MasterEditHeader({ master, cardCount, onBatchImport }: Props) {
               <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
+          <DropdownMenuContent align="center">
             <DropdownMenuItem
               onSelect={handlePublishToggle}
               disabled={publishing || emptyDraft}
@@ -197,16 +201,13 @@ export function MasterEditHeader({ master, cardCount, onBatchImport }: Props) {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <span className="text-sm text-muted-foreground">
-          {t("cardCount", { count: cardCount })}
-        </span>
       </div>
-      {/* Desktop: display badge + muted count. */}
-      <div className="hidden items-center gap-2 md:flex">
-        <MasterStatusBadge published={published} data-testid="master-edit-status-badge" />
+      {/* Desktop: muted count + display badge, centered in the app-bar row. */}
+      <div className="hidden items-center justify-center gap-2 md:flex">
         <span className="text-sm text-muted-foreground">
           {t("cardCount", { count: cardCount })}
         </span>
+        <MasterStatusBadge published={published} data-testid="master-edit-status-badge" />
       </div>
     </>
   );
@@ -310,7 +311,10 @@ export function MasterEditHeader({ master, cardCount, onBatchImport }: Props) {
         actions={actions}
       >
         {emptyDraft ? (
-          <p className="mt-1 text-xs text-muted-foreground" data-testid="master-edit-empty-hint">
+          <p
+            className="mt-1 text-center text-xs text-muted-foreground"
+            data-testid="master-edit-empty-hint"
+          >
             {t("publishEmptyHint")}
           </p>
         ) : null}
