@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { AdminMasterCardsConnectionDocument } from "@/generated/graphql";
 import { UndoDeleteProvider } from "@/lib/undo-delete";
@@ -39,7 +40,11 @@ const node = {
   updatedAt: "2026-01-01T00:00:00Z",
 };
 
-it("exposes a batch-import control in the toolbar (mobile-visible)", async () => {
+it("threads onBatchImport into renderPageHeader so the header can open the import sheet", async () => {
+  // The mobile batch-import control now lives in the page header's overflow
+  // menu, so the section must forward MasterCardsClient's onBatchImport up to
+  // the renderPageHeader render prop; invoking it opens the real import sheet.
+  const user = userEvent.setup();
   renderWithIntl(
     <MockedProvider
       mocks={[
@@ -68,15 +73,17 @@ it("exposes a batch-import control in the toolbar (mobile-visible)", async () =>
           initialEdges={[{ __typename: "MasterCardEdge", cursor: "c-1", node }]}
           initialPageInfo={pageInfo}
           initialTotalCount={3}
-          renderPageHeader={({ totalCount }) => <span data-testid="hdr-count">{totalCount}</span>}
+          renderPageHeader={({ onBatchImport }) => (
+            <button type="button" data-testid="hdr-import" onClick={onBatchImport}>
+              import
+            </button>
+          )}
         />
       </UndoDeleteProvider>
     </MockedProvider>,
   );
-  const importBtn = await screen.findByTestId("master-import-mobile");
-  expect(importBtn).toBeInTheDocument();
-  // The control is NOT inside a `hidden md:*` wrapper — assert it is visible.
-  expect(importBtn.closest(".hidden")).toBeNull();
+  await user.click(await screen.findByTestId("hdr-import"));
+  expect(await screen.findByTestId("batch-import-payload")).toBeInTheDocument();
 });
 
 it("renders MasterCardsClient with the seed and exposes the live count to renderPageHeader", async () => {
