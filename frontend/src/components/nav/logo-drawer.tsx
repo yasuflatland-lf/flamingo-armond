@@ -9,6 +9,11 @@ import { LogoutButton } from "@/app/_components/logout-button";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import { MobileMenuTrigger } from "@/components/nav/mobile-menu-trigger";
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  dispatchFlamingo,
+  FLAMINGO_EVENT,
+  type SearchStateDetail,
+} from "@/lib/events/flamingo-events";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { resolveHeaderCreateAction } from "./header-create-action";
 import { resolveHeaderSearchAction } from "./header-search-action";
@@ -46,8 +51,8 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
   // active dot and reflect aria-expanded. When the bar closes, return focus to
   // the trigger.
   useEffect(() => {
-    function onSearchState(e: Event) {
-      const detail = (e as CustomEvent<{ active: boolean; visible: boolean }>).detail;
+    function onSearchState(e: CustomEvent<SearchStateDetail>) {
+      const detail = e.detail;
       if (!detail) return;
       setSearchActive(detail.active);
       setSearchVisible(detail.visible);
@@ -56,8 +61,8 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
       }
       prevVisibleRef.current = detail.visible;
     }
-    window.addEventListener("flamingo:search-state", onSearchState);
-    return () => window.removeEventListener("flamingo:search-state", onSearchState);
+    window.addEventListener(FLAMINGO_EVENT.searchState, onSearchState);
+    return () => window.removeEventListener(FLAMINGO_EVENT.searchState, onSearchState);
   }, []);
 
   // The '+' affordance dispatches a cancelable event so an in-context drawer can
@@ -69,18 +74,18 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
     if (!createAction) return;
     switch (createAction.kind) {
       case "cardgroup": {
-        const event = new CustomEvent("flamingo:add-cardgroup", { cancelable: true });
-        if (window.dispatchEvent(event)) {
+        if (dispatchFlamingo(FLAMINGO_EVENT.addCardgroup, { cancelable: true })) {
           router.push("/cardgroups/new");
         }
         return;
       }
       case "card-with-group": {
-        const event = new CustomEvent("flamingo:add-card", {
-          cancelable: true,
-          detail: { cardgroupId: createAction.cardgroupId },
-        });
-        if (window.dispatchEvent(event)) {
+        if (
+          dispatchFlamingo(FLAMINGO_EVENT.addCard, {
+            cancelable: true,
+            detail: { cardgroupId: createAction.cardgroupId },
+          })
+        ) {
           // `href` is already single-encoded by the resolver, including the
           // &return=/learn/... param on learn routes — push it as-is.
           router.push(createAction.href);
@@ -99,12 +104,10 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
       // in-page MasterCardsClient is always mounted on the edit screen and
       // claims this event to open its add-card sheet. No router.push fallback.
       case "master-card": {
-        window.dispatchEvent(
-          new CustomEvent("flamingo:add-master-card", {
-            cancelable: true,
-            detail: { masterId: createAction.masterId },
-          }),
-        );
+        dispatchFlamingo(FLAMINGO_EVENT.addMasterCard, {
+          cancelable: true,
+          detail: { masterId: createAction.masterId },
+        });
         return;
       }
       default: {
@@ -129,7 +132,7 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
           <button
             ref={searchTriggerRef}
             type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent("flamingo:open-search"))}
+            onClick={() => dispatchFlamingo(FLAMINGO_EVENT.openSearch)}
             aria-label={t("openSearch")}
             aria-expanded={searchVisible}
             data-testid="header-search-trigger"

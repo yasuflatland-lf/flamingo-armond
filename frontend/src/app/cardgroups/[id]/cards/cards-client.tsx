@@ -17,6 +17,7 @@ import type { CardsByCardgroupConnectionQuery } from "@/generated/graphql";
 import { useBulkSelection } from "@/hooks/use-bulk-selection";
 import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { type AddCardDetail, FLAMINGO_EVENT } from "@/lib/events/flamingo-events";
 import { useCardMutations } from "./use-card-mutations";
 import { useCardsConnection } from "./use-cards-connection";
 
@@ -259,17 +260,15 @@ export function CardsClient({
   const closeBatchImport = useCallback(() => setBatchImportOpen(false), []);
 
   useEffect(() => {
-    function handleAddCardEvent(event: Event) {
-      if (!(event instanceof CustomEvent)) return;
-      const detail = event.detail as { cardgroupId?: unknown } | null;
-      if (detail?.cardgroupId !== cardgroupId) return;
+    function handleAddCardEvent(event: CustomEvent<AddCardDetail>) {
+      if (event.detail?.cardgroupId !== cardgroupId) return;
 
       event.preventDefault();
       openAddSheet();
     }
 
-    window.addEventListener("flamingo:add-card", handleAddCardEvent);
-    return () => window.removeEventListener("flamingo:add-card", handleAddCardEvent);
+    window.addEventListener(FLAMINGO_EVENT.addCard, handleAddCardEvent);
+    return () => window.removeEventListener(FLAMINGO_EVENT.addCard, handleAddCardEvent);
   }, [cardgroupId, openAddSheet]);
 
   async function handleCreate(values: { front: string; back: string }) {

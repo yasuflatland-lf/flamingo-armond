@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { dispatchFlamingo, FLAMINGO_EVENT } from "@/lib/events/flamingo-events";
 import { type UseDebouncedSearchResult, useDebouncedSearch } from "./use-debounced-search";
 
 export interface UseHeaderTakeoverSearchResult extends UseDebouncedSearchResult {
@@ -27,27 +28,23 @@ export function useHeaderTakeoverSearch(opts?: {
     function handleOpenSearch() {
       setSearchOpen(true);
     }
-    window.addEventListener("flamingo:open-search", handleOpenSearch);
-    return () => window.removeEventListener("flamingo:open-search", handleOpenSearch);
+    window.addEventListener(FLAMINGO_EVENT.openSearch, handleOpenSearch);
+    return () => window.removeEventListener(FLAMINGO_EVENT.openSearch, handleOpenSearch);
   }, []);
 
   // Report filter state back to the header trigger (active dot + aria-expanded).
   useEffect(() => {
-    window.dispatchEvent(
-      new CustomEvent("flamingo:search-state", {
-        detail: { active: searchQuery !== null && searchQuery !== "", visible: searchOpen },
-      }),
-    );
+    dispatchFlamingo(FLAMINGO_EVENT.searchState, {
+      detail: { active: searchQuery !== null && searchQuery !== "", visible: searchOpen },
+    });
   }, [searchQuery, searchOpen]);
 
   // Reset the header trigger when the page unmounts (route leave).
   useEffect(() => {
     return () => {
-      window.dispatchEvent(
-        new CustomEvent("flamingo:search-state", {
-          detail: { active: false, visible: false },
-        }),
-      );
+      dispatchFlamingo(FLAMINGO_EVENT.searchState, {
+        detail: { active: false, visible: false },
+      });
     };
   }, []);
 

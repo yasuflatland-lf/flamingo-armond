@@ -21,6 +21,7 @@ import {
 } from "@/generated/graphql";
 import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { FLAMINGO_EVENT } from "@/lib/events/flamingo-events";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useUndoDelete } from "@/lib/undo-delete";
 import { CARDGROUPS_DEFAULT_VARS, DeleteCardgroupMutation } from "./queries";
@@ -179,8 +180,8 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
       event.preventDefault();
       openAddSheet();
     }
-    window.addEventListener("flamingo:add-cardgroup", handleAddCardgroupEvent);
-    return () => window.removeEventListener("flamingo:add-cardgroup", handleAddCardgroupEvent);
+    window.addEventListener(FLAMINGO_EVENT.addCardgroup, handleAddCardgroupEvent);
+    return () => window.removeEventListener(FLAMINGO_EVENT.addCardgroup, handleAddCardgroupEvent);
   }, [openAddSheet]);
 
   async function handleCreateCardgroup(values: { name: string }) {
