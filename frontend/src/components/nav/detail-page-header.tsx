@@ -37,7 +37,10 @@ export function DetailPageHeader({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <Link href={backHref} className="shrink-0 text-muted-foreground hover:text-foreground">
+            <Link
+              href={backHref}
+              className="shrink-0 rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
               <ChevronLeft aria-hidden="true" className="h-5 w-5" />
               <span className="sr-only">{backLabel}</span>
             </Link>

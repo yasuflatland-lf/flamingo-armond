@@ -42,6 +42,7 @@ describe("DetailPageHeader", () => {
     const { container } = render(<DetailPageHeader backHref="/x" backLabel="back" title="T" />);
     // Only the back link + title row exists; no stray slot containers.
     expect(screen.queryByTestId("meta-slot")).toBeNull();
+    expect(screen.queryByTestId("actions-slot")).toBeNull();
     expect(container.querySelector("h1")?.textContent).toBe("T");
   });
 });
