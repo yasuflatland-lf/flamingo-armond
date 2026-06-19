@@ -10,7 +10,8 @@
       "!test-results",
       "!src/generated",
       "!next-env.d.ts",
-      "!public/sw.js"
+      "!public/sw.js",
+      "!storybook-static"
     ]
   },
   "formatter": {
