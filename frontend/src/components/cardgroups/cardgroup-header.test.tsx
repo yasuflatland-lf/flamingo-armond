@@ -68,28 +68,30 @@ describe("<CardgroupHeader>", () => {
     expect(screen.getByRole("button", { name: /cardgroup options/i })).toBeInTheDocument();
   });
 
-  it("renders a title-row pencil button labeled rename", () => {
+  it("does not render an inline title-row rename button (rename moved into the overflow menu)", () => {
     renderHeader();
-    expect(screen.getByRole("button", { name: /rename/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^rename$/i })).toBeNull();
   });
 
-  it("kebab menu is lifecycle-only: Delete present, Rename absent", async () => {
+  it("kebab menu hosts Rename as the first item, plus Delete", async () => {
     const user = userEvent.setup();
     renderHeader();
 
     await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole("menuitem", { name: /delete cardgroup/i })).toBeInTheDocument();
+      expect(screen.getByRole("menuitem", { name: /^rename$/i })).toBeInTheDocument();
     });
-    expect(screen.queryByRole("menuitem", { name: /rename/i })).toBeNull();
+    expect(screen.getAllByRole("menuitem")[0]).toHaveTextContent(/rename/i);
+    expect(screen.getByRole("menuitem", { name: /delete cardgroup/i })).toBeInTheDocument();
   });
 
-  it("clicking the title pencil opens the Rename cardgroup FormSheet", async () => {
+  it("selecting Rename from the overflow menu opens the Rename cardgroup FormSheet", async () => {
     const user = userEvent.setup();
     renderHeader();
 
-    await user.click(screen.getByRole("button", { name: /rename/i }));
+    await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /^rename$/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: /rename cardgroup/i })).toBeInTheDocument();
@@ -118,8 +120,9 @@ describe("<CardgroupHeader>", () => {
       ),
     ]);
 
-    await user.click(screen.getByRole("button", { name: /rename/i }));
-    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /^rename$/i }));
+    await user.click(await screen.findByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /saving/i })).toBeInTheDocument();
@@ -258,13 +261,13 @@ describe("<CardgroupHeader>", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("overflow menu holds batch import and delete, but not rename", async () => {
+  it("overflow menu holds rename, batch import, and delete", async () => {
     const user = userEvent.setup();
     renderHeader([], 12);
     await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
+    expect(screen.getByRole("menuitem", { name: /^rename$/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /batch import/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /delete cardgroup/i })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: /rename/i })).toBeNull();
   });
 
   it("overflow menu 'Batch import' item calls onBatchImport", async () => {
