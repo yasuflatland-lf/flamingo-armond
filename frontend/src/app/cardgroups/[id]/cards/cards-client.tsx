@@ -1,12 +1,13 @@
 "use client";
 
-import { Search } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { ReactNode, RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BulkActionBar } from "@/components/cardgroups/bulk-action-bar";
+import { CardFetchMoreError } from "@/components/cardgroups/card-fetch-more-error";
 import { CardForm } from "@/components/cardgroups/card-form";
 import { CardRow } from "@/components/cardgroups/card-row";
+import { CardSearchInput } from "@/components/cardgroups/card-search-input";
 import { CardgroupBatchImportForm } from "@/components/cardgroups/cardgroup-batch-import-form";
 import type { SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
 import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
@@ -24,45 +25,6 @@ import { useCardsConnection } from "./use-cards-connection";
 type Connection = CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"];
 export type CardEdge = Connection["edges"][number];
 export type CardConnectionPageInfo = Connection["pageInfo"];
-
-const FetchMoreError = ({ message, onRetry }: { message: string; onRetry: () => void }) => {
-  const tCommon = useTranslations("Common");
-  return (
-    <ErrorBanner
-      className="mt-3 flex flex-col items-center gap-2"
-      data-testid="cards-fetch-more-error"
-    >
-      <span>{message}</span>
-      <Button type="button" variant="outline" size="sm" onClick={onRetry}>
-        {tCommon("retry")}
-      </Button>
-    </ErrorBanner>
-  );
-};
-
-const SearchInput = ({ value, onChange }: { value: string; onChange: (next: string) => void }) => {
-  const t = useTranslations("Cards");
-  return (
-    // Desktop only: on mobile the search moves into the header-takeover bar.
-    <div className="mb-3 hidden md:block">
-      <div className="relative">
-        <Search
-          aria-hidden="true"
-          className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-        />
-        <input
-          type="search"
-          placeholder={t("searchPlaceholder")}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={t("searchAriaLabel")}
-          data-testid="cards-search-input"
-        />
-      </div>
-    </div>
-  );
-};
 
 function EditCardSheetContent({
   card,
@@ -359,7 +321,7 @@ export function CardsClient({
             sectionHeader
           )}
 
-          <SearchInput value={search.input} onChange={search.setInput} />
+          <CardSearchInput value={search.input} onChange={search.setInput} />
 
           {selection.count > 0 && (
             <BulkActionBar
@@ -474,7 +436,9 @@ export function CardsClient({
           </FormSheet>
 
           <div ref={sentinelRef} aria-hidden="true" data-testid="cards-sentinel" />
-          {fetchMoreError && <FetchMoreError message={fetchMoreError} onRetry={retryFetchMore} />}
+          {fetchMoreError && (
+            <CardFetchMoreError message={fetchMoreError} onRetry={retryFetchMore} />
+          )}
           {!fetchMoreError && fetchingMore && pageInfo.hasNextPage && (
             <p className="mt-3 text-center text-xs text-muted-foreground">{t("loadingMore")}</p>
           )}
