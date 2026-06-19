@@ -1,12 +1,12 @@
 "use client";
 
-import { Import, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ChevronLeft, Import, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 import { CardgroupRenameForm } from "@/components/cardgroups/cardgroup-rename-form";
 import { useDeleteCardgroup } from "@/components/cardgroups/use-delete-cardgroup";
-import { DetailPageHeader } from "@/components/nav/detail-page-header";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -86,11 +86,11 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
           <Import className="h-4 w-4" />
           {t("batchImport")}
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => setRenameOpen(true)} className="gap-2">
-          <Pencil className="h-4 w-4" />
-          {t("rename")}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
+        {/* Rename now lives on the title-row pencil; the overflow menu is
+            lifecycle-only. The separator divides the mobile-only import item
+            from delete, so it is also md:hidden — on desktop delete is the
+            sole item and a leading separator would be a stray rule. */}
+        <DropdownMenuSeparator className="md:hidden" />
         <DropdownMenuItem
           onSelect={() => setDeleteDialogOpen(true)}
           className="gap-2 text-destructive focus:text-destructive"
@@ -104,15 +104,42 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
 
   return (
     <>
-      <DetailPageHeader
-        backHref="/cardgroups"
-        backLabel={t("backLink")}
-        title={cardgroup.name}
-        meta={
-          <p className="text-sm text-muted-foreground">{t("cardsCount", { count: totalCount })}</p>
-        }
-        actions={actions}
-      />
+      <header className="mb-6">
+        {/* Row 1 — app-bar: inline back (left), card count centered, overflow
+            menu (right). The 1fr/auto/1fr grid keeps the count truly centered
+            regardless of the back/overflow cluster widths. */}
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+          <Link
+            href="/cardgroups"
+            className="shrink-0 justify-self-start rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ChevronLeft aria-hidden="true" className="h-5 w-5" />
+            <span className="sr-only">{t("backLink")}</span>
+          </Link>
+          <p className="justify-self-center text-sm text-muted-foreground">
+            {t("cardsCount", { count: totalCount })}
+          </p>
+          <div className="justify-self-end">{actions}</div>
+        </div>
+
+        {/* Row 2 — editable title: centered name + pencil that opens the rename
+            sheet (the only editable attribute of a cardgroup). */}
+        <div className="mt-1 flex items-center justify-center gap-1.5">
+          <h1 className="min-w-0 truncate text-2xl font-semibold leading-tight">
+            {cardgroup.name}
+          </h1>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="shrink-0 text-muted-foreground hover:text-foreground"
+            aria-label={t("rename")}
+            onClick={() => setRenameOpen(true)}
+          >
+            <Pencil className="h-5 w-5" />
+          </Button>
+        </div>
+      </header>
 
       <FormSheet
         open={renameOpen}

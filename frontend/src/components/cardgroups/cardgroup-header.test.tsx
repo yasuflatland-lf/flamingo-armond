@@ -58,7 +58,7 @@ describe("<CardgroupHeader>", () => {
     expect(screen.getByRole("heading", { level: 1, name: /spanish vocab/i })).toBeInTheDocument();
   });
 
-  it("renders the totalCount as muted metadata text below the title", () => {
+  it("renders the totalCount as muted metadata text in the app-bar row", () => {
     renderHeader([], 42);
     expect(screen.getByText("42 cards")).toBeInTheDocument();
   });
@@ -68,27 +68,28 @@ describe("<CardgroupHeader>", () => {
     expect(screen.getByRole("button", { name: /cardgroup options/i })).toBeInTheDocument();
   });
 
-  it("kebab menu opens Rename and Delete cardgroup items", async () => {
-    const user = userEvent.setup();
+  it("renders a title-row pencil button labeled rename", () => {
     renderHeader();
-
-    await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("menuitem", { name: /rename/i })).toBeInTheDocument();
-      expect(screen.getByRole("menuitem", { name: /delete cardgroup/i })).toBeInTheDocument();
-    });
+    expect(screen.getByRole("button", { name: /rename/i })).toBeInTheDocument();
   });
 
-  it("clicking Rename opens the Rename cardgroup FormSheet", async () => {
+  it("kebab menu is lifecycle-only: Delete present, Rename absent", async () => {
     const user = userEvent.setup();
     renderHeader();
 
     await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
+
     await waitFor(() => {
-      expect(screen.getByRole("menuitem", { name: /rename/i })).toBeInTheDocument();
+      expect(screen.getByRole("menuitem", { name: /delete cardgroup/i })).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("menuitem", { name: /rename/i }));
+    expect(screen.queryByRole("menuitem", { name: /rename/i })).toBeNull();
+  });
+
+  it("clicking the title pencil opens the Rename cardgroup FormSheet", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    await user.click(screen.getByRole("button", { name: /rename/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: /rename cardgroup/i })).toBeInTheDocument();
@@ -117,11 +118,7 @@ describe("<CardgroupHeader>", () => {
       ),
     ]);
 
-    await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
-    await waitFor(() => {
-      expect(screen.getByRole("menuitem", { name: /rename/i })).toBeInTheDocument();
-    });
-    await user.click(screen.getByRole("menuitem", { name: /rename/i }));
+    await user.click(screen.getByRole("button", { name: /rename/i }));
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
@@ -261,13 +258,13 @@ describe("<CardgroupHeader>", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("overflow menu holds batch import alongside rename and delete", async () => {
+  it("overflow menu holds batch import and delete, but not rename", async () => {
     const user = userEvent.setup();
     renderHeader([], 12);
     await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
     expect(screen.getByRole("menuitem", { name: /batch import/i })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /rename/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /delete cardgroup/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /rename/i })).toBeNull();
   });
 
   it("overflow menu 'Batch import' item calls onBatchImport", async () => {
