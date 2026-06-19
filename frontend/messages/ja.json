@@ -95,7 +95,7 @@
   },
   "Cardgroups": {
     "updatedAt": "{date}に更新",
-    "myCardgroups": "マイカードグループ",
+    "myCardgroups": "カードグループ",
     "newCardgroup": "新規カードグループ",
     "noCardgroupsYet": "カードグループがありません",
     "noMatch": "「{query}」に一致するカードグループはありません",
