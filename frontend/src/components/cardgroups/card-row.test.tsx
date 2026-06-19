@@ -79,6 +79,41 @@ describe("<CardRow>", () => {
     expect(cls).toContain("motion-reduce:pointer-events-auto");
   });
 
+  it("truncates the front and back text to a single line", () => {
+    // Long card text must collapse to one line per field; without truncate the
+    // back description wraps to many lines and inflates the row height.
+    renderCardRow();
+
+    expect(screen.getByText(CARD.front).className).toContain("truncate");
+    expect(screen.getByText(CARD.back).className).toContain("truncate");
+  });
+
+  it("stretches the edit target across the whole row on mobile, but not on desktop", () => {
+    // The hidden Delete button leaves a dead gap on the right on mobile; the
+    // after:inset-0 overlay makes a tap anywhere on the row open the editor.
+    // sm:after:content-none removes the overlay so desktop keeps its current
+    // text-column-only edit target.
+    renderCardRow();
+
+    const cls = screen.getByTestId(`card-edit-target-${CARD.id}`).className;
+    expect(cls).toContain("after:absolute");
+    expect(cls).toContain("after:inset-0");
+    expect(cls).toContain("after:content-['']");
+    expect(cls).toContain("sm:after:content-none");
+  });
+
+  it("keeps the checkbox and Delete controls above the mobile overlay (z-10)", () => {
+    // The stretched edit overlay would otherwise swallow taps on these controls;
+    // relative z-10 lifts them above the pseudo so they stay independently clickable.
+    renderCardRow();
+
+    const checkboxWrapper = screen.getByTestId(`card-select-${CARD.id}`).parentElement;
+    expect(checkboxWrapper?.className).toContain("z-10");
+
+    const deleteWrapper = screen.getByTestId(`card-delete-${CARD.id}`).parentElement;
+    expect(deleteWrapper?.className).toContain("z-10");
+  });
+
   it("wraps the row content in SwipeableRow", () => {
     renderCardRow();
 

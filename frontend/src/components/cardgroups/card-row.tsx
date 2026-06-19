@@ -33,12 +33,12 @@ export function CardRow({
       disabled={disabled}
       ariaLabel={t("deleteCardAriaLabel")}
     >
-      <div className="group flex items-center justify-between gap-4 px-4 py-3 hover:bg-accent active:bg-accent transition-colors">
+      <div className="group relative flex items-center justify-between gap-4 px-4 py-3 hover:bg-accent active:bg-accent transition-colors">
         {/* biome-ignore lint/a11y/noStaticElementInteractions: span is a click/keydown stopper, not an interactive element; the inner <input> is the actual control. */}
         <span
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
-          className="shrink-0"
+          className="relative z-10 shrink-0"
         >
           <input
             type="checkbox"
@@ -49,6 +49,14 @@ export function CardRow({
             data-testid={`card-select-${card.id}`}
           />
         </span>
+        {/*
+         * On mobile the Delete button is hidden (pointer-events-none), leaving a dead
+         * non-interactive gap on the right. The after:inset-0 pseudo stretches this edit
+         * target across the whole row so any tap (including that gap) opens the editor;
+         * the checkbox and Delete siblings carry relative z-10 to stay above the overlay.
+         * sm:after:content-none removes the overlay at >=sm so desktop keeps its current
+         * behaviour (only the text column edits, Delete reveals on hover).
+         */}
         {/* biome-ignore lint/a11y/useSemanticElements: a native <button> here would nest the action <button> for delete (invalid HTML); role="button" preserves screen-reader semantics without the markup conflict. */}
         <div
           role="button"
@@ -60,16 +68,16 @@ export function CardRow({
               onEdit();
             }
           }}
-          className="min-w-0 flex-1 cursor-pointer space-y-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="min-w-0 flex-1 cursor-pointer space-y-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring after:absolute after:inset-0 after:content-[''] sm:after:content-none"
           aria-label={t("editCardAriaLabel", { front: card.front })}
           data-testid={`card-edit-target-${card.id}`}
         >
-          <p className="text-sm font-medium">{card.front}</p>
-          <p className="text-sm text-muted-foreground">{card.back}</p>
+          <p className="truncate text-sm font-medium">{card.front}</p>
+          <p className="truncate text-sm text-muted-foreground">{card.back}</p>
         </div>
         {/* biome-ignore lint/a11y/noStaticElementInteractions: div is a click/keydown stopper, not an interactive element; the inner Delete <button> is the actual control. */}
         <div
-          className="flex shrink-0 gap-2"
+          className="relative z-10 flex shrink-0 gap-2"
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
         >
