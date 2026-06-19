@@ -48,8 +48,7 @@
     "message": "予期しないエラーが発生しました。もう一度お試しください。"
   },
   "Settings": {
-    "heading": "設定",
-    "description": "環境設定を管理します。"
+    "heading": "設定"
   },
   "Search": {
     "back": "検索を閉じる",
@@ -77,7 +76,6 @@
   },
   "Catalog": {
     "title": "カタログ",
-    "description": "公開されたカードグループを閲覧し、自分のカードグループにインポートできます。",
     "searchPlaceholder": "カードグループを検索...",
     "searchAriaLabel": "カタログのカードグループを検索",
     "import": "インポート",
@@ -98,7 +96,6 @@
   "Cardgroups": {
     "updatedAt": "{date}に更新",
     "myCardgroups": "マイカードグループ",
-    "browseManage": "作成したカードグループを閲覧・管理します。",
     "newCardgroup": "新規カードグループ",
     "noCardgroupsYet": "カードグループがありません",
     "noMatch": "「{query}」に一致するカードグループはありません",
@@ -285,7 +282,6 @@
   },
   "AdminMasters": {
     "title": "マスター",
-    "description": "公開カタログに表示するマスターデッキを管理します。",
     "searchPlaceholder": "マスターを検索...",
     "searchLabel": "マスターを検索",
     "newMaster": "新規マスター",
@@ -376,7 +372,6 @@
     "systemRoleBanner": "これはシステムロールです。名前は変更できません。",
     "newRole": "新しいロール",
     "noRolesYet": "ロールがありません",
-    "rolesDescription": "ユーザーに割り当て可能なロールを管理します。",
     "editRoleTitle": "ロールを編集",
     "createRole": "作成",
     "deleteAuthFailed": "セッションの有効期限が切れました。再度ログインしてください。",

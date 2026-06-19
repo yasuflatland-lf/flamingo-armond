@@ -10,7 +10,6 @@ export function CatalogSkeleton() {
   return (
     <ListingPageShell
       title={<Skeleton className="h-8 w-40" />}
-      description={<Skeleton className="mt-2 h-4 w-80" />}
       toolbar={<Skeleton className="h-10 w-full max-w-sm" />}
     >
       <ul

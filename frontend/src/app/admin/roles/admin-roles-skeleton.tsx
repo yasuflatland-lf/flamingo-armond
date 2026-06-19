@@ -13,7 +13,6 @@ export function AdminRolesSkeleton() {
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <Skeleton className="h-8 w-24" />
-          <Skeleton className="mt-2 h-4 w-64" />
         </div>
         <div className="flex items-center gap-2">
           <Skeleton className="hidden h-10 w-28 md:inline-flex" />

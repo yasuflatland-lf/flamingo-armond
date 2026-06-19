@@ -114,7 +114,7 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("AdminRolesClient", () => {
-  it("wires the ListingPageShell with title, description, and New role CTA", () => {
+  it("wires the ListingPageShell with title and New role CTA", () => {
     renderWithIntl(
       <MockedProvider mocks={[]}>
         <UndoDeleteProvider>
@@ -125,7 +125,6 @@ describe("AdminRolesClient", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: "Roles" })).toBeInTheDocument();
     expect(screen.getByRole("main")).toBeInTheDocument();
-    expect(screen.getByText("Manage roles available to assign to users.")).toBeInTheDocument();
   });
 
   it("New role button opens ?new=true", async () => {

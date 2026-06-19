@@ -141,7 +141,6 @@ export function ProfilePageClient({ email, initial, displayMode }: Props) {
         <section className="space-y-4">
           <div>
             <h2 className="text-xl font-semibold">{tSettings("heading")}</h2>
-            <p className="text-sm text-muted-foreground">{tSettings("description")}</p>
           </div>
           <LanguageSwitcher />
           <DisplayModeSection initialMode={displayMode} />
