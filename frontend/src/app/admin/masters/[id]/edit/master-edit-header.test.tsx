@@ -58,20 +58,16 @@ const DECK: AdminMasterDeck = {
 };
 
 function renderHeader(
-  overrides: Partial<AdminMasterDeck> & { cardCount?: number; onBatchImport?: () => void } = {},
+  overrides: Partial<AdminMasterDeck> & { cardCount?: number } = {},
   mocks: ReadonlyArray<unknown> = [],
 ) {
-  const { cardCount, onBatchImport, ...deckOverrides } = overrides;
+  const { cardCount, ...deckOverrides } = overrides;
   const deck = { ...DECK, ...deckOverrides };
   const resolvedCardCount = cardCount ?? deck.cardCount;
   return render(
     <MockedProvider mocks={mocks as never}>
       <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
-        <MasterEditHeader
-          master={deck}
-          cardCount={resolvedCardCount}
-          onBatchImport={onBatchImport}
-        />
+        <MasterEditHeader master={deck} cardCount={resolvedCardCount} />
       </NextIntlClientProvider>
     </MockedProvider>,
   );
@@ -286,7 +282,7 @@ describe("MasterEditHeader", () => {
 
   it("mobile: overflow menu holds only Settings and Delete (no import, no publish)", async () => {
     const user = userEvent.setup();
-    renderHeader({ status: "PUBLISHED", cardCount: 5, onBatchImport: vi.fn() });
+    renderHeader({ status: "PUBLISHED", cardCount: 5 });
     await user.click(screen.getByTestId("master-edit-overflow"));
     expect(screen.getByTestId("master-edit-deck-settings-mobile")).toBeInTheDocument();
     expect(screen.getByTestId("master-edit-delete-mobile")).toBeInTheDocument();

@@ -34,17 +34,9 @@ import type { AdminMasterDeck } from "./queries";
 type Props = {
   master: AdminMasterDeck;
   cardCount: number;
-  /**
-   * Opens the batch-import sheet owned by MasterCardsClient. Wired only on the
-   * mobile overflow menu — desktop reaches batch import through the cards
-   * toolbar's split button. Omitted (e.g. in isolated tests) → no import item.
-   * Kept in props for backward compatibility; removed from the overflow menu in
-   * this refactor (batch import moves to the cards toolbar in the next task).
-   */
-  onBatchImport?: () => void;
 };
 
-export function MasterEditHeader({ master, cardCount, onBatchImport: _onBatchImport }: Props) {
+export function MasterEditHeader({ master, cardCount }: Props) {
   const t = useTranslations("AdminMasters");
   const tCommon = useTranslations("Common");
   const router = useRouter();
