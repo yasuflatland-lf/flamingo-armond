@@ -19,11 +19,9 @@ type MasterCardsSectionProps = {
   initialTotalCount: number;
   /**
    * Renders the deck-level page header (title / status badge / overflow menu)
-   * with the live `totalCount` and the batch-import opener. "Add card" is
-   * reached separately: the global header "+" on mobile, the desktop toolbar
-   * split button rendered below. Omitted → no page header.
+   * with the live `totalCount`. Omitted → no page header.
    */
-  renderPageHeader?: (args: { totalCount: number; onBatchImport: () => void }) => ReactNode;
+  renderPageHeader?: (args: { totalCount: number }) => ReactNode;
 };
 
 export function MasterCardsSection({
@@ -50,10 +48,21 @@ export function MasterCardsSection({
     onBatchImport: () => void;
   }) => (
     <div>
-      {renderPageHeader?.({ totalCount, onBatchImport })}
-      {/* Desktop-only (md+) action cluster: Add card + a dropdown that folds in
-          Batch import. Below md, Add card is the global header "+" and Batch
-          import lives in the deck overflow menu, so nothing renders here. */}
+      {renderPageHeader?.({ totalCount })}
+      {/* Mobile (<md): import lives here; Add card is the global header "+". */}
+      <div className="mb-3 flex justify-end md:hidden">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onBatchImport}
+          data-testid="master-import-mobile"
+        >
+          <Import aria-hidden="true" className="h-4 w-4" />
+          {tCardgroups("batchImport")}
+        </Button>
+      </div>
+      {/* Desktop (md+): Add card + a dropdown that folds in Batch import. */}
       <div className="mb-3 hidden justify-end md:flex">
         <div className="inline-flex">
           <Button

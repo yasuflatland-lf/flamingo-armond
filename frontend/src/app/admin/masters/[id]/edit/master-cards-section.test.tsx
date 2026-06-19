@@ -39,6 +39,46 @@ const node = {
   updatedAt: "2026-01-01T00:00:00Z",
 };
 
+it("exposes a batch-import control in the toolbar (mobile-visible)", async () => {
+  renderWithIntl(
+    <MockedProvider
+      mocks={[
+        {
+          request: {
+            query: AdminMasterCardsConnectionDocument,
+            variables: masterCardsDefaultVars(MASTER_ID),
+          },
+          result: {
+            data: {
+              adminMasterCardsConnection: {
+                __typename: "MasterCardConnection",
+                edges: [{ __typename: "MasterCardEdge", cursor: "c-1", node }],
+                pageInfo,
+                totalCount: 3,
+              },
+            },
+          },
+        },
+      ]}
+    >
+      <UndoDeleteProvider>
+        <MasterCardsSection
+          masterId={MASTER_ID}
+          deckName="Deck One"
+          initialEdges={[{ __typename: "MasterCardEdge", cursor: "c-1", node }]}
+          initialPageInfo={pageInfo}
+          initialTotalCount={3}
+          renderPageHeader={({ totalCount }) => <span data-testid="hdr-count">{totalCount}</span>}
+        />
+      </UndoDeleteProvider>
+    </MockedProvider>,
+  );
+  const importBtn = await screen.findByTestId("master-import-mobile");
+  expect(importBtn).toBeInTheDocument();
+  // The control is NOT inside a `hidden md:*` wrapper — assert it is visible.
+  expect(importBtn.closest(".hidden")).toBeNull();
+});
+
 it("renders MasterCardsClient with the seed and exposes the live count to renderPageHeader", async () => {
   renderWithIntl(
     <MockedProvider

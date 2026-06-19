@@ -245,6 +245,25 @@ describe("<CardgroupHeader>", () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
+  it("renders an inline back link to /cardgroups and count meta, no status", () => {
+    renderHeader([], 12);
+    expect(screen.getByRole("link", { name: /back to cardgroups/i })).toHaveAttribute(
+      "href",
+      "/cardgroups",
+    );
+    expect(screen.getByText("12 cards")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("overflow menu holds rename and delete only (no import)", async () => {
+    const user = userEvent.setup();
+    renderHeader([], 12);
+    await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
+    expect(screen.getByText(/rename/i)).toBeInTheDocument();
+    expect(screen.getByText(/delete cardgroup/i)).toBeInTheDocument();
+    expect(screen.queryByText(/import/i)).toBeNull();
+  });
+
   it("delete network rejection shows error banner and dialog stays open", async () => {
     const user = userEvent.setup();
     const mocks: MockedResponse[] = [

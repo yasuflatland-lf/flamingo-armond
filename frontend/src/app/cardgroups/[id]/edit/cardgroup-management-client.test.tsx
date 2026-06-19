@@ -61,21 +61,6 @@ describe("<CardgroupManagementClient>", () => {
     expect(screen.getByRole("heading", { level: 1, name: /spanish vocab/i })).toBeInTheDocument();
   });
 
-  it("renders a Back link pointing to /cardgroups", () => {
-    renderWithIntl(
-      <CardgroupManagementClient
-        cardgroup={CARDGROUP}
-        initialEdges={[]}
-        initialPageInfo={PAGE_INFO}
-        initialTotalCount={0}
-      />,
-    );
-    expect(screen.getByRole("link", { name: /cardgroups/i })).toHaveAttribute(
-      "href",
-      "/cardgroups",
-    );
-  });
-
   it("passes totalCount from renderPageHeader to CardgroupHeader via the render prop", () => {
     renderWithIntl(
       <CardgroupManagementClient
