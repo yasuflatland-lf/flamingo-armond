@@ -43,7 +43,7 @@ const PAGE_INFO = {
 function renderSection(
   cardgroupId = "cg-1",
   initialTotalCount = 7,
-  renderPageHeader?: (args: { totalCount: number }) => ReactNode,
+  renderPageHeader?: (args: { totalCount: number; onBatchImport: () => void }) => ReactNode,
 ) {
   renderWithIntl(
     <CardgroupCardsSection
@@ -134,10 +134,17 @@ describe("<CardgroupCardsSection>", () => {
     expect(stub).toContainElement(screen.getByRole("button", { name: /add card \+/i }));
   });
 
-  it("exposes a mobile-visible batch-import control in the toolbar", async () => {
-    renderSection("cg-1", 4);
-    const importBtn = await screen.findByTestId("cardgroup-import-mobile");
-    expect(importBtn).toBeInTheDocument();
-    expect(importBtn.closest(".hidden")).toBeNull();
+  it("forwards onBatchImport into the renderPageHeader slot", async () => {
+    // The mobile batch-import control now lives in the page header's overflow
+    // menu, so the section must thread CardsClient's onBatchImport up to the
+    // renderPageHeader render prop, not just into its own toolbar.
+    const user = userEvent.setup();
+    renderSection("cg-1", 7, ({ onBatchImport: headerImport }) => (
+      <button type="button" data-testid="page-header-import" onClick={headerImport}>
+        header import
+      </button>
+    ));
+    await user.click(screen.getByTestId("page-header-import"));
+    expect(onBatchImport).toHaveBeenCalledTimes(1);
   });
 });

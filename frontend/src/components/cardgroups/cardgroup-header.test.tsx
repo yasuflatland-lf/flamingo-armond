@@ -11,6 +11,7 @@ import { CardgroupHeader } from "./cardgroup-header";
 
 const mockPush = vi.fn();
 const mockRefresh = vi.fn();
+const onBatchImport = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
@@ -36,7 +37,11 @@ function makeUpdateMock(
 function renderHeader(mocks: MockedResponse[] = [], totalCount = 5) {
   renderWithIntl(
     <MockedProvider mocks={mocks}>
-      <CardgroupHeader cardgroup={CARDGROUP} totalCount={totalCount} />
+      <CardgroupHeader
+        cardgroup={CARDGROUP}
+        totalCount={totalCount}
+        onBatchImport={onBatchImport}
+      />
     </MockedProvider>,
   );
 }
@@ -45,6 +50,7 @@ describe("<CardgroupHeader>", () => {
   beforeEach(() => {
     mockPush.mockClear();
     mockRefresh.mockClear();
+    onBatchImport.mockClear();
   });
 
   it("renders the cardgroup name as h1", () => {
@@ -255,13 +261,21 @@ describe("<CardgroupHeader>", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("overflow menu holds rename and delete only (no import)", async () => {
+  it("overflow menu holds batch import alongside rename and delete", async () => {
     const user = userEvent.setup();
     renderHeader([], 12);
     await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
-    expect(screen.getByText(/rename/i)).toBeInTheDocument();
-    expect(screen.getByText(/delete cardgroup/i)).toBeInTheDocument();
-    expect(screen.queryByText(/import/i)).toBeNull();
+    expect(screen.getByRole("menuitem", { name: /batch import/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /rename/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /delete cardgroup/i })).toBeInTheDocument();
+  });
+
+  it("overflow menu 'Batch import' item calls onBatchImport", async () => {
+    const user = userEvent.setup();
+    renderHeader([], 12);
+    await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
+    await user.click(screen.getByRole("menuitem", { name: /batch import/i }));
+    expect(onBatchImport).toHaveBeenCalledTimes(1);
   });
 
   it("delete network rejection shows error banner and dialog stays open", async () => {

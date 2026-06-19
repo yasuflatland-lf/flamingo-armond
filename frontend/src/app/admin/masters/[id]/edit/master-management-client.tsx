@@ -21,17 +21,17 @@ export function MasterManagementClient({
   return (
     <main className="p-4 md:p-8">
       {/* The header is rendered inside the cards section via the render-prop so
-          its card count tracks the live Apollo-cache totalCount; batch import
-          now lives in the cards toolbar (mobile-visible), not the deck menu —
-          no count state is lifted into this component. */}
+          its card count tracks the live Apollo-cache totalCount. The section
+          forwards onBatchImport so the header's mobile overflow menu can host
+          batch import; no count state is lifted into this component. */}
       <MasterCardsSection
         masterId={master.id}
         deckName={master.name}
         initialEdges={initialEdges}
         initialPageInfo={initialPageInfo}
         initialTotalCount={initialTotalCount}
-        renderPageHeader={({ totalCount }) => (
-          <MasterEditHeader master={master} cardCount={totalCount} />
+        renderPageHeader={({ totalCount, onBatchImport }) => (
+          <MasterEditHeader master={master} cardCount={totalCount} onBatchImport={onBatchImport} />
         )}
       />
     </main>
