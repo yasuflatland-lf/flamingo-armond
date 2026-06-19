@@ -183,10 +183,11 @@ describe("MasterManagementClient — broad page integration", () => {
     // The seeded card's front text appears in the card list.
     expect(screen.getByText("apple")).toBeInTheDocument();
 
-    // The header status badge region renders the AdminMasters.cardCount message.
-    // With count=1 the ICU plural resolves to "1 card".
+    // The header renders the card count in both the mobile meta row (md:hidden)
+    // and the desktop meta row (hidden md:flex). In jsdom (no CSS) both render,
+    // so getAllByText returns two matches. With count=1 the ICU plural = "1 card".
     await waitFor(() => {
-      expect(screen.getByText("1 card")).toBeInTheDocument();
+      expect(screen.getAllByText("1 card")).toHaveLength(2);
     });
   });
 
@@ -230,9 +231,9 @@ describe("MasterManagementClient — broad page integration", () => {
 
     renderClient([connMock, createMock]);
 
-    // Confirm initial count before mutation.
+    // Confirm initial count before mutation. Both responsive rows render in jsdom.
     await waitFor(() => {
-      expect(screen.getByText("1 card")).toBeInTheDocument();
+      expect(screen.getAllByText("1 card")).toHaveLength(2);
     });
 
     // Open the add-card sheet via the toolbar "Add card" button.
@@ -252,9 +253,9 @@ describe("MasterManagementClient — broad page integration", () => {
     // After a successful create the cache is updated (+1 to totalCount). The new
     // totalCount flows from MasterCardsClient into the renderPageHeader render-prop,
     // which re-renders MasterEditHeader with count=2. The ICU plural for count=2
-    // resolves to "2 cards".
+    // resolves to "2 cards". Both responsive rows render in jsdom (no CSS).
     await waitFor(() => {
-      expect(screen.getByText("2 cards")).toBeInTheDocument();
+      expect(screen.getAllByText("2 cards")).toHaveLength(2);
     });
   });
 });
