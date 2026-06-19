@@ -292,7 +292,7 @@ describe("MasterEditHeader", () => {
 
   it("renders the inline back link to the masters list", () => {
     renderHeader({ status: "DRAFT", cardCount: 3 });
-    expect(screen.getByRole("link", { name: /一覧|list|Masters|戻る/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /back to masters/i })).toHaveAttribute(
       "href",
       "/admin/masters",
     );
