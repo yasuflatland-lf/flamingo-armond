@@ -3,7 +3,7 @@
 import { Pencil } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { Badge } from "@/components/ui/badge";
+import { MasterStatusBadge } from "./master-status-badge";
 
 type MasterStatus = "DRAFT" | "PUBLISHED";
 
@@ -59,14 +59,11 @@ export function AdminMasterRow({ master }: Props) {
         </p>
 
         <div className="order-2 flex min-w-0 flex-1 items-center gap-2 sm:contents">
-          <Badge
-            variant={published ? "default" : "secondary"}
-            role="status"
+          <MasterStatusBadge
+            published={published}
             data-testid="master-row-status-badge"
             className="shrink-0 sm:order-1"
-          >
-            {published ? t("statusPublished") : t("statusDraft")}
-          </Badge>
+          />
           <span aria-hidden="true" className="text-muted-foreground sm:hidden">
             ·
           </span>

@@ -30,16 +30,22 @@ function renderRow(master: AdminMasterListItem) {
 }
 
 describe("AdminMasterRow", () => {
-  it("shows the name, card count, and the Draft status badge", () => {
+  it("shows the name, card count, and the Draft status badge with a muted dot", () => {
     renderRow(BASE);
     expect(screen.getByText("Spanish A1")).toBeInTheDocument();
     expect(screen.getByText("42 cards")).toBeInTheDocument();
-    expect(screen.getByTestId("master-row-status-badge")).toHaveTextContent("Draft");
+    const badge = screen.getByTestId("master-row-status-badge");
+    expect(badge).toHaveTextContent("Draft");
+    // Draft decks carry a muted status dot, not the published green.
+    expect(badge.querySelector('[aria-hidden="true"]')?.className).toContain("bg-muted-foreground");
   });
 
-  it("shows the Published status badge for a PUBLISHED master", () => {
+  it("shows the Published status badge with the green status dot for a PUBLISHED master", () => {
     renderRow({ ...BASE, status: "PUBLISHED" });
-    expect(screen.getByTestId("master-row-status-badge")).toHaveTextContent("Published");
+    const badge = screen.getByTestId("master-row-status-badge");
+    expect(badge).toHaveTextContent("Published");
+    // Published decks carry the green (--success) status dot.
+    expect(badge.querySelector('[aria-hidden="true"]')?.className).toContain("bg-success");
   });
 
   it("renders no publish toggle — the publish action lives in the Edit panel", () => {

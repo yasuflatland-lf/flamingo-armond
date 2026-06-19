@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { AdminMasterForm, type MasterFormValues } from "@/app/admin/masters/admin-master-form";
+import { MasterStatusBadge } from "@/app/admin/masters/master-status-badge";
 import { type AuthKind, useMasterMutations } from "@/app/admin/masters/use-master-mutations";
 import { DetailPageHeader } from "@/components/nav/detail-page-header";
 import {
@@ -18,7 +19,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -203,13 +203,7 @@ export function MasterEditHeader({ master, cardCount, onBatchImport }: Props) {
       </div>
       {/* Desktop: display badge + muted count. */}
       <div className="hidden items-center gap-2 md:flex">
-        <Badge
-          variant={published ? "default" : "secondary"}
-          role="status"
-          data-testid="master-edit-status-badge"
-        >
-          {statusLabel}
-        </Badge>
+        <MasterStatusBadge published={published} data-testid="master-edit-status-badge" />
         <span className="text-sm text-muted-foreground">
           {t("cardCount", { count: cardCount })}
         </span>
