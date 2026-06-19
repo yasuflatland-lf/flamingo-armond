@@ -112,30 +112,37 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
 
   return (
     <>
-      <header className="mb-6">
-        {/* Row 1 — app-bar: inline back (left), card count centered, overflow
-            menu (right). The 1fr/auto/1fr grid keeps the count truly centered
-            regardless of the back/overflow cluster widths. */}
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-          <Link
-            href="/cardgroups"
-            className="shrink-0 justify-self-start rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <ChevronLeft aria-hidden="true" className="h-5 w-5" />
-            <span className="sr-only">{t("backLink")}</span>
-          </Link>
-          <p className="justify-self-center text-sm text-muted-foreground">
-            {t("cardsCount", { count: totalCount })}
-          </p>
-          <div className="justify-self-end">{actions}</div>
-        </div>
+      {/*
+        Single-DOM responsive header — back, count, title, and the overflow
+        menu are each rendered once and repositioned via CSS grid template
+        areas, so the layout reflows without duplicating any element (the test
+        contract expects exactly one back link, one count, one h1, and one
+        overflow trigger).
 
-        {/* Row 2 — title: centered name. Rename moved into the overflow menu. */}
-        <div className="mt-1 flex items-center justify-center">
-          <h1 className="min-w-0 truncate text-center text-2xl font-semibold leading-tight">
-            {cardgroup.name}
-          </h1>
-        </div>
+        Mobile (`< md`): app-bar row — inline back (left), card count centered,
+        overflow menu (right) — with the title centered on its own row below.
+        The 1fr/auto/1fr columns keep the count truly centered regardless of
+        the back/overflow cluster widths.
+
+        Desktop (`>= md`): title left with the card count as a muted subtitle
+        beneath it; back stays on the leading edge and the overflow trigger is
+        pushed to the trailing edge so it lands beside the page-level action
+        buttons that `CardgroupCardsSection` lays out on the same row. */}
+      <header className="mb-6 grid grid-cols-[1fr_auto_1fr] items-center gap-x-2 gap-y-1 [grid-template-areas:'back_count_overflow'_'title_title_title'] md:grid-cols-[auto_minmax(0,1fr)_auto] md:gap-y-0 md:[grid-template-areas:'back_title_overflow'_'back_count_overflow']">
+        <Link
+          href="/cardgroups"
+          className="shrink-0 justify-self-start [grid-area:back] rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ChevronLeft aria-hidden="true" className="h-5 w-5" />
+          <span className="sr-only">{t("backLink")}</span>
+        </Link>
+        <h1 className="min-w-0 truncate [grid-area:title] text-center text-2xl font-semibold leading-tight md:text-left">
+          {cardgroup.name}
+        </h1>
+        <p className="justify-self-center [grid-area:count] text-sm text-muted-foreground md:justify-self-start">
+          {t("cardsCount", { count: totalCount })}
+        </p>
+        <div className="justify-self-end [grid-area:overflow]">{actions}</div>
       </header>
 
       <FormSheet
