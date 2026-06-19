@@ -86,10 +86,13 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks());
 
 describe("MasterEditHeader", () => {
-  it("renders the deck name, draft badge, and card count", () => {
+  it("renders the deck name, draft badge with a muted status dot, and card count", () => {
     renderHeader();
     expect(screen.getByRole("heading", { level: 1, name: "Spanish A1" })).toBeInTheDocument();
-    expect(screen.getByTestId("master-edit-status-badge")).toHaveTextContent("Draft");
+    const badge = screen.getByTestId("master-edit-status-badge");
+    expect(badge).toHaveTextContent("Draft");
+    // The desktop status badge carries a status dot (muted for a draft deck).
+    expect(badge.querySelector('[aria-hidden="true"]')?.className).toContain("bg-muted-foreground");
     // Card count renders in both the mobile and desktop meta rows.
     expect(screen.getAllByText("5 cards").length).toBeGreaterThan(0);
   });
