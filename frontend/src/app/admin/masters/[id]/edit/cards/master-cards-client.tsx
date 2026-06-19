@@ -8,12 +8,13 @@ import { BulkActionBar } from "@/components/cardgroups/bulk-action-bar";
 import { CardForm } from "@/components/cardgroups/card-form";
 import { CardRow } from "@/components/cardgroups/card-row";
 import type { SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
+import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import type { AdminMasterCardsConnectionQuery } from "@/generated/graphql";
 import { useBulkSelection } from "@/hooks/use-bulk-selection";
-import { useDebouncedSearch } from "@/hooks/use-debounced-search";
+import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { MasterBatchImportForm } from "./master-batch-import-form";
 import { useMasterCardMutations } from "./use-master-card-mutations";
@@ -41,7 +42,8 @@ const FetchMoreError = ({ message, onRetry }: { message: string; onRetry: () => 
 const SearchInput = ({ value, onChange }: { value: string; onChange: (next: string) => void }) => {
   const t = useTranslations("Cards");
   return (
-    <div className="mb-3">
+    // Desktop only: on mobile the search moves into the header-takeover bar.
+    <div className="mb-3 hidden md:block">
       <div className="relative">
         <Search
           aria-hidden="true"
@@ -197,7 +199,7 @@ export function MasterCardsClient({
   // Per-card SwipeableRow handles; lets a row close any half-open sibling.
   const rowRefs = useRef<Map<string, RefObject<SwipeableRowHandle | null>>>(new Map());
   const selection = useBulkSelection<string>();
-  const search = useDebouncedSearch();
+  const search = useHeaderTakeoverSearch();
 
   const {
     edges,
@@ -329,141 +331,152 @@ export function MasterCardsClient({
   }
 
   return (
-    <div className="space-y-3">
-      {queryBannerError && (
-        <ErrorBanner data-testid="cards-query-error">{queryBannerError}</ErrorBanner>
-      )}
-      {deleteRowBannerError && (
-        <ErrorBanner data-testid="cards-delete-error">{deleteRowBannerError}</ErrorBanner>
-      )}
-      {bulkDeleteBannerError && (
-        <ErrorBanner data-testid="cards-bulk-delete-error">{bulkDeleteBannerError}</ErrorBanner>
-      )}
+    <>
+      <SearchTakeoverBar
+        open={search.searchOpen}
+        value={search.input}
+        onChange={search.setInput}
+        onClear={search.clear}
+        onClose={search.closeSearch}
+        placeholder={t("searchPlaceholder")}
+        ariaLabel={t("searchAriaLabel")}
+      />
+      <div className="space-y-3">
+        {queryBannerError && (
+          <ErrorBanner data-testid="cards-query-error">{queryBannerError}</ErrorBanner>
+        )}
+        {deleteRowBannerError && (
+          <ErrorBanner data-testid="cards-delete-error">{deleteRowBannerError}</ErrorBanner>
+        )}
+        {bulkDeleteBannerError && (
+          <ErrorBanner data-testid="cards-bulk-delete-error">{bulkDeleteBannerError}</ErrorBanner>
+        )}
 
-      <section>
-        {/* Page header (deck title/badge/kebab + the desktop add/import toolbar)
+        <section>
+          {/* Page header (deck title/badge/kebab + the desktop add/import toolbar)
             is supplied by the parent via the render-prop, so it receives the
             live totalCount and the add/import openers. On mobile the openers are
             reached through the global "+" header and the deck overflow menu. */}
-        {typeof sectionHeader === "function"
-          ? sectionHeader({
-              totalCount,
-              onAddCard: openAddSheet,
-              onBatchImport: openBatchImport,
-            })
-          : sectionHeader}
+          {typeof sectionHeader === "function"
+            ? sectionHeader({
+                totalCount,
+                onAddCard: openAddSheet,
+                onBatchImport: openBatchImport,
+              })
+            : sectionHeader}
 
-        <SearchInput value={search.input} onChange={search.setInput} />
+          <SearchInput value={search.input} onChange={search.setInput} />
 
-        {selection.count > 0 && (
-          <BulkActionBar
-            count={selection.count}
-            busy={bulkDeleting}
-            onConfirm={handleBulkDelete}
-            onClear={selection.clearSelection}
-          />
-        )}
-
-        {edges.length === 0 ? (
-          <EmptyState search={search.query} onClear={search.clear} />
-        ) : (
-          <ul className="space-y-3">
-            {edges.map((edge) => {
-              const card = edge.node;
-              return (
-                <li key={card.id} className="rounded-md border border-border overflow-hidden">
-                  <CardRow
-                    card={card}
-                    rowRef={(() => {
-                      if (!rowRefs.current.has(card.id)) {
-                        rowRefs.current.set(card.id, { current: null });
-                      }
-                      // biome-ignore lint/style/noNonNullAssertion: we just set the entry above so it is always defined.
-                      return rowRefs.current.get(card.id)!;
-                    })()}
-                    selected={selection.isSelected(card.id)}
-                    disabled={selection.count > 0 || editingId === card.id}
-                    onSelectToggle={() => selection.toggleSelected(card.id)}
-                    onEdit={() => {
-                      closeOtherRows(card.id);
-                      setRowValidationError(null);
-                      setEditingId(card.id);
-                    }}
-                    onDelete={() => deleteRow(card.id, t("cardDeleted"))}
-                  />
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
-        <FormSheet
-          title={t("addCard")}
-          open={addOpen}
-          onOpenChange={(nextOpen) => {
-            setAddOpen(nextOpen);
-            if (!nextOpen) {
-              resetCreateCard();
-              setAddDirty(false);
-              setCreateValidationError(null);
-            }
-          }}
-          submitting={creating}
-          dirty={addDirty}
-          confirmOnDismiss
-        >
-          <AddCardSheetContent
-            submit={handleCreate}
-            submitting={creating}
-            error={createError}
-            validationError={createValidationError}
-            onDirty={() => setAddDirty(true)}
-          />
-        </FormSheet>
-
-        <FormSheet
-          title={deckName}
-          open={batchImportOpen}
-          onOpenChange={setBatchImportOpen}
-          size="lg"
-        >
-          <MasterBatchImportForm
-            masterId={masterId}
-            deckName={deckName}
-            onImported={closeBatchImport}
-            onCancel={closeBatchImport}
-          />
-        </FormSheet>
-
-        <FormSheet
-          title={t("editCard")}
-          open={editingCard !== undefined}
-          onOpenChange={(nextOpen) => {
-            if (!nextOpen) {
-              setRowValidationError(null);
-              setEditingId(null);
-            }
-          }}
-          submitting={updating}
-          confirmOnDismiss={false}
-        >
-          {editingCard ? (
-            <EditCardSheetContent
-              card={editingCard}
-              submit={(values) => handleUpdate(editingCard.id, values)}
-              submitting={updating}
-              error={updateError}
-              validationError={rowValidationError}
+          {selection.count > 0 && (
+            <BulkActionBar
+              count={selection.count}
+              busy={bulkDeleting}
+              onConfirm={handleBulkDelete}
+              onClear={selection.clearSelection}
             />
-          ) : null}
-        </FormSheet>
+          )}
 
-        <div ref={sentinelRef} aria-hidden="true" data-testid="cards-sentinel" />
-        {fetchMoreError && <FetchMoreError message={fetchMoreError} onRetry={retryFetchMore} />}
-        {!fetchMoreError && fetchingMore && pageInfo.hasNextPage && (
-          <p className="mt-3 text-center text-xs text-muted-foreground">{t("loadingMore")}</p>
-        )}
-      </section>
-    </div>
+          {edges.length === 0 ? (
+            <EmptyState search={search.query} onClear={search.clear} />
+          ) : (
+            <ul className="space-y-3">
+              {edges.map((edge) => {
+                const card = edge.node;
+                return (
+                  <li key={card.id} className="rounded-md border border-border overflow-hidden">
+                    <CardRow
+                      card={card}
+                      rowRef={(() => {
+                        if (!rowRefs.current.has(card.id)) {
+                          rowRefs.current.set(card.id, { current: null });
+                        }
+                        // biome-ignore lint/style/noNonNullAssertion: we just set the entry above so it is always defined.
+                        return rowRefs.current.get(card.id)!;
+                      })()}
+                      selected={selection.isSelected(card.id)}
+                      disabled={selection.count > 0 || editingId === card.id}
+                      onSelectToggle={() => selection.toggleSelected(card.id)}
+                      onEdit={() => {
+                        closeOtherRows(card.id);
+                        setRowValidationError(null);
+                        setEditingId(card.id);
+                      }}
+                      onDelete={() => deleteRow(card.id, t("cardDeleted"))}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          <FormSheet
+            title={t("addCard")}
+            open={addOpen}
+            onOpenChange={(nextOpen) => {
+              setAddOpen(nextOpen);
+              if (!nextOpen) {
+                resetCreateCard();
+                setAddDirty(false);
+                setCreateValidationError(null);
+              }
+            }}
+            submitting={creating}
+            dirty={addDirty}
+            confirmOnDismiss
+          >
+            <AddCardSheetContent
+              submit={handleCreate}
+              submitting={creating}
+              error={createError}
+              validationError={createValidationError}
+              onDirty={() => setAddDirty(true)}
+            />
+          </FormSheet>
+
+          <FormSheet
+            title={deckName}
+            open={batchImportOpen}
+            onOpenChange={setBatchImportOpen}
+            size="lg"
+          >
+            <MasterBatchImportForm
+              masterId={masterId}
+              deckName={deckName}
+              onImported={closeBatchImport}
+              onCancel={closeBatchImport}
+            />
+          </FormSheet>
+
+          <FormSheet
+            title={t("editCard")}
+            open={editingCard !== undefined}
+            onOpenChange={(nextOpen) => {
+              if (!nextOpen) {
+                setRowValidationError(null);
+                setEditingId(null);
+              }
+            }}
+            submitting={updating}
+            confirmOnDismiss={false}
+          >
+            {editingCard ? (
+              <EditCardSheetContent
+                card={editingCard}
+                submit={(values) => handleUpdate(editingCard.id, values)}
+                submitting={updating}
+                error={updateError}
+                validationError={rowValidationError}
+              />
+            ) : null}
+          </FormSheet>
+
+          <div ref={sentinelRef} aria-hidden="true" data-testid="cards-sentinel" />
+          {fetchMoreError && <FetchMoreError message={fetchMoreError} onRetry={retryFetchMore} />}
+          {!fetchMoreError && fetchingMore && pageInfo.hasNextPage && (
+            <p className="mt-3 text-center text-xs text-muted-foreground">{t("loadingMore")}</p>
+          )}
+        </section>
+      </div>
+    </>
   );
 }

@@ -60,6 +60,14 @@ test.describe("admin master card CRUD", () => {
     // Assert the new card row is now visible in the list.
     await expect(page.getByText(cardFront)).toBeVisible({ timeout: 10_000 });
 
+    // Wait for the add-card sheet to finish its close animation and unmount
+    // before opening the edit sheet. The add and edit sheets share the same
+    // [id$="-back-field"] / form-sheet-body submit shape, so while the add sheet
+    // lingers mid-exit the edit-step locators below would match two elements
+    // (strict-mode violation). Gating on the add field's removal makes the edit
+    // step deterministic.
+    await expect(page.locator("#add-card-back-field")).toHaveCount(0);
+
     // EDIT: click the card's edit-target div to open the edit sheet, change back text, save.
     const editedBack = "e2eback-edited";
     // Locate the card row by front text and click its edit-target.

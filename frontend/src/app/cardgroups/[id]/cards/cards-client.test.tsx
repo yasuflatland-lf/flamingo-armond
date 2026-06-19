@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1629,5 +1629,32 @@ describe("<CardsClient>", () => {
     expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
     // No spinner — the mutation has resolved, not pending.
     expect(screen.queryByText(/saving/i)).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mobile search takeover — flamingo:open-search
+// ---------------------------------------------------------------------------
+
+describe("<CardsClient> mobile search takeover", () => {
+  it("opens the takeover on flamingo:open-search and renders the input", async () => {
+    renderClient([]);
+    // Flush the SSR seed render.
+    await screen.findByText("Hello");
+
+    expect(screen.queryByTestId("search-takeover")).not.toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("flamingo:open-search"));
+    });
+
+    expect(screen.getByTestId("search-takeover")).toBeInTheDocument();
+    expect(screen.getByTestId("search-takeover-input")).toBeInTheDocument();
+  });
+
+  it("hides the desktop search input on mobile via hidden md:block", () => {
+    renderClient([]);
+    const wrapper = screen.getByTestId("cards-search-input").closest("div.mb-3");
+    expect(wrapper).toHaveClass("hidden", "md:block");
   });
 });
