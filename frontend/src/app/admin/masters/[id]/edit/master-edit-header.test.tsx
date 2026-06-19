@@ -58,14 +58,20 @@ const DECK: AdminMasterDeck = {
 };
 
 function renderHeader(
-  deck: AdminMasterDeck,
+  overrides: Partial<AdminMasterDeck> & { cardCount?: number; onBatchImport?: () => void } = {},
   mocks: ReadonlyArray<unknown> = [],
-  onBatchImport?: () => void,
 ) {
+  const { cardCount, onBatchImport, ...deckOverrides } = overrides;
+  const deck = { ...DECK, ...deckOverrides };
+  const resolvedCardCount = cardCount ?? deck.cardCount;
   return render(
     <MockedProvider mocks={mocks as never}>
       <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
-        <MasterEditHeader master={deck} cardCount={deck.cardCount} onBatchImport={onBatchImport} />
+        <MasterEditHeader
+          master={deck}
+          cardCount={resolvedCardCount}
+          onBatchImport={onBatchImport}
+        />
       </NextIntlClientProvider>
     </MockedProvider>,
   );
@@ -79,21 +85,22 @@ afterEach(() => vi.clearAllMocks());
 
 describe("MasterEditHeader", () => {
   it("renders the deck name, draft badge, and card count", () => {
-    renderHeader(DECK);
+    renderHeader();
     expect(screen.getByRole("heading", { level: 1, name: "Spanish A1" })).toBeInTheDocument();
     expect(screen.getByTestId("master-edit-status-badge")).toHaveTextContent("Draft");
-    expect(screen.getByText("5 cards")).toBeInTheDocument();
+    // Card count renders in both the mobile and desktop meta rows.
+    expect(screen.getAllByText("5 cards").length).toBeGreaterThan(0);
   });
 
   it("disables publish and shows the hint for an empty draft", () => {
-    renderHeader({ ...DECK, cardCount: 0 });
+    renderHeader({ cardCount: 0 });
     expect(screen.getByTestId("master-edit-publish")).toBeDisabled();
     expect(screen.getByTestId("master-edit-empty-hint")).toBeInTheDocument();
   });
 
   it("opens the deck-settings dialog with the metadata form (no publish/delete sections)", async () => {
     const user = userEvent.setup();
-    renderHeader(DECK);
+    renderHeader();
     // Deck settings now lives in the desktop split-button dropdown.
     await user.click(screen.getByTestId("master-edit-more-options"));
     await user.click(screen.getByTestId("master-edit-deck-settings"));
@@ -118,7 +125,7 @@ describe("MasterEditHeader", () => {
         },
       },
     ];
-    renderHeader(DECK, mocks);
+    renderHeader({}, mocks);
     await user.click(screen.getByTestId("master-edit-publish"));
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
   });
@@ -135,7 +142,7 @@ describe("MasterEditHeader", () => {
         },
       },
     ];
-    renderHeader({ ...DECK, status: "PUBLISHED" }, mocks);
+    renderHeader({ status: "PUBLISHED" }, mocks);
     await user.click(screen.getByTestId("master-edit-publish"));
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
   });
@@ -148,7 +155,7 @@ describe("MasterEditHeader", () => {
         result: { data: { adminDeleteMasterCardgroup: true } },
       },
     ];
-    renderHeader(DECK, mocks);
+    renderHeader({}, mocks);
     // Delete now lives in the desktop split-button dropdown.
     await user.click(screen.getByTestId("master-edit-more-options"));
     await user.click(screen.getByTestId("master-edit-delete"));
@@ -176,7 +183,7 @@ describe("MasterEditHeader", () => {
         },
       },
     ];
-    renderHeader(DECK, mocks);
+    renderHeader({}, mocks);
     // Open the deck-settings dialog from the desktop split-button dropdown.
     await user.click(screen.getByTestId("master-edit-more-options"));
     await user.click(screen.getByTestId("master-edit-deck-settings"));
@@ -207,7 +214,7 @@ describe("MasterEditHeader", () => {
         },
       },
     ];
-    renderHeader(DECK, mocks);
+    renderHeader({}, mocks);
     await user.click(screen.getByTestId("master-edit-more-options"));
     await user.click(screen.getByTestId("master-edit-deck-settings"));
     expect(await screen.findByTestId("master-field-name")).toBeInTheDocument();
@@ -229,66 +236,77 @@ describe("MasterEditHeader", () => {
       },
     ];
     // DRAFT deck with cards so the publish button is enabled.
-    renderHeader(DECK, mocks);
+    renderHeader({}, mocks);
     await user.click(screen.getByTestId("master-edit-publish"));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(refresh).not.toHaveBeenCalled();
   });
 
-  it("overflow menu (mobile): opens deck-settings and delete from the dropdown", async () => {
+  it("mobile: overflow menu opens deck-settings sheet", async () => {
     const user = userEvent.setup();
-    renderHeader(DECK);
+    renderHeader();
     const overflow = screen.getByTestId("master-edit-overflow");
     await user.click(overflow);
     // Deck settings entry triggers the settings sheet.
-    const settingsItem = await screen.findByRole("menuitem", { name: /deck settings/i });
+    const settingsItem = await screen.findByTestId("master-edit-deck-settings-mobile");
     await user.click(settingsItem);
     expect(await screen.findByTestId("master-field-name")).toBeInTheDocument();
   });
 
-  it("overflow menu (mobile): the publish toggle publishes the deck and refreshes", async () => {
+  it("mobile: status chip opens the publish toggle and calls the mutation", async () => {
     const user = userEvent.setup();
     const mocks = [
       {
-        request: { query: AdminPublishMasterMutation, variables: { id: "m-1" } },
+        request: { query: AdminUnpublishMasterMutation, variables: { id: "m-1" } },
         result: {
           data: {
-            adminPublishMasterCardgroup: {
-              __typename: "PublishMasterCardgroupSuccess",
-              master: { ...DECK, status: "PUBLISHED" },
-            },
+            adminUnpublishMasterCardgroup: { ...DECK, status: "DRAFT" },
           },
         },
       },
     ];
-    renderHeader(DECK, mocks);
-    await user.click(screen.getByTestId("master-edit-overflow"));
-    await user.click(await screen.findByTestId("master-edit-publish-mobile"));
+    renderHeader({ status: "PUBLISHED", cardCount: 1246 }, mocks);
+    await user.click(screen.getByTestId("master-edit-status-chip"));
+    const toggle = screen.getByTestId("master-edit-publish-mobile");
+    expect(toggle).toHaveTextContent(/Unpublish/);
+    await user.click(toggle);
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
   });
 
-  it("overflow menu (mobile): renders a Bulk import item that calls onBatchImport", async () => {
+  it("mobile: status chip publish item is disabled for an empty draft, with the hint", async () => {
     const user = userEvent.setup();
-    const onBatchImport = vi.fn();
-    renderHeader(DECK, [], onBatchImport);
-    await user.click(screen.getByTestId("master-edit-overflow"));
-    const importItem = await screen.findByTestId("master-edit-batch-import");
-    expect(importItem).toHaveTextContent(/batch import/i);
-    await user.click(importItem);
-    expect(onBatchImport).toHaveBeenCalledTimes(1);
+    renderHeader({ status: "DRAFT", cardCount: 0 });
+    expect(screen.getByTestId("master-edit-empty-hint")).toBeInTheDocument();
+    await user.click(screen.getByTestId("master-edit-status-chip"));
+    expect(screen.getByTestId("master-edit-publish-mobile")).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
-  it("overflow menu (mobile): omits the Bulk import item when onBatchImport is not provided", async () => {
+  it("mobile: overflow menu holds only Settings and Delete (no import, no publish)", async () => {
     const user = userEvent.setup();
-    renderHeader(DECK);
+    renderHeader({ status: "PUBLISHED", cardCount: 5, onBatchImport: vi.fn() });
     await user.click(screen.getByTestId("master-edit-overflow"));
-    // The deck-settings item proves the menu opened; the import item is absent.
-    expect(await screen.findByTestId("master-edit-deck-settings-mobile")).toBeInTheDocument();
-    expect(screen.queryByTestId("master-edit-batch-import")).not.toBeInTheDocument();
+    expect(screen.getByTestId("master-edit-deck-settings-mobile")).toBeInTheDocument();
+    expect(screen.getByTestId("master-edit-delete-mobile")).toBeInTheDocument();
+    expect(screen.queryByTestId("master-edit-batch-import")).toBeNull();
+    expect(screen.queryByTestId("master-edit-publish-mobile")).toBeNull();
+  });
+
+  it("renders the inline back link to the masters list", () => {
+    renderHeader({ status: "DRAFT", cardCount: 3 });
+    expect(screen.getByRole("link", { name: /一覧|list|Masters|戻る/i })).toHaveAttribute(
+      "href",
+      "/admin/masters",
+    );
   });
 
   it("displays the cardCount prop (live count), not master.cardCount", () => {
-    render(
+    // master.cardCount is 0 but the live cardCount prop is 5 — publish must be enabled.
+    // renderHeader spreads overrides onto DECK; here we explicitly pass cardCount=5 while
+    // the base DECK.cardCount would be 0 if we change it. To isolate, render directly.
+    const { container } = render(
       <MockedProvider mocks={[]}>
         <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
           <MasterEditHeader master={{ ...DECK, cardCount: 0 }} cardCount={5} />
@@ -296,6 +314,7 @@ describe("MasterEditHeader", () => {
       </MockedProvider>,
     );
     // Publish is enabled because the LIVE count is 5, even though master.cardCount is 0.
-    expect(screen.getByTestId("master-edit-publish")).not.toBeDisabled();
+    const publishBtn = container.querySelector('[data-testid="master-edit-publish"]');
+    expect(publishBtn).not.toBeDisabled();
   });
 });

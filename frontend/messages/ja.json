@@ -331,10 +331,11 @@
     "deleteMasterDeleting": "削除中...",
     "deleteMasterSuccess": "マスターを削除しました。",
     "deleteMasterFailed": "マスターを削除できませんでした。もう一度お試しください。",
-    "deckSettingsButton": "デッキ設定",
+    "deckSettingsButton": "設定",
     "deckSettingsTitle": "デッキ設定",
     "backToList": "一覧へ戻る",
-    "masterOptions": "デッキ操作"
+    "masterOptions": "デッキ操作",
+    "changePublishState": "公開状態を変更（現在: {state}）"
   },
   "Admin": {
     "searchPlaceholder": "ユーザーを検索...",
