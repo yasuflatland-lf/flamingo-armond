@@ -13,4 +13,5 @@ allowBuilds:
   # next.config.ts is the unrelated request-config plugin and needs no native build.
   "@parcel/watcher": false
   "@swc/core": false
+  esbuild: true
   sharp: true

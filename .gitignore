@@ -117,3 +117,6 @@ supabase/.temp/
 /.setup-prod-archive/
 .playwright-mcp/
 *~
+
+# Storybook build output
+frontend/storybook-static/
