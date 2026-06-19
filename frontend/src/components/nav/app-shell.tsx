@@ -39,8 +39,16 @@ export function AppShell({ user, isAdmin, children }: AppShellProps) {
         <GlobalRail user={user} isAdmin={isAdmin} />
       </aside>
 
-      {/* Mobile layout (<md): top bar + logo-drawer trigger */}
-      <div className="flex flex-1 flex-col">
+      {/* Mobile layout (<md): top bar + logo-drawer trigger.
+          min-w-0 is load-bearing: this column is a flex child of the
+          SidebarProvider row, so without it min-width defaults to `auto`
+          (content-based) and a long unbreakable token in any page (a card's
+          text, a long deck name) forces the column wider than the viewport.
+          With no definite-width ancestor, `truncate`/`break-words` cannot
+          clamp and the whole page overflows horizontally. min-w-0 lets the
+          column shrink to the viewport, restoring a definite width to truncate
+          against. */}
+      <div className="flex min-w-0 flex-1 flex-col">
         <header
           data-testid="mobile-header"
           className="md:hidden flex items-center justify-between px-4 h-12 border-b"
