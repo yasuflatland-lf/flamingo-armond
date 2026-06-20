@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -63,7 +62,7 @@ func (r gormMasterCatalogRow) toGorm() gormMasterCardgroup {
 func (r *masterCardgroupRepo) CountPublished(ctx context.Context, search *string) (int64, error) {
 	q := r.db.WithContext(ctx).Model(&gormMasterCardgroup{}).
 		Where("status = ?", string(domain.MasterStatusPublished))
-	if pattern, ok := masterCatalogSearchPattern(search); ok {
+	if pattern, ok := searchLikePattern(search); ok {
 		q = q.Where("name ILIKE ?", pattern)
 	}
 	var total int64
@@ -77,7 +76,7 @@ func (r *masterCardgroupRepo) CountPublished(ctx context.Context, search *string
 // (draft or published) matching the optional search predicate.
 func (r *masterCardgroupRepo) CountAdmin(ctx context.Context, search *string) (int64, error) {
 	q := r.db.WithContext(ctx).Model(&gormMasterCardgroup{})
-	if pattern, ok := masterCatalogSearchPattern(search); ok {
+	if pattern, ok := searchLikePattern(search); ok {
 		q = q.Where("name ILIKE ?", pattern)
 	}
 	var total int64
@@ -98,20 +97,6 @@ func (r *masterCardgroupRepo) CountCards(ctx context.Context, masterCardgroupID 
 		return 0, eris.Wrap(err, "repository: master cardgroup: count cards")
 	}
 	return total, nil
-}
-
-// masterCatalogSearchPattern wraps a non-empty trimmed search term in `%...%`
-// after escaping LIKE metacharacters. Returns (pattern, false) when the search
-// is nil or trims empty so callers can skip the predicate.
-func masterCatalogSearchPattern(search *string) (string, bool) {
-	if search == nil {
-		return "", false
-	}
-	trimmed := strings.TrimSpace(*search)
-	if trimmed == "" {
-		return "", false
-	}
-	return "%" + escapeLikePattern(trimmed) + "%", true
 }
 
 // masterCatalogOrderClause renders the SQL ORDER BY tail with a secondary
@@ -138,10 +123,8 @@ func masterCatalogCursorWhere(orderBy MasterCatalogOrderBy, dir SortOrder, c *Ma
 	if err != nil {
 		return "", nil, err
 	}
-	// Tuple compare: (field, id) op (val, c.ID). Expanded form is portable
-	// across SQL dialects (Postgres-only `(a, b) > (?, ?)` avoided).
-	return "(" + field + " " + op + " ? OR (" + field + " = ? AND mcg.id " + op + " ?))",
-		[]any{val, val, c.ID}, nil
+	clause, args := cursorTupleWhere("mcg", field, op, val, c.ID)
+	return clause, args, nil
 }
 
 // masterCatalogCursorFieldValue returns the cursor value for the active orderBy
@@ -187,16 +170,7 @@ func (r *masterCardgroupRepo) findCatalogPage(
 
 	// Backward paging executes the query with the inverted direction and
 	// reverses the slice afterwards.
-	effectiveDir := dir
-	limit := first
-	cursor := after
-	reverse := false
-	if last > 0 {
-		effectiveDir = InvertDir(dir)
-		limit = last
-		cursor = before
-		reverse = true
-	}
+	effectiveDir, limit, cursor, reverse := paginateSetup(dir, first, last, after, before)
 
 	q := r.db.WithContext(ctx).
 		Table("master_cardgroups AS mcg").
@@ -204,7 +178,7 @@ func (r *masterCardgroupRepo) findCatalogPage(
 	if publishedOnly {
 		q = q.Where("mcg.status = ?", string(domain.MasterStatusPublished))
 	}
-	if pattern, ok := masterCatalogSearchPattern(search); ok {
+	if pattern, ok := searchLikePattern(search); ok {
 		q = q.Where("mcg.name ILIKE ?", pattern)
 	}
 	if cursor != nil {

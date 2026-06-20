@@ -949,7 +949,7 @@ func TestCardgroupRepo_CountByOwner_NoSearch(t *testing.T) {
 
 // TestCardgroupRepo_CountByOwner_EmptySearchTreatedAsNil verifies that an
 // all-whitespace search has no effect on the count — same as nil — because
-// cardgroupSearchPattern returns ok=false for trimmed-empty input.
+// searchLikePattern returns ok=false for trimmed-empty input.
 func TestCardgroupRepo_CountByOwner_EmptySearchTreatedAsNil(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

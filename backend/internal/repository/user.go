@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -282,15 +281,7 @@ func (r *userRepo) ListPage(
 
 	// Normalise search: trim, treat blank as nil, escape ILIKE wildcards so
 	// "%" and "_" supplied by the caller match literally.
-	var searchPattern string
-	hasSearch := false
-	if search != nil {
-		trimmed := strings.TrimSpace(*search)
-		if trimmed != "" {
-			searchPattern = "%" + escapeLikePattern(trimmed) + "%"
-			hasSearch = true
-		}
-	}
+	searchPattern, hasSearch := searchLikePattern(search)
 
 	// totalCount mirrors the page predicate (search only) but ignores the
 	// cursor predicate, so callers can compute "items after this point" /

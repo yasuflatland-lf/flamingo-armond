@@ -96,16 +96,7 @@ func (r *cardRepo) FindPageByCardgroupForUser(
 
 	// Backward paging executes the query with the inverted direction and
 	// reverses the slice afterwards.
-	effectiveDir := dir
-	limit := first
-	cursor := after
-	reverse := false
-	if last > 0 {
-		effectiveDir = InvertDir(dir)
-		limit = last
-		cursor = before
-		reverse = true
-	}
+	effectiveDir, limit, cursor, reverse := paginateSetup(dir, first, last, after, before)
 
 	q := base
 	if orderBy == CardOrderByDue {
@@ -174,9 +165,8 @@ func cursorWhere(orderBy CardOrderBy, dir SortOrder, c *CardCursor) (string, []a
 	if err != nil {
 		return "", nil, err
 	}
-	// Tuple compare: (field, id) op (val, c.ID).
-	return "(" + field + " " + op + " ? OR (" + field + " = ? AND cards.id " + op + " ?))",
-		[]any{val, val, c.ID}, nil
+	clause, args := cursorTupleWhere("cards", field, op, val, c.ID)
+	return clause, args, nil
 }
 
 // cursorFieldValue returns the cursor value for the active orderBy field.
