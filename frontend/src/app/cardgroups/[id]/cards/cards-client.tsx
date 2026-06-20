@@ -1,23 +1,11 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import type { ReactNode, RefObject } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { BulkActionBar } from "@/components/cardgroups/bulk-action-bar";
-import { CardFetchMoreError } from "@/components/cardgroups/card-fetch-more-error";
-import { CardForm } from "@/components/cardgroups/card-form";
-import { CardRow } from "@/components/cardgroups/card-row";
-import { CardSearchInput } from "@/components/cardgroups/card-search-input";
+import type { ReactNode } from "react";
+import { CardListScreen, type SectionHeaderArgs } from "@/components/cardgroups/card-list-screen";
 import { CardgroupBatchImportForm } from "@/components/cardgroups/cardgroup-batch-import-form";
-import type { SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
-import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
-import { Button } from "@/components/ui/button";
-import { ErrorBanner } from "@/components/ui/error-banner";
-import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import type { CardsByCardgroupConnectionQuery } from "@/generated/graphql";
-import { useBulkSelection } from "@/hooks/use-bulk-selection";
 import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
-import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { type AddCardDetail, FLAMINGO_EVENT } from "@/lib/events/flamingo-events";
 import { useCardMutations } from "./use-card-mutations";
 import { useCardsConnection } from "./use-cards-connection";
@@ -25,102 +13,6 @@ import { useCardsConnection } from "./use-cards-connection";
 type Connection = CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"];
 export type CardEdge = Connection["edges"][number];
 export type CardConnectionPageInfo = Connection["pageInfo"];
-
-function EditCardSheetContent({
-  card,
-  submit,
-  submitting,
-  error,
-  validationError,
-}: {
-  card: { id: string; front: string; back: string };
-  submit: (values: { front: string; back: string }) => Promise<void>;
-  submitting: boolean;
-  error: unknown;
-  validationError: { field: string; message: string } | null;
-}) {
-  const close = useFormSheetClose();
-  const tCommon = useTranslations("Common");
-
-  return (
-    <CardForm
-      mode="edit"
-      idPrefix={`edit-${card.id}-`}
-      defaultValues={{ front: card.front, back: card.back }}
-      submit={submit}
-      submitLabel={tCommon("save")}
-      submitting={submitting}
-      error={error}
-      validationError={validationError}
-      onCancel={close}
-    />
-  );
-}
-
-function AddCardSheetContent({
-  submit,
-  submitting,
-  error,
-  validationError,
-  onDirty,
-}: {
-  submit: (values: { front: string; back: string }) => Promise<void>;
-  submitting: boolean;
-  error: unknown;
-  validationError: { field: string; message: string } | null;
-  onDirty: () => void;
-}) {
-  const close = useFormSheetClose();
-
-  return (
-    <div onInput={onDirty}>
-      <CardForm
-        mode="create"
-        idPrefix="add-card-"
-        defaultValues={{ front: "", back: "" }}
-        submit={submit}
-        submitting={submitting}
-        error={error}
-        validationError={validationError}
-        onCancel={close}
-      />
-    </div>
-  );
-}
-
-const EmptyState = ({ search, onClear }: { search: string | null; onClear: () => void }) => {
-  const t = useTranslations("Cards");
-  return search !== null ? (
-    <div
-      className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border p-6"
-      data-testid="cards-empty-search"
-    >
-      <p className="text-sm text-muted-foreground">{t("noMatch", { search })}</p>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={onClear}
-        data-testid="cards-clear-search"
-      >
-        {t("clearSearch")}
-      </Button>
-    </div>
-  ) : (
-    <div
-      className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border p-6"
-      data-testid="cards-empty"
-    >
-      <p className="text-sm text-muted-foreground">{t("addSomeCards")}</p>
-    </div>
-  );
-};
-
-type SectionHeaderArgs = {
-  totalCount: number;
-  onAddCard: () => void;
-  onBatchImport: () => void;
-};
 
 type Props = {
   cardgroupId: string;
@@ -146,35 +38,9 @@ export function CardsClient({
   sectionHeader,
 }: Props) {
   const t = useTranslations("Cards");
-  const [addOpen, setAddOpen] = useState(false);
-  const [addDirty, setAddDirty] = useState(false);
-  const [batchImportOpen, setBatchImportOpen] = useState(false);
-  const [createValidationError, setCreateValidationError] = useState<{
-    field: string;
-    message: string;
-  } | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  // Field-level error for the editing row (from updateCard's outcome-union).
-  const [rowValidationError, setRowValidationError] = useState<{
-    field: string;
-    message: string;
-  } | null>(null);
-  // Per-card SwipeableRow handles; lets a row close any half-open sibling.
-  const rowRefs = useRef<Map<string, RefObject<SwipeableRowHandle | null>>>(new Map());
-  const selection = useBulkSelection<string>();
   const search = useHeaderTakeoverSearch();
 
-  const {
-    edges,
-    pageInfo,
-    totalCount,
-    fetchingMore,
-    fetchMoreError,
-    retryFetchMore,
-    sentinelRef,
-    queryVariables,
-    queryError,
-  } = useCardsConnection({
+  const connection = useCardsConnection({
     cardgroupId,
     searchQuery: search.query,
     initialEdges,
@@ -182,268 +48,45 @@ export function CardsClient({
     initialTotalCount,
   });
 
-  const {
-    createCard,
-    updateCard,
-    deleteRow,
-    deleteCards,
-    creating,
-    updating,
-    bulkDeleting,
-    createError,
-    updateError,
-    bulkDeleteError,
-    deleteRowError,
-    resetCreateCard,
-  } = useCardMutations({ cardgroupId, queryVariables });
-
-  const queryBannerError = getBackendErrorBanner(queryError);
-  const bulkDeleteBannerError = getBackendErrorBanner(bulkDeleteError);
-  // Raw per-row delete error → localized banner copy (server message or fallback).
-  const deleteRowBannerError =
-    deleteRowError !== null ? (getBackendErrorBanner(deleteRowError) ?? t("deleteError")) : null;
-
-  const closeOtherRows = useCallback((exceptCardId: string) => {
-    for (const [id, ref] of rowRefs.current.entries()) {
-      if (id !== exceptCardId) ref.current?.close();
-    }
-  }, []);
-
-  const editingCard = edges.find((edge) => edge.node.id === editingId)?.node;
-
-  const openAddSheet = useCallback(() => {
-    resetCreateCard();
-    setCreateValidationError(null);
-    setAddDirty(false);
-    setAddOpen(true);
-  }, [resetCreateCard]);
-
-  const openBatchImport = useCallback(() => setBatchImportOpen(true), []);
-  const closeBatchImport = useCallback(() => setBatchImportOpen(false), []);
-
-  useEffect(() => {
-    function handleAddCardEvent(event: CustomEvent<AddCardDetail>) {
-      if (event.detail?.cardgroupId !== cardgroupId) return;
-
-      event.preventDefault();
-      openAddSheet();
-    }
-
-    window.addEventListener(FLAMINGO_EVENT.addCard, handleAddCardEvent);
-    return () => window.removeEventListener(FLAMINGO_EVENT.addCard, handleAddCardEvent);
-  }, [cardgroupId, openAddSheet]);
-
-  async function handleCreate(values: { front: string; back: string }) {
-    resetCreateCard();
-    setCreateValidationError(null);
-    const outcome = await createCard(values);
-    switch (outcome.status) {
-      case "success":
-        setAddDirty(false);
-        setCreateValidationError(null);
-        setAddOpen(false);
-        break;
-      case "validation":
-        setCreateValidationError({ field: outcome.field, message: outcome.message });
-        break;
-      case "unexpected":
-        setCreateValidationError({ field: "front", message: t("addFailed") });
-        break;
-      case "rejected":
-        // The CardForm error banner surfaces the rejection via `createError`.
-        break;
-    }
-  }
-
-  async function handleBulkDelete() {
-    const ids = Array.from(selection.selectedIds);
-    try {
-      await deleteCards(ids);
-      selection.clearSelection();
-    } catch (err) {
-      console.error("[CardsClient] bulk delete rejection", {
-        name: err instanceof Error ? err.name : "unknown",
-        cardgroupId,
-        ids,
-      });
-    }
-  }
-
-  async function handleUpdate(id: string, values: { front: string; back: string }) {
-    setRowValidationError(null);
-    const outcome = await updateCard(id, values);
-    switch (outcome.status) {
-      case "success":
-        setEditingId(null);
-        break;
-      case "validation":
-        setRowValidationError({ field: outcome.field, message: outcome.message });
-        break;
-      case "unexpected":
-        setRowValidationError({ field: "front", message: t("saveFailed") });
-        break;
-      case "rejected":
-        // The edit-sheet error banner surfaces the rejection via `updateError`.
-        break;
-    }
-  }
+  const mutations = useCardMutations({ cardgroupId, queryVariables: connection.queryVariables });
 
   return (
-    <>
-      <SearchTakeoverBar
-        open={search.searchOpen}
-        value={search.input}
-        onChange={search.setInput}
-        onClear={search.clear}
-        onClose={search.closeSearch}
-        placeholder={t("searchPlaceholder")}
-        ariaLabel={t("searchAriaLabel")}
-      />
-      <div className="space-y-3">
-        {queryBannerError && (
-          <ErrorBanner data-testid="cards-query-error">{queryBannerError}</ErrorBanner>
-        )}
-        {deleteRowBannerError && (
-          <ErrorBanner data-testid="cards-delete-error">{deleteRowBannerError}</ErrorBanner>
-        )}
-        {bulkDeleteBannerError && (
-          <ErrorBanner data-testid="cards-bulk-delete-error">{bulkDeleteBannerError}</ErrorBanner>
-        )}
-
-        <section>
-          {sectionHeader === undefined ? (
-            <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
-              {t("cardsCount", { count: totalCount })}
-            </h2>
-          ) : typeof sectionHeader === "function" ? (
-            sectionHeader({ totalCount, onAddCard: openAddSheet, onBatchImport: openBatchImport })
-          ) : (
-            sectionHeader
-          )}
-
-          <CardSearchInput value={search.input} onChange={search.setInput} />
-
-          {selection.count > 0 && (
-            <BulkActionBar
-              count={selection.count}
-              busy={bulkDeleting}
-              onConfirm={handleBulkDelete}
-              onClear={selection.clearSelection}
-            />
-          )}
-
-          {edges.length === 0 ? (
-            <EmptyState search={search.query} onClear={search.clear} />
-          ) : (
-            <ul className="space-y-3">
-              {edges.map((edge) => {
-                const card = edge.node;
-                return (
-                  <li key={card.id} className="rounded-md border border-border overflow-hidden">
-                    <CardRow
-                      card={card}
-                      rowRef={(() => {
-                        if (!rowRefs.current.has(card.id)) {
-                          rowRefs.current.set(card.id, { current: null });
-                        }
-                        // biome-ignore lint/style/noNonNullAssertion: we just set the entry above so it is always defined.
-                        return rowRefs.current.get(card.id)!;
-                      })()}
-                      selected={selection.isSelected(card.id)}
-                      disabled={selection.count > 0 || editingId === card.id}
-                      onSelectToggle={() => selection.toggleSelected(card.id)}
-                      onEdit={() => {
-                        closeOtherRows(card.id);
-                        setRowValidationError(null);
-                        setEditingId(card.id);
-                      }}
-                      onDelete={() => deleteRow(card.id, t("cardDeleted"))}
-                    />
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-
-          <FormSheet
-            title={t("addCard")}
-            open={addOpen}
-            onOpenChange={(nextOpen) => {
-              setAddOpen(nextOpen);
-              if (!nextOpen) {
-                resetCreateCard();
-                setAddDirty(false);
-                setCreateValidationError(null);
-              }
-            }}
-            submitting={creating}
-            dirty={addDirty}
-            confirmOnDismiss
-          >
-            <AddCardSheetContent
-              submit={handleCreate}
-              submitting={creating}
-              error={createError}
-              validationError={createValidationError}
-              onDirty={() => setAddDirty(true)}
-            />
-          </FormSheet>
-
-          {/* Object-first: header shows only the destination cardgroup (the high-risk variable); the verb lives in the sr-only accessible name. Intentional deviation from the verb-first sheets. */}
-          <FormSheet
-            title={
-              <span
-                className="block overflow-hidden text-ellipsis whitespace-nowrap"
-                title={cardgroupName}
-              >
-                <span className="sr-only">{t("batchImportSrOnly")}</span>
-                {cardgroupName}
-              </span>
-            }
-            open={batchImportOpen}
-            onOpenChange={setBatchImportOpen}
-            size="lg"
-          >
-            <CardgroupBatchImportForm
-              cardgroupId={cardgroupId}
-              cardgroupName={cardgroupName}
-              onImported={closeBatchImport}
-              onCancel={closeBatchImport}
-            />
-          </FormSheet>
-
-          <FormSheet
-            title={t("editCard")}
-            open={editingCard !== undefined}
-            onOpenChange={(nextOpen) => {
-              if (!nextOpen) {
-                setRowValidationError(null);
-                setEditingId(null);
-              }
-            }}
-            submitting={updating}
-            confirmOnDismiss={false}
-          >
-            {editingCard ? (
-              <EditCardSheetContent
-                card={editingCard}
-                submit={(values) => handleUpdate(editingCard.id, values)}
-                submitting={updating}
-                error={updateError}
-                validationError={rowValidationError}
-              />
-            ) : null}
-          </FormSheet>
-
-          <div ref={sentinelRef} aria-hidden="true" data-testid="cards-sentinel" />
-          {fetchMoreError && (
-            <CardFetchMoreError message={fetchMoreError} onRetry={retryFetchMore} />
-          )}
-          {!fetchMoreError && fetchingMore && pageInfo.hasNextPage && (
-            <p className="mt-3 text-center text-xs text-muted-foreground">{t("loadingMore")}</p>
-          )}
-        </section>
-      </div>
-    </>
+    <CardListScreen
+      search={search}
+      connection={connection}
+      mutations={mutations}
+      ownerId={cardgroupId}
+      addCardEvent={{
+        name: FLAMINGO_EVENT.addCard,
+        matches: (detail) => (detail as AddCardDetail | undefined)?.cardgroupId === cardgroupId,
+      }}
+      bulkDeleteLog={{ scope: "[CardsClient]", ownerKey: "cardgroupId" }}
+      sectionHeader={sectionHeader}
+      defaultHeader={({ totalCount }) => (
+        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
+          {t("cardsCount", { count: totalCount })}
+        </h2>
+      )}
+      importSheetTitle={
+        // Object-first: header shows only the destination cardgroup (the high-risk
+        // variable); the verb lives in the sr-only accessible name. Intentional
+        // deviation from the verb-first sheets.
+        <span
+          className="block overflow-hidden text-ellipsis whitespace-nowrap"
+          title={cardgroupName}
+        >
+          <span className="sr-only">{t("batchImportSrOnly")}</span>
+          {cardgroupName}
+        </span>
+      }
+      renderImportForm={({ onImported, onCancel }) => (
+        <CardgroupBatchImportForm
+          cardgroupId={cardgroupId}
+          cardgroupName={cardgroupName}
+          onImported={onImported}
+          onCancel={onCancel}
+        />
+      )}
+    />
   );
 }
