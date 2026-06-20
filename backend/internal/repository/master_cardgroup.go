@@ -91,13 +91,16 @@ type MasterCardgroupRepository interface {
 	Delete(ctx context.Context, id string) error
 	ListDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error)
 	// FindPublishedPage returns a window of PUBLISHED master cardgroups ordered
-	// by (orderBy, id), each bundled with its card count. The published filter
-	// is enforced in SQL and is never caller-overridable. Forward paging uses
-	// (after, first); backward paging uses (before, last) and the slice is
-	// reversed in memory so the caller observes the same display order
-	// regardless of direction. An optional case-insensitive substring search
-	// filters by name (ILIKE metacharacters in the search are escaped so they
-	// match literally).
+	// by (orderBy, id), each bundled with its card count, plus the search-aware
+	// total of all matching PUBLISHED rows. The published filter is enforced in
+	// SQL and is never caller-overridable. Forward paging uses (after, first);
+	// backward paging uses (before, last) and the slice is reversed in memory so
+	// the caller observes the same display order regardless of direction. An
+	// optional case-insensitive substring search filters by name (ILIKE
+	// metacharacters in the search are escaped so they match literally). The
+	// returned total applies the same status + search filter as the page query
+	// and is computed before the zero-page short-circuit, so a totalCount-only
+	// request still observes the real count.
 	FindPublishedPage(
 		ctx context.Context,
 		after, before *MasterCatalogCursor,
@@ -105,15 +108,7 @@ type MasterCardgroupRepository interface {
 		orderBy MasterCatalogOrderBy,
 		dir SortOrder,
 		search *string,
-	) ([]*MasterCatalogItem, error)
-	// CountPublished returns the total number of PUBLISHED master cardgroups
-	// matching the optional search predicate. Returned independently of
-	// FindPublishedPage so the totalCount survives a zero-page request.
-	CountPublished(ctx context.Context, search *string) (int64, error)
-	// CountAdmin returns the total number of master cardgroups of ANY status
-	// (draft or published) matching the optional search predicate. Used by the
-	// admin list to display totalCount regardless of publication status.
-	CountAdmin(ctx context.Context, search *string) (int64, error)
+	) ([]*MasterCatalogItem, int64, error)
 	// CountCards returns the number of master cards belonging to the given
 	// master cardgroup. Used by the admin UI to display a card count per deck.
 	CountCards(ctx context.Context, masterCardgroupID string) (int64, error)
@@ -122,9 +117,10 @@ type MasterCardgroupRepository interface {
 	// the public catalog. Used by the usecase to hydrate a pagination cursor.
 	FindPublishedByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 	// FindAdminPage returns a window of master cardgroups of ANY status (draft
-	// or published), each bundled with its card count. Unlike FindPublishedPage
+	// or published), each bundled with its card count, plus the search-aware
+	// total of all matching rows regardless of status. Unlike FindPublishedPage
 	// it does not filter by status, so admin users see draft decks. All other
-	// pagination, ordering, and search semantics are identical to
+	// pagination, ordering, search, and totalCount semantics are identical to
 	// FindPublishedPage.
 	FindAdminPage(
 		ctx context.Context,
@@ -133,7 +129,7 @@ type MasterCardgroupRepository interface {
 		orderBy MasterCatalogOrderBy,
 		dir SortOrder,
 		search *string,
-	) ([]*MasterCatalogItem, error)
+	) ([]*MasterCatalogItem, int64, error)
 	// Publish atomically sets the master cardgroup status to published and
 	// increments its version by 1. Returns ErrNotFound when no row matches.
 	Publish(ctx context.Context, id string) (*domain.MasterCardgroup, error)

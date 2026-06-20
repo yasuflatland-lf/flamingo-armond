@@ -16,15 +16,11 @@ import (
 
 // mockMasterCatalogRepository is a manual test double for MasterCatalogRepository.
 type mockMasterCatalogRepository struct {
-	// FindPublishedPage
+	// FindPublishedPage (the search-aware total is carried by the page method)
 	findPageResult []*repository.MasterCatalogItem
+	findPageTotal  int64
 	findPageErr    error
 	findPageCalls  []findPublishedPageCall
-
-	// CountPublished
-	countResult int64
-	countErr    error
-	countCalls  []countPublishedCall
 
 	// FindByID (admin cursor resolution) and FindPublishedByID (published cursor
 	// resolution + ImportMaster's published check) are backed by separate funcs so
@@ -34,21 +30,19 @@ type mockMasterCatalogRepository struct {
 	findByIDFn          func(id string) (*domain.MasterCardgroup, error)
 	findPublishedByIDFn func(id string) (*domain.MasterCardgroup, error)
 
-	// admin methods
-	findAdminPage   []*repository.MasterCatalogItem
-	findAdminErr    error
-	findAdminCalls  []findPublishedPageCall
-	countAdminRes   int64
-	countAdminErr   error
-	countAdminCalls []countPublishedCall
-	countCardsRes   int64
-	countCardsErr   error
-	createCalls     []*domain.MasterCardgroup
-	createErr       error
-	updateFn        func(id string, patch repository.MasterCardgroupUpdate) (*domain.MasterCardgroup, error)
-	deleteErr       error
-	publishFn       func(id string) (*domain.MasterCardgroup, error)
-	unpublishFn     func(id string) (*domain.MasterCardgroup, error)
+	// admin methods (FindAdminPage carries the status-unfiltered, search-aware total)
+	findAdminPage  []*repository.MasterCatalogItem
+	findAdminTotal int64
+	findAdminErr   error
+	findAdminCalls []findPublishedPageCall
+	countCardsRes  int64
+	countCardsErr  error
+	createCalls    []*domain.MasterCardgroup
+	createErr      error
+	updateFn       func(id string, patch repository.MasterCardgroupUpdate) (*domain.MasterCardgroup, error)
+	deleteErr      error
+	publishFn      func(id string) (*domain.MasterCardgroup, error)
+	unpublishFn    func(id string) (*domain.MasterCardgroup, error)
 }
 
 type findPublishedPageCall struct {
@@ -61,10 +55,6 @@ type findPublishedPageCall struct {
 	Search  *string
 }
 
-type countPublishedCall struct {
-	Search *string
-}
-
 func (m *mockMasterCatalogRepository) FindPublishedPage(
 	_ context.Context,
 	after, before *repository.MasterCatalogCursor,
@@ -72,23 +62,15 @@ func (m *mockMasterCatalogRepository) FindPublishedPage(
 	orderBy repository.MasterCatalogOrderBy,
 	dir repository.SortOrder,
 	search *string,
-) ([]*repository.MasterCatalogItem, error) {
+) ([]*repository.MasterCatalogItem, int64, error) {
 	m.findPageCalls = append(m.findPageCalls, findPublishedPageCall{
 		After: after, Before: before, First: first, Last: last,
 		OrderBy: orderBy, Dir: dir, Search: search,
 	})
 	if m.findPageErr != nil {
-		return nil, m.findPageErr
+		return nil, 0, m.findPageErr
 	}
-	return m.findPageResult, nil
-}
-
-func (m *mockMasterCatalogRepository) CountPublished(_ context.Context, search *string) (int64, error) {
-	m.countCalls = append(m.countCalls, countPublishedCall{Search: search})
-	if m.countErr != nil {
-		return 0, m.countErr
-	}
-	return m.countResult, nil
+	return m.findPageResult, m.findPageTotal, nil
 }
 
 func (m *mockMasterCatalogRepository) FindPublishedByID(_ context.Context, id string) (*domain.MasterCardgroup, error) {
@@ -115,20 +97,15 @@ func (m *mockMasterCatalogRepository) FindAdminPage(
 	orderBy repository.MasterCatalogOrderBy,
 	dir repository.SortOrder,
 	search *string,
-) ([]*repository.MasterCatalogItem, error) {
+) ([]*repository.MasterCatalogItem, int64, error) {
 	m.findAdminCalls = append(m.findAdminCalls, findPublishedPageCall{
 		After: after, Before: before, First: first, Last: last,
 		OrderBy: orderBy, Dir: dir, Search: search,
 	})
 	if m.findAdminErr != nil {
-		return nil, m.findAdminErr
+		return nil, 0, m.findAdminErr
 	}
-	return m.findAdminPage, nil
-}
-
-func (m *mockMasterCatalogRepository) CountAdmin(_ context.Context, search *string) (int64, error) {
-	m.countAdminCalls = append(m.countAdminCalls, countPublishedCall{Search: search})
-	return m.countAdminRes, m.countAdminErr
+	return m.findAdminPage, m.findAdminTotal, nil
 }
 
 func (m *mockMasterCatalogRepository) CountCards(_ context.Context, _ string) (int64, error) {
@@ -232,7 +209,7 @@ func TestListPublishedConnection_Unauthenticated(t *testing.T) {
 
 func TestListPublishedConnection_Forward_TrimsExtraRow_SetsHasNext(t *testing.T) {
 	repo := &mockMasterCatalogRepository{
-		countResult: 5,
+		findPageTotal: 5,
 		// first=2 → usecase asks for 3 (+1). Repo returns 3 → trim to 2, hasNext=true.
 		findPageResult: []*repository.MasterCatalogItem{
 			catalogItem("a", 10), catalogItem("b", 20), catalogItem("c", 30),
@@ -283,7 +260,7 @@ func TestListPublishedConnection_Forward_TrimsExtraRow_SetsHasNext(t *testing.T)
 
 func TestListPublishedConnection_Forward_NoExtraRow_NoNextPage(t *testing.T) {
 	repo := &mockMasterCatalogRepository{
-		countResult:    2,
+		findPageTotal:  2,
 		findPageResult: []*repository.MasterCatalogItem{catalogItem("a", 1), catalogItem("b", 2)},
 	}
 	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
@@ -308,7 +285,7 @@ func TestListPublishedConnection_Backward_TrimsLeadingRow_SetsHasPrev(t *testing
 	// Cursor hydration requires a published row for `before`.
 	cur := cursor.Encode("z")
 	repo := &mockMasterCatalogRepository{
-		countResult: 10,
+		findPageTotal: 10,
 		findByIDFn: func(id string) (*domain.MasterCardgroup, error) {
 			return catalogItem(id, 0).Cardgroup, nil
 		},
@@ -355,7 +332,7 @@ func TestListPublishedConnection_Backward_TrimsLeadingRow_SetsHasPrev(t *testing
 // ---------------------------------------------------------------------------
 
 func TestListPublishedConnection_OrderByName_Desc(t *testing.T) {
-	repo := &mockMasterCatalogRepository{countResult: 0, findPageResult: nil}
+	repo := &mockMasterCatalogRepository{findPageTotal: 0, findPageResult: nil}
 	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
 
 	ob := MasterCatalogOrderByName
@@ -400,12 +377,14 @@ func TestListPublishedConnection_FirstAndLast_Rejected(t *testing.T) {
 
 func TestListPublishedConnection_TotalCountOnlyRequest(t *testing.T) {
 	repo := &mockMasterCatalogRepository{
-		countResult:    42,
+		findPageTotal:  42,
 		findPageResult: []*repository.MasterCatalogItem{},
 	}
 	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
 
-	// first=0 → no rows fetched, but COUNT still runs.
+	// first=0 → no rows fetched, but the page method still runs once: assemblePage
+	// always calls the fetch closure, and findCatalogPage counts before its zero-page
+	// short-circuit, so the search-aware total survives a totalCount-only request.
 	out, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(0)})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -413,8 +392,8 @@ func TestListPublishedConnection_TotalCountOnlyRequest(t *testing.T) {
 	if out.TotalCount != 42 {
 		t.Fatalf("want TotalCount=42 even for empty page, got %d", out.TotalCount)
 	}
-	if len(repo.countCalls) != 1 {
-		t.Fatalf("want CountPublished invoked once, got %d", len(repo.countCalls))
+	if len(repo.findPageCalls) != 1 {
+		t.Fatalf("want FindPublishedPage invoked once, got %d", len(repo.findPageCalls))
 	}
 }
 
@@ -423,7 +402,7 @@ func TestListPublishedConnection_TotalCountOnlyRequest(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestListPublishedConnection_InvalidCursor(t *testing.T) {
-	repo := &mockMasterCatalogRepository{countResult: 0}
+	repo := &mockMasterCatalogRepository{findPageTotal: 0}
 	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
 
 	bad := "%%%not-a-cursor"
@@ -445,7 +424,7 @@ func TestListPublishedConnection_CursorNotPublished(t *testing.T) {
 	// so the cursor is rejected as cursor-not-found (draft never leaks).
 	cur := cursor.Encode("draft-id")
 	repo := &mockMasterCatalogRepository{
-		countResult: 0,
+		findPageTotal: 0,
 		findByIDFn: func(_ string) (*domain.MasterCardgroup, error) {
 			return nil, repository.ErrNotFound
 		},
@@ -466,26 +445,18 @@ func TestListPublishedConnection_CursorNotPublished(t *testing.T) {
 // Repo error propagation
 // ---------------------------------------------------------------------------
 
-func TestListPublishedConnection_CountError_Wrapped(t *testing.T) {
-	repo := &mockMasterCatalogRepository{countErr: eris.New("db down")}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
-
-	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(2)})
-	if err == nil {
-		t.Fatal("want error from count failure")
-	}
-	if errors.Is(err, ucerr.ErrUnauthenticated) {
-		t.Fatal("count error must not surface as unauthenticated")
-	}
-}
-
 func TestListPublishedConnection_FindPageError_Wrapped(t *testing.T) {
-	repo := &mockMasterCatalogRepository{countResult: 1, findPageErr: eris.New("db down")}
+	repo := &mockMasterCatalogRepository{findPageTotal: 1, findPageErr: eris.New("db down")}
 	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
 
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(2)})
 	if err == nil {
 		t.Fatal("want error from find-page failure")
+	}
+	// The page method now delivers both rows and total, so its failure is the only
+	// repo error path. It must not be misclassified as unauthenticated.
+	if errors.Is(err, ucerr.ErrUnauthenticated) {
+		t.Fatal("find-page error must not surface as unauthenticated")
 	}
 }
 
@@ -510,9 +481,6 @@ func TestListPublishedConnection_SearchNormalizedToNil(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := repo.countCalls[0].Search; got != nil {
-		t.Fatalf("whitespace-only search must normalize to nil for count, got %q", *got)
-	}
 	if got := repo.findPageCalls[0].Search; got != nil {
 		t.Fatalf("whitespace-only search must normalize to nil for page, got %q", *got)
 	}
@@ -530,9 +498,6 @@ func TestListPublishedConnection_SearchTrimmed(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if got := repo.countCalls[0].Search; got == nil || *got != "hello" {
-		t.Fatalf("count search must be trimmed to %q, got %v", "hello", got)
 	}
 	if got := repo.findPageCalls[0].Search; got == nil || *got != "hello" {
 		t.Fatalf("page search must be trimmed to %q, got %v", "hello", got)
@@ -552,9 +517,6 @@ func TestListAdminConnection_SearchNormalizedToNil(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := repo.countAdminCalls[0].Search; got != nil {
-		t.Fatalf("whitespace-only search must normalize to nil for admin count, got %q", *got)
-	}
 	if got := repo.findAdminCalls[0].Search; got != nil {
 		t.Fatalf("whitespace-only search must normalize to nil for admin page, got %q", *got)
 	}
@@ -572,9 +534,6 @@ func TestListAdminConnection_SearchTrimmed(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if got := repo.countAdminCalls[0].Search; got == nil || *got != "hello" {
-		t.Fatalf("admin count search must be trimmed to %q, got %v", "hello", got)
 	}
 	if got := repo.findAdminCalls[0].Search; got == nil || *got != "hello" {
 		t.Fatalf("admin page search must be trimmed to %q, got %v", "hello", got)
@@ -622,8 +581,8 @@ func TestListAdminConnection_CursorAcceptsDraftViaFindByID(t *testing.T) {
 	t.Parallel()
 	cur := cursor.Encode("draft-id")
 	repo := &mockMasterCatalogRepository{
-		countAdminRes: 1,
-		findAdminPage: []*repository.MasterCatalogItem{catalogItem("x", 1)},
+		findAdminTotal: 1,
+		findAdminPage:  []*repository.MasterCatalogItem{catalogItem("x", 1)},
 		// FindByID resolves the draft — the admin list includes DRAFT decks.
 		findByIDFn: func(id string) (*domain.MasterCardgroup, error) {
 			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Draft"), Status: domain.MasterStatusDraft}, nil
