@@ -47,7 +47,7 @@ export const FLAMINGO_EVENT = {
   addMasterCard: "flamingo:add-master-card",
 } as const;
 
-type FlamingoEventName = (typeof FLAMINGO_EVENT)[keyof typeof FLAMINGO_EVENT];
+export type FlamingoEventName = (typeof FLAMINGO_EVENT)[keyof typeof FLAMINGO_EVENT];
 
 type FlamingoDetail<K extends FlamingoEventName> =
   WindowEventMap[K] extends CustomEvent<infer D> ? D : never;
@@ -67,4 +67,26 @@ export function dispatchFlamingo<K extends FlamingoEventName>(
     : [init: { detail: FlamingoDetail<K>; cancelable?: boolean }]
 ): boolean {
   return window.dispatchEvent(new CustomEvent(type, args[0]));
+}
+
+/**
+ * Type-safe `window.addEventListener` companion to {@link dispatchFlamingo}. The
+ * detail type is inferred from the event name via the `WindowEventMap`
+ * augmentation, so no call site needs an explicit `CustomEvent<...>` annotation.
+ * The handler receives the decoded `detail` first and the raw `CustomEvent`
+ * second — listeners that claim a cancelable create-event (add-card /
+ * add-cardgroup / add-master-card) call `event.preventDefault()` on the second
+ * argument so the dispatcher's `{ cancelable: true }` round-trip detects the
+ * claim. Returns the cleanup function — return it directly from a `useEffect`.
+ */
+export function subscribeFlamingo<K extends FlamingoEventName>(
+  type: K,
+  handler: (detail: FlamingoDetail<K>, event: CustomEvent<FlamingoDetail<K>>) => void,
+): () => void {
+  const listener = (event: Event) => {
+    const custom = event as CustomEvent<FlamingoDetail<K>>;
+    handler(custom.detail, custom);
+  };
+  window.addEventListener(type, listener);
+  return () => window.removeEventListener(type, listener);
 }

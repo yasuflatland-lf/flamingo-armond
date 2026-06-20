@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { dispatchFlamingo, FLAMINGO_EVENT } from "@/lib/events/flamingo-events";
+import { dispatchFlamingo, FLAMINGO_EVENT, subscribeFlamingo } from "@/lib/events/flamingo-events";
 import { type UseDebouncedSearchResult, useDebouncedSearch } from "./use-debounced-search";
 
 export interface UseHeaderTakeoverSearchResult extends UseDebouncedSearchResult {
@@ -25,11 +25,7 @@ export function useHeaderTakeoverSearch(opts?: {
 
   // Header magnifier -> open the takeover in place.
   useEffect(() => {
-    function handleOpenSearch() {
-      setSearchOpen(true);
-    }
-    window.addEventListener(FLAMINGO_EVENT.openSearch, handleOpenSearch);
-    return () => window.removeEventListener(FLAMINGO_EVENT.openSearch, handleOpenSearch);
+    return subscribeFlamingo(FLAMINGO_EVENT.openSearch, () => setSearchOpen(true));
   }, []);
 
   // Report filter state back to the header trigger (active dot + aria-expanded).
