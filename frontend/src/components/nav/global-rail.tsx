@@ -1,6 +1,5 @@
 "use client";
 
-import { BookOpen, LibraryBig, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -20,7 +19,13 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { HeaderSignInLink } from "./header-sign-in-link";
-import { ADMIN_NAV_ITEMS } from "./nav-items";
+import {
+  ADMIN_NAV_ITEMS,
+  CORE_NAV_ITEMS,
+  FOOTER_NAV_ITEMS,
+  matchesRoute,
+  resolveActiveItem,
+} from "./nav-items";
 
 interface GlobalRailProps {
   /** Required user record. Callers must pass a value or explicit null. */
@@ -31,40 +36,6 @@ interface GlobalRailProps {
 
 /** Hover-out close delay (ms) — avoids flicker when crossing the rail boundary. */
 const HOVER_CLOSE_DELAY_MS = 150;
-
-/**
- * Resolve the active rail item from the current pathname.
- *
- * Only handles the static center items (Cardgroups, Catalog). Admin items and
- * the footer Profile link compute their own active state inline, so this
- * function deliberately does not return `"profile"` or `"admin"`.
- *
- * Uses a positive-allowlist style (per
- * `docs/frontend/typescript-conventions.md` § "Positive allowlist over
- * negative exclusion") so that future top-level routes do not silently match an
- * existing rail item.
- */
-type ActiveItem = "cardgroups" | "catalog" | null;
-
-/** Matches `pathname` against a top-level route — exact match or a sub-route prefix. */
-function matchesRoute(pathname: string, route: string): boolean {
-  return pathname === route || pathname.startsWith(`${route}/`);
-}
-
-function resolveActiveItem(pathname: string): ActiveItem {
-  if (
-    pathname === "/cardgroups" ||
-    pathname.startsWith("/cardgroups/") ||
-    pathname.startsWith("/cards/") ||
-    pathname.startsWith("/learn/")
-  ) {
-    return "cardgroups";
-  }
-  if (matchesRoute(pathname, "/catalog")) {
-    return "catalog";
-  }
-  return null;
-}
 
 export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
   const t = useTranslations("Nav");
@@ -113,10 +84,6 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
 
   const active = resolveActiveItem(pathname);
 
-  // Footer Profile link active state — computed inline because the footer
-  // Profile link is not part of `resolveActiveItem`'s center-item domain.
-  const profileActive = matchesRoute(pathname, "/profile");
-
   // Admin fallback: light up Users when /admin/<unknown> falls through,
   // so the rail always points at a valid admin destination. Encoded with a
   // literal-string discriminator on `item.href`, not a numeric index — see
@@ -143,30 +110,20 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={active === "cardgroups"}
-                    tooltip={t("cardgroups")}
-                  >
-                    <Link
-                      href="/cardgroups"
-                      aria-current={active === "cardgroups" ? "page" : undefined}
-                    >
-                      <BookOpen aria-hidden="true" />
-                      <span>{t("cardgroups")}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={active === "catalog"} tooltip={t("catalog")}>
-                    <Link href="/catalog" aria-current={active === "catalog" ? "page" : undefined}>
-                      <LibraryBig aria-hidden="true" />
-                      <span>{t("catalog")}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                {CORE_NAV_ITEMS.map((item) => {
+                  const isItemActive = active === item.labelKey;
+                  const Icon = item.icon;
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton asChild isActive={isItemActive} tooltip={t(item.labelKey)}>
+                        <Link href={item.href} aria-current={isItemActive ? "page" : undefined}>
+                          <Icon aria-hidden="true" />
+                          <span>{t(item.labelKey)}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
 
                 {isAdmin &&
                   ADMIN_NAV_ITEMS.map((item) => {
@@ -198,14 +155,25 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
       {user !== null && (
         <SidebarFooter>
           <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={profileActive} tooltip={t("profile")}>
-                <Link href="/profile" aria-current={profileActive ? "page" : undefined}>
-                  <User aria-hidden="true" />
-                  <span>{t("profile")}</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
+            {/*
+              Footer item active state is computed inline via `matchesRoute`
+              because these links are not part of `resolveActiveItem`'s
+              center-item domain.
+            */}
+            {FOOTER_NAV_ITEMS.map((item) => {
+              const isItemActive = matchesRoute(pathname, item.href);
+              const Icon = item.icon;
+              return (
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton asChild isActive={isItemActive} tooltip={t(item.labelKey)}>
+                    <Link href={item.href} aria-current={isItemActive ? "page" : undefined}>
+                      <Icon aria-hidden="true" />
+                      <span>{t(item.labelKey)}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })}
           </SidebarMenu>
 
           {/*
