@@ -87,4 +87,13 @@ grep -rlP "[\x{3040}-\x{30ff}\x{4e00}-\x{9fff}]" \
 grep -rnE "PR[0-9]+" docs backend/internal backend/cmd backend/graph frontend/src
 ```
 
+**On macOS the CJK `grep -P` above silently finds nothing — a false negative, not a pass.** BSD `grep` does not implement the `\x{NNNN}` Unicode escapes, so `grep -P "[\x{3040}-…]"` matches zero lines even when CJK is present (it works only on CI's Linux GNU grep). Locally, use `perl -CSD`, which decodes UTF-8 and supports the ranges:
+
+```bash
+perl -CSD -ne 'print "$ARGV\n" if /[\x{3040}-\x{30ff}\x{4e00}-\x{9fff}]/' \
+  $(git ls-files 'frontend/src/**/*.ts' 'frontend/src/**/*.tsx' 'docs/**/*.md')
+```
+
+Plain `perl` (without `-CSD`) also misreports — the `-CSD` flag is what enables UTF-8 stdin/stdout decoding. **Important:** this gate scans `frontend/src/**` including `*.test.tsx`, so a deliberately-CJK test fixture (an arbitrary card `back`, etc.) trips it. Keep fixture data ASCII unless the test is specifically asserting i18n rendering — the CJK exception is for the message catalogs and locale-rendering tests, not incidental fixture strings.
+
 Run the CJK grep **before writing** any new UI string literals (JSX text, `placeholder`, `aria-label`, etc.), not after. Memory and convention assumptions about "matching existing UX text" are unreliable — grep is the canonical proof. A design-doc claim that "the text matches the rest of the app" was disproven by grep during the card-duplicate-overwrite implementation: the target component was the only file in `frontend/src/` carrying CJK content, requiring a full English rewrite. The grep takes under one second; discovering the violation in review wastes far more.

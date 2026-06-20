@@ -133,6 +133,14 @@ describe("<CatalogListItem>", () => {
     expect(screen.getByTestId("catalog-row-m-1")).toBeInTheDocument();
   });
 
+  it("renders a View link routing to the deck-detail page", () => {
+    renderItem(FULL_NODE);
+    const view = screen.getByTestId("catalog-view-m-1");
+    expect(view).toHaveAttribute("href", "/catalog/m-1");
+    expect(view).toHaveTextContent("View");
+    expect(view).toHaveAttribute("aria-label", "View Business English");
+  });
+
   it("shows the imported label when both importing and imported are true (imported wins)", () => {
     renderItem(FULL_NODE, { importing: true, imported: true });
     const btn = screen.getByTestId("catalog-import-m-1");

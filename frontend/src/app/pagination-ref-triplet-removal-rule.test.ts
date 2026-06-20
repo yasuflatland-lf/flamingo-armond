@@ -75,6 +75,10 @@ const migratedSites = [
     sourcePath: "src/app/cardgroups/[id]/cards/use-cards-connection.ts",
   },
   {
+    name: "catalog deck cards connection hook",
+    sourcePath: "src/app/catalog/[id]/use-catalog-cards-connection.ts",
+  },
+  {
     name: "admin masters listing",
     sourcePath: "src/app/admin/masters/admin-masters-client.tsx",
   },

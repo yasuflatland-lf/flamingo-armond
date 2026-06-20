@@ -91,7 +91,12 @@
     "importNotFound": "このカードグループは利用できなくなりました。",
     "importError": "カードグループをインポートできませんでした。もう一度お試しください。",
     "sessionExpired": "セッションの有効期限が切れました。",
-    "signInAgain": "再度ログイン"
+    "signInAgain": "再度ログイン",
+    "viewDeck": "見る",
+    "viewDeckAriaLabel": "{name} を見る",
+    "backToCatalog": "カタログに戻る",
+    "deckEmpty": "このデッキにはまだカードがありません。",
+    "deckEmptySearch": "「{query}」に一致するカードはありません"
   },
   "Cardgroups": {
     "updatedAt": "{date}に更新",

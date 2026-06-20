@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { CatalogImportButton } from "@/app/catalog/_components/catalog-import-button";
 import { CatalogCardFieldsFragment } from "@/app/catalog/queries";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { type FragmentType, useFragment } from "@/generated/fragment-masking";
 
 export type CatalogListItemProps = {
@@ -91,15 +93,28 @@ export function CatalogListItem({
           </span>
         </div>
 
-        <CatalogImportButton
-          card={card}
-          importing={importing}
-          imported={imported}
-          onImport={onImport}
-          labels={labels}
-          testIdPrefix={testIdPrefix}
-          className="order-3 shrink-0 sm:order-4"
-        />
+        {/* View + Import sit together on the right of the meta tier (mobile) /
+            the inline row (desktop). The View link previews the deck's cards at
+            /catalog/[id]; the locale-independent data-testid lets e2e (ja-JP)
+            target it without depending on translated copy. */}
+        <div className="order-3 flex shrink-0 items-center gap-2 sm:order-4">
+          <Link
+            href={`/catalog/${card.id}`}
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+            data-testid={`catalog-view-${card.id}`}
+            aria-label={t("viewDeckAriaLabel", { name: card.name })}
+          >
+            {t("viewDeck")}
+          </Link>
+          <CatalogImportButton
+            card={card}
+            importing={importing}
+            imported={imported}
+            onImport={onImport}
+            labels={labels}
+            testIdPrefix={testIdPrefix}
+          />
+        </div>
       </div>
     </li>
   );
