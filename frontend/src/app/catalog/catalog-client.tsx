@@ -110,6 +110,7 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
   const {
     edges,
     pageInfo,
+    totalCount,
     loading,
     networkStatus,
     fetchingMore,
@@ -156,6 +157,7 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
       />
       <ListingPageShell
         title={t("title")}
+        count={totalCount}
         toolbar={
           <div className="mb-2 hidden md:block">
             <input
