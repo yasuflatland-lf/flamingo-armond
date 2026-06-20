@@ -665,16 +665,9 @@ func resolveMasterCardOrderBy(
 			return "", "", ucerr.NewValidationError("orderBy", "invalid")
 		}
 	}
-	d := repository.SortAsc
-	if dir != nil {
-		switch *dir {
-		case SortOrderAsc:
-			d = repository.SortAsc
-		case SortOrderDesc:
-			d = repository.SortDesc
-		default:
-			return "", "", ucerr.NewValidationError("orderDirection", "invalid")
-		}
+	d, err := resolveSortDir(dir, repository.SortAsc)
+	if err != nil {
+		return "", "", err
 	}
 	return field, d, nil
 }

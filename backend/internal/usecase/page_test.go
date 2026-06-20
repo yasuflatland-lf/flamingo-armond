@@ -5,8 +5,61 @@ import (
 	"reflect"
 	"testing"
 
+	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
 )
+
+// TestResolveSortDir covers the shared SortOrder -> repository.SortOrder helper
+// extracted from the four resolve*OrderBy functions: nil falls back to the
+// caller-supplied default, ASC/DESC map to repository.SortAsc/SortDesc, and an
+// out-of-range value is a field-level orderDirection validation error.
+func TestResolveSortDir(t *testing.T) {
+	t.Parallel()
+
+	asc := SortOrderAsc
+	desc := SortOrderDesc
+	bogus := SortOrder("SIDEWAYS")
+
+	tests := []struct {
+		name    string
+		dir     *SortOrder
+		def     repository.SortOrder
+		want    repository.SortOrder
+		wantErr bool
+	}{
+		{name: "nil -> default ASC", dir: nil, def: repository.SortAsc, want: repository.SortAsc},
+		{name: "nil -> default DESC", dir: nil, def: repository.SortDesc, want: repository.SortDesc},
+		{name: "ASC -> repository.SortAsc", dir: &asc, def: repository.SortDesc, want: repository.SortAsc},
+		{name: "DESC -> repository.SortDesc", dir: &desc, def: repository.SortAsc, want: repository.SortDesc},
+		{name: "invalid -> validation error", dir: &bogus, def: repository.SortAsc, wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := resolveSortDir(tc.dir, tc.def)
+			if tc.wantErr {
+				var ve *ucerr.ValidationError
+				if !errors.As(err, &ve) {
+					t.Fatalf("want ValidationError, got %v", err)
+				}
+				if ve.Field != "orderDirection" {
+					t.Fatalf("want field orderDirection, got %q", ve.Field)
+				}
+				if got != "" {
+					t.Fatalf("want empty direction on error, got %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestTrimAndDetect(t *testing.T) {
 	t.Parallel()

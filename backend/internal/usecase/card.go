@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
@@ -392,18 +391,10 @@ func (u *cardUsecase) ListCardsByCardgroupConnection(
 		return nil, err
 	}
 
-	// Normalize: nil and whitespace-only both mean "no filter". After this
-	// block, a non-nil search pointer is guaranteed to hold a non-empty,
-	// trimmed string — the repository can rely on this invariant.
-	search := in.Search
-	if search != nil {
-		trimmed := strings.TrimSpace(*search)
-		if trimmed == "" {
-			search = nil
-		} else {
-			search = &trimmed
-		}
-	}
+	// Normalize: nil and whitespace-only both mean "no filter". After this,
+	// a non-nil search pointer is guaranteed to hold a non-empty, trimmed
+	// string — the repository can rely on this invariant.
+	search := normalizeSearch(in.Search)
 
 	var total int64
 	cards, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
@@ -449,16 +440,9 @@ func resolveOrderBy(orderBy *CardOrderBy, dir *SortOrder) (repository.CardOrderB
 			return "", "", ucerr.NewValidationError("orderBy", "invalid")
 		}
 	}
-	d := repository.SortAsc
-	if dir != nil {
-		switch *dir {
-		case SortOrderAsc:
-			d = repository.SortAsc
-		case SortOrderDesc:
-			d = repository.SortDesc
-		default:
-			return "", "", ucerr.NewValidationError("orderDirection", "invalid")
-		}
+	d, err := resolveSortDir(dir, repository.SortAsc)
+	if err != nil {
+		return "", "", err
 	}
 	return field, d, nil
 }

@@ -1,6 +1,28 @@
 package usecase
 
-import "backend/internal/usecase/ucerr"
+import (
+	"backend/internal/repository"
+	"backend/internal/usecase/ucerr"
+)
+
+// resolveSortDir maps the typed usecase SortOrder enum to the repository sort
+// direction, defaulting to def when dir is nil. The default switch arm is
+// defense in depth — gqlgen UnmarshalGQL already rejects invalid enum strings
+// upstream. Shared by every aggregate's resolve*OrderBy; only the per-aggregate
+// default direction (def) differs.
+func resolveSortDir(dir *SortOrder, def repository.SortOrder) (repository.SortOrder, error) {
+	if dir == nil {
+		return def, nil
+	}
+	switch *dir {
+	case SortOrderAsc:
+		return repository.SortAsc, nil
+	case SortOrderDesc:
+		return repository.SortDesc, nil
+	default:
+		return "", ucerr.NewValidationError("orderDirection", "invalid")
+	}
+}
 
 // resolveStandardPageSize clamps first/last to [0, maxPageSize] and rejects
 // passing both. Defaults first=defaultPageSize (20) when neither is provided,
