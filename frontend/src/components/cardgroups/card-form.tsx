@@ -46,7 +46,7 @@ export function CardForm({
 }: CardFormProps) {
   const t = useTranslations("Cards");
   const tCommon = useTranslations("Common");
-  const resolvedLabel = submitLabel ?? (mode === "create" ? "Add" : "Save");
+  const resolvedLabel = submitLabel ?? (mode === "create" ? t("add") : tCommon("save"));
   const schema = mode === "create" ? newCardSchema.omit({ cardgroupId: true }) : updateCardSchema;
   const frontSchema = schema.shape.front;
   const backSchema = schema.shape.back;
@@ -99,7 +99,7 @@ export function CardForm({
         </Button>
         {onCancel && (
           <Button type="button" variant="outline" onClick={onCancel}>
-            Cancel
+            {tCommon("cancel")}
           </Button>
         )}
       </div>

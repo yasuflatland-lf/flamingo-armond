@@ -59,7 +59,8 @@ test.describe
       // /edit form so we can capture the new id from the URL.
       // Use name attribute to avoid locale-dependent label text (Playwright runs ja-JP).
       await page.locator('input[name="name"]').fill(cardgroupName);
-      await page.getByRole("button", { name: "Create" }).click();
+      // Use data-testid to avoid locale-dependent button text (Playwright runs ja-JP).
+      await page.getByTestId("cardgroup-form-submit").click();
       await page.waitForURL(/\/cardgroups\/[0-9a-f-]{36}\/edit$/, { timeout: 15_000 });
       const newCardgroupId = page.url().split("/").slice(-2, -1)[0] ?? "";
       expect(newCardgroupId).toMatch(UUID_RE);

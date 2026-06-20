@@ -75,7 +75,7 @@ export function RoleForm({
         </Button>
         {onCancel ? (
           <Button type="button" variant="outline" onClick={onCancel}>
-            Cancel
+            {tCommon("cancel")}
           </Button>
         ) : null}
       </div>
