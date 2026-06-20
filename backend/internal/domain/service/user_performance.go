@@ -6,15 +6,24 @@ import (
 	"backend/internal/domain"
 )
 
+// PerformanceMode is the difficulty level inferred from a user's recent
+// performance. Values intentionally span ModeDifficult (0) .. ModeInWhile (4).
+type PerformanceMode int
+
 const (
-	ModeDifficult = 0
-	ModeDefault   = 1
-	ModeGood      = 2
-	ModeEasy      = 3
-	ModeInWhile   = 4
+	ModeDifficult PerformanceMode = 0
+	ModeDefault   PerformanceMode = 1
+	ModeGood      PerformanceMode = 2
+	ModeEasy      PerformanceMode = 3
+	ModeInWhile   PerformanceMode = 4
 
 	MinReviewsForModeCalculation = 20
 )
+
+// IsValid reports whether the mode is in the recognised range.
+func (m PerformanceMode) IsValid() bool {
+	return m >= ModeDifficult && m <= ModeInWhile
+}
 
 type PerformanceMetrics struct {
 	SuccessRate   float64
@@ -69,7 +78,7 @@ func ComputeMetrics(swipes []domain.SwipeRecord, now time.Time) PerformanceMetri
 	}
 }
 
-func ModeFromMetrics(m PerformanceMetrics) int {
+func ModeFromMetrics(m PerformanceMetrics) PerformanceMode {
 	if m.ReviewCount < MinReviewsForModeCalculation {
 		return ModeDefault
 	}
@@ -139,7 +148,7 @@ func ratio(numerator, denominator int) float64 {
 	return float64(numerator) / float64(denominator)
 }
 
-func clampMode(mode int) int {
+func clampMode(mode PerformanceMode) PerformanceMode {
 	if mode < ModeDifficult {
 		return ModeDifficult
 	}
