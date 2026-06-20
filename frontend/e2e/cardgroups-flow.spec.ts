@@ -78,7 +78,8 @@ test.describe
       // the translated sheet heading.
       await newCardgroupButton.click();
       await expect(page.locator('input[name="name"]')).toBeVisible();
-      await expect(page.getByRole("button", { name: "Create" })).toBeVisible();
+      // Use data-testid to avoid locale-dependent button text (Playwright runs ja-JP).
+      await expect(page.getByTestId("cardgroup-form-submit")).toBeVisible();
 
       // The URL must NOT have navigated — the in-place drawer is the entire point.
       expect(new URL(page.url()).pathname).toBe("/cardgroups");
@@ -161,7 +162,8 @@ test.describe
       const newCgName = `E2E picker-return ${runId}`;
       // Use name attribute to avoid locale-dependent label text (Playwright runs ja-JP).
       await page.locator('input[name="name"]').fill(newCgName);
-      await page.getByRole("button", { name: "Create" }).click();
+      // Use data-testid to avoid locale-dependent button text (Playwright runs ja-JP).
+      await page.getByTestId("cardgroup-form-submit").click();
 
       // After successful creation the router pushes /cards/new?cardgroup=<newId>.
       await page.waitForURL(/\/cards\/new\?cardgroup=[0-9a-f-]{36}/, { timeout: 15_000 });
@@ -202,7 +204,8 @@ test.describe
 
       const name4a = `E2E redirect-a ${runId}`;
       await page.locator('input[name="name"]').fill(name4a);
-      await page.getByRole("button", { name: "Create" }).click();
+      // Use data-testid to avoid locale-dependent button text (Playwright runs ja-JP).
+      await page.getByTestId("cardgroup-form-submit").click();
 
       // Must land on /cardgroups/<uuid>, never on evil.com or /cards/new.
       await page.waitForURL(/\/cardgroups\/[0-9a-f-]{36}$/, { timeout: 15_000 });
@@ -219,7 +222,8 @@ test.describe
 
       const name4b = `E2E redirect-b ${runId}`;
       await page.locator('input[name="name"]').fill(name4b);
-      await page.getByRole("button", { name: "Create" }).click();
+      // Use data-testid to avoid locale-dependent button text (Playwright runs ja-JP).
+      await page.getByTestId("cardgroup-form-submit").click();
 
       await page.waitForURL(/\/cardgroups\/[0-9a-f-]{36}$/, { timeout: 15_000 });
       const finalUrl4b = page.url();

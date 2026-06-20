@@ -96,7 +96,7 @@ export function LearnAddCardSheet({ cardgroupId }: { cardgroupId: string }) {
     } else if (outcome.status === "validation") {
       setValidationError({ field: outcome.field, message: outcome.message });
     } else if (outcome.status === "unexpected") {
-      setValidationError({ field: "front", message: "Add failed. Please try again." });
+      setValidationError({ field: "front", message: t("addFailed") });
     }
     // outcome.status === "rejected": the hook already logged the rejection;
     // leave the sheet open so the user can retry.

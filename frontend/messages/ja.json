@@ -2,6 +2,7 @@
   "Common": {
     "save": "保存",
     "saving": "保存中...",
+    "create": "作成",
     "cancel": "キャンセル",
     "loading": "読み込み中...",
     "retry": "再試行",
@@ -138,6 +139,7 @@
     "limitReached": "すでに{current}個のカードグループがあります（上限{limit}個）。"
   },
   "Cards": {
+    "add": "追加",
     "addSomeCards": "新しいカードを追加して始めましょう。",
     "noMatch": "「{search}」に一致するカードがありません",
     "clearSearch": "検索をクリア",

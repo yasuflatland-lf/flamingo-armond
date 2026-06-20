@@ -46,7 +46,7 @@ export function CardgroupForm({
 }: CardgroupFormProps) {
   const t = useTranslations("Cardgroups");
   const tCommon = useTranslations("Common");
-  const resolvedLabel = submitLabel ?? (mode === "create" ? "Create" : "Save");
+  const resolvedLabel = submitLabel ?? (mode === "create" ? tCommon("create") : tCommon("save"));
 
   const schema = mode === "create" ? newCardgroupSchema : updateCardgroupSchema;
   const nameSchema = schema.shape.name;
@@ -80,7 +80,12 @@ export function CardgroupForm({
       </form.Field>
 
       <div className="flex items-center gap-2">
-        <Button type="submit" variant="brand" disabled={submitting}>
+        <Button
+          type="submit"
+          variant="brand"
+          disabled={submitting}
+          data-testid="cardgroup-form-submit"
+        >
           {submitting ? tCommon("saving") : resolvedLabel}
         </Button>
         {secondarySlot}
