@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { AdminQueryErrorBanner } from "@/components/admin/admin-query-error-banner";
+import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -305,35 +306,16 @@ export function AdminUsersClient() {
           </ul>
         )}
 
-        {/* Intersection sentinel for infinite scroll */}
-        <div ref={sentinelRef} aria-hidden="true" data-testid="admin-users-sentinel" />
-
-        {/* fetchMore error banner with Retry */}
-        {fetchMoreError && (
-          <ErrorBanner
-            className="mt-3 flex flex-col items-center gap-2"
-            data-testid="admin-users-fetch-more-error"
-          >
-            <span>{fetchMoreError}</span>
-            <button
-              type="button"
-              className="rounded-md border border-destructive/40 px-3 py-1 text-xs hover:bg-destructive/10"
-              onClick={retryFetchMore}
-            >
-              {tCommon("retry")}
-            </button>
-          </ErrorBanner>
-        )}
-
-        {/* Loading more indicator */}
-        {!fetchMoreError && fetchingMore && hasNextPage && (
-          <p
-            className="mt-3 text-center text-xs text-muted-foreground"
-            data-testid="admin-users-loading-more"
-          >
-            {t("loadingMore")}
-          </p>
-        )}
+        <ConnectionListFooter
+          sentinelRef={sentinelRef}
+          fetchMoreError={fetchMoreError}
+          onRetry={retryFetchMore}
+          fetchingMore={fetchingMore}
+          hasNextPage={hasNextPage}
+          retryLabel={tCommon("retry")}
+          loadingMoreLabel={t("loadingMore")}
+          testIdPrefix="admin-users"
+        />
 
         <AdminUserProfileSheet
           open={editUserId !== null}
