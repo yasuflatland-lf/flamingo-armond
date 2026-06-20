@@ -174,8 +174,8 @@ func (r *queryResolver) CardsByCardgroupConnection(ctx context.Context, cardgrou
 		After:          after,
 		Before:         before,
 		Search:         search,
-		OrderBy:        toUsecaseCardOrderBy(orderBy),
-		OrderDirection: toUsecaseSortOrder(orderDirection),
+		OrderBy:        toUsecaseOrderBy[model.CardOrderBy, usecase.CardOrderBy](orderBy),
+		OrderDirection: toUsecaseOrderBy[model.SortOrder, usecase.SortOrder](orderDirection),
 	})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)

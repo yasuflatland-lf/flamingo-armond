@@ -162,8 +162,8 @@ func (r *queryResolver) MasterCatalog(ctx context.Context, first *int, after *st
 		After:          after,
 		Before:         before,
 		Search:         search,
-		OrderBy:        toUsecaseMasterCatalogOrderBy(orderBy),
-		OrderDirection: toUsecaseSortOrder(orderDirection),
+		OrderBy:        toUsecaseOrderBy[model.MasterCatalogOrderBy, usecase.MasterCatalogOrderBy](orderBy),
+		OrderDirection: toUsecaseOrderBy[model.SortOrder, usecase.SortOrder](orderDirection),
 	})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
@@ -179,8 +179,8 @@ func (r *queryResolver) AdminMasters(ctx context.Context, first *int, after *str
 		After:          after,
 		Before:         before,
 		Search:         search,
-		OrderBy:        toUsecaseMasterCatalogOrderBy(orderBy),
-		OrderDirection: toUsecaseSortOrder(orderDirection),
+		OrderBy:        toUsecaseOrderBy[model.MasterCatalogOrderBy, usecase.MasterCatalogOrderBy](orderBy),
+		OrderDirection: toUsecaseOrderBy[model.SortOrder, usecase.SortOrder](orderDirection),
 	})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)

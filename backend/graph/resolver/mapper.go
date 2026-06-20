@@ -221,43 +221,17 @@ func toRoleModels(ctx context.Context, roles []*domain.Role) []*model.Role {
 	return out
 }
 
-func toUsecaseCardOrderBy(o *model.CardOrderBy) *usecase.CardOrderBy {
+// toUsecaseOrderBy casts a pointer to a model-layer order-by / sort enum into
+// the matching usecase-layer enum, preserving the nil-passes-through contract
+// (an absent argument keeps the usecase default). Both enums share a `~string`
+// underlying type, so the cast is a direct value conversion. Callers supply the
+// type arguments explicitly, e.g.
+// toUsecaseOrderBy[model.CardOrderBy, usecase.CardOrderBy](args.OrderBy).
+func toUsecaseOrderBy[M ~string, U ~string](o *M) *U {
 	if o == nil {
 		return nil
 	}
-	v := usecase.CardOrderBy(*o)
-	return &v
-}
-
-func toUsecaseCardgroupOrderBy(o *model.CardgroupOrderBy) *usecase.CardgroupOrderBy {
-	if o == nil {
-		return nil
-	}
-	v := usecase.CardgroupOrderBy(*o)
-	return &v
-}
-
-func toUsecaseMasterCatalogOrderBy(o *model.MasterCatalogOrderBy) *usecase.MasterCatalogOrderBy {
-	if o == nil {
-		return nil
-	}
-	v := usecase.MasterCatalogOrderBy(*o)
-	return &v
-}
-
-func toUsecaseMasterCardOrderBy(o *model.MasterCardOrderBy) *usecase.MasterCardOrderBy {
-	if o == nil {
-		return nil
-	}
-	v := usecase.MasterCardOrderBy(*o)
-	return &v
-}
-
-func toUsecaseSortOrder(d *model.SortOrder) *usecase.SortOrder {
-	if d == nil {
-		return nil
-	}
-	v := usecase.SortOrder(*d)
+	v := U(*o)
 	return &v
 }
 
