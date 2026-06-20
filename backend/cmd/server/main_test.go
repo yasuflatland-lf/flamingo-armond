@@ -2597,6 +2597,12 @@ func (panicQueryResolver) AdminMaster(_ context.Context, _ string) (*model.Maste
 func (panicQueryResolver) AdminMasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.MasterCardOrderBy, _ *model.SortOrder) (*model.MasterCardConnection, error) {
 	panic("not implemented")
 }
+func (panicQueryResolver) MasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.MasterCardOrderBy, _ *model.SortOrder) (*model.MasterCardConnection, error) {
+	panic("not implemented")
+}
+func (panicQueryResolver) MasterCardgroup(_ context.Context, _ string) (*model.MasterCardgroup, error) {
+	panic("not implemented")
+}
 
 // panicResolverRoot is a generated.ResolverRoot whose Query resolver panics on
 // Health. All other sub-resolvers forward to the real resolver with nil deps

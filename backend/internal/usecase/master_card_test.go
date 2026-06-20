@@ -199,19 +199,29 @@ func (panicMasterCardgroupRepo) Unpublish(_ context.Context, _ string) (*domain.
 	panic("not used in this test")
 }
 
-// mockMasterCardgroupReadRepo overrides FindByID (deck incl. DRAFT) and CountCards,
-// the only two methods MasterCardUsecase.AdminMaster consumes.
+// mockMasterCardgroupReadRepo overrides FindByID (deck incl. DRAFT), CountCards,
+// and FindPublishedByID (published-only deck). FindByID + CountCards back
+// MasterCardUsecase.AdminMaster; FindPublishedByID backs ListPublicMasterCards'
+// published-only visibility gate.
 type mockMasterCardgroupReadRepo struct {
 	panicMasterCardgroupRepo
 
-	findByIDFn    func(id string) (*domain.MasterCardgroup, error)
-	countCardsRes int64
-	countCardsErr error
+	findByIDFn          func(id string) (*domain.MasterCardgroup, error)
+	findPublishedByIDFn func(id string) (*domain.MasterCardgroup, error)
+	countCardsRes       int64
+	countCardsErr       error
 }
 
 func (m *mockMasterCardgroupReadRepo) FindByID(_ context.Context, id string) (*domain.MasterCardgroup, error) {
 	if m.findByIDFn != nil {
 		return m.findByIDFn(id)
+	}
+	return nil, repository.ErrNotFound
+}
+
+func (m *mockMasterCardgroupReadRepo) FindPublishedByID(_ context.Context, id string) (*domain.MasterCardgroup, error) {
+	if m.findPublishedByIDFn != nil {
+		return m.findPublishedByIDFn(id)
 	}
 	return nil, repository.ErrNotFound
 }

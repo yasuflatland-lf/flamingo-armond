@@ -12,6 +12,7 @@ import (
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 
+	"backend/internal/auth"
 	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/repository"
@@ -33,6 +34,11 @@ type MasterCardUsecase interface {
 	// ListMasterCards paginates a master deck's cards with Relay-style forward
 	// (first/after) or backward (last/before) cursors. Admin-only.
 	ListMasterCards(ctx context.Context, in MasterCardConnectionInput) (*MasterCardConnectionOutput, error)
+	// ListPublicMasterCards paginates a PUBLISHED master deck's cards for any
+	// authenticated caller (no admin gate). The deck must be published — a DRAFT or
+	// unknown id is rejected as a validation error on "masterCardgroupId"
+	// (non-disclosure gate). Anonymous callers receive UNAUTHENTICATED.
+	ListPublicMasterCards(ctx context.Context, in MasterCardConnectionInput) (*MasterCardConnectionOutput, error)
 	// CreateMasterCard persists a new master card. Admin-only. A duplicate
 	// (case-insensitive) front is returned as data via the outcome's Duplicate
 	// field, not as an error.
@@ -564,6 +570,97 @@ func (u *masterCardUsecase) ListMasterCards(
 					return nil, e
 				}
 				return nil, eris.Wrap(e, "usecase: master card: list: find page")
+			}
+			total = t
+			return rows, nil
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// StartCur / EndCur carry the RAW node id; the resolver's connection layer
+	// applies the cursor encoder once. Encoding here would double-encode.
+	out := &MasterCardConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Cards: cards}
+	if len(cards) > 0 {
+		out.StartCur = cards[0].ID
+		out.EndCur = cards[len(cards)-1].ID
+	}
+	return out, nil
+}
+
+// ListPublicMasterCards paginates a PUBLISHED master deck's cards for any
+// authenticated caller (no admin gate). The body from the page assembly onward
+// mirrors ListMasterCards; only the gate differs — the admin gate is replaced by
+// an authentication check plus a published-only visibility gate. totalCount is the
+// search-aware count captured inside the assemblePage closure (same as the admin
+// path).
+func (u *masterCardUsecase) ListPublicMasterCards(
+	ctx context.Context, in MasterCardConnectionInput,
+) (*MasterCardConnectionOutput, error) {
+	if auth.UserFrom(ctx) == nil {
+		return nil, ucerr.ErrUnauthenticated
+	}
+	// Published-only visibility gate. FindPublishedByID returns ErrNotFound for
+	// BOTH unknown and DRAFT ids, collapsing them into one not-found so the
+	// endpoint cannot be used as a draft-existence oracle (non-disclosure gate).
+	if _, err := u.masterCardgroupRepo.FindPublishedByID(ctx, in.MasterCardgroupID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ucerr.NewValidationError("masterCardgroupId", "master deck not found")
+		}
+		if isContextDone(err) {
+			return nil, err
+		}
+		return nil, eris.Wrap(err, "usecase: master card: public list: find published by id")
+	}
+
+	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveStandardPageSize)
+	if err != nil {
+		return nil, err
+	}
+
+	orderBy, dir, err := resolveMasterCardOrderBy(in.OrderBy, in.OrderDirection)
+	if err != nil {
+		return nil, err
+	}
+
+	after, err := u.resolveMasterCardCursor(ctx, in.After, in.MasterCardgroupID, orderBy, "after")
+	if err != nil {
+		return nil, err
+	}
+	before, err := u.resolveMasterCardCursor(ctx, in.Before, in.MasterCardgroupID, orderBy, "before")
+	if err != nil {
+		return nil, err
+	}
+
+	// Normalize: nil and whitespace-only both mean "no filter". After this block
+	// a non-nil search pointer holds a non-empty, trimmed string — the repository
+	// relies on this invariant.
+	search := in.Search
+	if search != nil {
+		trimmed := strings.TrimSpace(*search)
+		if trimmed == "" {
+			search = nil
+		} else {
+			search = &trimmed
+		}
+	}
+
+	// totalCount is the search-aware count returned by FindPageByMasterCardgroup
+	// (captured inside the assemblePage closure). The repository computes it
+	// before its own no-rows short-circuit, so a totalCount-only request
+	// (first==0 && last==0) still observes the real, search-filtered count.
+	var total int64
+	cards, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
+		func(wantFirst, wantLast int) ([]*domain.MasterCard, error) {
+			rows, t, e := u.masterCardRepo.FindPageByMasterCardgroup(
+				ctx, in.MasterCardgroupID, after, before, wantFirst, wantLast, orderBy, dir, search,
+			)
+			if e != nil {
+				if isContextDone(e) {
+					return nil, e
+				}
+				return nil, eris.Wrap(e, "usecase: master card: public list: find page")
 			}
 			total = t
 			return rows, nil

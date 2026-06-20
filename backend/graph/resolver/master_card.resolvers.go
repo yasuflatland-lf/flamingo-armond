@@ -128,3 +128,34 @@ func (r *queryResolver) AdminMasterCardsConnection(ctx context.Context, masterCa
 	}
 	return toMasterCardConnectionModel(ctx, out), nil
 }
+
+// MasterCardsConnection is the resolver for the masterCardsConnection field.
+func (r *queryResolver) MasterCardsConnection(ctx context.Context, masterCardgroupID string, first *int, after *string, last *int, before *string, search *string, orderBy *model.MasterCardOrderBy, orderDirection *model.SortOrder) (*model.MasterCardConnection, error) {
+	out, err := r.MasterCardUC.ListPublicMasterCards(ctx, usecase.MasterCardConnectionInput{
+		MasterCardgroupID: masterCardgroupID,
+		First:             first,
+		Last:              last,
+		After:             after,
+		Before:            before,
+		Search:            search,
+		OrderBy:           toUsecaseMasterCardOrderBy(orderBy),
+		OrderDirection:    toUsecaseSortOrder(orderDirection),
+	})
+	if err != nil {
+		return nil, gqlerr.FromUsecaseError(ctx, err)
+	}
+	return toMasterCardConnectionModel(ctx, out), nil
+}
+
+// MasterCardgroup is the resolver for the masterCardgroup field.
+func (r *queryResolver) MasterCardgroup(ctx context.Context, id string) (*model.MasterCardgroup, error) {
+	deck, err := r.MasterCatalogUC.FindPublishedMaster(ctx, id)
+	if err != nil {
+		return nil, gqlerr.FromUsecaseError(ctx, err)
+	}
+	if deck == nil {
+		return nil, nil
+	}
+	// cardCount=0 here; the frontend reads the live count from masterCardsConnection.totalCount.
+	return toMasterCardgroupModelFromParts(deck, 0), nil
+}
