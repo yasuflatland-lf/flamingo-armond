@@ -64,6 +64,29 @@ describe("<CatalogListItem>", () => {
     expect(screen.queryByText("Business")).not.toBeInTheDocument();
   });
 
+  it("renders the singular card unit when the deck has exactly one card", () => {
+    const oneCardNode = makeFragmentData(
+      {
+        __typename: "MasterCardgroup" as const,
+        id: "m-3",
+        name: "Single Card Deck",
+        description: null,
+        language: null,
+        level: null,
+        category: null,
+        cardCount: 1,
+      },
+      CatalogCardFieldsFragment,
+    );
+    renderWithIntl(
+      <ul>
+        <CatalogListItem node={oneCardNode} />
+      </ul>,
+    );
+    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.getByText("card")).toBeInTheDocument();
+  });
+
   it("renders the whole row as a single link to the deck-detail page", () => {
     renderItem(FULL_NODE);
     const row = screen.getByTestId("catalog-row-m-1");
