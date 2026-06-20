@@ -98,6 +98,9 @@ jobs:
       - name: Build
         run: pnpm --filter frontend build
 
+      - name: Build Storybook
+        run: pnpm --filter frontend build-storybook
+
       - name: Vitest with coverage
         run: pnpm --filter frontend --if-present test:coverage
 
