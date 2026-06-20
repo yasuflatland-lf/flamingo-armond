@@ -10,8 +10,6 @@ import (
 	"backend/internal/gqlerr"
 	"backend/internal/usecase"
 	"context"
-
-	"github.com/rotisserie/eris"
 )
 
 // AdminCreateMasterCard is the resolver for the adminCreateMasterCard field.
@@ -37,8 +35,7 @@ func (r *mutationResolver) AdminCreateMasterCard(ctx context.Context, input mode
 		}, nil
 	}
 	if outcome.Card == nil {
-		return nil, gqlerr.Internal(ctx,
-			eris.New("resolver: CreateMasterCardOutcome has no variant set"))
+		return nil, noVariantSet(ctx, "CreateMasterCardOutcome")
 	}
 	return model.CreateMasterCardSuccess{MasterCard: toMasterCardModel(outcome.Card)}, nil
 }
@@ -63,8 +60,7 @@ func (r *mutationResolver) AdminUpdateMasterCard(ctx context.Context, id string,
 		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.Card == nil {
-		return nil, gqlerr.Internal(ctx,
-			eris.New("resolver: UpdateMasterCardOutcome has no variant set"))
+		return nil, noVariantSet(ctx, "UpdateMasterCardOutcome")
 	}
 	return model.UpdateMasterCardSuccess{MasterCard: toMasterCardModel(outcome.Card)}, nil
 }
@@ -157,5 +153,5 @@ func (r *queryResolver) MasterCardgroup(ctx context.Context, id string) (*model.
 		return nil, nil
 	}
 	// cardCount=0 here; the frontend reads the live count from masterCardsConnection.totalCount.
-	return toMasterCardgroupModelFromParts(deck, 0), nil
+	return toMasterCardgroupModelFromParts(deck, cardCountResolvedElsewhere), nil
 }

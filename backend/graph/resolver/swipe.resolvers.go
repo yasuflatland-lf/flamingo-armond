@@ -11,8 +11,6 @@ import (
 	"backend/internal/gqlerr"
 	"backend/internal/usecase"
 	"context"
-
-	"github.com/rotisserie/eris"
 )
 
 // HandleSwipe is the resolver for the handleSwipe field.
@@ -34,8 +32,7 @@ func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.HandleSw
 		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.Swipe == nil {
-		return nil, gqlerr.Internal(ctx,
-			eris.New("resolver: HandleSwipeOutcome has no variant set"))
+		return nil, noVariantSet(ctx, "HandleSwipeOutcome")
 	}
 	return model.HandleSwipeSuccess{Response: toSwipeResponseModel(outcome.Swipe)}, nil
 }

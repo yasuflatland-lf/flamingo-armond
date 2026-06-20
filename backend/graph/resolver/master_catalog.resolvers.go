@@ -39,9 +39,9 @@ func (r *mutationResolver) AdminCreateMasterCardgroup(ctx context.Context, input
 		return toInputValidationError(out.Validation), nil
 	}
 	if out.Master == nil {
-		return nil, gqlerr.Internal(ctx, eris.New("resolver: CreateMasterOutcome has no variant set"))
+		return nil, noVariantSet(ctx, "CreateMasterOutcome")
 	}
-	return model.CreateMasterCardgroupSuccess{Master: toMasterCardgroupModelFromParts(out.Master, 0)}, nil
+	return model.CreateMasterCardgroupSuccess{Master: toMasterCardgroupModelFromParts(out.Master, cardCountResolvedElsewhere)}, nil
 }
 
 // AdminUpdateMasterCardgroup is the resolver for the adminUpdateMasterCardgroup field.
@@ -69,7 +69,7 @@ func (r *mutationResolver) AdminUpdateMasterCardgroup(ctx context.Context, id st
 		return toInputValidationError(out.Validation), nil
 	}
 	if out.Master == nil {
-		return nil, gqlerr.Internal(ctx, eris.New("resolver: UpdateMasterOutcome has no variant set"))
+		return nil, noVariantSet(ctx, "UpdateMasterOutcome")
 	}
 	return model.UpdateMasterCardgroupSuccess{Master: toMasterCardgroupModelFromParts(out.Master, int(out.CardCount))}, nil
 }
@@ -89,7 +89,7 @@ func (r *mutationResolver) AdminPublishMasterCardgroup(ctx context.Context, id s
 		return model.MasterCardgroupEmptyError{Message: "master cardgroup has no cards and cannot be published"}, nil
 	}
 	if out.Master == nil {
-		return nil, gqlerr.Internal(ctx, eris.New("resolver: PublishMasterOutcome has no variant set"))
+		return nil, noVariantSet(ctx, "PublishMasterOutcome")
 	}
 	return model.PublishMasterCardgroupSuccess{Master: toMasterCardgroupModelFromParts(out.Master, int(out.CardCount))}, nil
 }
@@ -131,8 +131,7 @@ func (r *mutationResolver) ImportMasterCardgroup(ctx context.Context, masterCard
 		}, nil
 	}
 	if outcome.Cardgroup == nil {
-		return nil, gqlerr.Internal(ctx,
-			eris.New("resolver: ImportMasterOutcome has no variant set"))
+		return nil, noVariantSet(ctx, "ImportMasterOutcome")
 	}
 	return model.ImportMasterCardgroupSuccess{
 		Cardgroup: toCardgroupModel(outcome.Cardgroup),

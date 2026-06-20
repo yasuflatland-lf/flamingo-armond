@@ -8,12 +8,9 @@ package resolver
 import (
 	"backend/graph/model"
 	"backend/internal/gqlerr"
-	"backend/internal/loader"
 	"backend/internal/repository"
 	"context"
 	"errors"
-
-	"github.com/rotisserie/eris"
 )
 
 // SetLastViewedCardgroup is the resolver for the setLastViewedCardgroup field.
@@ -32,8 +29,7 @@ func (r *mutationResolver) SetLastViewedCardgroup(ctx context.Context, cardgroup
 		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.User == nil {
-		return nil, gqlerr.Internal(ctx,
-			eris.New("resolver: SetLastViewedCardgroupOutcome has no variant set"))
+		return nil, noVariantSet(ctx, "SetLastViewedCardgroupOutcome")
 	}
 	return model.SetLastViewedCardgroupSuccess{User: toUserModel(outcome.User)}, nil
 }
@@ -42,17 +38,14 @@ func (r *mutationResolver) SetLastViewedCardgroup(ctx context.Context, cardgroup
 // (batched by user_id) then CardgroupLoader (batched by cardgroup_id),
 // preventing N+1 queries across both layers.
 func (r *userResolver) LastViewedCardgroup(ctx context.Context, obj *model.User) (*model.Cardgroup, error) {
-	loaders := loader.For(ctx)
-	if loaders == nil {
-		return nil, gqlerr.Internal(ctx, eris.New("loader: middleware not installed for /query"))
+	loaders, gqlErr := loadersOrInternal(ctx)
+	if gqlErr != nil {
+		return nil, gqlErr
 	}
 
 	pref, err := loaders.UserPreference.Load(ctx, obj.ID)()
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, gqlerr.Cancelled(ctx, err)
-		}
-		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "resolver: user preference"))
+		return nil, classifyLoaderErr(ctx, err, "resolver: user preference")
 	}
 	if pref == nil || pref.LastViewedCardgroupID == nil {
 		return nil, nil
@@ -63,10 +56,7 @@ func (r *userResolver) LastViewedCardgroup(ctx context.Context, obj *model.User)
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, nil
 		}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, gqlerr.Cancelled(ctx, err)
-		}
-		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "resolver: cardgroup"))
+		return nil, classifyLoaderErr(ctx, err, "resolver: cardgroup")
 	}
 	return toCardgroupModel(cg), nil
 }
