@@ -5,11 +5,9 @@ import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
 import { DirtyStateBridge } from "@/lib/forms/dirty-state-bridge";
-import { FieldError } from "@/lib/forms/field-error";
+import { FormField } from "@/lib/forms/form-field";
 import { submitFormHandler, wrapSubmit } from "@/lib/forms/submit-handler";
 import { roleSchema } from "@/schemas/role";
 
@@ -61,19 +59,13 @@ export function RoleForm({
 
       <form.Field name="name" validators={{ onChange: nameSchema, onBlur: nameSchema }}>
         {(field) => (
-          <div className="space-y-2">
-            <Label htmlFor={field.name}>{t("roleNameLabel")}</Label>
-            <Input
-              id={field.name}
-              name={field.name}
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(e.target.value)}
-              disabled={readOnly}
-              placeholder={t("roleNamePlaceholder")}
-            />
-            <FieldError zodErrors={field.state.meta.errors} backendError={fieldErrors.name} />
-          </div>
+          <FormField
+            field={field}
+            label={t("roleNameLabel")}
+            backendError={fieldErrors.name}
+            disabled={readOnly}
+            placeholder={t("roleNamePlaceholder")}
+          />
         )}
       </form.Field>
 
