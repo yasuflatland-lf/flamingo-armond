@@ -2,120 +2,105 @@
 
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { CatalogImportButton } from "@/app/catalog/_components/catalog-import-button";
 import { CatalogCardFieldsFragment } from "@/app/catalog/queries";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
 import { type FragmentType, useFragment } from "@/generated/fragment-masking";
 
+/**
+ * Props for {@link CatalogListItem}. The component is intentionally stateless and
+ * navigation-only — the whole row is a single Link and renders no other
+ * interactive element; all actions (e.g. Import) belong on the detail page.
+ */
 export type CatalogListItemProps = {
   /** A masked `CatalogCardFields` ref — unmasked once via `useFragment` below. */
   node: FragmentType<typeof CatalogCardFieldsFragment>;
-  /**
-   * True while this cardgroup's import mutation is in flight. Invariant:
-   * `importing` and `imported` are never both true; if they are, the imported
-   * (done) state wins and the in-flight label is not shown.
-   */
-  importing: boolean;
-  /** True once this cardgroup has been imported in the current session. */
-  imported: boolean;
-  onImport: (id: string) => void;
-  /**
-   * Optional button label overrides. When omitted, the labels default to the
-   * `/catalog` copy (`Catalog` namespace); pass an explicit object to reuse this
-   * row in another context (e.g. an onboarding chooser). All three keys must be
-   * supplied together — partial override is not supported.
-   */
-  labels?: { action: string; inProgress: string; done: string };
-  /** Optional `data-testid` prefix on the Import button. Defaults to `"catalog-import"`. */
-  testIdPrefix?: string;
 };
 
 /**
- * List row for one published master cardgroup. Mirrors AdminMasterRow's density
- * (name + metadata + right-aligned action; mobile two-tier, desktop single inline
- * row) so the public catalog and the admin masters list speak the same perceptual
- * language for the same decks. The description is intentionally not shown — the
- * row optimises for scanning many decks. The Import button keeps the
- * locale-independent `data-testid` (`catalog-import-{id}`) so e2e — which runs in
- * the ja-JP locale — can target it without depending on translated copy.
+ * List row for one published master cardgroup on /catalog. The entire row is a
+ * single link to the deck-detail page (`/catalog/[id]`); Import has moved to that
+ * detail page, so the row carries no nested interactive element. Information
+ * hierarchy: Tier 1 = deck name (lead) + card-count stat (subordinate figure);
+ * Tier 2 = language / level / category badges (always visible); Tier 3 = the
+ * description, revealed on hover / keyboard focus via CSS — a desktop progressive
+ * enhancement, never the only path to the info (it also lives on the detail page).
+ * The locale-independent `data-testid` (`catalog-row-{id}`) lets e2e — which runs
+ * in ja-JP — target the row without depending on translated copy.
  */
-export function CatalogListItem({
-  node,
-  importing,
-  imported,
-  onImport,
-  labels,
-  testIdPrefix,
-}: CatalogListItemProps) {
+export function CatalogListItem({ node }: CatalogListItemProps) {
   const t = useTranslations("Catalog");
   const card = useFragment(CatalogCardFieldsFragment, node);
 
   return (
-    <li
-      className="rounded-md border border-border transition-colors hover:bg-accent"
-      data-testid={`catalog-row-${card.id}`}
-    >
-      {/*
-       * Mobile (default): two tiers — the name as a full-width title line, then a
-       * meta line carrying the badges + count on the left and Import on the right.
-       * Desktop (sm+): a single inline row [name][badges][count][Import]. One DOM
-       * serves both: `w-full` + `order-*` force the mobile line break, and
-       * `sm:contents` dissolves the meta wrapper on desktop so the badges and count
-       * rejoin the inline row in their own order. Spacing rhythm 16 / 12 / 8.
-       */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-3 p-4 sm:py-3">
-        <h3
-          className="order-1 w-full min-w-0 truncate text-sm font-medium tracking-tight sm:w-auto sm:flex-1"
-          title={card.name}
-        >
-          {card.name}
-        </h3>
-
-        <div className="order-2 flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:contents">
-          {card.language && (
-            <Badge variant="secondary" className="shrink-0 sm:order-2">
-              {card.language}
-            </Badge>
-          )}
-          {card.level && (
-            <Badge variant="outline" className="shrink-0 sm:order-2">
-              {t("level", { level: card.level })}
-            </Badge>
-          )}
-          {card.category && (
-            <Badge variant="outline" className="shrink-0 sm:order-2">
-              {card.category}
-            </Badge>
-          )}
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground sm:order-3">
-            {t("cardCount", { count: card.cardCount })}
+    <li>
+      <Link
+        href={`/catalog/${card.id}`}
+        data-testid={`catalog-row-${card.id}`}
+        aria-label={t("viewDeckAriaLabel", { name: card.name })}
+        className="group block rounded-md border border-border p-4 transition-[box-shadow,transform,background-color] duration-150 ease-out hover:-translate-y-0.5 hover:bg-accent hover:shadow-md motion-reduce:transition-none motion-reduce:hover:translate-y-0 sm:py-3"
+      >
+        {/* Tier 1: name (lead) + card-count stat (subordinate figure, right). */}
+        <div className="flex items-baseline gap-3">
+          <h3 className="min-w-0 flex-1 truncate text-[15px] font-semibold leading-[1.3] tracking-[-0.01em] text-foreground">
+            {card.name}
+          </h3>
+          <span className="shrink-0 whitespace-nowrap">
+            <span className="text-sm font-semibold tabular-nums text-foreground">
+              {t("cardCountStat", { count: card.cardCount })}
+            </span>{" "}
+            <span className="text-[10px] text-muted-foreground">
+              {t("unitCards", { count: card.cardCount })}
+            </span>
           </span>
         </div>
 
-        {/* View + Import sit together on the right of the meta tier (mobile) /
-            the inline row (desktop). The View link previews the deck's cards at
-            /catalog/[id]; the locale-independent data-testid lets e2e (ja-JP)
-            target it without depending on translated copy. */}
-        <div className="order-3 flex shrink-0 items-center gap-2 sm:order-4">
-          <Link
-            href={`/catalog/${card.id}`}
-            className={buttonVariants({ variant: "outline", size: "sm" })}
-            data-testid={`catalog-view-${card.id}`}
-            aria-label={t("viewDeckAriaLabel", { name: card.name })}
+        {/* Tier 2: badges (always visible) + chevron navigability affordance. */}
+        <div className="mt-1.5 flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+            {card.language && (
+              <Badge variant="secondary" className="shrink-0">
+                {card.language}
+              </Badge>
+            )}
+            {card.level && (
+              <Badge variant="outline" className="shrink-0">
+                {t("level", { level: card.level })}
+              </Badge>
+            )}
+            {card.category && (
+              <Badge variant="outline" className="shrink-0">
+                {card.category}
+              </Badge>
+            )}
+          </div>
+          <span
+            aria-hidden="true"
+            className="shrink-0 text-border transition-transform duration-150 ease-out group-hover:translate-x-0.5 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0"
           >
-            {t("viewDeck")}
-          </Link>
-          <CatalogImportButton
-            card={card}
-            importing={importing}
-            imported={imported}
-            onImport={onImport}
-            labels={labels}
-            testIdPrefix={testIdPrefix}
-          />
+            ›
+          </span>
         </div>
-      </div>
+
+        {/* Tier 3: description — collapsed by default, revealed on hover / focus
+            (desktop progressive enhancement) via a grid-rows 0fr→1fr transition.
+            Tailwind's `group-hover:` compiles under `@media (hover: hover)`, so it
+            never fires on touch; `group-focus-within:` keeps the keyboard reveal (a
+            brief, harmless expand on a touch tap before navigation). Always in the
+            DOM for screen readers; the deck's detail page carries the description
+            for mobile-first discovery. */}
+        {card.description?.trim() && (
+          <div className="grid grid-rows-[0fr] opacity-0 transition-[grid-template-rows,opacity] duration-200 ease-out group-hover:grid-rows-[1fr] group-hover:opacity-100 group-focus-within:grid-rows-[1fr] group-focus-within:opacity-100 motion-reduce:transition-none">
+            <div className="overflow-hidden">
+              <p
+                data-testid={`catalog-row-desc-${card.id}`}
+                className="mt-1.5 line-clamp-1 text-[11px] leading-[1.5] text-muted-foreground"
+              >
+                {card.description}
+              </p>
+            </div>
+          </div>
+        )}
+      </Link>
     </li>
   );
 }
