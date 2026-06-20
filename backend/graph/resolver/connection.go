@@ -6,6 +6,8 @@ import (
 
 	"backend/graph/model"
 	"backend/internal/cursor"
+	"backend/internal/domain"
+	"backend/internal/repository"
 	"backend/internal/usecase"
 )
 
@@ -32,19 +34,44 @@ func buildPageInfo(hasNext, hasPrev bool, start, end *string) *model.PageInfo {
 	}
 }
 
+// buildEdges maps a usecase output slice into Relay edges. For every item it
+// maps the node, skips the item (logging a per-aggregate label) when the node
+// is nil so the non-null edge.node schema contract holds, and otherwise appends
+// an edge whose cursor is cursor.Encode(getID(item)). cursor.Encode is called
+// exactly once per edge inside the loop, preserving the "cursor encoding happens
+// exactly once" invariant in .claude/rules/pagination.md. The four to*ConnectionModel
+// shims below pass their node-mapper, id accessor, and edge constructor; only
+// toUserConnectionModel stays separate because its input carries pre-encoded
+// cursors rather than raw ids.
+func buildEdges[Item any, Node any, Edge any](
+	ctx context.Context,
+	items []Item,
+	label string,
+	toNode func(Item) *Node,
+	getID func(Item) string,
+	mkEdge func(cur string, n *Node) *Edge,
+) []*Edge {
+	edges := make([]*Edge, 0, len(items))
+	for _, item := range items {
+		n := toNode(item)
+		if n == nil {
+			slog.WarnContext(ctx, label+": skipping nil entry")
+			continue
+		}
+		edges = append(edges, mkEdge(cursor.Encode(getID(item)), n))
+	}
+	return edges
+}
+
 func toCardConnectionModel(ctx context.Context, out *usecase.CardConnectionOutput) *model.CardConnection {
 	if out == nil {
 		return &model.CardConnection{Edges: []*model.CardEdge{}, PageInfo: &model.PageInfo{}}
 	}
-	edges := make([]*model.CardEdge, 0, len(out.Cards))
-	for _, c := range out.Cards {
-		cm := toCardModel(c)
-		if cm == nil {
-			slog.WarnContext(ctx, "toCardConnectionModel: skipping nil entry")
-			continue
-		}
-		edges = append(edges, &model.CardEdge{Cursor: cursor.Encode(c.ID), Node: cm})
-	}
+	edges := buildEdges(ctx, out.Cards, "toCardConnectionModel",
+		toCardModel,
+		func(c *domain.Card) string { return c.ID },
+		func(cur string, n *model.Card) *model.CardEdge { return &model.CardEdge{Cursor: cur, Node: n} },
+	)
 	return &model.CardConnection{
 		Edges:      edges,
 		PageInfo:   buildPageInfo(out.HasNext, out.HasPrev, encodeCursor(out.StartCur), encodeCursor(out.EndCur)),
@@ -56,15 +83,13 @@ func toCardgroupConnectionModel(ctx context.Context, out *usecase.CardgroupConne
 	if out == nil {
 		return &model.CardgroupConnection{Edges: []*model.CardgroupEdge{}, PageInfo: &model.PageInfo{}}
 	}
-	edges := make([]*model.CardgroupEdge, 0, len(out.Cardgroups))
-	for _, cg := range out.Cardgroups {
-		cgm := toCardgroupModel(cg)
-		if cgm == nil {
-			slog.WarnContext(ctx, "toCardgroupConnectionModel: skipping nil entry")
-			continue
-		}
-		edges = append(edges, &model.CardgroupEdge{Cursor: cursor.Encode(string(cg.ID)), Node: cgm})
-	}
+	edges := buildEdges(ctx, out.Cardgroups, "toCardgroupConnectionModel",
+		toCardgroupModel,
+		func(cg *domain.Cardgroup) string { return string(cg.ID) },
+		func(cur string, n *model.Cardgroup) *model.CardgroupEdge {
+			return &model.CardgroupEdge{Cursor: cur, Node: n}
+		},
+	)
 	return &model.CardgroupConnection{
 		Edges:      edges,
 		PageInfo:   buildPageInfo(out.HasNext, out.HasPrev, encodeCursor(out.StartCur), encodeCursor(out.EndCur)),
@@ -76,15 +101,13 @@ func toMasterCatalogConnectionModel(ctx context.Context, out *usecase.MasterCata
 	if out == nil {
 		return &model.MasterCatalogConnection{Edges: []*model.MasterCatalogEdge{}, PageInfo: &model.PageInfo{}}
 	}
-	edges := make([]*model.MasterCatalogEdge, 0, len(out.Items))
-	for _, item := range out.Items {
-		mm := toMasterCardgroupModel(item)
-		if mm == nil {
-			slog.WarnContext(ctx, "toMasterCatalogConnectionModel: skipping nil entry")
-			continue
-		}
-		edges = append(edges, &model.MasterCatalogEdge{Cursor: cursor.Encode(item.Cardgroup.ID), Node: mm})
-	}
+	edges := buildEdges(ctx, out.Items, "toMasterCatalogConnectionModel",
+		toMasterCardgroupModel,
+		func(item *repository.MasterCatalogItem) string { return item.Cardgroup.ID },
+		func(cur string, n *model.MasterCardgroup) *model.MasterCatalogEdge {
+			return &model.MasterCatalogEdge{Cursor: cur, Node: n}
+		},
+	)
 	return &model.MasterCatalogConnection{
 		Edges:      edges,
 		PageInfo:   buildPageInfo(out.HasNext, out.HasPrev, encodeCursor(out.StartCur), encodeCursor(out.EndCur)),
@@ -96,15 +119,13 @@ func toMasterCardConnectionModel(ctx context.Context, out *usecase.MasterCardCon
 	if out == nil {
 		return &model.MasterCardConnection{Edges: []*model.MasterCardEdge{}, PageInfo: &model.PageInfo{}}
 	}
-	edges := make([]*model.MasterCardEdge, 0, len(out.Cards))
-	for _, c := range out.Cards {
-		cm := toMasterCardModel(c)
-		if cm == nil {
-			slog.WarnContext(ctx, "toMasterCardConnectionModel: skipping nil entry")
-			continue
-		}
-		edges = append(edges, &model.MasterCardEdge{Cursor: cursor.Encode(c.ID), Node: cm})
-	}
+	edges := buildEdges(ctx, out.Cards, "toMasterCardConnectionModel",
+		toMasterCardModel,
+		func(c *domain.MasterCard) string { return c.ID },
+		func(cur string, n *model.MasterCard) *model.MasterCardEdge {
+			return &model.MasterCardEdge{Cursor: cur, Node: n}
+		},
+	)
 	return &model.MasterCardConnection{
 		Edges:      edges,
 		PageInfo:   buildPageInfo(out.HasNext, out.HasPrev, encodeCursor(out.StartCur), encodeCursor(out.EndCur)),
