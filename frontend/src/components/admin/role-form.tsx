@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
 import { DirtyStateBridge } from "@/lib/forms/dirty-state-bridge";
 import { FieldError } from "@/lib/forms/field-error";
+import { submitFormHandler, wrapSubmit } from "@/lib/forms/submit-handler";
 import { roleSchema } from "@/schemas/role";
 
 type RoleFormProps = {
@@ -50,31 +51,12 @@ export function RoleForm({
       name: defaultValues.name,
     },
     onSubmit: async ({ value }) => {
-      await submit(value).catch((err) => {
-        // err.message is omitted — backend messages may echo user-authored
-        // input (the role name typed into this form). See
-        // docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
-        console.error("[role-form] submit rejected", {
-          name: err instanceof Error ? err.name : "unknown",
-        });
-        throw err; // keep formState.isSubmitSuccessful correct
-      });
+      await wrapSubmit("role-form", submit)(value);
     },
   });
 
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        form.handleSubmit().catch(() => {
-          // Inner submit handler's .catch already logged; swallow here so the
-          // re-thrown rejection (which keeps formState.isSubmitSuccessful=false
-          // correct) does not surface as an unhandled browser promise rejection.
-        });
-      }}
-      className="space-y-4"
-    >
+    <form onSubmit={submitFormHandler(form)} className="space-y-4">
       {bannerError ? <ErrorBanner>{bannerError}</ErrorBanner> : null}
 
       <form.Field name="name" validators={{ onChange: nameSchema, onBlur: nameSchema }}>

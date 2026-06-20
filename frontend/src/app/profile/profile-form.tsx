@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DirtyStateBridge } from "@/lib/forms/dirty-state-bridge";
 import { FieldError } from "@/lib/forms/field-error";
+import { submitFormHandler } from "@/lib/forms/submit-handler";
 import { updateProfileSchema } from "@/schemas/profile";
 import { useUpdateProfile } from "./use-update-profile";
 
@@ -97,8 +98,8 @@ export function ProfileForm({
           return;
         case "rejected":
           setBannerMessage(outcome.banner ?? tCommon("somethingWentWrong"));
-          // Re-throw so TanStack Form keeps formState.isSubmitSuccessful=false; the
-          // outer form.handleSubmit().catch() at the JSX call site swallows it.
+          // Re-throw so TanStack Form keeps formState.isSubmitSuccessful=false;
+          // submitFormHandler (the outer onSubmit) swallows the re-thrown rejection.
           throw new Error("[ProfileForm] update profile rejected");
       }
     },
@@ -110,18 +111,7 @@ export function ProfileForm({
     : {};
 
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        form.handleSubmit().catch(() => {
-          // The inner submit handler's .catch already logged; swallow here so the
-          // re-thrown rejection (which keeps formState.isSubmitSuccessful=false correct)
-          // does not surface as an unhandled browser promise rejection.
-        });
-      }}
-      className="space-y-4"
-    >
+    <form onSubmit={submitFormHandler(form)} className="space-y-4">
       {bannerMessage ? <ErrorBanner>{bannerMessage}</ErrorBanner> : null}
 
       <div className="mb-4 space-y-2">

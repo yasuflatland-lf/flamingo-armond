@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DirtyStateBridge } from "@/lib/forms/dirty-state-bridge";
 import { FieldError } from "@/lib/forms/field-error";
+import { submitFormHandler, wrapSubmit } from "@/lib/forms/submit-handler";
 import { masterSchema } from "@/schemas/master";
 import type { AdminMasterListItem } from "./admin-master-row";
 
@@ -76,33 +77,14 @@ export function AdminMasterForm({
         isDefaultStarter: value.isDefaultStarter,
         sortOrder: sortOrderRaw === "" ? null : Number(sortOrderRaw),
       };
-      await submit(values).catch((err) => {
-        // err.message is omitted — backend messages may echo user-authored
-        // input typed into this form. See
-        // docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
-        console.error("[admin-master-form] submit rejected", {
-          name: err instanceof Error ? err.name : "unknown",
-        });
-        throw err; // keep formState.isSubmitSuccessful correct
-      });
+      await wrapSubmit("admin-master-form", submit)(values);
     },
   });
 
   const nameFieldError = validationError?.field === "name" ? validationError.message : undefined;
 
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        form.handleSubmit().catch(() => {
-          // Inner submit handler's .catch already logged; swallow here so the
-          // re-thrown rejection does not surface as an unhandled browser
-          // promise rejection.
-        });
-      }}
-      className="space-y-4"
-    >
+    <form onSubmit={submitFormHandler(form)} className="space-y-4">
       {validationError && validationError.field !== "name" ? (
         <ErrorBanner data-testid="master-form-error">{validationError.message}</ErrorBanner>
       ) : null}
