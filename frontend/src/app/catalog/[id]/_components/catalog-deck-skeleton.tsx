@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
  */
 export function CatalogDeckSkeleton() {
   return (
-    <main className="p-4 md:p-8">
+    <main className="p-8">
       <header className="mb-6">
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
           <Skeleton className="h-5 w-5 justify-self-start" />

@@ -19,7 +19,7 @@ export function MasterManagementClient({
   initialTotalCount,
 }: Props) {
   return (
-    <main className="p-4 md:p-8">
+    <main className="p-8">
       {/* The header is rendered inside the cards section via the render-prop so
           its card count tracks the live Apollo-cache totalCount. The section
           forwards onBatchImport so the header's mobile overflow menu can host

@@ -18,7 +18,7 @@ export function CardgroupManagementClient({
   initialTotalCount,
 }: Props) {
   return (
-    <main className="p-4 md:p-8">
+    <main className="p-8">
       <CardgroupCardsSection
         cardgroupId={cardgroup.id}
         cardgroupName={cardgroup.name}

@@ -151,7 +151,7 @@ export default function CatalogDeckClient({
         placeholder={tCards("searchPlaceholder")}
         ariaLabel={tCards("searchAriaLabel")}
       />
-      <main className="p-4 md:p-8">
+      <main className="p-8">
         <CatalogDeckHeader
           deck={initialDeck}
           cardCount={totalCount}
