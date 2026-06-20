@@ -18,6 +18,7 @@ import { useBulkSelection } from "@/hooks/use-bulk-selection";
 import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { type AddMasterCardDetail, FLAMINGO_EVENT } from "@/lib/events/flamingo-events";
+import { useCardSheetForm } from "@/lib/forms/use-sheet-form";
 import { MasterBatchImportForm } from "./master-batch-import-form";
 import { useMasterCardMutations } from "./use-master-card-mutations";
 import { useMasterCardsConnection } from "./use-master-cards-connection";
@@ -146,19 +147,7 @@ export function MasterCardsClient({
   sectionHeader,
 }: Props) {
   const t = useTranslations("Cards");
-  const [addOpen, setAddOpen] = useState(false);
-  const [addDirty, setAddDirty] = useState(false);
   const [batchImportOpen, setBatchImportOpen] = useState(false);
-  const [createValidationError, setCreateValidationError] = useState<{
-    field: string;
-    message: string;
-  } | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  // Field-level error for the editing row (from updateCard's outcome-union).
-  const [rowValidationError, setRowValidationError] = useState<{
-    field: string;
-    message: string;
-  } | null>(null);
   // Per-card SwipeableRow handles; lets a row close any half-open sibling.
   const rowRefs = useRef<Map<string, RefObject<SwipeableRowHandle | null>>>(new Map());
   const selection = useBulkSelection<string>();
@@ -198,6 +187,14 @@ export function MasterCardsClient({
     resetCreateCard,
   } = useMasterCardMutations({ masterId, queryVariables });
 
+  const sheet = useCardSheetForm({
+    createCard,
+    updateCard,
+    resetCreateCard,
+    addFailedMessage: t("addFailed"),
+    saveFailedMessage: t("saveFailed"),
+  });
+
   const queryBannerError = getBackendErrorBanner(queryError);
   const bulkDeleteBannerError = getBackendErrorBanner(bulkDeleteError);
   // Raw per-row delete error → localized banner copy (server message or fallback).
@@ -210,14 +207,7 @@ export function MasterCardsClient({
     }
   }, []);
 
-  const editingCard = edges.find((edge) => edge.node.id === editingId)?.node;
-
-  const openAddSheet = useCallback(() => {
-    resetCreateCard();
-    setCreateValidationError(null);
-    setAddDirty(false);
-    setAddOpen(true);
-  }, [resetCreateCard]);
+  const editingCard = edges.find((edge) => edge.node.id === sheet.editingId)?.node;
 
   const openBatchImport = useCallback(() => setBatchImportOpen(true), []);
   const closeBatchImport = useCallback(() => setBatchImportOpen(false), []);
@@ -230,33 +220,11 @@ export function MasterCardsClient({
     function handleAddMasterCard(event: CustomEvent<AddMasterCardDetail>) {
       if (event.detail?.masterId !== masterId) return;
       event.preventDefault();
-      openAddSheet();
+      sheet.openAddSheet();
     }
     window.addEventListener(FLAMINGO_EVENT.addMasterCard, handleAddMasterCard);
     return () => window.removeEventListener(FLAMINGO_EVENT.addMasterCard, handleAddMasterCard);
-  }, [masterId, openAddSheet]);
-
-  async function handleCreate(values: { front: string; back: string }) {
-    resetCreateCard();
-    setCreateValidationError(null);
-    const outcome = await createCard(values);
-    switch (outcome.status) {
-      case "success":
-        setAddDirty(false);
-        setCreateValidationError(null);
-        setAddOpen(false);
-        break;
-      case "validation":
-        setCreateValidationError({ field: outcome.field, message: outcome.message });
-        break;
-      case "unexpected":
-        setCreateValidationError({ field: "front", message: t("addFailed") });
-        break;
-      case "rejected":
-        // The CardForm error banner surfaces the rejection via `createError`.
-        break;
-    }
-  }
+  }, [masterId, sheet.openAddSheet]);
 
   async function handleBulkDelete() {
     const ids = Array.from(selection.selectedIds);
@@ -269,25 +237,6 @@ export function MasterCardsClient({
         masterId,
         ids,
       });
-    }
-  }
-
-  async function handleUpdate(id: string, values: { front: string; back: string }) {
-    setRowValidationError(null);
-    const outcome = await updateCard(id, values);
-    switch (outcome.status) {
-      case "success":
-        setEditingId(null);
-        break;
-      case "validation":
-        setRowValidationError({ field: outcome.field, message: outcome.message });
-        break;
-      case "unexpected":
-        setRowValidationError({ field: "front", message: t("saveFailed") });
-        break;
-      case "rejected":
-        // The edit-sheet error banner surfaces the rejection via `updateError`.
-        break;
     }
   }
 
@@ -321,7 +270,7 @@ export function MasterCardsClient({
           {typeof sectionHeader === "function"
             ? sectionHeader({
                 totalCount,
-                onAddCard: openAddSheet,
+                onAddCard: sheet.openAddSheet,
                 onBatchImport: openBatchImport,
               })
             : sectionHeader}
@@ -355,12 +304,11 @@ export function MasterCardsClient({
                         return rowRefs.current.get(card.id)!;
                       })()}
                       selected={selection.isSelected(card.id)}
-                      disabled={selection.count > 0 || editingId === card.id}
+                      disabled={selection.count > 0 || sheet.editingId === card.id}
                       onSelectToggle={() => selection.toggleSelected(card.id)}
                       onEdit={() => {
                         closeOtherRows(card.id);
-                        setRowValidationError(null);
-                        setEditingId(card.id);
+                        sheet.beginEdit(card.id);
                       }}
                       onDelete={() => deleteRow(card.id, t("cardDeleted"))}
                     />
@@ -372,25 +320,18 @@ export function MasterCardsClient({
 
           <FormSheet
             title={t("addCard")}
-            open={addOpen}
-            onOpenChange={(nextOpen) => {
-              setAddOpen(nextOpen);
-              if (!nextOpen) {
-                resetCreateCard();
-                setAddDirty(false);
-                setCreateValidationError(null);
-              }
-            }}
+            open={sheet.addOpen}
+            onOpenChange={sheet.onAddOpenChange}
             submitting={creating}
-            dirty={addDirty}
+            dirty={sheet.addDirty}
             confirmOnDismiss
           >
             <AddCardSheetContent
-              submit={handleCreate}
+              submit={sheet.handleCreate}
               submitting={creating}
               error={createError}
-              validationError={createValidationError}
-              onDirty={() => setAddDirty(true)}
+              validationError={sheet.createValidationError}
+              onDirty={sheet.markAddDirty}
             />
           </FormSheet>
 
@@ -411,22 +352,17 @@ export function MasterCardsClient({
           <FormSheet
             title={t("editCard")}
             open={editingCard !== undefined}
-            onOpenChange={(nextOpen) => {
-              if (!nextOpen) {
-                setRowValidationError(null);
-                setEditingId(null);
-              }
-            }}
+            onOpenChange={sheet.onEditOpenChange}
             submitting={updating}
             confirmOnDismiss={false}
           >
             {editingCard ? (
               <EditCardSheetContent
                 card={editingCard}
-                submit={(values) => handleUpdate(editingCard.id, values)}
+                submit={(values) => sheet.handleUpdate(editingCard.id, values)}
                 submitting={updating}
                 error={updateError}
-                validationError={rowValidationError}
+                validationError={sheet.rowValidationError}
               />
             ) : null}
           </FormSheet>
