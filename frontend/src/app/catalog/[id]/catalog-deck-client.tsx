@@ -92,6 +92,9 @@ export default function CatalogDeckClient({
       initialEdges,
       initialPageInfo,
       initialTotalCount,
+      // The deck-detail list loads CARDS, so reuse the Cards namespace ("load
+      // more cards"), not Catalog.fetchMoreError ("load more cardgroups").
+      fetchMoreErrorMessage: tCards("fetchMoreFailed"),
     });
 
   // Import state for this single deck. `importing` serializes; `imported` drives
@@ -104,32 +107,38 @@ export default function CatalogDeckClient({
     null,
   );
 
-  const handleImport = useCallback(async () => {
-    // Serialize: ignore a second click while another import is in flight or done.
-    if (importing || imported) return;
-    setImportError(null);
-    setImportAuthError(null);
-    setImporting(true);
+  // `deckId` is forwarded by CatalogImportButton (= initialDeck.id); honoring the
+  // `onImport(id)` contract rather than closing over the route `id` keeps the
+  // header's prop type truthful.
+  const handleImport = useCallback(
+    async (deckId: string) => {
+      // Serialize: ignore a second click while another import is in flight or done.
+      if (importing || imported) return;
+      setImportError(null);
+      setImportAuthError(null);
+      setImporting(true);
 
-    const outcome = await importMasterCardgroup(id);
-    setImporting(false);
+      const outcome = await importMasterCardgroup(deckId);
+      setImporting(false);
 
-    switch (outcome.status) {
-      case "success":
-        setImported(true);
-        toast(t("importSuccess", { name: initialDeck.name }));
-        return;
-      case "not_found":
-        setImportError(t("importNotFound"));
-        return;
-      case "auth":
-        setImportAuthError(outcome.kind);
-        return;
-      case "rejected":
-        setImportError(t("importError"));
-        return;
-    }
-  }, [importing, imported, importMasterCardgroup, id, initialDeck.name, t]);
+      switch (outcome.status) {
+        case "success":
+          setImported(true);
+          toast(t("importSuccess", { name: initialDeck.name }));
+          return;
+        case "not_found":
+          setImportError(t("importNotFound"));
+          return;
+        case "auth":
+          setImportAuthError(outcome.kind);
+          return;
+        case "rejected":
+          setImportError(t("importError"));
+          return;
+      }
+    },
+    [importing, imported, importMasterCardgroup, initialDeck.name, t],
+  );
 
   return (
     <>

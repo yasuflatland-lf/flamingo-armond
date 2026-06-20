@@ -232,6 +232,16 @@ describe("CatalogDeckPage — broad integration (RSC + deck-detail screen)", () 
     await expect(CatalogDeckContent({ id: DECK_ID })).rejects.toThrow("REDIRECT:/login");
     expect(redirect).toHaveBeenCalledWith("/login");
   });
+
+  it("rethrows a generic (non-auth, non-bad-input) gqlFetch error to the error boundary", async () => {
+    const networkErr = new Error("network failure");
+    vi.mocked(gqlFetch).mockRejectedValue(networkErr);
+
+    // Neither notFound() nor redirect() — the error propagates unchanged.
+    await expect(CatalogDeckContent({ id: DECK_ID })).rejects.toBe(networkErr);
+    expect(notFound).not.toHaveBeenCalled();
+    expect(redirect).not.toHaveBeenCalled();
+  });
 });
 
 describe("catalog list → deck-detail entry point", () => {

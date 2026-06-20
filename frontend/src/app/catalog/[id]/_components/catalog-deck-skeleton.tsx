@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
  * Loading placeholder for the `/catalog/[id]` deck-detail route. Mirrors the
  * resolved layout — the DetailPageHeader app bar (back / count / import) with a
  * centered title and badge row, then a single-column read-only card list — to
- * prevent CLS while the two parallel GraphQL fetches stream in.
+ * prevent CLS while `CatalogDeckContent` awaits the two parallel GraphQL fetches.
  */
 export function CatalogDeckSkeleton() {
   return (

@@ -3,6 +3,7 @@ import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CatalogMasterCardsConnectionDocument,
@@ -270,5 +271,124 @@ describe("<CatalogDeckClient>", () => {
       expect(btn).toHaveTextContent("Imported");
     });
     expect(vi.mocked(toast)).toHaveBeenCalledWith('Added "Business English" to your cardgroups.');
+  });
+
+  it("shows the error banner when the import returns MasterNotFoundError", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    const notFoundMock = {
+      request: {
+        query: ImportMasterCardgroupDocument,
+        variables: { masterCardgroupId: "deck-1" },
+      },
+      result: {
+        data: { importMasterCardgroup: { __typename: "MasterNotFoundError", message: "gone" } },
+      },
+    };
+
+    renderClient([notFoundMock], makeConnection([C1]), cache);
+
+    await user.click(await screen.findByTestId("catalog-deck-import-deck-1"));
+
+    expect(await screen.findByTestId("catalog-deck-import-error")).toHaveTextContent(
+      "This cardgroup is no longer available.",
+    );
+    // Not marked imported on a not-found outcome.
+    expect(screen.getByTestId("catalog-deck-import-deck-1")).not.toBeDisabled();
+  });
+
+  it("shows the generic error banner when the import throws a transport error", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    const rejectedMock = {
+      request: {
+        query: ImportMasterCardgroupDocument,
+        variables: { masterCardgroupId: "deck-1" },
+      },
+      error: new Error("network down"),
+    };
+
+    renderClient([rejectedMock], makeConnection([C1]), cache);
+
+    await user.click(await screen.findByTestId("catalog-deck-import-deck-1"));
+
+    expect(await screen.findByTestId("catalog-deck-import-error")).toHaveTextContent(
+      "Could not import the cardgroup. Please try again.",
+    );
+    expect(screen.getByTestId("catalog-deck-import-deck-1")).not.toBeDisabled();
+  });
+
+  it("shows the sign-in banner when the import fails with UNAUTHENTICATED", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    const authMock = {
+      request: {
+        query: ImportMasterCardgroupDocument,
+        variables: { masterCardgroupId: "deck-1" },
+      },
+      result: {
+        errors: [new GraphQLError("unauthenticated", { extensions: { code: "UNAUTHENTICATED" } })],
+      },
+    };
+
+    renderClient([authMock], makeConnection([C1]), cache);
+
+    await user.click(await screen.findByTestId("catalog-deck-import-deck-1"));
+
+    expect(await screen.findByTestId("catalog-deck-import-auth-error")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login");
+  });
+
+  it("renders the empty-search state when a search returns no cards", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    const emptySearchMock = {
+      request: {
+        query: CatalogMasterCardsConnectionDocument,
+        variables: { ...catalogCardsDefaultVars(DECK.id), search: "zzz" },
+      },
+      result: { data: { masterCardsConnection: makeConnection([]) } },
+    };
+
+    renderClient([emptySearchMock], makeConnection([C1]), cache);
+
+    expect(await screen.findByText("hello")).toBeInTheDocument();
+    await user.type(screen.getByTestId("cards-search-input"), "zzz");
+
+    expect(await screen.findByTestId("catalog-deck-empty-search")).toBeInTheDocument();
+    expect(screen.queryByTestId("catalog-deck-empty")).toBeNull();
+  });
+
+  it("halts the IO loop and shows a Retry banner when fetchMore fails", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    const fetchMoreErrorMock = {
+      request: {
+        query: CatalogMasterCardsConnectionDocument,
+        variables: { ...catalogCardsDefaultVars(DECK.id), after: "mc-1", search: null },
+      },
+      error: new Error("network down"),
+    };
+    const fetchMoreRetryMock = {
+      request: {
+        query: CatalogMasterCardsConnectionDocument,
+        variables: { ...catalogCardsDefaultVars(DECK.id), after: "mc-1", search: null },
+      },
+      result: { data: { masterCardsConnection: makeConnection([C2], false, 2) } },
+    };
+
+    renderClient([fetchMoreErrorMock, fetchMoreRetryMock], makeConnection([C1], true, 2), cache);
+
+    expect(await screen.findByText("hello")).toBeInTheDocument();
+    fireIntersect();
+
+    // A transport error is mapped by getBackendErrorBanner (the localized
+    // fetchMoreErrorMessage fallback only fires when that mapping returns undefined).
+    const banner = await screen.findByTestId("cards-fetch-more-error");
+    expect(banner).toHaveTextContent("Could not reach the server. Please try again.");
+
+    // Retry re-runs fetchMore and succeeds — proves the halt-gate clears.
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("goodbye")).toBeInTheDocument();
   });
 });

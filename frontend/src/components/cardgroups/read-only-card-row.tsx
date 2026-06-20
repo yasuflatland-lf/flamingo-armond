@@ -4,11 +4,12 @@ export type ReadOnlyCardRowProps = {
 
 /**
  * Presentation-only card row for the public catalog deck-detail view
- * (`/catalog/[id]`). Reuses the visual frame of {@link CardRow}'s inner text
- * block — a `px-4 py-3` container with a truncated front line and a muted,
- * truncated back line — but carries none of the edit chrome: no `SwipeableRow`,
- * no selection checkbox, no delete button, no `role="button"`/onClick. It is a
- * pure stateless component (no hooks), so it intentionally omits `"use client"`.
+ * (`/catalog/[id]`). Reuses the spacing and typography of {@link CardRow}'s text
+ * content — `px-4 py-3` padding with a truncated `font-medium` front line and a
+ * truncated `text-muted-foreground` back line — but carries none of the edit
+ * chrome: no `SwipeableRow`, no selection checkbox, no delete button, no
+ * `role="button"`/onClick. It is a pure stateless component (no hooks), so it
+ * intentionally omits `"use client"`.
  */
 export function ReadOnlyCardRow({ card }: ReadOnlyCardRowProps) {
   return (

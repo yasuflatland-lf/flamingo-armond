@@ -79,6 +79,16 @@ export async function CatalogDeckContent({ id }: { id: string }) {
   if (deck == null) notFound();
 
   const connection = cardsData.masterCardsConnection;
+  // Guard the partial-response null bubble: the schema declares
+  // `masterCardsConnection: MasterCardConnection!`, but a partial response
+  // (GraphQL over HTTP §5.2) delivers it as null while codegen types it
+  // non-null. `gqlFetch` returns that data with only a console.warn, so without
+  // this guard the dereference below would crash inside Suspense with no
+  // field-level signal. Mirrors `app/cardgroups/page.tsx` and `app/catalog/page.tsx`.
+  if (connection == null) {
+    console.error("[catalog/:id] masterCardsConnection is null — partial response from backend");
+    throw new Error("masterCardsConnection missing from catalog deck data");
+  }
 
   return (
     <CatalogDeckClient

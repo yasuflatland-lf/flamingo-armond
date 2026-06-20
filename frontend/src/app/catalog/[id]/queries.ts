@@ -1,8 +1,10 @@
 import { graphql } from "@/generated";
 import type { CatalogMasterCardsConnectionQueryVariables } from "@/generated/graphql";
 
-// Public catalog deck-detail queries (read-only). These mirror the cardgroup
-// edit screen's `cardsByCardgroupConnection` + `cardgroup` pair, but read the
+// Public catalog deck-detail queries (read-only). These mirror the two GraphQL
+// fetches behind the cardgroup edit screen — the cards connection
+// (`cardsByCardgroupConnection`, in app/cardgroups/[id]/cards/queries.ts) and
+// the deck metadata (`cardgroup`, in app/cardgroups/queries.ts) — but read the
 // public, master-deck counterparts: `masterCardsConnection` (paginated cards in
 // a PUBLISHED master deck) and `masterCardgroup` (a single published deck).
 
@@ -56,9 +58,10 @@ export const CatalogMasterDeckQuery = graphql(`
 
 /**
  * Default variables for {@link CatalogMasterCardsConnectionDocument}, scoped by
- * the route's `masterCardgroupId`. Every read site — RSC seed, client `useQuery`,
- * and cache reads/writes — MUST use this factory (or spread its result) so
- * Apollo's cache key is identical across all three. Hard-coding
+ * the route's `masterCardgroupId`. Both call sites — the RSC seed and the client
+ * `useQuery` — MUST use this factory (or spread its result) so Apollo's cache key
+ * is identical across both. (The deck-detail screen is read-only, so there are no
+ * cache-write callbacks on this document.) Hard-coding
  * `{ masterCardgroupId, first: 20 }` in one place and
  * `{ masterCardgroupId, first: 20, search: null }` in another silently splits
  * the cache and makes the SSR seed dead code.
