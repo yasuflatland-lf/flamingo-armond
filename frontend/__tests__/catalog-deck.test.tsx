@@ -242,6 +242,21 @@ describe("CatalogDeckPage — broad integration (RSC + deck-detail screen)", () 
     expect(notFound).not.toHaveBeenCalled();
     expect(redirect).not.toHaveBeenCalled();
   });
+
+  it("throws (not notFound) when masterCardsConnection is null — partial-response null bubble", async () => {
+    // The deck resolves fine, but the cards connection comes back null (a partial
+    // response delivers the schema-non-null field as null). The guard must throw
+    // to the error boundary, not silently render a blank list or call notFound().
+    vi.mocked(gqlFetch)
+      .mockResolvedValueOnce(DECK_RESPONSE as never)
+      .mockResolvedValueOnce({ masterCardsConnection: null } as never);
+
+    await expect(CatalogDeckContent({ id: DECK_ID })).rejects.toThrow(
+      "masterCardsConnection missing from catalog deck data",
+    );
+    expect(notFound).not.toHaveBeenCalled();
+    expect(redirect).not.toHaveBeenCalled();
+  });
 });
 
 describe("catalog list → deck-detail entry point", () => {
