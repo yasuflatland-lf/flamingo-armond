@@ -100,4 +100,22 @@ describe("<CatalogDeckHeader>", () => {
     expect(btn).toBeDisabled();
     expect(btn).toHaveTextContent("Imported");
   });
+
+  it("renders the import CTA full-width below the deck description, not in the app-bar", () => {
+    renderHeader(FULL_DECK);
+    const btn = screen.getByTestId("catalog-deck-import-deck-1");
+    // The CTA spans the content width rather than sitting in the right-aligned
+    // app-bar action cluster.
+    expect(btn).toHaveClass("w-full");
+    // It follows the description in document order (below the header content).
+    const description = screen.getByTestId("catalog-deck-description");
+    expect(
+      description.compareDocumentPosition(btn) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps the import CTA full-width on a bare deck with no description", () => {
+    renderHeader(BARE_DECK);
+    expect(screen.getByTestId("catalog-deck-import-deck-2")).toHaveClass("w-full");
+  });
 });
