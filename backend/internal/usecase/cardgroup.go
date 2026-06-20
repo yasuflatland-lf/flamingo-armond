@@ -391,16 +391,9 @@ func resolveCardgroupOrderBy(
 			return "", "", ucerr.NewValidationError("orderBy", "invalid")
 		}
 	}
-	d := repository.SortDesc
-	if dir != nil {
-		switch *dir {
-		case SortOrderAsc:
-			d = repository.SortAsc
-		case SortOrderDesc:
-			d = repository.SortDesc
-		default:
-			return "", "", ucerr.NewValidationError("orderDirection", "invalid")
-		}
+	d, err := resolveSortDir(dir, repository.SortDesc)
+	if err != nil {
+		return "", "", err
 	}
 	return field, d, nil
 }
