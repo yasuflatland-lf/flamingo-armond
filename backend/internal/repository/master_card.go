@@ -205,16 +205,7 @@ func (r *masterCardRepo) FindPageByMasterCardgroup(
 
 	// Backward paging executes with the inverted direction and reverses the
 	// returned slice so the page boundary stays at the tail.
-	effectiveDir := dir
-	limit := first
-	cur := after
-	reverse := false
-	if last > 0 {
-		effectiveDir = InvertDir(dir)
-		limit = last
-		cur = before
-		reverse = true
-	}
+	effectiveDir, limit, cur, reverse := paginateSetup(dir, first, last, after, before)
 
 	q := base.Order(masterCardOrderClause(orderBy, effectiveDir))
 
@@ -270,9 +261,8 @@ func masterCardCursorWhere(orderBy MasterCardOrderBy, dir SortOrder, c *MasterCa
 	if err != nil {
 		return "", nil, err
 	}
-	// Tuple compare: (field, id) op (val, c.ID).
-	return "(" + field + " " + op + " ? OR (" + field + " = ? AND master_cards.id " + op + " ?))",
-		[]any{val, val, c.ID}, nil
+	clause, args := cursorTupleWhere("master_cards", field, op, val, c.ID)
+	return clause, args, nil
 }
 
 // masterCardCursorFieldValue returns the cursor value for the active orderBy

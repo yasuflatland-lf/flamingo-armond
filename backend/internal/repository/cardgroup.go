@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -147,19 +146,10 @@ func (r *cardgroupRepo) FindPageByOwner(
 
 	// Backward paging executes the query with the inverted direction and
 	// reverses the slice afterwards.
-	effectiveDir := dir
-	limit := first
-	cursor := after
-	reverse := false
-	if last > 0 {
-		effectiveDir = InvertDir(dir)
-		limit = last
-		cursor = before
-		reverse = true
-	}
+	effectiveDir, limit, cursor, reverse := paginateSetup(dir, first, last, after, before)
 
 	q := r.db.WithContext(ctx).Model(&gormCardgroup{}).Where("owner_id = ?", ownerID)
-	if pattern, ok := cardgroupSearchPattern(search); ok {
+	if pattern, ok := searchLikePattern(search); ok {
 		q = q.Where("name ILIKE ?", pattern)
 	}
 	if cursor != nil {
@@ -192,7 +182,7 @@ func (r *cardgroupRepo) FindPageByOwner(
 // a tenant cannot observe other tenants' aggregate sizes.
 func (r *cardgroupRepo) CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error) {
 	q := r.db.WithContext(ctx).Model(&gormCardgroup{}).Where("owner_id = ?", ownerID)
-	if pattern, ok := cardgroupSearchPattern(search); ok {
+	if pattern, ok := searchLikePattern(search); ok {
 		q = q.Where("name ILIKE ?", pattern)
 	}
 	var total int64
@@ -200,20 +190,6 @@ func (r *cardgroupRepo) CountByOwner(ctx context.Context, ownerID string, search
 		return 0, eris.Wrap(err, "repository: count cardgroups by owner")
 	}
 	return total, nil
-}
-
-// cardgroupSearchPattern wraps a non-empty trimmed search term in `%...%`
-// after escaping LIKE metacharacters. Returns (pattern, false) when the
-// search is nil or trims empty so callers can skip the predicate.
-func cardgroupSearchPattern(search *string) (string, bool) {
-	if search == nil {
-		return "", false
-	}
-	trimmed := strings.TrimSpace(*search)
-	if trimmed == "" {
-		return "", false
-	}
-	return "%" + escapeLikePattern(trimmed) + "%", true
 }
 
 // cardgroupOrderClause renders the SQL ORDER BY tail. When orderBy is `id`
@@ -243,10 +219,8 @@ func cardgroupCursorWhere(orderBy CardgroupOrderBy, dir SortOrder, c *CardgroupC
 	if err != nil {
 		return "", nil, err
 	}
-	// Tuple compare: (field, id) op (val, c.ID). Expanded form is portable
-	// across SQL dialects (Postgres-only `(a, b) > (?, ?)` avoided).
-	return "(" + field + " " + op + " ? OR (" + field + " = ? AND id " + op + " ?))",
-		[]any{val, val, c.ID}, nil
+	clause, args := cursorTupleWhere("", field, op, val, c.ID)
+	return clause, args, nil
 }
 
 // cardgroupCursorFieldValue returns the cursor value for the active
