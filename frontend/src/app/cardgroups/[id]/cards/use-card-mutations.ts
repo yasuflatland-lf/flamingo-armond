@@ -13,6 +13,7 @@ import {
   type CardsByCardgroupConnectionQuery,
   type CardsByCardgroupConnectionQueryVariables,
 } from "@/generated/graphql";
+import { appendConnectionEdge, removeConnectionEdges } from "@/lib/apollo/connection-cache";
 import { useUndoDelete } from "@/lib/undo-delete";
 import { cardsDefaultVars } from "./queries";
 
@@ -86,28 +87,14 @@ export function useCardMutations({ cardgroupId, queryVariables }: UseCardMutatio
         if (bulkData?.deleteCards == null) return;
         const deletedCount = bulkData.deleteCards;
         if (deletedCount === 0) return;
-        const existing = cache.readQuery({
-          query: CardsByCardgroupConnectionDocument,
+        removeConnectionEdges(cache, {
+          document: CardsByCardgroupConnectionDocument,
           variables: queryVariables,
+          connectionField: "cardsByCardgroupConnection",
+          entityTypename: "Card",
+          ids,
+          deletedCount,
         });
-        if (existing) {
-          const next = existing.cardsByCardgroupConnection;
-          cache.writeQuery({
-            query: CardsByCardgroupConnectionDocument,
-            variables: queryVariables,
-            data: {
-              cardsByCardgroupConnection: {
-                ...next,
-                edges: next.edges.filter((edge) => !ids.includes(edge.node.id)),
-                totalCount: Math.max(0, next.totalCount - deletedCount),
-              },
-            },
-          });
-        }
-        for (const id of ids) {
-          cache.evict({ id: cache.identify({ __typename: "Card", id }) });
-        }
-        cache.gc();
       },
     },
   );
@@ -119,30 +106,16 @@ export function useCardMutations({ cardgroupId, queryVariables }: UseCardMutatio
   const [deleteRowError, setDeleteRowError] = useState<unknown>(null);
 
   // Write a freshly-created card to the connection cached under `variables`.
+  // No `buildColdConnection`: on a cold cache this no-ops and the page's own
+  // `useQuery` owns populating the connection.
   const writeCreatedCardToConnection = useCallback(
     (card: CardNode, variables: CardsByCardgroupConnectionQueryVariables) => {
-      const existing = apollo.readQuery({
-        query: CardsByCardgroupConnectionDocument,
+      appendConnectionEdge(apollo.cache, {
+        document: CardsByCardgroupConnectionDocument,
         variables,
-      });
-      if (!existing) return;
-
-      const next = existing.cardsByCardgroupConnection;
-      if (next.edges.some((edge) => edge.node.id === card.id)) return;
-
-      apollo.writeQuery({
-        query: CardsByCardgroupConnectionDocument,
-        variables,
-        data: {
-          cardsByCardgroupConnection: {
-            ...next,
-            edges: [
-              { __typename: "CardEdge" as const, cursor: card.id, node: card },
-              ...next.edges,
-            ],
-            totalCount: next.totalCount + 1,
-          },
-        },
+        connectionField: "cardsByCardgroupConnection",
+        edgeTypename: "CardEdge",
+        node: card,
       });
     },
     [apollo],
