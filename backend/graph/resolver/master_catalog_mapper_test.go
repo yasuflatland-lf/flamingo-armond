@@ -163,10 +163,10 @@ func TestToMasterCatalogConnectionModel_SkipsNilNode(t *testing.T) {
 func TestToUsecaseMasterCatalogOrderBy(t *testing.T) {
 	t.Parallel()
 
-	assert.Nil(t, toUsecaseMasterCatalogOrderBy(nil))
+	assert.Nil(t, toUsecaseOrderBy[model.MasterCatalogOrderBy, usecase.MasterCatalogOrderBy](nil))
 
 	in := model.MasterCatalogOrderByName
-	got := toUsecaseMasterCatalogOrderBy(&in)
+	got := toUsecaseOrderBy[model.MasterCatalogOrderBy, usecase.MasterCatalogOrderBy](&in)
 	require.NotNil(t, got)
 	assert.Equal(t, usecase.MasterCatalogOrderByName, *got)
 }

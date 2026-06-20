@@ -120,8 +120,8 @@ func (r *queryResolver) AdminMasterCardsConnection(ctx context.Context, masterCa
 		After:             after,
 		Before:            before,
 		Search:            search,
-		OrderBy:           toUsecaseMasterCardOrderBy(orderBy),
-		OrderDirection:    toUsecaseSortOrder(orderDirection),
+		OrderBy:           toUsecaseOrderBy[model.MasterCardOrderBy, usecase.MasterCardOrderBy](orderBy),
+		OrderDirection:    toUsecaseOrderBy[model.SortOrder, usecase.SortOrder](orderDirection),
 	})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
@@ -138,8 +138,8 @@ func (r *queryResolver) MasterCardsConnection(ctx context.Context, masterCardgro
 		After:             after,
 		Before:            before,
 		Search:            search,
-		OrderBy:           toUsecaseMasterCardOrderBy(orderBy),
-		OrderDirection:    toUsecaseSortOrder(orderDirection),
+		OrderBy:           toUsecaseOrderBy[model.MasterCardOrderBy, usecase.MasterCardOrderBy](orderBy),
+		OrderDirection:    toUsecaseOrderBy[model.SortOrder, usecase.SortOrder](orderDirection),
 	})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)

@@ -227,7 +227,7 @@ func TestResolver_MyCardgroupsConnection_RepoCountError_BecomesInternal(t *testi
 }
 
 // ---------------------------------------------------------------------------
-// helpers.go — toCardgroupConnectionModel / toUsecaseCardgroupOrderBy
+// helpers.go — toCardgroupConnectionModel / toUsecaseOrderBy
 // ---------------------------------------------------------------------------
 //
 // These helpers live in package resolver but are package-private. The tests
@@ -235,9 +235,9 @@ func TestResolver_MyCardgroupsConnection_RepoCountError_BecomesInternal(t *testi
 //
 // - toCardgroupConnectionModel non-empty path: covered by
 //   TestResolver_MyCardgroupsConnection_Authenticated_DelegatesToUsecase.
-// - toUsecaseCardgroupOrderBy with explicit value: covered by
+// - toUsecaseOrderBy with an explicit CardgroupOrderBy value: covered by
 //   TestResolver_MyCardgroupsConnection_OrderByName_PassesThrough below.
-// - toUsecaseCardgroupOrderBy with nil (default UPDATED_AT) and the empty
+// - toUsecaseOrderBy with nil (default UPDATED_AT) and the empty
 //   connection branch: exercised by the empty-result test below.
 
 // TestResolver_MyCardgroupsConnection_Empty_ReturnsEmptyEdges verifies that an
@@ -280,7 +280,7 @@ func TestResolver_MyCardgroupsConnection_Empty_ReturnsEmptyEdges(t *testing.T) {
 }
 
 // TestResolver_MyCardgroupsConnection_OrderByName_PassesThrough verifies that
-// the schema-level orderBy=NAME enum is translated by toUsecaseCardgroupOrderBy
+// the schema-level orderBy=NAME enum is translated by toUsecaseOrderBy
 // and reaches the repository as the corresponding usecase enum. The mock
 // captures the orderBy passed to FindPageByOwner.
 func TestResolver_MyCardgroupsConnection_OrderByName_PassesThrough(t *testing.T) {
