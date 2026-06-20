@@ -4,8 +4,7 @@ import { useApolloClient, useMutation } from "@apollo/client/react";
 import type { Reference } from "@apollo/client/utilities";
 import { useCallback } from "react";
 import type { AdminMastersQuery as AdminMastersQueryResult } from "@/generated/graphql";
-import { classifyMutationAuthError } from "@/lib/apollo/errors";
-import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
+import { classifyToAuthOutcome } from "@/lib/apollo/errors";
 import type { MasterFormValues } from "./admin-master-form";
 import {
   ADMIN_MASTERS_BASE_VARS,
@@ -51,14 +50,6 @@ export type UnpublishMasterOutcome =
   | { status: "auth"; kind: AuthKind }
   | { status: "unexpected" }
   | { status: "rejected" };
-
-// FORBIDDEN / UNAUTHENTICATED → an auth outcome; anything else → null so the
-// caller falls through to its own rejected/unexpected branch.
-function authOutcome(err: unknown): { status: "auth"; kind: AuthKind } | null {
-  const kind = classifyMutationAuthError(err);
-  if (kind === "other") return null;
-  return { status: "auth", kind };
-}
 
 /**
  * Owns the five admin-masters mutations and their Apollo cache writes. The client
@@ -144,13 +135,7 @@ export function useMasterMutations() {
         console.warn("[useMasterMutations] unexpected createMaster payload", { typename });
         return { status: "unexpected" };
       } catch (err) {
-        const auth = authOutcome(err);
-        if (auth) return auth;
-        console.warn("[useMasterMutations] createMaster rejected", {
-          name: err instanceof Error ? err.name : "unknown",
-          codes: liftGraphQLCodes(err),
-        });
-        return { status: "rejected" };
+        return classifyToAuthOutcome<AuthKind>(err, "useMasterMutations", "createMaster");
       }
     },
     [runCreate],
@@ -171,14 +156,9 @@ export function useMasterMutations() {
         console.warn("[useMasterMutations] unexpected updateMaster payload", { typename });
         return { status: "unexpected" };
       } catch (err) {
-        const auth = authOutcome(err);
-        if (auth) return auth;
-        console.warn("[useMasterMutations] updateMaster rejected", {
+        return classifyToAuthOutcome<AuthKind>(err, "useMasterMutations", "updateMaster", {
           masterId: id,
-          name: err instanceof Error ? err.name : "unknown",
-          codes: liftGraphQLCodes(err),
         });
-        return { status: "rejected" };
       }
     },
     [runUpdate],
@@ -214,14 +194,9 @@ export function useMasterMutations() {
         }
         return { status: "success" };
       } catch (err) {
-        const auth = authOutcome(err);
-        if (auth) return auth;
-        console.warn("[useMasterMutations] deleteMaster rejected", {
+        return classifyToAuthOutcome<AuthKind>(err, "useMasterMutations", "deleteMaster", {
           masterId: id,
-          name: err instanceof Error ? err.name : "unknown",
-          codes: liftGraphQLCodes(err),
         });
-        return { status: "rejected" };
       }
     },
     [apolloClient, runDelete],
@@ -245,14 +220,9 @@ export function useMasterMutations() {
         });
         return { status: "unexpected" };
       } catch (err) {
-        const auth = authOutcome(err);
-        if (auth) return auth;
-        console.warn("[useMasterMutations] publishMaster rejected", {
+        return classifyToAuthOutcome<AuthKind>(err, "useMasterMutations", "publishMaster", {
           masterId: id,
-          name: err instanceof Error ? err.name : "unknown",
-          codes: liftGraphQLCodes(err),
         });
-        return { status: "rejected" };
       }
     },
     [runPublish],
@@ -270,14 +240,9 @@ export function useMasterMutations() {
         }
         return { status: "success" };
       } catch (err) {
-        const auth = authOutcome(err);
-        if (auth) return auth;
-        console.warn("[useMasterMutations] unpublishMaster rejected", {
+        return classifyToAuthOutcome<AuthKind>(err, "useMasterMutations", "unpublishMaster", {
           masterId: id,
-          name: err instanceof Error ? err.name : "unknown",
-          codes: liftGraphQLCodes(err),
         });
-        return { status: "rejected" };
       }
     },
     [runUnpublish],

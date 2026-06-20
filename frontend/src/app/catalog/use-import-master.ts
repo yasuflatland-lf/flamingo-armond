@@ -3,8 +3,7 @@
 import { useMutation } from "@apollo/client/react";
 import { useCallback } from "react";
 import { prependMyCardgroupEdge } from "@/app/cardgroups/cache";
-import { classifyMutationAuthError } from "@/lib/apollo/errors";
-import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
+import { classifyToAuthOutcome } from "@/lib/apollo/errors";
 import { ImportMasterCardgroupMutation } from "./queries";
 
 /**
@@ -81,15 +80,12 @@ export function useImportMaster() {
         console.warn("[useImportMaster] unexpected importMasterCardgroup payload", { typename });
         return { status: "rejected" };
       } catch (err) {
-        const authKind = classifyMutationAuthError(err);
-        if (authKind !== "other") return { status: "auth", kind: authKind };
-        // err.message is omitted — backend messages may echo user input.
-        // codes is safe to log (fixed enum of GraphQL extension codes).
-        console.warn("[useImportMaster] importMasterCardgroup rejected", {
-          name: err instanceof Error ? err.name : "unknown",
-          codes: liftGraphQLCodes(err),
-        });
-        return { status: "rejected" };
+        // FORBIDDEN / UNAUTHENTICATED → typed auth outcome; otherwise a scoped
+        // structured warn (omitting err.message, which may echo user input) and
+        // a rejected outcome. The resolved-but-unparseable success-path case
+        // above also collapses into `rejected` — no catalog caller distinguishes
+        // the two. See lib/apollo/errors classifyToAuthOutcome.
+        return classifyToAuthOutcome(err, "useImportMaster", "importMasterCardgroup");
       }
     },
     [importMaster],

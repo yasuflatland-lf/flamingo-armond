@@ -12,6 +12,7 @@
  */
 
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
+import { liftGraphQLCodes } from "./graphql-errors";
 
 const NETWORK_ERROR = "Could not reach the server. Please try again.";
 
@@ -125,6 +126,63 @@ export function classifyMutationAuthError(err: unknown): MutationAuthErrorKind {
     }
   }
   return "other";
+}
+
+/**
+ * The auth-relevant kinds a caught mutation error can resolve to once the
+ * non-auth `"other"` case is folded into `rejected`. This is the auth-kind
+ * union the mutation hooks surface to their callers.
+ */
+export type MutationAuthKind = Exclude<MutationAuthErrorKind, "other">;
+
+/**
+ * Discriminated outcome of folding a caught mutation error: a typed `auth`
+ * outcome for FORBIDDEN / UNAUTHENTICATED, otherwise `rejected`.
+ *
+ * `Kind` is the caller's auth-kind union and defaults to the full
+ * `"forbidden" | "unauthenticated"` pair. `classifyMutationAuthError` returns
+ * the literal `"forbidden"` / `"unauthenticated"` strings, which structurally
+ * satisfy any `Kind` that contains them, so the narrowing in
+ * `classifyToAuthOutcome` is sound.
+ */
+export type MutationCatchOutcome<Kind extends MutationAuthKind = MutationAuthKind> =
+  | { status: "auth"; kind: Kind }
+  | { status: "rejected" };
+
+/**
+ * Fold a caught mutation-level error into the discriminated `auth` / `rejected`
+ * outcome shared by the auth-classifying mutation hooks. This single-sources the
+ * `catch`-block boilerplate those hooks repeat:
+ *
+ *  - FORBIDDEN / UNAUTHENTICATED → `{ status: "auth", kind }` so the caller can
+ *    pick sign-in / permission toast copy.
+ *  - Anything else (a non-auth GraphQL error, a transport failure) → emits a
+ *    scoped structured `console.warn` and returns `{ status: "rejected" }`.
+ *
+ * The warn carries `err.name` and the lifted `extensions.code` list (via
+ * `liftGraphQLCodes`) plus any caller-supplied `extra` context (e.g. an entity
+ * id). `err.message` is intentionally omitted — backend messages may echo user
+ * input. `scope` and `op` parameterize the per-hook warn prefix
+ * (`"[scope] op rejected"`) so each hook keeps its own telemetry label.
+ *
+ * `Kind` defaults to the full `"forbidden" | "unauthenticated"` union but can
+ * be narrowed by the caller's auth-kind union (some hooks surface both, some
+ * only expect `unauthenticated`).
+ */
+export function classifyToAuthOutcome<Kind extends MutationAuthKind = MutationAuthKind>(
+  err: unknown,
+  scope: string,
+  op: string,
+  extra?: Record<string, unknown>,
+): MutationCatchOutcome<Kind> {
+  const kind = classifyMutationAuthError(err);
+  if (kind !== "other") return { status: "auth", kind: kind as Kind };
+  console.warn(`[${scope}] ${op} rejected`, {
+    ...extra,
+    name: err instanceof Error ? err.name : "unknown",
+    codes: liftGraphQLCodes(err),
+  });
+  return { status: "rejected" };
 }
 
 /**
