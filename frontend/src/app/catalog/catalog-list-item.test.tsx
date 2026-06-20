@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { CatalogCardFieldsFragment } from "@/app/catalog/queries";
 import { makeFragmentData } from "@/generated/fragment-masking";
 import { renderWithIntl } from "@/test/render-with-intl";
@@ -19,7 +18,7 @@ const FULL_NODE = makeFragmentData(
     language: "en",
     level: "B2",
     category: "Business",
-    cardCount: 42,
+    cardCount: 1245,
   },
   CatalogCardFieldsFragment,
 );
@@ -38,114 +37,86 @@ const BARE_NODE = makeFragmentData(
   CatalogCardFieldsFragment,
 );
 
-function renderItem(
-  node: typeof FULL_NODE,
-  props: Partial<{ importing: boolean; imported: boolean; onImport: (id: string) => void }> = {},
-) {
-  const onImport = props.onImport ?? vi.fn();
+function renderItem(node: typeof FULL_NODE) {
   renderWithIntl(
     <ul>
-      <CatalogListItem
-        node={node}
-        importing={props.importing ?? false}
-        imported={props.imported ?? false}
-        onImport={onImport}
-      />
+      <CatalogListItem node={node} />
     </ul>,
   );
-  return { onImport };
 }
 
 describe("<CatalogListItem>", () => {
-  it("renders name, card count, and metadata badges when present", () => {
+  it("renders name, the grouped card-count stat with its unit, and badges", () => {
     renderItem(FULL_NODE);
     expect(screen.getByText("Business English")).toBeInTheDocument();
-    expect(screen.getByText("42 cards")).toBeInTheDocument();
+    expect(screen.getByText("1,245")).toBeInTheDocument();
+    expect(screen.getByText("cards")).toBeInTheDocument();
     expect(screen.getByText("en")).toBeInTheDocument();
     expect(screen.getByText("Level B2")).toBeInTheDocument();
     expect(screen.getByText("Business")).toBeInTheDocument();
   });
 
-  it("does not render the description text", () => {
-    renderItem(FULL_NODE);
-    expect(screen.queryByText("Professional vocabulary")).not.toBeInTheDocument();
-  });
-
-  it("omits all metadata badges when those fields are null", () => {
+  it("renders the name and stat but omits badges when those fields are null", () => {
     renderItem(BARE_NODE);
     expect(screen.getByText("JLPT N3 Kanji")).toBeInTheDocument();
-    expect(screen.getByText("100 cards")).toBeInTheDocument();
+    expect(screen.getByText("100")).toBeInTheDocument();
     expect(screen.queryByText(/^Level /)).not.toBeInTheDocument();
     expect(screen.queryByText("Business")).not.toBeInTheDocument();
     expect(screen.queryByText("en")).not.toBeInTheDocument();
   });
 
-  it("disables the button and shows the in-flight label while importing", () => {
-    renderItem(FULL_NODE, { importing: true });
-    const btn = screen.getByTestId("catalog-import-m-1");
-    expect(btn).toBeDisabled();
-    expect(btn).toHaveTextContent("Importing...");
-  });
-
-  it("disables the button and shows the imported label once imported", () => {
-    renderItem(FULL_NODE, { imported: true });
-    const btn = screen.getByTestId("catalog-import-m-1");
-    expect(btn).toBeDisabled();
-    expect(btn).toHaveTextContent("Imported");
-  });
-
-  it("calls onImport with the deck id when the idle button is clicked", async () => {
-    const user = userEvent.setup();
-    const onImport = vi.fn();
-    renderItem(FULL_NODE, { onImport });
-    await user.click(screen.getByTestId("catalog-import-m-1"));
-    expect(onImport).toHaveBeenCalledWith("m-1");
-  });
-
-  it("uses custom labels and a custom testId prefix when provided", () => {
+  it("renders the singular card unit when the deck has exactly one card", () => {
+    const oneCardNode = makeFragmentData(
+      {
+        __typename: "MasterCardgroup" as const,
+        id: "m-3",
+        name: "Single Card Deck",
+        description: null,
+        language: null,
+        level: null,
+        category: null,
+        cardCount: 1,
+      },
+      CatalogCardFieldsFragment,
+    );
     renderWithIntl(
       <ul>
-        <CatalogListItem
-          node={FULL_NODE}
-          importing={false}
-          imported={false}
-          onImport={vi.fn()}
-          labels={{ action: "Start with this deck", inProgress: "Starting...", done: "Added" }}
-          testIdPrefix="onboarding-deck"
-        />
+        <CatalogListItem node={oneCardNode} />
       </ul>,
     );
-    const btn = screen.getByTestId("onboarding-deck-m-1");
-    expect(btn).toHaveTextContent("Start with this deck");
+    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.getByText("card")).toBeInTheDocument();
+  });
+
+  it("renders the whole row as a single link to the deck-detail page", () => {
+    renderItem(FULL_NODE);
+    const row = screen.getByTestId("catalog-row-m-1");
+    expect(row).toHaveAttribute("href", "/catalog/m-1");
+    expect(row).toHaveAttribute("aria-label", "View Business English");
+  });
+
+  it("renders no Import or View button (actions moved to the detail page)", () => {
+    renderItem(FULL_NODE);
+    expect(screen.queryByRole("button")).toBeNull();
     expect(screen.queryByTestId("catalog-import-m-1")).toBeNull();
+    expect(screen.queryByTestId("catalog-view-m-1")).toBeNull();
+    expect(screen.getByText("›")).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("does not call onImport when the button is in the imported state", async () => {
-    const user = userEvent.setup();
-    const onImport = vi.fn();
-    renderItem(FULL_NODE, { imported: true, onImport });
-    await user.click(screen.getByTestId("catalog-import-m-1"));
-    expect(onImport).not.toHaveBeenCalled();
-  });
-
-  it("exposes a locale-independent row testId on the list item", () => {
+  it("keeps the description in the DOM (revealed on hover/focus via CSS)", () => {
     renderItem(FULL_NODE);
-    expect(screen.getByTestId("catalog-row-m-1")).toBeInTheDocument();
+    const desc = screen.getByTestId("catalog-row-desc-m-1");
+    expect(desc).toHaveTextContent("Professional vocabulary");
+    const revealWrapper = desc.closest("div.grid");
+    expect(revealWrapper?.className).toContain("grid-rows-[0fr]");
+    expect(revealWrapper?.className).toContain("opacity-0");
+    expect(revealWrapper?.className).toContain("group-hover:grid-rows-[1fr]");
+    expect(revealWrapper?.className).toContain("group-focus-within:grid-rows-[1fr]");
+    expect(revealWrapper?.className).toContain("motion-reduce:transition-none");
   });
 
-  it("renders a View link routing to the deck-detail page", () => {
-    renderItem(FULL_NODE);
-    const view = screen.getByTestId("catalog-view-m-1");
-    expect(view).toHaveAttribute("href", "/catalog/m-1");
-    expect(view).toHaveTextContent("View");
-    expect(view).toHaveAttribute("aria-label", "View Business English");
-  });
-
-  it("shows the imported label when both importing and imported are true (imported wins)", () => {
-    renderItem(FULL_NODE, { importing: true, imported: true });
-    const btn = screen.getByTestId("catalog-import-m-1");
-    expect(btn).toBeDisabled();
-    expect(btn).toHaveTextContent("Imported");
-    expect(btn).not.toHaveTextContent("Importing...");
+  it("renders no description node when the deck has none", () => {
+    renderItem(BARE_NODE);
+    expect(screen.queryByTestId("catalog-row-desc-m-2")).toBeNull();
   });
 });

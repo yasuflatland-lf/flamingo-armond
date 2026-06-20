@@ -260,7 +260,7 @@ describe("CatalogDeckPage — broad integration (RSC + deck-detail screen)", () 
 });
 
 describe("catalog list → deck-detail entry point", () => {
-  it("routes the list View button to /catalog/{id}", () => {
+  it("routes the whole list row to /catalog/{id}", () => {
     const node = makeFragmentData(
       {
         __typename: "MasterCardgroup" as const,
@@ -278,12 +278,12 @@ describe("catalog list → deck-detail entry point", () => {
     render(
       <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
         <ul>
-          <CatalogListItem node={node} importing={false} imported={false} onImport={vi.fn()} />
+          <CatalogListItem node={node} />
         </ul>
       </NextIntlClientProvider>,
     );
 
-    expect(screen.getByTestId(`catalog-view-${DECK_ID}`)).toHaveAttribute(
+    expect(screen.getByTestId(`catalog-row-${DECK_ID}`)).toHaveAttribute(
       "href",
       `/catalog/${DECK_ID}`,
     );

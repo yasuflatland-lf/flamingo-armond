@@ -1,7 +1,8 @@
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   classifyMutationAuthError,
+  classifyToAuthOutcome,
   getBackendErrorBanner,
   getBackendFieldErrors,
   mutationAuthBanner,
@@ -238,5 +239,68 @@ describe("mutationAuthBanner", () => {
 
   it("returns the fallback copy for a network error", () => {
     expect(mutationAuthBanner(new Error("Network request failed"), copy)).toBe(copy.fallback);
+  });
+});
+
+describe("classifyToAuthOutcome", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns an auth outcome with kind forbidden for a FORBIDDEN error without warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const err = makeCombinedError([{ message: "Forbidden", extensions: { code: "FORBIDDEN" } }]);
+    expect(classifyToAuthOutcome(err, "useScope", "doThing")).toEqual({
+      status: "auth",
+      kind: "forbidden",
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("returns an auth outcome with kind unauthenticated for an UNAUTHENTICATED error without warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const err = makeCombinedError([
+      { message: "Not authenticated", extensions: { code: "UNAUTHENTICATED" } },
+    ]);
+    expect(classifyToAuthOutcome(err, "useScope", "doThing")).toEqual({
+      status: "auth",
+      kind: "unauthenticated",
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("returns a rejected outcome and warns with the scoped prefix for a non-auth GraphQL error", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const err = makeCombinedError([
+      { message: "Invalid input", extensions: { code: "BAD_USER_INPUT" } },
+    ]);
+    expect(classifyToAuthOutcome(err, "useScope", "doThing")).toEqual({ status: "rejected" });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith("[useScope] doThing rejected", {
+      name: "CombinedGraphQLErrors",
+      codes: ["BAD_USER_INPUT"],
+    });
+  });
+
+  it("returns a rejected outcome and warns with name unknown for a non-Error throw", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(classifyToAuthOutcome("boom", "useScope", "doThing")).toEqual({ status: "rejected" });
+    expect(warn).toHaveBeenCalledWith("[useScope] doThing rejected", {
+      name: "unknown",
+      codes: [],
+    });
+  });
+
+  it("merges caller-supplied extra context into the warn payload", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const err = new Error("Network request failed");
+    expect(
+      classifyToAuthOutcome(err, "useMasterMutations", "deleteMaster", { masterId: "m-1" }),
+    ).toEqual({ status: "rejected" });
+    expect(warn).toHaveBeenCalledWith("[useMasterMutations] deleteMaster rejected", {
+      masterId: "m-1",
+      name: "Error",
+      codes: [],
+    });
   });
 });

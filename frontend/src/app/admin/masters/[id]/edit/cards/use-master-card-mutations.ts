@@ -7,6 +7,7 @@ import {
   type AdminMasterCardsConnectionQuery,
   type AdminMasterCardsConnectionQueryVariables,
 } from "@/generated/graphql";
+import { appendConnectionEdge, removeConnectionEdges } from "@/lib/apollo/connection-cache";
 import { useUndoDelete } from "@/lib/undo-delete";
 import {
   AdminCreateMasterCard,
@@ -88,28 +89,14 @@ export function useMasterCardMutations({ masterId, queryVariables }: UseMasterCa
         if (bulkData?.adminDeleteMasterCards == null) return;
         const deletedCount = bulkData.adminDeleteMasterCards;
         if (deletedCount === 0) return;
-        const existing = cache.readQuery({
-          query: AdminMasterCardsConnectionDocument,
+        removeConnectionEdges(cache, {
+          document: AdminMasterCardsConnectionDocument,
           variables: queryVariables,
+          connectionField: "adminMasterCardsConnection",
+          entityTypename: "MasterCard",
+          ids,
+          deletedCount,
         });
-        if (existing) {
-          const next = existing.adminMasterCardsConnection;
-          cache.writeQuery({
-            query: AdminMasterCardsConnectionDocument,
-            variables: queryVariables,
-            data: {
-              adminMasterCardsConnection: {
-                ...next,
-                edges: next.edges.filter((edge) => !ids.includes(edge.node.id)),
-                totalCount: Math.max(0, next.totalCount - deletedCount),
-              },
-            },
-          });
-        }
-        for (const id of ids) {
-          cache.evict({ id: cache.identify({ __typename: "MasterCard", id }) });
-        }
-        cache.gc();
       },
     },
   );
@@ -121,30 +108,16 @@ export function useMasterCardMutations({ masterId, queryVariables }: UseMasterCa
   const [deleteRowError, setDeleteRowError] = useState<unknown>(null);
 
   // Write a freshly-created master card to the connection cached under `variables`.
+  // No `buildColdConnection`: on a cold cache this no-ops and the page's own
+  // `useQuery` owns populating the connection.
   const writeCreatedMasterCardToConnection = useCallback(
     (card: MasterCardNode, variables: AdminMasterCardsConnectionQueryVariables) => {
-      const existing = apollo.readQuery({
-        query: AdminMasterCardsConnectionDocument,
+      appendConnectionEdge(apollo.cache, {
+        document: AdminMasterCardsConnectionDocument,
         variables,
-      });
-      if (!existing) return;
-
-      const next = existing.adminMasterCardsConnection;
-      if (next.edges.some((edge) => edge.node.id === card.id)) return;
-
-      apollo.writeQuery({
-        query: AdminMasterCardsConnectionDocument,
-        variables,
-        data: {
-          adminMasterCardsConnection: {
-            ...next,
-            edges: [
-              { __typename: "MasterCardEdge" as const, cursor: card.id, node: card },
-              ...next.edges,
-            ],
-            totalCount: next.totalCount + 1,
-          },
-        },
+        connectionField: "adminMasterCardsConnection",
+        edgeTypename: "MasterCardEdge",
+        node: card,
       });
     },
     [apollo],

@@ -2,8 +2,7 @@
 
 import { useMutation } from "@apollo/client/react";
 import { useCallback } from "react";
-import { classifyMutationAuthError } from "@/lib/apollo/errors";
-import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
+import { classifyToAuthOutcome } from "@/lib/apollo/errors";
 import { prependMyCardgroupEdge } from "./cache";
 import { CreateCardgroupMutation } from "./queries";
 
@@ -68,15 +67,10 @@ export function useCreateCardgroup() {
         console.warn("[useCreateCardgroup] unexpected createCardgroup payload", { typename });
         return { status: "unexpected" };
       } catch (err) {
-        const authKind = classifyMutationAuthError(err);
-        if (authKind !== "other") return { status: "auth", kind: authKind };
-        // err.message is omitted — backend messages may echo user input.
-        // codes is safe to log (fixed enum of GraphQL extension codes).
-        console.warn("[useCreateCardgroup] createCardgroup rejected", {
-          name: err instanceof Error ? err.name : "unknown",
-          codes: liftGraphQLCodes(err),
-        });
-        return { status: "rejected" };
+        // FORBIDDEN / UNAUTHENTICATED → typed auth outcome; otherwise a scoped
+        // structured warn (omitting err.message, which may echo user input) and
+        // a rejected outcome. See lib/apollo/errors classifyToAuthOutcome.
+        return classifyToAuthOutcome(err, "useCreateCardgroup", "createCardgroup");
       }
     },
     [createCardgroup],

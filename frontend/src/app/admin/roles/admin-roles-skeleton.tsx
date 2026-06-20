@@ -1,3 +1,4 @@
+import { ListSkeleton } from "@/components/layout/list-skeleton";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
@@ -9,32 +10,28 @@ import { Skeleton } from "@/components/ui/skeleton";
  */
 export function AdminRolesSkeleton() {
   return (
-    <main className="flex flex-1 flex-col gap-4 p-8 sm:gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <Skeleton className="h-8 w-24" />
+    <ListSkeleton
+      className="flex flex-1 flex-col gap-4 sm:gap-6"
+      rowCount={3}
+      rowClassName="px-4 py-3"
+      ariaLabel="Loading roles"
+      testId="admin-roles-skeleton"
+      header={
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <Skeleton className="h-8 w-24" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Skeleton className="hidden h-10 w-28 md:inline-flex" />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Skeleton className="hidden h-10 w-28 md:inline-flex" />
+      }
+      renderRow={() => (
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-5 w-32" />
+          <Skeleton className="h-8 w-16" />
         </div>
-      </div>
-
-      <ul
-        className="space-y-3"
-        aria-busy="true"
-        aria-label="Loading roles"
-        data-testid="admin-roles-skeleton"
-      >
-        {Array.from({ length: 3 }).map((_, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: static placeholder rows have no stable id.
-          <li key={i} className="rounded-md border border-border px-4 py-3">
-            <div className="flex items-center justify-between">
-              <Skeleton className="h-5 w-32" />
-              <Skeleton className="h-8 w-16" />
-            </div>
-          </li>
-        ))}
-      </ul>
-    </main>
+      )}
+    />
   );
 }
