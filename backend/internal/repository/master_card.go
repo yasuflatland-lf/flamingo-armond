@@ -183,12 +183,12 @@ func (r *masterCardRepo) FindPageByMasterCardgroup(
 	// Base query scoped to the master cardgroup.
 	base := r.db.WithContext(ctx).Model(&gormMasterCard{}).Where("master_cards.master_cardgroup_id = ?", masterCardgroupID)
 
-	// Non-nil search is guaranteed by the usecase to be non-empty and trimmed.
-	// escapeLikePattern guards against LIKE metacharacter injection. The front
-	// column is citext (case-insensitive); ILIKE on both columns keeps the
-	// front/back search consistently case-insensitive.
-	if search != nil {
-		pattern := "%" + escapeLikePattern(*search) + "%"
+	// searchLikePattern trims, escapes LIKE metacharacters, and drops the
+	// predicate when search is nil or blank, keeping blank-search handling
+	// consistent across every paginated repository. The front column is citext
+	// (case-insensitive); ILIKE on both columns keeps the front/back search
+	// consistently case-insensitive.
+	if pattern, ok := searchLikePattern(search); ok {
 		base = base.Where("(master_cards.front ILIKE ? OR master_cards.back ILIKE ?)", pattern, pattern)
 	}
 

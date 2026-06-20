@@ -793,6 +793,33 @@ func TestMasterCardRepository_FindPageByMasterCardgroup_Search(t *testing.T) {
 	require.Equal(t, pctRow.ID, gotUnd[0].ID)
 }
 
+// TestMasterCardRepository_FindPageByMasterCardgroup_EmptySearchTreatedAsNil
+// verifies that an all-whitespace search has no effect — same as nil — because
+// searchLikePattern returns ok=false for trimmed-empty input. The whitespace
+// term must NOT reach SQL as "%   %" (which would filter out every master card)
+// and must NOT zero the page or totalCount. totalCount stays deterministic
+// because it is scoped to the freshly inserted master cardgroup. Mirrors the
+// cardgroup blank-search guard.
+func TestMasterCardRepository_FindPageByMasterCardgroup_EmptySearchTreatedAsNil(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "MCPage-EmptySearch-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	insertMasterCardsSeq(t, ctx, repo, mcg.ID, "MCPage-EmptySearch", 3)
+
+	whitespace := "   "
+	got, total, err := repo.FindPageByMasterCardgroup(
+		ctx, mcg.ID, nil, nil, 100, 0,
+		repository.MasterCardOrderByPosition, repository.SortAsc, &whitespace,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total,
+		"all-whitespace search must NOT filter totalCount (treated as no search)")
+	require.Len(t, got, 3,
+		"all-whitespace search must NOT filter the page (treated as no search)")
+}
+
 // TestMasterCardRepository_FindPageByMasterCardgroup_TotalCountScopedToGroup
 // verifies totalCount is scoped to the requested master cardgroup and does not
 // count rows in other groups (which other parallel tests may also be inserting).
