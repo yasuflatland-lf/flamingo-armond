@@ -45,4 +45,26 @@ describe("DetailPageHeader", () => {
     expect(screen.queryByTestId("actions-slot")).toBeNull();
     expect(container.querySelector("h1")?.textContent).toBe("T");
   });
+
+  it("renders the status slot below the title (after it in document order)", () => {
+    const { container } = render(
+      <DetailPageHeader
+        backHref="/x"
+        backLabel="back"
+        title="Advanced Cards"
+        status={<span data-testid="status-slot">Published</span>}
+      />,
+    );
+    expect(screen.getByTestId("status-slot")).toBeInTheDocument();
+    // querySelectorAll returns matches in document order: the title precedes the
+    // status indicator, so the status renders one tier below the title.
+    const ordered = Array.from(container.querySelectorAll('h1, [data-testid="status-slot"]'));
+    expect(ordered[0]?.tagName.toLowerCase()).toBe("h1");
+    expect(ordered[1]?.getAttribute("data-testid")).toBe("status-slot");
+  });
+
+  it("omits the status wrapper when status is not provided", () => {
+    render(<DetailPageHeader backHref="/x" backLabel="back" title="T" />);
+    expect(screen.queryByTestId("status-slot")).toBeNull();
+  });
 });

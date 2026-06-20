@@ -162,21 +162,28 @@ export function MasterEditHeader({ master, cardCount, onBatchImport }: Props) {
   const publishLabel = published ? t("unpublish") : t("publish");
   const statusLabel = published ? t("statusPublished") : t("statusDraft");
 
+  // App-bar meta: the muted card count only. The publish-status indicator moved
+  // out to the title-row `status` slot below, so the count is breakpoint-agnostic
+  // and renders once.
   const meta = (
+    <span className="text-sm text-muted-foreground">{t("cardCount", { count: cardCount })}</span>
+  );
+
+  // Status indicator centered directly below the deck title, reading as an
+  // attribute of it. Mobile gets the interactive chip (the only publish
+  // affordance there); desktop gets the read-only badge, since the publish
+  // action lives in the app-bar split button.
+  const status = (
     <>
-      {/* Mobile: muted count + interactive status chip (publish trigger),
-          centered in the app-bar row beside the count. */}
-      <div className="flex items-center justify-center gap-2 md:hidden">
-        <span className="text-sm text-muted-foreground">
-          {t("cardCount", { count: cardCount })}
-        </span>
+      {/* Mobile: interactive status chip doubles as the publish trigger. */}
+      <div className="md:hidden">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
               data-testid="master-edit-status-chip"
               aria-label={t("changePublishState", { state: statusLabel })}
-              className="inline-flex items-center gap-1.5 rounded-full border px-3 py-0.5 text-sm font-medium hover:bg-accent"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <span
                 aria-hidden="true"
@@ -202,13 +209,13 @@ export function MasterEditHeader({ master, cardCount, onBatchImport }: Props) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {/* Desktop: muted count + display badge, centered in the app-bar row. */}
-      <div className="hidden items-center justify-center gap-2 md:flex">
-        <span className="text-sm text-muted-foreground">
-          {t("cardCount", { count: cardCount })}
-        </span>
-        <MasterStatusBadge published={published} data-testid="master-edit-status-badge" />
-      </div>
+      {/* Desktop: read-only display badge; the publish action lives in the
+          app-bar split button. */}
+      <MasterStatusBadge
+        published={published}
+        data-testid="master-edit-status-badge"
+        className="hidden md:inline-flex"
+      />
     </>
   );
 
@@ -309,6 +316,7 @@ export function MasterEditHeader({ master, cardCount, onBatchImport }: Props) {
         title={master.name}
         meta={meta}
         actions={actions}
+        status={status}
       >
         {emptyDraft ? (
           <p

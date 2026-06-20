@@ -97,6 +97,24 @@ describe("MasterEditHeader", () => {
     expect(screen.getAllByText("5 cards").length).toBeGreaterThan(0);
   });
 
+  it("renders the publish-status indicator below the deck title, not in the app-bar meta", () => {
+    const { container } = renderHeader({ status: "PUBLISHED" });
+    // The desktop status badge follows the deck title in document order, so it
+    // sits one tier below the title rather than beside the card count.
+    const ordered = Array.from(
+      container.querySelectorAll('h1, [data-testid="master-edit-status-badge"]'),
+    );
+    expect(ordered[0]?.tagName.toLowerCase()).toBe("h1");
+    expect(ordered[1]?.getAttribute("data-testid")).toBe("master-edit-status-badge");
+  });
+
+  it("renders the card count once now that status moved out of the meta cluster", () => {
+    renderHeader();
+    // The count is breakpoint-agnostic, so it renders a single time (previously
+    // it was duplicated across the mobile and desktop meta rows).
+    expect(screen.getAllByText("5 cards")).toHaveLength(1);
+  });
+
   it("disables publish and shows the hint for an empty draft", () => {
     renderHeader({ cardCount: 0 });
     expect(screen.getByTestId("master-edit-publish")).toBeDisabled();

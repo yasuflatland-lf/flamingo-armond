@@ -10,23 +10,28 @@ type DetailPageHeaderProps = {
   /** Accessible (sr-only) label for the back link, e.g. t("backToList"). */
   backLabel: string;
   title: string;
-  /** Status + count cluster centered in the app-bar row, between the back
-   *  affordance and the trailing actions. The page owns its md: reflow. */
+  /** Count cluster centered in the app-bar row, between the back affordance and
+   *  the trailing actions. The page owns its md: reflow. */
   meta?: ReactNode;
   /** Trailing action cluster on the app-bar row (right). The page owns its md: reflow. */
   actions?: ReactNode;
-  /** Optional note rendered below the title, e.g. an empty-draft publish hint. */
+  /** Optional status indicator (e.g. a publish-state chip/badge) centered
+   *  directly below the title, reading as an attribute of the title. Sits one
+   *  tier above `children`. The page owns its md: reflow. */
+  status?: ReactNode;
+  /** Optional note rendered below the status slot, e.g. an empty-draft publish hint. */
   children?: ReactNode;
 };
 
 /**
  * The shared detail-page header layout: an app-bar row carrying an inline back
- * affordance (left), a centered status/count meta cluster (center), and a
- * trailing action cluster (right); the page title sits centered on its own row
- * one tier below. The 1fr/auto/1fr app-bar grid keeps the meta cluster centered
- * regardless of the back/action cluster widths. Used by the master-edit header.
- * It owns layout only — the consumer composes its own meta/actions, including
- * responsive variants.
+ * affordance (left), a centered count meta cluster (center), and a trailing
+ * action cluster (right); the page title sits centered on its own row one tier
+ * below, with an optional status indicator centered directly beneath the title.
+ * The 1fr/auto/1fr app-bar grid keeps the meta cluster centered regardless of
+ * the back/action cluster widths. Used by the master-edit header. It owns layout
+ * only — the consumer composes its own meta/actions/status, including responsive
+ * variants.
  */
 export function DetailPageHeader({
   backHref,
@@ -34,6 +39,7 @@ export function DetailPageHeader({
   title,
   meta,
   actions,
+  status,
   children,
 }: DetailPageHeaderProps) {
   return (
@@ -52,10 +58,16 @@ export function DetailPageHeader({
         <div className="justify-self-center">{meta}</div>
         <div className="flex items-center justify-self-end">{actions}</div>
       </div>
-      {/* Title row — centered, one tier below the app-bar. */}
-      <div className="mt-1 flex items-center justify-center">
+      {/* Title row — centered. A wider gap above (mt-2) than the title→status gap
+          below (mt-1) sets the title+status pair apart from the app-bar so the
+          title heads its own group rather than binding to the utility row. */}
+      <div className="mt-2 flex items-center justify-center">
         <h1 className="min-w-0 truncate text-2xl font-semibold leading-tight">{title}</h1>
       </div>
+      {/* Status row — centered directly below the title with a tight mt-1
+          (title→status 4px < app-bar→title 8px) so it binds to the title and
+          reads as an attribute of it. */}
+      {status ? <div className="mt-1 flex items-center justify-center">{status}</div> : null}
       {children}
     </header>
   );
