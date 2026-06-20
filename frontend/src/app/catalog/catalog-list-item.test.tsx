@@ -62,6 +62,7 @@ describe("<CatalogListItem>", () => {
     expect(screen.getByText("100")).toBeInTheDocument();
     expect(screen.queryByText(/^Level /)).not.toBeInTheDocument();
     expect(screen.queryByText("Business")).not.toBeInTheDocument();
+    expect(screen.queryByText("en")).not.toBeInTheDocument();
   });
 
   it("renders the singular card unit when the deck has exactly one card", () => {
@@ -99,11 +100,19 @@ describe("<CatalogListItem>", () => {
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.queryByTestId("catalog-import-m-1")).toBeNull();
     expect(screen.queryByTestId("catalog-view-m-1")).toBeNull();
+    expect(screen.getByText("›")).toHaveAttribute("aria-hidden", "true");
   });
 
   it("keeps the description in the DOM (revealed on hover/focus via CSS)", () => {
     renderItem(FULL_NODE);
-    expect(screen.getByText("Professional vocabulary")).toBeInTheDocument();
+    const desc = screen.getByTestId("catalog-row-desc-m-1");
+    expect(desc).toHaveTextContent("Professional vocabulary");
+    const revealWrapper = desc.closest("div.grid");
+    expect(revealWrapper?.className).toContain("grid-rows-[0fr]");
+    expect(revealWrapper?.className).toContain("opacity-0");
+    expect(revealWrapper?.className).toContain("group-hover:grid-rows-[1fr]");
+    expect(revealWrapper?.className).toContain("group-focus-within:grid-rows-[1fr]");
+    expect(revealWrapper?.className).toContain("motion-reduce:transition-none");
   });
 
   it("renders no description node when the deck has none", () => {

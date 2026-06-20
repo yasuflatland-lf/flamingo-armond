@@ -6,6 +6,11 @@ import { CatalogCardFieldsFragment } from "@/app/catalog/queries";
 import { Badge } from "@/components/ui/badge";
 import { type FragmentType, useFragment } from "@/generated/fragment-masking";
 
+/**
+ * Props for {@link CatalogListItem}. The component is intentionally stateless and
+ * navigation-only — the whole row is a single Link and renders no other
+ * interactive element; all actions (e.g. Import) belong on the detail page.
+ */
 export type CatalogListItemProps = {
   /** A masked `CatalogCardFields` ref — unmasked once via `useFragment` below. */
   node: FragmentType<typeof CatalogCardFieldsFragment>;
@@ -78,9 +83,12 @@ export function CatalogListItem({ node }: CatalogListItemProps) {
 
         {/* Tier 3: description — collapsed by default, revealed on hover / focus
             (desktop progressive enhancement) via a grid-rows 0fr→1fr transition.
-            Always in the DOM for screen readers; visually hidden on touch (no
-            hover), where the deck's detail page carries the description instead. */}
-        {card.description && (
+            Tailwind's `group-hover:` compiles under `@media (hover: hover)`, so it
+            never fires on touch; `group-focus-within:` keeps the keyboard reveal (a
+            brief, harmless expand on a touch tap before navigation). Always in the
+            DOM for screen readers; the deck's detail page carries the description
+            for mobile-first discovery. */}
+        {card.description?.trim() && (
           <div className="grid grid-rows-[0fr] opacity-0 transition-[grid-template-rows,opacity] duration-200 ease-out group-hover:grid-rows-[1fr] group-hover:opacity-100 group-focus-within:grid-rows-[1fr] group-focus-within:opacity-100 motion-reduce:transition-none">
             <div className="overflow-hidden">
               <p

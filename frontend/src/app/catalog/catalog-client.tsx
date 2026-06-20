@@ -58,10 +58,10 @@ function mergeCatalogConnection(
  *    renders immediately without a network round-trip. CATALOG_DEFAULT_VARS keeps
  *    the cache key identical to the SSR seed and the client useQuery — any
  *    mismatch silently splits the cache.
- *  - Debounced search (300ms; searchInput → searchQuery), passed as the `search`
+ *  - Debounced search (300ms; search.input → searchQuery), passed as the `search`
  *    variable on MasterCatalogQuery.
- *  - Infinite scroll via IntersectionObserver, with an in-flight guard via
- *    useRef<boolean> (per docs/pagination/intersection-observer-in-flight-guard.md).
+ *  - Infinite scroll via useConnectionPagination, which owns the IntersectionObserver
+ *    and the in-flight useRef<boolean> guard (per docs/pagination/intersection-observer-in-flight-guard.md).
  *  - fetchMoreError halt gate — the observer short-circuits while an error banner
  *    is showing; the user must click Retry to resume.
  */

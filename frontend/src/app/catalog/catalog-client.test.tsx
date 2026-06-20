@@ -14,7 +14,9 @@ import CatalogClient from "./catalog-client";
 import { CATALOG_DEFAULT_VARS } from "./queries";
 
 // ---------------------------------------------------------------------------
-// next/link stub
+// next/link stub — CatalogClient no longer imports Link directly; the stub is
+// needed because CatalogClient renders <CatalogListItem>, which imports
+// next/link and renders <Link href={`/catalog/${id}`}>.
 // ---------------------------------------------------------------------------
 vi.mock("next/link", () => ({
   default: ({

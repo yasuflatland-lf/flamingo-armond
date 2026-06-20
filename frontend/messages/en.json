@@ -94,7 +94,6 @@
     "importError": "Could not import the cardgroup. Please try again.",
     "sessionExpired": "Your session has expired. ",
     "signInAgain": "Sign in again",
-    "viewDeck": "View",
     "viewDeckAriaLabel": "View {name}",
     "backToCatalog": "Back to catalog",
     "deckEmpty": "This deck has no cards yet.",
