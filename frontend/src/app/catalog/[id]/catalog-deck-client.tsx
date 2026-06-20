@@ -176,25 +176,27 @@ export default function CatalogDeckClient({
 
           <CardSearchInput value={search.input} onChange={search.setInput} />
 
-          {edges.length === 0 ? (
-            search.query ? (
-              <div
-                className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border p-6"
-                data-testid="catalog-deck-empty-search"
-              >
-                <p className="text-sm text-muted-foreground">
-                  {t("deckEmptySearch", { query: search.query })}
-                </p>
-              </div>
-            ) : (
-              <div
-                className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border p-6"
-                data-testid="catalog-deck-empty"
-              >
-                <p className="text-sm text-muted-foreground">{t("deckEmpty")}</p>
-              </div>
-            )
-          ) : (
+          {edges.length === 0 && search.query && (
+            <div
+              className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border p-6"
+              data-testid="catalog-deck-empty-search"
+            >
+              <p className="text-sm text-muted-foreground">
+                {t("deckEmptySearch", { query: search.query })}
+              </p>
+            </div>
+          )}
+
+          {edges.length === 0 && !search.query && (
+            <div
+              className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border p-6"
+              data-testid="catalog-deck-empty"
+            >
+              <p className="text-sm text-muted-foreground">{t("deckEmpty")}</p>
+            </div>
+          )}
+
+          {edges.length > 0 && (
             <ul
               className="divide-y divide-border overflow-hidden rounded-md border border-border"
               data-testid="catalog-deck-card-list"
