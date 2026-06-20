@@ -82,6 +82,8 @@
     "importing": "Importing...",
     "imported": "Imported",
     "cardCount": "{count, plural, one {# card} other {# cards}}",
+    "cardCountStat": "{count, number}",
+    "unitCards": "{count, plural, one {card} other {cards}}",
     "level": "Level {level}",
     "noDecks": "No cardgroups are available yet.",
     "noMatch": "No cardgroups match \"{query}\"",

@@ -82,6 +82,8 @@
     "importing": "インポート中...",
     "imported": "インポート済み",
     "cardCount": "{count, plural, other {# 枚のカード}}",
+    "cardCountStat": "{count, number}",
+    "unitCards": "枚",
     "level": "レベル {level}",
     "noDecks": "利用可能なカードグループはまだありません。",
     "noMatch": "「{query}」に一致するカードグループはありません",
