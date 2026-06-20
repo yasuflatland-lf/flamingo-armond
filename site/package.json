@@ -19,12 +19,12 @@
     "react-dom": "19.2.7"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.16",
-    "@tailwindcss/postcss": "4.3.0",
+    "@biomejs/biome": "2.5.0",
+    "@tailwindcss/postcss": "4.3.1",
     "@vitejs/plugin-react": "^6.0.0",
     "knip": "^6.14.0",
     "postcss": "^8.4.49",
-    "tailwindcss": "4.3.0",
+    "tailwindcss": "4.3.1",
     "vite": "^8.0.0"
   }
 }
