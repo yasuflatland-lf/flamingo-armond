@@ -7,10 +7,8 @@ import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
-import { FieldError } from "@/lib/forms/field-error";
+import { FormField } from "@/lib/forms/form-field";
 import { submitFormHandler, wrapSubmit } from "@/lib/forms/submit-handler";
 import { newCardSchema, updateCardSchema } from "@/schemas/card";
 
@@ -68,51 +66,31 @@ export function CardForm({
       {bannerError ? <ErrorBanner>{bannerError}</ErrorBanner> : null}
 
       <form.Field name="front" validators={{ onChange: frontSchema, onBlur: frontSchema }}>
-        {(field) => {
-          const inputId = `${idPrefix}${field.name}-field`;
-          return (
-            <div className="space-y-1">
-              <Label htmlFor={inputId}>{t("frontLabel")}</Label>
-              <Input
-                id={inputId}
-                name={field.name}
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
-              />
-              <FieldError
-                zodErrors={field.state.meta.errors}
-                backendError={
-                  validationError?.field === "front" ? validationError.message : fieldErrors.front
-                }
-              />
-            </div>
-          );
-        }}
+        {(field) => (
+          <FormField
+            field={field}
+            label={t("frontLabel")}
+            idOverride={`${idPrefix}${field.name}-field`}
+            className="space-y-1"
+            backendError={
+              validationError?.field === "front" ? validationError.message : fieldErrors.front
+            }
+          />
+        )}
       </form.Field>
 
       <form.Field name="back" validators={{ onChange: backSchema, onBlur: backSchema }}>
-        {(field) => {
-          const inputId = `${idPrefix}${field.name}-field`;
-          return (
-            <div className="space-y-1">
-              <Label htmlFor={inputId}>{t("backLabel")}</Label>
-              <Input
-                id={inputId}
-                name={field.name}
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
-              />
-              <FieldError
-                zodErrors={field.state.meta.errors}
-                backendError={
-                  validationError?.field === "back" ? validationError.message : fieldErrors.back
-                }
-              />
-            </div>
-          );
-        }}
+        {(field) => (
+          <FormField
+            field={field}
+            label={t("backLabel")}
+            idOverride={`${idPrefix}${field.name}-field`}
+            className="space-y-1"
+            backendError={
+              validationError?.field === "back" ? validationError.message : fieldErrors.back
+            }
+          />
+        )}
       </form.Field>
 
       <div className="flex items-center gap-2">

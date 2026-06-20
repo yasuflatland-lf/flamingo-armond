@@ -6,10 +6,8 @@ import type React from "react";
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
-import { FieldError } from "@/lib/forms/field-error";
+import { FormField } from "@/lib/forms/form-field";
 import { submitFormHandler, wrapSubmit } from "@/lib/forms/submit-handler";
 import { newCardgroupSchema, updateCardgroupSchema } from "@/schemas/cardgroup";
 
@@ -71,22 +69,13 @@ export function CardgroupForm({
 
       <form.Field name="name" validators={{ onChange: nameSchema, onBlur: nameSchema }}>
         {(field) => (
-          <div className="space-y-2">
-            <Label htmlFor={field.name}>{t("nameLabel")}</Label>
-            <Input
-              id={field.name}
-              name={field.name}
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(e.target.value)}
-            />
-            <FieldError
-              zodErrors={field.state.meta.errors}
-              backendError={
-                validationError?.field === "name" ? validationError.message : fieldErrors.name
-              }
-            />
-          </div>
+          <FormField
+            field={field}
+            label={t("nameLabel")}
+            backendError={
+              validationError?.field === "name" ? validationError.message : fieldErrors.name
+            }
+          />
         )}
       </form.Field>
 
