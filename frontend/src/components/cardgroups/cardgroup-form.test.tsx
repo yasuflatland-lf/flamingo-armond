@@ -6,6 +6,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { describe, expect, it, vi } from "vitest";
+import { submitFormHandler, wrapSubmit } from "@/lib/forms/submit-handler";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { CardgroupForm } from "./cardgroup-form";
 
@@ -23,24 +24,13 @@ function CardgroupFormWithStatus({
   const form = useForm({
     defaultValues: { name: "Test Group" },
     onSubmit: async ({ value }) => {
-      await submit(value).catch((err) => {
-        console.error("[cardgroup-form] submit rejected", err);
-        throw err; // keep formState.isSubmitSuccessful correct
-      });
+      await wrapSubmit("cardgroup-form", submit)(value);
     },
   });
 
   return (
     <>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          form.handleSubmit().catch(() => {
-            // swallow re-thrown rejection to avoid unhandled browser promise rejection
-          });
-        }}
-      >
+      <form onSubmit={submitFormHandler(form)}>
         <button type="submit">Create</button>
       </form>
       <form.Subscribe selector={(state) => state.isSubmitSuccessful}>

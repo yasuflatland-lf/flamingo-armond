@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
 import { FieldError } from "@/lib/forms/field-error";
+import { submitFormHandler, wrapSubmit } from "@/lib/forms/submit-handler";
 import { newCardSchema, updateCardSchema } from "@/schemas/card";
 
 type Mode = "create" | "edit";
@@ -58,26 +59,12 @@ export function CardForm({
   const form = useForm({
     defaultValues: { front: defaultValues.front, back: defaultValues.back },
     onSubmit: async ({ value }) => {
-      await submit(value).catch((err) => {
-        console.error("[card-form] submit rejected", err);
-        throw err;
-      });
+      await wrapSubmit("card-form", submit)(value);
     },
   });
 
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        form.handleSubmit().catch(() => {
-          // The inner submit handler's .catch already logged; swallow here so the
-          // re-thrown rejection (which keeps formState.isSubmitSuccessful=false correct)
-          // does not surface as an unhandled browser promise rejection.
-        });
-      }}
-      className="space-y-3"
-    >
+    <form onSubmit={submitFormHandler(form)} className="space-y-3">
       {bannerError ? <ErrorBanner>{bannerError}</ErrorBanner> : null}
 
       <form.Field name="front" validators={{ onChange: frontSchema, onBlur: frontSchema }}>

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
 import { FieldError } from "@/lib/forms/field-error";
+import { submitFormHandler, wrapSubmit } from "@/lib/forms/submit-handler";
 import { newCardgroupSchema, updateCardgroupSchema } from "@/schemas/cardgroup";
 
 type Mode = "create" | "edit";
@@ -60,26 +61,12 @@ export function CardgroupForm({
       name: defaultValues.name,
     },
     onSubmit: async ({ value }) => {
-      await submit(value).catch((err) => {
-        console.error("[cardgroup-form] submit rejected", err);
-        throw err; // keep formState.isSubmitSuccessful correct
-      });
+      await wrapSubmit("cardgroup-form", submit)(value);
     },
   });
 
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        form.handleSubmit().catch(() => {
-          // The inner submit handler's .catch already logged; swallow here so the
-          // re-thrown rejection (which keeps formState.isSubmitSuccessful=false correct)
-          // does not surface as an unhandled browser promise rejection.
-        });
-      }}
-      className="space-y-4"
-    >
+    <form onSubmit={submitFormHandler(form)} className="space-y-4">
       {bannerError ? <ErrorBanner>{bannerError}</ErrorBanner> : null}
 
       <form.Field name="name" validators={{ onChange: nameSchema, onBlur: nameSchema }}>

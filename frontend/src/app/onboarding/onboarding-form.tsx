@@ -11,6 +11,7 @@ import { ErrorBanner } from "@/components/ui/error-banner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldError } from "@/lib/forms/field-error";
+import { submitFormHandler } from "@/lib/forms/submit-handler";
 import { updateProfileSchema } from "@/schemas/profile";
 
 export function OnboardingForm() {
@@ -73,8 +74,8 @@ export function OnboardingForm() {
           return;
         case "rejected":
           setBannerMessage(outcome.banner ?? tCommon("somethingWentWrong"));
-          // Re-throw so TanStack Form keeps formState.isSubmitSuccessful=false; the
-          // outer form.handleSubmit().catch() at the JSX call site swallows it.
+          // Re-throw so TanStack Form keeps formState.isSubmitSuccessful=false;
+          // submitFormHandler (the outer onSubmit) swallows the re-thrown rejection.
           throw new Error("[OnboardingForm] update profile rejected");
       }
     },
@@ -88,15 +89,7 @@ export function OnboardingForm() {
   return (
     <OnboardingShell heading={t("welcome")} subline={t("subtitle")}>
       <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          form.handleSubmit().catch(() => {
-            // The inner submit handler's .catch already logged; swallow here so the
-            // re-thrown rejection (which keeps formState.isSubmitSuccessful=false correct)
-            // does not surface as an unhandled browser promise rejection.
-          });
-        }}
+        onSubmit={submitFormHandler(form)}
         // Centered card inside the shell's centered column. Internals stay
         // text-left so the label / input / hint read as a normal form.
         className="mx-auto mt-8 w-full max-w-[420px] space-y-4 rounded-2xl border border-border/70 bg-card p-6 text-left shadow-[0_1px_2px_rgba(0,0,0,0.04),0_12px_32px_-12px_rgba(0,0,0,0.12)] sm:p-8"
