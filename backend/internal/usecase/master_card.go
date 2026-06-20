@@ -283,7 +283,18 @@ func (u *masterCardUsecase) UpdateMasterCard(ctx context.Context, id string, in 
 		return UpdateMasterCardOutcome{}, err
 	}
 
+	// Validate and stage each requested field through the aggregate mutation
+	// methods rather than writing the patch DTO inline (mirrors cardUsecase.Update).
+	// The patch-build path is preserved — no FindByID read round-trip: a transient
+	// MasterCard carries the parsed value into UpdateFront/UpdateBack and the
+	// resulting field is copied into the repository patch. UpdateFront/UpdateBack
+	// errors below route through eris.Wrap, not translateCardErr: ParseCardText
+	// (called immediately above each guard) already returns the sentinel for
+	// empty/zero input on the validation channel. If UpdateFront/UpdateBack still
+	// rejects the parsed VO, the invariant has been violated by a programmer error,
+	// not bad user input — INTERNAL is the honest classification.
 	patch := repository.MasterCardUpdate{}
+	staged := &domain.MasterCard{}
 	if in.Front != nil {
 		front, err := domain.ParseCardText(*in.Front, domain.ErrCardFrontRequired, domain.ErrCardFrontTooLong)
 		if err != nil {
@@ -293,7 +304,10 @@ func (u *masterCardUsecase) UpdateMasterCard(ctx context.Context, id string, in 
 			}
 			return UpdateMasterCardOutcome{Validation: info}, nil
 		}
-		s := front.String()
+		if err := staged.UpdateFront(front); err != nil {
+			return UpdateMasterCardOutcome{}, eris.Wrap(err, "usecase: master card: update front")
+		}
+		s := staged.Front.String()
 		patch.Front = &s
 	}
 	if in.Back != nil {
@@ -305,7 +319,10 @@ func (u *masterCardUsecase) UpdateMasterCard(ctx context.Context, id string, in 
 			}
 			return UpdateMasterCardOutcome{Validation: info}, nil
 		}
-		s := back.String()
+		if err := staged.UpdateBack(back); err != nil {
+			return UpdateMasterCardOutcome{}, eris.Wrap(err, "usecase: master card: update back")
+		}
+		s := staged.Back.String()
 		patch.Back = &s
 	}
 
@@ -761,7 +778,7 @@ func (u *masterCardUsecase) resolveMasterCardCursor(
 	// FindByID is group-agnostic — reject a cursor whose card belongs to a
 	// different master cardgroup so the cursor cannot reference rows outside the
 	// requested deck.
-	if card.MasterCardgroupID != masterCardgroupID {
+	if !card.BelongsToMasterCardgroup(masterCardgroupID) {
 		return nil, ucerr.NewValidationError(field, "cursor not found")
 	}
 
