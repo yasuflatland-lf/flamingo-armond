@@ -50,19 +50,19 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 		{
 			name:       "less than twenty reviews uses default mode",
 			recent:     performanceSwipes(base, 9, 9, 5),
-			wantMode:   service.ModeDefault,
+			wantMode:   int(service.ModeDefault),
 			wantReview: 19,
 		},
 		{
 			name:       "sixty percent success with high difficulty becomes difficult",
 			recent:     performanceSwipes(base, 11, 8, 8),
-			wantMode:   service.ModeDifficult,
+			wantMode:   int(service.ModeDifficult),
 			wantReview: 20,
 		},
 		{
 			name:       "ninety five percent success becomes in while",
 			recent:     performanceSwipes(base, 18, 1, 5),
-			wantMode:   service.ModeInWhile,
+			wantMode:   int(service.ModeInWhile),
 			wantReview: 20,
 		},
 	}

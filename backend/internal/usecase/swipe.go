@@ -228,7 +228,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 	}
 	metrics := service.ComputeMetrics(swipeRecordsByValue(recentSwipes), now)
 	return HandleSwipeOutcome{Swipe: &SwipeOutput{
-		PerformanceMode: service.ModeFromMetrics(metrics),
+		PerformanceMode: int(service.ModeFromMetrics(metrics)),
 		Metrics:         metrics,
 	}}, nil
 }

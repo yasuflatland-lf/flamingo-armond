@@ -134,7 +134,7 @@ func TestModeFromMetricsThresholdBoundaries(t *testing.T) {
 		name        string
 		reviewCount int
 		successRate float64
-		want        int
+		want        PerformanceMode
 	}{
 		{"under minimum reviews defaults", 19, 1, ModeDefault},
 		{"below difficult threshold", 20, 0.599, ModeDifficult},
@@ -170,7 +170,7 @@ func TestModeFromMetricsDifficultyAdjustments(t *testing.T) {
 		name          string
 		successRate   float64
 		avgDifficulty float64
-		want          int
+		want          PerformanceMode
 	}{
 		{"high difficulty decreases mode", 0.80, 0.70, ModeDefault},
 		{"low difficulty increases mode", 0.80, 0.30, ModeEasy},
@@ -191,6 +191,30 @@ func TestModeFromMetricsDifficultyAdjustments(t *testing.T) {
 			})
 
 			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestPerformanceModeIsValid(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		mode PerformanceMode
+		want bool
+	}{
+		{"below range", -1, false},
+		{"difficult lower bound", ModeDifficult, true},
+		{"in while upper bound", ModeInWhile, true},
+		{"above range", 5, false},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tc.want, tc.mode.IsValid())
 		})
 	}
 }
