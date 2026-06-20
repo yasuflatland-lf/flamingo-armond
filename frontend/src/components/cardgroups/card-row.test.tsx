@@ -103,8 +103,10 @@ describe("<CardRow>", () => {
   });
 
   it("keeps the checkbox and Delete controls above the mobile overlay (z-10)", () => {
-    // The stretched edit overlay would otherwise swallow taps on these controls;
-    // relative z-10 lifts them above the pseudo so they stay independently clickable.
+    // Both wrappers paint at relative z-10 above the stretched edit overlay. The
+    // checkbox stays an interactive control on mobile; the Delete wrapper's z-10 is
+    // only there so its desktop hover-reveal paints above the overlay (its mobile
+    // tap pass-through is asserted separately below).
     renderCardRow();
 
     const checkboxWrapper = screen.getByTestId(`card-select-${CARD.id}`).parentElement;
@@ -112,6 +114,26 @@ describe("<CardRow>", () => {
 
     const deleteWrapper = screen.getByTestId(`card-delete-${CARD.id}`).parentElement;
     expect(deleteWrapper?.className).toContain("z-10");
+  });
+
+  it("lets a mobile row tap fall through the Delete wrapper to the edit overlay", () => {
+    // Bug fix: the Delete wrapper is z-10 and stops propagation, so on mobile its box
+    // (the right-hand region of the row, where the hidden Delete button is laid out)
+    // intercepted the tap and the editor never opened — only the left text column did.
+    // pointer-events-none on mobile makes the wrapper transparent to taps so they reach
+    // the after:inset-0 edit overlay; sm:pointer-events-auto restores the desktop
+    // hover-to-delete behaviour. jsdom cannot model pointer-events hit-testing, so this
+    // is pinned statically on the className.
+    renderCardRow();
+
+    const deleteWrapper = screen.getByTestId(`card-delete-${CARD.id}`).parentElement;
+    expect(deleteWrapper?.className).toContain("pointer-events-none");
+    expect(deleteWrapper?.className).toContain("sm:pointer-events-auto");
+
+    // The checkbox stays an active control on mobile, so its wrapper must NOT be made
+    // pointer-events-none — taps there toggle selection rather than open the editor.
+    const checkboxWrapper = screen.getByTestId(`card-select-${CARD.id}`).parentElement;
+    expect(checkboxWrapper?.className).not.toContain("pointer-events-none");
   });
 
   it("wraps the row content in SwipeableRow", () => {
