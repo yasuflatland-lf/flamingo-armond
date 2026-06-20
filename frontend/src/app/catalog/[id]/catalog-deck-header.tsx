@@ -22,10 +22,12 @@ type CatalogDeckHeaderProps = {
 
 /**
  * Detail-page header for the public catalog deck view. Composes the shared
- * {@link DetailPageHeader} (inline back to `/catalog`, centered card count,
- * trailing "Import this deck" CTA) with the deck's catalog metadata — the
- * language / level / category badges (mirroring `CatalogListItem`) and the
- * description paragraph — rendered in the title-row slot below the app bar.
+ * {@link DetailPageHeader} (inline back to `/catalog`, centered card count) with
+ * the deck's catalog metadata — the language / level / category badges
+ * (mirroring `CatalogListItem`) and the description paragraph — and a full-width
+ * "Import this deck" CTA, all rendered in the title-row slot below the app bar.
+ * The CTA sits below the description rather than in the app-bar action cluster so
+ * it reads as the page's primary call to action.
  *
  * Import state (`importing` / `imported` / `onImport`) is owned by the client and
  * threaded in via props; this component holds no mutation state of its own.
@@ -49,15 +51,6 @@ export function CatalogDeckHeader({
           {t("cardCount", { count: cardCount })}
         </span>
       }
-      actions={
-        <CatalogImportButton
-          card={{ id: deck.id }}
-          importing={importing}
-          imported={imported}
-          onImport={onImport}
-          testIdPrefix="catalog-deck-import"
-        />
-      }
     >
       <div className="mt-3 flex flex-col items-center gap-2">
         {(deck.language || deck.level || deck.category) && (
@@ -75,6 +68,16 @@ export function CatalogDeckHeader({
             {deck.description}
           </p>
         )}
+      </div>
+      <div className="mt-4">
+        <CatalogImportButton
+          card={{ id: deck.id }}
+          importing={importing}
+          imported={imported}
+          onImport={onImport}
+          testIdPrefix="catalog-deck-import"
+          className="w-full"
+        />
       </div>
     </DetailPageHeader>
   );
