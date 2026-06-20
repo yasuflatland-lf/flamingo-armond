@@ -127,8 +127,10 @@ describe("useMasterCardMutations", () => {
       join(process.cwd(), "src/app/admin/masters/[id]/edit/cards/use-master-card-mutations.ts"),
       "utf8",
     );
-    // Matches the option key `optimisticResponse:` passed to a mutation call;
-    // tolerates the documenting comment `optimisticResponse` (backtick, not colon, follows).
+    // The wrapper now delegates to useEntityCardMutations, so the mutation
+    // calls (and thus the real optimisticResponse risk) live in the generic
+    // hook — its guard is in src/lib/cards/use-entity-card-mutations.test.tsx.
+    // This assertion still pins the wrapper itself clean.
     expect(src).not.toMatch(/optimisticResponse\s*:/);
   });
 });
