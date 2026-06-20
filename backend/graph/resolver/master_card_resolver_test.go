@@ -27,6 +27,10 @@ type stubMasterCardUC struct {
 	listOut      *usecase.MasterCardConnectionOutput
 	listErr      error
 
+	gotPublicListInput usecase.MasterCardConnectionInput
+	publicListOut      *usecase.MasterCardConnectionOutput
+	publicListErr      error
+
 	gotCreateInput usecase.CreateMasterCardInput
 	createOut      usecase.CreateMasterCardOutcome
 	createErr      error
@@ -55,6 +59,11 @@ func (s *stubMasterCardUC) AdminMaster(_ context.Context, _ string) (*usecase.Ma
 func (s *stubMasterCardUC) ListMasterCards(_ context.Context, in usecase.MasterCardConnectionInput) (*usecase.MasterCardConnectionOutput, error) {
 	s.gotListInput = in
 	return s.listOut, s.listErr
+}
+
+func (s *stubMasterCardUC) ListPublicMasterCards(_ context.Context, in usecase.MasterCardConnectionInput) (*usecase.MasterCardConnectionOutput, error) {
+	s.gotPublicListInput = in
+	return s.publicListOut, s.publicListErr
 }
 
 func (s *stubMasterCardUC) CreateMasterCard(_ context.Context, in usecase.CreateMasterCardInput) (usecase.CreateMasterCardOutcome, error) {
@@ -340,5 +349,74 @@ func TestAdminMasterCardsConnection_CursorRoundTrip(t *testing.T) {
 		decoded, decErr := cursor.Decode(edge.Cursor)
 		require.NoError(t, decErr, "edge.Cursor for node %s must be valid v1 cursor", edge.Node.ID)
 		assert.Equal(t, edge.Node.ID, decoded, "edge.Cursor must decode to node.ID")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// MasterCardsConnection (public, published-only)
+// ---------------------------------------------------------------------------
+
+// TestMasterCardsConnection_Success verifies the public resolver routes through
+// ListPublicMasterCards (NOT the admin ListMasterCards), forwards its inputs, and
+// maps the usecase output to the wire connection.
+func TestMasterCardsConnection_Success(t *testing.T) {
+	t.Parallel()
+	stub := &stubMasterCardUC{publicListOut: &usecase.MasterCardConnectionOutput{
+		Cards: []*domain.MasterCard{
+			{ID: "c1", MasterCardgroupID: "m1", Front: domain.CardText("front"), Back: domain.CardText("back"), Position: 1},
+		},
+		TotalCount: 1,
+		StartCur:   "c1",
+		EndCur:     "c1",
+	}}
+	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
+
+	orderBy := model.MasterCardOrderByPosition
+	dir := model.SortOrderAsc
+	conn, err := qr.MasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil, &orderBy, &dir)
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+
+	// The public resolver must route through ListPublicMasterCards: the admin
+	// list input must stay zero, and the public input must carry the translated
+	// arguments.
+	assert.Equal(t, "", stub.gotListInput.MasterCardgroupID, "admin ListMasterCards must not be called")
+	assert.Equal(t, "m1", stub.gotPublicListInput.MasterCardgroupID)
+	require.NotNil(t, stub.gotPublicListInput.OrderBy)
+	assert.Equal(t, usecase.MasterCardOrderByPosition, *stub.gotPublicListInput.OrderBy)
+	require.NotNil(t, stub.gotPublicListInput.OrderDirection)
+	assert.Equal(t, usecase.SortOrderAsc, *stub.gotPublicListInput.OrderDirection)
+
+	require.Len(t, conn.Edges, 1)
+	assert.Equal(t, 1, conn.TotalCount)
+	assert.Equal(t, "c1", conn.Edges[0].Node.ID)
+	assert.Equal(t, "front", conn.Edges[0].Node.Front)
+	assert.Equal(t, "m1", conn.Edges[0].Node.MasterCardgroupID)
+}
+
+// TestMasterCardsConnection_WrapsUsecaseError verifies the mandatory
+// gqlerr.FromUsecaseError wrap: typed usecase errors surface with the correct
+// wire code rather than escaping uncoded. The validation case mirrors the
+// published-gate rejection (BAD_USER_INPUT on masterCardgroupId).
+func TestMasterCardsConnection_WrapsUsecaseError(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		err  error
+		want gqlerr.Code
+	}{
+		{"unauthenticated", ucerr.ErrUnauthenticated, gqlerr.CodeUnauthenticated},
+		{"validation", ucerr.NewValidationError("masterCardgroupId", "master deck not found"), gqlerr.CodeBadUserInput},
+		{"internal", eris.New("usecase: db: query timeout"), gqlerr.CodeInternal},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stub := &stubMasterCardUC{publicListErr: tc.err}
+			qr := &queryResolver{&Resolver{MasterCardUC: stub}}
+			_, err := qr.MasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil, nil, nil)
+			require.Error(t, err)
+			assert.True(t, gqlerr.IsCode(err, tc.want), "want wire code %s", tc.want)
+		})
 	}
 }

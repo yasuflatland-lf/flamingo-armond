@@ -41,14 +41,14 @@ type mockMasterCatalogRepository struct {
 	countAdminRes   int64
 	countAdminErr   error
 	countAdminCalls []countPublishedCall
-	countCardsRes int64
-	countCardsErr error
-	createCalls   []*domain.MasterCardgroup
-	createErr     error
-	updateFn      func(id string, patch repository.MasterCardgroupUpdate) (*domain.MasterCardgroup, error)
-	deleteErr     error
-	publishFn     func(id string) (*domain.MasterCardgroup, error)
-	unpublishFn   func(id string) (*domain.MasterCardgroup, error)
+	countCardsRes   int64
+	countCardsErr   error
+	createCalls     []*domain.MasterCardgroup
+	createErr       error
+	updateFn        func(id string, patch repository.MasterCardgroupUpdate) (*domain.MasterCardgroup, error)
+	deleteErr       error
+	publishFn       func(id string) (*domain.MasterCardgroup, error)
+	unpublishFn     func(id string) (*domain.MasterCardgroup, error)
 }
 
 type findPublishedPageCall struct {
@@ -845,6 +845,86 @@ func TestImportMaster_CopyMasterToUser_ContextCancelled_PassesThrough(t *testing
 	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true), newTestLogger())
 
 	_, err := uc.ImportMaster(authedCtx("u1"), "m1")
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// FindPublishedMaster
+// ---------------------------------------------------------------------------
+
+func TestFindPublishedMaster_Unauthenticated(t *testing.T) {
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.FindPublishedMaster(context.Background(), "m1")
+	if !errors.Is(err, ucerr.ErrUnauthenticated) {
+		t.Fatalf("expected ErrUnauthenticated, got %v", err)
+	}
+}
+
+// A DRAFT or unknown deck surfaces from FindPublishedByID as ErrNotFound, which
+// FindPublishedMaster collapses to (nil, nil) so the resolver returns GraphQL
+// null — draft existence is never disclosed (non-disclosure gate).
+func TestFindPublishedMaster_DraftOrUnknown_ReturnsNil(t *testing.T) {
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, repository.ErrNotFound },
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	got, err := uc.FindPublishedMaster(authedCtx("u1"), "missing")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected nil deck for unknown/draft id, got %+v", got)
+	}
+}
+
+func TestFindPublishedMaster_Success(t *testing.T) {
+	want := &domain.MasterCardgroup{ID: "m1", Name: domain.CardgroupName("Deck"), Status: domain.MasterStatusPublished, Version: 1}
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			if id != "m1" {
+				t.Fatalf("FindPublishedByID called with %q, want m1", id)
+			}
+			return want, nil
+		},
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	got, err := uc.FindPublishedMaster(authedCtx("u1"), "m1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != want {
+		t.Fatalf("expected the published deck, got %+v", got)
+	}
+}
+
+// A non-ErrNotFound failure from FindPublishedByID (e.g. a DB outage) is an
+// internal error wrapped into the eris chain, not the nil-data non-disclosure path.
+func TestFindPublishedMaster_InfraError_Wrapped(t *testing.T) {
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, eris.New("db down") },
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.FindPublishedMaster(authedCtx("u1"), "m1")
+	assertInternalChain(t, err, "usecase: master catalog: find published master")
+}
+
+func TestFindPublishedMaster_ContextCancelled_PassesThrough(t *testing.T) {
+	// context.Canceled from the published-check must propagate unwrapped so its
+	// identity survives errors.Is at the resolver boundary (FromUsecaseError →
+	// CANCELLED). An eris.Wrap here would break the == identity contract.
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, context.Canceled },
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.FindPublishedMaster(authedCtx("u1"), "m1")
 	assertCancelled(t, err)
 	if err != context.Canceled {
 		t.Fatalf("expected unwrapped context.Canceled, got %v", err)

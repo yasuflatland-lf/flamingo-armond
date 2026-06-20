@@ -98,6 +98,10 @@ type masterDeckUsecaseFacade interface {
 // admin methods additionally require AdminGate.Require to pass.
 type MasterCatalogUsecase interface {
 	ListPublishedConnection(ctx context.Context, in MasterCatalogConnectionInput) (*MasterCatalogConnectionOutput, error)
+	// FindPublishedMaster returns a single PUBLISHED master deck by id for any
+	// authenticated caller. Returns (nil, nil) for an unknown or DRAFT id
+	// (non-disclosure gate). Anonymous callers receive UNAUTHENTICATED.
+	FindPublishedMaster(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 	ImportMaster(ctx context.Context, masterID string) (ImportMasterOutcome, error)
 	SeedDefaultStarters(ctx context.Context) ([]*domain.Cardgroup, error)
 
@@ -658,6 +662,28 @@ func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string
 		return ImportMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: import: copy master to user")
 	}
 	return ImportMasterOutcome{Cardgroup: cg}, nil
+}
+
+// FindPublishedMaster returns a single PUBLISHED master deck by id for any
+// authenticated caller. FindPublishedByID returns ErrNotFound for both unknown
+// ids and draft decks, so draft existence is never disclosed — both collapse to
+// a (nil, nil) result that the resolver maps to GraphQL null (non-disclosure
+// gate). Unauthenticated callers receive ucerr.ErrUnauthenticated.
+func (u *masterCatalogUsecase) FindPublishedMaster(ctx context.Context, id string) (*domain.MasterCardgroup, error) {
+	if auth.UserFrom(ctx) == nil {
+		return nil, ucerr.ErrUnauthenticated
+	}
+	deck, err := u.repo.FindPublishedByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, nil // unknown or draft → GraphQL null (non-disclosure)
+		}
+		if isContextDone(err) {
+			return nil, err
+		}
+		return nil, eris.Wrap(err, "usecase: master catalog: find published master")
+	}
+	return deck, nil
 }
 
 // SeedDefaultStarters copies the published default-starter master decks into the

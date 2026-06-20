@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/rotisserie/eris"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -44,6 +45,10 @@ type stubMasterCatalogUC struct {
 
 	seedOut []*domain.Cardgroup
 	seedErr error
+
+	gotFindPublishedID string
+	findPublishedDeck  *domain.MasterCardgroup
+	findPublishedErr   error
 }
 
 func (s *stubMasterCatalogUC) ListPublishedConnection(
@@ -51,6 +56,11 @@ func (s *stubMasterCatalogUC) ListPublishedConnection(
 ) (*usecase.MasterCatalogConnectionOutput, error) {
 	s.gotInput = in
 	return s.out, s.err
+}
+
+func (s *stubMasterCatalogUC) FindPublishedMaster(_ context.Context, id string) (*domain.MasterCardgroup, error) {
+	s.gotFindPublishedID = id
+	return s.findPublishedDeck, s.findPublishedErr
 }
 
 func (s *stubMasterCatalogUC) ListAdminConnection(_ context.Context, _ usecase.MasterCatalogConnectionInput) (*usecase.MasterCatalogConnectionOutput, error) {
@@ -140,6 +150,72 @@ func TestQueryResolver_MasterCatalog_WrapsUsecaseError(t *testing.T) {
 			t.Parallel()
 			qr := &queryResolver{&Resolver{MasterCatalogUC: &stubMasterCatalogUC{err: tc.err}}}
 			_, err := qr.MasterCatalog(context.Background(), nil, nil, nil, nil, nil, nil, nil)
+			require.Error(t, err)
+			assert.True(t, gqlerr.IsCode(err, tc.want), "want wire code %s", tc.want)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// MasterCardgroup (public, published-only single deck)
+//
+// The masterCardgroup resolver lives in master_card.resolvers.go but reads
+// through MasterCatalogUC.FindPublishedMaster, so its tests live here alongside
+// stubMasterCatalogUC.
+// ---------------------------------------------------------------------------
+
+// TestQueryResolver_MasterCardgroup_Success verifies the resolver maps the
+// published deck to *model.MasterCardgroup. cardCount is 0 here by design — the
+// frontend reads the live count from masterCardsConnection.totalCount.
+func TestQueryResolver_MasterCardgroup_Success(t *testing.T) {
+	t.Parallel()
+	stub := &stubMasterCatalogUC{findPublishedDeck: &domain.MasterCardgroup{
+		ID:      "m1",
+		Name:    domain.CardgroupName("Deck"),
+		Status:  domain.MasterStatusPublished,
+		Version: 1,
+	}}
+	qr := &queryResolver{&Resolver{MasterCatalogUC: stub}}
+
+	got, err := qr.MasterCardgroup(context.Background(), "m1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "m1", got.ID)
+	assert.Equal(t, model.MasterCardgroupStatusPublished, got.Status)
+	assert.Equal(t, 0, got.CardCount)
+	assert.Equal(t, "m1", stub.gotFindPublishedID)
+}
+
+// TestQueryResolver_MasterCardgroup_NotFoundReturnsNil verifies an unknown or
+// DRAFT id (usecase returns nil, nil) surfaces as GraphQL null with no error —
+// the non-disclosure gate must not leak draft existence as an error.
+func TestQueryResolver_MasterCardgroup_NotFoundReturnsNil(t *testing.T) {
+	t.Parallel()
+	stub := &stubMasterCatalogUC{} // findPublishedDeck nil, findPublishedErr nil
+	qr := &queryResolver{&Resolver{MasterCatalogUC: stub}}
+
+	got, err := qr.MasterCardgroup(context.Background(), "missing")
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+// TestQueryResolver_MasterCardgroup_WrapsUsecaseError verifies the mandatory
+// gqlerr.FromUsecaseError wrap for the error paths FindPublishedMaster can return.
+func TestQueryResolver_MasterCardgroup_WrapsUsecaseError(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		err  error
+		want gqlerr.Code
+	}{
+		{"unauthenticated", ucerr.ErrUnauthenticated, gqlerr.CodeUnauthenticated},
+		{"internal", eris.New("usecase: db: connection reset"), gqlerr.CodeInternal},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			qr := &queryResolver{&Resolver{MasterCatalogUC: &stubMasterCatalogUC{findPublishedErr: tc.err}}}
+			_, err := qr.MasterCardgroup(context.Background(), "m1")
 			require.Error(t, err)
 			assert.True(t, gqlerr.IsCode(err, tc.want), "want wire code %s", tc.want)
 		})
