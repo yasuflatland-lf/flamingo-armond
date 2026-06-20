@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, LibraryBig, Plus, Search, User } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -18,7 +18,7 @@ import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { resolveHeaderCreateAction } from "./header-create-action";
 import { resolveHeaderSearchAction } from "./header-search-action";
 import { HeaderSignInLink } from "./header-sign-in-link";
-import { ADMIN_NAV_ITEMS } from "./nav-items";
+import { ADMIN_NAV_ITEMS, CORE_NAV_ITEMS, FOOTER_NAV_ITEMS } from "./nav-items";
 
 interface LogoDrawerProps {
   /** Required user record. Callers must pass a value or explicit null. */
@@ -177,19 +177,17 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
         {user && (
           <>
             <nav className="flex flex-col gap-1">
-              <SheetClose asChild>
-                <Link href="/cardgroups" className={NAV_LINK_CLASS}>
-                  <BookOpen className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  {t("cardgroups")}
-                </Link>
-              </SheetClose>
-
-              <SheetClose asChild>
-                <Link href="/catalog" className={NAV_LINK_CLASS}>
-                  <LibraryBig className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  {t("catalog")}
-                </Link>
-              </SheetClose>
+              {CORE_NAV_ITEMS.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <SheetClose key={item.href} asChild>
+                    <Link href={item.href} className={NAV_LINK_CLASS}>
+                      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      {t(item.labelKey)}
+                    </Link>
+                  </SheetClose>
+                );
+              })}
 
               {isAdmin &&
                 ADMIN_NAV_ITEMS.map((item) => {
@@ -208,12 +206,17 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
             <hr className="my-3 border-t" />
 
             <div className="mt-auto flex flex-col gap-2" data-testid="bottom-block">
-              <SheetClose asChild>
-                <Link href="/profile" className={NAV_LINK_CLASS}>
-                  <User className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  {t("profile")}
-                </Link>
-              </SheetClose>
+              {FOOTER_NAV_ITEMS.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <SheetClose key={item.href} asChild>
+                    <Link href={item.href} className={NAV_LINK_CLASS}>
+                      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      {t(item.labelKey)}
+                    </Link>
+                  </SheetClose>
+                );
+              })}
 
               <LogoutButton />
             </div>
