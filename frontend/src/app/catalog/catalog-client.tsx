@@ -4,10 +4,9 @@ import { NetworkStatus } from "@apollo/client";
 import { useApolloClient } from "@apollo/client/react";
 import { useTranslations } from "next-intl";
 import { useMemo, useRef } from "react";
+import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
-import { Button } from "@/components/ui/button";
-import { ErrorBanner } from "@/components/ui/error-banner";
 import {
   MasterCatalogDocument,
   type MasterCatalogQuery,
@@ -197,28 +196,16 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
           </ul>
         )}
 
-        <div ref={sentinelRef} aria-hidden="true" data-testid="catalog-sentinel" />
-
-        {fetchMoreError && (
-          <ErrorBanner
-            className="mt-3 flex flex-col items-center gap-2"
-            data-testid="catalog-fetch-more-error"
-          >
-            <span>{fetchMoreError}</span>
-            <Button type="button" variant="outline" size="sm" onClick={retryFetchMore}>
-              {tCommon("retry")}
-            </Button>
-          </ErrorBanner>
-        )}
-
-        {!fetchMoreError && fetchingMore && hasNextPage && (
-          <p
-            className="mt-3 text-center text-xs text-muted-foreground"
-            data-testid="catalog-loading-more"
-          >
-            {t("loadingMore")}
-          </p>
-        )}
+        <ConnectionListFooter
+          sentinelRef={sentinelRef}
+          fetchMoreError={fetchMoreError}
+          onRetry={retryFetchMore}
+          fetchingMore={fetchingMore}
+          hasNextPage={hasNextPage}
+          retryLabel={tCommon("retry")}
+          loadingMoreLabel={t("loadingMore")}
+          testIdPrefix="catalog"
+        />
       </ListingPageShell>
     </>
   );

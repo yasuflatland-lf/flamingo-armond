@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
 import { CardgroupListItem } from "@/components/cardgroups/cardgroup-list-item";
 import { CardgroupsToolbar } from "@/components/cardgroups/cardgroups-toolbar";
+import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
 import { Button } from "@/components/ui/button";
@@ -418,28 +419,16 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
           </ErrorBanner>
         )}
 
-        <div ref={sentinelRef} aria-hidden="true" data-testid="cardgroups-sentinel" />
-
-        {fetchMoreError && (
-          <ErrorBanner
-            className="mt-3 flex flex-col items-center gap-2"
-            data-testid="cardgroups-fetch-more-error"
-          >
-            <span>{fetchMoreError}</span>
-            <Button type="button" variant="outline" size="sm" onClick={retryFetchMore}>
-              {tCommon("retry")}
-            </Button>
-          </ErrorBanner>
-        )}
-
-        {!fetchMoreError && fetchingMore && hasNextPage && (
-          <p
-            className="mt-3 text-center text-xs text-muted-foreground"
-            data-testid="cardgroups-loading-more"
-          >
-            {t("loadingMore")}
-          </p>
-        )}
+        <ConnectionListFooter
+          sentinelRef={sentinelRef}
+          fetchMoreError={fetchMoreError}
+          onRetry={retryFetchMore}
+          fetchingMore={fetchingMore}
+          hasNextPage={hasNextPage}
+          retryLabel={tCommon("retry")}
+          loadingMoreLabel={t("loadingMore")}
+          testIdPrefix="cardgroups"
+        />
 
         <FormSheet
           title={t("newCardgroup")}
