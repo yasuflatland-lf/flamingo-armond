@@ -1,16 +1,10 @@
 // @vitest-environment jsdom
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CARDGROUPS_DEFAULT_VARS } from "@/app/cardgroups/queries";
-import {
-  ImportMasterCardgroupDocument,
-  MasterCatalogDocument,
-  MyCardgroupsConnectionDocument,
-} from "@/generated/graphql";
+import { MasterCatalogDocument } from "@/generated/graphql";
 import { renderWithIntl } from "@/test/render-with-intl";
 import {
   type ApolloMockLeakSpyResult,
@@ -18,16 +12,6 @@ import {
 } from "../../../__tests__/utils/mock-apollo-paginated";
 import CatalogClient from "./catalog-client";
 import { CATALOG_DEFAULT_VARS } from "./queries";
-
-// ---------------------------------------------------------------------------
-// sonner mock — capture the success toast.
-// ---------------------------------------------------------------------------
-vi.mock("sonner", () => ({
-  toast: vi.fn(),
-  Toaster: () => null,
-}));
-
-import { toast } from "sonner";
 
 // ---------------------------------------------------------------------------
 // next/link stub
@@ -138,7 +122,7 @@ let leakSpy: ApolloMockLeakSpyResult;
 
 beforeEach(() => {
   leakSpy = installApolloMockLeakSpy({
-    operationNames: ["MasterCatalog", "ImportMasterCardgroup"],
+    operationNames: ["MasterCatalog"],
   });
   ioCallbacks = [];
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
@@ -187,8 +171,7 @@ describe("<CatalogClient>", () => {
 
     expect(await screen.findByText("Business English")).toBeInTheDocument();
     expect(screen.getByText("JLPT N3 Kanji")).toBeInTheDocument();
-    expect(screen.getByTestId("catalog-import-m-1")).toBeInTheDocument();
-    expect(screen.getByTestId("catalog-import-m-2")).toBeInTheDocument();
+    expect(screen.getByTestId("catalog-row-m-1")).toHaveAttribute("href", "/catalog/m-1");
   });
 
   it("renders the empty state when no decks are published", async () => {
@@ -196,82 +179,6 @@ describe("<CatalogClient>", () => {
     renderClient([], makeConnection([]), cache);
 
     expect(await screen.findByTestId("catalog-empty")).toBeInTheDocument();
-  });
-
-  it("imports a deck on success: marks it imported and prepends it to the cardgroups cache", async () => {
-    const user = userEvent.setup();
-    const cache = new InMemoryCache();
-    const importMock = {
-      request: {
-        query: ImportMasterCardgroupDocument,
-        variables: { masterCardgroupId: "m-1" },
-      },
-      result: {
-        data: {
-          importMasterCardgroup: {
-            __typename: "ImportMasterCardgroupSuccess",
-            cardgroup: {
-              __typename: "Cardgroup",
-              id: "cg-new",
-              name: "Business English",
-              updatedAt: "2026-06-13T00:00:00.000Z",
-            },
-          },
-        },
-      },
-    };
-
-    renderClient([importMock], makeConnection([M1]), cache);
-
-    const importBtn = await screen.findByTestId("catalog-import-m-1");
-    await user.click(importBtn);
-
-    // The button flips to the "Imported" affordance and disables.
-    await waitFor(() => {
-      const btn = screen.getByTestId("catalog-import-m-1");
-      expect(btn).toBeDisabled();
-      expect(btn).toHaveTextContent("Imported");
-    });
-    expect(vi.mocked(toast)).toHaveBeenCalledWith('Added "Business English" to your cardgroups.');
-
-    // The imported deck is prepended to the /cardgroups connection cache.
-    const snapshot = cache.readQuery({
-      query: MyCardgroupsConnectionDocument,
-      variables: CARDGROUPS_DEFAULT_VARS,
-    }) as {
-      myCardgroupsConnection: { edges: { node: { id: string } }[]; totalCount: number };
-    } | null;
-    expect(snapshot?.myCardgroupsConnection.edges[0]?.node.id).toBe("cg-new");
-    expect(snapshot?.myCardgroupsConnection.totalCount).toBe(1);
-  });
-
-  it("surfaces a banner when the import returns MasterNotFoundError", async () => {
-    const user = userEvent.setup();
-    const cache = new InMemoryCache();
-    const importMock = {
-      request: {
-        query: ImportMasterCardgroupDocument,
-        variables: { masterCardgroupId: "m-1" },
-      },
-      result: {
-        data: {
-          importMasterCardgroup: {
-            __typename: "MasterNotFoundError",
-            message: "master not found",
-          },
-        },
-      },
-    };
-
-    renderClient([importMock], makeConnection([M1]), cache);
-
-    await user.click(await screen.findByTestId("catalog-import-m-1"));
-
-    expect(await screen.findByTestId("catalog-import-error")).toHaveTextContent(
-      "This cardgroup is no longer available.",
-    );
-    // The button is NOT marked imported on a not-found outcome.
-    expect(screen.getByTestId("catalog-import-m-1")).not.toBeDisabled();
   });
 
   it("appends the next page when the sentinel intersects", async () => {
@@ -325,27 +232,6 @@ describe("<CatalogClient>", () => {
     expect(await screen.findByText("JLPT N3 Kanji")).toBeInTheDocument();
   });
 
-  it("surfaces a banner when the import throws a transport error", async () => {
-    const user = userEvent.setup();
-    const cache = new InMemoryCache();
-    const importErrorMock = {
-      request: {
-        query: ImportMasterCardgroupDocument,
-        variables: { masterCardgroupId: "m-1" },
-      },
-      error: new Error("network down"),
-    };
-
-    renderClient([importErrorMock], makeConnection([M1]), cache);
-
-    await user.click(await screen.findByTestId("catalog-import-m-1"));
-
-    expect(await screen.findByTestId("catalog-import-error")).toHaveTextContent(
-      "Could not import the cardgroup.",
-    );
-    expect(screen.getByTestId("catalog-import-m-1")).not.toBeDisabled();
-  });
-
   it("debounces search input and refetches with the search variable", async () => {
     const user = userEvent.setup();
     const cache = new InMemoryCache();
@@ -371,30 +257,6 @@ describe("<CatalogClient>", () => {
     expect(screen.queryByText("Business English")).not.toBeInTheDocument();
   });
 
-  it("surfaces the sign-in banner when the import fails with UNAUTHENTICATED", async () => {
-    const user = userEvent.setup();
-    const cache = new InMemoryCache();
-    const importAuthMock = {
-      request: {
-        query: ImportMasterCardgroupDocument,
-        variables: { masterCardgroupId: "m-1" },
-      },
-      result: {
-        errors: [new GraphQLError("unauthenticated", { extensions: { code: "UNAUTHENTICATED" } })],
-      },
-    };
-
-    renderClient([importAuthMock], makeConnection([M1]), cache);
-
-    await user.click(await screen.findByTestId("catalog-import-m-1"));
-
-    expect(await screen.findByTestId("catalog-import-auth-error")).toBeInTheDocument();
-    const signInLink = screen.getByRole("link", { name: /sign in again/i });
-    expect(signInLink).toHaveAttribute("href", "/login");
-    // The card is NOT marked imported on an auth failure.
-    expect(screen.getByTestId("catalog-import-m-1")).not.toBeDisabled();
-  });
-
   it("warns and falls back to a network fetch when the SSR seed is null", async () => {
     const cache = new InMemoryCache();
     // No initialConnection ⇒ no cache seed ⇒ cache-first useQuery must fetch.
@@ -411,47 +273,6 @@ describe("<CatalogClient>", () => {
     expect(console.warn).toHaveBeenCalledWith(
       expect.stringContaining("[catalog-client] initialConnection is null"),
     );
-  });
-
-  it("serializes imports: a second import click is ignored while one is in flight", async () => {
-    const user = userEvent.setup();
-    const cache = new InMemoryCache();
-    // Only m-1 has a mock; the serialize guard must keep m-2 from firing a second
-    // mutation (an unmatched m-2 request would trip the leak spy in teardown).
-    const slowImportMock = {
-      request: {
-        query: ImportMasterCardgroupDocument,
-        variables: { masterCardgroupId: "m-1" },
-      },
-      delay: 50,
-      result: {
-        data: {
-          importMasterCardgroup: {
-            __typename: "ImportMasterCardgroupSuccess",
-            cardgroup: {
-              __typename: "Cardgroup",
-              id: "cg-new",
-              name: "Business English",
-              updatedAt: "2026-06-13T00:00:00.000Z",
-            },
-          },
-        },
-      },
-    };
-
-    renderClient([slowImportMock], makeConnection([M1, M2]), cache);
-
-    await user.click(await screen.findByTestId("catalog-import-m-1"));
-    // While m-1 is in flight, clicking m-2 must be a no-op (importingId guard).
-    await user.click(screen.getByTestId("catalog-import-m-2"));
-
-    // m-1 eventually completes (delayed mock) and flips to "Imported"; m-2 never imports.
-    await waitFor(() => {
-      const btn = screen.getByTestId("catalog-import-m-1");
-      expect(btn).toBeDisabled();
-      expect(btn).toHaveTextContent("Imported");
-    });
-    expect(screen.getByTestId("catalog-import-m-2")).not.toBeDisabled();
   });
 
   it("renders the no-match empty state when a search returns no decks", async () => {
@@ -471,29 +292,6 @@ describe("<CatalogClient>", () => {
     await user.type(screen.getByTestId("catalog-search"), "zzz");
 
     expect(await screen.findByTestId("catalog-empty-search")).toBeInTheDocument();
-  });
-
-  it("surfaces the error banner when import resolves with an unknown payload variant", async () => {
-    const user = userEvent.setup();
-    const cache = new InMemoryCache();
-    // A union variant the client was not regenerated against → the hook's
-    // unparseable-payload fallthrough returns `rejected`.
-    const unknownPayloadMock = {
-      request: {
-        query: ImportMasterCardgroupDocument,
-        variables: { masterCardgroupId: "m-1" },
-      },
-      result: { data: { importMasterCardgroup: { __typename: "SomeFutureVariant" } } },
-    };
-
-    renderClient([unknownPayloadMock], makeConnection([M1]), cache);
-
-    await user.click(await screen.findByTestId("catalog-import-m-1"));
-
-    expect(await screen.findByTestId("catalog-import-error")).toHaveTextContent(
-      "Could not import the cardgroup.",
-    );
-    expect(screen.getByTestId("catalog-import-m-1")).not.toBeDisabled();
   });
 });
 

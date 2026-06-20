@@ -2,10 +2,8 @@
 
 import { NetworkStatus } from "@apollo/client";
 import { useApolloClient } from "@apollo/client/react";
-import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useCallback, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { useMemo, useRef } from "react";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
 import { Button } from "@/components/ui/button";
@@ -20,7 +18,6 @@ import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { CatalogListItem } from "./catalog-list-item";
 import { CATALOG_DEFAULT_VARS } from "./queries";
-import { useImportMaster } from "./use-import-master";
 
 type Connection = MasterCatalogQuery["masterCatalog"];
 type CatalogEdge = Connection["edges"][number];
@@ -67,9 +64,6 @@ function mergeCatalogConnection(
  *    useRef<boolean> (per docs/pagination/intersection-observer-in-flight-guard.md).
  *  - fetchMoreError halt gate — the observer short-circuits while an error banner
  *    is showing; the user must click Retry to resume.
- *  - Per-item Import via useImportMaster, surfacing success / not-found / auth /
- *    rejection. On success the imported deck is prepended to the /cardgroups
- *    connection cache inside the hook.
  */
 export default function CatalogClient({ initialConnection }: CatalogClientProps) {
   const apollo = useApolloClient();
@@ -78,16 +72,6 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
 
   const search = useHeaderTakeoverSearch();
   const searchQuery = search.query;
-
-  // Import state. `importingId` serializes imports to one at a time;
-  // `importedIds` drives the per-card "Imported" affordance.
-  const { importMasterCardgroup } = useImportMaster();
-  const [importingId, setImportingId] = useState<string | null>(null);
-  const [importedIds, setImportedIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [importError, setImportError] = useState<string | null>(null);
-  const [importAuthError, setImportAuthError] = useState<"unauthenticated" | "forbidden" | null>(
-    null,
-  );
 
   // Strict Mode double-mount safety: only write the SSR seed into the cache once.
   const seededRef = useRef(false);
@@ -157,40 +141,6 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
   });
   const hasNextPage = pageInfo.hasNextPage;
 
-  const handleImport = useCallback(
-    async (id: string) => {
-      // Serialize: ignore a second click while another import is in flight.
-      if (importingId !== null) return;
-      setImportError(null);
-      setImportAuthError(null);
-      setImportingId(id);
-
-      const outcome = await importMasterCardgroup(id);
-      setImportingId(null);
-
-      switch (outcome.status) {
-        case "success":
-          setImportedIds((prev) => {
-            const next = new Set(prev);
-            next.add(id);
-            return next;
-          });
-          toast(t("importSuccess", { name: outcome.cardgroupName }));
-          return;
-        case "not_found":
-          setImportError(t("importNotFound"));
-          return;
-        case "auth":
-          setImportAuthError(outcome.kind);
-          return;
-        case "rejected":
-          setImportError(t("importError"));
-          return;
-      }
-    },
-    [importingId, importMasterCardgroup, t],
-  );
-
   const initialLoading = loading && edges.length === 0 && networkStatus !== NetworkStatus.fetchMore;
   const hasSearch = searchQuery !== null && searchQuery !== "";
 
@@ -221,19 +171,6 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
           </div>
         }
       >
-        {importAuthError ? (
-          <ErrorBanner data-testid="catalog-import-auth-error">
-            <span>{t("sessionExpired")}</span>
-            <Link href="/login" className="underline">
-              {t("signInAgain")}
-            </Link>
-          </ErrorBanner>
-        ) : null}
-
-        {importError ? (
-          <ErrorBanner data-testid="catalog-import-error">{importError}</ErrorBanner>
-        ) : null}
-
         {initialLoading && (
           <p className="text-sm text-muted-foreground" data-testid="catalog-loading">
             {tCommon("loading")}
@@ -255,13 +192,7 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
         {edges.length > 0 && (
           <ul className="space-y-2" data-testid="catalog-list">
             {edges.map((edge) => (
-              <CatalogListItem
-                key={edge.cursor}
-                node={edge.node}
-                importing={importingId === edge.node.id}
-                imported={importedIds.has(edge.node.id)}
-                onImport={handleImport}
-              />
+              <CatalogListItem key={edge.cursor} node={edge.node} />
             ))}
           </ul>
         )}
