@@ -11,6 +11,7 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
+    // Radix Select has no `defaultOpen` prop; the dropdown opens on click in the Canvas.
     <Select>
       <SelectTrigger className="w-56">
         <SelectValue placeholder="Choose an option" />

@@ -31,6 +31,7 @@ export default defineConfig({
       exclude: [
         "src/generated/**",
         "src/**/*.test.{ts,tsx}",
+        "src/**/*.stories.tsx",
         "src/__test-setup__/**",
         "src/__mocks__/**",
       ],

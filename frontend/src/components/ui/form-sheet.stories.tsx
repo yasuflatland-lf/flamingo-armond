@@ -14,6 +14,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
+  // args satisfy CSF3 strict typing for FormSheet's required props; render supplies live props and must not be deleted.
   args: {
     open: true,
     onOpenChange: () => undefined,
