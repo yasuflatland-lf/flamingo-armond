@@ -52,10 +52,15 @@ export function CardRow({
         {/*
          * On mobile the Delete button is hidden (pointer-events-none), leaving a dead
          * non-interactive gap on the right. The after:inset-0 pseudo stretches this edit
-         * target across the whole row so any tap (including that gap) opens the editor;
-         * the checkbox and Delete siblings carry relative z-10 to stay above the overlay.
-         * sm:after:content-none removes the overlay at >=sm so desktop keeps its current
-         * behaviour (only the text column edits, Delete reveals on hover).
+         * target across the whole row so any tap (including that gap) opens the editor.
+         * The checkbox sibling keeps relative z-10 AND pointer events because it stays an
+         * active control on mobile. The Delete sibling is z-10 too (so its desktop
+         * hover-reveal paints above the overlay) but pointer-events-none on mobile, so its
+         * box does NOT swallow the tap — the tap falls through to the edit overlay instead
+         * of being stopped by the wrapper's stopPropagation. Without this the right-hand
+         * region (the Delete wrapper's box) was the one spot a row tap did NOT open the
+         * editor on mobile. sm:pointer-events-auto + sm:after:content-none restore the
+         * desktop behaviour: only the text column edits, Delete reveals + clicks on hover.
          */}
         {/* biome-ignore lint/a11y/useSemanticElements: a native <button> here would nest the action <button> for delete (invalid HTML); role="button" preserves screen-reader semantics without the markup conflict. */}
         <div
@@ -77,7 +82,7 @@ export function CardRow({
         </div>
         {/* biome-ignore lint/a11y/noStaticElementInteractions: div is a click/keydown stopper, not an interactive element; the inner Delete <button> is the actual control. */}
         <div
-          className="relative z-10 flex shrink-0 gap-2"
+          className="pointer-events-none sm:pointer-events-auto relative z-10 flex shrink-0 gap-2"
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
         >
