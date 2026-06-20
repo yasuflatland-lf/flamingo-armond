@@ -1,9 +1,8 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { HoverRevealDeleteButton } from "@/components/cardgroups/hover-reveal-delete-button";
 import { SwipeableRow } from "@/components/cardgroups/swipeable-row";
-import { Button } from "@/components/ui/button";
 
 export type RoleListItemProps = {
   id: string;
@@ -23,8 +22,9 @@ export type RoleListItemProps = {
  * and skip the hover background — no swipe gesture, no delete button.
  *
  * The trailing delete button sits outside the link so an outer click does
- * not consume the delete affordance — same pattern as
- * frontend/src/components/cardgroups/cardgroup-list-item.tsx.
+ * not consume the delete affordance — it is the shared
+ * HoverRevealDeleteButton, the same control used by cardgroup-list-item.tsx
+ * and card-row.tsx.
  */
 export function RoleListItem({ id, name, isSystem, busy, onEdit, onDelete }: RoleListItemProps) {
   const t = useTranslations("Admin");
@@ -60,18 +60,12 @@ export function RoleListItem({ id, name, isSystem, busy, onEdit, onDelete }: Rol
             {name}
           </span>
         </button>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={() => onDelete(id)}
+        <HoverRevealDeleteButton
+          onDelete={() => onDelete(id)}
           disabled={busy}
-          aria-label={`Delete ${name}`}
+          ariaLabel={`Delete ${name}`}
           data-testid={`admin-role-delete-btn-${id}`}
-          className="opacity-0 sm:group-hover:opacity-100 motion-reduce:opacity-100 transition-opacity"
-        >
-          <Trash2 aria-hidden="true" className="h-4 w-4" />
-        </Button>
+        />
       </li>
     </SwipeableRow>
   );

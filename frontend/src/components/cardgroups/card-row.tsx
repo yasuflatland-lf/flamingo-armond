@@ -1,9 +1,8 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { RefObject } from "react";
-import { Button } from "@/components/ui/button";
+import { HoverRevealDeleteButton } from "./hover-reveal-delete-button";
 import { SwipeableRow, type SwipeableRowHandle } from "./swipeable-row";
 
 export type CardRowProps = {
@@ -86,16 +85,12 @@ export function CardRow({
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
         >
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label={t("deleteCardAriaLabel")}
-            onClick={onDelete}
+          <HoverRevealDeleteButton
+            ariaLabel={t("deleteCardAriaLabel")}
+            onDelete={onDelete}
             data-testid={`card-delete-${card.id}`}
-            className="pointer-events-none opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 motion-reduce:pointer-events-auto motion-reduce:opacity-100 transition-opacity"
-          >
-            <Trash2 aria-hidden="true" className="h-4 w-4" />
-          </Button>
+            className="pointer-events-none sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 motion-reduce:pointer-events-auto"
+          />
         </div>
       </div>
     </SwipeableRow>

@@ -1,10 +1,9 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
+import { HoverRevealDeleteButton } from "@/components/cardgroups/hover-reveal-delete-button";
 import { SwipeableRow } from "@/components/cardgroups/swipeable-row";
-import { Button } from "@/components/ui/button";
 import { formatMediumDate } from "@/lib/format";
 
 export type CardgroupListItemProps = {
@@ -35,16 +34,12 @@ export function CardgroupListItem({
             {t("updatedAt", { date: formatMediumDate(updatedAt, locale) })}
           </span>
         </Link>
-        <Button
-          variant="outline"
-          size="icon"
-          className="pointer-events-none opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 motion-reduce:pointer-events-auto motion-reduce:opacity-100 transition-opacity"
-          onClick={requestDelete}
+        <HoverRevealDeleteButton
+          className="pointer-events-none sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 motion-reduce:pointer-events-auto"
+          onDelete={requestDelete}
           disabled={busy}
-          aria-label={deleteLabel}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+          ariaLabel={deleteLabel}
+        />
       </li>
     </SwipeableRow>
   );
