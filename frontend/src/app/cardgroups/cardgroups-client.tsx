@@ -259,6 +259,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   const {
     edges,
     pageInfo,
+    totalCount,
     loading,
     networkStatus,
     fetchingMore,
@@ -353,6 +354,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
       />
       <ListingPageShell
         title={t("myCardgroups")}
+        count={totalCount}
         primaryActions={
           <Button
             type="button"
