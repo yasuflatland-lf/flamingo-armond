@@ -9,11 +9,7 @@ import { LogoutButton } from "@/app/_components/logout-button";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import { MobileMenuTrigger } from "@/components/nav/mobile-menu-trigger";
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import {
-  dispatchFlamingo,
-  FLAMINGO_EVENT,
-  type SearchStateDetail,
-} from "@/lib/events/flamingo-events";
+import { dispatchFlamingo, FLAMINGO_EVENT, subscribeFlamingo } from "@/lib/events/flamingo-events";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { resolveHeaderCreateAction } from "./header-create-action";
 import { resolveHeaderSearchAction } from "./header-search-action";
@@ -51,8 +47,7 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
   // active dot and reflect aria-expanded. When the bar closes, return focus to
   // the trigger.
   useEffect(() => {
-    function onSearchState(e: CustomEvent<SearchStateDetail>) {
-      const detail = e.detail;
+    return subscribeFlamingo(FLAMINGO_EVENT.searchState, (detail) => {
       if (!detail) return;
       setSearchActive(detail.active);
       setSearchVisible(detail.visible);
@@ -60,9 +55,7 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
         searchTriggerRef.current?.focus();
       }
       prevVisibleRef.current = detail.visible;
-    }
-    window.addEventListener(FLAMINGO_EVENT.searchState, onSearchState);
-    return () => window.removeEventListener(FLAMINGO_EVENT.searchState, onSearchState);
+    });
   }, []);
 
   // The '+' affordance dispatches a cancelable event so an in-context drawer can

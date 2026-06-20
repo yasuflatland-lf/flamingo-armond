@@ -21,6 +21,7 @@ import type {
   CreateCardOutcome,
   UpdateCardOutcome,
 } from "@/lib/cards/card-mutation-outcomes";
+import { type FlamingoEventName, subscribeFlamingo } from "@/lib/events/flamingo-events";
 import { useCardSheetForm } from "@/lib/forms/use-sheet-form";
 
 function EditCardSheetContent({
@@ -163,7 +164,7 @@ export interface CardListScreenProps {
    * Global add-card event wiring. `name` is the FLAMINGO_EVENT key; `matches`
    * stays a per-wrapper closure (it reads the entity-specific `detail` field).
    */
-  addCardEvent: { name: string; matches: (detail: unknown) => boolean };
+  addCardEvent: { name: FlamingoEventName; matches: (detail: unknown) => boolean };
   /** Bulk-delete rejection log shape: scope tag + the owner-id key name. */
   bulkDeleteLog: { scope: string; ownerKey: string };
   /** Optional section header (render-prop receiving live totalCount, or a node). */
@@ -259,14 +260,11 @@ export function CardListScreen({
   const closeBatchImport = useCallback(() => setBatchImportOpen(false), []);
 
   useEffect(() => {
-    function handleAddCardEvent(event: Event) {
-      const detail = (event as CustomEvent).detail;
+    return subscribeFlamingo(addCardEvent.name, (detail, event) => {
       if (!addCardEvent.matches(detail)) return;
       event.preventDefault();
       sheet.openAddSheet();
-    }
-    window.addEventListener(addCardEvent.name, handleAddCardEvent);
-    return () => window.removeEventListener(addCardEvent.name, handleAddCardEvent);
+    });
   }, [addCardEvent, sheet.openAddSheet]);
 
   async function handleBulkDelete() {

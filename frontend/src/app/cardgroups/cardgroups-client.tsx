@@ -22,7 +22,7 @@ import {
 } from "@/generated/graphql";
 import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
-import { FLAMINGO_EVENT } from "@/lib/events/flamingo-events";
+import { FLAMINGO_EVENT, subscribeFlamingo } from "@/lib/events/flamingo-events";
 import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useUndoDelete } from "@/lib/undo-delete";
@@ -168,14 +168,12 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   }, []);
 
   useEffect(() => {
-    function handleAddCardgroupEvent(event: Event) {
-      // Cancel any default navigation to /cardgroups/new and open the
-      // drawer in place instead.
+    // Cancel any default navigation to /cardgroups/new and open the drawer in
+    // place instead.
+    return subscribeFlamingo(FLAMINGO_EVENT.addCardgroup, (_detail, event) => {
       event.preventDefault();
       openAddSheet();
-    }
-    window.addEventListener(FLAMINGO_EVENT.addCardgroup, handleAddCardgroupEvent);
-    return () => window.removeEventListener(FLAMINGO_EVENT.addCardgroup, handleAddCardgroupEvent);
+    });
   }, [openAddSheet]);
 
   async function handleCreateCardgroup(values: { name: string }) {
