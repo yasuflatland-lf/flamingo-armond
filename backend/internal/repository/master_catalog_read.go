@@ -56,36 +56,6 @@ func (r gormMasterCatalogRow) toGorm() gormMasterCardgroup {
 	}
 }
 
-// CountPublished returns the total number of published master cardgroups
-// matching the optional search predicate. The published filter is enforced in
-// SQL and is never caller-overridable.
-func (r *masterCardgroupRepo) CountPublished(ctx context.Context, search *string) (int64, error) {
-	q := r.db.WithContext(ctx).Model(&gormMasterCardgroup{}).
-		Where("status = ?", string(domain.MasterStatusPublished))
-	if pattern, ok := searchLikePattern(search); ok {
-		q = q.Where("name ILIKE ?", pattern)
-	}
-	var total int64
-	if err := q.Count(&total).Error; err != nil {
-		return 0, eris.Wrap(err, "repository: master cardgroup: count published")
-	}
-	return total, nil
-}
-
-// CountAdmin returns the total number of master cardgroups of any status
-// (draft or published) matching the optional search predicate.
-func (r *masterCardgroupRepo) CountAdmin(ctx context.Context, search *string) (int64, error) {
-	q := r.db.WithContext(ctx).Model(&gormMasterCardgroup{})
-	if pattern, ok := searchLikePattern(search); ok {
-		q = q.Where("name ILIKE ?", pattern)
-	}
-	var total int64
-	if err := q.Count(&total).Error; err != nil {
-		return 0, eris.Wrap(err, "repository: master cardgroup: count admin")
-	}
-	return total, nil
-}
-
 // CountCards returns the number of master cards belonging to the given master
 // cardgroup.
 func (r *masterCardgroupRepo) CountCards(ctx context.Context, masterCardgroupID string) (int64, error) {
@@ -160,12 +130,29 @@ func (r *masterCardgroupRepo) findCatalogPage(
 	dir SortOrder,
 	search *string,
 	publishedOnly bool,
-) ([]*MasterCatalogItem, error) {
+) ([]*MasterCatalogItem, int64, error) {
 	first = ClampPageSize(first)
 	last = ClampPageSize(last)
 
+	// totalCount comes from a COUNT(*) on the SAME filtered base (status filter
+	// when publishedOnly, plus the optional search predicate), built
+	// independently of the cursor/order/limit so it counts the whole matching
+	// set. Computed before the no-rows short-circuit so callers asking only for
+	// totalCount still observe the real count.
+	countQ := r.db.WithContext(ctx).Model(&gormMasterCardgroup{})
+	if publishedOnly {
+		countQ = countQ.Where("status = ?", string(domain.MasterStatusPublished))
+	}
+	if pattern, ok := searchLikePattern(search); ok {
+		countQ = countQ.Where("name ILIKE ?", pattern)
+	}
+	var total int64
+	if err := countQ.Count(&total).Error; err != nil {
+		return nil, 0, eris.Wrap(err, "repository: master cardgroup: count catalog page")
+	}
+
 	if first == 0 && last == 0 {
-		return []*MasterCatalogItem{}, nil
+		return []*MasterCatalogItem{}, total, nil
 	}
 
 	// Backward paging executes the query with the inverted direction and
@@ -184,7 +171,7 @@ func (r *masterCardgroupRepo) findCatalogPage(
 	if cursor != nil {
 		clauseSQL, args, err := masterCatalogCursorWhere(orderBy, effectiveDir, cursor)
 		if err != nil {
-			return nil, eris.Wrap(err, "repository: master cardgroup: build catalog cursor where")
+			return nil, 0, eris.Wrap(err, "repository: master cardgroup: build catalog cursor where")
 		}
 		q = q.Where(clauseSQL, args...)
 	}
@@ -192,7 +179,7 @@ func (r *masterCardgroupRepo) findCatalogPage(
 
 	var rows []gormMasterCatalogRow
 	if err := q.Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: master cardgroup: find catalog page")
+		return nil, 0, eris.Wrap(err, "repository: master cardgroup: find catalog page")
 	}
 
 	if reverse {
@@ -203,14 +190,14 @@ func (r *masterCardgroupRepo) findCatalogPage(
 	for i := range rows {
 		cg, err := masterCardgroupToDomain(rows[i].toGorm())
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		out[i] = &MasterCatalogItem{
 			Cardgroup: cg,
 			CardCount: rows[i].CardCount,
 		}
 	}
-	return out, nil
+	return out, total, nil
 }
 
 // FindPublishedPage returns the cursor-paginated published catalog list (drafts
@@ -223,7 +210,7 @@ func (r *masterCardgroupRepo) FindPublishedPage(
 	orderBy MasterCatalogOrderBy,
 	dir SortOrder,
 	search *string,
-) ([]*MasterCatalogItem, error) {
+) ([]*MasterCatalogItem, int64, error) {
 	return r.findCatalogPage(ctx, after, before, first, last, orderBy, dir, search, true)
 }
 
@@ -236,6 +223,6 @@ func (r *masterCardgroupRepo) FindAdminPage(
 	orderBy MasterCatalogOrderBy,
 	dir SortOrder,
 	search *string,
-) ([]*MasterCatalogItem, error) {
+) ([]*MasterCatalogItem, int64, error) {
 	return r.findCatalogPage(ctx, after, before, first, last, orderBy, dir, search, false)
 }

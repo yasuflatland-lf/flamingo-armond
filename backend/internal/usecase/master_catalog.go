@@ -28,8 +28,7 @@ type MasterCatalogRepository interface {
 		orderBy repository.MasterCatalogOrderBy,
 		dir repository.SortOrder,
 		search *string,
-	) ([]*repository.MasterCatalogItem, error)
-	CountPublished(ctx context.Context, search *string) (int64, error)
+	) ([]*repository.MasterCatalogItem, int64, error)
 	FindPublishedByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 
 	// --- admin (new) ---
@@ -41,8 +40,7 @@ type MasterCatalogRepository interface {
 		orderBy repository.MasterCatalogOrderBy,
 		dir repository.SortOrder,
 		search *string,
-	) ([]*repository.MasterCatalogItem, error)
-	CountAdmin(ctx context.Context, search *string) (int64, error)
+	) ([]*repository.MasterCatalogItem, int64, error)
 	CountCards(ctx context.Context, masterCardgroupID string) (int64, error)
 	Create(ctx context.Context, m *domain.MasterCardgroup) error
 	Update(ctx context.Context, id string, patch repository.MasterCardgroupUpdate) (*domain.MasterCardgroup, error)
@@ -199,20 +197,18 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 	// (nil and whitespace-only both mean "no filter").
 	search := normalizeSearch(in.Search)
 
-	// totalCount comes from a separate COUNT(*) scoped to published rows and the
-	// optional search predicate. Computed before the page fetch so callers asking
-	// only for totalCount still see a real value.
-	total, err := u.repo.CountPublished(ctx, search)
-	if err != nil {
-		return nil, eris.Wrap(err, "usecase: master catalog: count published")
-	}
-
+	// totalCount is the search-aware total carried by the page method, captured
+	// inside the fetch closure. FindPublishedPage runs its COUNT(*) on the same
+	// filtered base before its zero-page short-circuit, so a totalCount-only
+	// request still observes the real value.
+	var total int64
 	items, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
 		func(wantFirst, wantLast int) ([]*repository.MasterCatalogItem, error) {
-			rows, e := u.repo.FindPublishedPage(ctx, after, before, wantFirst, wantLast, orderBy, dir, search)
+			rows, t, e := u.repo.FindPublishedPage(ctx, after, before, wantFirst, wantLast, orderBy, dir, search)
 			if e != nil {
 				return nil, eris.Wrap(e, "usecase: master catalog: find published page")
 			}
+			total = t
 			return rows, nil
 		},
 	)
@@ -568,7 +564,8 @@ func (u *masterCatalogUsecase) DeleteMaster(ctx context.Context, id string) erro
 
 // ListAdminConnection paginates ALL master cardgroups (DRAFT + PUBLISHED) for the
 // admin UI. Admin-only. Mirrors ListPublishedConnection but gates on adminGate and
-// calls the unfiltered CountAdmin / FindAdminPage repository methods.
+// calls the status-unfiltered FindAdminPage repository method (whose returned
+// total counts decks of any status).
 func (u *masterCatalogUsecase) ListAdminConnection(
 	ctx context.Context, in MasterCatalogConnectionInput,
 ) (*MasterCatalogConnectionOutput, error) {
@@ -599,17 +596,16 @@ func (u *masterCatalogUsecase) ListAdminConnection(
 	// (nil and whitespace-only both mean "no filter").
 	search := normalizeSearch(in.Search)
 
-	total, err := u.repo.CountAdmin(ctx, search)
-	if err != nil {
-		return nil, eris.Wrap(err, "usecase: master catalog: count admin")
-	}
-
+	// totalCount is the search-aware total carried by the page method, captured
+	// inside the fetch closure (see ListPublishedConnection for the contract).
+	var total int64
 	items, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
 		func(wantFirst, wantLast int) ([]*repository.MasterCatalogItem, error) {
-			rows, e := u.repo.FindAdminPage(ctx, after, before, wantFirst, wantLast, orderBy, dir, search)
+			rows, t, e := u.repo.FindAdminPage(ctx, after, before, wantFirst, wantLast, orderBy, dir, search)
 			if e != nil {
 				return nil, eris.Wrap(e, "usecase: master catalog: find admin page")
 			}
+			total = t
 			return rows, nil
 		},
 	)

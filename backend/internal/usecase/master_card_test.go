@@ -164,15 +164,7 @@ func (panicMasterCardgroupRepo) ListDefaultStarters(_ context.Context) ([]*domai
 func (panicMasterCardgroupRepo) FindPublishedPage(
 	_ context.Context, _, _ *repository.MasterCatalogCursor, _, _ int,
 	_ repository.MasterCatalogOrderBy, _ repository.SortOrder, _ *string,
-) ([]*repository.MasterCatalogItem, error) {
-	panic("not used in this test")
-}
-
-func (panicMasterCardgroupRepo) CountPublished(_ context.Context, _ *string) (int64, error) {
-	panic("not used in this test")
-}
-
-func (panicMasterCardgroupRepo) CountAdmin(_ context.Context, _ *string) (int64, error) {
+) ([]*repository.MasterCatalogItem, int64, error) {
 	panic("not used in this test")
 }
 
@@ -187,7 +179,7 @@ func (panicMasterCardgroupRepo) FindPublishedByID(_ context.Context, _ string) (
 func (panicMasterCardgroupRepo) FindAdminPage(
 	_ context.Context, _, _ *repository.MasterCatalogCursor, _, _ int,
 	_ repository.MasterCatalogOrderBy, _ repository.SortOrder, _ *string,
-) ([]*repository.MasterCatalogItem, error) {
+) ([]*repository.MasterCatalogItem, int64, error) {
 	panic("not used in this test")
 }
 

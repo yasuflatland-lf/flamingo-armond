@@ -258,8 +258,8 @@ func TestMasterCatalog_ListAdminConnection_ReturnsPage(t *testing.T) {
 		{Cardgroup: masterCardgroup("b"), CardCount: 0},
 	}
 	repo := &mockMasterCatalogRepository{
-		countAdminRes: 2,
-		findAdminPage: items,
+		findAdminTotal: 2,
+		findAdminPage:  items,
 	}
 	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
