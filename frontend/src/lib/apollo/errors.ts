@@ -9,6 +9,11 @@
  *    Network / non-CombinedGraphQLErrors → generic network message.
  *  - classifyQueryError:  Classifies a query-level error into a typed result so
  *    callers can branch on FORBIDDEN / UNAUTHENTICATED without retrying.
+ *
+ * @see ./graphql-errors.ts for the parallel gqlFetch / RSC error classifiers
+ * (the `"GraphQL errors: "`-prefixed-`Error` shape: isUnauthenticatedGraphQLError
+ * etc.) plus liftGraphQLCodes. The two modules are a deliberate, CI-tested split
+ * — do not merge them.
  */
 
 import { CombinedGraphQLErrors } from "@apollo/client/errors";

@@ -1,3 +1,15 @@
+/**
+ * gqlFetch / RSC error classifiers: parse the `"GraphQL errors: "`-prefixed
+ * `Error` that gqlFetch (server.ts) throws and read extensions.code
+ * (isUnauthenticatedGraphQLError / isForbiddenGraphQLError /
+ * isBadUserInputGraphQLError). liftGraphQLCodes additionally lifts codes from an
+ * Apollo-runtime CombinedGraphQLErrors for warn payloads.
+ *
+ * @see ./errors.ts for the parallel form-facing Apollo Client runtime
+ * (CombinedGraphQLErrors) helpers (getBackendFieldErrors / getBackendErrorBanner
+ * / classifyQueryError). The two modules are a deliberate, CI-tested split — do
+ * not merge them.
+ */
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
 
 /**

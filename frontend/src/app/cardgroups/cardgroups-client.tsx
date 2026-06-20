@@ -23,6 +23,7 @@ import {
 import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { FLAMINGO_EVENT } from "@/lib/events/flamingo-events";
+import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useUndoDelete } from "@/lib/undo-delete";
 import { CARDGROUPS_DEFAULT_VARS, DeleteCardgroupMutation } from "./queries";
@@ -35,14 +36,6 @@ type CardgroupPageInfo = Connection["pageInfo"];
 interface CardgroupsClientProps {
   initialConnection: Connection | null;
 }
-
-const EMPTY_PAGE_INFO: CardgroupPageInfo = {
-  __typename: "PageInfo",
-  hasNextPage: false,
-  hasPreviousPage: false,
-  startCursor: null,
-  endCursor: null,
-};
 
 // Render fallback for useConnectionPagination. The client seeds the cache
 // synchronously before useQuery runs, so this is never read on the happy path;
