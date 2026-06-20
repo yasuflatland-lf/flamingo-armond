@@ -23,6 +23,40 @@ type MasterCard struct {
 	UpdatedAt         time.Time
 }
 
+// BelongsToMasterCardgroup mirrors Card.BelongsToCardgroup: it reports whether
+// this master card belongs to the master cardgroup identified by
+// masterCardgroupID. Empty masterCardgroupID always returns false so callers do
+// not need a redundant nil/empty guard.
+func (m *MasterCard) BelongsToMasterCardgroup(masterCardgroupID string) bool {
+	return masterCardgroupID != "" && m.MasterCardgroupID == masterCardgroupID
+}
+
+// UpdateFront updates the master card's front text to the supplied value and
+// returns an error if the value is the zero CardText. The zero-value guard is
+// defense-in-depth: production callers parse the input through ParseCardText
+// before reaching this method, so structural invariants (length, non-empty) are
+// enforced at VO construction time. This method enforces only the aggregate-state
+// invariant that m.Front must never be the zero value. UpdatedAt is intentionally
+// not modified here; persistence is responsible for stamping the modification
+// timestamp.
+func (m *MasterCard) UpdateFront(front CardText) error {
+	if front == "" {
+		return ErrCardFrontRequired
+	}
+	m.Front = front
+	return nil
+}
+
+// UpdateBack mirrors UpdateFront for the back text; see UpdateFront for the
+// defense-in-depth rationale and the UpdatedAt non-stamping note.
+func (m *MasterCard) UpdateBack(back CardText) error {
+	if back == "" {
+		return ErrCardBackRequired
+	}
+	m.Back = back
+	return nil
+}
+
 // NewMasterCard constructs a MasterCard aggregate, mirroring NewCard: Front and
 // Back are validated and trimmed through ParseCardText with the same
 // field-specific sentinels (ErrCardFrontRequired / ErrCardFrontTooLong for
