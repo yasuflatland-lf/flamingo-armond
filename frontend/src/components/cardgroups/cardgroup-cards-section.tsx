@@ -52,15 +52,12 @@ export function CardgroupCardsSection({
     onAddCard: () => void;
     onBatchImport: () => void;
   }) => (
-    // Desktop reflows into a single header row: the page-level header (title +
-    // count subtitle, left) and the action cluster (right) share one
-    // justify-between row, matching the shadcn-admin detail-header shape. On
-    // mobile the two stack — header on top, full-width Start learning hero below.
-    <div className="md:flex md:items-start md:justify-between md:gap-4">
-      <div className="md:min-w-0 md:flex-1">
-        {renderPageHeader?.({ totalCount, onBatchImport })}
-      </div>
-      <div className="mb-3 flex flex-col gap-2 md:mb-0 md:flex-row md:items-center md:gap-2 md:shrink-0">
+    // The page-level header (title + count subtitle) renders first; the action
+    // cluster sits on its own row below it, right-aligned on desktop. On mobile
+    // the two also stack — header on top, full-width Start learning hero below.
+    <div>
+      {renderPageHeader?.({ totalCount, onBatchImport })}
+      <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-end md:gap-2">
         {/* Primary CTA: full-width brand hero on mobile (h-11 = 44px tap target),
             compact on desktop. Add card on mobile is provided by the global "+"
             header action, so no Add button is duplicated here on small screens.

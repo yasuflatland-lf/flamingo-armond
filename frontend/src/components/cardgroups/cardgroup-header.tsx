@@ -126,8 +126,9 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
 
         Desktop (`>= md`): title left with the card count as a muted subtitle
         beneath it; back stays on the leading edge and the overflow trigger is
-        pushed to the trailing edge so it lands beside the page-level action
-        buttons that `CardgroupCardsSection` lays out on the same row. */}
+        pushed to the trailing edge of the title row. The page-level action
+        buttons that `CardgroupCardsSection` lays out now sit on their own row
+        below this header. */}
       <header className="mb-6 grid grid-cols-[1fr_auto_1fr] items-center gap-x-2 gap-y-1 [grid-template-areas:'back_count_overflow'_'title_title_title'] md:grid-cols-[auto_minmax(0,1fr)_auto] md:gap-y-0 md:[grid-template-areas:'back_title_overflow'_'back_count_overflow']">
         <Link
           href="/cardgroups"
