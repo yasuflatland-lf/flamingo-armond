@@ -45,9 +45,11 @@ func (r *cardResolver) UserCardState(ctx context.Context, obj *model.Card) (*mod
 	if err != nil {
 		return nil, gqlerr.Internal(ctx, err)
 	}
-	if ucs == nil {
-		ucs = domain.NewUserCardFSRSForNewCard(domain.UserID(user.Sub), obj.ID, obj.CreatedAt)
-	}
+	// The "missing FSRS record means a brand-new card with default state"
+	// decision is an application policy; delegate it to LearnUC instead of
+	// constructing the domain entity here. The DataLoader batch above stays in
+	// the resolver to preserve N+1 batching.
+	ucs = r.LearnUC.DefaultIfNew(ucs, domain.UserID(user.Sub), obj.ID, obj.CreatedAt)
 	return toModelUserCardState(ucs), nil
 }
 
