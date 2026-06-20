@@ -52,3 +52,25 @@ func TestRoleIsSystem(t *testing.T) {
 		})
 	}
 }
+
+func TestIsLastAdmin(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name       string
+		adminCount int64
+		want       bool
+	}{
+		{name: "no admins", adminCount: 0, want: true},
+		{name: "single admin", adminCount: 1, want: true},
+		{name: "two admins", adminCount: 2, want: false},
+		{name: "negative count clamps to last", adminCount: -1, want: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, IsLastAdmin(tc.adminCount))
+		})
+	}
+}

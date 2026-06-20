@@ -206,7 +206,7 @@ func (u *userUsecase) DeleteMyAccount(ctx context.Context) error {
 			}
 			return eris.Wrap(err, "usecase: user: delete my account: count admins")
 		}
-		if n <= 1 {
+		if domain.IsLastAdmin(n) {
 			return ucerr.NewForbiddenError("cannot delete the last admin account; promote another admin first")
 		}
 	}
