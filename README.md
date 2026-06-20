@@ -29,6 +29,8 @@ Local development does not require any of these — `make setup` boots a local S
 
 **Notion sync (optional)** — set up a Notion integration token and page IDs to enable automated card imports. See `docs/notion-sync.md` for the full env-var matrix, local testing workflow, and production operational runbook.
 
+**Uptime monitoring (optional)** — [UptimeRobot](https://dashboard.uptimerobot.com/login?rt=false) pings the deployed services on a schedule to keep the Render free-tier backend warm and alert on downtime. See [`docs/deployment.md` § "Keep-alive ping workflow"](docs/deployment.md#keep-alive-ping-workflow) for the ping endpoint contract.
+
 ## Quick Start
 
 ### 1. Prerequisites
