@@ -1,20 +1,21 @@
 "use client";
 
+import type { Reference } from "@apollo/client";
 import { useApolloClient, useMutation } from "@apollo/client/react";
 import { useCallback } from "react";
 import { AdminDeleteUserMutation } from "./queries";
 
 /**
- * Owns the admin delete-user mutation and its cursor-filter cache eviction.
+ * Owns the admin delete-user mutation and its node-id cache eviction.
  *
  * `deleteUser` resolves `void` on success — after dropping the user from every
- * cached `users` connection variant (filtering by `edge.cursor`, which equals the
- * user id by the schema's connection contract) and evicting the normalized entity.
- * On failure it RE-THROWS the raw error: `AdminUserProfileSheet`'s danger zone
- * catches it and renders the reason via `mutationAuthBanner`, so a typed-outcome
- * shape would strip the error the sheet needs. This is intentionally asymmetric
- * with masters' delete (node.id filter + swallow-into-outcome) — see issue #448
- * and .claude/rules/pagination.md "Connection delete".
+ * cached `users` connection variant (filtering by the normalized `node.id`) and
+ * evicting the normalized entity. On failure it RE-THROWS the raw error:
+ * `AdminUserProfileSheet`'s danger zone catches it and renders the reason via
+ * `mutationAuthBanner`, so a typed-outcome shape would strip the error the sheet
+ * needs. The cache-eviction half mirrors masters/cards/cardgroups — see
+ * .claude/rules/pagination.md "Resolve an edge by node.id, never by edge.cursor"
+ * and "Connection delete".
  *
  * No `optimisticResponse`: a delete can fail with FORBIDDEN and Apollo does not
  * reliably roll back optimistic writes for typed GraphQL errors.
@@ -31,20 +32,19 @@ export function useAdminUserMutations() {
       }
       apolloClient.cache.modify({
         fields: {
-          users(existing) {
+          users(existing, { readField }) {
             const connection = existing as {
-              edges?: ReadonlyArray<{ cursor: string }>;
+              edges?: ReadonlyArray<{ node: Reference }>;
               totalCount?: number;
             };
             if (!connection.edges) return existing;
-            // Filter by `edge.cursor`, NOT `readField("id", edge.node)`. This is the
-            // deliberate exception to .claude/rules/pagination.md "Resolve an edge by
-            // node.id, never by edge.cursor": the backend emits the raw user id as the
-            // users-connection cursor (AdminUserEdge{Cursor: user.ID} in
-            // backend/internal/usecase/admin_user.go — NOT cursor.Encode), so here
-            // cursor === id. Masters/cards/cardgroups encode their cursors, so they must
-            // use node.id; users intentionally differ (issue #448).
-            const edges = connection.edges.filter((edge) => edge.cursor !== id);
+            // Filter by the normalized node id, NOT by `edge.cursor`: the backend
+            // emits an opaque "v1:..." cursor that never equals the raw user id
+            // (.claude/rules/pagination.md "Resolve an edge by node.id, never by
+            // edge.cursor"). Matches masters/cards/cardgroups.
+            const edges = connection.edges.filter(
+              (edge) => readField<string>("id", edge.node) !== id,
+            );
             if (edges.length === connection.edges.length) return existing;
             return {
               ...connection,

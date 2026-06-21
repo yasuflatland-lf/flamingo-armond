@@ -12,12 +12,14 @@ import { useAdminUserMutations } from "./use-admin-user-mutations";
 
 const USERS_VARS = { first: ADMIN_USERS_PAGE_SIZE, search: null };
 
-// A user edge: the backend contract sets edge.cursor === user id for the users
-// connection (the delete cache filter relies on this).
+// A user edge: the backend emits an opaque "v1:..." cursor (cursor.Encode(id)),
+// never the raw user id. The fixture mirrors the encoder so a reverted
+// cursor-based delete filter would NOT match the raw id and this test would
+// catch it (.claude/rules/pagination.md "Resolve an edge by node.id").
 function userEdge(id: string) {
   return {
     __typename: "UserEdge" as const,
-    cursor: id,
+    cursor: `v1:${btoa(id)}`,
     node: {
       __typename: "User" as const,
       id,
@@ -67,7 +69,7 @@ afterEach(() => {
 });
 
 describe("useAdminUserMutations.deleteUser", () => {
-  it("removes the edge by cursor, decrements totalCount, and evicts on success", async () => {
+  it("removes the edge by node id, decrements totalCount, and evicts on success", async () => {
     const cache = new InMemoryCache();
     seedUsers(cache, ["u-1", "u-2"]);
     const mocks: MockedResponse[] = [
@@ -84,7 +86,11 @@ describe("useAdminUserMutations.deleteUser", () => {
 
     const conn = readUsers(cache);
     expect(conn?.users.totalCount).toBe(1);
-    expect(conn?.users.edges.map((e) => e.cursor)).toEqual(["u-2"]);
+    // The surviving edge carries the encoded cursor for u-2 (node.id is masked
+    // behind a fragment in the codegen type; cursor is the unmasked top-level
+    // field). A reverted cursor-based filter would not have removed u-1, so this
+    // also guards the node-id-not-cursor delete behavior.
+    expect(conn?.users.edges.map((e) => e.cursor)).toEqual([`v1:${btoa("u-2")}`]);
     // The deleted entity is evicted + gc'd from the normalized cache.
     expect(cache.extract()["User:u-1"]).toBeUndefined();
   });
@@ -108,7 +114,10 @@ describe("useAdminUserMutations.deleteUser", () => {
 
     const conn = readUsers(cache);
     expect(conn?.users.totalCount).toBe(2);
-    expect(conn?.users.edges.map((e) => e.cursor)).toEqual(["u-1", "u-2"]);
+    expect(conn?.users.edges.map((e) => e.cursor)).toEqual([
+      `v1:${btoa("u-1")}`,
+      `v1:${btoa("u-2")}`,
+    ]);
   });
 
   it("throws when the mutation returns false", async () => {
