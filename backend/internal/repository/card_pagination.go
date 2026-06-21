@@ -133,40 +133,34 @@ func (r *cardRepo) FindPageByCardgroupForUser(
 	return out, total, nil
 }
 
+// cardCursorSpec describes the card aggregate's cursor geometry. The primary
+// sort column is `cards.<orderBy>`, except CardOrderByDue which sorts on the
+// COALESCE expression over the LEFT JOIN's nullable due column. The id tie-break
+// is aliased `cards.id`.
+func cardCursorSpec(orderBy CardOrderBy, c *CardCursor) cursorSpec {
+	field := "cards." + string(orderBy)
+	if orderBy == CardOrderByDue {
+		field = "COALESCE(ucs.due, cards.created_at)"
+	}
+	return cursorSpec{
+		alias:      "cards",
+		orderCol:   field,
+		isIDOrder:  orderBy == CardOrderByID,
+		fieldValue: func() (any, error) { return cursorFieldValue(orderBy, c) },
+	}
+}
+
 // orderClause renders the SQL ORDER BY tail. When orderBy is `id` only one
 // column appears; otherwise the secondary `id` keeps order deterministic.
 func orderClause(orderBy CardOrderBy, dir SortOrder) string {
-	d := string(dir)
-	if orderBy == CardOrderByID {
-		return "cards.id " + d
-	}
-	if orderBy == CardOrderByDue {
-		return "COALESCE(ucs.due, cards.created_at) " + d + ", cards.id " + d
-	}
-	return "cards." + string(orderBy) + " " + d + ", cards.id " + d
+	return buildOrderClause(cardCursorSpec(orderBy, nil), dir)
 }
 
 // cursorWhere builds the tuple-comparison WHERE for the supplied cursor and
 // direction. ASC yields `>`, DESC yields `<`. Returns an error when the
 // cursor lacks the column required by the active orderBy.
 func cursorWhere(orderBy CardOrderBy, dir SortOrder, c *CardCursor) (string, []any, error) {
-	op := ">"
-	if dir == SortDesc {
-		op = "<"
-	}
-	if orderBy == CardOrderByID {
-		return "cards.id " + op + " ?", []any{c.ID}, nil
-	}
-	field := "cards." + string(orderBy)
-	if orderBy == CardOrderByDue {
-		field = "COALESCE(ucs.due, cards.created_at)"
-	}
-	val, err := cursorFieldValue(orderBy, c)
-	if err != nil {
-		return "", nil, err
-	}
-	clause, args := cursorTupleWhere("cards", field, op, val, c.ID)
-	return clause, args, nil
+	return buildCursorWhere(cardCursorSpec(orderBy, c), dir, c.ID)
 }
 
 // cursorFieldValue returns the cursor value for the active orderBy field.
@@ -187,7 +181,7 @@ func cursorFieldValue(orderBy CardOrderBy, c *CardCursor) (any, error) {
 			return *c.UpdatedAt, nil
 		}
 	}
-	return nil, eris.Errorf("cursor missing %s column", orderBy)
+	return nil, eris.Errorf("repository: card: cursor missing %s column", orderBy)
 }
 
 func coalesceUserIDForJoin(userID string) string {

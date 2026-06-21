@@ -69,13 +69,26 @@ func (r *masterCardgroupRepo) CountCards(ctx context.Context, masterCardgroupID 
 	return total, nil
 }
 
+// masterCatalogCursorSpec describes the catalog aggregate's cursor geometry.
+// MasterCatalogOrderBy has no `id` member, so isIDOrder is always false and both
+// the primary sort column and the `mcg.id` tie-break are always emitted. The
+// columns are prefixed with the `mcg` alias used by findCatalogPage.
+func masterCatalogCursorSpec(orderBy MasterCatalogOrderBy, c *MasterCatalogCursor) cursorSpec {
+	return cursorSpec{
+		alias:      "mcg",
+		orderCol:   "mcg." + string(orderBy),
+		isIDOrder:  false,
+		fieldValue: func() (any, error) { return masterCatalogCursorFieldValue(orderBy, c) },
+	}
+}
+
 // masterCatalogOrderClause renders the SQL ORDER BY tail with a secondary
 // mcg.id tie-break so cursors stay deterministic when the primary sort column
 // has duplicates. MasterCatalogOrderBy has no `id` member, so both columns are
 // always emitted. The columns are prefixed with the `mcg` alias used by
 // findCatalogPage.
 func masterCatalogOrderClause(orderBy MasterCatalogOrderBy, dir SortOrder) string {
-	return "mcg." + string(orderBy) + " " + string(dir) + ", mcg.id " + string(dir)
+	return buildOrderClause(masterCatalogCursorSpec(orderBy, nil), dir)
 }
 
 // masterCatalogCursorWhere builds the tuple-comparison WHERE for the supplied
@@ -84,17 +97,7 @@ func masterCatalogOrderClause(orderBy MasterCatalogOrderBy, dir SortOrder) strin
 // bug, not user-supplied input. Columns are prefixed with the `mcg` alias used
 // by findCatalogPage.
 func masterCatalogCursorWhere(orderBy MasterCatalogOrderBy, dir SortOrder, c *MasterCatalogCursor) (string, []any, error) {
-	op := ">"
-	if dir == SortDesc {
-		op = "<"
-	}
-	field := "mcg." + string(orderBy)
-	val, err := masterCatalogCursorFieldValue(orderBy, c)
-	if err != nil {
-		return "", nil, err
-	}
-	clause, args := cursorTupleWhere("mcg", field, op, val, c.ID)
-	return clause, args, nil
+	return buildCursorWhere(masterCatalogCursorSpec(orderBy, c), dir, c.ID)
 }
 
 // masterCatalogCursorFieldValue returns the cursor value for the active orderBy
@@ -115,7 +118,7 @@ func masterCatalogCursorFieldValue(orderBy MasterCatalogOrderBy, c *MasterCatalo
 			return *c.Name, nil
 		}
 	}
-	return nil, eris.Errorf("repository: master cardgroup: catalog cursor missing %s column", orderBy)
+	return nil, eris.Errorf("repository: master cardgroup: cursor missing %s column", orderBy)
 }
 
 // findCatalogPage is the shared cursor-paginated catalog engine. publishedOnly
