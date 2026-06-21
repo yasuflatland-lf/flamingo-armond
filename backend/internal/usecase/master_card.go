@@ -13,7 +13,6 @@ import (
 	"gorm.io/gorm"
 
 	"backend/internal/auth"
-	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/repository"
 	"backend/internal/textdic"
@@ -632,11 +631,16 @@ func (u *masterCardUsecase) listMasterCardsCore(
 	// StartCur / EndCur carry the RAW node id; the resolver's connection layer
 	// applies the cursor encoder once. Encoding here would double-encode.
 	out := &MasterCardConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Cards: cards}
-	if len(cards) > 0 {
-		out.StartCur = cards[0].ID
-		out.EndCur = cards[len(cards)-1].ID
-	}
+	out.StartCur, out.EndCur = firstLastCursor(cards, func(c *domain.MasterCard) string { return c.ID })
 	return out, nil
+}
+
+// masterCardOrderByColumns is the usecase→repository orderBy allowlist for master cards.
+var masterCardOrderByColumns = map[MasterCardOrderBy]repository.MasterCardOrderBy{
+	MasterCardOrderByID:        repository.MasterCardOrderByID,
+	MasterCardOrderByPosition:  repository.MasterCardOrderByPosition,
+	MasterCardOrderByCreatedAt: repository.MasterCardOrderByCreatedAt,
+	MasterCardOrderByUpdatedAt: repository.MasterCardOrderByUpdatedAt,
 }
 
 // resolveMasterCardOrderBy maps the typed usecase enums to the repository
@@ -646,26 +650,7 @@ func (u *masterCardUsecase) listMasterCardsCore(
 func resolveMasterCardOrderBy(
 	orderBy *MasterCardOrderBy, dir *SortOrder,
 ) (repository.MasterCardOrderBy, repository.SortOrder, error) {
-	field := repository.MasterCardOrderByPosition
-	if orderBy != nil {
-		switch *orderBy {
-		case MasterCardOrderByID:
-			field = repository.MasterCardOrderByID
-		case MasterCardOrderByPosition:
-			field = repository.MasterCardOrderByPosition
-		case MasterCardOrderByCreatedAt:
-			field = repository.MasterCardOrderByCreatedAt
-		case MasterCardOrderByUpdatedAt:
-			field = repository.MasterCardOrderByUpdatedAt
-		default:
-			return "", "", ucerr.NewValidationError("orderBy", "invalid")
-		}
-	}
-	d, err := resolveSortDir(dir, repository.SortAsc)
-	if err != nil {
-		return "", "", err
-	}
-	return field, d, nil
+	return resolveOrderByColumn(orderBy, dir, masterCardOrderByColumns, repository.MasterCardOrderByPosition, repository.SortAsc)
 }
 
 // resolveMasterCardCursor decodes an opaque cursor string into a
@@ -688,12 +673,12 @@ func (u *masterCardUsecase) resolveMasterCardCursor(
 	orderBy repository.MasterCardOrderBy,
 	field string,
 ) (*repository.MasterCardCursor, error) {
-	if cursorStr == nil || *cursorStr == "" {
-		return nil, nil
-	}
-	id, err := cursor.Decode(*cursorStr)
+	id, present, err := decodeCursorOrBadInput(cursorStr, field)
 	if err != nil {
-		return nil, ucerr.NewValidationError(field, "invalid cursor")
+		return nil, err
+	}
+	if !present {
+		return nil, nil
 	}
 	c := &repository.MasterCardCursor{ID: id}
 	if orderBy == repository.MasterCardOrderByID {

@@ -9,7 +9,6 @@ import (
 	"github.com/rotisserie/eris"
 
 	"backend/internal/auth"
-	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
@@ -217,11 +216,15 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 	}
 
 	out := &MasterCatalogConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Items: items}
-	if len(items) > 0 {
-		out.StartCur = items[0].Cardgroup.ID
-		out.EndCur = items[len(items)-1].Cardgroup.ID
-	}
+	out.StartCur, out.EndCur = firstLastCursor(items, func(it *repository.MasterCatalogItem) string { return it.Cardgroup.ID })
 	return out, nil
+}
+
+// masterCatalogOrderByColumns is the usecase→repository orderBy allowlist for the master catalog.
+var masterCatalogOrderByColumns = map[MasterCatalogOrderBy]repository.MasterCatalogOrderBy{
+	MasterCatalogOrderBySortOrder: repository.MasterCatalogOrderBySortOrder,
+	MasterCatalogOrderByCreatedAt: repository.MasterCatalogOrderByCreatedAt,
+	MasterCatalogOrderByName:      repository.MasterCatalogOrderByName,
 }
 
 // resolveMasterCatalogOrderBy maps the typed usecase enums to the repository
@@ -231,24 +234,7 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 func resolveMasterCatalogOrderBy(
 	orderBy *MasterCatalogOrderBy, dir *SortOrder,
 ) (repository.MasterCatalogOrderBy, repository.SortOrder, error) {
-	field := repository.MasterCatalogOrderBySortOrder
-	if orderBy != nil {
-		switch *orderBy {
-		case MasterCatalogOrderBySortOrder:
-			field = repository.MasterCatalogOrderBySortOrder
-		case MasterCatalogOrderByCreatedAt:
-			field = repository.MasterCatalogOrderByCreatedAt
-		case MasterCatalogOrderByName:
-			field = repository.MasterCatalogOrderByName
-		default:
-			return "", "", ucerr.NewValidationError("orderBy", "invalid")
-		}
-	}
-	d, err := resolveSortDir(dir, repository.SortAsc)
-	if err != nil {
-		return "", "", err
-	}
-	return field, d, nil
+	return resolveOrderByColumn(orderBy, dir, masterCatalogOrderByColumns, repository.MasterCatalogOrderBySortOrder, repository.SortAsc)
 }
 
 // resolveMasterCursor decodes an opaque cursor string into a
@@ -266,12 +252,12 @@ func (u *masterCatalogUsecase) resolveMasterCursor(
 	field string,
 	publishedOnly bool,
 ) (*repository.MasterCatalogCursor, error) {
-	if cursorStr == nil || *cursorStr == "" {
-		return nil, nil
-	}
-	id, err := cursor.Decode(*cursorStr)
+	id, present, err := decodeCursorOrBadInput(cursorStr, field)
 	if err != nil {
-		return nil, ucerr.NewValidationError(field, "invalid cursor")
+		return nil, err
+	}
+	if !present {
+		return nil, nil
 	}
 	fetchByID := u.repo.FindByID
 	if publishedOnly {
@@ -614,10 +600,7 @@ func (u *masterCatalogUsecase) ListAdminConnection(
 	}
 
 	out := &MasterCatalogConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Items: items}
-	if len(items) > 0 {
-		out.StartCur = items[0].Cardgroup.ID
-		out.EndCur = items[len(items)-1].Cardgroup.ID
-	}
+	out.StartCur, out.EndCur = firstLastCursor(items, func(it *repository.MasterCatalogItem) string { return it.Cardgroup.ID })
 	return out, nil
 }
 

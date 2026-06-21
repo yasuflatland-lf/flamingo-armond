@@ -243,8 +243,7 @@ func (u *adminUserUsecase) List(
 		out.Edges[i] = AdminUserEdge{Cursor: string(user.ID), Node: user}
 	}
 	if len(users) > 0 {
-		start := string(users[0].ID)
-		end := string(users[len(users)-1].ID)
+		start, end := firstLastCursor(users, func(u *domain.User) string { return string(u.ID) })
 		out.PageInfo.StartCursor = &start
 		out.PageInfo.EndCursor = &end
 	}

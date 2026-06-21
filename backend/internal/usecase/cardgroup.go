@@ -10,7 +10,6 @@ import (
 	"github.com/rotisserie/eris"
 
 	"backend/internal/auth"
-	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
@@ -362,11 +361,16 @@ func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 	}
 
 	out := &CardgroupConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Cardgroups: cgs}
-	if len(cgs) > 0 {
-		out.StartCur = string(cgs[0].ID)
-		out.EndCur = string(cgs[len(cgs)-1].ID)
-	}
+	out.StartCur, out.EndCur = firstLastCursor(cgs, func(cg *domain.Cardgroup) string { return string(cg.ID) })
 	return out, nil
+}
+
+// cardgroupOrderByColumns is the usecase→repository orderBy allowlist for cardgroups.
+var cardgroupOrderByColumns = map[CardgroupOrderBy]repository.CardgroupOrderBy{
+	CardgroupOrderByID:        repository.CardgroupOrderByID,
+	CardgroupOrderByCreatedAt: repository.CardgroupOrderByCreatedAt,
+	CardgroupOrderByUpdatedAt: repository.CardgroupOrderByUpdatedAt,
+	CardgroupOrderByName:      repository.CardgroupOrderByName,
 }
 
 // resolveCardgroupOrderBy maps the typed usecase enums to the repository
@@ -376,26 +380,7 @@ func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 func resolveCardgroupOrderBy(
 	orderBy *CardgroupOrderBy, dir *SortOrder,
 ) (repository.CardgroupOrderBy, repository.SortOrder, error) {
-	field := repository.CardgroupOrderByUpdatedAt
-	if orderBy != nil {
-		switch *orderBy {
-		case CardgroupOrderByID:
-			field = repository.CardgroupOrderByID
-		case CardgroupOrderByCreatedAt:
-			field = repository.CardgroupOrderByCreatedAt
-		case CardgroupOrderByUpdatedAt:
-			field = repository.CardgroupOrderByUpdatedAt
-		case CardgroupOrderByName:
-			field = repository.CardgroupOrderByName
-		default:
-			return "", "", ucerr.NewValidationError("orderBy", "invalid")
-		}
-	}
-	d, err := resolveSortDir(dir, repository.SortDesc)
-	if err != nil {
-		return "", "", err
-	}
-	return field, d, nil
+	return resolveOrderByColumn(orderBy, dir, cardgroupOrderByColumns, repository.CardgroupOrderByUpdatedAt, repository.SortDesc)
 }
 
 // resolveCardgroupCursor decodes an opaque cursor string into a
@@ -417,12 +402,12 @@ func (u *cardgroupUsecase) resolveCardgroupCursor(
 	orderBy repository.CardgroupOrderBy,
 	field string,
 ) (*repository.CardgroupCursor, error) {
-	if cursorStr == nil || *cursorStr == "" {
-		return nil, nil
-	}
-	id, err := cursor.Decode(*cursorStr)
+	id, present, err := decodeCursorOrBadInput(cursorStr, field)
 	if err != nil {
-		return nil, ucerr.NewValidationError(field, "invalid cursor")
+		return nil, err
+	}
+	if !present {
+		return nil, nil
 	}
 	cg, err := u.repo.FindByID(ctx, id)
 	if err != nil {
