@@ -24,3 +24,11 @@ func (r Role) IsSystem() bool {
 	_, ok := systemRoleNames[r.Name]
 	return ok
 }
+
+// IsLastAdmin reports whether adminCount represents the final admin in the
+// system. Deleting that account would leave the system with no admin, so callers
+// refuse the deletion. The threshold lives in the domain because it is an
+// availability invariant, not application plumbing.
+func IsLastAdmin(adminCount int64) bool {
+	return adminCount <= 1
+}
