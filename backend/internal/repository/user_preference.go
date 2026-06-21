@@ -71,7 +71,7 @@ func (r *userPreferenceRepo) FindByUserID(ctx context.Context, userID string) (*
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}
-		return nil, eris.Wrap(err, "repository: find user preference by user_id")
+		return nil, eris.Wrap(err, "repository: user preference: find by user_id")
 	}
 	return toDomainUserPreference(row), nil
 }
@@ -83,7 +83,7 @@ func (r *userPreferenceRepo) FindByUserIDs(ctx context.Context, userIDs []string
 	}
 	var rows []gormUserPreference
 	if err := r.db.WithContext(ctx).Where("user_id IN ?", userIDs).Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: find user preferences by user_ids")
+		return nil, eris.Wrap(err, "repository: user preference: find by user_ids")
 	}
 	out := make([]*domain.UserPreference, len(rows))
 	for i := range rows {
@@ -114,7 +114,7 @@ SET last_viewed_cardgroup_id = EXCLUDED.last_viewed_cardgroup_id,
 		if classified := classifyUserPreferenceCardgroupFKError(res.Error); classified != nil {
 			return classified
 		}
-		return eris.Wrap(res.Error, "repository: upsert last viewed cardgroup")
+		return eris.Wrap(res.Error, "repository: user preference: upsert last viewed cardgroup")
 	}
 	if res.RowsAffected == 0 {
 		return ErrCardgroupNotFound
@@ -148,7 +148,7 @@ SET learn_display_mode = EXCLUDED.learn_display_mode,
     updated_at         = EXCLUDED.updated_at`
 	res := r.db.WithContext(ctx).Exec(sql, userID, mode)
 	if res.Error != nil {
-		return eris.Wrap(res.Error, "repository: upsert learn display mode")
+		return eris.Wrap(res.Error, "repository: user preference: upsert learn display mode")
 	}
 	return nil
 }

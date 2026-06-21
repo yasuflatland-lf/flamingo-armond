@@ -132,7 +132,7 @@ func (r *userRepo) FindByID(ctx context.Context, id string) (*domain.User, error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}
-		return nil, eris.Wrap(err, "repository: find user by id")
+		return nil, eris.Wrap(err, "repository: user: find by id")
 	}
 	return userToDomain(row), nil
 }
@@ -144,7 +144,7 @@ func (r *userRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*dom
 	}
 	var rows []gormUser
 	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: find users by ids")
+		return nil, eris.Wrap(err, "repository: user: find by ids")
 	}
 	out := make(map[string]*domain.User, len(rows))
 	for i := range rows {
@@ -163,7 +163,7 @@ func (r *userRepo) Update(ctx context.Context, id string, patch UserUpdate) (*do
 
 	res := r.db.WithContext(ctx).Model(&gormUser{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
-		return nil, eris.Wrap(res.Error, "repository: update user")
+		return nil, eris.Wrap(res.Error, "repository: user: update")
 	}
 	if res.RowsAffected == 0 {
 		return nil, ErrNotFound
@@ -179,7 +179,7 @@ func (r *userRepo) UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch U
 	}
 	res := tx.WithContext(ctx).Model(&gormUser{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
-		return eris.Wrap(res.Error, "repository: update user tx")
+		return eris.Wrap(res.Error, "repository: user: update tx")
 	}
 	if res.RowsAffected == 0 {
 		return ErrNotFound
@@ -196,7 +196,7 @@ func (r *userRepo) UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string
 		Where("id = ? AND version = ?", id, expectedVersion).
 		Updates(updates)
 	if res.Error != nil {
-		return eris.Wrap(res.Error, "repository: update user tx versioned")
+		return eris.Wrap(res.Error, "repository: user: update tx versioned")
 	}
 	if res.RowsAffected > 0 {
 		return nil
@@ -208,7 +208,7 @@ func (r *userRepo) UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrNotFound
 		}
-		return eris.Wrap(err, "repository: update user tx versioned: probe user")
+		return eris.Wrap(err, "repository: user: update tx versioned: probe user")
 	}
 	return ErrConcurrentUpdate
 }
@@ -219,7 +219,7 @@ func (r *userRepo) UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string
 func (r *userRepo) DeleteAuthUser(ctx context.Context, id string) error {
 	res := r.db.WithContext(ctx).Exec("DELETE FROM auth.users WHERE id = ?", id)
 	if res.Error != nil {
-		return eris.Wrap(res.Error, "repository: delete auth user")
+		return eris.Wrap(res.Error, "repository: user: delete auth user")
 	}
 	if res.RowsAffected == 0 {
 		return ErrNotFound
@@ -239,7 +239,7 @@ func (r *userRepo) LastSignInByUserIDs(ctx context.Context, ids []string) (map[s
 		Select("id", "last_sign_in_at").
 		Where("id IN ?", ids).
 		Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: last sign-in by user ids")
+		return nil, eris.Wrap(err, "repository: user: last sign-in by ids")
 	}
 	out := make(map[string]*time.Time, len(rows))
 	for i := range rows {
@@ -294,7 +294,7 @@ func (r *userRepo) ListPage(
 	}
 	var total int64
 	if err := countQ.Count(&total).Error; err != nil {
-		return nil, 0, eris.Wrap(err, "repository: count users")
+		return nil, 0, eris.Wrap(err, "repository: user: count")
 	}
 
 	if first == 0 && last == 0 {
@@ -335,7 +335,7 @@ func (r *userRepo) ListPage(
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil, 0, ErrCursorNotFound
 			}
-			return nil, 0, eris.Wrap(err, "repository: hydrate user cursor")
+			return nil, 0, eris.Wrap(err, "repository: user: hydrate cursor")
 		}
 
 		clauseSQL, args := userCursorWhere(createdAtAsc, idAsc, cursorRow)
@@ -346,7 +346,7 @@ func (r *userRepo) ListPage(
 
 	var rows []gormUser
 	if err := q.Find(&rows).Error; err != nil {
-		return nil, 0, eris.Wrap(err, "repository: list users page")
+		return nil, 0, eris.Wrap(err, "repository: user: list page")
 	}
 
 	if reverse {

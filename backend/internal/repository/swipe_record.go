@@ -49,7 +49,7 @@ func (r *swipeRecordRepo) FindByIDs(ctx context.Context, ids []string) (map[stri
 	}
 	var rows []gormSwipeRecord
 	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: find swipe records by ids")
+		return nil, eris.Wrap(err, "repository: swipe record: find by ids")
 	}
 	out := make(map[string]*domain.SwipeRecord, len(rows))
 	for i := range rows {
@@ -65,7 +65,7 @@ func (r *swipeRecordRepo) FindByUserAndCardgroup(ctx context.Context, userID, ca
 		Where("user_id = ? AND cardgroup_id = ?", userID, cardgroupID).
 		Order("reviewed_at DESC, id DESC").
 		Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: find swipe records by user and cardgroup")
+		return nil, eris.Wrap(err, "repository: swipe record: find by user and cardgroup")
 	}
 	out := make([]*domain.SwipeRecord, len(rows))
 	for i := range rows {
@@ -85,7 +85,7 @@ func (r *swipeRecordRepo) ListRecentByUser(ctx context.Context, userID string, l
 		Order("reviewed_at DESC, id DESC").
 		Limit(limit).
 		Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: list recent swipe records by user")
+		return nil, eris.Wrap(err, "repository: swipe record: list recent by user")
 	}
 
 	out := make([]*domain.SwipeRecord, len(rows))
@@ -97,7 +97,7 @@ func (r *swipeRecordRepo) ListRecentByUser(ctx context.Context, userID string, l
 
 func (r *swipeRecordRepo) CreateTx(ctx context.Context, tx *gorm.DB, sr *domain.SwipeRecord) error {
 	if err := tx.WithContext(ctx).Create(swipeRecordToRow(sr)).Error; err != nil {
-		return eris.Wrap(err, "repository: create swipe record")
+		return eris.Wrap(err, "repository: swipe record: create")
 	}
 	return nil
 }

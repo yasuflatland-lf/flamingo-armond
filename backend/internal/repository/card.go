@@ -130,7 +130,7 @@ func findCardByID(ctx context.Context, db *gorm.DB, id string) (*domain.Card, er
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}
-		return nil, eris.Wrap(err, "repository: find card by id")
+		return nil, eris.Wrap(err, "repository: card: find by id")
 	}
 	return cardToDomain(row), nil
 }
@@ -141,7 +141,7 @@ func (r *cardRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*dom
 	}
 	var rows []gormCard
 	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: find cards by ids")
+		return nil, eris.Wrap(err, "repository: card: find by ids")
 	}
 	out := make(map[string]*domain.Card, len(rows))
 	for i := range rows {
@@ -157,7 +157,7 @@ func (r *cardRepo) FindByCardgroup(ctx context.Context, cardgroupID string) ([]*
 		Where("cardgroup_id = ?", cardgroupID).
 		Order("created_at ASC, id ASC").
 		Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: find cards by cardgroup")
+		return nil, eris.Wrap(err, "repository: card: find by cardgroup")
 	}
 	out := make([]*domain.Card, len(rows))
 	for i := range rows {
@@ -181,7 +181,7 @@ func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {
 			strings.Contains(pgErr.ConstraintName, "uq_cards_cardgroup_front") {
 			return ErrCardDuplicateFront
 		}
-		return eris.Wrap(err, "repository: create card")
+		return eris.Wrap(err, "repository: card: create")
 	}
 	return nil
 }
@@ -195,7 +195,7 @@ func (r *cardRepo) FindByCardgroupAndFront(ctx context.Context, cardgroupID, fro
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}
-		return nil, eris.Wrap(err, "repository: find card by cardgroup and front")
+		return nil, eris.Wrap(err, "repository: card: find by cardgroup and front")
 	}
 	return cardToDomain(row), nil
 }
@@ -214,7 +214,7 @@ func (r *cardRepo) Update(ctx context.Context, id string, patch CardUpdate) (*do
 
 	res := r.db.WithContext(ctx).Model(&gormCard{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
-		return nil, eris.Wrap(res.Error, "repository: update card")
+		return nil, eris.Wrap(res.Error, "repository: card: update")
 	}
 	if res.RowsAffected == 0 {
 		return nil, ErrNotFound
@@ -225,7 +225,7 @@ func (r *cardRepo) Update(ctx context.Context, id string, patch CardUpdate) (*do
 func (r *cardRepo) Delete(ctx context.Context, id string) error {
 	res := r.db.WithContext(ctx).Where("id = ?", id).Delete(&gormCard{})
 	if res.Error != nil {
-		return eris.Wrap(res.Error, "repository: delete card")
+		return eris.Wrap(res.Error, "repository: card: delete")
 	}
 	if res.RowsAffected == 0 {
 		return ErrNotFound
