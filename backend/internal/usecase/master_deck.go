@@ -108,10 +108,8 @@ func NewMasterDeckUsecase(
 		masterCard: masterCard,
 		userCard:   userCard,
 		userCG:     userCG,
-		tx: func(ctx context.Context, fn func(tx *gorm.DB) error) error {
-			return db.WithContext(ctx).Transaction(fn)
-		},
-		logger: logger,
+		tx:         newTxRunner(db),
+		logger:     logger,
 	}
 }
 

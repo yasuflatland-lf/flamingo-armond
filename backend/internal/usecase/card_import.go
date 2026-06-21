@@ -121,11 +121,7 @@ func NewCardImportUsecase(cardgroupRepo CardgroupOwnershipFinder, cardRepo CardI
 		panic("usecase: card import: logger is required")
 	}
 	uc := &cardImportUsecase{cardgroupRepo: cardgroupRepo, cardRepo: cardRepo, processCardImport: textdic.Process, logger: logger}
-	if db != nil {
-		uc.tx = func(ctx context.Context, fn func(tx *gorm.DB) error) error {
-			return db.WithContext(ctx).Transaction(fn)
-		}
-	}
+	uc.tx = newTxRunner(db)
 	return uc
 }
 
