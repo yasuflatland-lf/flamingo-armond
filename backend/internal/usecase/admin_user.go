@@ -160,11 +160,7 @@ func NewAdminUser(
 		panic("usecase: admin user: logger is required")
 	}
 	uc := &adminUserUsecase{users: users, roles: roles, userRoles: userRoles, adminGate: adminGate, logger: logger}
-	if db != nil {
-		uc.tx = func(ctx context.Context, fn func(tx *gorm.DB) error) error {
-			return db.WithContext(ctx).Transaction(fn)
-		}
-	}
+	uc.tx = newTxRunner(db)
 	return uc
 }
 

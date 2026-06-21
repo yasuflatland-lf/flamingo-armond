@@ -96,11 +96,7 @@ func NewCardUsecase(
 		observer:      normalizeCardObserver(observer),
 		logger:        logger,
 	}
-	if db != nil {
-		uc.tx = func(ctx context.Context, fn func(tx *gorm.DB) error) error {
-			return db.WithContext(ctx).Transaction(fn)
-		}
-	}
+	uc.tx = newTxRunner(db)
 	return uc
 }
 
