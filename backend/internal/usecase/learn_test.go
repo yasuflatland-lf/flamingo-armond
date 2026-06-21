@@ -469,7 +469,7 @@ func TestLearnUsecasePracticeTodaysCards_PassesJSTStartOfDayAsReviewedAfter(t *t
 	t.Parallel()
 
 	now := time.Date(2026, 6, 6, 16, 30, 0, 0, time.UTC)
-	wantBoundary := time.Date(2026, 6, 7, 0, 0, 0, 0, jstZone)
+	wantBoundary := time.Date(2026, 6, 7, 0, 0, 0, 0, time.FixedZone("JST", 9*60*60))
 	cardRepo := &mockLearnCardRepo{}
 	uc := newPracticeUsecase(
 		cardRepo,
@@ -634,46 +634,6 @@ func TestLearnUsecaseNextDueCards_PassesJSTStartOfDayAsReviewedBefore(t *testing
 			require.NoError(t, err)
 			require.True(t, cardRepo.reviewedBefore.Equal(tc.want),
 				"reviewedBefore: got %v, want instant %v", cardRepo.reviewedBefore, tc.want)
-		})
-	}
-}
-
-// TestStartOfDayJST pins the "previous day" boundary used by the review
-// slots: JST (UTC+9) midnight at or before now, returned as an instant.
-func TestStartOfDayJST(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name string
-		now  time.Time
-		want time.Time
-	}{
-		{
-			name: "just before JST midnight",
-			now:  time.Date(2026, 6, 5, 14, 59, 59, 0, time.UTC), // 23:59:59 JST
-			want: time.Date(2026, 6, 4, 15, 0, 0, 0, time.UTC),   // 2026-06-05 00:00 JST
-		},
-		{
-			name: "exactly JST midnight",
-			now:  time.Date(2026, 6, 5, 15, 0, 0, 0, time.UTC), // 2026-06-06 00:00 JST
-			want: time.Date(2026, 6, 5, 15, 0, 0, 0, time.UTC),
-		},
-		{
-			name: "JST noon",
-			now:  time.Date(2026, 6, 5, 3, 0, 0, 0, time.UTC), // 12:00 JST
-			want: time.Date(2026, 6, 4, 15, 0, 0, 0, time.UTC),
-		},
-		{
-			name: "input zone does not matter, only the instant",
-			now:  time.Date(2026, 6, 5, 12, 0, 0, 0, time.FixedZone("JST", 9*60*60)), // = 03:00 UTC
-			want: time.Date(2026, 6, 4, 15, 0, 0, 0, time.UTC),
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			got := startOfDayJST(tc.now)
-			require.True(t, got.Equal(tc.want), "got %v, want instant %v", got, tc.want)
 		})
 	}
 }
