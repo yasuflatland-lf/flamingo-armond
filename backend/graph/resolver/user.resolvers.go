@@ -11,8 +11,6 @@ import (
 	"backend/internal/gqlerr"
 	"backend/internal/usecase"
 	"context"
-
-	"github.com/rotisserie/eris"
 )
 
 // UpdateProfile is the resolver for the updateProfile field.
@@ -33,8 +31,7 @@ func (r *mutationResolver) UpdateProfile(ctx context.Context, input model.Update
 		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.User == nil {
-		return nil, gqlerr.Internal(ctx,
-			eris.New("resolver: UpdateProfileOutcome has no variant set"))
+		return nil, noVariantSet(ctx, "UpdateProfileOutcome")
 	}
 	return model.UpdateProfileSuccess{User: toUserModel(outcome.User)}, nil
 }

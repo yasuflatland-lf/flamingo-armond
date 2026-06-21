@@ -56,6 +56,10 @@ func toMasterCardgroupModel(item *repository.MasterCatalogItem) *model.MasterCar
 	return toMasterCardgroupModelFromParts(item.Cardgroup, int(item.CardCount))
 }
 
+// cardCountResolvedElsewhere marks a single-deck mapping whose card count is
+// served by masterCardsConnection.totalCount, not this response.
+const cardCountResolvedElsewhere = 0
+
 // toMasterCardgroupModelFromParts maps a domain master cardgroup plus a known
 // card count to the generated model. Shared by the catalog list path and the
 // admin single-entity mutation responses.

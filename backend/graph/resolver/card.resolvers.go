@@ -20,13 +20,13 @@ import (
 
 // Cardgroup is the resolver for the cardgroup field.
 func (r *cardResolver) Cardgroup(ctx context.Context, obj *model.Card) (*model.Cardgroup, error) {
-	loaders := loader.For(ctx)
-	if loaders == nil {
-		return nil, gqlerr.Internal(ctx, eris.New("loader: middleware not installed for /query"))
+	loaders, gqlErr := loadersOrInternal(ctx)
+	if gqlErr != nil {
+		return nil, gqlErr
 	}
 	cg, err := loaders.Cardgroup.Load(ctx, obj.CardgroupID)()
 	if err != nil {
-		return nil, gqlerr.Internal(ctx, err)
+		return nil, classifyLoaderErr(ctx, err, "resolver: cardgroup")
 	}
 	return toCardgroupModel(cg), nil
 }
@@ -43,7 +43,7 @@ func (r *cardResolver) UserCardState(ctx context.Context, obj *model.Card) (*mod
 	}
 	ucs, err := loaders.UserCardFSRS.Load(ctx, obj.ID)()
 	if err != nil {
-		return nil, gqlerr.Internal(ctx, err)
+		return nil, classifyLoaderErr(ctx, err, "resolver: user card state")
 	}
 	// The "missing FSRS record means a brand-new card with default state"
 	// decision is an application policy; delegate it to LearnUC instead of
@@ -93,8 +93,7 @@ func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCardIn
 		}, nil
 	}
 	if outcome.Card == nil {
-		return nil, gqlerr.Internal(ctx,
-			eris.New("resolver: CreateCardOutcome has no variant set"))
+		return nil, noVariantSet(ctx, "CreateCardOutcome")
 	}
 	return model.CreateCardSuccess{Card: toCardModel(outcome.Card)}, nil
 }
@@ -117,8 +116,7 @@ func (r *mutationResolver) UpdateCard(ctx context.Context, id string, input mode
 		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.Card == nil {
-		return nil, gqlerr.Internal(ctx,
-			eris.New("resolver: UpdateCardOutcome has no variant set"))
+		return nil, noVariantSet(ctx, "UpdateCardOutcome")
 	}
 	return model.UpdateCardSuccess{Card: toCardModel(outcome.Card)}, nil
 }

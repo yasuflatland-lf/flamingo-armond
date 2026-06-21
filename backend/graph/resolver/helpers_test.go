@@ -1,15 +1,21 @@
 package resolver
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
+	"github.com/rotisserie/eris"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"backend/graph/model"
 	"backend/internal/domain"
+	"backend/internal/gqlerr"
+	"backend/internal/loader"
 	"backend/internal/usecase"
 )
 
@@ -282,4 +288,107 @@ func TestToMasterCardConnectionModel_FiltersNilNodes(t *testing.T) {
 	assert.NotNil(t, conn.Edges[0].Node, "edge.Node must be non-nil to satisfy MasterCardEdge schema constraint")
 	assert.Equal(t, "mc1", conn.Edges[0].Node.ID)
 	assert.Equal(t, 1, conn.TotalCount, "TotalCount should pass through from output")
+}
+
+// ---------------------------------------------------------------------------
+// loadersOrInternal — DataLoader registry nil-guard
+// ---------------------------------------------------------------------------
+
+// TestLoadersOrInternal_MissingMiddlewareReturnsInternal verifies that a context
+// without an installed loader registry yields a non-nil INTERNAL wire error and
+// a nil registry.
+func TestLoadersOrInternal_MissingMiddlewareReturnsInternal(t *testing.T) {
+	t.Parallel()
+
+	loaders, gqlErr := loadersOrInternal(context.Background())
+
+	assert.Nil(t, loaders, "registry must be nil when middleware is not installed")
+	require.NotNil(t, gqlErr, "want non-nil error when middleware is not installed")
+	assert.True(t, gqlerr.IsCode(gqlErr, gqlerr.CodeInternal),
+		"want INTERNAL wire code, got %v", gqlErr)
+}
+
+// TestLoadersOrInternal_InstalledReturnsRegistry verifies that an installed
+// loader registry is returned with a nil error.
+func TestLoadersOrInternal_InstalledReturnsRegistry(t *testing.T) {
+	t.Parallel()
+
+	want := &loader.Loaders{}
+	ctx := loader.WithContext(context.Background(), want)
+
+	loaders, gqlErr := loadersOrInternal(ctx)
+
+	assert.Nil(t, gqlErr, "want nil error when middleware is installed")
+	assert.Same(t, want, loaders, "want the installed registry returned unchanged")
+}
+
+// ---------------------------------------------------------------------------
+// classifyLoaderErr — CANCELLED vs INTERNAL ladder
+// ---------------------------------------------------------------------------
+
+// TestClassifyLoaderErr_CancelledContexts verifies that a cancelled or
+// deadline-exceeded context maps to the CANCELLED wire code.
+func TestClassifyLoaderErr_CancelledContexts(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"context.Canceled", context.Canceled},
+		{"context.DeadlineExceeded", context.DeadlineExceeded},
+		{"wrapped context.Canceled", eris.Wrap(context.Canceled, "loader: batch")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := classifyLoaderErr(context.Background(), tc.err, "resolver: test")
+			require.NotNil(t, got)
+			assert.True(t, gqlerr.IsCode(got, gqlerr.CodeCancelled),
+				"want CANCELLED wire code for %s, got %v", tc.name, got)
+		})
+	}
+}
+
+// TestClassifyLoaderErr_GenericErrorIsInternalWithLabel verifies that a generic
+// loader error maps to INTERNAL and that the supplied label travels in the
+// logged error_chain (the wire message itself is redacted).
+func TestClassifyLoaderErr_GenericErrorIsInternalWithLabel(t *testing.T) {
+	// Not parallel: mutates the global slog default.
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	const label = "resolver: owner"
+	got := classifyLoaderErr(context.Background(), errors.New("db down"), label)
+
+	require.NotNil(t, got)
+	assert.True(t, gqlerr.IsCode(got, gqlerr.CodeInternal),
+		"want INTERNAL wire code for a generic loader error, got %v", got)
+	assert.Contains(t, buf.String(), label,
+		"expected the wrap label to appear in the logged error_chain, got %q", buf.String())
+}
+
+// ---------------------------------------------------------------------------
+// noVariantSet — outcome-union "no variant" internal guard
+// ---------------------------------------------------------------------------
+
+// TestNoVariantSet_MessageAndCode verifies that noVariantSet emits the exact
+// "resolver: <name> has no variant set" message in the logged chain and an
+// INTERNAL wire code.
+func TestNoVariantSet_MessageAndCode(t *testing.T) {
+	// Not parallel: mutates the global slog default.
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	got := noVariantSet(context.Background(), "CreateCardOutcome")
+
+	require.NotNil(t, got)
+	assert.True(t, gqlerr.IsCode(got, gqlerr.CodeInternal),
+		"want INTERNAL wire code, got %v", got)
+	assert.Contains(t, buf.String(), "resolver: CreateCardOutcome has no variant set",
+		"expected the exact no-variant message in the logged error_chain, got %q", buf.String())
 }

@@ -9,22 +9,19 @@ import (
 	"backend/graph/generated"
 	"backend/graph/model"
 	"backend/internal/gqlerr"
-	"backend/internal/loader"
 	"backend/internal/usecase"
 	"context"
-
-	"github.com/rotisserie/eris"
 )
 
 // Owner is the resolver for the owner field.
 func (r *cardgroupResolver) Owner(ctx context.Context, obj *model.Cardgroup) (*model.User, error) {
-	loaders := loader.For(ctx)
-	if loaders == nil {
-		return nil, gqlerr.Internal(ctx, eris.New("loader: middleware not installed for /query"))
+	loaders, gqlErr := loadersOrInternal(ctx)
+	if gqlErr != nil {
+		return nil, gqlErr
 	}
 	user, err := loaders.User.Load(ctx, obj.OwnerID)()
 	if err != nil {
-		return nil, gqlerr.Internal(ctx, err)
+		return nil, classifyLoaderErr(ctx, err, "resolver: owner")
 	}
 	return toUserModel(user), nil
 }
@@ -53,8 +50,7 @@ func (r *mutationResolver) CreateCardgroup(ctx context.Context, input model.NewC
 		}, nil
 	}
 	if outcome.Cardgroup == nil {
-		return nil, gqlerr.Internal(ctx,
-			eris.New("resolver: CreateCardgroupOutcome has no variant set"))
+		return nil, noVariantSet(ctx, "CreateCardgroupOutcome")
 	}
 	return model.CreateCardgroupSuccess{Cardgroup: toCardgroupModel(outcome.Cardgroup)}, nil
 }
@@ -74,8 +70,7 @@ func (r *mutationResolver) UpdateCardgroup(ctx context.Context, id string, input
 		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.Cardgroup == nil {
-		return nil, gqlerr.Internal(ctx,
-			eris.New("resolver: UpdateCardgroupOutcome has no variant set"))
+		return nil, noVariantSet(ctx, "UpdateCardgroupOutcome")
 	}
 	return model.UpdateCardgroupSuccess{Cardgroup: toCardgroupModel(outcome.Cardgroup)}, nil
 }

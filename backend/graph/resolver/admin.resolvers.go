@@ -8,14 +8,10 @@ package resolver
 import (
 	"backend/graph/model"
 	"backend/internal/gqlerr"
-	"backend/internal/loader"
 	"backend/internal/usecase"
 	"context"
-	"errors"
 	"fmt"
 	"time"
-
-	"github.com/rotisserie/eris"
 )
 
 // AdminEditUser is the resolver for the adminEditUser field.
@@ -43,8 +39,7 @@ func (r *mutationResolver) AdminEditUser(ctx context.Context, id string, input m
 		}, nil
 	}
 	if outcome.User == nil {
-		return nil, gqlerr.Internal(ctx,
-			eris.New("resolver: AdminEditUserOutcome has no variant set"))
+		return nil, noVariantSet(ctx, "AdminEditUserOutcome")
 	}
 	return model.AdminEditUserSuccess{User: toUserModel(outcome.User)}, nil
 }
@@ -64,8 +59,7 @@ func (r *mutationResolver) CreateRole(ctx context.Context, name string) (model.C
 		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.Role == nil {
-		return nil, gqlerr.Internal(ctx,
-			eris.New("resolver: CreateRoleOutcome has no variant set"))
+		return nil, noVariantSet(ctx, "CreateRoleOutcome")
 	}
 	return model.CreateRoleSuccess{Role: toRoleModel(outcome.Role)}, nil
 }
@@ -89,8 +83,7 @@ func (r *mutationResolver) UpdateRole(ctx context.Context, id string, name strin
 		}, nil
 	}
 	if outcome.Role == nil {
-		return nil, gqlerr.Internal(ctx,
-			eris.New("resolver: UpdateRoleOutcome has no variant set"))
+		return nil, noVariantSet(ctx, "UpdateRoleOutcome")
 	}
 	return model.UpdateRoleSuccess{Role: toRoleModel(outcome.Role)}, nil
 }
@@ -163,16 +156,13 @@ func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Rol
 // LastSignInByUserID DataLoader (batched, so the admin user list issues one
 // auth.users read per page). A nil result means the user has never signed in.
 func (r *userResolver) LastSignInAt(ctx context.Context, obj *model.User) (*time.Time, error) {
-	loaders := loader.For(ctx)
-	if loaders == nil {
-		return nil, gqlerr.Internal(ctx, eris.New("loader: middleware not installed for /query"))
+	loaders, gqlErr := loadersOrInternal(ctx)
+	if gqlErr != nil {
+		return nil, gqlErr
 	}
 	t, err := loaders.LastSignInByUserID.Load(ctx, obj.ID)()
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, gqlerr.Cancelled(ctx, err)
-		}
-		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "resolver: last sign in"))
+		return nil, classifyLoaderErr(ctx, err, "resolver: last sign in")
 	}
 	return t, nil
 }

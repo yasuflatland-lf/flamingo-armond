@@ -9,9 +9,7 @@ import (
 	"backend/graph/model"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
-	"backend/internal/loader"
 	"context"
-	"errors"
 
 	"github.com/rotisserie/eris"
 )
@@ -36,17 +34,14 @@ func (r *mutationResolver) UpdateLearnDisplayMode(ctx context.Context, mode mode
 
 // LearnDisplayMode is the resolver for the learnDisplayMode field.
 func (r *userResolver) LearnDisplayMode(ctx context.Context, obj *model.User) (model.LearnDisplayMode, error) {
-	loaders := loader.For(ctx)
-	if loaders == nil {
-		return "", gqlerr.Internal(ctx, eris.New("loader: middleware not installed for /query"))
+	loaders, gqlErr := loadersOrInternal(ctx)
+	if gqlErr != nil {
+		return "", gqlErr
 	}
 
 	pref, err := loaders.UserPreference.Load(ctx, obj.ID)()
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return "", gqlerr.Cancelled(ctx, err)
-		}
-		return "", gqlerr.Internal(ctx, eris.Wrap(err, "resolver: user preference"))
+		return "", classifyLoaderErr(ctx, err, "resolver: user preference")
 	}
 	mode := domain.DefaultLearnDisplayMode
 	if pref != nil {
