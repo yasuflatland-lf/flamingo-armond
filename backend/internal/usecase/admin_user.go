@@ -15,26 +15,18 @@ import (
 )
 
 // AdminUserConnection is the usecase-level Relay-style page result for
-// AdminUser.List. The resolver wraps it into model.UserConnection.
+// AdminUser.List. The resolver wraps it into model.UserConnection. It mirrors
+// the other connection outputs (e.g. CardConnectionOutput): Users holds the raw
+// page rows and StartCur/EndCur carry RAW user ids; the resolver applies
+// cursor.Encode exactly once at the resolver→model boundary (see the "Cursor
+// encoding happens exactly once" rule in .claude/rules/pagination.md).
 type AdminUserConnection struct {
-	Edges      []AdminUserEdge
-	PageInfo   PageInfo
+	Users      []*domain.User
 	TotalCount int64
-}
-
-// AdminUserEdge pairs a node with its opaque cursor (currently the user UUID).
-type AdminUserEdge struct {
-	Cursor string
-	Node   *domain.User
-}
-
-// PageInfo mirrors the GraphQL PageInfo type. The pointer-typed cursors
-// preserve "absent" semantics for the empty-page case.
-type PageInfo struct {
-	HasNextPage     bool
-	HasPreviousPage bool
-	StartCursor     *string
-	EndCursor       *string
+	HasNext    bool
+	HasPrev    bool
+	StartCur   string
+	EndCur     string
 }
 
 // AdminEditUserInput captures the atomic admin edit shape. DisplayName and
@@ -207,17 +199,35 @@ func (u *adminUserUsecase) List(
 		return nil, err
 	}
 
+	// Decode the opaque inbound cursors to raw user ids before the repository's
+	// id-based hydration. A malformed v1 cursor is BAD_USER_INPUT; the repository
+	// looks up the cursor row by raw id, so it must never receive the v1 envelope.
+	afterID, afterPresent, err := decodeCursorOrBadInput(after, "after")
+	if err != nil {
+		return nil, err
+	}
+	beforeID, beforePresent, err := decodeCursorOrBadInput(before, "before")
+	if err != nil {
+		return nil, err
+	}
+	var afterPtr, beforePtr *string
+	if afterPresent {
+		afterPtr = &afterID
+	}
+	if beforePresent {
+		beforePtr = &beforeID
+	}
+
 	var total int64
-	// admin user cursors are opaque strings resolved inside the repository (no
-	// hydration step here), so the raw after/before nil check IS the post-decode
-	// presence assemblePage expects.
-	users, hasNext, hasPrev, err := assemblePage(wantFirst, wantLast, after != nil, before != nil,
+	// afterPresent/beforePresent are the post-decode cursor presence that
+	// assemblePage expects (a malformed cursor errored out above).
+	users, hasNext, hasPrev, err := assemblePage(wantFirst, wantLast, afterPresent, beforePresent,
 		func(repoFirst, repoLast int) ([]*domain.User, error) {
-			rows, t, e := u.users.ListPage(ctx, after, before, repoFirst, repoLast, search)
+			rows, t, e := u.users.ListPage(ctx, afterPtr, beforePtr, repoFirst, repoLast, search)
 			if e != nil {
 				if errors.Is(e, repository.ErrCursorNotFound) {
 					field := "after"
-					if after == nil && before != nil {
+					if !afterPresent && beforePresent {
 						field = "before"
 					}
 					return nil, ucerr.NewValidationError(field, "cursor not found")
@@ -235,18 +245,15 @@ func (u *adminUserUsecase) List(
 		return nil, err
 	}
 
-	out := &AdminUserConnection{TotalCount: total}
-	out.PageInfo.HasNextPage = hasNext
-	out.PageInfo.HasPreviousPage = hasPrev
-	out.Edges = make([]AdminUserEdge, len(users))
-	for i, user := range users {
-		out.Edges[i] = AdminUserEdge{Cursor: string(user.ID), Node: user}
+	out := &AdminUserConnection{
+		Users:      users,
+		TotalCount: total,
+		HasNext:    hasNext,
+		HasPrev:    hasPrev,
 	}
-	if len(users) > 0 {
-		start, end := firstLastCursor(users, func(u *domain.User) string { return string(u.ID) })
-		out.PageInfo.StartCursor = &start
-		out.PageInfo.EndCursor = &end
-	}
+	// firstLastCursor returns "","" on an empty page; encodeCursor maps "" to a
+	// nil cursor at the resolver, preserving the absent-cursor empty-page shape.
+	out.StartCur, out.EndCur = firstLastCursor(users, func(u *domain.User) string { return string(u.ID) })
 	return out, nil
 }
 

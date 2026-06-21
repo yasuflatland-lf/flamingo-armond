@@ -12,6 +12,7 @@ import (
 	"backend/graph/generated"
 	"backend/graph/resolver"
 	"backend/internal/auth"
+	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
 	"backend/internal/loader"
@@ -172,7 +173,7 @@ func ctxWithRolesRepo(base context.Context, repo *mockRoleByUserIDRepo) context.
 // Query.users tests
 // ---------------------------------------------------------------------------
 
-const usersQuery = `{"query":"{ users(first: 5) { edges { cursor node { id } } pageInfo { hasNextPage hasPreviousPage } totalCount } }"}`
+const usersQuery = `{"query":"{ users(first: 5) { edges { cursor node { id } } pageInfo { hasNextPage hasPreviousPage startCursor endCursor } totalCount } }"}`
 
 // TestAdminUserResolver_Users_NonAdmin verifies that a non-admin caller
 // (the mock usecase returns FORBIDDEN) gets errors[0].extensions.code ==
@@ -199,11 +200,12 @@ func TestAdminUserResolver_Users_AdminHappyPath(t *testing.T) {
 
 	mock := &mockAdminUserUsecase{
 		listResult: &usecase.AdminUserConnection{
-			Edges: []usecase.AdminUserEdge{
-				{Cursor: "u1", Node: &domain.User{ID: "u1", DisplayName: dnPtr("Alice")}},
-				{Cursor: "u2", Node: &domain.User{ID: "u2", DisplayName: dnPtr("Bob")}},
+			Users: []*domain.User{
+				{ID: "u1", DisplayName: dnPtr("Alice")},
+				{ID: "u2", DisplayName: dnPtr("Bob")},
 			},
-			PageInfo:   usecase.PageInfo{HasNextPage: false, HasPreviousPage: false},
+			StartCur:   "u1",
+			EndCur:     "u2",
 			TotalCount: 2,
 		},
 	}
@@ -225,6 +227,34 @@ func TestAdminUserResolver_Users_AdminHappyPath(t *testing.T) {
 	total, _ := conn["totalCount"].(float64)
 	if int(total) != 2 {
 		t.Fatalf("expected totalCount=2, got %v", conn["totalCount"])
+	}
+
+	// The admin-user connection now emits opaque v1 cursors via buildEdges,
+	// exactly like the other four connections — never the raw user UUID. Each
+	// edge cursor is cursor.Encode(node.id) and round-trips back to the raw id.
+	for i, want := range []string{"u1", "u2"} {
+		edge, _ := edges[i].(map[string]any)
+		gotCur, _ := edge["cursor"].(string)
+		if gotCur != cursor.Encode(want) {
+			t.Fatalf("edges[%d].cursor = %q, want encoded %q", i, gotCur, cursor.Encode(want))
+		}
+		if gotCur == want {
+			t.Fatalf("edges[%d].cursor = %q must not be the raw user id", i, gotCur)
+		}
+		dec, err := cursor.Decode(gotCur)
+		if err != nil || dec != want {
+			t.Fatalf("edges[%d].cursor decode = (%q, %v), want (%q, nil)", i, dec, err, want)
+		}
+	}
+
+	// PageInfo start/end cursors are encoded once at the resolver boundary from
+	// the usecase's RAW StartCur/EndCur.
+	pageInfo, _ := conn["pageInfo"].(map[string]any)
+	if got, _ := pageInfo["startCursor"].(string); got != cursor.Encode("u1") {
+		t.Fatalf("pageInfo.startCursor = %q, want %q", got, cursor.Encode("u1"))
+	}
+	if got, _ := pageInfo["endCursor"].(string); got != cursor.Encode("u2") {
+		t.Fatalf("pageInfo.endCursor = %q, want %q", got, cursor.Encode("u2"))
 	}
 }
 
@@ -248,12 +278,11 @@ func TestAdminUserResolver_Roles_FromUsecase(t *testing.T) {
 
 	mock := &mockAdminUserUsecase{
 		listResult: &usecase.AdminUserConnection{
-			Edges: []usecase.AdminUserEdge{
-				{Cursor: "u1", Node: &domain.User{ID: "u1"}},
-				{Cursor: "u2", Node: &domain.User{ID: "u2"}},
-				{Cursor: "u3", Node: &domain.User{ID: "u3"}},
+			Users: []*domain.User{
+				{ID: "u1"},
+				{ID: "u2"},
+				{ID: "u3"},
 			},
-			PageInfo:   usecase.PageInfo{},
 			TotalCount: 3,
 		},
 	}

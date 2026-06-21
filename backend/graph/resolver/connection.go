@@ -39,10 +39,9 @@ func buildPageInfo(hasNext, hasPrev bool, start, end *string) *model.PageInfo {
 // is nil so the non-null edge.node schema contract holds, and otherwise appends
 // an edge whose cursor is cursor.Encode(getID(item)). cursor.Encode is called
 // exactly once per edge inside the loop, preserving the "cursor encoding happens
-// exactly once" invariant in .claude/rules/pagination.md. The four to*ConnectionModel
-// shims below pass their node-mapper, id accessor, and edge constructor; only
-// toUserConnectionModel stays separate because its input carries pre-encoded
-// cursors rather than raw ids.
+// exactly once" invariant in .claude/rules/pagination.md. All five
+// to*ConnectionModel shims below pass their node-mapper, id accessor, and edge
+// constructor.
 func buildEdges[Item any, Node any, Edge any](
 	ctx context.Context,
 	items []Item,
@@ -137,18 +136,14 @@ func toUserConnectionModel(ctx context.Context, uc *usecase.AdminUserConnection)
 	if uc == nil {
 		return &model.UserConnection{Edges: []*model.UserEdge{}, PageInfo: &model.PageInfo{}}
 	}
-	edges := make([]*model.UserEdge, 0, len(uc.Edges))
-	for _, e := range uc.Edges {
-		um := toUserModel(e.Node)
-		if um == nil {
-			slog.WarnContext(ctx, "toUserConnectionModel: skipping nil entry")
-			continue
-		}
-		edges = append(edges, &model.UserEdge{Cursor: e.Cursor, Node: um})
-	}
+	edges := buildEdges(ctx, uc.Users, "toUserConnectionModel",
+		toUserModel,
+		func(u *domain.User) string { return string(u.ID) },
+		func(cur string, n *model.User) *model.UserEdge { return &model.UserEdge{Cursor: cur, Node: n} },
+	)
 	return &model.UserConnection{
 		Edges:      edges,
-		PageInfo:   buildPageInfo(uc.PageInfo.HasNextPage, uc.PageInfo.HasPreviousPage, uc.PageInfo.StartCursor, uc.PageInfo.EndCursor),
+		PageInfo:   buildPageInfo(uc.HasNext, uc.HasPrev, encodeCursor(uc.StartCur), encodeCursor(uc.EndCur)),
 		TotalCount: int(uc.TotalCount),
 	}
 }
