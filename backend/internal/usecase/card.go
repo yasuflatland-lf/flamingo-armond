@@ -10,7 +10,6 @@ import (
 	"gorm.io/gorm"
 
 	"backend/internal/auth"
-	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
@@ -410,37 +409,23 @@ func (u *cardUsecase) ListCardsByCardgroupConnection(
 	}
 
 	out := &CardConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Cards: cards}
-	if len(cards) > 0 {
-		out.StartCur = cards[0].ID
-		out.EndCur = cards[len(cards)-1].ID
-	}
+	out.StartCur, out.EndCur = firstLastCursor(cards, func(c *domain.Card) string { return c.ID })
 	return out, nil
+}
+
+// cardOrderByColumns is the usecase→repository orderBy allowlist for cards.
+var cardOrderByColumns = map[CardOrderBy]repository.CardOrderBy{
+	CardOrderByID:        repository.CardOrderByID,
+	CardOrderByCreatedAt: repository.CardOrderByCreatedAt,
+	CardOrderByUpdatedAt: repository.CardOrderByUpdatedAt,
+	CardOrderByDue:       repository.CardOrderByDue,
 }
 
 // resolveOrderBy maps the typed usecase enums to the repository allowlist.
 // Defaults to (ID, ASC) when both are nil. The default arm is defense in
 // depth — gqlgen UnmarshalGQL already rejects invalid enum strings upstream.
 func resolveOrderBy(orderBy *CardOrderBy, dir *SortOrder) (repository.CardOrderBy, repository.SortOrder, error) {
-	field := repository.CardOrderByID
-	if orderBy != nil {
-		switch *orderBy {
-		case CardOrderByID:
-			field = repository.CardOrderByID
-		case CardOrderByCreatedAt:
-			field = repository.CardOrderByCreatedAt
-		case CardOrderByUpdatedAt:
-			field = repository.CardOrderByUpdatedAt
-		case CardOrderByDue:
-			field = repository.CardOrderByDue
-		default:
-			return "", "", ucerr.NewValidationError("orderBy", "invalid")
-		}
-	}
-	d, err := resolveSortDir(dir, repository.SortAsc)
-	if err != nil {
-		return "", "", err
-	}
-	return field, d, nil
+	return resolveOrderByColumn(orderBy, dir, cardOrderByColumns, repository.CardOrderByID, repository.SortAsc)
 }
 
 // resolveCursor decodes an opaque cursor string into a *repository.CardCursor
@@ -456,12 +441,12 @@ func (u *cardUsecase) resolveCursor(
 	orderBy repository.CardOrderBy,
 	field string,
 ) (*repository.CardCursor, error) {
-	if cursorStr == nil || *cursorStr == "" {
-		return nil, nil
-	}
-	id, err := cursor.Decode(*cursorStr)
+	id, present, err := decodeCursorOrBadInput(cursorStr, field)
 	if err != nil {
-		return nil, ucerr.NewValidationError(field, "invalid cursor")
+		return nil, err
+	}
+	if !present {
+		return nil, nil
 	}
 	c := &repository.CardCursor{ID: id}
 	if orderBy == repository.CardOrderByID {

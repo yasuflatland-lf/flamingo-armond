@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"backend/internal/cursor"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
 )
@@ -134,4 +135,62 @@ func assemblePage[T any](
 		hasNext = hasBefore
 	}
 	return items, hasNext, hasPrev, nil
+}
+
+// decodeCursorOrBadInput decodes an opaque cursor string, returning present=false
+// for a nil/empty cursor and a BAD_USER_INPUT validation error for a malformed one.
+// It covers only the decode+guard prefix shared by every aggregate's resolve*Cursor
+// method; the per-aggregate hydration (FindByID / FindPublishedByID) and the
+// repository cursor-struct population stay inline in each method.
+func decodeCursorOrBadInput(cursorStr *string, field string) (id string, present bool, err error) {
+	if cursorStr == nil || *cursorStr == "" {
+		return "", false, nil
+	}
+	id, err = cursor.Decode(*cursorStr)
+	if err != nil {
+		return "", false, ucerr.NewValidationError(field, "invalid cursor")
+	}
+	return id, true, nil
+}
+
+// resolveOrderByColumn maps the typed usecase orderBy enum to the repository
+// column via the supplied allowlist, defaulting to def when orderBy is nil, and
+// delegates the direction half to the shared resolveSortDir. An orderBy outside
+// the allowlist returns a BAD_USER_INPUT validation error; the default arm is
+// defense in depth — gqlgen UnmarshalGQL already rejects invalid enum strings
+// upstream. Each aggregate's resolve*OrderBy is a thin wrapper supplying its
+// own map + (default column, default direction).
+func resolveOrderByColumn[K comparable, V any](
+	orderBy *K,
+	dir *SortOrder,
+	allow map[K]V,
+	def V,
+	defDir repository.SortOrder,
+) (V, repository.SortOrder, error) {
+	field := def
+	if orderBy != nil {
+		col, ok := allow[*orderBy]
+		if !ok {
+			var zero V
+			return zero, "", ucerr.NewValidationError("orderBy", "invalid")
+		}
+		field = col
+	}
+	d, err := resolveSortDir(dir, defDir)
+	if err != nil {
+		var zero V
+		return zero, "", err
+	}
+	return field, d, nil
+}
+
+// firstLastCursor returns the id() of the first and last rows, or "","" when the
+// slice is empty. Shared by every connection usecase's StartCur / EndCur tail;
+// the id accessor extracts the raw node id (the resolver applies the cursor
+// encoder once downstream).
+func firstLastCursor[T any](rows []T, id func(T) string) (start, end string) {
+	if len(rows) == 0 {
+		return "", ""
+	}
+	return id(rows[0]), id(rows[len(rows)-1])
 }

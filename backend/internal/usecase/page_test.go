@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"backend/internal/cursor"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
 )
@@ -389,5 +390,196 @@ func TestResolveRelayPage_InvalidComboSkipsClamp(t *testing.T) {
 	}
 	if clampCalled {
 		t.Fatal("want clamp NOT called when validation fails")
+	}
+}
+
+// TestDecodeCursorOrBadInput covers the shared decode+guard prefix extracted
+// from the four resolve*Cursor methods: a nil/empty cursor yields present=false
+// with no error, a malformed v1 envelope is a field-level BAD_USER_INPUT
+// validation error, and a well-formed cursor decodes to the raw id.
+func TestDecodeCursorOrBadInput(t *testing.T) {
+	t.Parallel()
+
+	empty := ""
+	valid := cursor.Encode("abc123")
+	// A v1 envelope with a base64 payload that cannot be decoded.
+	bad := "v1:!!!not-base64!!!"
+
+	tests := []struct {
+		name        string
+		cursorStr   *string
+		wantID      string
+		wantPresent bool
+		wantErr     bool
+	}{
+		{name: "nil -> not present, no error", cursorStr: nil, wantPresent: false},
+		{name: "empty -> not present, no error", cursorStr: &empty, wantPresent: false},
+		{name: "valid -> decoded id, present", cursorStr: &valid, wantID: "abc123", wantPresent: true},
+		{name: "malformed -> validation error", cursorStr: &bad, wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			id, present, err := decodeCursorOrBadInput(tc.cursorStr, "after")
+			if tc.wantErr {
+				var ve *ucerr.ValidationError
+				if !errors.As(err, &ve) {
+					t.Fatalf("want ValidationError, got %v", err)
+				}
+				if ve.Field != "after" {
+					t.Fatalf("want field after, got %q", ve.Field)
+				}
+				if present || id != "" {
+					t.Fatalf("want empty/not-present on error, got id=%q present=%v", id, present)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if present != tc.wantPresent {
+				t.Fatalf("present: got %v, want %v", present, tc.wantPresent)
+			}
+			if id != tc.wantID {
+				t.Fatalf("id: got %q, want %q", id, tc.wantID)
+			}
+		})
+	}
+}
+
+// TestResolveOrderByColumn covers the generic table-driven orderBy resolver each
+// aggregate's resolve*OrderBy now wraps: nil orderBy yields the default column,
+// every mapped enum yields its repository column, an unmapped enum is a
+// BAD_USER_INPUT validation error, and the direction half is delegated to
+// resolveSortDir (an invalid direction surfaces its orderDirection error).
+func TestResolveOrderByColumn(t *testing.T) {
+	t.Parallel()
+
+	allow := map[CardOrderBy]repository.CardOrderBy{
+		CardOrderByID:        repository.CardOrderByID,
+		CardOrderByCreatedAt: repository.CardOrderByCreatedAt,
+		CardOrderByUpdatedAt: repository.CardOrderByUpdatedAt,
+		CardOrderByDue:       repository.CardOrderByDue,
+	}
+
+	createdAt := CardOrderByCreatedAt
+	due := CardOrderByDue
+	bogus := CardOrderBy("BOGUS")
+	descDir := SortOrderDesc
+	bogusDir := SortOrder("SIDEWAYS")
+
+	t.Run("nil orderBy -> default column and direction", func(t *testing.T) {
+		t.Parallel()
+		field, dir, err := resolveOrderByColumn(nil, nil, allow, repository.CardOrderByID, repository.SortAsc)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if field != repository.CardOrderByID {
+			t.Fatalf("field: got %q, want %q", field, repository.CardOrderByID)
+		}
+		if dir != repository.SortAsc {
+			t.Fatalf("dir: got %q, want %q", dir, repository.SortAsc)
+		}
+	})
+
+	t.Run("mapped enum -> repository column", func(t *testing.T) {
+		t.Parallel()
+		field, _, err := resolveOrderByColumn(&createdAt, nil, allow, repository.CardOrderByID, repository.SortAsc)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if field != repository.CardOrderByCreatedAt {
+			t.Fatalf("field: got %q, want %q", field, repository.CardOrderByCreatedAt)
+		}
+	})
+
+	t.Run("mapped enum + explicit direction", func(t *testing.T) {
+		t.Parallel()
+		field, dir, err := resolveOrderByColumn(&due, &descDir, allow, repository.CardOrderByID, repository.SortAsc)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if field != repository.CardOrderByDue {
+			t.Fatalf("field: got %q, want %q", field, repository.CardOrderByDue)
+		}
+		if dir != repository.SortDesc {
+			t.Fatalf("dir: got %q, want %q", dir, repository.SortDesc)
+		}
+	})
+
+	t.Run("unmapped enum -> orderBy validation error", func(t *testing.T) {
+		t.Parallel()
+		field, dir, err := resolveOrderByColumn(&bogus, nil, allow, repository.CardOrderByID, repository.SortAsc)
+		var ve *ucerr.ValidationError
+		if !errors.As(err, &ve) {
+			t.Fatalf("want ValidationError, got %v", err)
+		}
+		if ve.Field != "orderBy" {
+			t.Fatalf("want field orderBy, got %q", ve.Field)
+		}
+		if field != "" || dir != "" {
+			t.Fatalf("want empty field/dir on error, got field=%q dir=%q", field, dir)
+		}
+	})
+
+	t.Run("invalid direction -> orderDirection validation error", func(t *testing.T) {
+		t.Parallel()
+		field, dir, err := resolveOrderByColumn(&createdAt, &bogusDir, allow, repository.CardOrderByID, repository.SortAsc)
+		var ve *ucerr.ValidationError
+		if !errors.As(err, &ve) {
+			t.Fatalf("want ValidationError, got %v", err)
+		}
+		if ve.Field != "orderDirection" {
+			t.Fatalf("want field orderDirection, got %q", ve.Field)
+		}
+		if field != "" || dir != "" {
+			t.Fatalf("want empty field/dir on error, got field=%q dir=%q", field, dir)
+		}
+	})
+}
+
+func TestFirstLastCursor(t *testing.T) {
+	t.Parallel()
+
+	id := func(s string) string { return s }
+
+	tests := []struct {
+		name      string
+		rows      []string
+		wantStart string
+		wantEnd   string
+	}{
+		{name: "empty -> empty, empty", rows: []string{}, wantStart: "", wantEnd: ""},
+		{name: "nil -> empty, empty", rows: nil, wantStart: "", wantEnd: ""},
+		{name: "single -> start == end", rows: []string{"only"}, wantStart: "only", wantEnd: "only"},
+		{name: "multi -> first and last", rows: []string{"a", "b", "c"}, wantStart: "a", wantEnd: "c"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			start, end := firstLastCursor(tc.rows, id)
+			if start != tc.wantStart {
+				t.Fatalf("start: got %q, want %q", start, tc.wantStart)
+			}
+			if end != tc.wantEnd {
+				t.Fatalf("end: got %q, want %q", end, tc.wantEnd)
+			}
+		})
+	}
+}
+
+// TestFirstLastCursor_IDAccessorAppliesCast confirms the id accessor is applied
+// to extract the raw string from a typed newtype element (mirroring the
+// string(cg.ID) / string(u.ID) call shape at the cardgroup and admin-user sites).
+func TestFirstLastCursor_IDAccessorAppliesCast(t *testing.T) {
+	t.Parallel()
+
+	type idNewtype string
+	rows := []idNewtype{"first", "mid", "last"}
+	start, end := firstLastCursor(rows, func(v idNewtype) string { return string(v) })
+	if start != "first" || end != "last" {
+		t.Fatalf("got (%q, %q), want (first, last)", start, end)
 	}
 }
