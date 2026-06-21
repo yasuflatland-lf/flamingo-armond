@@ -235,34 +235,29 @@ func (r *masterCardRepo) FindPageByMasterCardgroup(
 	return out, total, nil
 }
 
+// masterCardCursorSpec describes the master-card aggregate's cursor geometry.
+// The primary sort column and id tie-break are prefixed with the `master_cards`
+// alias used by the page query.
+func masterCardCursorSpec(orderBy MasterCardOrderBy, c *MasterCardCursor) cursorSpec {
+	return cursorSpec{
+		alias:      "master_cards",
+		orderCol:   "master_cards." + string(orderBy),
+		isIDOrder:  orderBy == MasterCardOrderByID,
+		fieldValue: func() (any, error) { return masterCardCursorFieldValue(orderBy, c) },
+	}
+}
+
 // masterCardOrderClause renders the SQL ORDER BY tail. When orderBy is `id` only
 // one column appears; otherwise the secondary `id` keeps order deterministic.
 func masterCardOrderClause(orderBy MasterCardOrderBy, dir SortOrder) string {
-	d := string(dir)
-	if orderBy == MasterCardOrderByID {
-		return "master_cards.id " + d
-	}
-	return "master_cards." + string(orderBy) + " " + d + ", master_cards.id " + d
+	return buildOrderClause(masterCardCursorSpec(orderBy, nil), dir)
 }
 
 // masterCardCursorWhere builds the tuple-comparison WHERE for the supplied cursor
 // and direction. ASC yields `>`, DESC yields `<`. Returns an error when the cursor
 // lacks the column required by the active orderBy.
 func masterCardCursorWhere(orderBy MasterCardOrderBy, dir SortOrder, c *MasterCardCursor) (string, []any, error) {
-	op := ">"
-	if dir == SortDesc {
-		op = "<"
-	}
-	if orderBy == MasterCardOrderByID {
-		return "master_cards.id " + op + " ?", []any{c.ID}, nil
-	}
-	field := "master_cards." + string(orderBy)
-	val, err := masterCardCursorFieldValue(orderBy, c)
-	if err != nil {
-		return "", nil, err
-	}
-	clause, args := cursorTupleWhere("master_cards", field, op, val, c.ID)
-	return clause, args, nil
+	return buildCursorWhere(masterCardCursorSpec(orderBy, c), dir, c.ID)
 }
 
 // masterCardCursorFieldValue returns the cursor value for the active orderBy

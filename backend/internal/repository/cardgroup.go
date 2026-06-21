@@ -192,14 +192,23 @@ func (r *cardgroupRepo) CountByOwner(ctx context.Context, ownerID string, search
 	return total, nil
 }
 
+// cardgroupCursorSpec describes the cardgroup aggregate's cursor geometry. The
+// columns are UNALIASED (bare `name` / `created_at` / `id`) because
+// FindPageByOwner queries the cardgroups table without an alias.
+func cardgroupCursorSpec(orderBy CardgroupOrderBy, c *CardgroupCursor) cursorSpec {
+	return cursorSpec{
+		alias:      "",
+		orderCol:   string(orderBy),
+		isIDOrder:  orderBy == CardgroupOrderByID,
+		fieldValue: func() (any, error) { return cardgroupCursorFieldValue(orderBy, c) },
+	}
+}
+
 // cardgroupOrderClause renders the SQL ORDER BY tail. When orderBy is `id`
 // only one column appears; otherwise the secondary `id` keeps the ordering
 // total.
 func cardgroupOrderClause(orderBy CardgroupOrderBy, dir SortOrder) string {
-	if orderBy == CardgroupOrderByID {
-		return "id " + string(dir)
-	}
-	return string(orderBy) + " " + string(dir) + ", id " + string(dir)
+	return buildOrderClause(cardgroupCursorSpec(orderBy, nil), dir)
 }
 
 // cardgroupCursorWhere builds the tuple-comparison WHERE for the supplied
@@ -207,20 +216,7 @@ func cardgroupOrderClause(orderBy CardgroupOrderBy, dir SortOrder) string {
 // when the cursor lacks the column required by the active orderBy — that
 // is a caller bug, not user-supplied input.
 func cardgroupCursorWhere(orderBy CardgroupOrderBy, dir SortOrder, c *CardgroupCursor) (string, []any, error) {
-	op := ">"
-	if dir == SortDesc {
-		op = "<"
-	}
-	if orderBy == CardgroupOrderByID {
-		return "id " + op + " ?", []any{c.ID}, nil
-	}
-	field := string(orderBy)
-	val, err := cardgroupCursorFieldValue(orderBy, c)
-	if err != nil {
-		return "", nil, err
-	}
-	clause, args := cursorTupleWhere("", field, op, val, c.ID)
-	return clause, args, nil
+	return buildCursorWhere(cardgroupCursorSpec(orderBy, c), dir, c.ID)
 }
 
 // cardgroupCursorFieldValue returns the cursor value for the active
@@ -241,7 +237,7 @@ func cardgroupCursorFieldValue(orderBy CardgroupOrderBy, c *CardgroupCursor) (an
 			return *c.UpdatedAt, nil
 		}
 	}
-	return nil, eris.Errorf("cardgroup cursor missing %s column", orderBy)
+	return nil, eris.Errorf("repository: cardgroup: cursor missing %s column", orderBy)
 }
 
 // FindByIDs returns a map of id → Cardgroup for all found ids. IDs that do not
