@@ -445,11 +445,25 @@ func (u *masterCatalogUsecase) CreateMaster(ctx context.Context, in CreateMaster
 // Name validation failures surface via outcome.Validation; a missing row surfaces
 // as a validation error on "id". CardCount is fetched so the resolver can populate
 // the response model.
+//
+// There is deliberately no MasterCardgroup.ApplyPatch aggregate method. Of the
+// patchable fields, only Name carries a domain invariant — the CardgroupName VO's
+// grapheme-cluster length bound — and that invariant is already enforced here, at
+// the one seam, via domain.ParseCardgroupName below. Status is the only other VO on
+// the aggregate, and it is not patchable through this method: it has its own
+// dedicated lifecycle seams (Publish / Unpublish). Every remaining field
+// (Description, Language, Level, Category, CoverImageURL, Source, IsDefaultStarter,
+// SortOrder) is free-form (*string / *bool / *int) with no Parse or bound to
+// protect, so it is assigned directly into the repository patch. An ApplyPatch
+// wrapper over those fields would be an indirection layer guarding nothing.
 func (u *masterCatalogUsecase) UpdateMaster(ctx context.Context, id string, in UpdateMasterInput) (UpdateMasterOutcome, error) {
 	if _, err := u.adminGate.Require(ctx, "usecase: master catalog: update master"); err != nil {
 		return UpdateMasterOutcome{}, err
 	}
 
+	// Free-form fields (no domain invariant) flow straight into the patch; only
+	// Name routes through its VO below. See the method docstring for why no
+	// MasterCardgroup.ApplyPatch exists.
 	patch := repository.MasterCardgroupUpdate{
 		Description:      in.Description,
 		Language:         in.Language,

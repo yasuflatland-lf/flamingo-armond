@@ -26,7 +26,15 @@ func (s MasterCardgroupStatus) IsValid() bool {
 // the master catalog and is never directly owned by an end user.
 //
 // Name is a CardgroupName so the same grapheme-cluster length invariant
-// (1..CardgroupNameMax) applies without duplicating validation logic.
+// (1..CardgroupNameMax) applies without duplicating validation logic. Status is
+// the only other field that is a value object (MasterCardgroupStatus); its
+// transitions are owned by the Publish / Unpublish methods below. Every remaining
+// field (Description, Language, Level, Category, CoverImageURL, Source,
+// IsDefaultStarter, SortOrder) is free-form with no Parse or bound to protect.
+// That is why the aggregate exposes no update/patch behaviour method: there is no
+// invariant for one to guard. The admin update path (usecase.UpdateMaster) parses
+// Name through ParseCardgroupName at its single seam and assigns the free-form
+// fields directly into the repository patch.
 type MasterCardgroup struct {
 	ID               string
 	Name             CardgroupName
