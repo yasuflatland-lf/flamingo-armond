@@ -472,6 +472,32 @@ func TestCardRepo_FindPageByCardgroup_Search_WithAfter(t *testing.T) {
 	}
 }
 
+// TestCardRepo_FindPageByCardgroup_EmptySearchTreatedAsNil verifies that an
+// all-whitespace search has no effect — same as nil — because searchLikePattern
+// returns ok=false for trimmed-empty input. The whitespace term must NOT reach
+// SQL as "%   %" (which would filter out every card) and must NOT zero the page
+// or totalCount. Mirrors the cardgroup blank-search guard.
+func TestCardRepo_FindPageByCardgroup_EmptySearchTreatedAsNil(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	insertCards(t, ctx, repo, cg.ID, 3)
+
+	whitespace := "   "
+	got, total, err := repo.FindPageByCardgroup(
+		ctx, string(cg.ID), nil, nil, 100, 0,
+		repository.CardOrderByID, repository.SortAsc, &whitespace,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total,
+		"all-whitespace search must NOT filter totalCount (treated as no search)")
+	require.Len(t, got, 3,
+		"all-whitespace search must NOT filter the page (treated as no search)")
+}
+
 // sortByID returns a copy of cards sorted by ID ascending.
 func sortByID(cards []*domain.Card) []*domain.Card {
 	out := make([]*domain.Card, len(cards))
