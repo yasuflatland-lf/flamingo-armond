@@ -448,28 +448,26 @@ func TestAdminUser_List_Page1(t *testing.T) {
 	if out.TotalCount != 3 {
 		t.Fatalf("TotalCount = %d, want 3", out.TotalCount)
 	}
-	if len(out.Edges) != 3 {
-		t.Fatalf("len(Edges) = %d, want 3", len(out.Edges))
+	if len(out.Users) != 3 {
+		t.Fatalf("len(Users) = %d, want 3", len(out.Users))
 	}
-	for i, edge := range out.Edges {
-		if edge.Cursor != string(page[i].ID) {
-			t.Fatalf("edge[%d].Cursor = %q, want %q", i, edge.Cursor, page[i].ID)
-		}
-		if edge.Node != page[i] {
-			t.Fatalf("edge[%d].Node mismatch", i)
+	for i, usr := range out.Users {
+		if usr != page[i] {
+			t.Fatalf("Users[%d] mismatch", i)
 		}
 	}
-	if out.PageInfo.HasNextPage {
-		t.Fatal("HasNextPage = true, want false (under-fill page)")
+	if out.HasNext {
+		t.Fatal("HasNext = true, want false (under-fill page)")
 	}
-	if out.PageInfo.HasPreviousPage {
-		t.Fatal("HasPreviousPage = true, want false (no after cursor)")
+	if out.HasPrev {
+		t.Fatal("HasPrev = true, want false (no after cursor)")
 	}
-	if out.PageInfo.StartCursor == nil || *out.PageInfo.StartCursor != "u-aaa" {
-		t.Fatalf("StartCursor = %v, want u-aaa", out.PageInfo.StartCursor)
+	// The usecase emits RAW ids in StartCur/EndCur; the resolver encodes once.
+	if out.StartCur != "u-aaa" {
+		t.Fatalf("StartCur = %q, want u-aaa", out.StartCur)
 	}
-	if out.PageInfo.EndCursor == nil || *out.PageInfo.EndCursor != "u-ccc" {
-		t.Fatalf("EndCursor = %v, want u-ccc", out.PageInfo.EndCursor)
+	if out.EndCur != "u-ccc" {
+		t.Fatalf("EndCur = %q, want u-ccc", out.EndCur)
 	}
 	// Default page size: usecase asks repo for 100+1=101 rows.
 	if users.lastListFirst != maxPageSize+1 {
@@ -503,17 +501,17 @@ func TestAdminUser_List_ForwardPage2(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(out.Edges) != 2 {
-		t.Fatalf("len(Edges) = %d, want 2 (trailing row trimmed)", len(out.Edges))
+	if len(out.Users) != 2 {
+		t.Fatalf("len(Users) = %d, want 2 (trailing row trimmed)", len(out.Users))
 	}
-	if out.Edges[0].Cursor != "u-2" || out.Edges[1].Cursor != "u-3" {
-		t.Fatalf("edges = %v, want [u-2, u-3]", out.Edges)
+	if string(out.Users[0].ID) != "u-2" || string(out.Users[1].ID) != "u-3" {
+		t.Fatalf("users = %v, want [u-2, u-3]", out.Users)
 	}
-	if !out.PageInfo.HasNextPage {
-		t.Fatal("HasNextPage = false, want true (extra row present)")
+	if !out.HasNext {
+		t.Fatal("HasNext = false, want true (extra row present)")
 	}
-	if !out.PageInfo.HasPreviousPage {
-		t.Fatal("HasPreviousPage = false, want true (after cursor supplied)")
+	if !out.HasPrev {
+		t.Fatal("HasPrev = false, want true (after cursor supplied)")
 	}
 	if users.lastListFirst != 3 {
 		t.Fatalf("repo first arg = %d, want 3 (2+1)", users.lastListFirst)
@@ -545,17 +543,17 @@ func TestAdminUser_List_Backward(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(out.Edges) != 2 {
-		t.Fatalf("len(Edges) = %d, want 2 (leading row trimmed)", len(out.Edges))
+	if len(out.Users) != 2 {
+		t.Fatalf("len(Users) = %d, want 2 (leading row trimmed)", len(out.Users))
 	}
-	if out.Edges[0].Cursor != "u-x" || out.Edges[1].Cursor != "u-y" {
-		t.Fatalf("edges = %v, want [u-x, u-y]", out.Edges)
+	if string(out.Users[0].ID) != "u-x" || string(out.Users[1].ID) != "u-y" {
+		t.Fatalf("users = %v, want [u-x, u-y]", out.Users)
 	}
-	if !out.PageInfo.HasPreviousPage {
-		t.Fatal("HasPreviousPage = false, want true (extra leading row)")
+	if !out.HasPrev {
+		t.Fatal("HasPrev = false, want true (extra leading row)")
 	}
-	if !out.PageInfo.HasNextPage {
-		t.Fatal("HasNextPage = false, want true (before cursor supplied)")
+	if !out.HasNext {
+		t.Fatal("HasNext = false, want true (before cursor supplied)")
 	}
 	if users.lastListLast != 3 {
 		t.Fatalf("repo last arg = %d, want 3 (2+1)", users.lastListLast)
@@ -565,9 +563,11 @@ func TestAdminUser_List_Backward(t *testing.T) {
 	}
 }
 
-// TestAdminUser_List_BadCursor_After covers the cursor-not-found branch: the
-// repository surfaces ErrCursorNotFound which the usecase translates to
-// BAD_USER_INPUT keyed on the cursor field that was supplied.
+// TestAdminUser_List_BadCursor_After covers the cursor-not-found branch: a bare
+// (decodable) after cursor passes cursor.Decode, reaches the repository, which
+// surfaces ErrCursorNotFound; the usecase translates it to BAD_USER_INPUT keyed
+// on the cursor field. first is supplied so the after/first relay check passes
+// and the repository is actually reached.
 func TestAdminUser_List_BadCursor_After(t *testing.T) {
 	t.Parallel()
 
@@ -576,8 +576,8 @@ func TestAdminUser_List_BadCursor_After(t *testing.T) {
 	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	stale := "00000000-0000-0000-0000-000000000000"
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, &stale, nil, nil)
-	assertValidationError(t, err, "after", "")
+	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), nil, &stale, nil, nil)
+	assertValidationError(t, err, "after", "cursor not found")
 }
 
 // TestAdminUser_List_BadCursor_Before mirrors the after case but for the
@@ -591,7 +591,45 @@ func TestAdminUser_List_BadCursor_Before(t *testing.T) {
 
 	stale := "00000000-0000-0000-0000-000000000000"
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(5), nil, &stale, nil)
-	assertValidationError(t, err, "before", "")
+	assertValidationError(t, err, "before", "cursor not found")
+}
+
+// TestAdminUser_List_MalformedCursor_After covers the decode-failure branch: a
+// v1-enveloped after cursor with a malformed base64 payload is rejected as
+// BAD_USER_INPUT ("invalid cursor") before the repository is consulted. A bare
+// id is NOT a decode error — cursor.Decode passes it through and the repo's
+// not-found path (BadCursor_After) handles it — so the corrupt fixture must use
+// the v1 envelope to exercise this branch.
+func TestAdminUser_List_MalformedCursor_After(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
+
+	after := "v1:!!!not-valid-base64!!!" // v1 prefix + malformed base64 payload
+	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), nil, &after, nil, nil)
+	assertValidationError(t, err, "after", "invalid cursor")
+	if users.listCalls != 0 {
+		t.Fatalf("malformed cursor must be rejected before ListPage, got %d calls", users.listCalls)
+	}
+}
+
+// TestAdminUser_List_MalformedCursor_Before mirrors the after case for the
+// backward-paging cursor field.
+func TestAdminUser_List_MalformedCursor_Before(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
+
+	before := "v1:!!!not-valid-base64!!!" // v1 prefix + malformed base64 payload
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(5), nil, &before, nil)
+	assertValidationError(t, err, "before", "invalid cursor")
+	if users.listCalls != 0 {
+		t.Fatalf("malformed cursor must be rejected before ListPage, got %d calls", users.listCalls)
+	}
 }
 
 // TestAdminUser_List_BothFirstAndLast covers the mutual-exclusion check on

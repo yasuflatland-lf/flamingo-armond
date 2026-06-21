@@ -97,15 +97,20 @@ const USER_2 = {
   roles: [],
 };
 
+// The backend emits opaque "v1:..." cursors (cursor.Encode(id)), never the raw
+// user id — fixtures mirror the encoder so a cursor-based match cannot pass on a
+// raw id (.claude/rules/pagination.md "Resolve an edge by node.id").
 function userEdge(user: typeof USER_1) {
   return {
     __typename: "UserEdge" as const,
-    cursor: user.id,
+    cursor: `v1:${btoa(user.id)}`,
     node: user,
   };
 }
 
 function makeConnection(items: (typeof USER_1)[], hasNextPage = false, totalCount?: number) {
+  const first = items[0];
+  const last = items[items.length - 1];
   return {
     __typename: "UserConnection" as const,
     edges: items.map(userEdge),
@@ -113,8 +118,8 @@ function makeConnection(items: (typeof USER_1)[], hasNextPage = false, totalCoun
       __typename: "PageInfo" as const,
       hasNextPage,
       hasPreviousPage: false,
-      startCursor: items[0]?.id ?? null,
-      endCursor: items[items.length - 1]?.id ?? null,
+      startCursor: first ? `v1:${btoa(first.id)}` : null,
+      endCursor: last ? `v1:${btoa(last.id)}` : null,
     },
     totalCount: totalCount ?? items.length,
   };
@@ -442,7 +447,8 @@ describe("<AdminUsersClient> fetchMore catch", () => {
 
     const fetchMoreVars = {
       first: ADMIN_USERS_PAGE_SIZE,
-      after: USER_2.id,
+      // The client echoes the opaque endCursor (encoded) back as `after`.
+      after: `v1:${btoa(USER_2.id)}`,
       search: null,
     };
 
@@ -557,7 +563,7 @@ describe("<AdminUsersClient> delete", () => {
       query: AdminUsersDocument,
       variables: initialVars,
     });
-    expect(after?.users.edges.map((edge) => edge.cursor)).toEqual(["u-2"]);
+    expect(after?.users.edges.map((edge) => edge.node.id)).toEqual(["u-2"]);
     expect(after?.users.totalCount).toBe(1);
     expect(cache.extract()["User:u-1"]).toBeUndefined();
   });
