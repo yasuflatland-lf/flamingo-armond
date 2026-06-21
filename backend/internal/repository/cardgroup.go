@@ -100,7 +100,7 @@ func (r *cardgroupRepo) FindByID(ctx context.Context, id string) (*domain.Cardgr
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}
-		return nil, eris.Wrap(err, "repository: find cardgroup by id")
+		return nil, eris.Wrap(err, "repository: cardgroup: find by id")
 	}
 	return cardgroupToDomain(row), nil
 }
@@ -116,7 +116,7 @@ func (r *cardgroupRepo) FindByName(ctx context.Context, ownerID, name string) (*
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}
-		return nil, eris.Wrap(err, "repository: find cardgroup by name")
+		return nil, eris.Wrap(err, "repository: cardgroup: find by name")
 	}
 	return cardgroupToDomain(row), nil
 }
@@ -155,7 +155,7 @@ func (r *cardgroupRepo) FindPageByOwner(
 	if cursor != nil {
 		clauseSQL, args, err := cardgroupCursorWhere(orderBy, effectiveDir, cursor)
 		if err != nil {
-			return nil, eris.Wrap(err, "repository: build cardgroup cursor where")
+			return nil, eris.Wrap(err, "repository: cardgroup: build cursor where")
 		}
 		q = q.Where(clauseSQL, args...)
 	}
@@ -163,7 +163,7 @@ func (r *cardgroupRepo) FindPageByOwner(
 
 	var rows []gormCardgroup
 	if err := q.Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: find cardgroup page by owner")
+		return nil, eris.Wrap(err, "repository: cardgroup: find page by owner")
 	}
 
 	if reverse {
@@ -187,7 +187,7 @@ func (r *cardgroupRepo) CountByOwner(ctx context.Context, ownerID string, search
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
-		return 0, eris.Wrap(err, "repository: count cardgroups by owner")
+		return 0, eris.Wrap(err, "repository: cardgroup: count by owner")
 	}
 	return total, nil
 }
@@ -253,7 +253,7 @@ func (r *cardgroupRepo) FindByIDs(ctx context.Context, ids []string) (map[string
 	}
 	var rows []gormCardgroup
 	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: find cardgroups by ids")
+		return nil, eris.Wrap(err, "repository: cardgroup: find by ids")
 	}
 	out := make(map[string]*domain.Cardgroup, len(rows))
 	for i := range rows {
@@ -268,7 +268,7 @@ func (r *cardgroupRepo) FindByIDs(ctx context.Context, ids []string) (map[string
 func (r *cardgroupRepo) Create(ctx context.Context, cg *domain.Cardgroup) error {
 	row := cardgroupToRow(cg)
 	if err := r.db.WithContext(ctx).Create(row).Error; err != nil {
-		return eris.Wrap(err, "repository: create cardgroup")
+		return eris.Wrap(err, "repository: cardgroup: create")
 	}
 	return nil
 }
@@ -278,7 +278,7 @@ func (r *cardgroupRepo) Create(ctx context.Context, cg *domain.Cardgroup) error 
 // responsible for pre-filling cg.ID (uuid v7) and both timestamps.
 func (r *cardgroupRepo) CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Cardgroup) error {
 	if err := tx.WithContext(ctx).Create(cardgroupToRow(cg)).Error; err != nil {
-		return eris.Wrap(err, "repository: create cardgroup tx")
+		return eris.Wrap(err, "repository: cardgroup: create tx")
 	}
 	return nil
 }
@@ -293,7 +293,7 @@ func (r *cardgroupRepo) EnsureByName(ctx context.Context, ownerID, name string) 
 	var out *domain.Cardgroup
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))", ownerID, name).Error; err != nil {
-			return eris.Wrap(err, "repository: ensure cardgroup by name: advisory lock")
+			return eris.Wrap(err, "repository: cardgroup: ensure by name: advisory lock")
 		}
 
 		var row gormCardgroup
@@ -303,12 +303,12 @@ func (r *cardgroupRepo) EnsureByName(ctx context.Context, ownerID, name string) 
 			return nil
 		}
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return eris.Wrap(err, "repository: ensure cardgroup by name: lookup")
+			return eris.Wrap(err, "repository: cardgroup: ensure by name: lookup")
 		}
 
 		id, err := uuid.NewV7()
 		if err != nil {
-			return eris.Wrap(err, "repository: ensure cardgroup by name: uuid")
+			return eris.Wrap(err, "repository: cardgroup: ensure by name: uuid")
 		}
 		now := time.Now().UTC()
 		row = gormCardgroup{
@@ -319,7 +319,7 @@ func (r *cardgroupRepo) EnsureByName(ctx context.Context, ownerID, name string) 
 			UpdatedAt: now,
 		}
 		if err := tx.Create(&row).Error; err != nil {
-			return eris.Wrap(err, "repository: ensure cardgroup by name: create")
+			return eris.Wrap(err, "repository: cardgroup: ensure by name: create")
 		}
 		out = cardgroupToDomain(row)
 		return nil
@@ -345,7 +345,7 @@ func (r *cardgroupRepo) Update(ctx context.Context, id string, patch CardgroupUp
 
 	res := r.db.WithContext(ctx).Model(&gormCardgroup{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
-		return nil, eris.Wrap(res.Error, "repository: update cardgroup")
+		return nil, eris.Wrap(res.Error, "repository: cardgroup: update")
 	}
 	if res.RowsAffected == 0 {
 		return nil, ErrNotFound
@@ -359,7 +359,7 @@ func (r *cardgroupRepo) Update(ctx context.Context, id string, patch CardgroupUp
 func (r *cardgroupRepo) Delete(ctx context.Context, id string) error {
 	res := r.db.WithContext(ctx).Where("id = ?", id).Delete(&gormCardgroup{})
 	if res.Error != nil {
-		return eris.Wrap(res.Error, "repository: delete cardgroup")
+		return eris.Wrap(res.Error, "repository: cardgroup: delete")
 	}
 	if res.RowsAffected == 0 {
 		return ErrNotFound

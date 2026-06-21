@@ -57,7 +57,7 @@ func (r *userCardFSRSRepo) UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.
 			"updated_at":     gorm.Expr("now()"),
 		}),
 	}).Create(userCardFSRSToRow(u)).Error; err != nil {
-		return eris.Wrap(err, "repository: upsert user card fsrs")
+		return eris.Wrap(err, "repository: user card fsrs: upsert")
 	}
 	return nil
 }
@@ -65,7 +65,7 @@ func (r *userCardFSRSRepo) UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.
 func (r *userCardFSRSRepo) FindByUserAndCardIDs(ctx context.Context, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error) {
 	out, err := findUserCardFSRSByUserAndCardIDs(ctx, r.db, userID, cardIDs)
 	if err != nil {
-		return nil, eris.Wrap(err, "repository: find user card fsrs by user and card ids")
+		return nil, eris.Wrap(err, "repository: user card fsrs: find by user and card ids")
 	}
 	return out, nil
 }
@@ -73,7 +73,7 @@ func (r *userCardFSRSRepo) FindByUserAndCardIDs(ctx context.Context, userID stri
 func (r *userCardFSRSRepo) FindByUserAndCardIDsTx(ctx context.Context, tx *gorm.DB, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error) {
 	out, err := findUserCardFSRSByUserAndCardIDs(ctx, tx, userID, cardIDs)
 	if err != nil {
-		return nil, eris.Wrap(err, "repository: find user card fsrs by user and card ids tx")
+		return nil, eris.Wrap(err, "repository: user card fsrs: find by user and card ids tx")
 	}
 	return out, nil
 }
