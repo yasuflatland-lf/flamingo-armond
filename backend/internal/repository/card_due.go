@@ -39,7 +39,7 @@ type dueCardRow struct {
 // Learn window:    due IS NOT NULL AND due <= now AND last_review < boundary.
 // Practice window: last_review >= boundary; due not consulted.
 // Both usecase methods (NextDueCards and PracticeTodaysCards) derive the
-// boundary from the same startOfDayJST formula, computed once per call
+// boundary from the same domain.StartOfLearnDay formula, computed once per call
 // before hitting the repository. Changing the formula or comparator for
 // one window without the other makes a card vanish from (or appear in)
 // both queues.
@@ -103,7 +103,7 @@ func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now, reviewedBefore
 }
 
 // findPracticeCardsOn fetches the FSRS-safe practice pool: cards the user
-// already reviewed at or after the boundary (the same startOfDayJST cutoff the
+// already reviewed at or after the boundary (the same domain.StartOfLearnDay cutoff the
 // learn window uses). This is the INVERSE window of findDueCardsOn's review
 // window — practice consults last_review but not due, and uses >= where learn
 // uses <. random() gives a fresh arrangement per practice round.
