@@ -147,13 +147,9 @@ func NewMasterCardgroupRepository(db *gorm.DB) MasterCardgroupRepository {
 
 // FindByID returns the master cardgroup with the given id, or ErrNotFound.
 func (r *masterCardgroupRepo) FindByID(ctx context.Context, id string) (*domain.MasterCardgroup, error) {
-	var row gormMasterCardgroup
-	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
+	row, err := takeByID[gormMasterCardgroup](ctx, r.db, "id = ?", []any{id}, ErrNotFound, "repository: master cardgroup: find by id")
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, eris.Wrap(err, "repository: master cardgroup: find by id")
+		return nil, err
 	}
 	return masterCardgroupToDomain(row)
 }
@@ -302,15 +298,9 @@ func (r *masterCardgroupRepo) ListDefaultStarters(ctx context.Context) ([]*domai
 // or ErrNotFound. A draft row also returns ErrNotFound because the public
 // catalog never exposes draft decks.
 func (r *masterCardgroupRepo) FindPublishedByID(ctx context.Context, id string) (*domain.MasterCardgroup, error) {
-	var row gormMasterCardgroup
-	err := r.db.WithContext(ctx).
-		Where("id = ? AND status = ?", id, string(domain.MasterStatusPublished)).
-		Take(&row).Error
+	row, err := takeByID[gormMasterCardgroup](ctx, r.db, "id = ? AND status = ?", []any{id, string(domain.MasterStatusPublished)}, ErrNotFound, "repository: master cardgroup: find published by id")
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, eris.Wrap(err, "repository: master cardgroup: find published by id")
+		return nil, err
 	}
 	return masterCardgroupToDomain(row)
 }

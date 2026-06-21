@@ -126,13 +126,9 @@ type userRepo struct{ db *gorm.DB }
 func NewUserRepository(db *gorm.DB) UserRepository { return &userRepo{db: db} }
 
 func (r *userRepo) FindByID(ctx context.Context, id string) (*domain.User, error) {
-	var row gormUser
-	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
+	row, err := takeByID[gormUser](ctx, r.db, "id = ?", []any{id}, ErrNotFound, "repository: user: find by id")
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, eris.Wrap(err, "repository: user: find by id")
+		return nil, err
 	}
 	return userToDomain(row), nil
 }

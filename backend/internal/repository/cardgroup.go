@@ -94,13 +94,9 @@ func NewCardgroupRepository(db *gorm.DB) CardgroupRepository { return &cardgroup
 
 // FindByID returns the cardgroup with the given id, or ErrNotFound.
 func (r *cardgroupRepo) FindByID(ctx context.Context, id string) (*domain.Cardgroup, error) {
-	var row gormCardgroup
-	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
+	row, err := takeByID[gormCardgroup](ctx, r.db, "id = ?", []any{id}, ErrNotFound, "repository: cardgroup: find by id")
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, eris.Wrap(err, "repository: cardgroup: find by id")
+		return nil, err
 	}
 	return cardgroupToDomain(row), nil
 }
@@ -108,15 +104,9 @@ func (r *cardgroupRepo) FindByID(ctx context.Context, id string) (*domain.Cardgr
 // FindByName returns the cardgroup identified by the (owner_id, name) pair, or
 // ErrNotFound when no such row exists.
 func (r *cardgroupRepo) FindByName(ctx context.Context, ownerID, name string) (*domain.Cardgroup, error) {
-	var row gormCardgroup
-	err := r.db.WithContext(ctx).
-		Where("owner_id = ? AND name = ?", ownerID, name).
-		Take(&row).Error
+	row, err := takeByID[gormCardgroup](ctx, r.db, "owner_id = ? AND name = ?", []any{ownerID, name}, ErrNotFound, "repository: cardgroup: find by name")
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, eris.Wrap(err, "repository: cardgroup: find by name")
+		return nil, err
 	}
 	return cardgroupToDomain(row), nil
 }

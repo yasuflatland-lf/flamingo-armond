@@ -79,25 +79,17 @@ type roleRepo struct{ db *gorm.DB }
 func NewRoleRepository(db *gorm.DB) RoleRepository { return &roleRepo{db: db} }
 
 func (r *roleRepo) FindByID(ctx context.Context, id string) (*domain.Role, error) {
-	var row gormRole
-	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
+	row, err := takeByID[gormRole](ctx, r.db, "id = ?", []any{id}, ErrRoleNotFound, "repository: find role by id")
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrRoleNotFound
-		}
-		return nil, eris.Wrap(err, "repository: find role by id")
+		return nil, err
 	}
 	return roleToDomain(row), nil
 }
 
 func (r *roleRepo) FindByName(ctx context.Context, name domain.RoleName) (*domain.Role, error) {
-	var row gormRole
-	err := r.db.WithContext(ctx).Where("name = ?", name).Take(&row).Error
+	row, err := takeByID[gormRole](ctx, r.db, "name = ?", []any{name}, ErrRoleNotFound, "repository: find role by name")
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrRoleNotFound
-		}
-		return nil, eris.Wrap(err, "repository: find role by name")
+		return nil, err
 	}
 	return roleToDomain(row), nil
 }

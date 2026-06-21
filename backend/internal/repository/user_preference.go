@@ -65,13 +65,9 @@ func NewUserPreferenceRepository(db *gorm.DB) UserPreferenceRepository {
 }
 
 func (r *userPreferenceRepo) FindByUserID(ctx context.Context, userID string) (*domain.UserPreference, error) {
-	var row gormUserPreference
-	err := r.db.WithContext(ctx).Where("user_id = ?", userID).Take(&row).Error
+	row, err := takeByID[gormUserPreference](ctx, r.db, "user_id = ?", []any{userID}, ErrNotFound, "repository: user preference: find by user_id")
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, eris.Wrap(err, "repository: user preference: find by user_id")
+		return nil, err
 	}
 	return toDomainUserPreference(row), nil
 }

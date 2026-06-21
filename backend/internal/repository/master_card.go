@@ -149,13 +149,9 @@ func (r *masterCardRepo) ListByMasterCardgroup(ctx context.Context, masterCardgr
 // FindByID returns the master card with the given primary key, or ErrNotFound
 // when no row matches. Single-row PK lookup mirroring cardRepo.FindByID.
 func (r *masterCardRepo) FindByID(ctx context.Context, id string) (*domain.MasterCard, error) {
-	var row gormMasterCard
-	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
+	row, err := takeByID[gormMasterCard](ctx, r.db, "id = ?", []any{id}, ErrNotFound, "repository: master card: find by id")
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, eris.Wrap(err, "repository: master card: find by id")
+		return nil, err
 	}
 	return masterCardToDomain(row), nil
 }
@@ -307,15 +303,9 @@ func (r *masterCardRepo) Create(ctx context.Context, c *domain.MasterCard) error
 // (master_cardgroup_id, front) unique key, or ErrNotFound when no row matches.
 // front is matched case-insensitively because the column is citext.
 func (r *masterCardRepo) FindByMasterCardgroupAndFront(ctx context.Context, masterCardgroupID, front string) (*domain.MasterCard, error) {
-	var row gormMasterCard
-	err := r.db.WithContext(ctx).
-		Where("master_cardgroup_id = ? AND front = ?", masterCardgroupID, front).
-		Take(&row).Error
+	row, err := takeByID[gormMasterCard](ctx, r.db, "master_cardgroup_id = ? AND front = ?", []any{masterCardgroupID, front}, ErrNotFound, "repository: master card: find by master cardgroup and front")
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, eris.Wrap(err, "repository: master card: find by master cardgroup and front")
+		return nil, err
 	}
 	return masterCardToDomain(row), nil
 }

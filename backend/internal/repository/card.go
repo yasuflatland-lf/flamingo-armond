@@ -124,13 +124,9 @@ func (r *cardRepo) FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*dom
 }
 
 func findCardByID(ctx context.Context, db *gorm.DB, id string) (*domain.Card, error) {
-	var row gormCard
-	err := db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
+	row, err := takeByID[gormCard](ctx, db, "id = ?", []any{id}, ErrNotFound, "repository: card: find by id")
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, eris.Wrap(err, "repository: card: find by id")
+		return nil, err
 	}
 	return cardToDomain(row), nil
 }
@@ -187,15 +183,9 @@ func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {
 }
 
 func (r *cardRepo) FindByCardgroupAndFront(ctx context.Context, cardgroupID, front string) (*domain.Card, error) {
-	var row gormCard
-	err := r.db.WithContext(ctx).
-		Where("cardgroup_id = ? AND front = ?", cardgroupID, front).
-		Take(&row).Error
+	row, err := takeByID[gormCard](ctx, r.db, "cardgroup_id = ? AND front = ?", []any{cardgroupID, front}, ErrNotFound, "repository: card: find by cardgroup and front")
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, eris.Wrap(err, "repository: card: find by cardgroup and front")
+		return nil, err
 	}
 	return cardToDomain(row), nil
 }
