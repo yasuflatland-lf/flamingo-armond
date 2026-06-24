@@ -15,7 +15,8 @@
     "keepEditing": "編集を続ける",
     "discard": "破棄",
     "cannotBeUndone": "この操作は元に戻せません。",
-    "deleteSelected": "選択を削除"
+    "deleteSelected": "選択を削除",
+    "totalCount": "全{count, number}件"
   },
   "Nav": {
     "cardgroups": "カードグループ",
