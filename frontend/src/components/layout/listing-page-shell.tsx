@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 interface ListingPageShellProps {
   /** Page title. Centered on mobile, left-aligned on desktop. */
   title: ReactNode;
-  /** Optional total-count badge rendered as a muted `(N)`: below the title on mobile, inline to its right on desktop. */
+  /** Optional total count rendered as a neutral pill: below the title on mobile, inline to its right on desktop. */
   count?: number;
   /** Optional fully-formatted, localized label rendered inside the count pill (e.g. "14 total"). Falls back to the bare `count` number when omitted. */
   countLabel?: ReactNode;
