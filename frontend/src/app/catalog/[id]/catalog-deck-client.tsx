@@ -197,10 +197,7 @@ export default function CatalogDeckClient({
           )}
 
           {edges.length > 0 && (
-            <ul
-              className="divide-y divide-border overflow-hidden rounded-md border border-border"
-              data-testid="catalog-deck-card-list"
-            >
+            <ul className="space-y-3" data-testid="catalog-deck-card-list">
               {edges.map((edge) => (
                 <li key={edge.node.id}>
                   <ReadOnlyCardRow card={edge.node} />
