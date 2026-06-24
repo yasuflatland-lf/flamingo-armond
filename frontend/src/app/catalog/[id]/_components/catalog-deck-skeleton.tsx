@@ -18,21 +18,21 @@ export function CatalogDeckSkeleton() {
         <div className="mt-1 flex justify-center">
           <Skeleton className="h-8 w-48" />
         </div>
-        <div className="mt-3 flex justify-center gap-2">
+        <div className="mt-2 flex justify-center gap-2">
           <Skeleton className="h-5 w-12" />
           <Skeleton className="h-5 w-16" />
         </div>
       </header>
 
       <ul
-        className="divide-y divide-border overflow-hidden rounded-md border border-border"
+        className="space-y-3"
         aria-busy="true"
         aria-label="Loading deck"
         data-testid="catalog-deck-skeleton"
       >
         {Array.from({ length: 6 }).map((_, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: static placeholder rows have no stable id.
-          <li key={i} className="space-y-1 px-4 py-3">
+          <li key={i} className="space-y-1 rounded-lg border border-border bg-background px-4 py-3">
             <Skeleton className="h-4 w-3/4" />
             <Skeleton className="h-4 w-1/2" />
           </li>

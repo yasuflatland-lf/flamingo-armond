@@ -52,24 +52,26 @@ export function CatalogDeckHeader({
         </span>
       }
     >
-      <div className="mt-3 flex flex-col items-center gap-2">
-        {(deck.language || deck.level || deck.category) && (
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            {deck.language && <Badge variant="secondary">{deck.language}</Badge>}
-            {deck.level && <Badge variant="outline">{t("level", { level: deck.level })}</Badge>}
-            {deck.category && <Badge variant="outline">{deck.category}</Badge>}
-          </div>
-        )}
-        {deck.description && (
-          <p
-            className="max-w-2xl text-center text-sm text-muted-foreground"
-            data-testid="catalog-deck-description"
-          >
-            {deck.description}
-          </p>
-        )}
-      </div>
-      <div className="mt-4">
+      {(deck.language || deck.level || deck.category || deck.description) && (
+        <div className="mt-2 flex flex-col items-center gap-2">
+          {(deck.language || deck.level || deck.category) && (
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {deck.language && <Badge variant="secondary">{deck.language}</Badge>}
+              {deck.level && <Badge variant="outline">{t("level", { level: deck.level })}</Badge>}
+              {deck.category && <Badge variant="outline">{deck.category}</Badge>}
+            </div>
+          )}
+          {deck.description && (
+            <p
+              className="max-w-2xl text-center text-sm text-muted-foreground"
+              data-testid="catalog-deck-description"
+            >
+              {deck.description}
+            </p>
+          )}
+        </div>
+      )}
+      <div className="mt-2">
         <CatalogImportButton
           card={{ id: deck.id }}
           importing={importing}
