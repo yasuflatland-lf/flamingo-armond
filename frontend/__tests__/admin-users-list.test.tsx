@@ -228,8 +228,8 @@ describe("AdminUsersClient", () => {
     expect(screen.queryByRole("checkbox", { name: "general" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /edit user/i })).toHaveLength(3);
 
-    // totalCount shown (3 in parens).
-    expect(screen.getByText("(3)")).toBeInTheDocument();
+    // totalCount shown as the "N total" pill label.
+    expect(screen.getByText("3 total")).toBeInTheDocument();
   });
 
   // T2: Debounced search — typing "ali" issues ONE query with search:"ali" after 300ms.
