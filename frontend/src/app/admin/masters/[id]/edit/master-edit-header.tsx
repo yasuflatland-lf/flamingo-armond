@@ -183,7 +183,7 @@ export function MasterEditHeader({ master, cardCount, onBatchImport }: Props) {
               type="button"
               data-testid="master-edit-status-chip"
               aria-label={t("changePublishState", { state: statusLabel })}
-              className="inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <span
                 aria-hidden="true"
