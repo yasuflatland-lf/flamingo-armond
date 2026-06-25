@@ -13,7 +13,7 @@ require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/joho/godotenv v1.5.1
 	github.com/jomei/notionapi v1.13.3
-	github.com/labstack/echo/v5 v5.2.0
+	github.com/labstack/echo/v5 v5.2.1
 	github.com/open-spaced-repetition/go-fsrs/v3 v3.3.1
 	github.com/ravilushqa/otelgqlgen v0.19.0
 	github.com/rivo/uniseg v0.4.7
