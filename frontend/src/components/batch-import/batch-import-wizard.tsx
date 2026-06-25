@@ -140,6 +140,8 @@ type Step1ButtonState = {
    * input combination.
    */
   isStale: boolean;
+  /** True when client-side validation (row cap / byte cap / per-row length) blocks. */
+  clientBlocked: boolean;
 };
 
 type Step1ButtonAction = "validate" | "continue";
@@ -167,6 +169,9 @@ export function resolveStep1Button(state: Step1ButtonState): Step1ButtonSpec {
   }
   if (state.validating) {
     return { labelKey: "validating", action: null, disabled: true };
+  }
+  if (state.clientBlocked) {
+    return { labelKey: "validate", action: null, disabled: true };
   }
   if (state.result?.valid === true && !state.isStale) {
     return { labelKey: "import", action: "continue", disabled: false };

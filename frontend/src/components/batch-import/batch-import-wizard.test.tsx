@@ -180,19 +180,37 @@ describe("formatPayloadSize", () => {
 describe("resolveStep1Button", () => {
   it("empty: text blank -> validate, no action, disabled", () => {
     expect(
-      resolveStep1Button({ hasText: false, validating: false, result: null, isStale: false }),
+      resolveStep1Button({
+        hasText: false,
+        validating: false,
+        result: null,
+        isStale: false,
+        clientBlocked: false,
+      }),
     ).toEqual({ labelKey: "validate", action: null, disabled: true });
   });
 
   it("ready: text present, not yet validated -> validate, validate action, enabled", () => {
     expect(
-      resolveStep1Button({ hasText: true, validating: false, result: null, isStale: false }),
+      resolveStep1Button({
+        hasText: true,
+        validating: false,
+        result: null,
+        isStale: false,
+        clientBlocked: false,
+      }),
     ).toEqual({ labelKey: "validate", action: "validate", disabled: false });
   });
 
   it("validating: request in flight -> validating, no action, disabled", () => {
     expect(
-      resolveStep1Button({ hasText: true, validating: true, result: null, isStale: false }),
+      resolveStep1Button({
+        hasText: true,
+        validating: true,
+        result: null,
+        isStale: false,
+        clientBlocked: false,
+      }),
     ).toEqual({ labelKey: "validating", action: null, disabled: true });
   });
 
@@ -203,6 +221,7 @@ describe("resolveStep1Button", () => {
         validating: false,
         result: { valid: true, parsedCards: [], errors: [] },
         isStale: false,
+        clientBlocked: false,
       }),
     ).toEqual({ labelKey: "import", action: "continue", disabled: false });
   });
@@ -214,6 +233,7 @@ describe("resolveStep1Button", () => {
         validating: false,
         result: { valid: true, parsedCards: [], errors: [] },
         isStale: true,
+        clientBlocked: false,
       }),
     ).toEqual({ labelKey: "validate", action: "validate", disabled: false });
   });
@@ -225,8 +245,33 @@ describe("resolveStep1Button", () => {
         validating: false,
         result: { valid: false, parsedCards: [], errors: [{ line: 1, message: "x" }] },
         isStale: false,
+        clientBlocked: false,
       }),
     ).toEqual({ labelKey: "validate", action: "validate", disabled: false });
+  });
+
+  it("client-blocked: text present but over a cap -> validate, no action, disabled", () => {
+    expect(
+      resolveStep1Button({
+        hasText: true,
+        validating: false,
+        result: null,
+        isStale: false,
+        clientBlocked: true,
+      }),
+    ).toEqual({ labelKey: "validate", action: null, disabled: true });
+  });
+
+  it("client-blocked wins over a stale-valid result", () => {
+    expect(
+      resolveStep1Button({
+        hasText: true,
+        validating: false,
+        result: { valid: true, parsedCards: [], errors: [] },
+        isStale: true,
+        clientBlocked: true,
+      }),
+    ).toEqual({ labelKey: "validate", action: null, disabled: true });
   });
 });
 
