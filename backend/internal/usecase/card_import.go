@@ -211,8 +211,13 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 		return ImportCardsOutput{}, eris.Wrap(perr, "usecase: card import: parse")
 	}
 
-	if len(words) > cardImportParsedRowCap {
-		return ImportCardsOutput{}, ucerr.NewValidationError("payload", "payload exceeds 5000 row cap")
+	// Enforce the same caps the Validate preview reports, via the shared
+	// checker, so the two paths cannot diverge. Checked on the raw parsed words
+	// (before dedup) so Import and Validate agree exactly. The first violation
+	// aborts the whole batch (all-or-nothing); the row cap short-circuits ahead
+	// of any per-row length error inside the helper.
+	if caps := checkImportCaps(words); len(caps) > 0 {
+		return ImportCardsOutput{}, ucerr.NewValidationError(caps[0].Field, caps[0].Message)
 	}
 
 	mappedErrs := cardImportErrorsFromTextdic(parseErrs)
