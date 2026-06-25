@@ -15,7 +15,8 @@
     "keepEditing": "Keep editing",
     "discard": "Discard",
     "cannotBeUndone": "This action cannot be undone.",
-    "deleteSelected": "Delete selected"
+    "deleteSelected": "Delete selected",
+    "totalCount": "{count, number} total"
   },
   "Nav": {
     "cardgroups": "Cardgroups",

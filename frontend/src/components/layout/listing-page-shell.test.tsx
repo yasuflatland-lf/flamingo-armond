@@ -82,7 +82,7 @@ describe("<ListingPageShell>", () => {
     expect(main?.className).toContain("p-8");
   });
 
-  it("renders the count as a muted (N) sharing the title cluster, inline beside the title on desktop", () => {
+  it("renders the count as a muted pill sharing the title cluster, inline beside the title on desktop", () => {
     render(
       <ListingPageShell title="Users" count={42}>
         <div />
@@ -90,12 +90,39 @@ describe("<ListingPageShell>", () => {
     );
 
     const heading = screen.getByRole("heading", { level: 1, name: "Users" });
-    const count = screen.getByText("(42)");
-    expect(count).toHaveClass("text-muted-foreground");
+    const count = screen.getByText("42");
+    // Muted, pill-shaped, and a static label (never an interactive control).
+    expect(count).toHaveClass("text-muted-foreground", "rounded-full");
+    expect(count.tagName).toBe("SPAN");
     // Count and title share one cluster so the count sits next to the heading.
     expect(count.parentElement).toBe(heading.parentElement);
     // Desktop lays them out on one baseline-aligned row (mobile stacks them).
     expect(heading.parentElement).toHaveClass("md:flex-row", "md:items-baseline");
+  });
+
+  it("renders countLabel inside the pill when provided", () => {
+    render(
+      <ListingPageShell title="Users" count={42} countLabel="42 total">
+        <div />
+      </ListingPageShell>,
+    );
+
+    const pill = screen.getByText("42 total");
+    expect(pill).toHaveClass("rounded-full", "text-muted-foreground");
+    expect(pill.tagName).toBe("SPAN");
+    // The bare number is replaced by the label, not shown alongside it.
+    expect(screen.queryByText("42")).toBeNull();
+  });
+
+  it("does not render the count pill when count is omitted", () => {
+    render(
+      <ListingPageShell title="Users">
+        <div />
+      </ListingPageShell>,
+    );
+
+    const heading = screen.getByRole("heading", { level: 1, name: "Users" });
+    expect(heading.parentElement?.querySelector(".rounded-full")).toBeNull();
   });
 
   it("renders the title with the shared page-title type token", () => {

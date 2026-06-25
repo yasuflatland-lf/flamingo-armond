@@ -253,8 +253,8 @@ describe("AdminMastersClient (broad page test)", () => {
     // List container rendered.
     expect(screen.getByTestId("admin-masters-list")).toBeInTheDocument();
 
-    // totalCount shown (3 in parens).
-    expect(screen.getByText("(3)")).toBeInTheDocument();
+    // totalCount shown as the "N total" pill label.
+    expect(screen.getByText("3 total")).toBeInTheDocument();
 
     // Each row links to the edit page — no edit sheet.
     expect(screen.getByRole("link", { name: /edit deck m-1/i })).toHaveAttribute(

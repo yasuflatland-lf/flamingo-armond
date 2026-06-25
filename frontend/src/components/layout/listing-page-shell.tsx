@@ -4,8 +4,10 @@ import { cn } from "@/lib/utils";
 interface ListingPageShellProps {
   /** Page title. Centered on mobile, left-aligned on desktop. */
   title: ReactNode;
-  /** Optional total-count badge rendered as a muted `(N)`: below the title on mobile, inline to its right on desktop. */
+  /** Optional total count rendered as a neutral pill: below the title on mobile, inline to its right on desktop. */
   count?: number;
+  /** Optional fully-formatted, localized label rendered inside the count pill (e.g. "14 total"). Falls back to the bare `count` number when omitted. */
+  countLabel?: ReactNode;
   /** Optional supporting copy under the title. */
   description?: ReactNode;
   /** Optional CTA cluster (desktop create button etc.): below the title on mobile, on the trailing edge of the header row on desktop. */
@@ -39,6 +41,7 @@ interface ListingPageShellProps {
 export function ListingPageShell({
   title,
   count,
+  countLabel,
   description,
   primaryActions,
   toolbar,
@@ -54,7 +57,11 @@ export function ListingPageShell({
         <div className="flex flex-col items-center gap-1 md:items-start">
           <div className="flex flex-col items-center gap-1 md:flex-row md:items-baseline md:gap-2">
             <h1 className="text-page-title font-bold leading-tight tracking-normal">{title}</h1>
-            {count != null && <span className="text-sm text-muted-foreground">({count})</span>}
+            {count != null && (
+              <span className="inline-flex items-center rounded-full border bg-muted px-2.5 py-0.5 text-sm font-medium text-muted-foreground tabular-nums">
+                {countLabel ?? count}
+              </span>
+            )}
           </div>
           {description != null && <div className="text-muted-foreground">{description}</div>}
         </div>
