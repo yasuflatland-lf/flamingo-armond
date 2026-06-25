@@ -96,4 +96,38 @@ describe("updateProfileSchema", () => {
       expect(result.error.issues[0].message).toBe("Bio must be 500 characters or fewer");
     }
   });
+
+  it("rejects a reserved displayName (exact)", () => {
+    const result = updateProfileSchema.safeParse({ displayName: "admin" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((i) => i.message)).toContain("Display name is reserved");
+    }
+  });
+
+  it("rejects a reserved displayName case-insensitively", () => {
+    const result = updateProfileSchema.safeParse({ displayName: "Admin" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((i) => i.message)).toContain("Display name is reserved");
+    }
+  });
+
+  it("rejects a reserved displayName after trimming surrounding whitespace", () => {
+    const result = updateProfileSchema.safeParse({ displayName: "  root  " });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((i) => i.message)).toContain("Display name is reserved");
+    }
+  });
+
+  it("rejects the lowercased role-name 'general'", () => {
+    const result = updateProfileSchema.safeParse({ displayName: "general" });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a non-reserved name that merely contains a reserved word (no substring match)", () => {
+    const result = updateProfileSchema.safeParse({ displayName: "administrator2" });
+    expect(result.success).toBe(true);
+  });
 });
