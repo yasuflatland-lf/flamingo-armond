@@ -6,6 +6,17 @@ import (
 	"github.com/rotisserie/eris"
 )
 
+// Bound constants (exported) for the master cardgroup free-form text fields.
+// Usecase translate helpers reference these so the user-facing message and the
+// enforced cap never drift apart.
+const (
+	MasterDescriptionMax = 1000
+	MasterLanguageMax    = 50
+	MasterLevelMax       = 50
+	MasterCategoryMax    = 100
+	MasterSourceMax      = 500
+)
+
 // MasterCardgroupStatus is the publication lifecycle state of a master cardgroup.
 // The zero value (MasterCardgroupStatus("")) is invalid; use MasterStatusDraft or
 // MasterStatusPublished.
