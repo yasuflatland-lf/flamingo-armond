@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithIntl } from "@/test/render-with-intl";
@@ -172,5 +172,39 @@ describe("<ChangeEmailClient>", () => {
 
     const cancelLink = screen.getByRole("link", { name: /cancel/i });
     expect(cancelLink).toHaveAttribute("href", "/profile");
+  });
+
+  it("S9 trims a whitespace-padded email before calling updateUser", async () => {
+    mockUpdateUser.mockResolvedValue({ data: { user: {} }, error: null });
+
+    renderWithIntl(<ChangeEmailClient currentEmail="alice@example.com" />);
+
+    // jsdom sanitizes type="email" inputs and strips whitespace from .value, so
+    // we cannot inject a padded value via normal DOM assignment. Override the
+    // value property to bypass the sanitizer and prove the component trims.
+    const input = screen.getByLabelText(/new email/i);
+    let stored = "";
+    Object.defineProperty(input, "value", {
+      get: () => stored,
+      set: (v: string) => {
+        stored = v;
+      },
+      configurable: true,
+    });
+
+    // Inject the padded value and fire the React synthetic onChange.
+    stored = "  bob@example.com  ";
+    fireEvent.change(input, { target: input });
+    // Use fireEvent.submit to bypass native constraint validation (which would
+    // reject a padded email and block the submit handler).
+    const form = input.closest("form");
+    if (!form) throw new Error("expected the new-email input to be inside a form");
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(mockUpdateUser).toHaveBeenCalledWith({ email: "bob@example.com" });
+    });
+    // Success screen shows the trimmed address.
+    expect(screen.getByText("bob@example.com")).toBeInTheDocument();
   });
 });

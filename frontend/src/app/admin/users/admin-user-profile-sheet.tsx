@@ -18,6 +18,8 @@ import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import { mutationAuthBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
+import { graphemeCount } from "@/schemas/grapheme";
+import { BIO_MAX, DISPLAY_NAME_MAX, updateProfileSchema } from "@/schemas/profile";
 import type { AdminUserListItem, AdminUserRole } from "./admin-user-row";
 import { AdminEditUserMutation } from "./queries";
 
@@ -37,9 +39,6 @@ type Props = {
    */
   onDelete?: (id: string) => Promise<void>;
 };
-
-const DISPLAY_NAME_MAX = 50;
-const BIO_MAX = 500;
 
 function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
   if (a.size !== b.size) return false;
@@ -114,12 +113,14 @@ export function AdminUserProfileSheet({
 
   function validate(): string {
     if (!profileDirty) return "";
-    const trimmed = displayName.trim();
-    if (trimmed.length < 1) return t("displayNameRequired");
-    if (trimmed.length > DISPLAY_NAME_MAX) {
-      return t("displayNameTooLong", { max: DISPLAY_NAME_MAX });
+    const displayNameResult = updateProfileSchema.shape.displayName.safeParse(displayName);
+    if (!displayNameResult.success) {
+      return displayNameResult.error.issues[0]?.message ?? "";
     }
-    if (bio.length > BIO_MAX) return t("bioTooLong", { max: BIO_MAX });
+    const bioResult = updateProfileSchema.shape.bio.safeParse(bio);
+    if (!bioResult.success) {
+      return bioResult.error.issues[0]?.message ?? "";
+    }
     return "";
   }
 
@@ -325,11 +326,10 @@ function AdminUserProfileSheetBody({
               onChange={(event) => {
                 onDisplayNameChange(event.target.value);
               }}
-              maxLength={DISPLAY_NAME_MAX}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <p className="text-xs text-muted-foreground">
-              {displayName.trim().length}/{DISPLAY_NAME_MAX}
+              {graphemeCount(displayName.trim())}/{DISPLAY_NAME_MAX}
             </p>
           </div>
 
@@ -344,12 +344,11 @@ function AdminUserProfileSheetBody({
                 onBioChange(event.target.value);
               }}
               rows={4}
-              maxLength={BIO_MAX}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               placeholder={t("bioPlaceholder")}
             />
             <p className="text-xs text-muted-foreground">
-              {bio.length}/{BIO_MAX}
+              {graphemeCount(bio)}/{BIO_MAX}
             </p>
           </div>
 
