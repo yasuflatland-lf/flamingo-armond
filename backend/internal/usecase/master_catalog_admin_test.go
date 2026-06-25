@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -357,4 +358,59 @@ func TestMasterCatalog_PublishMaster_CountCardsError(t *testing.T) {
 	require.True(t, errors.Is(err, sentinel))
 	require.False(t, out.EmptyMaster, "count error must not be misclassified as empty deck")
 	require.False(t, publishCalled, "Publish must NOT be called when CountCards fails")
+}
+
+// ---------------------------------------------------------------------------
+// validateMasterText
+// ---------------------------------------------------------------------------
+
+func TestValidateMasterText(t *testing.T) {
+	t.Parallel()
+
+	str := func(s string) *string { return &s }
+
+	t.Run("all nil yields all nil", func(t *testing.T) {
+		out, info, err := validateMasterText(masterTextFields{})
+		require.NoError(t, err)
+		require.Nil(t, info)
+		require.Nil(t, out.Description)
+		require.Nil(t, out.CoverImageURL)
+	})
+
+	t.Run("empty-after-trim collapses to nil", func(t *testing.T) {
+		out, info, err := validateMasterText(masterTextFields{Description: str("   ")})
+		require.NoError(t, err)
+		require.Nil(t, info)
+		require.Nil(t, out.Description)
+	})
+
+	t.Run("valid values are trimmed and kept", func(t *testing.T) {
+		out, info, err := validateMasterText(masterTextFields{
+			Description:   str("  hello  "),
+			CoverImageURL: str("https://example.com/a.png"),
+		})
+		require.NoError(t, err)
+		require.Nil(t, info)
+		require.NotNil(t, out.Description)
+		require.Equal(t, "hello", *out.Description)
+		require.Equal(t, "https://example.com/a.png", *out.CoverImageURL)
+	})
+
+	t.Run("over-long description -> validation info on description", func(t *testing.T) {
+		_, info, err := validateMasterText(masterTextFields{
+			Description: str(strings.Repeat("a", domain.MasterDescriptionMax+1)),
+		})
+		require.NoError(t, err)
+		require.NotNil(t, info)
+		require.Equal(t, "description", info.Field)
+	})
+
+	t.Run("bad cover url -> validation info on coverImageUrl", func(t *testing.T) {
+		_, info, err := validateMasterText(masterTextFields{
+			CoverImageURL: str("javascript:alert(1)"),
+		})
+		require.NoError(t, err)
+		require.NotNil(t, info)
+		require.Equal(t, "coverImageUrl", info.Field)
+	})
 }

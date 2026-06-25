@@ -384,6 +384,88 @@ func derefOr[T any](p *T, def T) T {
 	return def
 }
 
+// masterTextFields groups the six optional free-form text fields shared by the
+// create and update master paths.
+type masterTextFields struct {
+	Description   *string
+	Language      *string
+	Level         *string
+	Category      *string
+	CoverImageURL *string
+	Source        *string
+}
+
+// validateMasterText normalizes and validates the six optional free-form text
+// fields. For each field: nil -> nil; non-nil -> trim, and an empty result
+// collapses to nil (matching the frontend's empty-to-null posture and the
+// repository's nil = no-change contract); otherwise the value is parsed by its
+// domain VO. It returns the validated values together with the FIRST
+// InputValidationInfo encountered (later fields are not reported), or a wrapped
+// error for unexpected (non-validation) failures.
+func validateMasterText(in masterTextFields) (masterTextFields, *InputValidationInfo, error) {
+	var out masterTextFields
+	checks := []struct {
+		src       *string
+		dst       **string
+		parse     func(string) (string, error)
+		translate func(error) error
+	}{
+		{in.Description, &out.Description,
+			func(s string) (string, error) {
+				v, err := domain.ParseBoundedText(s, domain.MasterDescriptionMax)
+				return v.String(), err
+			},
+			func(err error) error { return translateBoundedTextErr(err, "description", domain.MasterDescriptionMax) }},
+		{in.Language, &out.Language,
+			func(s string) (string, error) {
+				v, err := domain.ParseBoundedText(s, domain.MasterLanguageMax)
+				return v.String(), err
+			},
+			func(err error) error { return translateBoundedTextErr(err, "language", domain.MasterLanguageMax) }},
+		{in.Level, &out.Level,
+			func(s string) (string, error) {
+				v, err := domain.ParseBoundedText(s, domain.MasterLevelMax)
+				return v.String(), err
+			},
+			func(err error) error { return translateBoundedTextErr(err, "level", domain.MasterLevelMax) }},
+		{in.Category, &out.Category,
+			func(s string) (string, error) {
+				v, err := domain.ParseBoundedText(s, domain.MasterCategoryMax)
+				return v.String(), err
+			},
+			func(err error) error { return translateBoundedTextErr(err, "category", domain.MasterCategoryMax) }},
+		{in.CoverImageURL, &out.CoverImageURL,
+			domain.ParseCoverImageURL,
+			translateCoverImageURLErr},
+		{in.Source, &out.Source,
+			func(s string) (string, error) {
+				v, err := domain.ParseBoundedText(s, domain.MasterSourceMax)
+				return v.String(), err
+			},
+			func(err error) error { return translateBoundedTextErr(err, "source", domain.MasterSourceMax) }},
+	}
+
+	for _, c := range checks {
+		if c.src == nil {
+			continue
+		}
+		if strings.TrimSpace(*c.src) == "" {
+			continue // empty after trim collapses to nil (no value / no change)
+		}
+		val, derr := c.parse(*c.src)
+		info, err := liftValidationErr(c.translate(derr))
+		if err != nil {
+			return masterTextFields{}, nil, err
+		}
+		if info != nil {
+			return masterTextFields{}, info, nil
+		}
+		v := val
+		*c.dst = &v
+	}
+	return out, nil, nil
+}
+
 // normalizeSearch collapses nil and whitespace-only search inputs to nil and
 // trims a non-empty search. After this the repository receives either nil (no
 // filter) or a non-empty, trimmed string — the same invariant ListMasterCards

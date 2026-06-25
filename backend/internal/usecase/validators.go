@@ -119,3 +119,34 @@ func translateRoleNameErr(err error) error {
 		return eris.Wrap(err, "usecase: translate role name error")
 	}
 }
+
+// translateBoundedTextErr maps the shared domain.ErrTextTooLong sentinel to a
+// usecase-layer typed validation error for the named field. The field and max
+// come from the call site because ParseBoundedText is field-agnostic. Unexpected
+// errors are wrapped with eris. Returns nil when err is nil.
+func translateBoundedTextErr(err error, field string, max int) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, domain.ErrTextTooLong) {
+		return ucerr.NewValidationError(field, fmt.Sprintf("%s must be at most %d characters", field, max))
+	}
+	return eris.Wrap(err, "usecase: master catalog: translate bounded text error")
+}
+
+// translateCoverImageURLErr maps domain cover-image-URL sentinels to usecase-
+// layer typed validation errors. Unexpected errors are wrapped with eris.
+// Returns nil when err is nil.
+func translateCoverImageURLErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, domain.ErrCoverImageURLInvalid):
+		return ucerr.NewValidationError("coverImageUrl", "coverImageUrl must be a valid http or https URL")
+	case errors.Is(err, domain.ErrCoverImageURLTooLong):
+		return ucerr.NewValidationError("coverImageUrl", fmt.Sprintf("coverImageUrl must be at most %d characters", domain.CoverImageURLMax))
+	default:
+		return eris.Wrap(err, "usecase: master catalog: translate cover image url error")
+	}
+}
