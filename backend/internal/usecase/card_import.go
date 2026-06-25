@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -164,6 +165,9 @@ func (u *cardImportUsecase) Validate(ctx context.Context, payload string) (Valid
 		parsed = append(parsed, ParsedCard{Front: w.Front, Back: w.Back, Line: w.Line})
 	}
 	errs := cardImportErrorsFromTextdic(parseErrs)
+	for _, v := range checkImportCaps(words) {
+		errs = append(errs, CardImportError{Line: v.Line, Message: v.Message, Kind: CardImportErrKindHard})
+	}
 	return ValidateCardImportOutcome{
 		Valid:       len(errs) == 0 && len(parsed) > 0,
 		ParsedCards: parsed,
@@ -299,6 +303,41 @@ func cardImportErrorsFromTextdic(errs []textdic.ValidationError) []CardImportErr
 			Kind:    CardImportErrorKind(e.Kind.String()),
 			Snippet: e.Snippet,
 		})
+	}
+	return out
+}
+
+// capViolation is the internal result of checkImportCaps. Each consumer maps it
+// into its own output shape: Validate -> CardImportError{Kind: HARD}; Import ->
+// ucerr.NewValidationError. Field carries the validation field name explicitly so
+// no caller has to substring-match Message.
+type capViolation struct {
+	Line    int    // 0 for the payload-level row cap; w.Line for a per-row length error
+	Field   string // "payload" | "front" | "back"
+	Message string
+}
+
+// checkImportCaps enforces the two import caps shared by Validate and Import: the
+// parsed-row cap (cardImportParsedRowCap) and the per-side grapheme cap
+// (domain.CardTextMax). It is the single source of cap logic for both paths so
+// they cannot re-diverge.
+//
+// The row cap takes precedence and short-circuits: an over-cap payload returns
+// only the row-cap violation (the caller must cut rows before any per-row error is
+// actionable), mirroring Import's "row cap is a top-level reject" ordering. Below
+// the row cap, every row's front and back are checked via domain.ParseCardText.
+func checkImportCaps(words []textdic.ParsedWord) []capViolation {
+	if len(words) > cardImportParsedRowCap {
+		return []capViolation{{Line: 0, Field: "payload", Message: "payload exceeds 5000 row cap"}}
+	}
+	var out []capViolation
+	for _, w := range words {
+		if _, err := domain.ParseCardText(w.Front, domain.ErrCardFrontRequired, domain.ErrCardFrontTooLong); errors.Is(err, domain.ErrCardFrontTooLong) {
+			out = append(out, capViolation{Line: w.Line, Field: "front", Message: fmt.Sprintf("front must be at most %d characters", domain.CardTextMax)})
+		}
+		if _, err := domain.ParseCardText(w.Back, domain.ErrCardBackRequired, domain.ErrCardBackTooLong); errors.Is(err, domain.ErrCardBackTooLong) {
+			out = append(out, capViolation{Line: w.Line, Field: "back", Message: fmt.Sprintf("back must be at most %d characters", domain.CardTextMax)})
+		}
 	}
 	return out
 }
