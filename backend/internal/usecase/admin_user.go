@@ -487,7 +487,17 @@ func mapAdminEditMutationError(err error) (*InputValidationInfo, error) {
 	}
 }
 
+// maxAdminEditRoleIDs caps the number of role ids accepted by a single
+// adminEditUser call. The cap is a defensive bound mirroring the bulk-path
+// convention (maxBulkDelete = 100): an unbounded slice would allocate O(n) maps
+// and issue a WHERE id IN (… n …) query inside a FOR UPDATE transaction. The
+// real role universe is tiny, so 100 is generous headroom.
+const maxAdminEditRoleIDs = 100
+
 func normalizeAdminEditRoleIDs(roleIDs []string) ([]string, *InputValidationInfo) {
+	if len(roleIDs) > maxAdminEditRoleIDs {
+		return nil, NewInputValidationInfo("roleIds", fmt.Sprintf("at most %d ids per call", maxAdminEditRoleIDs))
+	}
 	out := make([]string, 0, len(roleIDs))
 	seen := make(map[string]bool, len(roleIDs))
 	for _, roleID := range roleIDs {

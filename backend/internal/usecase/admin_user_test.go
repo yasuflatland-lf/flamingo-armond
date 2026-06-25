@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -947,6 +948,43 @@ func TestAdminUser_EditUser_DuplicateRoleIDsValidation(t *testing.T) {
 
 	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
 		RoleIDs: []string{"r-general", "r-general"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertAdminEditUserOutcomeXOR(t, outcome)
+	if outcome.Validation == nil || outcome.Validation.Field != "roleIds" {
+		t.Fatalf("outcome.Validation = %+v, want field=roleIds", outcome.Validation)
+	}
+	if *txCalls != 0 {
+		t.Fatalf("tx calls = %d, want 0", *txCalls)
+	}
+	if userRoles.setCalls != 0 {
+		t.Fatalf("SetUserRolesTx calls = %d, want 0", userRoles.setCalls)
+	}
+}
+
+// TestAdminUser_EditUser_RoleIDsExceedCapValidation pins the length-cap branch
+// of normalizeAdminEditRoleIDs: a roleIds slice longer than maxAdminEditRoleIDs
+// returns BAD_USER_INPUT on the "roleIds" field before any transaction opens, so
+// the oversized slice never reaches FindByIDsTx / SetUserRolesTx. Mirrors
+// TestCardUsecase_BulkDelete_RejectsTooManyIDs.
+func TestAdminUser_EditUser_RoleIDsExceedCapValidation(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	tx, txCalls := countingAdminUserTxRunner()
+	uc, _, _, _ := buildAdminUCWithTx(users, nil, userRoles, tx, authChk)
+
+	ids := make([]string, maxAdminEditRoleIDs+1)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("r%d", i)
+	}
+
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		RoleIDs: ids,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
