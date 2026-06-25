@@ -33,7 +33,7 @@ func newMasterCardgroup(name string) *domain.MasterCardgroup {
 	return &domain.MasterCardgroup{
 		ID:               uuid.NewString(),
 		Name:             domain.CardgroupName(name),
-		Description:      &desc,
+		Description:      domain.DescriptionFromPtr(&desc),
 		Version:          ver,
 		Status:           domain.MasterCardgroupStatus(status),
 		IsDefaultStarter: isStarter,
@@ -43,14 +43,14 @@ func newMasterCardgroup(name string) *domain.MasterCardgroup {
 	}
 }
 
-// newMasterCardgroupMinimal builds a MasterCardgroup with all optional *string
-// fields set to nil. This exercises the NULL round-trip path.
+// newMasterCardgroupMinimal builds a MasterCardgroup with the optional Description
+// field cleared. This exercises the NULL round-trip path.
 func newMasterCardgroupMinimal(name string) *domain.MasterCardgroup {
 	now := time.Now().UTC()
 	return &domain.MasterCardgroup{
 		ID:               uuid.NewString(),
 		Name:             domain.CardgroupName(name),
-		Description:      nil,
+		Description:      domain.Description{},
 		Version:          1,
 		Status:           domain.MasterStatusDraft,
 		IsDefaultStarter: false,
@@ -77,8 +77,8 @@ func TestMasterCardgroupRepository_CreateAndFindByID_AllFields(t *testing.T) {
 
 	require.Equal(t, m.ID, got.ID)
 	require.Equal(t, m.Name.String(), got.Name.String())
-	require.NotNil(t, got.Description)
-	require.Equal(t, *m.Description, *got.Description)
+	require.NotNil(t, got.Description.Ptr())
+	require.Equal(t, *m.Description.Ptr(), *got.Description.Ptr())
 	require.Equal(t, m.Version, got.Version)
 	require.Equal(t, m.Status, got.Status)
 	require.Equal(t, m.IsDefaultStarter, got.IsDefaultStarter)
@@ -100,7 +100,7 @@ func TestMasterCardgroupRepository_CreateAndFindByID_NullOptionalFields(t *testi
 
 	require.Equal(t, m.ID, got.ID)
 	require.Equal(t, m.Name.String(), got.Name.String())
-	require.Nil(t, got.Description)
+	require.Nil(t, got.Description.Ptr())
 	require.Equal(t, 1, got.Version)
 	require.Equal(t, domain.MasterStatusDraft, got.Status)
 	require.False(t, got.IsDefaultStarter)
@@ -223,7 +223,7 @@ func TestMasterCardgroupRepository_Update_PartialPatch(t *testing.T) {
 	// Unchanged fields should be preserved.
 	require.Equal(t, m.Name.String(), got.Name.String())
 	require.Equal(t, m.Version, got.Version)
-	require.Nil(t, got.Description)
+	require.Nil(t, got.Description.Ptr())
 	require.False(t, got.IsDefaultStarter)
 
 	// Verify the returned row is from DB (re-fetched state).

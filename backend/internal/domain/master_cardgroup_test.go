@@ -20,13 +20,13 @@ func TestNewMasterCardgroup(t *testing.T) {
 
 		desc := "an intro deck"
 
-		m, err := NewMasterCardgroup(name, &desc, true, 5)
+		m, err := NewMasterCardgroup(name, DescriptionFromPtr(&desc), true, 5)
 		require.NoError(t, err)
 		require.NotNil(t, m)
 
 		require.NotEmpty(t, m.ID, "constructor must generate an ID")
 		require.Equal(t, name, m.Name)
-		require.Equal(t, &desc, m.Description)
+		require.Equal(t, &desc, m.Description.Ptr())
 		require.Equal(t, 1, m.Version, "a new master deck starts at version 1")
 		require.Equal(t, MasterStatusDraft, m.Status, "a new master deck starts in draft")
 		require.True(t, m.IsDefaultStarter)
@@ -41,9 +41,9 @@ func TestNewMasterCardgroup(t *testing.T) {
 		name, err := ParseCardgroupName("Minimal")
 		require.NoError(t, err)
 
-		m, err := NewMasterCardgroup(name, nil, false, 0)
+		m, err := NewMasterCardgroup(name, Description{}, false, 0)
 		require.NoError(t, err)
-		require.Nil(t, m.Description)
+		require.Nil(t, m.Description.Ptr())
 		require.Equal(t, 1, m.Version)
 		require.Equal(t, MasterStatusDraft, m.Status)
 		require.False(t, m.IsDefaultStarter)
@@ -72,7 +72,7 @@ func TestNewMasterCardgroup_IDFailure(t *testing.T) {
 	name, err := ParseCardgroupName("Starter")
 	require.NoError(t, err)
 
-	m, err := NewMasterCardgroup(name, nil, false, 0)
+	m, err := NewMasterCardgroup(name, Description{}, false, 0)
 	require.Nil(t, m)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "master cardgroup: new id")

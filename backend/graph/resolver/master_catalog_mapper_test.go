@@ -50,7 +50,7 @@ func TestToMasterCardgroupModel_FullMapping(t *testing.T) {
 		Cardgroup: &domain.MasterCardgroup{
 			ID:               "mcg-1",
 			Name:             domain.CardgroupName("Starter Deck"),
-			Description:      strPtr("desc"),
+			Description:      domain.DescriptionFromPtr(strPtr("desc")),
 			Version:          3,
 			Status:           domain.MasterStatusPublished,
 			IsDefaultStarter: true,

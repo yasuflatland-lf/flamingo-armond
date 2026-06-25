@@ -70,7 +70,7 @@ func toMasterCardgroupModelFromParts(m *domain.MasterCardgroup, cardCount int) *
 	return &model.MasterCardgroup{
 		ID:               m.ID,
 		Name:             m.Name.String(),
-		Description:      m.Description,
+		Description:      m.Description.Ptr(),
 		Version:          m.Version,
 		Status:           toMasterCardgroupStatusModel(m.Status),
 		IsDefaultStarter: m.IsDefaultStarter,
