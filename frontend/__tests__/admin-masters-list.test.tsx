@@ -78,11 +78,6 @@ type MasterNode = {
   id: string;
   name: string;
   description: string | null;
-  language: string | null;
-  level: string | null;
-  category: string | null;
-  coverImageUrl: string | null;
-  source: string | null;
   version: number;
   status: "DRAFT" | "PUBLISHED";
   isDefaultStarter: boolean;
@@ -115,11 +110,6 @@ function makeMaster(i: number): MasterNode {
     id: `m-${i}`,
     name: `Deck m-${i}`,
     description: null,
-    language: null,
-    level: null,
-    category: null,
-    coverImageUrl: null,
-    source: null,
     version: 1,
     status: "DRAFT",
     isDefaultStarter: false,

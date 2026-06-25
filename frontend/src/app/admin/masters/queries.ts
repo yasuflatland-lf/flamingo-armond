@@ -40,11 +40,6 @@ export const AdminMastersQuery = graphql(`
           id
           name
           description
-          language
-          level
-          category
-          coverImageUrl
-          source
           version
           status
           isDefaultStarter
@@ -72,11 +67,6 @@ export const AdminCreateMasterMutation = graphql(`
           id
           name
           description
-          language
-          level
-          category
-          coverImageUrl
-          source
           version
           status
           isDefaultStarter
@@ -101,11 +91,6 @@ export const AdminUpdateMasterMutation = graphql(`
           id
           name
           description
-          language
-          level
-          category
-          coverImageUrl
-          source
           version
           status
           isDefaultStarter
@@ -130,11 +115,6 @@ export const AdminPublishMasterMutation = graphql(`
           id
           name
           description
-          language
-          level
-          category
-          coverImageUrl
-          source
           version
           status
           isDefaultStarter
@@ -155,11 +135,6 @@ export const AdminUnpublishMasterMutation = graphql(`
       id
       name
       description
-      language
-      level
-      category
-      coverImageUrl
-      source
       version
       status
       isDefaultStarter

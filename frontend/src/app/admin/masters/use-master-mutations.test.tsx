@@ -25,11 +25,6 @@ import { useMasterMutations } from "./use-master-mutations";
 const VALUES: MasterFormValues = {
   name: "Deck A",
   description: null,
-  language: null,
-  level: null,
-  category: null,
-  coverImageUrl: null,
-  source: null,
   isDefaultStarter: false,
   sortOrder: null,
 };
@@ -44,11 +39,6 @@ function masterNode(
     id,
     name: "Deck A",
     description: null,
-    language: null,
-    level: null,
-    category: null,
-    coverImageUrl: null,
-    source: null,
     version: 1,
     status: "DRAFT" as MasterCardgroupStatus,
     isDefaultStarter: false,

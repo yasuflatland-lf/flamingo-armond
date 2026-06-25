@@ -12,11 +12,6 @@ const EXISTING: AdminMasterListItem = {
   version: 3,
   name: "Spanish A1",
   description: "Beginner",
-  language: "es",
-  level: "A1",
-  category: "language",
-  coverImageUrl: null,
-  source: null,
   isDefaultStarter: false,
   sortOrder: 5,
   status: "DRAFT",
@@ -24,20 +19,17 @@ const EXISTING: AdminMasterListItem = {
 };
 
 describe("AdminMasterForm", () => {
-  it("renders all nine editable fields in create mode", () => {
+  it("renders the four editable fields in create mode", () => {
     renderWithIntl(<AdminMasterForm mode="create" submitting={false} submit={vi.fn()} />);
-    for (const id of [
-      "name",
-      "description",
-      "language",
-      "level",
-      "category",
-      "coverImageUrl",
-      "source",
-      "isDefaultStarter",
-      "sortOrder",
-    ]) {
+    for (const id of ["name", "description", "isDefaultStarter", "sortOrder"]) {
       expect(screen.getByTestId(`master-field-${id}`)).toBeInTheDocument();
+    }
+  });
+
+  it("does not render the removed metadata fields", () => {
+    renderWithIntl(<AdminMasterForm mode="create" submitting={false} submit={vi.fn()} />);
+    for (const id of ["language", "level", "category", "coverImageUrl", "source"]) {
+      expect(screen.queryByTestId(`master-field-${id}`)).not.toBeInTheDocument();
     }
   });
 
@@ -78,11 +70,6 @@ describe("AdminMasterForm", () => {
     expect(submit.mock.calls[0]?.[0]).toMatchObject({
       name: "Only Name",
       description: null,
-      language: null,
-      level: null,
-      category: null,
-      coverImageUrl: null,
-      source: null,
       sortOrder: null,
       isDefaultStarter: false,
     });

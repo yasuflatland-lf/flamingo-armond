@@ -47,9 +47,6 @@ const M1_FIELDS = {
   id: "m-1",
   name: "Business English",
   description: "Professional vocabulary",
-  language: "en",
-  level: "B2",
-  category: "Business",
   cardCount: 42,
 };
 
@@ -58,9 +55,6 @@ const M2_FIELDS = {
   id: "m-2",
   name: "JLPT N3 Kanji",
   description: null,
-  language: "ja",
-  level: null,
-  category: null,
   cardCount: 100,
 };
 

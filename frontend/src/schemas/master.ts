@@ -11,8 +11,8 @@ const masterNameSchema = z
   });
 
 // Single schema validates the only client-enforced field. The remaining
-// optional attributes (description, language, ...) are free-form strings the
-// backend validates; the form does not duplicate those rules.
+// optional attributes (description, ...) are free-form strings the backend
+// validates; the form does not duplicate those rules.
 export const masterSchema = z.object({
   name: masterNameSchema,
 });

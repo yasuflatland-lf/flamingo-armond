@@ -15,9 +15,6 @@ const FULL_NODE = makeFragmentData(
     id: "m-1",
     name: "Business English",
     description: "Professional vocabulary",
-    language: "en",
-    level: "B2",
-    category: "Business",
     cardCount: 1245,
   },
   CatalogCardFieldsFragment,
@@ -29,9 +26,6 @@ const BARE_NODE = makeFragmentData(
     id: "m-2",
     name: "JLPT N3 Kanji",
     description: null,
-    language: null,
-    level: null,
-    category: null,
     cardCount: 100,
   },
   CatalogCardFieldsFragment,
@@ -46,23 +40,17 @@ function renderItem(node: typeof FULL_NODE) {
 }
 
 describe("<CatalogListItem>", () => {
-  it("renders name, the grouped card-count stat with its unit, and badges", () => {
+  it("renders name and the grouped card-count stat with its unit", () => {
     renderItem(FULL_NODE);
     expect(screen.getByText("Business English")).toBeInTheDocument();
     expect(screen.getByText("1,245")).toBeInTheDocument();
     expect(screen.getByText("cards")).toBeInTheDocument();
-    expect(screen.getByText("en")).toBeInTheDocument();
-    expect(screen.getByText("Level B2")).toBeInTheDocument();
-    expect(screen.getByText("Business")).toBeInTheDocument();
   });
 
-  it("renders the name and stat but omits badges when those fields are null", () => {
+  it("renders the name and stat when the deck has no description", () => {
     renderItem(BARE_NODE);
     expect(screen.getByText("JLPT N3 Kanji")).toBeInTheDocument();
     expect(screen.getByText("100")).toBeInTheDocument();
-    expect(screen.queryByText(/^Level /)).not.toBeInTheDocument();
-    expect(screen.queryByText("Business")).not.toBeInTheDocument();
-    expect(screen.queryByText("en")).not.toBeInTheDocument();
   });
 
   it("renders the singular card unit when the deck has exactly one card", () => {
@@ -72,9 +60,6 @@ describe("<CatalogListItem>", () => {
         id: "m-3",
         name: "Single Card Deck",
         description: null,
-        language: null,
-        level: null,
-        category: null,
         cardCount: 1,
       },
       CatalogCardFieldsFragment,

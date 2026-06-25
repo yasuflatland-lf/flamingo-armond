@@ -10,9 +10,6 @@ const FULL_DECK: CatalogDeck = {
   id: "deck-1",
   name: "Business English",
   description: "Professional vocabulary",
-  language: "en",
-  level: "B2",
-  category: "Business",
 };
 
 const BARE_DECK: CatalogDeck = {
@@ -20,9 +17,6 @@ const BARE_DECK: CatalogDeck = {
   id: "deck-2",
   name: "JLPT N3 Kanji",
   description: null,
-  language: null,
-  level: null,
-  category: null,
 };
 
 function renderHeader(
@@ -54,19 +48,15 @@ describe("<CatalogDeckHeader>", () => {
     expect(screen.getByText("42 cards")).toBeInTheDocument();
   });
 
-  it("renders the language, level, category badges and the description", () => {
+  it("renders the description", () => {
     renderHeader(FULL_DECK);
-    expect(screen.getByText("en")).toBeInTheDocument();
-    expect(screen.getByText("Level B2")).toBeInTheDocument();
-    expect(screen.getByText("Business")).toBeInTheDocument();
     expect(screen.getByTestId("catalog-deck-description")).toHaveTextContent(
       "Professional vocabulary",
     );
   });
 
-  it("omits badges and description when those fields are null", () => {
+  it("omits the description when it is null", () => {
     renderHeader(BARE_DECK);
-    expect(screen.queryByText(/^Level /)).toBeNull();
     expect(screen.queryByTestId("catalog-deck-description")).toBeNull();
   });
 
