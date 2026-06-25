@@ -19,24 +19,14 @@ func TestNewMasterCardgroup(t *testing.T) {
 		require.NoError(t, err)
 
 		desc := "an intro deck"
-		lang := "en"
-		level := "A1"
-		category := "general"
-		cover := "https://example.test/cover.png"
-		source := "oxford"
 
-		m, err := NewMasterCardgroup(name, &desc, &lang, &level, &category, &cover, &source, true, 5)
+		m, err := NewMasterCardgroup(name, &desc, true, 5)
 		require.NoError(t, err)
 		require.NotNil(t, m)
 
 		require.NotEmpty(t, m.ID, "constructor must generate an ID")
 		require.Equal(t, name, m.Name)
 		require.Equal(t, &desc, m.Description)
-		require.Equal(t, &lang, m.Language)
-		require.Equal(t, &level, m.Level)
-		require.Equal(t, &category, m.Category)
-		require.Equal(t, &cover, m.CoverImageURL)
-		require.Equal(t, &source, m.Source)
 		require.Equal(t, 1, m.Version, "a new master deck starts at version 1")
 		require.Equal(t, MasterStatusDraft, m.Status, "a new master deck starts in draft")
 		require.True(t, m.IsDefaultStarter)
@@ -51,14 +41,9 @@ func TestNewMasterCardgroup(t *testing.T) {
 		name, err := ParseCardgroupName("Minimal")
 		require.NoError(t, err)
 
-		m, err := NewMasterCardgroup(name, nil, nil, nil, nil, nil, nil, false, 0)
+		m, err := NewMasterCardgroup(name, nil, false, 0)
 		require.NoError(t, err)
 		require.Nil(t, m.Description)
-		require.Nil(t, m.Language)
-		require.Nil(t, m.Level)
-		require.Nil(t, m.Category)
-		require.Nil(t, m.CoverImageURL)
-		require.Nil(t, m.Source)
 		require.Equal(t, 1, m.Version)
 		require.Equal(t, MasterStatusDraft, m.Status)
 		require.False(t, m.IsDefaultStarter)
@@ -87,7 +72,7 @@ func TestNewMasterCardgroup_IDFailure(t *testing.T) {
 	name, err := ParseCardgroupName("Starter")
 	require.NoError(t, err)
 
-	m, err := NewMasterCardgroup(name, nil, nil, nil, nil, nil, nil, false, 0)
+	m, err := NewMasterCardgroup(name, nil, false, 0)
 	require.Nil(t, m)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "master cardgroup: new id")

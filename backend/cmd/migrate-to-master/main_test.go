@@ -136,19 +136,17 @@ func TestRunMigrate_CopiesDeckIntoMasterTables(t *testing.T) {
 	// master_cardgroups carries the source id and the fixed catalog metadata.
 	var (
 		name             string
-		source           string
 		version          int
 		status           string
 		isDefaultStarter bool
 		sortOrder        int
 	)
 	err := pool.QueryRow(context.Background(),
-		`SELECT name, source, version, status, is_default_starter, sort_order
+		`SELECT name, version, status, is_default_starter, sort_order
 		   FROM public.master_cardgroups WHERE id = $1`, cgID).
-		Scan(&name, &source, &version, &status, &isDefaultStarter, &sortOrder)
+		Scan(&name, &version, &status, &isDefaultStarter, &sortOrder)
 	require.NoError(t, err, "master_cardgroup should exist with the source id")
 	assert.Equal(t, "Owner Deck", name)
-	assert.Equal(t, "notion", source)
 	assert.Equal(t, 1, version)
 	assert.Equal(t, "published", status)
 	assert.True(t, isDefaultStarter)

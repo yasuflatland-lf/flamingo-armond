@@ -21,11 +21,6 @@ type gormMasterCatalogRow struct {
 	ID               string    `gorm:"column:id"`
 	Name             string    `gorm:"column:name"`
 	Description      *string   `gorm:"column:description"`
-	Language         *string   `gorm:"column:language"`
-	Level            *string   `gorm:"column:level"`
-	Category         *string   `gorm:"column:category"`
-	CoverImageURL    *string   `gorm:"column:cover_image_url"`
-	Source           *string   `gorm:"column:source"`
 	Version          int       `gorm:"column:version"`
 	Status           string    `gorm:"column:status"`
 	IsDefaultStarter bool      `gorm:"column:is_default_starter"`
@@ -42,11 +37,6 @@ func (r gormMasterCatalogRow) toGorm() gormMasterCardgroup {
 		ID:               r.ID,
 		Name:             r.Name,
 		Description:      r.Description,
-		Language:         r.Language,
-		Level:            r.Level,
-		Category:         r.Category,
-		CoverImageURL:    r.CoverImageURL,
-		Source:           r.Source,
 		Version:          r.Version,
 		Status:           r.Status,
 		IsDefaultStarter: r.IsDefaultStarter,

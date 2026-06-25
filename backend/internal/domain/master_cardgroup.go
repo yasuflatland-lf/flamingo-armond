@@ -29,21 +29,15 @@ func (s MasterCardgroupStatus) IsValid() bool {
 // (1..CardgroupNameMax) applies without duplicating validation logic. Status is
 // the only other field that is a value object (MasterCardgroupStatus); its
 // transitions are owned by the Publish / Unpublish methods below. Every remaining
-// field (Description, Language, Level, Category, CoverImageURL, Source,
-// IsDefaultStarter, SortOrder) is free-form with no Parse or bound to protect.
-// That is why the aggregate exposes no update/patch behaviour method: there is no
-// invariant for one to guard. The admin update path (usecase.UpdateMaster) parses
-// Name through ParseCardgroupName at its single seam and assigns the free-form
-// fields directly into the repository patch.
+// field (Description, IsDefaultStarter, SortOrder) is free-form with no Parse or
+// bound to protect. That is why the aggregate exposes no update/patch behaviour
+// method: there is no invariant for one to guard. The admin update path
+// (usecase.UpdateMaster) parses Name through ParseCardgroupName at its single seam
+// and assigns the free-form fields directly into the repository patch.
 type MasterCardgroup struct {
 	ID               string
 	Name             CardgroupName
 	Description      *string
-	Language         *string
-	Level            *string
-	Category         *string
-	CoverImageURL    *string
-	Source           *string
 	Version          int
 	Status           MasterCardgroupStatus
 	IsDefaultStarter bool
@@ -62,7 +56,7 @@ type MasterCardgroup struct {
 // error when ID generation fails.
 func NewMasterCardgroup(
 	name CardgroupName,
-	description, language, level, category, coverImageURL, source *string,
+	description *string,
 	isDefaultStarter bool,
 	sortOrder int,
 ) (*MasterCardgroup, error) {
@@ -75,11 +69,6 @@ func NewMasterCardgroup(
 		ID:               id,
 		Name:             name,
 		Description:      description,
-		Language:         language,
-		Level:            level,
-		Category:         category,
-		CoverImageURL:    coverImageURL,
-		Source:           source,
 		Version:          1,
 		Status:           MasterStatusDraft,
 		IsDefaultStarter: isDefaultStarter,

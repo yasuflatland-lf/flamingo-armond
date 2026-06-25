@@ -305,11 +305,6 @@ type MasterWithCount struct {
 type CreateMasterInput struct {
 	Name             string
 	Description      *string
-	Language         *string
-	Level            *string
-	Category         *string
-	CoverImageURL    *string
-	Source           *string
 	IsDefaultStarter *bool
 	SortOrder        *int
 }
@@ -318,11 +313,6 @@ type CreateMasterInput struct {
 type UpdateMasterInput struct {
 	Name             *string
 	Description      *string
-	Language         *string
-	Level            *string
-	Category         *string
-	CoverImageURL    *string
-	Source           *string
 	IsDefaultStarter *bool
 	SortOrder        *int
 }
@@ -424,11 +414,6 @@ func (u *masterCatalogUsecase) CreateMaster(ctx context.Context, in CreateMaster
 	m, err := domain.NewMasterCardgroup(
 		name,
 		in.Description,
-		in.Language,
-		in.Level,
-		in.Category,
-		in.CoverImageURL,
-		in.Source,
 		derefOr(in.IsDefaultStarter, false),
 		derefOr(in.SortOrder, 0),
 	)
@@ -452,10 +437,10 @@ func (u *masterCatalogUsecase) CreateMaster(ctx context.Context, in CreateMaster
 // the one seam, via domain.ParseCardgroupName below. Status is the only other VO on
 // the aggregate, and it is not patchable through this method: it has its own
 // dedicated lifecycle seams (Publish / Unpublish). Every remaining field
-// (Description, Language, Level, Category, CoverImageURL, Source, IsDefaultStarter,
-// SortOrder) is free-form (*string / *bool / *int) with no Parse or bound to
-// protect, so it is assigned directly into the repository patch. An ApplyPatch
-// wrapper over those fields would be an indirection layer guarding nothing.
+// (Description, IsDefaultStarter, SortOrder) is free-form (*string / *bool / *int)
+// with no Parse or bound to protect, so it is assigned directly into the
+// repository patch. An ApplyPatch wrapper over those fields would be an
+// indirection layer guarding nothing.
 func (u *masterCatalogUsecase) UpdateMaster(ctx context.Context, id string, in UpdateMasterInput) (UpdateMasterOutcome, error) {
 	if _, err := u.adminGate.Require(ctx, "usecase: master catalog: update master"); err != nil {
 		return UpdateMasterOutcome{}, err
@@ -466,11 +451,6 @@ func (u *masterCatalogUsecase) UpdateMaster(ctx context.Context, id string, in U
 	// MasterCardgroup.ApplyPatch exists.
 	patch := repository.MasterCardgroupUpdate{
 		Description:      in.Description,
-		Language:         in.Language,
-		Level:            in.Level,
-		Category:         in.Category,
-		CoverImageURL:    in.CoverImageURL,
-		Source:           in.Source,
 		IsDefaultStarter: in.IsDefaultStarter,
 		SortOrder:        in.SortOrder,
 	}
