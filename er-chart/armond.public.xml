@@ -57,17 +57,12 @@
          </column>
          <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="name" nullable="false" remarks="" size="2147483647" type="text" typeCode="12"/>
          <column autoUpdated="false" defaultValue="null" digits="0" id="2" name="description" nullable="true" remarks="" size="2147483647" type="text" typeCode="12"/>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="3" name="language" nullable="true" remarks="" size="2147483647" type="text" typeCode="12"/>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="4" name="level" nullable="true" remarks="" size="2147483647" type="text" typeCode="12"/>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="5" name="category" nullable="true" remarks="" size="2147483647" type="text" typeCode="12"/>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="6" name="cover_image_url" nullable="true" remarks="" size="2147483647" type="text" typeCode="12"/>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="7" name="source" nullable="true" remarks="" size="2147483647" type="text" typeCode="12"/>
-         <column autoUpdated="false" defaultValue="1" digits="0" id="8" name="version" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
-         <column autoUpdated="false" defaultValue="'draft'::text" digits="0" id="9" name="status" nullable="false" remarks="" size="2147483647" type="text" typeCode="12"/>
-         <column autoUpdated="false" defaultValue="false" digits="0" id="10" name="is_default_starter" nullable="false" remarks="" size="1" type="bool" typeCode="-7"/>
-         <column autoUpdated="false" defaultValue="0" digits="0" id="11" name="sort_order" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
-         <column autoUpdated="false" defaultValue="now()" digits="6" id="12" name="created_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
-         <column autoUpdated="false" defaultValue="now()" digits="6" id="13" name="updated_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="1" digits="0" id="3" name="version" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="'draft'::text" digits="0" id="4" name="status" nullable="false" remarks="" size="2147483647" type="text" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="false" digits="0" id="5" name="is_default_starter" nullable="false" remarks="" size="1" type="bool" typeCode="-7"/>
+         <column autoUpdated="false" defaultValue="0" digits="0" id="6" name="sort_order" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="7" name="created_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="8" name="updated_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
          <primaryKey column="id" sequenceNumberInPK="1"/>
          <index name="master_cardgroups_pkey" unique="true">
             <column ascending="true" name="id"/>
