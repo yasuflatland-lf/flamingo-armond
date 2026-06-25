@@ -767,3 +767,29 @@ func TestMasterCard_ImportMasterCards_RepoErrorWrapped(t *testing.T) {
 	_, err := uc.ImportMasterCards(authedCtx("admin1"), ImportMasterCardsInput{MasterCardgroupID: "m1", Payload: b64("ignored")})
 	assertInternalChain(t, err, "usecase: master card: import")
 }
+
+// A nonexistent (well-formed) masterCardgroupId surfaces from the repo as
+// ErrMasterCardgroupNotFound (FK violation 23503) and must map to a typed
+// validation error on masterCardgroupId, not an INTERNAL chain.
+func TestMasterCard_CreateMasterCard_NonexistentGroupValidation(t *testing.T) {
+	t.Parallel()
+	mc := &mockMasterCardWriteRepo{createErr: repository.ErrMasterCardgroupNotFound}
+	uc := newMasterCardWriteUC(t, mc, true)
+	_, err := uc.CreateMasterCard(authedCtx("admin1"), CreateMasterCardInput{MasterCardgroupID: "m-missing", Front: "f", Back: "b"})
+	assertValidationError(t, err, "masterCardgroupId", "")
+}
+
+// The import path surfaces the same FK violation from UpsertManyTx (wrapped by
+// the tx closure); errors.Is must see through the eris wrap and map to the same
+// typed validation error.
+func TestMasterCard_ImportMasterCards_NonexistentGroupValidation(t *testing.T) {
+	t.Parallel()
+	process := func(string) ([]textdic.ParsedWord, []textdic.ValidationError, error) {
+		return []textdic.ParsedWord{{Front: "Apple", Back: "back-a", Line: 1}}, nil, nil
+	}
+	mc := &mockMasterCardWriteRepo{upsertErr: repository.ErrMasterCardgroupNotFound}
+	tx, _ := dictTxRunner()
+	uc := newMasterCardImportUC(t, mc, tx, true, process)
+	_, err := uc.ImportMasterCards(authedCtx("admin1"), ImportMasterCardsInput{MasterCardgroupID: "m-missing", Payload: b64("ignored")})
+	assertValidationError(t, err, "masterCardgroupId", "")
+}
