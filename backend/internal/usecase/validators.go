@@ -83,6 +83,19 @@ func translateCardgroupNameErr(err error) error {
 	}
 }
 
+// translateDescriptionErr maps domain Description sentinels into usecase-layer
+// typed errors. Unexpected errors are wrapped with eris. Returns nil when err
+// is nil.
+func translateDescriptionErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, domain.ErrDescriptionTooLong) {
+		return ucerr.NewValidationError("description", fmt.Sprintf("description must be at most %d characters", domain.DescriptionMax))
+	}
+	return eris.Wrap(err, "usecase: translate description error")
+}
+
 // translateDisplayNameErr maps domain DisplayName sentinels into usecase-layer
 // typed errors. Unexpected errors are wrapped with eris. Returns nil when err
 // is nil.

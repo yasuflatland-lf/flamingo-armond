@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -57,6 +58,18 @@ func TestMasterCatalog_CreateMaster_InvalidNameValidation(t *testing.T) {
 	require.Equal(t, "name", out.Validation.Field)
 }
 
+func TestMasterCatalog_CreateMaster_InvalidDescriptionValidation(t *testing.T) {
+	t.Parallel()
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	ctx := authedCtx("admin1")
+	tooLong := strings.Repeat("a", domain.DescriptionMax+1)
+	out, err := uc.CreateMaster(ctx, CreateMasterInput{Name: "My Deck", Description: &tooLong})
+	require.NoError(t, err)
+	require.Nil(t, out.Master)
+	require.NotNil(t, out.Validation)
+	require.Equal(t, "description", out.Validation.Field)
+}
+
 func TestMasterCatalog_CreateMaster_Success(t *testing.T) {
 	t.Parallel()
 	repo := &mockMasterCatalogRepository{}
@@ -94,6 +107,18 @@ func TestMasterCatalog_UpdateMaster_InvalidName(t *testing.T) {
 	require.Nil(t, out.Master)
 	require.NotNil(t, out.Validation)
 	require.Equal(t, "name", out.Validation.Field)
+}
+
+func TestMasterCatalog_UpdateMaster_InvalidDescription(t *testing.T) {
+	t.Parallel()
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	ctx := authedCtx("admin1")
+	tooLong := strings.Repeat("a", domain.DescriptionMax+1)
+	out, err := uc.UpdateMaster(ctx, "some-id", UpdateMasterInput{Description: &tooLong})
+	require.NoError(t, err)
+	require.Nil(t, out.Master)
+	require.NotNil(t, out.Validation)
+	require.Equal(t, "description", out.Validation.Field)
 }
 
 func TestMasterCatalog_UpdateMaster_Success(t *testing.T) {

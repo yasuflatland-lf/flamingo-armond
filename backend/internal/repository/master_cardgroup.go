@@ -171,7 +171,7 @@ func (r *masterCardgroupRepo) EnsureByName(ctx context.Context, name string) (*d
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: lookup")
 		}
 
-		m, err := domain.NewMasterCardgroup(domain.CardgroupName(name), nil, false, 0)
+		m, err := domain.NewMasterCardgroup(domain.CardgroupName(name), domain.Description{}, false, 0)
 		if err != nil {
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: construct")
 		}
@@ -355,7 +355,7 @@ func masterCardgroupToDomain(g gormMasterCardgroup) (*domain.MasterCardgroup, er
 	return &domain.MasterCardgroup{
 		ID:               g.ID,
 		Name:             domain.CardgroupName(g.Name),
-		Description:      g.Description,
+		Description:      domain.DescriptionFromPtr(g.Description),
 		Version:          g.Version,
 		Status:           status,
 		IsDefaultStarter: g.IsDefaultStarter,
@@ -369,7 +369,7 @@ func masterCardgroupFromDomain(m *domain.MasterCardgroup) gormMasterCardgroup {
 	return gormMasterCardgroup{
 		ID:               m.ID,
 		Name:             string(m.Name),
-		Description:      m.Description,
+		Description:      m.Description.Ptr(),
 		Version:          m.Version,
 		Status:           string(m.Status),
 		IsDefaultStarter: m.IsDefaultStarter,
