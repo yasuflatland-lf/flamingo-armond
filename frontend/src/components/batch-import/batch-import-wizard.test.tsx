@@ -590,6 +590,17 @@ describe("<BatchImportWizard>", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^validate$/i })).toBeDisabled();
   });
+
+  it("clears the client-validation region when the textarea is emptied", async () => {
+    const user = userEvent.setup();
+    renderWizard();
+    await typePayload(user, TWO_LINE_TEXT);
+    expect(screen.getByTestId("batch-import-client-validation")).toBeInTheDocument();
+    await user.clear(screen.getByLabelText(/cards to import/i));
+    await waitFor(() =>
+      expect(screen.queryByTestId("batch-import-client-validation")).not.toBeInTheDocument(),
+    );
+  });
 });
 
 describe("BatchImportWizard footer layout", () => {
