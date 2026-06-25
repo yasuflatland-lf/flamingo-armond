@@ -562,6 +562,34 @@ describe("<BatchImportWizard>", () => {
     await user.click(screen.getByRole("button", { name: /back to cardgroup/i }));
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
+
+  it("renders a live row counter while text is present", async () => {
+    const user = userEvent.setup();
+    renderWizard();
+    await typePayload(user, TWO_LINE_TEXT);
+    expect(screen.getByTestId("batch-import-row-counter")).toHaveTextContent("2 / 5,000 rows");
+  });
+
+  it("over the row cap: disables Validate and shows the cap message", async () => {
+    const user = userEvent.setup();
+    renderWizard();
+    await typePayload(user, Array.from({ length: MAX_ROWS + 1 }, () => "a\tb").join("\n"));
+    expect(screen.getByRole("button", { name: /^validate$/i })).toBeDisabled();
+    expect(screen.getByText(/exceeds the 5,000 row limit/i)).toBeInTheDocument();
+  });
+
+  it("an over-length row: shows a line-attributed error and disables Validate", async () => {
+    const user = userEvent.setup();
+    renderWizard();
+    const overLength = MAX_SIDE_GRAPHEMES + 100;
+    await typePayload(user, `${"x".repeat(overLength)}\tback`);
+    expect(
+      screen.getByText(
+        new RegExp(`front exceeds ${MAX_SIDE_GRAPHEMES} characters \\(${overLength}\\)`, "i"),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^validate$/i })).toBeDisabled();
+  });
 });
 
 describe("BatchImportWizard footer layout", () => {

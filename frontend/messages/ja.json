@@ -178,6 +178,11 @@
   "BatchImport": {
     "cardsToImport": "インポートするカード",
     "tabHint": " — タブで区切ってください",
+    "rowCount": "{count, number} / {max, number} 行",
+    "rowCapExceeded": "{count, number} 行 — 上限の {max, number} 行を超えています",
+    "byteCapExceeded": "ペイロードが {size} で、上限の {max} を超えています",
+    "frontTooLong": "表面が {max, number} 文字を超えています（{count, number}）",
+    "backTooLong": "裏面が {max, number} 文字を超えています（{count, number}）",
     "validate": "検証",
     "validating": "検証中...",
     "import": "インポート",

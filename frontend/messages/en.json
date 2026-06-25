@@ -178,6 +178,11 @@
   "BatchImport": {
     "cardsToImport": "Cards to import",
     "tabHint": " — separate each pair with a Tab",
+    "rowCount": "{count, number} / {max, number} rows",
+    "rowCapExceeded": "{count, number} rows — exceeds the {max, number} row limit",
+    "byteCapExceeded": "Payload is {size} — exceeds the {max} limit",
+    "frontTooLong": "front exceeds {max, number} characters ({count, number})",
+    "backTooLong": "back exceeds {max, number} characters ({count, number})",
     "validate": "Validate",
     "validating": "Validating...",
     "import": "Import",

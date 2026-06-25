@@ -5,7 +5,7 @@ import type { DocumentNode } from "graphql";
 import { ChevronDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { JSX, ReactNode } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ValidateCardImportQuery } from "@/app/cardgroups/[id]/cards/queries";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -443,11 +443,14 @@ export function BatchImportWizard(props: {
     setStep(1);
   }
 
+  const clientValidation = useMemo(() => validateClientPayload(payloadText), [payloadText]);
+
   const buttonSpec = resolveStep1Button({
     hasText: payloadText.trim() !== "",
     validating,
     result: validationResult,
     isStale: validatedPayload !== payloadText,
+    clientBlocked: clientValidation.blocked,
   });
 
   function onStep1ButtonClick() {
@@ -483,6 +486,53 @@ export function BatchImportWizard(props: {
               placeholder={"apple\tapple (the fruit)\nbanana\ta yellow fruit"}
             />
           </div>
+
+          {payloadText.trim() !== "" && (
+            <div className="space-y-2" data-testid="batch-import-client-validation">
+              <p
+                className={cn(
+                  "text-xs tabular-nums",
+                  clientValidation.rowCapExceeded
+                    ? "font-semibold text-destructive"
+                    : "text-muted-foreground",
+                )}
+                data-testid="batch-import-row-counter"
+              >
+                {t("rowCount", { count: clientValidation.rowCount, max: MAX_ROWS })}
+              </p>
+              {clientValidation.rowCapExceeded && (
+                <p
+                  className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                  role="alert"
+                >
+                  {t("rowCapExceeded", { count: clientValidation.rowCount, max: MAX_ROWS })}
+                </p>
+              )}
+              {clientValidation.byteCapExceeded && (
+                <p
+                  className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                  role="alert"
+                >
+                  {t("byteCapExceeded", {
+                    size: formatPayloadSize(clientValidation.byteSize),
+                    max: "1 MiB",
+                  })}
+                </p>
+              )}
+              {clientValidation.lengthErrors.length > 0 && (
+                <ErrorList
+                  role="alert"
+                  errors={clientValidation.lengthErrors.map((e) => ({
+                    line: e.line,
+                    message:
+                      e.side === "front"
+                        ? t("frontTooLong", { max: MAX_SIDE_GRAPHEMES, count: e.count })
+                        : t("backTooLong", { max: MAX_SIDE_GRAPHEMES, count: e.count }),
+                  }))}
+                />
+              )}
+            </div>
+          )}
 
           {validationResult && (
             <div
