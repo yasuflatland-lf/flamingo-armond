@@ -364,6 +364,42 @@ func TestMasterCatalog_PublishMaster_CountCardsError(t *testing.T) {
 // validateMasterText
 // ---------------------------------------------------------------------------
 
+func TestMasterCatalog_CreateMaster_InvalidCoverURLValidation(t *testing.T) {
+	t.Parallel()
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	ctx := authedCtx("admin1")
+	bad := "javascript:alert(1)"
+	out, err := uc.CreateMaster(ctx, CreateMasterInput{Name: "Deck", CoverImageURL: &bad})
+	require.NoError(t, err)
+	require.Nil(t, out.Master)
+	require.NotNil(t, out.Validation)
+	require.Equal(t, "coverImageUrl", out.Validation.Field)
+}
+
+func TestMasterCatalog_CreateMaster_DescriptionTooLong(t *testing.T) {
+	t.Parallel()
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	ctx := authedCtx("admin1")
+	long := strings.Repeat("a", domain.MasterDescriptionMax+1)
+	out, err := uc.CreateMaster(ctx, CreateMasterInput{Name: "Deck", Description: &long})
+	require.NoError(t, err)
+	require.Nil(t, out.Master)
+	require.NotNil(t, out.Validation)
+	require.Equal(t, "description", out.Validation.Field)
+}
+
+func TestMasterCatalog_UpdateMaster_InvalidLanguageValidation(t *testing.T) {
+	t.Parallel()
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	ctx := authedCtx("admin1")
+	long := strings.Repeat("a", domain.MasterLanguageMax+1)
+	out, err := uc.UpdateMaster(ctx, "id-1", UpdateMasterInput{Language: &long})
+	require.NoError(t, err)
+	require.Nil(t, out.Master)
+	require.NotNil(t, out.Validation)
+	require.Equal(t, "language", out.Validation.Field)
+}
+
 func TestValidateMasterText(t *testing.T) {
 	t.Parallel()
 

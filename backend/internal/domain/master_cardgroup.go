@@ -38,14 +38,14 @@ func (s MasterCardgroupStatus) IsValid() bool {
 //
 // Name is a CardgroupName so the same grapheme-cluster length invariant
 // (1..CardgroupNameMax) applies without duplicating validation logic. Status is
-// the only other field that is a value object (MasterCardgroupStatus); its
-// transitions are owned by the Publish / Unpublish methods below. Every remaining
-// field (Description, Language, Level, Category, CoverImageURL, Source,
-// IsDefaultStarter, SortOrder) is free-form with no Parse or bound to protect.
-// That is why the aggregate exposes no update/patch behaviour method: there is no
-// invariant for one to guard. The admin update path (usecase.UpdateMaster) parses
-// Name through ParseCardgroupName at its single seam and assigns the free-form
-// fields directly into the repository patch.
+// a value object (MasterCardgroupStatus); its transitions are owned by the
+// Publish / Unpublish methods below. The free-form text fields (Description,
+// Language, Level, Category, Source) carry a length bound each (Master*Max),
+// and CoverImageURL carries a URL-format + http(s)-scheme invariant. Those
+// bounds are enforced at the usecase boundary (usecase.validateMasterText) via
+// ParseBoundedText / ParseCoverImageURL before construction, mirroring how Name
+// routes through ParseCardgroupName; the constructor receives already-validated
+// values and the repository patch stays on primitives.
 type MasterCardgroup struct {
 	ID               string
 	Name             CardgroupName
@@ -70,7 +70,8 @@ type MasterCardgroup struct {
 // CardgroupName so this constructor stays free of validation branching (mirroring
 // NewCardgroup / NewCard). The Draft/Version=1 invariant is sealed here so it
 // cannot drift across the usecase and repository call sites. Returns a wrapped
-// error when ID generation fails.
+// error when ID generation fails. The free-form text fields are likewise validated
+// upstream (usecase.validateMasterText) and passed in already-trimmed.
 func NewMasterCardgroup(
 	name CardgroupName,
 	description, language, level, category, coverImageURL, source *string,
