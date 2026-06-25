@@ -51,6 +51,11 @@ export function AdminMasterForm({
   const t = useTranslations("AdminMasters");
   const tCommon = useTranslations("Common");
   const nameSchema = masterSchema.shape.name;
+  // Cast optional-input schemas to string-input so TanStack Form's validator
+  // type constraint (StandardSchemaV1<string, unknown>) is satisfied. The
+  // defaultValues for these fields are always initialised to "" (never
+  // undefined), so the runtime input is always a string.
+  const asStringInput = (s: unknown): typeof nameSchema => s as typeof nameSchema;
 
   const form = useForm({
     defaultValues: {
@@ -65,6 +70,11 @@ export function AdminMasterForm({
       sortOrder: master?.sortOrder != null ? String(master.sortOrder) : "",
     },
     onSubmit: async ({ value }) => {
+      // The per-field Zod validators only gate submission; TanStack Form does
+      // not replace field values with a schema's transform output. The
+      // empty-to-null collapse and the sortOrder numeric coercion below
+      // intentionally re-derive what masterSchema's transforms compute, so the
+      // submitted payload matches the validated shape. Keep the two in sync.
       const sortOrderRaw = value.sortOrder.trim();
       const values: MasterFormValues = {
         name: value.name.trim(),
@@ -110,7 +120,14 @@ export function AdminMasterForm({
         )}
       </form.Field>
 
-      <form.Field name="description">
+      <form.Field
+        name="description"
+        validators={{
+          onChange: asStringInput(masterSchema.shape.description),
+          onBlur: asStringInput(masterSchema.shape.description),
+          onSubmit: asStringInput(masterSchema.shape.description),
+        }}
+      >
         {(field) => (
           <div className="space-y-2">
             <Label htmlFor={field.name}>{t("descriptionLabel")}</Label>
@@ -119,23 +136,29 @@ export function AdminMasterForm({
               name={field.name}
               data-testid="master-field-description"
               value={field.state.value}
+              onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
               placeholder={t("descriptionPlaceholder")}
             />
+            <FieldError zodErrors={field.state.meta.errors} />
           </div>
         )}
       </form.Field>
 
       {(
         [
-          ["language", "languageLabel"],
-          ["level", "levelLabel"],
-          ["category", "categoryLabel"],
-          ["coverImageUrl", "coverImageUrlLabel"],
-          ["source", "sourceLabel"],
+          ["language", "languageLabel", asStringInput(masterSchema.shape.language)],
+          ["level", "levelLabel", asStringInput(masterSchema.shape.level)],
+          ["category", "categoryLabel", asStringInput(masterSchema.shape.category)],
+          ["coverImageUrl", "coverImageUrlLabel", asStringInput(masterSchema.shape.coverImageUrl)],
+          ["source", "sourceLabel", asStringInput(masterSchema.shape.source)],
         ] as const
-      ).map(([fieldName, labelKey]) => (
-        <form.Field key={fieldName} name={fieldName}>
+      ).map(([fieldName, labelKey, schema]) => (
+        <form.Field
+          key={fieldName}
+          name={fieldName}
+          validators={{ onChange: schema, onBlur: schema, onSubmit: schema }}
+        >
           {(field) => (
             <div className="space-y-2">
               <Label htmlFor={field.name}>{t(labelKey)}</Label>
@@ -144,14 +167,23 @@ export function AdminMasterForm({
                 name={field.name}
                 data-testid={`master-field-${fieldName}`}
                 value={field.state.value}
+                onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
               />
+              <FieldError zodErrors={field.state.meta.errors} />
             </div>
           )}
         </form.Field>
       ))}
 
-      <form.Field name="sortOrder">
+      <form.Field
+        name="sortOrder"
+        validators={{
+          onChange: asStringInput(masterSchema.shape.sortOrder),
+          onBlur: asStringInput(masterSchema.shape.sortOrder),
+          onSubmit: asStringInput(masterSchema.shape.sortOrder),
+        }}
+      >
         {(field) => (
           <div className="space-y-2">
             <Label htmlFor={field.name}>{t("sortOrderLabel")}</Label>
@@ -161,8 +193,10 @@ export function AdminMasterForm({
               type="number"
               data-testid="master-field-sortOrder"
               value={field.state.value}
+              onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
             />
+            <FieldError zodErrors={field.state.meta.errors} />
           </div>
         )}
       </form.Field>
