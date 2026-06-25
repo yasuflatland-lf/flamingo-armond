@@ -11,7 +11,16 @@ import {
 } from "@/generated/graphql";
 import { encodePayload } from "@/test/batch-import-test-utils";
 import { renderWithIntl } from "@/test/render-with-intl";
-import { BatchImportWizard, type ImportResult, resolveStep1Button } from "./batch-import-wizard";
+import {
+  BatchImportWizard,
+  formatPayloadSize,
+  type ImportResult,
+  MAX_PAYLOAD_BYTES,
+  MAX_ROWS,
+  MAX_SIDE_GRAPHEMES,
+  resolveStep1Button,
+  validateClientPayload,
+} from "./batch-import-wizard";
 
 const TARGET_ID = "tgt-1";
 const TARGET_NAME = "Spanish Vocab";
@@ -97,6 +106,76 @@ async function advanceToStep2(user: ReturnType<typeof userEvent.setup>) {
   await waitFor(() => expect(importButton).toBeEnabled());
   await user.click(importButton);
 }
+
+describe("validateClientPayload", () => {
+  it("empty string: zero rows, not blocked", () => {
+    const v = validateClientPayload("");
+    expect(v.rowCount).toBe(0);
+    expect(v.blocked).toBe(false);
+    expect(v.lengthErrors).toEqual([]);
+  });
+
+  it("counts non-blank lines as rows and skips blank / whitespace-only lines", () => {
+    const v = validateClientPayload("apple\tred\n\n   \nbanana\tyellow");
+    expect(v.rowCount).toBe(2);
+    expect(v.blocked).toBe(false);
+  });
+
+  it("splits each row on the first tab into front / back", () => {
+    // back carries a second tab; only the first tab is the separator.
+    const v = validateClientPayload("front\tback\twith tab");
+    expect(v.rowCount).toBe(1);
+    expect(v.lengthErrors).toEqual([]);
+  });
+
+  it("a 500-grapheme side is accepted; 501 is flagged", () => {
+    const ok = validateClientPayload(`${"a".repeat(500)}\t${"b".repeat(500)}`);
+    expect(ok.lengthErrors).toEqual([]);
+    expect(ok.blocked).toBe(false);
+
+    const overFront = validateClientPayload(`${"a".repeat(501)}\tshort`);
+    expect(overFront.lengthErrors).toEqual([{ line: 1, side: "front", count: 501 }]);
+    expect(overFront.blocked).toBe(true);
+
+    const overBack = validateClientPayload(`short\t${"b".repeat(501)}`);
+    expect(overBack.lengthErrors).toEqual([{ line: 1, side: "back", count: 501 }]);
+  });
+
+  it("reports the physical line number (blank lines included) for length errors", () => {
+    const text = `apple\tred\n\n${"x".repeat(600)}\tback`;
+    const v = validateClientPayload(text);
+    expect(v.lengthErrors).toEqual([{ line: 3, side: "front", count: 600 }]);
+  });
+
+  it("row cap: 5000 rows ok, 5001 over", () => {
+    const at = Array.from({ length: MAX_ROWS }, () => "a\tb").join("\n");
+    expect(validateClientPayload(at).rowCapExceeded).toBe(false);
+
+    const over = Array.from({ length: MAX_ROWS + 1 }, () => "a\tb").join("\n");
+    const v = validateClientPayload(over);
+    expect(v.rowCount).toBe(MAX_ROWS + 1);
+    expect(v.rowCapExceeded).toBe(true);
+    expect(v.blocked).toBe(true);
+  });
+
+  it("byte cap: flags a payload over 1 MiB without tripping the row cap", () => {
+    // 4000 lines x ~281 bytes ~= 1.12 MiB; each side 140 graphemes (< 500).
+    const line = `${"a".repeat(140)}\t${"b".repeat(140)}`;
+    const v = validateClientPayload(Array.from({ length: 4000 }, () => line).join("\n"));
+    expect(v.byteSize).toBeGreaterThan(MAX_PAYLOAD_BYTES);
+    expect(v.byteCapExceeded).toBe(true);
+    expect(v.rowCapExceeded).toBe(false);
+    expect(v.lengthErrors).toEqual([]);
+    expect(v.blocked).toBe(true);
+  });
+});
+
+describe("formatPayloadSize", () => {
+  it("formats bytes as MiB with one decimal", () => {
+    expect(formatPayloadSize(1258291)).toBe("1.2 MiB");
+    expect(formatPayloadSize(2 * 1024 * 1024)).toBe("2.0 MiB");
+  });
+});
 
 describe("resolveStep1Button", () => {
   it("empty: text blank -> validate, no action, disabled", () => {

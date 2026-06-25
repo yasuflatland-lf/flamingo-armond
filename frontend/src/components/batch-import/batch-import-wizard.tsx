@@ -14,6 +14,79 @@ import { Textarea } from "@/components/ui/textarea";
 import type { CardImportErrorKind } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { cn } from "@/lib/utils";
+import { graphemeCount } from "@/schemas/grapheme";
+
+// Mirror the backend caps so an over-cap / over-length payload is blocked client-side
+// before the server round-trip. Sources: usecase cardImportParsedRowCap (5000 rows),
+// textdic maxPayloadBytes (1 MiB), domain.NewCard / schemas/card.ts (500 graphemes/side).
+export const MAX_ROWS = 5000;
+export const MAX_PAYLOAD_BYTES = 1 << 20;
+export const MAX_SIDE_GRAPHEMES = 500;
+
+export type ClientValidation = {
+  /** Non-blank line count — a proxy for the server's parsed-row count. */
+  rowCount: number;
+  /** UTF-8 byte length of the raw textarea text. */
+  byteSize: number;
+  rowCapExceeded: boolean;
+  byteCapExceeded: boolean;
+  /** Per-row sides over the 500-grapheme cap, keyed by physical 1-based line. */
+  lengthErrors: Array<{ line: number; side: "front" | "back"; count: number }>;
+  /** True when any cap is exceeded — the Validate button is disabled. */
+  blocked: boolean;
+};
+
+/**
+ * graphemeCount(s) <= s.length always holds (each cluster spans >= 1 UTF-16 unit),
+ * so the Segmenter only runs for sides whose cheap length already exceeds the cap.
+ */
+function sideGraphemeCount(s: string): number {
+  return s.length > MAX_SIDE_GRAPHEMES ? graphemeCount(s) : s.length;
+}
+
+/**
+ * Pure client-side approximation of the server's payload validation. Not a
+ * re-implementation of the goyacc grammar: rows are non-blank lines, front/back is
+ * a first-tab split. The server remains the final guard, so a rare divergence only
+ * risks a false-positive block, never corruption.
+ */
+export function validateClientPayload(text: string): ClientValidation {
+  const byteSize = new TextEncoder().encode(text).length;
+  const lengthErrors: ClientValidation["lengthErrors"] = [];
+  let rowCount = 0;
+
+  text.split("\n").forEach((line, i) => {
+    if (line.trim() === "") return;
+    rowCount += 1;
+    const tab = line.indexOf("\t");
+    const front = (tab < 0 ? line : line.slice(0, tab)).trim();
+    const back = (tab < 0 ? "" : line.slice(tab + 1)).trim();
+    const frontCount = sideGraphemeCount(front);
+    if (frontCount > MAX_SIDE_GRAPHEMES) {
+      lengthErrors.push({ line: i + 1, side: "front", count: frontCount });
+    }
+    const backCount = sideGraphemeCount(back);
+    if (backCount > MAX_SIDE_GRAPHEMES) {
+      lengthErrors.push({ line: i + 1, side: "back", count: backCount });
+    }
+  });
+
+  const rowCapExceeded = rowCount > MAX_ROWS;
+  const byteCapExceeded = byteSize > MAX_PAYLOAD_BYTES;
+  return {
+    rowCount,
+    byteSize,
+    rowCapExceeded,
+    byteCapExceeded,
+    lengthErrors,
+    blocked: rowCapExceeded || byteCapExceeded || lengthErrors.length > 0,
+  };
+}
+
+/** Format a byte count as "N.N MiB" for the over-cap message. */
+export function formatPayloadSize(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
 
 /**
  * Encode a UTF-8 string to base64 using the standard alphabet (with padding).
