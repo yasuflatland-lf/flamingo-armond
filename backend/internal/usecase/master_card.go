@@ -234,9 +234,10 @@ func (u *masterCardUsecase) CreateMasterCard(ctx context.Context, in CreateMaste
 	if _, err := u.adminGate.Require(ctx, "usecase: master card: create"); err != nil {
 		return CreateMasterCardOutcome{}, err
 	}
-	// Gate the FK column at the boundary: an empty masterCardgroupId would
-	// otherwise reach the INSERT and surface the FK violation as INTERNAL instead
-	// of BAD_USER_INPUT (mirrors the explicit guard in ImportMasterCards).
+	// Gate the FK column at the boundary: an empty masterCardgroupId is rejected
+	// here as a fast-path (no DB round-trip) with a clear "required" message. A
+	// non-empty but nonexistent id is caught later by classifyMasterCardFKError
+	// (Postgres FK violation 23503) and mapped to the same BAD_USER_INPUT field.
 	if in.MasterCardgroupID == "" {
 		return CreateMasterCardOutcome{}, ucerr.NewValidationError("masterCardgroupId", "masterCardgroupId is required")
 	}
@@ -261,6 +262,9 @@ func (u *masterCardUsecase) CreateMasterCard(ctx context.Context, in CreateMaste
 				ExistingID:   existing.ID,
 				ExistingBack: string(existing.Back),
 			}}, nil
+		}
+		if errors.Is(err, repository.ErrMasterCardgroupNotFound) {
+			return CreateMasterCardOutcome{}, ucerr.NewValidationError("masterCardgroupId", "master cardgroup not found")
 		}
 		if isContextDone(err) {
 			return CreateMasterCardOutcome{}, err
@@ -480,6 +484,9 @@ func (u *masterCardUsecase) ImportMasterCards(ctx context.Context, in ImportMast
 		result = r
 		return nil
 	}); err != nil {
+		if errors.Is(err, repository.ErrMasterCardgroupNotFound) {
+			return ImportMasterCardsOutput{}, ucerr.NewValidationError("masterCardgroupId", "master cardgroup not found")
+		}
 		if isContextDone(err) {
 			return ImportMasterCardsOutput{}, err
 		}
