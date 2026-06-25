@@ -122,7 +122,18 @@ describe("AdminUserProfileSheet", () => {
     await user.clear(screen.getByLabelText(/display name/i));
     await user.click(screen.getByRole("button", { name: /save changes/i }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Display name is required.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Display name is required");
+  });
+
+  it("rejects a reserved display name via the shared schema", async () => {
+    const user = userEvent.setup();
+    renderSheet();
+
+    await user.clear(screen.getByLabelText(/display name/i));
+    await user.type(screen.getByLabelText(/display name/i), "admin");
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Display name is reserved");
   });
 
   it("profile-only dirty save sends one adminEditUser mutation with final roles", async () => {
