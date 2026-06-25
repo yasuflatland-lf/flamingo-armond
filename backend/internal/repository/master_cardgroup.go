@@ -50,11 +50,6 @@ type gormMasterCardgroup struct {
 	ID               string    `gorm:"column:id;primaryKey;type:uuid"`
 	Name             string    `gorm:"column:name"`
 	Description      *string   `gorm:"column:description"`
-	Language         *string   `gorm:"column:language"`
-	Level            *string   `gorm:"column:level"`
-	Category         *string   `gorm:"column:category"`
-	CoverImageURL    *string   `gorm:"column:cover_image_url"`
-	Source           *string   `gorm:"column:source"`
 	Version          int       `gorm:"column:version"`
 	Status           string    `gorm:"column:status"`
 	IsDefaultStarter bool      `gorm:"column:is_default_starter"`
@@ -69,11 +64,6 @@ func (gormMasterCardgroup) TableName() string { return "master_cardgroups" }
 type MasterCardgroupUpdate struct {
 	Name             *string
 	Description      *string
-	Language         *string
-	Level            *string
-	Category         *string
-	CoverImageURL    *string
-	Source           *string
 	Version          *int
 	SortOrder        *int
 	Status           *string
@@ -181,7 +171,7 @@ func (r *masterCardgroupRepo) EnsureByName(ctx context.Context, name string) (*d
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: lookup")
 		}
 
-		m, err := domain.NewMasterCardgroup(domain.CardgroupName(name), nil, nil, nil, nil, nil, nil, false, 0)
+		m, err := domain.NewMasterCardgroup(domain.CardgroupName(name), nil, false, 0)
 		if err != nil {
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: construct")
 		}
@@ -219,21 +209,6 @@ func (r *masterCardgroupRepo) Update(ctx context.Context, id string, patch Maste
 	}
 	if patch.Description != nil {
 		updates["description"] = *patch.Description
-	}
-	if patch.Language != nil {
-		updates["language"] = *patch.Language
-	}
-	if patch.Level != nil {
-		updates["level"] = *patch.Level
-	}
-	if patch.Category != nil {
-		updates["category"] = *patch.Category
-	}
-	if patch.CoverImageURL != nil {
-		updates["cover_image_url"] = *patch.CoverImageURL
-	}
-	if patch.Source != nil {
-		updates["source"] = *patch.Source
 	}
 	if patch.Version != nil {
 		updates["version"] = *patch.Version
@@ -381,11 +356,6 @@ func masterCardgroupToDomain(g gormMasterCardgroup) (*domain.MasterCardgroup, er
 		ID:               g.ID,
 		Name:             domain.CardgroupName(g.Name),
 		Description:      g.Description,
-		Language:         g.Language,
-		Level:            g.Level,
-		Category:         g.Category,
-		CoverImageURL:    g.CoverImageURL,
-		Source:           g.Source,
 		Version:          g.Version,
 		Status:           status,
 		IsDefaultStarter: g.IsDefaultStarter,
@@ -400,11 +370,6 @@ func masterCardgroupFromDomain(m *domain.MasterCardgroup) gormMasterCardgroup {
 		ID:               m.ID,
 		Name:             string(m.Name),
 		Description:      m.Description,
-		Language:         m.Language,
-		Level:            m.Level,
-		Category:         m.Category,
-		CoverImageURL:    m.CoverImageURL,
-		Source:           m.Source,
 		Version:          m.Version,
 		Status:           string(m.Status),
 		IsDefaultStarter: m.IsDefaultStarter,

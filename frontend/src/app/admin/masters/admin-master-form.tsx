@@ -17,11 +17,6 @@ import type { AdminMasterListItem } from "./admin-master-row";
 export type MasterFormValues = {
   name: string;
   description: string | null;
-  language: string | null;
-  level: string | null;
-  category: string | null;
-  coverImageUrl: string | null;
-  source: string | null;
   isDefaultStarter: boolean;
   sortOrder: number | null;
 };
@@ -56,11 +51,6 @@ export function AdminMasterForm({
     defaultValues: {
       name: master?.name ?? "",
       description: master?.description ?? "",
-      language: master?.language ?? "",
-      level: master?.level ?? "",
-      category: master?.category ?? "",
-      coverImageUrl: master?.coverImageUrl ?? "",
-      source: master?.source ?? "",
       isDefaultStarter: master?.isDefaultStarter ?? false,
       sortOrder: master?.sortOrder != null ? String(master.sortOrder) : "",
     },
@@ -69,11 +59,6 @@ export function AdminMasterForm({
       const values: MasterFormValues = {
         name: value.name.trim(),
         description: emptyToNull(value.description),
-        language: emptyToNull(value.language),
-        level: emptyToNull(value.level),
-        category: emptyToNull(value.category),
-        coverImageUrl: emptyToNull(value.coverImageUrl),
-        source: emptyToNull(value.source),
         isDefaultStarter: value.isDefaultStarter,
         sortOrder: sortOrderRaw === "" ? null : Number(sortOrderRaw),
       };
@@ -125,31 +110,6 @@ export function AdminMasterForm({
           </div>
         )}
       </form.Field>
-
-      {(
-        [
-          ["language", "languageLabel"],
-          ["level", "levelLabel"],
-          ["category", "categoryLabel"],
-          ["coverImageUrl", "coverImageUrlLabel"],
-          ["source", "sourceLabel"],
-        ] as const
-      ).map(([fieldName, labelKey]) => (
-        <form.Field key={fieldName} name={fieldName}>
-          {(field) => (
-            <div className="space-y-2">
-              <Label htmlFor={field.name}>{t(labelKey)}</Label>
-              <Input
-                id={field.name}
-                name={field.name}
-                data-testid={`master-field-${fieldName}`}
-                value={field.state.value}
-                onChange={(e) => field.handleChange(e.target.value)}
-              />
-            </div>
-          )}
-        </form.Field>
-      ))}
 
       <form.Field name="sortOrder">
         {(field) => (

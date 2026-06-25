@@ -49,9 +49,6 @@ export const CatalogMasterDeckQuery = graphql(`
       id
       name
       description
-      language
-      level
-      category
     }
   }
 `);

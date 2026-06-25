@@ -24,11 +24,6 @@ func (r *mutationResolver) AdminCreateMasterCardgroup(ctx context.Context, input
 	out, err := r.MasterCatalogUC.CreateMaster(ctx, usecase.CreateMasterInput{
 		Name:             input.Name,
 		Description:      input.Description,
-		Language:         input.Language,
-		Level:            input.Level,
-		Category:         input.Category,
-		CoverImageURL:    input.CoverImageURL,
-		Source:           input.Source,
 		IsDefaultStarter: input.IsDefaultStarter,
 		SortOrder:        input.SortOrder,
 	})
@@ -54,11 +49,6 @@ func (r *mutationResolver) AdminUpdateMasterCardgroup(ctx context.Context, id st
 	out, err := r.MasterCatalogUC.UpdateMaster(ctx, id, usecase.UpdateMasterInput{
 		Name:             input.Name,
 		Description:      input.Description,
-		Language:         input.Language,
-		Level:            input.Level,
-		Category:         input.Category,
-		CoverImageURL:    input.CoverImageURL,
-		Source:           input.Source,
 		IsDefaultStarter: input.IsDefaultStarter,
 		SortOrder:        input.SortOrder,
 	})

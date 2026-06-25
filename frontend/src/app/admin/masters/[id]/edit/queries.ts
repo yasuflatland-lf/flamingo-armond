@@ -8,11 +8,6 @@ export const AdminMasterQueryDocument = graphql(`
       id
       name
       description
-      language
-      level
-      category
-      coverImageUrl
-      source
       version
       status
       isDefaultStarter

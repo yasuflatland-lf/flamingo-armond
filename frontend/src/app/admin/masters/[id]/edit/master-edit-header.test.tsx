@@ -29,11 +29,6 @@ import type { AdminMasterDeck } from "./queries";
 const UPDATE_INPUT = {
   name: "Spanish A1",
   description: null,
-  language: null,
-  level: null,
-  category: null,
-  coverImageUrl: null,
-  source: null,
   isDefaultStarter: false,
   sortOrder: 0,
 } as const;
@@ -43,11 +38,6 @@ const DECK: AdminMasterDeck = {
   id: "m-1",
   name: "Spanish A1",
   description: null,
-  language: null,
-  level: null,
-  category: null,
-  coverImageUrl: null,
-  source: null,
   version: 1,
   status: "DRAFT",
   isDefaultStarter: false,

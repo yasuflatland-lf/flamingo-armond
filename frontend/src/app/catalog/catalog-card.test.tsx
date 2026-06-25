@@ -16,9 +16,6 @@ const FULL_NODE = makeFragmentData(
     id: "m-1",
     name: "Business English",
     description: "Professional vocabulary",
-    language: "en",
-    level: "B2",
-    category: "Business",
     cardCount: 42,
   },
   CatalogCardFieldsFragment,
@@ -30,16 +27,13 @@ const BARE_NODE = makeFragmentData(
     id: "m-2",
     name: "JLPT N3 Kanji",
     description: null,
-    language: null,
-    level: null,
-    category: null,
     cardCount: 100,
   },
   CatalogCardFieldsFragment,
 );
 
 describe("<CatalogCard>", () => {
-  it("renders name, card count, and metadata badges when present", () => {
+  it("renders name, description, and card count", () => {
     renderWithIntl(
       <CatalogCard node={FULL_NODE} importing={false} imported={false} onImport={vi.fn()} />,
     );
@@ -47,21 +41,15 @@ describe("<CatalogCard>", () => {
     expect(screen.getByText("Business English")).toBeInTheDocument();
     expect(screen.getByText("Professional vocabulary")).toBeInTheDocument();
     expect(screen.getByText("42 cards")).toBeInTheDocument();
-    expect(screen.getByText("en")).toBeInTheDocument();
-    expect(screen.getByText("Level B2")).toBeInTheDocument();
-    expect(screen.getByText("Business")).toBeInTheDocument();
   });
 
-  it("omits the description and all metadata badges when those fields are null", () => {
+  it("omits the description when it is null", () => {
     renderWithIntl(
       <CatalogCard node={BARE_NODE} importing={false} imported={false} onImport={vi.fn()} />,
     );
 
     expect(screen.getByText("JLPT N3 Kanji")).toBeInTheDocument();
     expect(screen.getByText("100 cards")).toBeInTheDocument();
-    // No level/category/language badges are rendered for null fields.
-    expect(screen.queryByText(/^Level /)).not.toBeInTheDocument();
-    expect(screen.queryByText("Business")).not.toBeInTheDocument();
   });
 
   it("disables the button and shows the in-flight label while importing", () => {

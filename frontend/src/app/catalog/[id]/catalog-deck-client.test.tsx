@@ -45,9 +45,6 @@ const DECK: CatalogDeck = {
   id: "deck-1",
   name: "Business English",
   description: "Professional vocabulary",
-  language: "en",
-  level: "B2",
-  category: "Business",
 };
 
 const C1 = { __typename: "MasterCard" as const, id: "mc-1", front: "hello", back: "a greeting" };
