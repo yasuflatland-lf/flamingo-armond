@@ -22,4 +22,39 @@ describe("masterSchema", () => {
     const r = masterSchema.safeParse({ name: "a".repeat(100) });
     expect(r.success).toBe(true);
   });
+
+  it("accepts a 500-grapheme description", () => {
+    const r = masterSchema.safeParse({ name: "Deck", description: "a".repeat(500) });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects a description longer than 500 grapheme clusters", () => {
+    const r = masterSchema.safeParse({ name: "Deck", description: "a".repeat(501) });
+    expect(r.success).toBe(false);
+  });
+
+  it("allows an empty description", () => {
+    const r = masterSchema.safeParse({ name: "Deck", description: "" });
+    expect(r.success).toBe(true);
+  });
+
+  it("accepts an empty sortOrder", () => {
+    const r = masterSchema.safeParse({ name: "Deck", sortOrder: "" });
+    expect(r.success).toBe(true);
+  });
+
+  it("accepts an integer sortOrder", () => {
+    const r = masterSchema.safeParse({ name: "Deck", sortOrder: "5" });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects a decimal sortOrder", () => {
+    const r = masterSchema.safeParse({ name: "Deck", sortOrder: "1.5" });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects a non-numeric sortOrder", () => {
+    const r = masterSchema.safeParse({ name: "Deck", sortOrder: "abc" });
+    expect(r.success).toBe(false);
+  });
 });
