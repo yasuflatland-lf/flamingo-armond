@@ -197,7 +197,9 @@ describe("<ChangeEmailClient>", () => {
     fireEvent.change(input, { target: input });
     // Use fireEvent.submit to bypass native constraint validation (which would
     // reject a padded email and block the submit handler).
-    fireEvent.submit(input.closest("form")!);
+    const form = input.closest("form");
+    if (!form) throw new Error("expected the new-email input to be inside a form");
+    fireEvent.submit(form);
 
     await waitFor(() => {
       expect(mockUpdateUser).toHaveBeenCalledWith({ email: "bob@example.com" });
