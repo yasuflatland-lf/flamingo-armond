@@ -328,7 +328,7 @@ type capViolation struct {
 // the row cap, every row's front and back are checked via domain.ParseCardText.
 func checkImportCaps(words []textdic.ParsedWord) []capViolation {
 	if len(words) > cardImportParsedRowCap {
-		return []capViolation{{Line: 0, Field: "payload", Message: "payload exceeds 5000 row cap"}}
+		return []capViolation{{Line: 0, Field: "payload", Message: fmt.Sprintf("payload exceeds %d row cap", cardImportParsedRowCap)}}
 	}
 	var out []capViolation
 	for _, w := range words {
