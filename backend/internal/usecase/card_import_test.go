@@ -986,6 +986,9 @@ func TestCardImportUsecase_ValidateDetectsRowCap(t *testing.T) {
 	if e.Kind != CardImportErrKindHard || e.Line != 0 {
 		t.Fatalf("expected a HARD Line-0 row-cap error, got %+v", e)
 	}
+	if len(out.ParsedCards) != n {
+		t.Fatalf("expected %d parsed cards returned in the preview, got %d", n, len(out.ParsedCards))
+	}
 }
 
 // TestCardImportUsecase_ValidateDetectsOverLengthFront covers the per-side
@@ -1021,6 +1024,9 @@ func TestCardImportUsecase_ValidateDetectsOverLengthFront(t *testing.T) {
 	if e.Kind != CardImportErrKindHard || e.Line != 2 {
 		t.Fatalf("expected a HARD error attributed to line 2, got %+v", e)
 	}
+	if !strings.Contains(e.Message, "front") {
+		t.Fatalf("expected message to name the front side, got %q", e.Message)
+	}
 }
 
 // TestCardImportUsecase_ValidateDetectsOverLengthBack mirrors the front test for
@@ -1053,5 +1059,8 @@ func TestCardImportUsecase_ValidateDetectsOverLengthBack(t *testing.T) {
 	e := out.Errors[0]
 	if e.Kind != CardImportErrKindHard || e.Line != 2 {
 		t.Fatalf("expected a HARD error attributed to line 2, got %+v", e)
+	}
+	if !strings.Contains(e.Message, "back") {
+		t.Fatalf("expected message to name the back side, got %q", e.Message)
 	}
 }

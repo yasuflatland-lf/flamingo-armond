@@ -258,11 +258,12 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 	now := time.Now().UTC()
 	cards := make([]*domain.Card, 0, len(words))
 	for _, w := range words {
-		// Build through the enforcing constructor so an over-length front/back
-		// cannot reach the repository. textdic guarantees both fields are
-		// present, so the realistic failure is the length cap; surface it as a
-		// typed validation error (the DB CHECK would otherwise abort the tx with
-		// an opaque constraint violation).
+		// Build through the enforcing constructor. The per-side length cap is now
+		// caught upstream by checkImportCaps, so NewCard's length check here is
+		// defense-in-depth; the realistic remaining failure is ID generation.
+		// Surface any error as a typed validation error rather than letting an
+		// over-length value reach the repository / DB CHECK as an opaque
+		// constraint violation.
 		c, err := domain.NewCard(domain.CardgroupID(input.CardgroupID), w.Front, w.Back, 0)
 		if err != nil {
 			return ImportCardsOutput{}, translateCardErr(err)
