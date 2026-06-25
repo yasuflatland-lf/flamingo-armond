@@ -4,7 +4,6 @@ import { useTranslations } from "next-intl";
 import type { CSSProperties } from "react";
 import { CatalogImportButton } from "@/app/catalog/_components/catalog-import-button";
 import { CatalogCardFieldsFragment } from "@/app/catalog/queries";
-import { Badge } from "@/components/ui/badge";
 import { type FragmentType, useFragment } from "@/generated/fragment-masking";
 import { cn } from "@/lib/utils";
 
@@ -69,9 +68,6 @@ export function CatalogCard({
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
-        {card.language && <Badge variant="secondary">{card.language}</Badge>}
-        {card.level && <Badge variant="outline">{t("level", { level: card.level })}</Badge>}
-        {card.category && <Badge variant="outline">{card.category}</Badge>}
         <span className="text-[13px] tabular-nums text-muted-foreground">
           {t("cardCount", { count: card.cardCount })}
         </span>

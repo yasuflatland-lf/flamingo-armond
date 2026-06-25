@@ -68,9 +68,6 @@ function makeConnection(items: { id: string; name: string; cardCount: number }[]
         node: {
           __typename: "MasterCardgroup" as const,
           description: null,
-          language: null,
-          level: null,
-          category: null,
           ...item,
         },
       })),

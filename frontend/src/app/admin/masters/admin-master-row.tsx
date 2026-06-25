@@ -17,11 +17,6 @@ export type AdminMasterListItem = {
   version: number;
   name: string;
   description: string | null;
-  language: string | null;
-  level: string | null;
-  category: string | null;
-  coverImageUrl: string | null;
-  source: string | null;
   isDefaultStarter: boolean;
   sortOrder: number;
   status: MasterStatus;

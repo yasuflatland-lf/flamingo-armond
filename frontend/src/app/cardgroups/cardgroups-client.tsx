@@ -346,6 +346,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
       <ListingPageShell
         title={t("myCardgroups")}
         count={totalCount}
+        countLabel={tCommon("totalCount", { count: totalCount })}
         primaryActions={
           <Button
             type="button"

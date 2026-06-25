@@ -3,7 +3,6 @@
 import { useTranslations } from "next-intl";
 import { CatalogImportButton } from "@/app/catalog/_components/catalog-import-button";
 import { DetailPageHeader } from "@/components/nav/detail-page-header";
-import { Badge } from "@/components/ui/badge";
 import type { CatalogMasterDeckQuery } from "@/generated/graphql";
 
 /** The published master deck the header renders. Non-null projection of `masterCardgroup`. */
@@ -23,11 +22,10 @@ type CatalogDeckHeaderProps = {
 /**
  * Detail-page header for the public catalog deck view. Composes the shared
  * {@link DetailPageHeader} (inline back to `/catalog`, centered card count) with
- * the deck's catalog metadata — the language / level / category badges
- * (mirroring `CatalogListItem`) and the description paragraph — and a full-width
- * "Import this deck" CTA, all rendered in the title-row slot below the app bar.
- * The CTA sits below the description rather than in the app-bar action cluster so
- * it reads as the page's primary call to action.
+ * the deck's description paragraph and a full-width "Import this deck" CTA, all
+ * rendered in the title-row slot below the app bar. The CTA sits below the
+ * description rather than in the app-bar action cluster so it reads as the page's
+ * primary call to action.
  *
  * Import state (`importing` / `imported` / `onImport`) is owned by the client and
  * threaded in via props; this component holds no mutation state of its own.
@@ -52,23 +50,14 @@ export function CatalogDeckHeader({
         </span>
       }
     >
-      {(deck.language || deck.level || deck.category || deck.description) && (
+      {deck.description && (
         <div className="mt-2 flex flex-col items-center gap-2">
-          {(deck.language || deck.level || deck.category) && (
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              {deck.language && <Badge variant="secondary">{deck.language}</Badge>}
-              {deck.level && <Badge variant="outline">{t("level", { level: deck.level })}</Badge>}
-              {deck.category && <Badge variant="outline">{deck.category}</Badge>}
-            </div>
-          )}
-          {deck.description && (
-            <p
-              className="max-w-2xl text-center text-sm text-muted-foreground"
-              data-testid="catalog-deck-description"
-            >
-              {deck.description}
-            </p>
-          )}
+          <p
+            className="max-w-2xl text-center text-sm text-muted-foreground"
+            data-testid="catalog-deck-description"
+          >
+            {deck.description}
+          </p>
         </div>
       )}
       <div className="mt-2">

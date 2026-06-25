@@ -6,8 +6,8 @@
 // The personal cardgroups / cards rows are KEPT — this tool never deletes them,
 // so the owner's FSRS history (public.user_card_fsrs, keyed by card id) is
 // preserved. The copy snapshots each personal cardgroup as a published default
-// starter deck (status='published', is_default_starter=true, source='notion',
-// version=1, sort_order=0) and each personal card as a master card.
+// starter deck (status='published', is_default_starter=true, version=1,
+// sort_order=0) and each personal card as a master card.
 //
 // The migration is idempotent: master rows reuse the source row's primary key
 // and upsert via ON CONFLICT (id) DO UPDATE, so re-running converges on the same
@@ -242,17 +242,16 @@ func runMigrate(dbURL, ownerEmail string) (retErr error) {
 
 	// master_cardgroups upsert. The source cardgroup id is preserved as the
 	// master_cardgroups id so master_cards can reference it and so re-runs
-	// converge via ON CONFLICT (id). The catalog metadata (source, version,
-	// status, is_default_starter, sort_order) is fixed for this initial copy.
+	// converge via ON CONFLICT (id). The catalog metadata (version, status,
+	// is_default_starter, sort_order) is fixed for this initial copy.
 	cgUpserted := 0
 	for _, cg := range cardgroups {
 		_, err = tx.Exec(`
 			INSERT INTO public.master_cardgroups
-			  (id, name, source, version, status, is_default_starter, sort_order, created_at, updated_at)
-			VALUES ($1, $2, 'notion', 1, 'published', true, 0, $3, $4)
+			  (id, name, version, status, is_default_starter, sort_order, created_at, updated_at)
+			VALUES ($1, $2, 1, 'published', true, 0, $3, $4)
 			ON CONFLICT (id) DO UPDATE
 			  SET name               = EXCLUDED.name,
-			      source             = EXCLUDED.source,
 			      version            = EXCLUDED.version,
 			      status             = EXCLUDED.status,
 			      is_default_starter = EXCLUDED.is_default_starter,

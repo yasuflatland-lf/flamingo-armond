@@ -43,9 +43,6 @@ const M1 = {
   id: "m-1",
   name: "Business English",
   description: "Professional vocabulary",
-  language: "en",
-  level: "B2",
-  category: "Business",
   cardCount: 42,
 };
 
@@ -54,9 +51,6 @@ const M2 = {
   id: "m-2",
   name: "JLPT N3 Kanji",
   description: null,
-  language: "ja",
-  level: null,
-  category: null,
   cardCount: 100,
 };
 
@@ -65,9 +59,6 @@ const M3 = {
   id: "m-3",
   name: "Travel Phrases",
   description: null,
-  language: "en",
-  level: "A2",
-  category: null,
   cardCount: 30,
 };
 

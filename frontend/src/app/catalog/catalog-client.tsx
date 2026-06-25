@@ -158,6 +158,7 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
       <ListingPageShell
         title={t("title")}
         count={totalCount}
+        countLabel={tCommon("totalCount", { count: totalCount })}
         toolbar={
           <div className="mb-2 hidden md:block">
             <input

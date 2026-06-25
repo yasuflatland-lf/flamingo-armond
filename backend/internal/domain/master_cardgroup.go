@@ -26,24 +26,19 @@ func (s MasterCardgroupStatus) IsValid() bool {
 // the master catalog and is never directly owned by an end user.
 //
 // Name is a CardgroupName so the same grapheme-cluster length invariant
-// (1..CardgroupNameMax) applies without duplicating validation logic. Status is
-// the only other field that is a value object (MasterCardgroupStatus); its
-// transitions are owned by the Publish / Unpublish methods below. Every remaining
-// field (Description, Language, Level, Category, CoverImageURL, Source,
-// IsDefaultStarter, SortOrder) is free-form with no Parse or bound to protect.
-// That is why the aggregate exposes no update/patch behaviour method: there is no
-// invariant for one to guard. The admin update path (usecase.UpdateMaster) parses
-// Name through ParseCardgroupName at its single seam and assigns the free-form
-// fields directly into the repository patch.
+// (1..CardgroupNameMax) applies without duplicating validation logic. Description
+// is a Description value object carrying the optional, grapheme-bounded
+// (0..DescriptionMax) text invariant, mirroring User.Bio. Status is a value object
+// (MasterCardgroupStatus) whose transitions are owned by the Publish / Unpublish
+// methods below. The remaining fields (IsDefaultStarter, SortOrder) are free-form
+// with no Parse or bound to protect. The admin update path (usecase.UpdateMaster)
+// parses Name through ParseCardgroupName and Description through ParseDescription at
+// their single seams and assigns the free-form fields directly into the repository
+// patch.
 type MasterCardgroup struct {
 	ID               string
 	Name             CardgroupName
-	Description      *string
-	Language         *string
-	Level            *string
-	Category         *string
-	CoverImageURL    *string
-	Source           *string
+	Description      Description
 	Version          int
 	Status           MasterCardgroupStatus
 	IsDefaultStarter bool
@@ -55,14 +50,14 @@ type MasterCardgroup struct {
 // NewMasterCardgroup constructs a MasterCardgroup aggregate in its initial
 // admin-created state: Version = 1 and Status = MasterStatusDraft. It generates a
 // fresh UUID v7 ID and stamps CreatedAt and UpdatedAt with the current UTC time.
-// The name VO is validated upstream by ParseCardgroupName; callers pass the parsed
-// CardgroupName so this constructor stays free of validation branching (mirroring
-// NewCardgroup / NewCard). The Draft/Version=1 invariant is sealed here so it
-// cannot drift across the usecase and repository call sites. Returns a wrapped
-// error when ID generation fails.
+// The name and description VOs are validated upstream by ParseCardgroupName /
+// ParseDescription; callers pass the parsed value objects so this constructor stays
+// free of validation branching (mirroring NewCardgroup / NewCard). The
+// Draft/Version=1 invariant is sealed here so it cannot drift across the usecase and
+// repository call sites. Returns a wrapped error when ID generation fails.
 func NewMasterCardgroup(
 	name CardgroupName,
-	description, language, level, category, coverImageURL, source *string,
+	description Description,
 	isDefaultStarter bool,
 	sortOrder int,
 ) (*MasterCardgroup, error) {
@@ -75,11 +70,6 @@ func NewMasterCardgroup(
 		ID:               id,
 		Name:             name,
 		Description:      description,
-		Language:         language,
-		Level:            level,
-		Category:         category,
-		CoverImageURL:    coverImageURL,
-		Source:           source,
 		Version:          1,
 		Status:           MasterStatusDraft,
 		IsDefaultStarter: isDefaultStarter,

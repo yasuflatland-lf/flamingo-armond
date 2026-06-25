@@ -409,6 +409,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
     <ListingPageShell
       title={tNav("roles")}
       count={roles.length}
+      countLabel={tCommon("totalCount", { count: roles.length })}
       primaryActions={
         <Button
           type="button"

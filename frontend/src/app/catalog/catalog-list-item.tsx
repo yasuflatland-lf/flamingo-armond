@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { CatalogCardFieldsFragment } from "@/app/catalog/queries";
-import { Badge } from "@/components/ui/badge";
 import { type FragmentType, useFragment } from "@/generated/fragment-masking";
 
 /**
@@ -21,9 +20,9 @@ export type CatalogListItemProps = {
  * single link to the deck-detail page (`/catalog/[id]`); Import has moved to that
  * detail page, so the row carries no nested interactive element. Information
  * hierarchy: Tier 1 = deck name (lead) + card-count stat (subordinate figure);
- * Tier 2 = language / level / category badges (always visible); Tier 3 = the
- * description, revealed on hover / keyboard focus via CSS — a desktop progressive
- * enhancement, never the only path to the info (it also lives on the detail page).
+ * Tier 2 = the navigability chevron affordance; Tier 3 = the description, revealed
+ * on hover / keyboard focus via CSS — a desktop progressive enhancement, never the
+ * only path to the info (it also lives on the detail page).
  * The locale-independent `data-testid` (`catalog-row-{id}`) lets e2e — which runs
  * in ja-JP — target the row without depending on translated copy.
  */
@@ -54,25 +53,8 @@ export function CatalogListItem({ node }: CatalogListItemProps) {
           </span>
         </div>
 
-        {/* Tier 2: badges (always visible) + chevron navigability affordance. */}
-        <div className="mt-1.5 flex items-center gap-2">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-            {card.language && (
-              <Badge variant="secondary" className="shrink-0">
-                {card.language}
-              </Badge>
-            )}
-            {card.level && (
-              <Badge variant="outline" className="shrink-0">
-                {t("level", { level: card.level })}
-              </Badge>
-            )}
-            {card.category && (
-              <Badge variant="outline" className="shrink-0">
-                {card.category}
-              </Badge>
-            )}
-          </div>
+        {/* Tier 2: chevron navigability affordance. */}
+        <div className="mt-1.5 flex items-center justify-end gap-2">
           <span
             aria-hidden="true"
             className="shrink-0 text-border transition-transform duration-150 ease-out group-hover:translate-x-0.5 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0"

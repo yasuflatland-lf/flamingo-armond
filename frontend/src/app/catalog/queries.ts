@@ -33,9 +33,6 @@ export const CatalogCardFieldsFragment = graphql(`
     id
     name
     description
-    language
-    level
-    category
     cardCount
   }
 `);

@@ -82,9 +82,6 @@ const DECK_RESPONSE = {
     id: DECK_ID,
     name: "Business English",
     description: "Professional vocabulary",
-    language: "en",
-    level: "B2",
-    category: "Business",
   },
 };
 
@@ -267,9 +264,6 @@ describe("catalog list → deck-detail entry point", () => {
         id: DECK_ID,
         name: "Business English",
         description: null,
-        language: "en",
-        level: "B2",
-        category: "Business",
         cardCount: 42,
       },
       CatalogCardFieldsFragment,

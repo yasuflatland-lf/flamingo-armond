@@ -29,9 +29,6 @@ type DeckNode = {
   id: string;
   name: string;
   description: string | null;
-  language: string | null;
-  level: string | null;
-  category: string | null;
   cardCount: number;
 };
 
@@ -44,9 +41,6 @@ function makeData(
       id: "m-1",
       name: "Business English",
       description: null,
-      language: "en",
-      level: "B2",
-      category: null,
       cardCount: 42,
     },
   ];
