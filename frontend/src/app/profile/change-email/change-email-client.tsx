@@ -46,9 +46,10 @@ export function ChangeEmailClient({ currentEmail }: Props) {
     e.stopPropagation();
     setLoading(true);
     setError(null);
+    const trimmed = newEmail.trim();
     try {
       const supabase = createSupabaseBrowserClient();
-      const { error: updateErr } = await supabase.auth.updateUser({ email: newEmail });
+      const { error: updateErr } = await supabase.auth.updateUser({ email: trimmed });
       if (updateErr) {
         const classifiedKey = classifyUpdateUserError(updateErr.message);
         if (classifiedKey !== null) {
@@ -68,6 +69,7 @@ export function ChangeEmailClient({ currentEmail }: Props) {
         }
         return;
       }
+      setNewEmail(trimmed);
       setSuccess(true);
     } catch (err) {
       // Transport-level failure (network, timeout). The API-shaped failure goes via updateErr above.
