@@ -15,7 +15,8 @@
     "keepEditing": "Keep editing",
     "discard": "Discard",
     "cannotBeUndone": "This action cannot be undone.",
-    "deleteSelected": "Delete selected"
+    "deleteSelected": "Delete selected",
+    "totalCount": "{count, number} total"
   },
   "Nav": {
     "cardgroups": "Cardgroups",
@@ -85,7 +86,6 @@
     "cardCount": "{count, plural, one {# card} other {# cards}}",
     "cardCountStat": "{count, number}",
     "unitCards": "{count, plural, one {card} other {cards}}",
-    "level": "Level {level}",
     "noDecks": "No cardgroups are available yet.",
     "noMatch": "No cardgroups match \"{query}\"",
     "loadingMore": "Loading more cardgroups...",
@@ -321,11 +321,6 @@
     "namePlaceholder": "Deck name",
     "descriptionLabel": "Description",
     "descriptionPlaceholder": "Optional description",
-    "languageLabel": "Language",
-    "levelLabel": "Level",
-    "categoryLabel": "Category",
-    "coverImageUrlLabel": "Cover image URL",
-    "sourceLabel": "Source",
     "isDefaultStarterLabel": "Default starter deck",
     "sortOrderLabel": "Sort order",
     "createSuccess": "Master created.",

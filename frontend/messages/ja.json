@@ -15,7 +15,8 @@
     "keepEditing": "編集を続ける",
     "discard": "破棄",
     "cannotBeUndone": "この操作は元に戻せません。",
-    "deleteSelected": "選択を削除"
+    "deleteSelected": "選択を削除",
+    "totalCount": "全{count, number}件"
   },
   "Nav": {
     "cardgroups": "カードグループ",
@@ -85,7 +86,6 @@
     "cardCount": "{count, plural, other {# 枚のカード}}",
     "cardCountStat": "{count, number}",
     "unitCards": "枚",
-    "level": "レベル {level}",
     "noDecks": "利用可能なカードグループはまだありません。",
     "noMatch": "「{query}」に一致するカードグループはありません",
     "loadingMore": "カードグループを読み込み中...",
@@ -321,11 +321,6 @@
     "namePlaceholder": "デッキ名",
     "descriptionLabel": "説明",
     "descriptionPlaceholder": "任意の説明",
-    "languageLabel": "言語",
-    "levelLabel": "レベル",
-    "categoryLabel": "カテゴリー",
-    "coverImageUrlLabel": "カバー画像 URL",
-    "sourceLabel": "ソース",
     "isDefaultStarterLabel": "既定のスターターデッキ",
     "sortOrderLabel": "並び順",
     "createSuccess": "マスターを作成しました。",

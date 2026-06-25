@@ -50,12 +50,7 @@ func TestToMasterCardgroupModel_FullMapping(t *testing.T) {
 		Cardgroup: &domain.MasterCardgroup{
 			ID:               "mcg-1",
 			Name:             domain.CardgroupName("Starter Deck"),
-			Description:      strPtr("desc"),
-			Language:         strPtr("en"),
-			Level:            strPtr("A1"),
-			Category:         strPtr("vocab"),
-			CoverImageURL:    strPtr("https://example.com/c.png"),
-			Source:           strPtr("oxford"),
+			Description:      domain.DescriptionFromPtr(strPtr("desc")),
 			Version:          3,
 			Status:           domain.MasterStatusPublished,
 			IsDefaultStarter: true,
@@ -71,11 +66,6 @@ func TestToMasterCardgroupModel_FullMapping(t *testing.T) {
 	assert.Equal(t, "mcg-1", got.ID)
 	assert.Equal(t, "Starter Deck", got.Name)
 	assert.Equal(t, strPtr("desc"), got.Description)
-	assert.Equal(t, strPtr("en"), got.Language)
-	assert.Equal(t, strPtr("A1"), got.Level)
-	assert.Equal(t, strPtr("vocab"), got.Category)
-	assert.Equal(t, strPtr("https://example.com/c.png"), got.CoverImageURL)
-	assert.Equal(t, strPtr("oxford"), got.Source)
 	assert.Equal(t, 3, got.Version)
 	assert.Equal(t, model.MasterCardgroupStatusPublished, got.Status)
 	assert.True(t, got.IsDefaultStarter)

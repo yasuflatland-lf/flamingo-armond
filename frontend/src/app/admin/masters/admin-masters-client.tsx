@@ -144,6 +144,7 @@ export function AdminMastersClient() {
       <ListingPageShell
         title={t("title")}
         count={totalCount}
+        countLabel={tCommon("totalCount", { count: totalCount })}
         primaryActions={
           <Button
             type="button"

@@ -10,18 +10,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { DirtyStateBridge } from "@/lib/forms/dirty-state-bridge";
 import { FieldError } from "@/lib/forms/field-error";
 import { submitFormHandler, wrapSubmit } from "@/lib/forms/submit-handler";
-import { masterSchema } from "@/schemas/master";
+import { masterDescriptionSchema, masterNameSchema, masterSortOrderSchema } from "@/schemas/master";
 import type { AdminMasterListItem } from "./admin-master-row";
 
 /** Values emitted by the form. Empty optional strings collapse to null. */
 export type MasterFormValues = {
   name: string;
   description: string | null;
-  language: string | null;
-  level: string | null;
-  category: string | null;
-  coverImageUrl: string | null;
-  source: string | null;
   isDefaultStarter: boolean;
   sortOrder: number | null;
 };
@@ -50,42 +45,42 @@ export function AdminMasterForm({
 }: Props) {
   const t = useTranslations("AdminMasters");
   const tCommon = useTranslations("Common");
-  const nameSchema = masterSchema.shape.name;
+  const nameSchema = masterNameSchema;
+  const descriptionSchema = masterDescriptionSchema;
+  const sortOrderSchema = masterSortOrderSchema;
 
   const form = useForm({
     defaultValues: {
       name: master?.name ?? "",
       description: master?.description ?? "",
-      language: master?.language ?? "",
-      level: master?.level ?? "",
-      category: master?.category ?? "",
-      coverImageUrl: master?.coverImageUrl ?? "",
-      source: master?.source ?? "",
       isDefaultStarter: master?.isDefaultStarter ?? false,
       sortOrder: master?.sortOrder != null ? String(master.sortOrder) : "",
     },
     onSubmit: async ({ value }) => {
       const sortOrderRaw = value.sortOrder.trim();
+      const parsedSortOrder = Number(sortOrderRaw);
       const values: MasterFormValues = {
         name: value.name.trim(),
         description: emptyToNull(value.description),
-        language: emptyToNull(value.language),
-        level: emptyToNull(value.level),
-        category: emptyToNull(value.category),
-        coverImageUrl: emptyToNull(value.coverImageUrl),
-        source: emptyToNull(value.source),
         isDefaultStarter: value.isDefaultStarter,
-        sortOrder: sortOrderRaw === "" ? null : Number(sortOrderRaw),
+        // The sortOrder field validator blocks submit on a non-integer; guard the
+        // conversion too so NaN / Infinity can never reach the mutation.
+        sortOrder:
+          sortOrderRaw !== "" && Number.isInteger(parsedSortOrder) ? parsedSortOrder : null,
       };
       await wrapSubmit("admin-master-form", submit)(values);
     },
   });
 
   const nameFieldError = validationError?.field === "name" ? validationError.message : undefined;
+  const descriptionFieldError =
+    validationError?.field === "description" ? validationError.message : undefined;
 
   return (
     <form onSubmit={submitFormHandler(form)} className="space-y-4">
-      {validationError && validationError.field !== "name" ? (
+      {validationError &&
+      validationError.field !== "name" &&
+      validationError.field !== "description" ? (
         <ErrorBanner data-testid="master-form-error">{validationError.message}</ErrorBanner>
       ) : null}
 
@@ -110,7 +105,14 @@ export function AdminMasterForm({
         )}
       </form.Field>
 
-      <form.Field name="description">
+      <form.Field
+        name="description"
+        validators={{
+          onChange: descriptionSchema,
+          onBlur: descriptionSchema,
+          onSubmit: descriptionSchema,
+        }}
+      >
         {(field) => (
           <div className="space-y-2">
             <Label htmlFor={field.name}>{t("descriptionLabel")}</Label>
@@ -119,39 +121,23 @@ export function AdminMasterForm({
               name={field.name}
               data-testid="master-field-description"
               value={field.state.value}
+              onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
               placeholder={t("descriptionPlaceholder")}
             />
+            <FieldError zodErrors={field.state.meta.errors} backendError={descriptionFieldError} />
           </div>
         )}
       </form.Field>
 
-      {(
-        [
-          ["language", "languageLabel"],
-          ["level", "levelLabel"],
-          ["category", "categoryLabel"],
-          ["coverImageUrl", "coverImageUrlLabel"],
-          ["source", "sourceLabel"],
-        ] as const
-      ).map(([fieldName, labelKey]) => (
-        <form.Field key={fieldName} name={fieldName}>
-          {(field) => (
-            <div className="space-y-2">
-              <Label htmlFor={field.name}>{t(labelKey)}</Label>
-              <Input
-                id={field.name}
-                name={field.name}
-                data-testid={`master-field-${fieldName}`}
-                value={field.state.value}
-                onChange={(e) => field.handleChange(e.target.value)}
-              />
-            </div>
-          )}
-        </form.Field>
-      ))}
-
-      <form.Field name="sortOrder">
+      <form.Field
+        name="sortOrder"
+        validators={{
+          onChange: sortOrderSchema,
+          onBlur: sortOrderSchema,
+          onSubmit: sortOrderSchema,
+        }}
+      >
         {(field) => (
           <div className="space-y-2">
             <Label htmlFor={field.name}>{t("sortOrderLabel")}</Label>
@@ -161,8 +147,10 @@ export function AdminMasterForm({
               type="number"
               data-testid="master-field-sortOrder"
               value={field.state.value}
+              onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
             />
+            <FieldError zodErrors={field.state.meta.errors} />
           </div>
         )}
       </form.Field>

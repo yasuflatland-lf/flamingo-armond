@@ -245,6 +245,7 @@ export function AdminUsersClient() {
       <ListingPageShell
         title={tNav("users")}
         count={totalCount}
+        countLabel={tCommon("totalCount", { count: totalCount })}
         toolbar={
           // Desktop-only search input; mobile uses the header takeover above.
           <div className="hidden md:block">

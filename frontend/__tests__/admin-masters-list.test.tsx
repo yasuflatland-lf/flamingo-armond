@@ -78,11 +78,6 @@ type MasterNode = {
   id: string;
   name: string;
   description: string | null;
-  language: string | null;
-  level: string | null;
-  category: string | null;
-  coverImageUrl: string | null;
-  source: string | null;
   version: number;
   status: "DRAFT" | "PUBLISHED";
   isDefaultStarter: boolean;
@@ -115,11 +110,6 @@ function makeMaster(i: number): MasterNode {
     id: `m-${i}`,
     name: `Deck m-${i}`,
     description: null,
-    language: null,
-    level: null,
-    category: null,
-    coverImageUrl: null,
-    source: null,
     version: 1,
     status: "DRAFT",
     isDefaultStarter: false,
@@ -253,8 +243,8 @@ describe("AdminMastersClient (broad page test)", () => {
     // List container rendered.
     expect(screen.getByTestId("admin-masters-list")).toBeInTheDocument();
 
-    // totalCount shown (3 in parens).
-    expect(screen.getByText("(3)")).toBeInTheDocument();
+    // totalCount shown as the "N total" pill label.
+    expect(screen.getByText("3 total")).toBeInTheDocument();
 
     // Each row links to the edit page — no edit sheet.
     expect(screen.getByRole("link", { name: /edit deck m-1/i })).toHaveAttribute(
