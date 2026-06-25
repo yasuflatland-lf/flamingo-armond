@@ -13,6 +13,35 @@ import (
 	"backend/internal/domain"
 )
 
+// ErrMasterCardgroupNotFound is returned by Create / UpsertManyTx when the
+// target master_cardgroup_id does not exist — a Postgres FK violation (23503)
+// on master_cards_master_cardgroup_id_fkey. Joined with ErrNotFound so callers
+// matching the general sentinel keep working while new callers branch on the
+// specific cause to surface BAD_USER_INPUT on the masterCardgroupId field.
+//
+// Plain errors.New (not eris) so errors.Is walks identity directly.
+var ErrMasterCardgroupNotFound = errors.Join(
+	errors.New("repository: master card: master cardgroup not found"),
+	ErrNotFound,
+)
+
+// classifyMasterCardFKError maps a Postgres FK violation (code 23503) on the
+// master_cards.master_cardgroup_id foreign key to ErrMasterCardgroupNotFound.
+// Returns nil for any other error so callers can use it as a pre-filter before
+// falling through to eris.Wrap. Extracted as a free function so the
+// classification can be unit-tested with a fabricated *pgconn.PgError without a
+// live DB race (mirrors role.go's classifyFKError).
+func classifyMasterCardFKError(err error) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23503" {
+		return nil
+	}
+	if strings.Contains(pgErr.ConstraintName, "master_cardgroup_id") {
+		return ErrMasterCardgroupNotFound
+	}
+	return nil
+}
+
 // gormMasterCard is the row mapping for public.master_cards. Package-private so
 // callers cannot bypass the domain conversion. It is intentionally NOT embedded
 // in any outer scan target: gormMasterCard carries a TableName() method that
@@ -298,6 +327,9 @@ func (r *masterCardRepo) Create(ctx context.Context, c *domain.MasterCard) error
 			strings.Contains(pgErr.ConstraintName, "uq_master_cards_cg_front") {
 			return ErrCardDuplicateFront
 		}
+		if classified := classifyMasterCardFKError(err); classified != nil {
+			return classified
+		}
 		return eris.Wrap(err, "repository: master card: create")
 	}
 	return nil
@@ -380,6 +412,9 @@ func (r *masterCardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []
 	}
 	res, err := upsertManyTx(ctx, tx, rows, "master_cards", "master_cardgroup_id")
 	if err != nil {
+		if classified := classifyMasterCardFKError(err); classified != nil {
+			return UpsertManyTxResult{}, classified
+		}
 		return UpsertManyTxResult{}, eris.Wrap(err, "repository: master card: upsert many")
 	}
 	return res, nil

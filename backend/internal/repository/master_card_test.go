@@ -948,3 +948,22 @@ func TestMasterCardRepository_Delete(t *testing.T) {
 	err = repo.Delete(ctx, uuid.NewString())
 	require.ErrorIs(t, err, repository.ErrNotFound)
 }
+
+// TestMasterCardRepository_Create_NonexistentMasterCardgroup proves the real
+// auto-generated FK constraint name (master_cards_master_cardgroup_id_fkey)
+// matches the classifier's "master_cardgroup_id" substring: a Create targeting a
+// well-formed but nonexistent master_cardgroup_id surfaces the Postgres FK
+// violation (23503) as the typed ErrMasterCardgroupNotFound sentinel, not a raw
+// wrapped error.
+func TestMasterCardRepository_Create_NonexistentMasterCardgroup(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	// A random UUID that no master_cardgroups row carries.
+	card := newMasterCard(uuid.NewString(), "Nonexistent-FK-front", "back", 0)
+	err := repo.Create(ctx, card)
+	require.Error(t, err)
+	require.ErrorIs(t, err, repository.ErrMasterCardgroupNotFound)
+	require.ErrorIs(t, err, repository.ErrNotFound)
+}
