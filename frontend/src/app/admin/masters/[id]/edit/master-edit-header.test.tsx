@@ -47,8 +47,6 @@ const DECK: AdminMasterDeck = {
   updatedAt: "2026-01-01T00:00:00Z",
 };
 
-const onBatchImport = vi.fn();
-
 function renderHeader(
   overrides: Partial<AdminMasterDeck> & { cardCount?: number } = {},
   mocks: ReadonlyArray<unknown> = [],
@@ -59,11 +57,7 @@ function renderHeader(
   return render(
     <MockedProvider mocks={mocks as never}>
       <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
-        <MasterEditHeader
-          master={deck}
-          cardCount={resolvedCardCount}
-          onBatchImport={onBatchImport}
-        />
+        <MasterEditHeader master={deck} cardCount={resolvedCardCount} />
       </NextIntlClientProvider>
     </MockedProvider>,
   );
@@ -297,23 +291,13 @@ describe("MasterEditHeader", () => {
     );
   });
 
-  it("mobile: overflow menu hosts batch import alongside Settings and Delete (no publish)", async () => {
+  it("mobile: overflow contains only Settings and Delete (no Batch import)", async () => {
     const user = userEvent.setup();
-    renderHeader({ status: "PUBLISHED", cardCount: 5 });
+    renderHeader();
     await user.click(screen.getByTestId("master-edit-overflow"));
-    expect(screen.getByTestId("master-edit-import-mobile")).toBeInTheDocument();
+    expect(screen.queryByTestId("master-edit-import-mobile")).not.toBeInTheDocument();
     expect(screen.getByTestId("master-edit-deck-settings-mobile")).toBeInTheDocument();
     expect(screen.getByTestId("master-edit-delete-mobile")).toBeInTheDocument();
-    // Publish stays on the status chip, not the overflow menu.
-    expect(screen.queryByTestId("master-edit-publish-mobile")).toBeNull();
-  });
-
-  it("mobile: overflow 'Batch import' item calls onBatchImport", async () => {
-    const user = userEvent.setup();
-    renderHeader({ status: "PUBLISHED", cardCount: 5 });
-    await user.click(screen.getByTestId("master-edit-overflow"));
-    await user.click(screen.getByTestId("master-edit-import-mobile"));
-    expect(onBatchImport).toHaveBeenCalledTimes(1);
   });
 
   it("renders the inline back link to the masters list", () => {
@@ -331,11 +315,7 @@ describe("MasterEditHeader", () => {
     const { container } = render(
       <MockedProvider mocks={[]}>
         <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
-          <MasterEditHeader
-            master={{ ...DECK, cardCount: 0 }}
-            cardCount={5}
-            onBatchImport={onBatchImport}
-          />
+          <MasterEditHeader master={{ ...DECK, cardCount: 0 }} cardCount={5} />
         </NextIntlClientProvider>
       </MockedProvider>,
     );
