@@ -110,9 +110,9 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport, onMerge 
           <Layers className="h-4 w-4" />
           {t("mergeFromCatalog")}
         </DropdownMenuItem>
-        {/* Separator divides the constructive actions (rename, import, merge)
-            from the destructive delete. Always shown now that rename leads the
-            menu. */}
+        {/* Separator divides the constructive actions from Delete. On desktop
+            only Rename is visible above it; the import and merge items are
+            md:hidden (mobile-only add surfaces). */}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={() => setDeleteDialogOpen(true)}
