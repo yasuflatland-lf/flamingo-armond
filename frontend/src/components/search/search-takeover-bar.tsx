@@ -87,7 +87,7 @@ export function SearchTakeoverBar({
           placeholder={placeholder}
           aria-label={ariaLabel}
           data-testid="search-takeover-input"
-          className="w-full rounded-md border border-input bg-background py-2.5 pl-8 pr-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="w-full rounded-md border border-input bg-background py-2.5 pl-8 pr-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         />
       </div>
       {value !== "" && (
