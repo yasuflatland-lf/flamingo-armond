@@ -108,6 +108,12 @@ describe("resolveHeaderCreateAction", () => {
     it("returns null for malformed escape", () => {
       expect(resolveHeaderCreateAction("/admin/masters/%ZZ/edit")).toBeNull();
     });
+    it("matches trailing slash /admin/masters/m-1/edit/", () => {
+      expect(resolveHeaderCreateAction("/admin/masters/m-1/edit/")).toEqual({
+        kind: "deck-add-menu",
+        deck: { kind: "master", masterId: "m-1" },
+      });
+    });
   });
 
   describe("/cardgroups/:id/edit -> deck-add-menu (cardgroup)", () => {
@@ -121,6 +127,12 @@ describe("resolveHeaderCreateAction", () => {
       expect(resolveHeaderCreateAction("/cardgroups/a%2Fb/edit")).toEqual({
         kind: "deck-add-menu",
         deck: { kind: "cardgroup", cardgroupId: "a/b", addCardHref: "/cards/new?cardgroup=a%2Fb" },
+      });
+    });
+    it("matches trailing slash /cardgroups/abc/edit/", () => {
+      expect(resolveHeaderCreateAction("/cardgroups/abc/edit/")).toEqual({
+        kind: "deck-add-menu",
+        deck: { kind: "cardgroup", cardgroupId: "abc", addCardHref: "/cards/new?cardgroup=abc" },
       });
     });
   });

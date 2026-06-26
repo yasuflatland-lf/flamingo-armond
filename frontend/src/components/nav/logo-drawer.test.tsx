@@ -413,5 +413,50 @@ describe("<LogoDrawer>", () => {
       // event is uncancelled and the fallback navigation fires.
       expect(mockPush).toHaveBeenCalledWith("/cards/new?cardgroup=abc");
     });
+
+    it("cardgroup edit: Add card does not navigate when the event is cancelled", async () => {
+      const user = userEvent.setup();
+      mockUsePathname.mockReturnValue("/cardgroups/abc/edit");
+      const listener = vi.fn((event: Event) => event.preventDefault());
+      window.addEventListener("flamingo:add-card", listener);
+      renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+      await user.click(screen.getByRole("button", { name: "Add" }));
+      await user.click(screen.getByRole("menuitem", { name: /add card/i }));
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(mockPush).not.toHaveBeenCalled();
+      window.removeEventListener("flamingo:add-card", listener);
+    });
+
+    it("master edit: Add card dispatches flamingo:add-master-card with masterId", async () => {
+      const user = userEvent.setup();
+      mockUsePathname.mockReturnValue("/admin/masters/m-1/edit");
+      const onEvent = vi.fn();
+      window.addEventListener("flamingo:add-master-card", onEvent as EventListener);
+      renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin />);
+
+      await user.click(screen.getByRole("button", { name: "Add" }));
+      await user.click(screen.getByRole("menuitem", { name: /add card/i }));
+      window.removeEventListener("flamingo:add-master-card", onEvent as EventListener);
+
+      expect(onEvent).toHaveBeenCalledTimes(1);
+      expect((onEvent.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({ masterId: "m-1" });
+    });
+
+    it("cardgroup edit: Merge item dispatches flamingo:merge with ownerId", async () => {
+      const user = userEvent.setup();
+      mockUsePathname.mockReturnValue("/cardgroups/abc/edit");
+      const onEvent = vi.fn();
+      window.addEventListener("flamingo:merge", onEvent as EventListener);
+      renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+      await user.click(screen.getByRole("button", { name: "Add" }));
+      await user.click(screen.getByRole("menuitem", { name: /merge from catalog/i }));
+      window.removeEventListener("flamingo:merge", onEvent as EventListener);
+
+      expect(onEvent).toHaveBeenCalledTimes(1);
+      expect((onEvent.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({ ownerId: "abc" });
+    });
   });
 });
