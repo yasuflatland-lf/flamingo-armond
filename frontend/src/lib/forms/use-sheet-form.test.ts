@@ -98,13 +98,13 @@ describe("useCardSheetForm", () => {
     expect(result.current.addDirty).toBe(true);
   });
 
-  it("handleCreate success closes the sheet and clears dirty", async () => {
+  it("handleCreate success keeps the sheet open and clears dirty", async () => {
     const { result } = setup({ createOutcome: { status: "success" } });
     act(() => result.current.openAddSheet());
     await act(async () => {
       await result.current.handleCreate({ front: "f", back: "b" });
     });
-    expect(result.current.addOpen).toBe(false);
+    expect(result.current.addOpen).toBe(true);
     expect(result.current.addDirty).toBe(false);
     expect(result.current.createValidationError).toBeNull();
   });
@@ -206,5 +206,51 @@ describe("useCardSheetForm", () => {
     act(() => result.current.onEditOpenChange(false));
     expect(result.current.editingId).toBeNull();
     expect(result.current.rowValidationError).toBeNull();
+  });
+});
+
+function setupContinuous(createResult: { status: string } = { status: "success" }) {
+  return renderHook(() =>
+    useCardSheetForm({
+      createCard: vi.fn().mockResolvedValue(createResult),
+      updateCard: vi.fn().mockResolvedValue({ status: "success" }),
+      resetCreateCard: vi.fn(),
+      addFailedMessage: "add failed",
+      saveFailedMessage: "save failed",
+    }),
+  );
+}
+
+describe("useCardSheetForm continuous add", () => {
+  it("keeps the sheet open and increments addedCount + createNonce on success", async () => {
+    const { result } = setupContinuous({ status: "success" });
+    act(() => result.current.openAddSheet());
+    expect(result.current.addOpen).toBe(true);
+    expect(result.current.addedCount).toBe(0);
+    const nonce0 = result.current.createNonce;
+
+    await act(async () => {
+      await result.current.handleCreate({ front: "a", back: "b" });
+    });
+    expect(result.current.addOpen).toBe(true);
+    expect(result.current.addedCount).toBe(1);
+    expect(result.current.createNonce).not.toBe(nonce0);
+
+    await act(async () => {
+      await result.current.handleCreate({ front: "c", back: "d" });
+    });
+    expect(result.current.addedCount).toBe(2);
+  });
+
+  it("resets addedCount when the sheet is dismissed", async () => {
+    const { result } = setupContinuous({ status: "success" });
+    act(() => result.current.openAddSheet());
+    await act(async () => {
+      await result.current.handleCreate({ front: "a", back: "b" });
+    });
+    expect(result.current.addedCount).toBe(1);
+    act(() => result.current.onAddOpenChange(false));
+    expect(result.current.addedCount).toBe(0);
+    expect(result.current.addOpen).toBe(false);
   });
 });

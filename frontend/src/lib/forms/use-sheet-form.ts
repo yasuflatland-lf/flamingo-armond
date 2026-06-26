@@ -77,11 +77,14 @@ export function useCardSheetForm({
   const [addOpen, setAddOpen] = useState(false);
   const [addDirty, setAddDirty] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [addedCount, setAddedCount] = useState(0);
+  const [createNonce, setCreateNonce] = useState(0);
 
   const createForm = useSheetForm(
     useCallback(() => {
       setAddDirty(false);
-      setAddOpen(false);
+      setAddedCount((c) => c + 1);
+      setCreateNonce((n) => n + 1);
     }, []),
   );
   const updateForm = useSheetForm(useCallback(() => setEditingId(null), []));
@@ -101,6 +104,7 @@ export function useCardSheetForm({
     resetCreateCard();
     clearCreateError();
     setAddDirty(false);
+    setAddedCount(0);
     setAddOpen(true);
   }, [resetCreateCard, clearCreateError]);
 
@@ -113,6 +117,7 @@ export function useCardSheetForm({
         resetCreateCard();
         setAddDirty(false);
         clearCreateError();
+        setAddedCount(0);
       }
     },
     [resetCreateCard, clearCreateError],
@@ -160,6 +165,8 @@ export function useCardSheetForm({
   return {
     addOpen,
     addDirty,
+    addedCount,
+    createNonce,
     markAddDirty,
     editingId,
     createValidationError: createForm.validationError,
