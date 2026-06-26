@@ -3,7 +3,7 @@
 import { Import, Layers, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { CardgroupRenameForm } from "@/components/cardgroups/cardgroup-rename-form";
 import { MergeFromCatalogSheet } from "@/components/cardgroups/merge-from-catalog-sheet";
@@ -56,10 +56,6 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
 
   const t = useTranslations("Cardgroups");
   const tCommon = useTranslations("Common");
-
-  const handleRenameSubmittingChange = useCallback((submitting: boolean) => {
-    setRenaming(submitting);
-  }, []);
 
   async function handleDelete() {
     const deleted = await deleteCardgroup(cardgroup.id);
@@ -156,7 +152,7 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
             setRenaming(false);
             setRenameOpen(false);
           }}
-          onSubmittingChange={handleRenameSubmittingChange}
+          onSubmittingChange={setRenaming}
         />
       </FormSheet>
 

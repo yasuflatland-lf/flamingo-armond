@@ -39,6 +39,29 @@ async function runMerge(result: ReturnType<typeof renderMergeFromCatalog>["resul
   return outcome as MergeFromCatalogOutcome;
 }
 
+function successMocks(): MockedResponse[] {
+  return [
+    {
+      request: REQUEST,
+      result: {
+        data: {
+          mergeMasterCardgroup: {
+            __typename: "MergeMasterCardgroupSuccess",
+            cardgroup: {
+              __typename: "Cardgroup",
+              id: TARGET_CARDGROUP_ID,
+              name: "Target deck",
+              updatedAt: "2026-06-26T00:00:00Z",
+            },
+            addedCount: 3,
+            updatedCount: 1,
+          },
+        },
+      },
+    },
+  ];
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -50,28 +73,7 @@ describe("useMergeFromCatalog", () => {
       .spyOn(ApolloClient.prototype, "refetchQueries")
       // biome-ignore lint/suspicious/noExplicitAny: test stub for refetchQueries return
       .mockResolvedValue({} as any);
-    const mocks: MockedResponse[] = [
-      {
-        request: REQUEST,
-        result: {
-          data: {
-            mergeMasterCardgroup: {
-              __typename: "MergeMasterCardgroupSuccess",
-              cardgroup: {
-                __typename: "Cardgroup",
-                id: TARGET_CARDGROUP_ID,
-                name: "Target deck",
-                updatedAt: "2026-06-26T00:00:00Z",
-              },
-              addedCount: 3,
-              updatedCount: 1,
-            },
-          },
-        },
-      },
-    ];
-
-    const { result } = renderMergeFromCatalog(mocks);
+    const { result } = renderMergeFromCatalog(successMocks());
     const outcome = await runMerge(result);
 
     expect(outcome).toEqual({ status: "success", addedCount: 3, updatedCount: 1 });
@@ -177,28 +179,7 @@ describe("useMergeFromCatalog", () => {
     const refetchQueriesSpy = vi
       .spyOn(ApolloClient.prototype, "refetchQueries")
       .mockRejectedValue(new Error("refetch boom"));
-    const mocks: MockedResponse[] = [
-      {
-        request: REQUEST,
-        result: {
-          data: {
-            mergeMasterCardgroup: {
-              __typename: "MergeMasterCardgroupSuccess",
-              cardgroup: {
-                __typename: "Cardgroup",
-                id: TARGET_CARDGROUP_ID,
-                name: "Target deck",
-                updatedAt: "2026-06-26T00:00:00Z",
-              },
-              addedCount: 3,
-              updatedCount: 1,
-            },
-          },
-        },
-      },
-    ];
-
-    const { result } = renderMergeFromCatalog(mocks);
+    const { result } = renderMergeFromCatalog(successMocks());
     const outcome = await runMerge(result);
 
     // The merge succeeded on the server; a post-success refetch failure must
@@ -219,28 +200,7 @@ describe("useMergeFromCatalog", () => {
       .spyOn(ApolloClient.prototype, "refetchQueries")
       // biome-ignore lint/suspicious/noExplicitAny: test stub for refetchQueries return
       .mockResolvedValue({} as any);
-    const mocks: MockedResponse[] = [
-      {
-        request: REQUEST,
-        result: {
-          data: {
-            mergeMasterCardgroup: {
-              __typename: "MergeMasterCardgroupSuccess",
-              cardgroup: {
-                __typename: "Cardgroup",
-                id: TARGET_CARDGROUP_ID,
-                name: "Target deck",
-                updatedAt: "2026-06-26T00:00:00Z",
-              },
-              addedCount: 3,
-              updatedCount: 1,
-            },
-          },
-        },
-      },
-    ];
-
-    const { result } = renderMergeFromCatalog(mocks);
+    const { result } = renderMergeFromCatalog(successMocks());
     await runMerge(result);
 
     const options = refetchQueriesSpy.mock.calls[0]?.[0] as {

@@ -93,6 +93,23 @@ function renderHeader(mocks: MockedResponse[] = [], totalCount = 5) {
   );
 }
 
+async function openDeleteDialog(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
+  await waitFor(() =>
+    expect(screen.getByRole("menuitem", { name: /delete cardgroup/i })).toBeInTheDocument(),
+  );
+  await user.click(screen.getByRole("menuitem", { name: /delete cardgroup/i }));
+  await waitFor(() => expect(screen.getByRole("alertdialog")).toBeInTheDocument());
+}
+
+async function clickDeleteConfirm(user: ReturnType<typeof userEvent.setup>) {
+  const confirmBtn = screen
+    .getAllByRole("button", { name: /^delete$/i })
+    .find((el) => el.closest("[role='alertdialog']"));
+  if (!confirmBtn) throw new Error("Delete confirm button not found in dialog");
+  await user.click(confirmBtn);
+}
+
 describe("<CardgroupHeader>", () => {
   beforeEach(() => {
     mockPush.mockClear();
@@ -183,18 +200,11 @@ describe("<CardgroupHeader>", () => {
     const user = userEvent.setup();
     renderHeader();
 
-    await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
-    await waitFor(() => {
-      expect(screen.getByRole("menuitem", { name: /delete cardgroup/i })).toBeInTheDocument();
-    });
-    await user.click(screen.getByRole("menuitem", { name: /delete cardgroup/i }));
+    await openDeleteDialog(user);
 
-    await waitFor(() => {
-      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
-      expect(
-        screen.getByRole("heading", { level: 2, name: /^delete cardgroup$/i }),
-      ).toBeInTheDocument();
-    });
+    expect(
+      screen.getByRole("heading", { level: 2, name: /^delete cardgroup$/i }),
+    ).toBeInTheDocument();
   });
 
   it("cancel closes the delete dialog without firing mutation", async () => {
@@ -211,12 +221,7 @@ describe("<CardgroupHeader>", () => {
     ];
     renderHeader(mocks);
 
-    await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
-    await waitFor(() =>
-      expect(screen.getByRole("menuitem", { name: /delete cardgroup/i })).toBeInTheDocument(),
-    );
-    await user.click(screen.getByRole("menuitem", { name: /delete cardgroup/i }));
-    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeInTheDocument());
+    await openDeleteDialog(user);
 
     await user.click(screen.getByRole("button", { name: /^cancel$/i }));
 
@@ -240,18 +245,8 @@ describe("<CardgroupHeader>", () => {
     ];
     renderHeader(mocks);
 
-    await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
-    await waitFor(() =>
-      expect(screen.getByRole("menuitem", { name: /delete cardgroup/i })).toBeInTheDocument(),
-    );
-    await user.click(screen.getByRole("menuitem", { name: /delete cardgroup/i }));
-    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeInTheDocument());
-
-    const confirmBtn = screen
-      .getAllByRole("button", { name: /^delete$/i })
-      .find((el) => el.closest("[role='alertdialog']"));
-    if (!confirmBtn) throw new Error("Delete confirm button not found in dialog");
-    await user.click(confirmBtn);
+    await openDeleteDialog(user);
+    await clickDeleteConfirm(user);
 
     await waitFor(() => {
       expect(deleteCalled).toHaveBeenCalledOnce();
@@ -278,18 +273,8 @@ describe("<CardgroupHeader>", () => {
     ];
     renderHeader(mocks);
 
-    await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
-    await waitFor(() =>
-      expect(screen.getByRole("menuitem", { name: /delete cardgroup/i })).toBeInTheDocument(),
-    );
-    await user.click(screen.getByRole("menuitem", { name: /delete cardgroup/i }));
-    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeInTheDocument());
-
-    const confirmBtn = screen
-      .getAllByRole("button", { name: /^delete$/i })
-      .find((el) => el.closest("[role='alertdialog']"));
-    if (!confirmBtn) throw new Error("Delete confirm button not found in dialog");
-    await user.click(confirmBtn);
+    await openDeleteDialog(user);
+    await clickDeleteConfirm(user);
 
     await waitFor(() => {
       expect(screen.getByText("Your session expired. Please sign in again.")).toBeInTheDocument();
@@ -352,18 +337,8 @@ describe("<CardgroupHeader>", () => {
     ];
     renderHeader(mocks);
 
-    await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
-    await waitFor(() =>
-      expect(screen.getByRole("menuitem", { name: /delete cardgroup/i })).toBeInTheDocument(),
-    );
-    await user.click(screen.getByRole("menuitem", { name: /delete cardgroup/i }));
-    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeInTheDocument());
-
-    const confirmBtn = screen
-      .getAllByRole("button", { name: /^delete$/i })
-      .find((el) => el.closest("[role='alertdialog']"));
-    if (!confirmBtn) throw new Error("Delete confirm button not found in dialog");
-    await user.click(confirmBtn);
+    await openDeleteDialog(user);
+    await clickDeleteConfirm(user);
 
     await waitFor(() => {
       expect(screen.getByText("Could not reach the server. Please try again.")).toBeInTheDocument();
