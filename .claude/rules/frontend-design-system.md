@@ -9,29 +9,61 @@ paths:
 > color-intent rules below govern every action button and confirm dialog. Source of truth for
 > the token table and rationale: [`docs/frontend/design-system.md`](../../docs/frontend/design-system.md).
 
-The app is **light-only**; the flamingo coral brand and a deep-red danger color are both present.
-The two rules below keep them from colliding and keep destructive actions unmistakable.
+The app is **light-only**. Coral is the brand and carries the accent roles; danger is a
+separate, deepened crimson. The coral-minimal model has two enforceable conventions — the
+**emphasis ladder** and the **danger two-tier** — that keep coral CTAs dominant and keep
+destructive actions unmistakable.
 
-## Red is reserved for danger
+## The coral-minimal model
 
-`destructive` (deep red) means "stop / irreversible". `brand` (flamingo coral) is the primary
-constructive CTA color. They are different tokens doing different jobs:
+Danger is `destructive` (deepened crimson, `oklch(0.51 0.21 25)`) and means "stop /
+irreversible". Coral is the brand, split into a **fill** token and a **link/accent text**
+token:
 
-- **Never style a constructive action** (Save, Create, Login, Import, Publish) with `destructive`.
-  A constructive primary action is `variant="brand"`.
-- **Never leave a destructive action in a neutral variant.** A delete / overwrite / discard action
-  is `variant="destructive"` (or the dialog form below).
+- **Brand fill — `--brand-primary` (L74).** Background fill under white text: primary CTA,
+  progress, selected, focus ring (`--ring` is now coral, same value).
+- **Link / accent text — `--brand-link` (L50, darker).** Foreground coral on white: inline
+  links and the `link` button variant. The L74 fill fails WCAG AA as text on white, so coral
+  *text* MUST use `--brand-link`, never `--brand-primary`.
+- **Warning — `--warning` (soft amber band) / `--warning-foreground` (dark amber).** A
+  non-blocking caution surface, not a button fill.
 
-Keeping both reds is deliberate — they are token-distinguishable (deep red L≈58 vs. coral L≈74)
-and never render on the same surface, so the brand-red CTAs are kept, not flattened to neutral.
-Full rationale: [`docs/frontend/design-system.md` § "Red is reserved for danger"](../../docs/frontend/design-system.md#red-is-reserved-for-danger).
+The older "two reds that never co-locate" defense is superseded: coral and crimson may share a
+surface because the two conventions below disambiguate intent.
 
-## Destructive / data-loss confirm dialogs MUST pass `variant="destructive"`
+### Emphasis ladder
+
+Exactly **one** filled coral CTA per view; everything else steps back:
+
+- **Primary CTA (one per view)** → `variant="brand"` (filled coral).
+- **Secondary** → `variant="ghost"` (recommended), or `variant="outline"` in dense lists /
+  dialog footers where a visible border earns its keep.
+- **Danger trigger (inline)** → `variant="destructiveGhost"`.
+- **Danger commit (confirm)** → `variant="destructive"` (filled crimson).
+- **Cancel / Keep-editing** → `variant="outline"`.
+
+Two filled coral buttons on one view is the smell — demote all but the genuine primary. Never
+style a constructive action (Save, Create, Login, Import, Publish) with `destructive`.
+
+### Danger two-tier
+
+Danger is expressed at two emphasis levels:
+
+- **Trigger (inline)** — `variant="destructiveGhost"` (`bg-transparent text-destructive
+  hover:bg-destructive/10`) + a `Trash2` icon. Red text, transparent, faint red hover —
+  **never** a filled red row. The trigger only opens the confirm.
+- **Commit (confirm)** — filled `variant="destructive"` on the `AlertDialogAction` that
+  actually deletes / overwrites / discards. This is the **only** filled crimson in the flow.
+
+Full rationale: [`docs/frontend/design-system.md` § "The coral-minimal model"](../../docs/frontend/design-system.md#the-coral-minimal-model).
+
+## Destructive / data-loss confirm commits MUST pass `variant="destructive"`
 
 shadcn's [`AlertDialogAction`](../../frontend/src/components/ui/alert-dialog.tsx) defaults to
 `buttonVariants()` → the `default` (neutral near-black) variant. So a confirm button that deletes
 or irreversibly loses data renders **neutral black by default** and reads as a safe "next" button —
-a silent footgun. Every destructive / data-loss confirm MUST opt in explicitly:
+a silent footgun. Every destructive / data-loss **commit** MUST opt in explicitly (this rule is
+unchanged):
 
 ```tsx
 import { buttonVariants } from "@/components/ui/button";
@@ -41,21 +73,38 @@ import { buttonVariants } from "@/components/ui/button";
 </AlertDialogAction>
 ```
 
+The inline trigger that *opens* the dialog is the lower tier — `variant="destructiveGhost"` +
+`Trash2` — never filled `destructive`.
+
 What counts as a danger confirm: permanent delete (single + bulk), overwrite of existing data,
 and discard of unsaved edits. See the worked-example table in
 [`docs/frontend/design-system.md` § "What counts as a danger confirm"](../../docs/frontend/design-system.md#what-counts-as-a-danger-confirm).
 
 ### Verification grep
 
-Enumerate every `AlertDialogAction` call site and confirm each destructive one carries the
-destructive variant (the cancel/keep-editing siblings stay `outline`):
+Two distinct surfaces, two checks:
 
-```bash
-grep -rn "AlertDialogAction" frontend/src --include='*.tsx' | grep -v test | grep -v "components/ui/alert-dialog.tsx"
-```
+1. **Confirm commits (filled `destructive`).** Enumerate every `AlertDialogAction` call site and
+   confirm each destructive one carries the filled destructive variant (the cancel/keep-editing
+   siblings stay `outline`):
 
-Today's danger confirms that MUST carry `buttonVariants({ variant: "destructive" })`:
-`admin-master-form.tsx` (Delete master), `bulk-action-bar.tsx` (bulk delete),
-`cards-new-client.tsx` (Overwrite), `form-sheet.tsx` (Discard).
-`cardgroup-header.tsx` (Delete group) styles its action red inline (`bg-destructive`).
-A confirm with no danger color and a delete/overwrite/discard onClick is a bug, not a style choice.
+   ```bash
+   grep -rn "AlertDialogAction" frontend/src --include='*.tsx' | grep -v test | grep -v "components/ui/alert-dialog.tsx"
+   ```
+
+   Today's danger confirm commits that MUST carry `buttonVariants({ variant: "destructive" })`:
+   `admin-master-form.tsx` (Delete master), `bulk-action-bar.tsx` (bulk delete),
+   `cards-new-client.tsx` (Overwrite), `form-sheet.tsx` (Discard).
+   `cardgroup-header.tsx` (Delete group) styles its commit red inline (`bg-destructive`).
+   A confirm with no danger color and a delete/overwrite/discard onClick is a bug, not a style choice.
+
+2. **Inline delete triggers (`destructiveGhost`).** An inline Delete affordance that opens a
+   confirm is the low-emphasis tier — `variant="destructiveGhost"`, transparent, never a filled
+   red row:
+
+   ```bash
+   grep -rn "destructiveGhost" frontend/src --include='*.tsx' | grep -v test
+   ```
+
+   An inline delete trigger styled as filled `destructive` (a red row at rest) is the
+   anti-pattern the two-tier replaces.
