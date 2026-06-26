@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
@@ -34,11 +35,13 @@ type masterDeckUserCardRepo interface {
 
 // masterDeckUserCardgroupRepo is the subset of repository.CardgroupRepository the
 // master deck usecase consumes against the USER cardgroups table (not the master
-// catalog). CountByOwner backs the idempotency guard: a user who already owns at
-// least one cardgroup is not re-seeded on the next call. CreateTx inserts the
-// snapshot cardgroup using the caller's transaction handle so the insert
-// participates in the caller's transaction.
+// catalog). FindByID satisfies CardgroupOwnershipFinder so the ownership gate can
+// use u.userCG directly. CountByOwner backs the idempotency guard: a user who
+// already owns at least one cardgroup is not re-seeded on the next call. CreateTx
+// inserts the snapshot cardgroup using the caller's transaction handle so the
+// insert participates in the caller's transaction.
 type masterDeckUserCardgroupRepo interface {
+	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
 	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
 	CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Cardgroup) error
 }
@@ -59,6 +62,22 @@ type SeedForNewUserUsecase interface {
 // ImportMaster); the copy is a one-time snapshot with empty FSRS/swipe state.
 type CopyMasterToUserUsecase interface {
 	CopyMasterToUser(ctx context.Context, masterID, ownerID string) (*domain.Cardgroup, error)
+}
+
+// MergeMasterResult is the tally returned by MergeMasterIntoCardgroup: the
+// destination cardgroup plus the insert/update counts from the upsert.
+type MergeMasterResult struct {
+	Cardgroup *domain.Cardgroup
+	Added     int64
+	Updated   int64
+}
+
+// MergeMasterIntoCardgroupUsecase merges a master deck's cards into an existing
+// caller-owned cardgroup. Used by mergeMasterCardgroup via MasterCatalogUsecase.
+// MergeMaster. The merge is a one-time snapshot (no live link); re-merging the
+// same deck re-syncs the destination to the current catalog content.
+type MergeMasterIntoCardgroupUsecase interface {
+	MergeMasterIntoCardgroup(ctx context.Context, masterID string, destCardgroupID domain.CardgroupID, ownerID domain.UserID) (*MergeMasterResult, error)
 }
 
 // masterDeckUsecase implements both the public copy primitive and the
@@ -228,6 +247,34 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) (
 	return seeded, nil
 }
 
+// copyMasterCardsIntoTx deep-copies the supplied master cards into the
+// destination cardgroup with a fresh id and upserts them on (cardgroup_id, front)
+// inside the caller's transaction. Callers list the master cards first and pass
+// them in, so this helper stays free of the listing step and the caller controls
+// the operation order. pin, when non-nil, overrides every copied card's
+// CreatedAt/UpdatedAt (import pins to the new cardgroup's CreatedAt for a
+// consistent batch timestamp; merge passes nil and keeps NewCard's now()).
+// Returns the insert/update tally. MUST NOT embed a fixed eris layer prefix — the
+// public callers apply their own wrap so the error_chain attributes the failure
+// to the calling operation.
+func (u *masterDeckUsecase) copyMasterCardsIntoTx(
+	ctx context.Context, tx *gorm.DB, masterCards []*domain.MasterCard, destCG domain.CardgroupID, pin *time.Time,
+) (repository.UpsertManyTxResult, error) {
+	userCards := make([]*domain.Card, 0, len(masterCards))
+	for _, mc := range masterCards {
+		card, err := domain.NewCard(destCG, mc.Front.String(), mc.Back.String(), mc.Position)
+		if err != nil {
+			return repository.UpsertManyTxResult{}, eris.Wrap(err, "new card from master")
+		}
+		if pin != nil {
+			card.CreatedAt = *pin
+			card.UpdatedAt = *pin
+		}
+		userCards = append(userCards, card)
+	}
+	return u.userCard.UpsertManyTx(ctx, tx, userCards)
+}
+
 // copyMasterToUserTx is the shared tx-aware copy core used by both
 // CopyMasterToUser (single import) and SeedForNewUser (batch). It MUST NOT embed
 // a fixed eris layer prefix: the two public callers each apply their own wrap
@@ -258,24 +305,56 @@ func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx *gorm.DB,
 		return nil, eris.Wrap(err, "create user cardgroup")
 	}
 
-	now := newCG.CreatedAt
-	userCards := make([]*domain.Card, 0, len(cards))
-	for _, mc := range cards {
-		// The source master cards are already valid; the constructor re-parses
-		// the text (idempotent) and generates the new user-card ID.
-		card, err := domain.NewCard(newCG.ID, mc.Front.String(), mc.Back.String(), mc.Position)
-		if err != nil {
-			return nil, eris.Wrap(err, "new card from master")
-		}
-		// Pin the copied batch to the cardgroup's creation timestamp.
-		card.CreatedAt = now
-		card.UpdatedAt = now
-		userCards = append(userCards, card)
-	}
-
-	if _, err := u.userCard.UpsertManyTx(ctx, tx, userCards); err != nil {
-		return nil, eris.Wrap(err, "upsert user cards")
+	pin := newCG.CreatedAt
+	if _, err := u.copyMasterCardsIntoTx(ctx, tx, cards, newCG.ID, &pin); err != nil {
+		return nil, err
 	}
 
 	return newCG, nil
+}
+
+// MergeMasterIntoCardgroup copies the master deck's cards into destCardgroupID,
+// which ownerID must own, inside its own transaction. The destination ownership
+// gate uses authorizeCardgroupOrBadInput (untrusted-input boundary): an unknown
+// cardgroup is a recoverable validation error; a foreign cardgroup is
+// UNAUTHENTICATED. Cards conflicting on (cardgroup_id, front) are overwritten
+// (back/position); ids are preserved so FSRS state survives. Returns the
+// destination cardgroup plus the add/update tally.
+func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
+	ctx context.Context, masterID string, destCardgroupID domain.CardgroupID, ownerID domain.UserID,
+) (*MergeMasterResult, error) {
+	// Ownership gate runs OUTSIDE the tx and returns its ucerr typed error
+	// directly — mirrors card_import.go Import, which gates ownership before the
+	// tx and returns the ucerr unwrapped. gqlerr.FromUsecaseError classifies via
+	// errors.Is(err, ucerr.ErrUnauthenticated) and errors.AsType[*ucerr.ValidationError],
+	// both of which walk the eris chain, so this needs no wrap and the tx error
+	// path below needs no ucerr pass-through guard.
+	if err := authorizeCardgroupOrBadInput(ctx, u.userCG, destCardgroupID, ownerID); err != nil {
+		return nil, err
+	}
+
+	var res repository.UpsertManyTxResult
+	if err := u.tx(ctx, func(tx *gorm.DB) error {
+		cards, err := u.masterCard.ListByMasterCardgroup(ctx, masterID)
+		if err != nil {
+			return eris.Wrap(err, "list master cards")
+		}
+		r, err := u.copyMasterCardsIntoTx(ctx, tx, cards, destCardgroupID, nil)
+		if err != nil {
+			return err
+		}
+		res = r
+		return nil
+	}); err != nil {
+		if isContextDone(err) {
+			return nil, err
+		}
+		return nil, eris.Wrap(err, "usecase: master deck: merge master into cardgroup")
+	}
+
+	cg, err := u.userCG.FindByID(ctx, string(destCardgroupID))
+	if err != nil {
+		return nil, eris.Wrap(err, "usecase: master deck: merge master into cardgroup: find destination")
+	}
+	return &MergeMasterResult{Cardgroup: cg, Added: res.Inserted, Updated: res.Updated}, nil
 }
