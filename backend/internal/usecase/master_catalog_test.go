@@ -1062,3 +1062,56 @@ func TestMasterCatalogUsecase_MergeMaster_Unauthenticated(t *testing.T) {
 		t.Fatalf("expected ErrUnauthenticated, got %v", err)
 	}
 }
+
+// TestMasterCatalogUsecase_MergeMaster_WrappedValidationError_StillClassifies pins
+// that a ucerr.ValidationError returned by the delegate survives eris.Wrap and is
+// still classifiable via errors.As at the caller boundary. MergeMaster wraps the
+// delegate error unconditionally, so this property must hold for gqlerr.FromUsecaseError
+// to map it to BAD_USER_INPUT correctly.
+func TestMasterCatalogUsecase_MergeMaster_WrappedValidationError_StillClassifies(t *testing.T) {
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Master"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	deck := &mockCopyMasterToUserUC{
+		mergeErr: ucerr.NewValidationError("cardgroupId", "cardgroup not found"),
+	}
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
+	if err == nil {
+		t.Fatal("expected error from merge delegate")
+	}
+	var ve *ucerr.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("ValidationError must survive eris.Wrap chain, got %T: %v", err, err)
+	}
+	if ve.Field != "cardgroupId" {
+		t.Fatalf("want Field=cardgroupId, got %q", ve.Field)
+	}
+}
+
+// TestMasterCatalogUsecase_MergeMaster_WrappedUnauthenticated_StillClassifies pins
+// that ucerr.ErrUnauthenticated from the delegate survives eris.Wrap and is still
+// classifiable via errors.Is at the caller boundary. MergeMaster wraps the delegate
+// error unconditionally, so this property must hold for gqlerr.FromUsecaseError to
+// map it to UNAUTHENTICATED correctly.
+func TestMasterCatalogUsecase_MergeMaster_WrappedUnauthenticated_StillClassifies(t *testing.T) {
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Master"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	deck := &mockCopyMasterToUserUC{
+		mergeErr: ucerr.ErrUnauthenticated,
+	}
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
+	if !errors.Is(err, ucerr.ErrUnauthenticated) {
+		t.Fatalf("ErrUnauthenticated must survive eris.Wrap chain, got %T: %v", err, err)
+	}
+}

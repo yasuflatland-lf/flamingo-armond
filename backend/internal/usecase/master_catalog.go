@@ -85,7 +85,7 @@ type MasterCatalogConnectionOutput struct {
 // masterDeckUsecaseFacade is the master-deck capability the catalog consumes:
 // snapshot a single published master (import), seed all default starters for
 // the caller, and merge a published master into an existing caller-owned
-// cardgroup. *masterDeckUsecase satisfies all three halves.
+// cardgroup. *masterDeckUsecase satisfies all three capabilities.
 type masterDeckUsecaseFacade interface {
 	CopyMasterToUserUsecase
 	SeedForNewUserUsecase

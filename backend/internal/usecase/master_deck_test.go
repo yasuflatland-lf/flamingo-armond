@@ -719,3 +719,28 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_DestNotFound_Validation(t *t
 	require.ErrorAs(t, err, &ve)
 	assert.Equal(t, "cardgroupId", ve.Field)
 }
+
+func TestMasterDeckUsecase_MergeMasterIntoCardgroup_EmptyDeck(t *testing.T) {
+	t.Parallel()
+	const ownerID = "11111111-1111-7111-8111-111111111111"
+	const destID = "22222222-2222-7222-8222-222222222222"
+	const masterID = "master-id-empty"
+
+	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
+
+	uc := NewMasterDeckUsecaseWithTx(
+		&fakeMasterCGRepo{}, // not consulted on merge path
+		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: {}}}, // zero cards
+		&fakeUserCardRepo{}, // default: Inserted=len(cards)=0, Updated=0
+		&fakeUserCG{byID: map[string]*domain.Cardgroup{destID: destCG}},
+		stubTxRunner,
+		newTestLogger(),
+	)
+
+	res, err := uc.MergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID(ownerID))
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Equal(t, int64(0), res.Added)
+	assert.Equal(t, int64(0), res.Updated)
+	assert.Equal(t, domain.CardgroupID(destID), res.Cardgroup.ID)
+}
