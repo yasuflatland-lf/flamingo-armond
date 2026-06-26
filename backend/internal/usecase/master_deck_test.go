@@ -744,3 +744,72 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_EmptyDeck(t *testing.T) {
 	assert.Equal(t, int64(0), res.Updated)
 	assert.Equal(t, domain.CardgroupID(destID), res.Cardgroup.ID)
 }
+
+func TestMasterDeckUsecase_MergeMasterIntoCardgroup_ListCardsError_PropagatesChain(t *testing.T) {
+	t.Parallel()
+	const ownerID = "11111111-1111-7111-8111-111111111111"
+	const destID = "22222222-2222-7222-8222-222222222222"
+	const masterID = "master-id"
+
+	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
+
+	uc := NewMasterDeckUsecaseWithTx(
+		&fakeMasterCGRepo{},
+		&fakeMasterCardRepo{listErr: errors.New("list cards failed")},
+		&fakeUserCardRepo{},
+		&fakeUserCG{byID: map[string]*domain.Cardgroup{destID: destCG}},
+		stubTxRunner,
+		newTestLogger(),
+	)
+
+	_, err := uc.MergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID(ownerID))
+	require.Error(t, err)
+	assertInternalChain(t, err, "usecase: master deck: merge master into cardgroup")
+}
+
+func TestMasterDeckUsecase_MergeMasterIntoCardgroup_UpsertCardsError_PropagatesChain(t *testing.T) {
+	t.Parallel()
+	const ownerID = "11111111-1111-7111-8111-111111111111"
+	const destID = "22222222-2222-7222-8222-222222222222"
+	const masterID = "master-id"
+
+	masterCards := []*domain.MasterCard{
+		masterCard("mc-1", masterID, "alpha", "first", 0),
+	}
+	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
+
+	uc := NewMasterDeckUsecaseWithTx(
+		&fakeMasterCGRepo{},
+		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: masterCards}},
+		&fakeUserCardRepo{upsertErr: errors.New("upsert failed")},
+		&fakeUserCG{byID: map[string]*domain.Cardgroup{destID: destCG}},
+		stubTxRunner,
+		newTestLogger(),
+	)
+
+	_, err := uc.MergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID(ownerID))
+	require.Error(t, err)
+	assertInternalChain(t, err, "usecase: master deck: merge master into cardgroup")
+}
+
+func TestMasterDeckUsecase_MergeMasterIntoCardgroup_ContextCancelled_PassesThrough(t *testing.T) {
+	t.Parallel()
+	const ownerID = "11111111-1111-7111-8111-111111111111"
+	const destID = "22222222-2222-7222-8222-222222222222"
+	const masterID = "master-id"
+
+	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
+
+	uc := NewMasterDeckUsecaseWithTx(
+		&fakeMasterCGRepo{},
+		&fakeMasterCardRepo{listErr: context.Canceled},
+		&fakeUserCardRepo{},
+		&fakeUserCG{byID: map[string]*domain.Cardgroup{destID: destCG}},
+		stubTxRunner,
+		newTestLogger(),
+	)
+
+	_, err := uc.MergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID(ownerID))
+	require.Error(t, err)
+	assertCancelled(t, err)
+}

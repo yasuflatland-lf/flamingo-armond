@@ -4,6 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"backend/graph/model"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
@@ -64,21 +67,37 @@ func TestMergeMasterCardgroup_NotFound_AsData(t *testing.T) {
 	}
 }
 
+// TestMergeMasterCardgroup_UsecaseError_Wrapped verifies the mandatory
+// gqlerr.FromUsecaseError wrap: typed usecase errors surface with the correct
+// wire code rather than escaping uncoded — mirrors
+// TestQueryResolver_MasterCatalog_WrapsUsecaseError.
 func TestMergeMasterCardgroup_UsecaseError_Wrapped(t *testing.T) {
 	t.Parallel()
 
-	stub := &stubMasterCatalogUC{mergeErr: ucerr.ErrUnauthenticated}
-	r := &Resolver{MasterCatalogUC: stub}
-
-	res, err := r.Mutation().MergeMasterCardgroup(context.Background(), model.MergeMasterCardgroupInput{
-		MasterCardgroupID: "master-id",
-		CardgroupID:       "cg-id",
-	})
-	if res != nil {
-		t.Fatalf("expected nil union on error, got %T", res)
+	cases := []struct {
+		name string
+		err  error
+		want gqlerr.Code
+	}{
+		{"unauthenticated", ucerr.ErrUnauthenticated, gqlerr.CodeUnauthenticated},
+		{"validation", ucerr.NewValidationError("cardgroupId", "cardgroup not found"), gqlerr.CodeBadUserInput},
 	}
-	if !gqlerr.IsCode(err, gqlerr.CodeUnauthenticated) {
-		t.Fatalf("expected UNAUTHENTICATED wire error, got %v", err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stub := &stubMasterCatalogUC{mergeErr: tc.err}
+			r := &Resolver{MasterCatalogUC: stub}
+
+			res, err := r.Mutation().MergeMasterCardgroup(context.Background(), model.MergeMasterCardgroupInput{
+				MasterCardgroupID: "master-id",
+				CardgroupID:       "cg-id",
+			})
+			if res != nil {
+				t.Fatalf("expected nil union on error, got %T", res)
+			}
+			require.Error(t, err)
+			assert.True(t, gqlerr.IsCode(err, tc.want), "want wire code %s", tc.want)
+		})
 	}
 }
 
