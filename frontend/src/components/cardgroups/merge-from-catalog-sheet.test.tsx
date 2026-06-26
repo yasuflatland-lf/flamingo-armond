@@ -218,7 +218,7 @@ describe("<MergeFromCatalogSheet>", () => {
     await user.click(screen.getByRole("button", { name: "Merge" }));
 
     await waitFor(() => {
-      expect(onMerged).toHaveBeenCalledWith({ added: 3, updated: 1 });
+      expect(onMerged).toHaveBeenCalledWith({ addedCount: 3, updatedCount: 1 });
     });
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
@@ -241,5 +241,25 @@ describe("<MergeFromCatalogSheet>", () => {
     expect(screen.getByRole("dialog", { name: "Merge from catalog" })).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
     expect(onMerged).not.toHaveBeenCalled();
+  });
+
+  it("disables the confirm and cancel actions while the merge mutation is in flight", async () => {
+    const user = userEvent.setup();
+    // delay: Infinity keeps the mutation pending so we can observe the disabled state
+    // while pendingMergeId !== null.
+    const pendingMergeMock: MockedResponse = {
+      ...mergeMock("success"),
+      delay: Infinity,
+    };
+    renderSheet([BASE_CATALOG, pendingMergeMock]);
+
+    await openConfirmDialog(user);
+    // Fire the confirm and immediately verify both actions disable while in flight.
+    void user.click(screen.getByRole("button", { name: "Merge" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Merge" })).toBeDisabled();
+    });
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 });

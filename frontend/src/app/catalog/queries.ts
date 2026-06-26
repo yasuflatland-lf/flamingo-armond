@@ -22,11 +22,13 @@ export const CATALOG_DEFAULT_VARS: MasterCatalogQueryVariables = {
 
 /**
  * The `MasterCardgroup` field set shared by the catalog list row
- * ({@link CatalogListItem}) and the onboarding chooser tile ({@link CatalogCard}).
- * Both `MasterCatalogQuery` (the /catalog list) and `OnboardingStartQuery` (the
- * /onboarding/start chooser) spread this fragment, so the two queries share a
- * single declared contract instead of two hand-mirrored node selections that
- * can silently drift. Each consumer unmasks it via `useFragment`.
+ * ({@link CatalogListItem}), the onboarding chooser tile ({@link CatalogCard}),
+ * and the merge-from-catalog sheet ({@link MergeFromCatalogSheet}).
+ * `MasterCatalogQuery` (the /catalog list), `OnboardingStartQuery` (the
+ * /onboarding/start chooser), and the merge sheet's inline `MasterCatalog` query
+ * all spread this fragment, so all three queries share a single declared contract
+ * instead of hand-mirrored node selections that can silently drift. Each consumer
+ * unmasks it via `useFragment`.
  */
 export const CatalogCardFieldsFragment = graphql(`
   fragment CatalogCardFields on MasterCardgroup {

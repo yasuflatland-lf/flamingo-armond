@@ -3,7 +3,10 @@
 import { NetworkStatus } from "@apollo/client";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMergeFromCatalog } from "@/app/cardgroups/[id]/use-merge-from-catalog";
+import {
+  type MergeFromCatalogOutcome,
+  useMergeFromCatalog,
+} from "@/app/cardgroups/[id]/use-merge-from-catalog";
 import { CatalogCard } from "@/app/catalog/catalog-card";
 import { CATALOG_DEFAULT_VARS, CatalogCardFieldsFragment } from "@/app/catalog/queries";
 import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
@@ -27,6 +30,7 @@ import {
   type MasterCatalogQueryVariables,
 } from "@/generated/graphql";
 import { useDebouncedSearch } from "@/hooks/use-debounced-search";
+import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 
@@ -34,10 +38,7 @@ type Connection = MasterCatalogQuery["masterCatalog"];
 type CatalogEdge = Connection["edges"][number];
 type CatalogPageInfo = Connection["pageInfo"];
 
-type MergeBanner =
-  | { type: "not_found" }
-  | { type: "auth"; kind: "unauthenticated" | "forbidden" }
-  | { type: "rejected" };
+type MergeBanner = Exclude<MergeFromCatalogOutcome, { status: "success" }>;
 
 type SelectedDeck = {
   id: string;
@@ -48,7 +49,7 @@ export type MergeFromCatalogSheetProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   targetCardgroupId: string;
-  onMerged: (result: { added: number; updated: number }) => void;
+  onMerged: (result: { addedCount: number; updatedCount: number }) => void;
 };
 
 const CATALOG_INITIAL = {
@@ -73,8 +74,8 @@ function bannerCopy(
   banner: MergeBanner,
   t: ReturnType<typeof useTranslations<"Cardgroups">>,
 ): string {
-  if (banner.type === "not_found") return t("mergeNotFound");
-  if (banner.type === "rejected") return t("mergeError");
+  if (banner.status === "not_found") return t("mergeNotFound");
+  if (banner.status === "rejected") return t("mergeError");
   return banner.kind === "forbidden" ? t("noPermission") : t("sessionExpiredSignIn");
 }
 
@@ -159,6 +160,10 @@ export function MergeFromCatalogSheet({
     initial: CATALOG_INITIAL,
     resolveFetchMoreError: () => tCatalog("fetchMoreError"),
     logScope: "[merge-from-catalog]",
+    // The sheet is always mounted by its parent (e.g. CardgroupHeader); only
+    // query the catalog once it is actually opened so a user who never merges
+    // pays no MasterCatalog round-trip on every detail-page render.
+    skip: !open,
   });
 
   const initialLoading = loading && edges.length === 0 && networkStatus !== NetworkStatus.fetchMore;
@@ -166,6 +171,7 @@ export function MergeFromCatalogSheet({
     CatalogCardFieldsFragment,
     edges.map((edge) => edge.node),
   );
+  const queryBannerError = getBackendErrorBanner(queryError);
 
   const handleSelect = useCallback(
     (id: string) => {
@@ -185,24 +191,15 @@ export function MergeFromCatalogSheet({
     setPendingMergeId(selectedDeck.id);
     const outcome = await mergeFromCatalog(selectedDeck.id);
 
-    switch (outcome.status) {
-      case "success":
-        onMerged({ added: outcome.addedCount, updated: outcome.updatedCount });
-        setSelectedDeck(null);
-        setPendingMergeId(null);
-        onOpenChange(false);
-        return;
-      case "not_found":
-        setBanner({ type: "not_found" });
-        break;
-      case "auth":
-        setBanner({ type: "auth", kind: outcome.kind });
-        break;
-      case "rejected":
-        setBanner({ type: "rejected" });
-        break;
+    if (outcome.status === "success") {
+      onMerged({ addedCount: outcome.addedCount, updatedCount: outcome.updatedCount });
+      setSelectedDeck(null);
+      setPendingMergeId(null);
+      onOpenChange(false);
+      return;
     }
 
+    setBanner(outcome);
     setSelectedDeck(null);
     setPendingMergeId(null);
   }, [mergeFromCatalog, onMerged, onOpenChange, pendingMergeId, selectedDeck]);
@@ -232,9 +229,9 @@ export function MergeFromCatalogSheet({
             </ErrorBanner>
           ) : null}
 
-          {queryError ? (
+          {queryBannerError ? (
             <ErrorBanner data-testid="merge-from-catalog-query-error">
-              {tCatalog("fetchMoreError")}
+              {queryBannerError}
             </ErrorBanner>
           ) : null}
 

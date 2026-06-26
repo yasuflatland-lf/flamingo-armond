@@ -86,6 +86,10 @@ const migratedSites = [
     name: "admin users listing",
     sourcePath: "src/app/admin/users/admin-users-client.tsx",
   },
+  {
+    name: "merge from catalog sheet",
+    sourcePath: "src/components/cardgroups/merge-from-catalog-sheet.tsx",
+  },
 ];
 
 function readSource(sourcePath: string): string {
