@@ -321,7 +321,7 @@ func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx *gorm.DB,
 // gate uses authorizeCardgroupOrBadInput (untrusted-input boundary): an unknown
 // cardgroup is a recoverable validation error; a foreign cardgroup is
 // UNAUTHENTICATED. Cards conflicting on (cardgroup_id, front) are overwritten
-// (back/position); ids are preserved so FSRS state survives. Returns the
+// (back/position/updated_at); ids are preserved so FSRS state survives. Returns the
 // destination cardgroup plus the add/update tally.
 func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 	ctx context.Context, masterID string, destCardgroupID domain.CardgroupID, ownerID domain.UserID,

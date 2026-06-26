@@ -93,9 +93,10 @@ type masterDeckUsecaseFacade interface {
 }
 
 // MergeMasterOutcome is the usecase result of MergeMaster. On the valid paths
-// exactly one signal is set: Cardgroup on the happy path, or NotFound=true when the
-// master id is unknown or not published. Destination cardgroup auth failures are
-// returned as errors, not via this outcome.
+// exactly one outcome is active: the happy path sets Cardgroup with the Added/Updated
+// tallies and leaves NotFound false; the not-found path sets NotFound=true and leaves
+// Cardgroup nil with zero tallies. Destination cardgroup auth failures are returned as
+// errors, not via this outcome.
 type MergeMasterOutcome struct {
 	// Cardgroup is the caller-owned destination after the merge. Non-nil iff NotFound is false.
 	Cardgroup *domain.Cardgroup
