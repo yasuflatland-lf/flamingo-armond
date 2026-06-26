@@ -10,6 +10,7 @@ import (
 	"backend/internal/gqlerr"
 	"backend/internal/usecase"
 	"context"
+	"fmt"
 
 	"github.com/rotisserie/eris"
 )
@@ -199,4 +200,9 @@ func (r *queryResolver) AdminMasters(ctx context.Context, first *int, after *str
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toMasterCatalogConnectionModel(ctx, out), nil
+}
+
+// MergeMasterCardgroupPreview is the resolver for the mergeMasterCardgroupPreview field.
+func (r *queryResolver) MergeMasterCardgroupPreview(ctx context.Context, input model.MergeMasterCardgroupInput) (model.MergeMasterCardgroupPreviewResult, error) {
+	panic(fmt.Errorf("not implemented: MergeMasterCardgroupPreview - mergeMasterCardgroupPreview"))
 }

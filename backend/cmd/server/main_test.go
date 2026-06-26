@@ -2603,6 +2603,9 @@ func (panicQueryResolver) MasterCardsConnection(_ context.Context, _ string, _ *
 func (panicQueryResolver) MasterCardgroup(_ context.Context, _ string) (*model.MasterCardgroup, error) {
 	panic("not implemented")
 }
+func (panicQueryResolver) MergeMasterCardgroupPreview(_ context.Context, _ model.MergeMasterCardgroupInput) (model.MergeMasterCardgroupPreviewResult, error) {
+	return nil, nil
+}
 
 // panicResolverRoot is a generated.ResolverRoot whose Query resolver panics on
 // Health. All other sub-resolvers forward to the real resolver with nil deps

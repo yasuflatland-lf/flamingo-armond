@@ -168,6 +168,34 @@ type MergeMasterCardgroupSuccess {
 """Result of `mergeMasterCardgroup`: the merge tally, or a typed not-found error returned as data."""
 union MergeMasterCardgroupResult = MergeMasterCardgroupSuccess | MasterNotFoundError
 
+"""
+Projected tally of `mergeMasterCardgroup` computed WITHOUT writing. `addedCount`
+is the number of catalog cards whose front is not present in the destination;
+`updatedCount` is the number whose front already exists (case-sensitively, matching
+the destination `cards (cardgroup_id, front)` text unique index the merge upserts
+against). The preview equals the tally `mergeMasterCardgroup` produces for the same
+inputs.
+"""
+type MergeMasterCardgroupPreview {
+  addedCount: Int!
+  updatedCount: Int!
+}
+
+"""Result of `mergeMasterCardgroupPreview`: the projected tally, or a typed not-found error returned as data."""
+union MergeMasterCardgroupPreviewResult = MergeMasterCardgroupPreview | MasterNotFoundError
+
+extend type Query {
+  """
+  Dry-run preview of `mergeMasterCardgroup`: how many cards would be added vs.
+  updated if the caller merged the published catalog deck into their own cardgroup,
+  using the same (cardgroup_id, front) conflict key as the merge. Same auth/error
+  contract as the mutation: unknown/draft master -> MasterNotFoundError; destination
+  not found -> BAD_USER_INPUT; not owned -> UNAUTHENTICATED; unauthenticated callers
+  receive UNAUTHENTICATED.
+  """
+  mergeMasterCardgroupPreview(input: MergeMasterCardgroupInput!): MergeMasterCardgroupPreviewResult!
+}
+
 """Payload of `seedDefaultStarterCardgroups`: the user cardgroups created by the seed (empty if none, or if the caller already owns a cardgroup)."""
 type SeedDefaultStartersPayload {
   cardgroups: [Cardgroup!]!
