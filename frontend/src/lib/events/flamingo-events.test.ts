@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type AddCardDetail,
   type AddMasterCardDetail,
-  type DeckOwnerDetail,
   dispatchFlamingo,
   FLAMINGO_EVENT,
   type SearchStateDetail,
@@ -106,7 +105,7 @@ describe("batch-import + merge events", () => {
     dispatchFlamingo(FLAMINGO_EVENT.batchImport, { detail: { ownerId: "deck-1" } });
     off();
     expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler.mock.calls[0][0]).toEqual({ ownerId: "deck-1" });
+    expect(handler).toHaveBeenCalledWith({ ownerId: "deck-1" }, expect.any(CustomEvent));
   });
 
   it("round-trips a DeckOwnerDetail payload for merge", () => {
