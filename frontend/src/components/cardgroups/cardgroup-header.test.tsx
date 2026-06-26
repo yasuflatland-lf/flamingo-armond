@@ -5,7 +5,11 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DeleteCardgroupDocument, UpdateCardgroupDocument } from "@/generated/graphql";
+import {
+  DeleteCardgroupDocument,
+  MasterCatalogDocument,
+  UpdateCardgroupDocument,
+} from "@/generated/graphql";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { CardgroupHeader } from "./cardgroup-header";
 
@@ -18,6 +22,49 @@ vi.mock("next/navigation", () => ({
 }));
 
 const CARDGROUP = { id: "cg-1", name: "Spanish Vocab" };
+
+// CardgroupHeader always mounts <MergeFromCatalogSheet>, but the sheet passes
+// `skip: !open` to useConnectionPagination, so the MasterCatalog query does NOT
+// fire while the sheet is closed. This mock is therefore consumed only by the
+// integration test that opens the sheet (which flips `open` true and lifts the
+// skip); render-only tests that never open it pay no query cost.
+// Variables mirror CATALOG_DEFAULT_VARS ({ first: 20, search: null }) and the
+// node shape mirrors merge-from-catalog-sheet.test.tsx's BASE_CATALOG.
+const BASE_CATALOG: MockedResponse = {
+  request: {
+    query: MasterCatalogDocument,
+    variables: { first: 20, search: null },
+  },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+  result: {
+    data: {
+      masterCatalog: {
+        __typename: "MasterCatalogConnection",
+        totalCount: 1,
+        edges: [
+          {
+            __typename: "MasterCatalogEdge",
+            cursor: "cursor-master-1",
+            node: {
+              __typename: "MasterCardgroup",
+              id: "master-1",
+              name: "Business English",
+              description: "Professional vocabulary",
+              cardCount: 42,
+            },
+          },
+        ],
+        pageInfo: {
+          __typename: "PageInfo",
+          hasNextPage: false,
+          hasPreviousPage: false,
+          startCursor: "cursor-master-1",
+          endCursor: "cursor-master-1",
+        },
+      },
+    },
+  },
+};
 
 function makeDeleteMock(
   variables: { id: string },
@@ -36,7 +83,7 @@ function makeUpdateMock(
 
 function renderHeader(mocks: MockedResponse[] = [], totalCount = 5) {
   renderWithIntl(
-    <MockedProvider mocks={mocks}>
+    <MockedProvider mocks={[BASE_CATALOG, ...mocks]}>
       <CardgroupHeader
         cardgroup={CARDGROUP}
         totalCount={totalCount}
@@ -276,6 +323,23 @@ describe("<CardgroupHeader>", () => {
     await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
     await user.click(screen.getByRole("menuitem", { name: /batch import/i }));
     expect(onBatchImport).toHaveBeenCalledTimes(1);
+  });
+
+  it("overflow menu hosts a 'Merge from catalog' item that opens the merge sheet", async () => {
+    const user = userEvent.setup();
+    renderHeader([], 12);
+
+    await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
+
+    const mergeItem = await screen.findByTestId("cardgroup-merge-menuitem");
+    expect(mergeItem).toBeInTheDocument();
+    expect(mergeItem).toHaveTextContent(/merge from catalog/i);
+
+    await user.click(mergeItem);
+
+    // The merge sheet opens — assert on a stable element it renders (the catalog
+    // search input), proving the wiring from menu item → MergeFromCatalogSheet.
+    expect(await screen.findByTestId("merge-from-catalog-search")).toBeInTheDocument();
   });
 
   it("delete network rejection shows error banner and dialog stays open", async () => {

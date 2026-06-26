@@ -1,10 +1,12 @@
 "use client";
 
-import { Import, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Import, Layers, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
+import { toast } from "sonner";
 import { CardgroupRenameForm } from "@/components/cardgroups/cardgroup-rename-form";
+import { MergeFromCatalogSheet } from "@/components/cardgroups/merge-from-catalog-sheet";
 import { useDeleteCardgroup } from "@/components/cardgroups/use-delete-cardgroup";
 import { DetailPageHeader } from "@/components/nav/detail-page-header";
 import {
@@ -44,6 +46,7 @@ type Props = {
 export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props) {
   const router = useRouter();
   const [renameOpen, setRenameOpen] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
@@ -96,8 +99,20 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
           <Import className="h-4 w-4" />
           {t("batchImport")}
         </DropdownMenuItem>
-        {/* Separator divides the constructive actions (rename, import) from the
-            destructive delete. Always shown now that rename leads the menu. */}
+        {/* Merge from catalog — copies a published master deck into this
+            cardgroup. A constructive action, so it sits before the separator and
+            stays visible on all viewports. */}
+        <DropdownMenuItem
+          onSelect={() => setMergeOpen(true)}
+          className="gap-2"
+          data-testid="cardgroup-merge-menuitem"
+        >
+          <Layers className="h-4 w-4" />
+          {t("mergeFromCatalog")}
+        </DropdownMenuItem>
+        {/* Separator divides the constructive actions (rename, import, merge)
+            from the destructive delete. Always shown now that rename leads the
+            menu. */}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={() => setDeleteDialogOpen(true)}
@@ -144,6 +159,15 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
           onSubmittingChange={handleRenameSubmittingChange}
         />
       </FormSheet>
+
+      <MergeFromCatalogSheet
+        open={mergeOpen}
+        onOpenChange={setMergeOpen}
+        targetCardgroupId={cardgroup.id}
+        onMerged={({ addedCount, updatedCount }) => {
+          toast(t("mergeSuccess", { added: addedCount, updated: updatedCount }));
+        }}
+      />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
