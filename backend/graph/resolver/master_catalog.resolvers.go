@@ -10,7 +10,6 @@ import (
 	"backend/internal/gqlerr"
 	"backend/internal/usecase"
 	"context"
-	"fmt"
 
 	"github.com/rotisserie/eris"
 )
@@ -145,8 +144,27 @@ func (r *mutationResolver) SeedDefaultStarterCardgroups(ctx context.Context) (*m
 }
 
 // MergeMasterCardgroup is the resolver for the mergeMasterCardgroup field.
+//
+// Returns a union: model.MergeMasterCardgroupSuccess on the happy path, or
+// model.MasterNotFoundError when the master id is unknown or not published.
+// Destination cardgroup auth failures (unknown → BAD_USER_INPUT, foreign →
+// UNAUTHENTICATED) travel the error return via FromUsecaseError.
 func (r *mutationResolver) MergeMasterCardgroup(ctx context.Context, input model.MergeMasterCardgroupInput) (model.MergeMasterCardgroupResult, error) {
-	panic(fmt.Errorf("not implemented: MergeMasterCardgroup - mergeMasterCardgroup"))
+	outcome, err := r.MasterCatalogUC.MergeMaster(ctx, input.MasterCardgroupID, input.CardgroupID)
+	if err != nil {
+		return nil, gqlerr.FromUsecaseError(ctx, err)
+	}
+	if outcome.NotFound {
+		return model.MasterNotFoundError{Message: "Master cardgroup not found"}, nil
+	}
+	if outcome.Cardgroup == nil {
+		return nil, noVariantSet(ctx, "MergeMasterOutcome")
+	}
+	return model.MergeMasterCardgroupSuccess{
+		Cardgroup:    toCardgroupModel(outcome.Cardgroup),
+		AddedCount:   int(outcome.Added),
+		UpdatedCount: int(outcome.Updated),
+	}, nil
 }
 
 // MasterCatalog is the resolver for the masterCatalog field.
