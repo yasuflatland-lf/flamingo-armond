@@ -657,12 +657,15 @@ func TestResolveMasterCatalogPageSize_DefaultWhenAbsent(t *testing.T) {
 // ImportMaster
 // ---------------------------------------------------------------------------
 
-// mockCopyMasterToUserUC stubs the masterDeckUsecaseFacade for ImportMaster and
-// SeedDefaultStarters tests.
+// mockCopyMasterToUserUC stubs the masterDeckUsecaseFacade for ImportMaster,
+// SeedDefaultStarters, and MergeMaster tests.
 type mockCopyMasterToUserUC struct {
-	fn         func(ctx context.Context, masterID, ownerID string) (*domain.Cardgroup, error)
-	seedResult []*domain.Cardgroup
-	seedErr    error
+	fn          func(ctx context.Context, masterID, ownerID string) (*domain.Cardgroup, error)
+	seedResult  []*domain.Cardgroup
+	seedErr     error
+	mergeResult *MergeMasterResult
+	mergeErr    error
+	mergeFn     func(ctx context.Context, masterID string, destCGID domain.CardgroupID, ownerID domain.UserID) (*MergeMasterResult, error)
 }
 
 func (m *mockCopyMasterToUserUC) CopyMasterToUser(ctx context.Context, masterID, ownerID string) (*domain.Cardgroup, error) {
@@ -677,6 +680,16 @@ func (m *mockCopyMasterToUserUC) CopyMasterToUser(ctx context.Context, masterID,
 
 func (m *mockCopyMasterToUserUC) SeedForNewUser(_ context.Context, _ string) ([]*domain.Cardgroup, error) {
 	return m.seedResult, m.seedErr
+}
+
+func (m *mockCopyMasterToUserUC) MergeMasterIntoCardgroup(ctx context.Context, masterID string, destCGID domain.CardgroupID, ownerID domain.UserID) (*MergeMasterResult, error) {
+	if m.mergeFn != nil {
+		return m.mergeFn(ctx, masterID, destCGID, ownerID)
+	}
+	if m.mergeErr != nil {
+		return nil, m.mergeErr
+	}
+	return m.mergeResult, nil
 }
 
 func TestImportMaster_Unauthenticated(t *testing.T) {
@@ -971,5 +984,211 @@ func TestSeedDefaultStarters_ContextCancelled_PassesThrough(t *testing.T) {
 	_, err := uc.SeedDefaultStarters(authedCtx("user-1"))
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// MergeMaster
+// ---------------------------------------------------------------------------
+
+func TestMasterCatalogUsecase_MergeMaster_DraftMaster_NotFound(t *testing.T) {
+	t.Parallel()
+	// Default mockMasterCatalogRepository.FindPublishedByID returns ErrNotFound
+	// when both findPublishedByIDFn and findByIDFn are nil — covers unknown id
+	// and draft alike (non-disclosure gate).
+	uc := NewMasterCatalogUsecase(
+		&mockMasterCatalogRepository{},
+		&mockCopyMasterToUserUC{},
+		newTestAdminGate(true),
+		newTestLogger(),
+	)
+	out, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !out.NotFound {
+		t.Fatal("expected NotFound=true")
+	}
+	if out.Cardgroup != nil {
+		t.Fatal("expected nil Cardgroup on NotFound outcome")
+	}
+}
+
+func TestMasterCatalogUsecase_MergeMaster_Success_PassesCounts(t *testing.T) {
+	t.Parallel()
+	cg := &domain.Cardgroup{
+		ID:      domain.CardgroupID("cg-id"),
+		OwnerID: domain.UserID("owner"),
+		Name:    domain.CardgroupName("My Deck"),
+	}
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Master"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	deck := &mockCopyMasterToUserUC{
+		mergeResult: &MergeMasterResult{Cardgroup: cg, Added: 5, Updated: 2},
+	}
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+
+	out, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.NotFound {
+		t.Fatal("expected NotFound=false on happy path")
+	}
+	if out.Added != 5 {
+		t.Fatalf("want Added=5, got %d", out.Added)
+	}
+	if out.Updated != 2 {
+		t.Fatalf("want Updated=2, got %d", out.Updated)
+	}
+	if out.Cardgroup == nil {
+		t.Fatal("expected non-nil Cardgroup")
+	}
+	if string(out.Cardgroup.ID) != "cg-id" {
+		t.Fatalf("want Cardgroup.ID=cg-id, got %q", out.Cardgroup.ID)
+	}
+}
+
+func TestMasterCatalogUsecase_MergeMaster_Unauthenticated(t *testing.T) {
+	t.Parallel()
+	uc := NewMasterCatalogUsecase(
+		&mockMasterCatalogRepository{},
+		&mockCopyMasterToUserUC{},
+		newTestAdminGate(true),
+		newTestLogger(),
+	)
+	// context.Background() carries no auth user.
+	_, err := uc.MergeMaster(context.Background(), "master-id", "cg-id")
+	if !errors.Is(err, ucerr.ErrUnauthenticated) {
+		t.Fatalf("expected ErrUnauthenticated, got %v", err)
+	}
+}
+
+// TestMasterCatalogUsecase_MergeMaster_WrappedValidationError_StillClassifies pins
+// that a ucerr.ValidationError returned by the delegate survives eris.Wrap and is
+// still classifiable via errors.As at the caller boundary. MergeMaster wraps the
+// delegate error unconditionally, so this property must hold for gqlerr.FromUsecaseError
+// to map it to BAD_USER_INPUT correctly.
+func TestMasterCatalogUsecase_MergeMaster_WrappedValidationError_StillClassifies(t *testing.T) {
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Master"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	deck := &mockCopyMasterToUserUC{
+		mergeErr: ucerr.NewValidationError("cardgroupId", "cardgroup not found"),
+	}
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
+	if err == nil {
+		t.Fatal("expected error from merge delegate")
+	}
+	var ve *ucerr.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("ValidationError must survive eris.Wrap chain, got %T: %v", err, err)
+	}
+	if ve.Field != "cardgroupId" {
+		t.Fatalf("want Field=cardgroupId, got %q", ve.Field)
+	}
+}
+
+// TestMasterCatalogUsecase_MergeMaster_WrappedUnauthenticated_StillClassifies pins
+// that ucerr.ErrUnauthenticated from the delegate survives eris.Wrap and is still
+// classifiable via errors.Is at the caller boundary. MergeMaster wraps the delegate
+// error unconditionally, so this property must hold for gqlerr.FromUsecaseError to
+// map it to UNAUTHENTICATED correctly.
+func TestMasterCatalogUsecase_MergeMaster_WrappedUnauthenticated_StillClassifies(t *testing.T) {
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Master"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	deck := &mockCopyMasterToUserUC{
+		mergeErr: ucerr.ErrUnauthenticated,
+	}
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
+	if !errors.Is(err, ucerr.ErrUnauthenticated) {
+		t.Fatalf("ErrUnauthenticated must survive eris.Wrap chain, got %T: %v", err, err)
+	}
+}
+
+func TestMasterCatalogUsecase_MergeMaster_VerifyPublishedError_Wrapped(t *testing.T) {
+	// A non-ErrNotFound failure from FindPublishedByID (e.g. a DB outage) is an
+	// internal error, not the errors-as-data NotFound outcome. The merge delegate
+	// must not run when the published-check itself fails.
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) {
+			return nil, eris.New("db down")
+		},
+	}
+	deck := &mockCopyMasterToUserUC{mergeFn: func(context.Context, string, domain.CardgroupID, domain.UserID) (*MergeMasterResult, error) {
+		t.Fatal("merge delegate must not run when the published-check fails")
+		return nil, nil
+	}}
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
+	assertInternalChain(t, err, "usecase: master catalog: merge: verify published")
+}
+
+func TestMasterCatalogUsecase_MergeMaster_DelegateError_Wrapped(t *testing.T) {
+	// A non-ucerr infra error from the merge delegate is wrapped into the eris chain
+	// with the merge-step prefix, mirroring how ImportMaster wraps CopyMasterToUser.
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Master"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	deck := &mockCopyMasterToUserUC{mergeErr: errors.New("db down")}
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
+	assertInternalChain(t, err, "usecase: master catalog: merge: merge master into cardgroup")
+}
+
+func TestMasterCatalogUsecase_MergeMaster_VerifyPublished_ContextCancelled_PassesThrough(t *testing.T) {
+	// context.Canceled from the published-check must propagate unwrapped so its
+	// identity survives errors.Is at the resolver boundary (FromUsecaseError →
+	// CANCELLED). An eris.Wrap here would break the == identity contract.
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) {
+			return nil, context.Canceled
+		},
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %v", err)
+	}
+}
+
+func TestMasterCatalogUsecase_MergeMaster_Delegate_ContextCancelled_PassesThrough(t *testing.T) {
+	// context.Canceled surfaced by the merge delegate must propagate unwrapped.
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Master"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	deck := &mockCopyMasterToUserUC{mergeErr: context.Canceled}
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %v", err)
 	}
 }

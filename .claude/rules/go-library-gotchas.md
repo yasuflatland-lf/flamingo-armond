@@ -77,6 +77,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Testable startup helpers — anti-pattern of inline test copies and the extract-helper fix](../../docs/backend/library-gotchas/testable-startup-helpers.md)
 - [Method dispatch on a nil pointer panics — `u == nil` guards in methods are unreachable](../../docs/backend/library-gotchas/method-dispatch-nil-receiver-unreachable.md)
 - [Test stubs `t.Fatalf` on exhausted fixture access, never panic](../../docs/backend/library-gotchas/test-stub-fatal-on-exhausted-fixture.md)
+- [Call-count error injection on a fake to cover the Nth call of a twice-called repo method](../../docs/backend/library-gotchas/call-count-error-injection-for-nth-call.md)
 - [Optional feature: pass `nil` handler and let the router skip route registration](../../docs/backend/library-gotchas/optional-feature-nil-handler-skip-route.md)
 - [goyacc lexer: recover via NEWLINE to enable `error NEWLINE` grammar rules](../../docs/backend/library-gotchas/goyacc-lexer-recovery-via-newline.md)
 - [gqlgen `transport.POST` response headers must be set at construction time](../../docs/backend/library-gotchas/gqlgen-transport-post-response-headers.md)

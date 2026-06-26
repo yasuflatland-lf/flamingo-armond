@@ -143,6 +143,30 @@ func (r *mutationResolver) SeedDefaultStarterCardgroups(ctx context.Context) (*m
 	return &model.SeedDefaultStartersPayload{Cardgroups: out}, nil
 }
 
+// MergeMasterCardgroup is the resolver for the mergeMasterCardgroup field.
+//
+// Returns a union: model.MergeMasterCardgroupSuccess on the happy path, or
+// model.MasterNotFoundError when the master id is unknown or not published.
+// Destination cardgroup auth failures (unknown → BAD_USER_INPUT, foreign →
+// UNAUTHENTICATED) travel the error return via FromUsecaseError.
+func (r *mutationResolver) MergeMasterCardgroup(ctx context.Context, input model.MergeMasterCardgroupInput) (model.MergeMasterCardgroupResult, error) {
+	outcome, err := r.MasterCatalogUC.MergeMaster(ctx, input.MasterCardgroupID, input.CardgroupID)
+	if err != nil {
+		return nil, gqlerr.FromUsecaseError(ctx, err)
+	}
+	if outcome.NotFound {
+		return model.MasterNotFoundError{Message: "Master cardgroup not found"}, nil
+	}
+	if outcome.Cardgroup == nil {
+		return nil, noVariantSet(ctx, "MergeMasterOutcome")
+	}
+	return model.MergeMasterCardgroupSuccess{
+		Cardgroup:    toCardgroupModel(outcome.Cardgroup),
+		AddedCount:   int(outcome.Added),
+		UpdatedCount: int(outcome.Updated),
+	}, nil
+}
+
 // MasterCatalog is the resolver for the masterCatalog field.
 func (r *queryResolver) MasterCatalog(ctx context.Context, first *int, after *string, last *int, before *string, search *string, orderBy *model.MasterCatalogOrderBy, orderDirection *model.SortOrder) (*model.MasterCatalogConnection, error) {
 	out, err := r.MasterCatalogUC.ListPublishedConnection(ctx, usecase.MasterCatalogConnectionInput{

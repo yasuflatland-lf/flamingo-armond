@@ -146,6 +146,28 @@ type MasterNotFoundError implements UserError {
 """Result of `importMasterCardgroup`: the imported cardgroup, or a typed not-found error returned as data."""
 union ImportMasterCardgroupResult = ImportMasterCardgroupSuccess | MasterNotFoundError
 
+"""Input for `mergeMasterCardgroup`: the published catalog deck to copy from and the caller-owned destination cardgroup to merge into."""
+input MergeMasterCardgroupInput {
+  """The published catalog deck (MasterCardgroup node id) to merge from."""
+  masterCardgroupId: ID!
+  """The caller-owned destination cardgroup to merge the cards into."""
+  cardgroupId: ID!
+}
+
+"""
+Success variant of `mergeMasterCardgroup`. `addedCount` is the number of cards
+newly inserted; `updatedCount` is the number of existing cards (same front)
+overwritten. Card ids are preserved on overwrite so FSRS state survives.
+"""
+type MergeMasterCardgroupSuccess {
+  cardgroup: Cardgroup!
+  addedCount: Int!
+  updatedCount: Int!
+}
+
+"""Result of `mergeMasterCardgroup`: the merge tally, or a typed not-found error returned as data."""
+union MergeMasterCardgroupResult = MergeMasterCardgroupSuccess | MasterNotFoundError
+
 """Payload of `seedDefaultStarterCardgroups`: the user cardgroups created by the seed (empty if none, or if the caller already owns a cardgroup)."""
 type SeedDefaultStartersPayload {
   cardgroups: [Cardgroup!]!
@@ -176,4 +198,13 @@ extend type Mutation {
   Unauthenticated callers receive UNAUTHENTICATED.
   """
   seedDefaultStarterCardgroups: SeedDefaultStartersPayload!
+  """
+  Merge a published catalog deck's cards into the caller's existing cardgroup as a
+  one-time snapshot. Cards whose front already exists in the destination are
+  overwritten (back/position); card ids are preserved so FSRS state survives.
+  An unknown or draft master returns MasterNotFoundError (draft existence is never
+  leaked). A destination cardgroup not found is BAD_USER_INPUT; not owned is
+  UNAUTHENTICATED. Unauthenticated callers receive UNAUTHENTICATED.
+  """
+  mergeMasterCardgroup(input: MergeMasterCardgroupInput!): MergeMasterCardgroupResult!
 }
