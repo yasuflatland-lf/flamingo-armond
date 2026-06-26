@@ -49,7 +49,12 @@ const INVALID_RESULT: MockedResponse["result"] = {
       valid: false,
       parsedCards: [],
       errors: [
-        { __typename: "CardImportError" as const, line: 1, message: "missing tab separator" },
+        {
+          __typename: "CardImportError" as const,
+          line: 1,
+          message: "missing tab separator",
+          kind: "UNRECOGNIZED" as const,
+        },
       ],
     },
   },
@@ -144,7 +149,11 @@ describe("resolveStep1Button", () => {
       resolveStep1Button({
         hasText: true,
         validating: false,
-        result: { valid: false, parsedCards: [], errors: [{ line: 1, message: "x" }] },
+        result: {
+          valid: false,
+          parsedCards: [],
+          errors: [{ line: 1, message: "x", kind: "HARD" as const }],
+        },
         isStale: false,
       }),
     ).toEqual({ labelKey: "validate", action: "validate", disabled: false });

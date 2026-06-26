@@ -65,6 +65,34 @@ Keep `bandOf` typed as the exhaustive `Record<CefrLevel, ...>` so the **compile-
 
 The same loud-failure posture as [auditing collapsed helpers for branches that lose all side effects](helper-inline-refactor-no-op-branches.md): the unknown case is a `console.warn`, never a silent fall-through.
 
+## Open subset-predicate vs exhaustive `Record` — pick by whether the default is safe
+
+The exhaustive `Record` above is right when **every** enum value needs distinct
+handling (a band per CEFR level): a new value must be a compile error, because
+there is no sensible default. But when you only classify the enum into a binary
+where the **default arm is the safe/conservative outcome**, an *open positive
+predicate* is the better tool — it degrades gracefully on an unknown value
+instead of forcing a lockstep change:
+
+```ts
+// Subset test: which kinds are non-blocking warnings? Everything else (the
+// default) is a blocking error — the conservative outcome. A new wire enum
+// value safely falls to "blocking" rather than crashing or being dropped.
+function isWarningKind(kind: CardImportErrorKind | undefined): boolean {
+  return kind === "DUPLICATE";
+}
+```
+
+Here a future `CardImportErrorKind` value the frontend has not regenerated yet
+renders as a blocking error — the fail-safe arm — so no exhaustive guard is
+needed. Choose by the default's safety, not by habit:
+
+- **Each value needs distinct handling, no safe default → exhaustive `Record`** (a missing key is a compile error; see the `bandOf` example above).
+- **Binary classification whose default is the conservative outcome → open positive predicate** (`k === "X"`); a new value degrades to the safe arm.
+
+The open predicate is still a *positive* allowlist (`=== "DUPLICATE"`), not a
+negative exclusion — see [`positive-allowlist-over-negative-exclusion.md`](positive-allowlist-over-negative-exclusion.md). Reference: `frontend/src/components/batch-import/batch-import-wizard.tsx` (`isWarningKind`).
+
 ## The `CefrLevel` casing origin
 
 The `CEFRLevel` (schema/Go) → `CefrLevel` (codegen TS) casing comes from the same acronym-handling that the backend documents — see [`docs/backend/library-gotchas/gqlgen-acronym-enum-type-vs-method-casing.md`](../../backend/library-gotchas/gqlgen-acronym-enum-type-vs-method-casing.md). On the frontend, codegen lowercases the acronym tail of the field name (`cefrLevel`) into the emitted symbol name `CefrLevel`, so both generated symbols carry that single spelling.

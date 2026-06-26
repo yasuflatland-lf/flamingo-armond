@@ -132,6 +132,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Mock snapshot at call time for "X before Y" ordering assertions](../../docs/backend/library-gotchas/mock-snapshot-for-ordering-assertion.md)
 - [Dead context-done branch in pass-through helper — collapse to single return](../../docs/backend/library-gotchas/dead-context-check-in-pass-through-helper.md)
 - [Dead helper pipeline after an upstream gate — collapse to single wrap](../../docs/backend/library-gotchas/dead-pipeline-after-upstream-gate-collapse.md)
+- [Preview and commit must share one validator (single-source validation parity); check before dedup so both consumers see identical input; whole-payload reject short-circuits per-row errors](../../docs/backend/library-gotchas/preview-commit-validation-parity.md)
 - [GORM v1 round-trips underlying-string newtypes without Scanner/Valuer; reserving the `Value` accessor slot](../../docs/backend/library-gotchas/gorm-newtype-string-no-scanner-valuer.md)
 - [Defensive-copy tests assert pointer identity (`require.NotSame`), not variable rebind](../../docs/backend/library-gotchas/defensive-copy-test-pointer-identity.md)
 - [Mock-pointer fixture pitfalls: directionality tautology and parallel sub-test races](../../docs/backend/library-gotchas/mock-pointer-fixture-pitfalls.md)

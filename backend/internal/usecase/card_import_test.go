@@ -956,3 +956,111 @@ func TestCardImportUsecase_Import_ContextCancelledDuringUpsert(t *testing.T) {
 func stringFront(prefix string, n int) string {
 	return prefix + "-" + strconv.Itoa(n)
 }
+
+// TestCardImportUsecase_ValidateDetectsRowCap covers the 5000-row cap in the
+// preview path: a payload that parses to >5000 rows is reported as a single
+// payload-level HARD error (Line 0), and Valid flips to false even though every
+// row parsed cleanly.
+func TestCardImportUsecase_ValidateDetectsRowCap(t *testing.T) {
+	t.Parallel()
+
+	const n = cardImportParsedRowCap + 1
+	pairs := make([][2]string, n)
+	for i := 0; i < n; i++ {
+		pairs[i] = [2]string{stringFront("front", i), uniqueBack(i)}
+	}
+	payload := buildPayload(t, pairs)
+
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+	out, err := uc.Validate(authedCtx("user-1"), payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Valid {
+		t.Fatal("expected Valid=false for an over-cap payload")
+	}
+	if len(out.Errors) != 1 {
+		t.Fatalf("expected exactly 1 cap error, got %d: %+v", len(out.Errors), out.Errors)
+	}
+	e := out.Errors[0]
+	if e.Kind != CardImportErrKindHard || e.Line != 0 {
+		t.Fatalf("expected a HARD Line-0 row-cap error, got %+v", e)
+	}
+	if len(out.ParsedCards) != n {
+		t.Fatalf("expected %d parsed cards returned in the preview, got %d", n, len(out.ParsedCards))
+	}
+}
+
+// TestCardImportUsecase_ValidateDetectsOverLengthFront covers the per-side
+// grapheme cap in the preview path for the FRONT side: a row whose front is one
+// grapheme over the cap parses cleanly through textdic but is reported as a
+// line-attributed HARD error, and Valid flips to false.
+func TestCardImportUsecase_ValidateDetectsOverLengthFront(t *testing.T) {
+	t.Parallel()
+
+	// Row 1: valid. Row 2: front is CardTextMax+1 ASCII chars (a single WORD token).
+	var b strings.Builder
+	b.WriteString("apple ")
+	b.WriteString(uniqueBack(1))
+	b.WriteString("\n")
+	b.WriteString(strings.Repeat("a", domain.CardTextMax+1))
+	b.WriteString(" ")
+	b.WriteString(uniqueBack(2))
+	b.WriteString("\n")
+	payload := base64.StdEncoding.EncodeToString([]byte(b.String()))
+
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+	out, err := uc.Validate(authedCtx("user-1"), payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Valid {
+		t.Fatal("expected Valid=false for an over-length front")
+	}
+	if len(out.Errors) != 1 {
+		t.Fatalf("expected exactly 1 cap error, got %d: %+v", len(out.Errors), out.Errors)
+	}
+	e := out.Errors[0]
+	if e.Kind != CardImportErrKindHard || e.Line != 2 {
+		t.Fatalf("expected a HARD error attributed to line 2, got %+v", e)
+	}
+	if !strings.Contains(e.Message, "front") {
+		t.Fatalf("expected message to name the front side, got %q", e.Message)
+	}
+}
+
+// TestCardImportUsecase_ValidateDetectsOverLengthBack mirrors the front test for
+// the BACK side: a 501-grapheme Hiragana back lexes as a valid DEFINITION token
+// but exceeds CardTextMax and is reported with the correct line.
+func TestCardImportUsecase_ValidateDetectsOverLengthBack(t *testing.T) {
+	t.Parallel()
+
+	// Row 1: valid. Row 2: back is CardTextMax+1 Hiragana runes (a single DEFINITION token).
+	var b strings.Builder
+	b.WriteString("apple ")
+	b.WriteString(uniqueBack(1))
+	b.WriteString("\n")
+	b.WriteString("banana ")
+	b.WriteString(jpRunes(domain.CardTextMax + 1))
+	b.WriteString("\n")
+	payload := base64.StdEncoding.EncodeToString([]byte(b.String()))
+
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+	out, err := uc.Validate(authedCtx("user-1"), payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Valid {
+		t.Fatal("expected Valid=false for an over-length back")
+	}
+	if len(out.Errors) != 1 {
+		t.Fatalf("expected exactly 1 cap error, got %d: %+v", len(out.Errors), out.Errors)
+	}
+	e := out.Errors[0]
+	if e.Kind != CardImportErrKindHard || e.Line != 2 {
+		t.Fatalf("expected a HARD error attributed to line 2, got %+v", e)
+	}
+	if !strings.Contains(e.Message, "back") {
+		t.Fatalf("expected message to name the back side, got %q", e.Message)
+	}
+}

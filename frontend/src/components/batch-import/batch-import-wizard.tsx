@@ -30,7 +30,7 @@ function encodePayload(text: string): string {
 type ValidationResult = {
   valid: boolean;
   parsedCards: Array<{ front: string; back: string; line: number }>;
-  errors: Array<{ line: number; message: string }>;
+  errors: Array<{ line: number; message: string; kind: CardImportErrorKind }>;
 };
 
 export type ImportResult = {

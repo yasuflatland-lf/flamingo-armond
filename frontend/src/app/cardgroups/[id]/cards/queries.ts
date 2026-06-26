@@ -69,7 +69,7 @@ export const ValidateCardImportQuery = graphql(`
     validateCardImport(input: $input) {
       valid
       parsedCards { front back line }
-      errors { line message }
+      errors { line message kind }
     }
   }
 `);

@@ -310,6 +310,7 @@ Guard order for `validateCardImport`:
 2. Empty payload ⇒ `BAD_USER_INPUT` on `payload`.
 3. `base64.StdEncoding.DecodeString` ⇒ `BAD_USER_INPUT` on `payload`.
 4. `textdic.Process` ⇒ internal error only on the recovered-panic return; per-line `ValidationError`s are returned in the response payload, not as GraphQL errors.
+5. `checkImportCaps` ⇒ the 5,000 parsed-row cap and the per-side 500-grapheme cap (`domain.CardTextMax`) are appended to `errors` as `CardImportError{Kind: HARD}` (`Line: 0` for the row cap, the row's line for an over-length front/back) and `Valid` becomes `false`. This is the **same** helper `importCards` runs, so the preview cannot report `valid: true` for a payload the commit would reject — see [`docs/backend/library-gotchas/preview-commit-validation-parity.md`](backend/library-gotchas/preview-commit-validation-parity.md).
 
 Guard order for `importCards`:
 
@@ -317,7 +318,7 @@ Guard order for `importCards`:
 2. Empty `cardgroupId` ⇒ `BAD_USER_INPUT` on `cardgroupId`.
 3. Ownership lookup via `CardgroupOwnershipFinder` ⇒ `BAD_USER_INPUT` when missing, `UNAUTHENTICATED` when not owned.
 4. Empty payload / bad base64 ⇒ `BAD_USER_INPUT` on `payload`.
-5. `textdic.Process`, dedupe, 5,000 parsed-row cap, and `CardImportCardRepository.UpsertManyTx` inside the injected transaction runner.
+5. `textdic.Process`, then the shared `checkImportCaps` gate (5,000 parsed-row cap + per-side 500-grapheme cap, checked on the **raw parsed words before dedupe** so the preview and the commit see the identical set), then dedupe, then `CardImportCardRepository.UpsertManyTx` inside the injected transaction runner. A cap violation whole-batch-aborts with `BAD_USER_INPUT` (`payload` for the row cap, `front`/`back` for an over-length row) before any upsert.
 
 The resolver layer for these operations lives in `backend/graph/resolver/card_import.resolvers.go`; it delegates to `CardImportUC` and maps usecase output through the `CardImportError`, `CardImportErrorKind`, `CardImportValidationResult`, and `parsedCards` GraphQL fields.
 
@@ -348,6 +349,8 @@ codes only in the resolver body — that surface is invisible to client code-gen
 and frontend teams reading the schema.
 
 **Dedupe is asymmetric: `importCards` dedupes, `validateCardImport` does not.** `importCards` runs dedup and surfaces dropped rows as `CardImportError` entries with `Front`/`Back` populated. `validateCardImport` runs `textdic.Process` directly and surfaces only parser-level syntax errors — those entries never carry `Front`/`Back`. The resolver mapping site for `validateCardImport` (in `backend/graph/resolver/card_import.resolvers.go`) therefore deliberately omits `nilIfEmpty(e.Front)` calls; there is nothing to map. If a future change adds dedup to `validateCardImport`, the resolver mapping site must be updated symmetrically with `importCards`.
+
+**Cap-checking is symmetric, by contrast.** Both `validateCardImport` and `importCards` run the shared `checkImportCaps` helper (5,000-row + per-side 500-grapheme), so a payload that previews as valid cannot fail the caps at commit time. The asymmetry above is specific to dedup; do not generalise it to the caps. See [`docs/backend/library-gotchas/preview-commit-validation-parity.md`](backend/library-gotchas/preview-commit-validation-parity.md).
 
 ## Backend hardening
 
