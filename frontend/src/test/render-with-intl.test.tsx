@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 import { screen } from "@testing-library/react";
 import { useTranslations } from "next-intl";
 import { describe, expect, it } from "vitest";

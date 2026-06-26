@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MockedProvider } from "@apollo/client/testing/react";

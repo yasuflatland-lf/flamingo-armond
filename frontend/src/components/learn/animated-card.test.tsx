@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 
 import { Controller } from "@react-spring/web";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";

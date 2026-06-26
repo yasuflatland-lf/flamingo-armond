@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+// Keep jsdom here (not happy-dom): the vaul drawer drag-dismiss test relies on
+// jsdom's pointer-event behavior to surface the `vaul-dragging` class. happy-dom
+// does not reproduce the drag physics, so this file is intentionally pinned.
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

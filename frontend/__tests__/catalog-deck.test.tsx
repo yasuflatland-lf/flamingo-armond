@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 /**
  * Broad page-level integration tests for the public catalog deck-detail page
  * (`/catalog/[id]`).
