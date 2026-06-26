@@ -89,18 +89,30 @@ func (f *fakeUserCardRepo) UpsertManyTx(_ context.Context, _ *gorm.DB, cards []*
 // cardgroup handed to CreateTx (deep-copied) so assertions survive caller-side
 // mutation. byID backs FindByID for ownership checks and post-merge result
 // retrieval; a missing key returns repository.ErrNotFound.
+//
+// For tests that need FindByID to succeed on call 1 (ownership gate) but fail
+// on a later call (e.g. post-tx read), set findByIDErr and findByIDErrOnCall
+// to the 1-based call number at which the error should be injected. A zero
+// findByIDErrOnCall never injects (the default for all existing tests).
 type fakeUserCG struct {
-	count       int64
-	countErr    error
-	calls       int
-	lastUser    string
-	createErr   error
-	createCalls int
-	createdCGs  []*domain.Cardgroup
-	byID        map[string]*domain.Cardgroup
+	count             int64
+	countErr          error
+	calls             int
+	lastUser          string
+	createErr         error
+	createCalls       int
+	createdCGs        []*domain.Cardgroup
+	byID              map[string]*domain.Cardgroup
+	findByIDCalls     int
+	findByIDErr       error
+	findByIDErrOnCall int // 1-based; 0 = never inject
 }
 
 func (f *fakeUserCG) FindByID(_ context.Context, id string) (*domain.Cardgroup, error) {
+	f.findByIDCalls++
+	if f.findByIDErrOnCall != 0 && f.findByIDCalls == f.findByIDErrOnCall {
+		return nil, f.findByIDErr
+	}
 	cg, ok := f.byID[id]
 	if !ok {
 		return nil, repository.ErrNotFound
@@ -812,4 +824,68 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_ContextCancelled_PassesThrou
 	_, err := uc.MergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID(ownerID))
 	require.Error(t, err)
 	assertCancelled(t, err)
+}
+
+func TestMasterDeckUsecase_MergeMasterIntoCardgroup_PostTxFindByID_ContextCancelled_PassesThrough(t *testing.T) {
+	t.Parallel()
+	const ownerID = "11111111-1111-7111-8111-111111111111"
+	const destID = "22222222-2222-7222-8222-222222222222"
+	const masterID = "master-id"
+
+	// One card so the tx body executes and reaches the post-tx FindByID.
+	masterCards := []*domain.MasterCard{
+		masterCard("mc-1", masterID, "alpha", "first", 0),
+	}
+	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
+
+	uc := NewMasterDeckUsecaseWithTx(
+		&fakeMasterCGRepo{},
+		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: masterCards}},
+		&fakeUserCardRepo{},
+		&fakeUserCG{
+			byID:              map[string]*domain.Cardgroup{destID: destCG},
+			findByIDErr:       context.Canceled,
+			findByIDErrOnCall: 2, // call 1 = ownership gate (succeeds), call 2 = post-tx read (fails)
+		},
+		stubTxRunner,
+		newTestLogger(),
+	)
+
+	_, err := uc.MergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID(ownerID))
+	require.Error(t, err)
+	// The post-tx guard returns the bare context sentinel (no eris wrap).
+	if err != context.Canceled {
+		t.Fatalf("expected bare context.Canceled sentinel, got: %v (%T)", err, err)
+	}
+	assertCancelled(t, err)
+}
+
+func TestMasterDeckUsecase_MergeMasterIntoCardgroup_PostTxFindByIDError_PropagatesChain(t *testing.T) {
+	t.Parallel()
+	const ownerID = "11111111-1111-7111-8111-111111111111"
+	const destID = "22222222-2222-7222-8222-222222222222"
+	const masterID = "master-id"
+
+	// One card so the tx body executes and reaches the post-tx FindByID.
+	masterCards := []*domain.MasterCard{
+		masterCard("mc-1", masterID, "alpha", "first", 0),
+	}
+	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
+
+	uc := NewMasterDeckUsecaseWithTx(
+		&fakeMasterCGRepo{},
+		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: masterCards}},
+		&fakeUserCardRepo{},
+		&fakeUserCG{
+			byID:              map[string]*domain.Cardgroup{destID: destCG},
+			findByIDErr:       errors.New("db down"),
+			findByIDErrOnCall: 2, // call 1 = ownership gate (succeeds), call 2 = post-tx read (fails)
+		},
+		stubTxRunner,
+		newTestLogger(),
+	)
+
+	_, err := uc.MergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID(ownerID))
+	require.Error(t, err)
+	assertInternalChain(t, err, "usecase: master deck: merge master into cardgroup: find destination")
 }
