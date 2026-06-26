@@ -24,26 +24,18 @@ export type HeaderCreateAction =
   // No href: master creation opens the create sheet the same way as role —
   // ?new=true on the current path (via useSheetSearchParam).
   | { kind: "master"; label: "Add new master" }
-  // No href: adding a card to a master deck has no separate-page target (unlike
-  // a user cardgroup, which can fall back to /cards/new). The '+' dispatches a
-  // cancelable flamingo:add-master-card event that the in-page MasterCardsClient
-  // claims; there is no navigation fallback.
-  | { kind: "master-card"; label: "Add new card"; masterId: string };
+  // Deck-detail edit screens turn the "+" into an Add menu (Add card / Batch
+  // import / Merge). `addCardHref` is the pre-encoded /cards/new fallback for the
+  // cardgroup add-card item (master has no separate-page fallback).
+  | {
+      kind: "deck-add-menu";
+      deck:
+        | { kind: "master"; masterId: string }
+        | { kind: "cardgroup"; cardgroupId: string; addCardHref: string };
+    };
 
-/**
- * Build a `card-with-group` action for the /cardgroups/:id/edit route.
- * `href` is URL-encoded, `cardgroupId` stays raw — see the JSDoc on the union
- * variant for the contract callers must observe.
- */
-function cardWithGroup(rawId: string): Extract<HeaderCreateAction, { kind: "card-with-group" }> {
-  const encodedId = encodeURIComponent(rawId);
-  return {
-    kind: "card-with-group",
-    href: `/cards/new?cardgroup=${encodedId}`,
-    label: "Add new card",
-    cardgroupId: rawId,
-  };
-}
+/** Narrowed type for the `deck-add-menu` union member. */
+export type DeckAddMenu = Extract<HeaderCreateAction, { kind: "deck-add-menu" }>;
 
 /**
  * Build a `card-with-group` action for the /learn/:id route.
@@ -71,11 +63,11 @@ function cardWithGroupFromLearn(
  *
  * Routing rules (evaluated in order):
  * - `/cardgroups`          -> create new cardgroup
- * - `/cardgroups/:id/edit` -> create card pre-filled with the cardgroup
+ * - `/cardgroups/:id/edit` -> deck-add-menu (cardgroup variant)
  * - `/learn/:id`           -> create card pre-filled with the cardgroup + return param
  * - `/admin/roles`            -> create new role
  * - `/admin/masters`          -> create new master
- * - `/admin/masters/:id/edit` -> add card to the master deck
+ * - `/admin/masters/:id/edit` -> deck-add-menu (master variant)
  * - anything else             -> `null`
  */
 export function resolveHeaderCreateAction(pathname: string): HeaderCreateAction | null {
@@ -89,7 +81,14 @@ export function resolveHeaderCreateAction(pathname: string): HeaderCreateAction 
   if (editMatch) {
     const rawId = safeDecodePathSegment(editMatch[1] as string);
     if (rawId === null) return null;
-    return cardWithGroup(rawId);
+    return {
+      kind: "deck-add-menu",
+      deck: {
+        kind: "cardgroup",
+        cardgroupId: rawId,
+        addCardHref: `/cards/new?cardgroup=${encodeURIComponent(rawId)}`,
+      },
+    };
   }
 
   const learnMatch = LEARN_RE.exec(pathname);
@@ -111,7 +110,7 @@ export function resolveHeaderCreateAction(pathname: string): HeaderCreateAction 
   if (masterEditMatch) {
     const rawId = safeDecodePathSegment(masterEditMatch[1] as string);
     if (rawId === null) return null;
-    return { kind: "master-card", label: "Add new card", masterId: rawId };
+    return { kind: "deck-add-menu", deck: { kind: "master", masterId: rawId } };
   }
 
   return null;
