@@ -105,7 +105,7 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport, onMerge 
         <DropdownMenuItem
           onSelect={onMerge}
           className="gap-2 md:hidden"
-          data-testid="cardgroup-merge-menuitem"
+          data-testid="cardgroup-merge-menuitem-mobile"
         >
           <Layers className="h-4 w-4" />
           {t("mergeFromCatalog")}

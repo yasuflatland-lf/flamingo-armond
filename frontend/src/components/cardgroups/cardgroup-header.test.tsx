@@ -272,7 +272,7 @@ describe("<CardgroupHeader>", () => {
 
     await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
 
-    const mergeItem = await screen.findByTestId("cardgroup-merge-menuitem");
+    const mergeItem = await screen.findByTestId("cardgroup-merge-menuitem-mobile");
     expect(mergeItem).toBeInTheDocument();
     expect(mergeItem).toHaveTextContent(/merge from catalog/i);
 
