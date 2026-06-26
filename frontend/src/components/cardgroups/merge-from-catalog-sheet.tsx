@@ -1,26 +1,14 @@
 "use client";
 
 import { NetworkStatus } from "@apollo/client";
+import { ChevronRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  type MergeFromCatalogOutcome,
-  useMergeFromCatalog,
-} from "@/app/cardgroups/[id]/use-merge-from-catalog";
-import { CatalogCard } from "@/app/catalog/catalog-card";
+import { useMergeFromCatalog } from "@/app/cardgroups/[id]/use-merge-from-catalog";
+import { useMergeFromCatalogPreview } from "@/app/cardgroups/[id]/use-merge-from-catalog-preview";
 import { CATALOG_DEFAULT_VARS, CatalogCardFieldsFragment } from "@/app/catalog/queries";
+import { MergeReviewPanel } from "@/components/cardgroups/merge-review-panel";
 import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { buttonVariants } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet } from "@/components/ui/form-sheet";
 import { useFragment } from "@/generated/fragment-masking";
@@ -38,17 +26,17 @@ type Connection = MasterCatalogQuery["masterCatalog"];
 type CatalogEdge = Connection["edges"][number];
 type CatalogPageInfo = Connection["pageInfo"];
 
-type MergeBanner = Exclude<MergeFromCatalogOutcome, { status: "success" }>;
-
-type SelectedDeck = {
-  id: string;
-  name: string;
-};
+type SelectedDeck = { id: string; name: string };
+type ReviewState =
+  | { phase: "loading" }
+  | { phase: "ready"; addedCount: number; updatedCount: number }
+  | { phase: "error"; message: string };
 
 export type MergeFromCatalogSheetProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   targetCardgroupId: string;
+  targetCardgroupName: string;
   onMerged: (result: { addedCount: number; updatedCount: number }) => void;
 };
 
@@ -70,19 +58,11 @@ function mergeCatalogConnection(
   };
 }
 
-function bannerCopy(
-  banner: MergeBanner,
-  t: ReturnType<typeof useTranslations<"Cardgroups">>,
-): string {
-  if (banner.status === "not_found") return t("mergeNotFound");
-  if (banner.status === "rejected") return t("mergeError");
-  return banner.kind === "forbidden" ? t("noPermission") : t("sessionExpiredSignIn");
-}
-
 export function MergeFromCatalogSheet({
   open,
   onOpenChange,
   targetCardgroupId,
+  targetCardgroupName,
   onMerged,
 }: MergeFromCatalogSheetProps) {
   const t = useTranslations("Cardgroups");
@@ -94,33 +74,31 @@ export function MergeFromCatalogSheet({
     setInput: setSearchInput,
     clear: clearSearch,
   } = useDebouncedSearch();
+
   const { mergeFromCatalog } = useMergeFromCatalog(targetCardgroupId);
+  const { previewMerge } = useMergeFromCatalogPreview(targetCardgroupId);
 
   const [selectedDeck, setSelectedDeck] = useState<SelectedDeck | null>(null);
-  const [banner, setBanner] = useState<MergeBanner | null>(null);
-  const [pendingMergeId, setPendingMergeId] = useState<string | null>(null);
+  const [review, setReview] = useState<ReviewState | null>(null);
+  const [merging, setMerging] = useState(false);
 
   const resetTransientState = useCallback(() => {
     setSelectedDeck(null);
-    setBanner(null);
-    setPendingMergeId(null);
+    setReview(null);
+    setMerging(false);
     clearSearch();
   }, [clearSearch]);
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
-      if (!nextOpen) {
-        resetTransientState();
-      }
+      if (!nextOpen) resetTransientState();
       onOpenChange(nextOpen);
     },
     [onOpenChange, resetTransientState],
   );
 
   useEffect(() => {
-    if (!open) {
-      resetTransientState();
-    }
+    if (!open) resetTransientState();
   }, [open, resetTransientState]);
 
   const queryVariables = useMemo(
@@ -160,10 +138,8 @@ export function MergeFromCatalogSheet({
     initial: CATALOG_INITIAL,
     resolveFetchMoreError: () => tCatalog("fetchMoreError"),
     logScope: "[merge-from-catalog]",
-    // The sheet is always mounted by its parent (e.g. CardgroupHeader); only
-    // query the catalog once it is actually opened so a user who never merges
-    // pays no MasterCatalog round-trip on every detail-page render.
-    skip: !open,
+    // Always mounted by its consumer; only query once opened (skip on a cold cache).
+    skip: !open || selectedDeck !== null,
   });
 
   const initialLoading = loading && edges.length === 0 && networkStatus !== NetworkStatus.fetchMore;
@@ -174,44 +150,99 @@ export function MergeFromCatalogSheet({
   const queryBannerError = getBackendErrorBanner(queryError);
 
   const handleSelect = useCallback(
-    (id: string) => {
-      if (pendingMergeId !== null) return;
-      const card = catalogCards.find((item) => item.id === id);
-      if (!card) return;
-      setBanner(null);
-      setSelectedDeck({ id, name: card.name });
+    async (id: string, name: string) => {
+      setSelectedDeck({ id, name });
+      setReview({ phase: "loading" });
+      const outcome = await previewMerge(id);
+      if (outcome.status === "success") {
+        setReview({
+          phase: "ready",
+          addedCount: outcome.addedCount,
+          updatedCount: outcome.updatedCount,
+        });
+        return;
+      }
+      const message =
+        outcome.status === "not_found"
+          ? t("mergeNotFound")
+          : outcome.status === "auth"
+            ? outcome.kind === "forbidden"
+              ? t("noPermission")
+              : t("sessionExpiredSignIn")
+            : t("mergeError");
+      setReview({ phase: "error", message });
     },
-    [catalogCards, pendingMergeId],
+    [previewMerge, t],
   );
 
+  const handleBack = useCallback(() => {
+    setSelectedDeck(null);
+    setReview(null);
+  }, []);
+
   const handleConfirm = useCallback(async () => {
-    if (selectedDeck === null || pendingMergeId !== null) return;
-
-    setBanner(null);
-    setPendingMergeId(selectedDeck.id);
+    if (selectedDeck === null || merging) return;
+    setMerging(true);
     const outcome = await mergeFromCatalog(selectedDeck.id);
-
     if (outcome.status === "success") {
       onMerged({ addedCount: outcome.addedCount, updatedCount: outcome.updatedCount });
-      setSelectedDeck(null);
-      setPendingMergeId(null);
+      resetTransientState();
       onOpenChange(false);
       return;
     }
+    const message =
+      outcome.status === "not_found"
+        ? t("mergeNotFound")
+        : outcome.status === "auth"
+          ? outcome.kind === "forbidden"
+            ? t("noPermission")
+            : t("sessionExpiredSignIn")
+          : t("mergeError");
+    setReview({ phase: "error", message });
+    setMerging(false);
+  }, [mergeFromCatalog, merging, onMerged, onOpenChange, resetTransientState, selectedDeck, t]);
 
-    setBanner(outcome);
-    setSelectedDeck(null);
-    setPendingMergeId(null);
-  }, [mergeFromCatalog, onMerged, onOpenChange, pendingMergeId, selectedDeck]);
+  const inReview = selectedDeck !== null;
 
   return (
-    <>
-      <FormSheet
-        open={open}
-        onOpenChange={handleOpenChange}
-        title={t("mergeFromCatalogTitle")}
-        size="lg"
-      >
+    <FormSheet
+      open={open}
+      onOpenChange={handleOpenChange}
+      title={t("mergeFromCatalogTitle")}
+      size="lg"
+    >
+      {inReview ? (
+        review?.phase === "loading" ? (
+          <p
+            className="text-sm text-muted-foreground"
+            data-testid="merge-from-catalog-preview-loading"
+          >
+            {t("mergePreviewLoading")}
+          </p>
+        ) : review?.phase === "error" ? (
+          <div className="flex flex-col gap-4">
+            <ErrorBanner data-testid="merge-from-catalog-error">{review.message}</ErrorBanner>
+            <button
+              type="button"
+              onClick={handleBack}
+              className="self-start text-sm text-muted-foreground underline"
+              data-testid="merge-from-catalog-review-back"
+            >
+              {t("mergeBack")}
+            </button>
+          </div>
+        ) : review?.phase === "ready" ? (
+          <MergeReviewPanel
+            catalogName={selectedDeck.name}
+            destName={targetCardgroupName}
+            addedCount={review.addedCount}
+            updatedCount={review.updatedCount}
+            merging={merging}
+            onConfirm={handleConfirm}
+            onBack={handleBack}
+          />
+        ) : null
+      ) : (
         <div className="flex flex-col gap-4">
           <input
             type="search"
@@ -222,12 +253,6 @@ export function MergeFromCatalogSheet({
             data-testid="merge-from-catalog-search"
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
-
-          {banner ? (
-            <ErrorBanner data-testid="merge-from-catalog-error">
-              {bannerCopy(banner, t)}
-            </ErrorBanner>
-          ) : null}
 
           {queryBannerError ? (
             <ErrorBanner data-testid="merge-from-catalog-query-error">
@@ -248,22 +273,26 @@ export function MergeFromCatalogSheet({
           ) : null}
 
           {edges.length > 0 ? (
-            <ul className="grid gap-3 sm:grid-cols-2" data-testid="merge-from-catalog-list">
-              {edges.map((edge) => (
-                <CatalogCard
-                  key={edge.cursor}
-                  node={edge.node}
-                  importing={pendingMergeId === edge.node.id}
-                  imported={false}
-                  onImport={handleSelect}
-                  labels={{
-                    action: t("mergeFromCatalog"),
-                    inProgress: tCatalog("importing"),
-                    done: tCatalog("imported"),
-                  }}
-                  testIdPrefix="merge-from-catalog"
-                  className="min-w-0"
-                />
+            <ul className="divide-y divide-border" data-testid="merge-from-catalog-list">
+              {catalogCards.map((card) => (
+                <li key={card.id}>
+                  <button
+                    type="button"
+                    onClick={() => void handleSelect(card.id, card.name)}
+                    className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-muted/40"
+                    data-testid={`merge-from-catalog-row-${card.id}`}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-foreground">
+                        {card.name}
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        {tCatalog("cardCount", { count: card.cardCount })}
+                      </span>
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  </button>
+                </li>
               ))}
             </ul>
           ) : null}
@@ -279,37 +308,7 @@ export function MergeFromCatalogSheet({
             testIdPrefix="merge-from-catalog"
           />
         </div>
-      </FormSheet>
-
-      <AlertDialog
-        open={selectedDeck !== null}
-        onOpenChange={(nextOpen) => {
-          if (pendingMergeId !== null) return;
-          if (!nextOpen) setSelectedDeck(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("mergeConfirmTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("mergeConfirmBody")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={pendingMergeId !== null}>
-              {tCommon("cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              className={buttonVariants({ variant: "destructive" })}
-              disabled={pendingMergeId !== null}
-              onClick={(event) => {
-                event.preventDefault();
-                void handleConfirm();
-              }}
-            >
-              {t("mergeConfirmAction")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+      )}
+    </FormSheet>
   );
 }

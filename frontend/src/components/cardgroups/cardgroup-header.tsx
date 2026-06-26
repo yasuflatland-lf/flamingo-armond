@@ -160,6 +160,7 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
         open={mergeOpen}
         onOpenChange={setMergeOpen}
         targetCardgroupId={cardgroup.id}
+        targetCardgroupName={cardgroup.name}
         onMerged={({ addedCount, updatedCount }) => {
           toast(t("mergeSuccess", { added: addedCount, updated: updatedCount }));
         }}
