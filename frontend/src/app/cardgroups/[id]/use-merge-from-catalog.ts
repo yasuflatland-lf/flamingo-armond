@@ -1,9 +1,9 @@
 "use client";
 
 import { useApolloClient, useMutation } from "@apollo/client/react";
-import { useCallback } from "react";
-import { MergeMasterCardgroupMutation } from "@/app/catalog/queries";
+import { useCallback, useMemo } from "react";
 import { cardsDefaultVars } from "@/app/cardgroups/[id]/cards/queries";
+import { MergeMasterCardgroupMutation } from "@/app/catalog/queries";
 import {
   CardsByCardgroupConnectionDocument,
   type CardsByCardgroupConnectionQueryVariables,
@@ -18,8 +18,8 @@ export type MergeFromCatalogOutcome =
 
 /**
  * Wraps `mergeMasterCardgroup` and, on success, refetches the cards connection
- * for the destination cardgroup so the edited deck immediately reflects the
- * merged cards.
+ * for the destination cardgroup so the destination cardgroup immediately
+ * reflects the merged cards.
  *
  * No `optimisticResponse`: the mutation can resolve to a typed
  * `MasterNotFoundError`, and Apollo does not reliably roll back optimistic
@@ -27,7 +27,7 @@ export type MergeFromCatalogOutcome =
  */
 export function useMergeFromCatalog(targetCardgroupId: string) {
   const apollo = useApolloClient();
-  const refetchVariables = cardsDefaultVars(targetCardgroupId);
+  const refetchVariables = useMemo(() => cardsDefaultVars(targetCardgroupId), [targetCardgroupId]);
 
   const [mergeMasterCardgroup, { loading }] = useMutation(MergeMasterCardgroupMutation);
 
@@ -49,23 +49,30 @@ export function useMergeFromCatalog(targetCardgroupId: string) {
           return { status: "not_found" };
         }
         if (payload?.__typename === "MergeMasterCardgroupSuccess") {
-          await apollo.refetchQueries({
-            include: [CardsByCardgroupConnectionDocument],
-            onQueryUpdated: (observableQuery) => {
-              const variables = observableQuery.options.variables as
-                | CardsByCardgroupConnectionQueryVariables
-                | undefined;
-              if (
-                !variables ||
-                variables.cardgroupId !== refetchVariables.cardgroupId ||
-                variables.first !== refetchVariables.first ||
-                variables.search !== refetchVariables.search
-              ) {
-                return false;
-              }
-              return observableQuery.refetch(refetchVariables);
-            },
-          });
+          try {
+            await apollo.refetchQueries({
+              include: [CardsByCardgroupConnectionDocument],
+              onQueryUpdated: (observableQuery) => {
+                const variables = observableQuery.options.variables as
+                  | CardsByCardgroupConnectionQueryVariables
+                  | undefined;
+                if (!variables || variables.cardgroupId !== refetchVariables.cardgroupId) {
+                  return false;
+                }
+                // Refetch with the query's own current variables so an active
+                // search filter / page is preserved.
+                return true;
+              },
+            });
+          } catch (refetchErr) {
+            // The merge already succeeded on the server; only the post-success
+            // cache refresh failed. The cards list may be stale until the next
+            // navigation. Do NOT downgrade the outcome to "rejected".
+            console.warn("[useMergeFromCatalog] refetch after successful merge failed", {
+              targetCardgroupId,
+              name: refetchErr instanceof Error ? refetchErr.name : "unknown",
+            });
+          }
           return {
             status: "success",
             addedCount: payload.addedCount,

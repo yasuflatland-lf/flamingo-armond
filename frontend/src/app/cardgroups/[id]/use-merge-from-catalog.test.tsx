@@ -107,24 +107,21 @@ describe("useMergeFromCatalog", () => {
   it.each([
     ["unauthenticated", "UNAUTHENTICATED"],
     ["forbidden", "FORBIDDEN"],
-  ] as const)(
-    "returns auth/%s when the mutation rejects with %s",
-    async (kind, code) => {
-      const mocks: MockedResponse[] = [
-        {
-          request: REQUEST,
-          result: {
-            errors: [new GraphQLError("denied", { extensions: { code } })],
-          },
+  ] as const)("returns auth/%s when the mutation rejects with %s", async (kind, code) => {
+    const mocks: MockedResponse[] = [
+      {
+        request: REQUEST,
+        result: {
+          errors: [new GraphQLError("denied", { extensions: { code } })],
         },
-      ];
+      },
+    ];
 
-      const { result } = renderMergeFromCatalog(mocks);
-      const outcome = await runMerge(result);
+    const { result } = renderMergeFromCatalog(mocks);
+    const outcome = await runMerge(result);
 
-      expect(outcome).toEqual({ status: "auth", kind });
-    },
-  );
+    expect(outcome).toEqual({ status: "auth", kind });
+  });
 
   it("returns rejected and logs a scoped warning for a transport error", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -173,5 +170,94 @@ describe("useMergeFromCatalog", () => {
         targetCardgroupId: TARGET_CARDGROUP_ID,
       },
     );
+  });
+
+  it("keeps the success outcome when the post-merge refetch rejects", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const refetchQueriesSpy = vi
+      .spyOn(ApolloClient.prototype, "refetchQueries")
+      .mockRejectedValue(new Error("refetch boom"));
+    const mocks: MockedResponse[] = [
+      {
+        request: REQUEST,
+        result: {
+          data: {
+            mergeMasterCardgroup: {
+              __typename: "MergeMasterCardgroupSuccess",
+              cardgroup: {
+                __typename: "Cardgroup",
+                id: TARGET_CARDGROUP_ID,
+                name: "Target deck",
+                updatedAt: "2026-06-26T00:00:00Z",
+              },
+              addedCount: 3,
+              updatedCount: 1,
+            },
+          },
+        },
+      },
+    ];
+
+    const { result } = renderMergeFromCatalog(mocks);
+    const outcome = await runMerge(result);
+
+    // The merge succeeded on the server; a post-success refetch failure must
+    // NOT be downgraded to "rejected" (which would invite a duplicate re-merge).
+    expect(outcome).toEqual({ status: "success", addedCount: 3, updatedCount: 1 });
+    expect(refetchQueriesSpy).toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[useMergeFromCatalog] refetch after successful merge failed",
+      {
+        targetCardgroupId: TARGET_CARDGROUP_ID,
+        name: "Error",
+      },
+    );
+  });
+
+  it("onQueryUpdated matches only the destination cardgroup's cards query", async () => {
+    const refetchQueriesSpy = vi
+      .spyOn(ApolloClient.prototype, "refetchQueries")
+      // biome-ignore lint/suspicious/noExplicitAny: test stub for refetchQueries return
+      .mockResolvedValue({} as any);
+    const mocks: MockedResponse[] = [
+      {
+        request: REQUEST,
+        result: {
+          data: {
+            mergeMasterCardgroup: {
+              __typename: "MergeMasterCardgroupSuccess",
+              cardgroup: {
+                __typename: "Cardgroup",
+                id: TARGET_CARDGROUP_ID,
+                name: "Target deck",
+                updatedAt: "2026-06-26T00:00:00Z",
+              },
+              addedCount: 3,
+              updatedCount: 1,
+            },
+          },
+        },
+      },
+    ];
+
+    const { result } = renderMergeFromCatalog(mocks);
+    await runMerge(result);
+
+    const options = refetchQueriesSpy.mock.calls[0]?.[0] as {
+      onQueryUpdated?: (observableQuery: unknown) => boolean;
+    };
+    const onQueryUpdated = options?.onQueryUpdated;
+    expect(onQueryUpdated).toBeTypeOf("function");
+
+    const observableQueryFor = (cardgroupId: string) => ({
+      options: { variables: { cardgroupId, first: 20, search: "active filter" } },
+    });
+
+    // Matching cardgroupId → refetch with the query's own current variables.
+    expect(onQueryUpdated?.(observableQueryFor(TARGET_CARDGROUP_ID))).toBe(true);
+    // A different cardgroup's cards query is left untouched.
+    expect(onQueryUpdated?.(observableQueryFor("cg-other"))).toBe(false);
+    // A query with no variables is skipped, not refetched.
+    expect(onQueryUpdated?.({ options: {} })).toBe(false);
   });
 });
