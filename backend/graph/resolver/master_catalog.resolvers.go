@@ -10,6 +10,7 @@ import (
 	"backend/internal/gqlerr"
 	"backend/internal/usecase"
 	"context"
+	"fmt"
 
 	"github.com/rotisserie/eris"
 )
@@ -141,6 +142,11 @@ func (r *mutationResolver) SeedDefaultStarterCardgroups(ctx context.Context) (*m
 		out = append(out, toCardgroupModel(cg))
 	}
 	return &model.SeedDefaultStartersPayload{Cardgroups: out}, nil
+}
+
+// MergeMasterCardgroup is the resolver for the mergeMasterCardgroup field.
+func (r *mutationResolver) MergeMasterCardgroup(ctx context.Context, input model.MergeMasterCardgroupInput) (model.MergeMasterCardgroupResult, error) {
+	panic(fmt.Errorf("not implemented: MergeMasterCardgroup - mergeMasterCardgroup"))
 }
 
 // MasterCatalog is the resolver for the masterCatalog field.
