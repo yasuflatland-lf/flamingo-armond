@@ -155,7 +155,7 @@ function ErrorList(props: {
           className={cn(
             "rounded-md px-3 py-2 text-sm",
             isWarningKind(err.kind)
-              ? "bg-amber-50 text-amber-800"
+              ? "bg-warning/15 text-warning-foreground"
               : "bg-destructive/10 text-destructive",
           )}
         >

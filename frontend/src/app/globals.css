@@ -21,14 +21,17 @@
   --muted-foreground: oklch(0.556 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
+  --destructive: oklch(0.51 0.21 25);
   --destructive-foreground: oklch(0.985 0 0);
   /* Status-indicator green — used ONLY as a status dot (e.g. a published deck),
      never as a CTA color. Coral (brand) stays the only constructive CTA color. */
   --success: oklch(0.63 0.17 149);
+  /* soft amber caution band (CEFR-band style, not a button fill); foreground is AA on the band and on white. */
+  --warning: oklch(0.8 0.145 78);
+  --warning-foreground: oklch(0.4 0.1 72);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --ring: oklch(0.7364 0.189 18.45);
   --radius: 0.625rem;
   /* Brand tokens — flamingo coral palette */
   --brand-primary: oklch(73.64% 0.189 18.45);
@@ -36,6 +39,8 @@
   --brand-tint: oklch(98.5% 0.012 18.45);
   --brand-tint-border: oklch(91% 0.04 18.45);
   --brand-tint-foreground: oklch(45% 0.13 18.45);
+  /* darker coral for link/accent TEXT (the L74 brand fill fails WCAG as text on white). */
+  --brand-link: oklch(0.5 0.15 20);
   /* CEFR difficulty bands — saturated-but-soft fills on the white card surface.
      Foregrounds verified WCAG AA >= 4.5:1 both on their own band fill and on
      --card (#FFFFFF); see the contrast guard in cefr-badge.test.tsx. */
@@ -109,6 +114,8 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -117,6 +124,7 @@
   --color-brand-tint: var(--brand-tint);
   --color-brand-tint-border: var(--brand-tint-border);
   --color-brand-tint-foreground: var(--brand-tint-foreground);
+  --color-brand-link: var(--brand-link);
   --color-cefr-a: var(--cefr-a);
   --color-cefr-a-foreground: var(--cefr-a-foreground);
   --color-cefr-b: var(--cefr-b);
