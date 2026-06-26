@@ -25,11 +25,12 @@ export function CardgroupManagementClient({
         initialEdges={initialEdges}
         initialPageInfo={initialPageInfo}
         initialTotalCount={initialTotalCount}
-        renderPageHeader={({ totalCount, onBatchImport }) => (
+        renderPageHeader={({ totalCount, onBatchImport, onMerge }) => (
           <CardgroupHeader
             cardgroup={cardgroup}
             totalCount={totalCount}
             onBatchImport={onBatchImport}
+            onMerge={onMerge}
           />
         )}
       />

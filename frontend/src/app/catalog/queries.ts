@@ -115,3 +115,18 @@ export const MergeMasterCardgroupMutation = graphql(`
     }
   }
 `);
+
+export const MergeMasterCardgroupPreviewQuery = graphql(`
+  query MergeMasterCardgroupPreview($input: MergeMasterCardgroupInput!) {
+    mergeMasterCardgroupPreview(input: $input) {
+      __typename
+      ... on MergeMasterCardgroupPreview {
+        addedCount
+        updatedCount
+      }
+      ... on MasterNotFoundError {
+        message
+      }
+    }
+  }
+`);

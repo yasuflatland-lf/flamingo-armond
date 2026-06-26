@@ -5,7 +5,10 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MergeMasterCardgroupMutation } from "@/app/catalog/queries";
+import {
+  MergeMasterCardgroupMutation,
+  MergeMasterCardgroupPreviewQuery,
+} from "@/app/catalog/queries";
 import { MasterCatalogDocument } from "@/generated/graphql";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { MergeFromCatalogSheet } from "./merge-from-catalog-sheet";
@@ -153,27 +156,46 @@ function mergeMock(
   };
 }
 
-function renderSheet(mocks: MockedResponse[], props?: { onOpenChange?: (open: boolean) => void }) {
-  const onOpenChange = props?.onOpenChange ?? vi.fn();
-  const onMerged = vi.fn();
+function previewMock(
+  masterId: string,
+  payload: { __typename: string; [key: string]: unknown },
+): MockedResponse {
+  return {
+    request: {
+      query: MergeMasterCardgroupPreviewQuery,
+      variables: {
+        input: { masterCardgroupId: masterId, cardgroupId: TARGET_CARDGROUP_ID },
+      },
+    },
+    result: {
+      data: {
+        mergeMasterCardgroupPreview: payload,
+      },
+    },
+  };
+}
+
+function renderSheet(opts: {
+  mocks: MockedResponse[];
+  onMerged?: (result: { addedCount: number; updatedCount: number }) => void;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const onOpenChange = opts.onOpenChange ?? vi.fn();
+  const onMerged = opts.onMerged ?? vi.fn();
 
   renderWithIntl(
-    <MockedProvider mocks={mocks}>
+    <MockedProvider mocks={opts.mocks}>
       <MergeFromCatalogSheet
         open
         onOpenChange={onOpenChange}
         targetCardgroupId={TARGET_CARDGROUP_ID}
+        targetCardgroupName="My Deck"
         onMerged={onMerged}
       />
     </MockedProvider>,
   );
 
   return { onOpenChange, onMerged };
-}
-
-async function openConfirmDialog(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByTestId("merge-from-catalog-master-1"));
-  return screen.findByRole("alertdialog");
 }
 
 beforeEach(() => {
@@ -185,43 +207,59 @@ afterEach(() => {
 });
 
 describe("<MergeFromCatalogSheet>", () => {
-  it("renders catalog tiles in a FormSheet and filters via debounced search variables", async () => {
+  it("renders catalog rows in a FormSheet and filters via debounced search variables", async () => {
     const user = userEvent.setup();
-    renderSheet([BASE_CATALOG, SEARCH_CATALOG]);
+    renderSheet({ mocks: [BASE_CATALOG, SEARCH_CATALOG] });
 
     expect(await screen.findByRole("dialog", { name: "Merge from catalog" })).toBeInTheDocument();
-    expect(await screen.findByText("Business English")).toBeInTheDocument();
+    expect(await screen.findByTestId("merge-from-catalog-row-master-1")).toBeInTheDocument();
+    expect(screen.getByText("Business English")).toBeInTheDocument();
 
     await user.type(screen.getByTestId("merge-from-catalog-search"), "kanji");
 
-    expect(await screen.findByText("JLPT Kanji")).toBeInTheDocument();
+    expect(await screen.findByTestId("merge-from-catalog-row-master-2")).toBeInTheDocument();
+    expect(screen.getByText("JLPT Kanji")).toBeInTheDocument();
   });
 
-  it("opens a warning dialog with destructive confirm copy when a catalog tile is selected", async () => {
+  it("selecting a row previews the diff and confirming merges", async () => {
     const user = userEvent.setup();
-    renderSheet([BASE_CATALOG]);
-
-    const dialog = await openConfirmDialog(user);
-
-    expect(dialog).toHaveTextContent("Cards with the same term will be overwritten");
-    expect(dialog).toHaveTextContent("learning progress is kept");
-
-    const confirm = screen.getByRole("button", { name: "Merge" });
-    expect(confirm).toHaveClass("bg-destructive", "text-destructive-foreground");
-  });
-
-  it("calls onMerged with counts and closes the dialog and sheet after a successful merge", async () => {
-    const user = userEvent.setup();
-    const { onMerged, onOpenChange } = renderSheet([BASE_CATALOG, mergeMock("success")]);
-
-    await openConfirmDialog(user);
-    await user.click(screen.getByRole("button", { name: "Merge" }));
-
-    await waitFor(() => {
-      expect(onMerged).toHaveBeenCalledWith({ addedCount: 3, updatedCount: 1 });
+    const onMerged = vi.fn();
+    const { onOpenChange } = renderSheet({
+      onMerged,
+      mocks: [
+        BASE_CATALOG,
+        previewMock("master-1", {
+          __typename: "MergeMasterCardgroupPreview",
+          addedCount: 312,
+          updatedCount: 508,
+        }),
+        mergeMock("success"),
+      ],
     });
+
+    await user.click(await screen.findByTestId("merge-from-catalog-row-master-1"));
+    const confirmBtn = await screen.findByTestId("merge-review-confirm");
+    expect(confirmBtn).toHaveTextContent("820");
+    expect(screen.getByTestId("merge-review-added")).toHaveTextContent("312");
+
+    await user.click(confirmBtn);
+    await waitFor(() => expect(onMerged).toHaveBeenCalledWith({ addedCount: 3, updatedCount: 1 }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
-    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("shows an error banner in the review area when the preview returns not_found", async () => {
+    const user = userEvent.setup();
+    renderSheet({
+      mocks: [
+        BASE_CATALOG,
+        previewMock("master-1", { __typename: "MasterNotFoundError", message: "gone" }),
+      ],
+    });
+
+    await user.click(await screen.findByTestId("merge-from-catalog-row-master-1"));
+    const banner = await screen.findByTestId("merge-from-catalog-error");
+    expect(banner).toHaveTextContent(/no longer available/i);
+    expect(screen.getByTestId("merge-from-catalog-review-back")).toBeInTheDocument();
   });
 
   it.each([
@@ -229,12 +267,22 @@ describe("<MergeFromCatalogSheet>", () => {
     ["unauthenticated", /session expired/i],
     ["forbidden", /do not have permission/i],
     ["rejected", /merge failed, please try again/i],
-  ] as const)("keeps the sheet open and shows a localized banner for %s", async (outcome, copy) => {
+  ] as const)("keeps the sheet open and shows a localized banner for merge %s", async (outcome, copy) => {
     const user = userEvent.setup();
-    const { onMerged, onOpenChange } = renderSheet([BASE_CATALOG, mergeMock(outcome)]);
+    const { onMerged, onOpenChange } = renderSheet({
+      mocks: [
+        BASE_CATALOG,
+        previewMock("master-1", {
+          __typename: "MergeMasterCardgroupPreview",
+          addedCount: 3,
+          updatedCount: 1,
+        }),
+        mergeMock(outcome),
+      ],
+    });
 
-    await openConfirmDialog(user);
-    await user.click(screen.getByRole("button", { name: "Merge" }));
+    await user.click(await screen.findByTestId("merge-from-catalog-row-master-1"));
+    await user.click(await screen.findByTestId("merge-review-confirm"));
 
     const banner = await screen.findByTestId("merge-from-catalog-error");
     expect(banner).toHaveTextContent(copy);
@@ -243,23 +291,29 @@ describe("<MergeFromCatalogSheet>", () => {
     expect(onMerged).not.toHaveBeenCalled();
   });
 
-  it("disables the confirm and cancel actions while the merge mutation is in flight", async () => {
+  it("disables the confirm button while the merge mutation is in flight", async () => {
     const user = userEvent.setup();
-    // delay: Infinity keeps the mutation pending so we can observe the disabled state
-    // while pendingMergeId !== null.
     const pendingMergeMock: MockedResponse = {
       ...mergeMock("success"),
       delay: Infinity,
     };
-    renderSheet([BASE_CATALOG, pendingMergeMock]);
+    renderSheet({
+      mocks: [
+        BASE_CATALOG,
+        previewMock("master-1", {
+          __typename: "MergeMasterCardgroupPreview",
+          addedCount: 3,
+          updatedCount: 1,
+        }),
+        pendingMergeMock,
+      ],
+    });
 
-    await openConfirmDialog(user);
-    // Fire the confirm and immediately verify both actions disable while in flight.
-    void user.click(screen.getByRole("button", { name: "Merge" }));
+    await user.click(await screen.findByTestId("merge-from-catalog-row-master-1"));
+    void user.click(await screen.findByTestId("merge-review-confirm"));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Merge" })).toBeDisabled();
+      expect(screen.getByTestId("merge-review-confirm")).toBeDisabled();
     });
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 });

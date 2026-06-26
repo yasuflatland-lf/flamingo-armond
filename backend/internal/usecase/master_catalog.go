@@ -84,12 +84,14 @@ type MasterCatalogConnectionOutput struct {
 
 // masterDeckUsecaseFacade is the master-deck capability the catalog consumes:
 // snapshot a single published master (import), seed all default starters for
-// the caller, and merge a published master into an existing caller-owned
-// cardgroup. *masterDeckUsecase satisfies all three capabilities.
+// the caller, merge a published master into an existing caller-owned cardgroup,
+// and preview that merge without writing. *masterDeckUsecase satisfies all four
+// capabilities.
 type masterDeckUsecaseFacade interface {
 	CopyMasterToUserUsecase
 	SeedForNewUserUsecase
 	MergeMasterIntoCardgroupUsecase
+	PreviewMergeMasterIntoCardgroupUsecase
 }
 
 // MergeMasterOutcome is the usecase result of MergeMaster. On the valid paths
@@ -112,6 +114,16 @@ type MergeMasterOutcome struct {
 	NotFound bool
 }
 
+// PreviewMergeOutcome is the usecase result of PreviewMergeMaster. On the valid
+// path Added/Updated carry the projected tally and NotFound is false; the not-found
+// path sets NotFound=true with zero tallies. Destination auth failures are returned
+// as errors, not via this outcome.
+type PreviewMergeOutcome struct {
+	Added    int64
+	Updated  int64
+	NotFound bool
+}
+
 // MasterCatalogUsecase is the published-catalog surface plus the admin
 // management operations. Every method requires an authenticated caller;
 // admin methods additionally require AdminGate.Require to pass.
@@ -123,6 +135,7 @@ type MasterCatalogUsecase interface {
 	FindPublishedMaster(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 	ImportMaster(ctx context.Context, masterID string) (ImportMasterOutcome, error)
 	MergeMaster(ctx context.Context, masterID, cardgroupID string) (MergeMasterOutcome, error)
+	PreviewMergeMaster(ctx context.Context, masterID, cardgroupID string) (PreviewMergeOutcome, error)
 	SeedDefaultStarters(ctx context.Context) ([]*domain.Cardgroup, error)
 
 	// admin-gated management surface
@@ -728,6 +741,36 @@ func (u *masterCatalogUsecase) FindPublishedMaster(ctx context.Context, id strin
 		return nil, eris.Wrap(err, "usecase: master catalog: find published master")
 	}
 	return deck, nil
+}
+
+// PreviewMergeMaster mirrors MergeMaster as a read-only dry run. Same gates:
+// unauthenticated -> ErrUnauthenticated; unknown/draft master -> NotFound (collapsed
+// via FindPublishedByID, never disclosing draft existence); destination auth failures
+// travel as errors from the delegated usecase.
+func (u *masterCatalogUsecase) PreviewMergeMaster(ctx context.Context, masterID, cardgroupID string) (PreviewMergeOutcome, error) {
+	caller := auth.UserFrom(ctx)
+	if caller == nil {
+		return PreviewMergeOutcome{}, ucerr.ErrUnauthenticated
+	}
+
+	if _, err := u.repo.FindPublishedByID(ctx, masterID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return PreviewMergeOutcome{NotFound: true}, nil
+		}
+		if isContextDone(err) {
+			return PreviewMergeOutcome{}, err
+		}
+		return PreviewMergeOutcome{}, eris.Wrap(err, "usecase: master catalog: preview merge: verify published")
+	}
+
+	res, err := u.deckUC.PreviewMergeMasterIntoCardgroup(ctx, masterID, domain.CardgroupID(cardgroupID), domain.UserID(caller.Sub))
+	if err != nil {
+		if isContextDone(err) {
+			return PreviewMergeOutcome{}, err
+		}
+		return PreviewMergeOutcome{}, eris.Wrap(err, "usecase: master catalog: preview merge: preview merge into cardgroup")
+	}
+	return PreviewMergeOutcome{Added: res.Added, Updated: res.Updated}, nil
 }
 
 // SeedDefaultStarters copies the published default-starter master decks into the

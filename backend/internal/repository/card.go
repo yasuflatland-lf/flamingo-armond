@@ -47,6 +47,11 @@ type CardReadRepository interface {
 	// front) unique key, or ErrNotFound when no such row exists. The front value
 	// is matched exactly; trimming is the caller's responsibility.
 	FindByCardgroupAndFront(ctx context.Context, cardgroupID, front string) (*domain.Card, error)
+	// CountExistingFronts returns how many of fronts already exist in the
+	// destination cardgroup's cards, matched case-sensitively (plain text
+	// equality, mirroring the uq_cards_cardgroup_front unique index the merge
+	// upserts against). Empty fronts returns 0 without a query.
+	CountExistingFronts(ctx context.Context, cardgroupID string, fronts []string) (int64, error)
 }
 
 type CardPageRepository interface {
@@ -198,6 +203,20 @@ func (r *cardRepo) FindByCardgroupAndFront(ctx context.Context, cardgroupID, fro
 		return nil, eris.Wrap(err, "repository: card: find by cardgroup and front")
 	}
 	return cardToDomain(row), nil
+}
+
+func (r *cardRepo) CountExistingFronts(ctx context.Context, cardgroupID string, fronts []string) (int64, error) {
+	if len(fronts) == 0 {
+		return 0, nil
+	}
+	var count int64
+	if err := r.db.WithContext(ctx).
+		Model(&gormCard{}).
+		Where("cardgroup_id = ? AND front IN ?", cardgroupID, fronts).
+		Count(&count).Error; err != nil {
+		return 0, eris.Wrap(err, "repository: card: count existing fronts")
+	}
+	return count, nil
 }
 
 func (r *cardRepo) Update(ctx context.Context, id string, patch CardUpdate) (*domain.Card, error) {

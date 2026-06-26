@@ -200,3 +200,24 @@ func (r *queryResolver) AdminMasters(ctx context.Context, first *int, after *str
 	}
 	return toMasterCatalogConnectionModel(ctx, out), nil
 }
+
+// MergeMasterCardgroupPreview is the resolver for the mergeMasterCardgroupPreview field.
+//
+// Read-only dry run of mergeMasterCardgroup. Returns a union:
+// model.MergeMasterCardgroupPreview on the happy path, or model.MasterNotFoundError
+// when the master id is unknown or not published. Destination cardgroup auth failures
+// (unknown → BAD_USER_INPUT, foreign → UNAUTHENTICATED) travel the error return via
+// FromUsecaseError.
+func (r *queryResolver) MergeMasterCardgroupPreview(ctx context.Context, input model.MergeMasterCardgroupInput) (model.MergeMasterCardgroupPreviewResult, error) {
+	outcome, err := r.MasterCatalogUC.PreviewMergeMaster(ctx, input.MasterCardgroupID, input.CardgroupID)
+	if err != nil {
+		return nil, gqlerr.FromUsecaseError(ctx, err)
+	}
+	if outcome.NotFound {
+		return model.MasterNotFoundError{Message: "Master cardgroup not found"}, nil
+	}
+	return model.MergeMasterCardgroupPreview{
+		AddedCount:   int(outcome.Added),
+		UpdatedCount: int(outcome.Updated),
+	}, nil
+}

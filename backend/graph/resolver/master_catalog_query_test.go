@@ -46,6 +46,9 @@ type stubMasterCatalogUC struct {
 	mergeOut usecase.MergeMasterOutcome
 	mergeErr error
 
+	previewOut usecase.PreviewMergeOutcome
+	previewErr error
+
 	seedOut []*domain.Cardgroup
 	seedErr error
 
@@ -99,6 +102,10 @@ func (s *stubMasterCatalogUC) SeedDefaultStarters(_ context.Context) ([]*domain.
 
 func (s *stubMasterCatalogUC) MergeMaster(_ context.Context, _, _ string) (usecase.MergeMasterOutcome, error) {
 	return s.mergeOut, s.mergeErr
+}
+
+func (s *stubMasterCatalogUC) PreviewMergeMaster(_ context.Context, _, _ string) (usecase.PreviewMergeOutcome, error) {
+	return s.previewOut, s.previewErr
 }
 
 // TestQueryResolver_MasterCatalog_Success verifies the resolver maps the model

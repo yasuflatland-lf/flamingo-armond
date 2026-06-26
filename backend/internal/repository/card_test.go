@@ -1264,3 +1264,28 @@ func TestCardRepository_FindPracticeCards_Limited(t *testing.T) {
 	require.Empty(t, empty)
 	require.NotNil(t, empty, "limit 0 returns an empty non-nil slice")
 }
+
+func TestCardRepo_CountExistingFronts_CaseSensitive(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	// Seed two existing destination cards.
+	apple := newCard(cg.ID, "Apple", "a")
+	banana := newCard(cg.ID, "banana", "b")
+	require.NoError(t, repo.Create(ctx, apple))
+	require.NoError(t, repo.Create(ctx, banana))
+
+	// "Apple" matches exactly; "apple" must NOT match (cards.front is case-sensitive
+	// plain text, not citext); "cherry" is absent.
+	n, err := repo.CountExistingFronts(ctx, string(cg.ID), []string{"Apple", "apple", "cherry"})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), n, "only the exact-case 'Apple' overlaps")
+
+	// Empty input is a no-op count of 0 (never a full scan).
+	n0, err := repo.CountExistingFronts(ctx, string(cg.ID), []string{})
+	require.NoError(t, err)
+	require.Equal(t, int64(0), n0)
+}

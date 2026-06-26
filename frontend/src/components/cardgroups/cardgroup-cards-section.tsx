@@ -1,14 +1,16 @@
 "use client";
 
-import { Import, Play, Plus } from "lucide-react";
+import { Import, Layers, Play, Plus } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
+import { toast } from "sonner";
 import {
   type CardConnectionPageInfo,
   type CardEdge,
   CardsClient,
 } from "@/app/cardgroups/[id]/cards/cards-client";
+import { MergeFromCatalogSheet } from "@/components/cardgroups/merge-from-catalog-sheet";
 import { Button } from "@/components/ui/button";
 import { SplitButtonMenu } from "@/components/ui/split-button-menu";
 
@@ -21,12 +23,17 @@ type Props = {
   /**
    * Optional render prop that lets the parent render a page-level header with
    * the live totalCount sourced from the Apollo cache. When provided, the
-   * render prop receives `{ totalCount, onBatchImport }` and is invoked above
-   * the toolbar row. `onBatchImport` lets the header's overflow menu host batch
-   * import on mobile (the standalone mobile toolbar button was removed). When
-   * omitted, no page-level header is rendered.
+   * render prop receives `{ totalCount, onBatchImport, onMerge }` and is
+   * invoked above the toolbar row. `onBatchImport` and `onMerge` let the
+   * header's overflow menu host those actions on mobile (the standalone mobile
+   * toolbar buttons were removed). When omitted, no page-level header is
+   * rendered.
    */
-  renderPageHeader?: (args: { totalCount: number; onBatchImport: () => void }) => ReactNode;
+  renderPageHeader?: (args: {
+    totalCount: number;
+    onBatchImport: () => void;
+    onMerge: () => void;
+  }) => ReactNode;
 };
 
 export function CardgroupCardsSection({
@@ -39,6 +46,8 @@ export function CardgroupCardsSection({
 }: Props) {
   const learnHref = `/learn/${encodeURIComponent(cardgroupId)}`;
   const t = useTranslations("Cardgroups");
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const onMerge = () => setMergeOpen(true);
 
   // The render-prop form lets CardsClient pass its live totalCount (read from
   // Apollo cache, kept in sync with delete/bulk-delete/fetchMore) into the
@@ -56,7 +65,7 @@ export function CardgroupCardsSection({
     // cluster sits on its own row below it, right-aligned on desktop. On mobile
     // the two also stack — header on top, full-width Start learning hero below.
     <div>
-      {renderPageHeader?.({ totalCount, onBatchImport })}
+      {renderPageHeader?.({ totalCount, onBatchImport, onMerge })}
       <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-end md:gap-2">
         {/* Primary CTA: full-width brand hero on mobile (h-11 = 44px tap target),
             compact on desktop. Add card on mobile is provided by the global "+"
@@ -97,6 +106,13 @@ export function CardgroupCardsSection({
                 onSelect: onBatchImport,
                 "data-testid": "cardgroup-batch-import-menuitem",
               },
+              {
+                key: "merge",
+                icon: <Layers aria-hidden="true" className="h-4 w-4" />,
+                label: t("mergeFromCatalog"),
+                onSelect: onMerge,
+                "data-testid": "cardgroup-merge-menuitem",
+              },
             ]}
           />
         </div>
@@ -105,13 +121,24 @@ export function CardgroupCardsSection({
   );
 
   return (
-    <CardsClient
-      cardgroupId={cardgroupId}
-      cardgroupName={cardgroupName}
-      initialEdges={initialEdges}
-      initialPageInfo={initialPageInfo}
-      initialTotalCount={initialTotalCount}
-      sectionHeader={renderHeader}
-    />
+    <>
+      <CardsClient
+        cardgroupId={cardgroupId}
+        cardgroupName={cardgroupName}
+        initialEdges={initialEdges}
+        initialPageInfo={initialPageInfo}
+        initialTotalCount={initialTotalCount}
+        sectionHeader={renderHeader}
+      />
+      <MergeFromCatalogSheet
+        open={mergeOpen}
+        onOpenChange={setMergeOpen}
+        targetCardgroupId={cardgroupId}
+        targetCardgroupName={cardgroupName}
+        onMerged={({ addedCount, updatedCount }) => {
+          toast(t("mergeSuccess", { added: addedCount, updated: updatedCount }));
+        }}
+      />
+    </>
   );
 }
