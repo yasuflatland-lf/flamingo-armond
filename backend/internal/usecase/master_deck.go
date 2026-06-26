@@ -36,10 +36,11 @@ type masterDeckUserCardRepo interface {
 // masterDeckUserCardgroupRepo is the subset of repository.CardgroupRepository the
 // master deck usecase consumes against the USER cardgroups table (not the master
 // catalog). FindByID satisfies CardgroupOwnershipFinder so the ownership gate can
-// use u.userCG directly. CountByOwner backs the idempotency guard: a user who
-// already owns at least one cardgroup is not re-seeded on the next call. CreateTx
-// inserts the snapshot cardgroup using the caller's transaction handle so the
-// insert participates in the caller's transaction.
+// use u.userCG directly; it is also called post-merge to read the destination
+// cardgroup back after the transaction commits. CountByOwner backs the idempotency
+// guard: a user who already owns at least one cardgroup is not re-seeded on the
+// next call. CreateTx inserts the snapshot cardgroup using the caller's transaction
+// handle so the insert participates in the caller's transaction.
 type masterDeckUserCardgroupRepo interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
 	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
@@ -67,6 +68,7 @@ type CopyMasterToUserUsecase interface {
 // MergeMasterResult is the tally returned by MergeMasterIntoCardgroup: the
 // destination cardgroup plus the insert/update counts from the upsert.
 type MergeMasterResult struct {
+	// Non-nil when the returned error is nil.
 	Cardgroup *domain.Cardgroup
 	Added     int64
 	Updated   int64
@@ -80,10 +82,11 @@ type MergeMasterIntoCardgroupUsecase interface {
 	MergeMasterIntoCardgroup(ctx context.Context, masterID string, destCardgroupID domain.CardgroupID, ownerID domain.UserID) (*MergeMasterResult, error)
 }
 
-// masterDeckUsecase implements both the public copy primitive and the
-// default-starter seed batch. copyMasterToUserTx is the shared tx-aware core; the
-// two public entry points each open their own transaction and supply the caller
-// wrap prefix.
+// masterDeckUsecase implements three public entry points: CopyMasterToUser (single
+// import), SeedForNewUser (default-starter batch), and MergeMasterIntoCardgroup
+// (merge into an existing caller-owned cardgroup). copyMasterToUserTx is the
+// shared tx-aware core for CopyMasterToUser and SeedForNewUser; MergeMasterIntoCardgroup
+// uses the lower-level copyMasterCardsIntoTx directly.
 type masterDeckUsecase struct {
 	masterCG   masterDeckCardgroupRepo
 	masterCard masterDeckCardRepo
@@ -337,7 +340,7 @@ func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 	if err := u.tx(ctx, func(tx *gorm.DB) error {
 		cards, err := u.masterCard.ListByMasterCardgroup(ctx, masterID)
 		if err != nil {
-			return eris.Wrap(err, "list master cards")
+			return eris.Wrap(err, "usecase: master deck: merge master into cardgroup: list master cards")
 		}
 		r, err := u.copyMasterCardsIntoTx(ctx, tx, cards, destCardgroupID, nil)
 		if err != nil {
@@ -354,6 +357,9 @@ func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 
 	cg, err := u.userCG.FindByID(ctx, string(destCardgroupID))
 	if err != nil {
+		if isContextDone(err) {
+			return nil, err
+		}
 		return nil, eris.Wrap(err, "usecase: master deck: merge master into cardgroup: find destination")
 	}
 	return &MergeMasterResult{Cardgroup: cg, Added: res.Inserted, Updated: res.Updated}, nil

@@ -92,15 +92,23 @@ type masterDeckUsecaseFacade interface {
 	MergeMasterIntoCardgroupUsecase
 }
 
-// MergeMasterOutcome is the usecase result of MergeMaster. On the happy path
-// Cardgroup is set and NotFound is false; NotFound=true (Cardgroup nil) when the
-// master id is unknown or not published (draft existence subsumed). Destination
-// cardgroup auth failures are returned as errors, not via this outcome.
+// MergeMasterOutcome is the usecase result of MergeMaster. On the valid paths
+// exactly one signal is set: Cardgroup on the happy path, or NotFound=true when the
+// master id is unknown or not published. Destination cardgroup auth failures are
+// returned as errors, not via this outcome.
 type MergeMasterOutcome struct {
+	// Cardgroup is the caller-owned destination after the merge. Non-nil iff NotFound is false.
 	Cardgroup *domain.Cardgroup
-	Added     int64
-	Updated   int64
-	NotFound  bool
+	// Added is the number of cards newly inserted into the destination.
+	Added int64
+	// Updated is the number of existing cards (same front) overwritten.
+	Updated int64
+	// NotFound is true when the master id is unknown or not published; draft existence
+	// is subsumed so draft ids are indistinguishable from absent ids. True iff Cardgroup
+	// is nil. The XOR is a producer contract, not a compile-time guarantee: a degenerate
+	// {Cardgroup:nil, NotFound:false} result is treated as INTERNAL by the resolver's
+	// defensive guard (noVariantSet).
+	NotFound bool
 }
 
 // MasterCatalogUsecase is the published-catalog surface plus the admin
@@ -151,11 +159,11 @@ type masterCatalogUsecase struct {
 
 // NewMasterCatalogUsecase constructs a MasterCatalogUsecase backed by the given
 // repository. deckUC is the combined deck facade (CopyMasterToUserUsecase +
-// SeedForNewUserUsecase) used by ImportMaster and SeedDefaultStarters;
-// adminGate gates every admin-management method. The public
-// ListPublishedConnection is gated by authentication only. Panics when repo,
-// deckUC, adminGate, or logger is nil — a nil required dependency is a wiring bug
-// that must fail at startup, not at first use.
+// SeedForNewUserUsecase + MergeMasterIntoCardgroupUsecase) used by ImportMaster,
+// SeedDefaultStarters, and MergeMaster; adminGate gates every admin-management
+// method. The public ListPublishedConnection is gated by authentication only.
+// Panics when repo, deckUC, adminGate, or logger is nil — a nil required
+// dependency is a wiring bug that must fail at startup, not at first use.
 func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsecaseFacade, adminGate *AdminGate, logger *slog.Logger) MasterCatalogUsecase {
 	if repo == nil {
 		panic("usecase: master catalog: repo is required")
