@@ -179,6 +179,24 @@ describe("CardsClient — bulk delete", () => {
     expect(screen.getByText("This action cannot be undone.")).toBeInTheDocument();
   });
 
+  // T3b: the bulk-delete trigger is a low-emphasis ghost while the confirm stays filled.
+  it("renders the bulk-delete trigger as a ghost while the confirm stays filled", async () => {
+    const user = userEvent.setup();
+    const cards = [makeCard(1), makeCard(2)];
+    renderCardsClient(cards, []);
+
+    await user.click(screen.getByTestId("card-select-c-1"));
+    await user.click(screen.getByTestId("card-select-c-2"));
+
+    const trigger = screen.getByTestId("cards-bulk-delete-button");
+    expect(trigger).not.toHaveClass("bg-destructive");
+    expect(trigger).toHaveClass("text-destructive");
+
+    await user.click(trigger);
+    await screen.findByRole("alertdialog");
+    expect(screen.getByTestId("cards-bulk-confirm")).toHaveClass("bg-destructive");
+  });
+
   // T4: confirming the dialog fires the mutation; rows are removed and totalCount decrements.
   it("fires the mutation on confirm; rows disappear and totalCount decrements", async () => {
     const user = userEvent.setup();

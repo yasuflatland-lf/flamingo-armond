@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation } from "@apollo/client/react";
+import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -405,9 +406,10 @@ function AdminUserProfileSheetBody({
                 <AlertDialogTrigger asChild>
                   <Button
                     type="button"
-                    variant="destructive"
+                    variant="destructiveGhost"
                     data-testid="admin-delete-user-trigger"
                   >
+                    <Trash2 aria-hidden="true" className="h-4 w-4" />
                     {t("deleteUserButton")}
                   </Button>
                 </AlertDialogTrigger>

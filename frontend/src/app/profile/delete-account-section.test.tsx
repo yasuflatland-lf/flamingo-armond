@@ -72,6 +72,19 @@ describe("<DeleteAccountSection>", () => {
     expect(screen.getByTestId("delete-account-trigger")).toBeInTheDocument();
   });
 
+  it("renders the trigger as a low-emphasis ghost while the confirm stays filled", async () => {
+    const user = userEvent.setup();
+    renderSection();
+
+    const trigger = screen.getByTestId("delete-account-trigger");
+    expect(trigger).not.toHaveClass("bg-destructive");
+    expect(trigger).toHaveClass("text-destructive");
+
+    await user.click(trigger);
+    const confirm = await screen.findByTestId("delete-account-confirm");
+    expect(confirm).toHaveClass("bg-destructive");
+  });
+
   it("gates the confirm button on typing the exact phrase", async () => {
     const user = userEvent.setup();
     renderSection();

@@ -37,7 +37,7 @@ export function BulkActionBar({ count, busy, onConfirm, onClear }: BulkActionBar
       <AlertDialog>
         <AlertDialogTrigger asChild>
           <Button
-            variant="destructive"
+            variant="destructiveGhost"
             size="sm"
             disabled={busy}
             data-testid="cards-bulk-delete-button"

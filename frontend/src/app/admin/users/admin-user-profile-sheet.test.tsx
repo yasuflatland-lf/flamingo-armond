@@ -591,6 +591,19 @@ describe("AdminUserProfileSheet", () => {
     expect(screen.getByTestId("admin-delete-user-trigger")).toBeInTheDocument();
   });
 
+  it("renders the delete trigger as a low-emphasis ghost while the confirm stays filled", async () => {
+    const user = userEvent.setup();
+    renderSheet({ onDelete: vi.fn() });
+
+    const trigger = screen.getByTestId("admin-delete-user-trigger");
+    expect(trigger).not.toHaveClass("bg-destructive");
+    expect(trigger).toHaveClass("text-destructive");
+
+    await user.click(trigger);
+    const confirm = await screen.findByTestId("admin-delete-user-confirm");
+    expect(confirm).toHaveClass("bg-destructive");
+  });
+
   it("confirms deletion and calls onDelete with the user id", async () => {
     const user = userEvent.setup();
     const onDelete = vi.fn<(id: string) => Promise<void>>().mockResolvedValue(undefined);
