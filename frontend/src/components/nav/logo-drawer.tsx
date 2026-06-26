@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Search } from "lucide-react";
+import { Import, Layers, Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -8,10 +8,16 @@ import { useEffect, useRef, useState } from "react";
 import { LogoutButton } from "@/app/_components/logout-button";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import { MobileMenuTrigger } from "@/components/nav/mobile-menu-trigger";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { dispatchFlamingo, FLAMINGO_EVENT, subscribeFlamingo } from "@/lib/events/flamingo-events";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
-import { resolveHeaderCreateAction } from "./header-create-action";
+import { type DeckAddMenu, resolveHeaderCreateAction } from "./header-create-action";
 import { resolveHeaderSearchAction } from "./header-search-action";
 import { HeaderSignInLink } from "./header-sign-in-link";
 import { ADMIN_NAV_ITEMS, CORE_NAV_ITEMS, FOOTER_NAV_ITEMS } from "./nav-items";
@@ -28,6 +34,8 @@ const NAV_LINK_CLASS =
 
 export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
   const t = useTranslations("Nav");
+  const tCards = useTranslations("Cards");
+  const tCardgroups = useTranslations("Cardgroups");
   const pathname = usePathname();
   const router = useRouter();
   // Hooks must run unconditionally (Rules of Hooks); only `open(...)` is called
@@ -65,6 +73,8 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
   // state directly.
   function handleCreate() {
     if (!createAction) return;
+    // The menu kind is rendered as a dropdown, not a click-to-dispatch button.
+    if (createAction.kind === "deck-add-menu") return;
     switch (createAction.kind) {
       case "cardgroup": {
         if (dispatchFlamingo(FLAMINGO_EVENT.addCardgroup, { cancelable: true })) {
@@ -93,22 +103,34 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
         open({ mode: "new" });
         return;
       }
-      // Adding a card to a master deck has no separate-page fallback: the
-      // in-page MasterCardsClient is always mounted on the edit screen and
-      // claims this event to open its add-card sheet. No router.push fallback.
-      case "master-card": {
-        dispatchFlamingo(FLAMINGO_EVENT.addMasterCard, {
-          cancelable: true,
-          detail: { masterId: createAction.masterId },
-        });
-        return;
-      }
       default: {
         const _exhaustive: never = createAction;
         console.error("[LogoDrawer] unhandled createAction kind", createAction);
         return;
       }
     }
+  }
+
+  function dispatchDeckAddCard(deck: DeckAddMenu["deck"]) {
+    if (deck.kind === "master") {
+      dispatchFlamingo(FLAMINGO_EVENT.addMasterCard, {
+        cancelable: true,
+        detail: { masterId: deck.masterId },
+      });
+      return;
+    }
+    if (
+      dispatchFlamingo(FLAMINGO_EVENT.addCard, {
+        cancelable: true,
+        detail: { cardgroupId: deck.cardgroupId },
+      })
+    ) {
+      router.push(deck.addCardHref);
+    }
+  }
+
+  function deckOwnerId(deck: DeckAddMenu["deck"]) {
+    return deck.kind === "master" ? deck.masterId : deck.cardgroupId;
   }
 
   return (
@@ -141,16 +163,71 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
             )}
           </button>
         )}
-        {createAction && (
-          <button
-            type="button"
-            onClick={handleCreate}
-            aria-label={createAction.label}
-            className="rounded-md p-2 hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <Plus className="h-5 w-5" aria-hidden="true" />
-          </button>
-        )}
+        {createAction &&
+          (createAction.kind === "deck-add-menu" ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={tCards("add")}
+                  data-testid="header-add-menu-trigger"
+                  className="rounded-md p-2 hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <Plus className="h-5 w-5" aria-hidden="true" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  className="gap-2"
+                  data-testid="header-add-card"
+                  onSelect={() => {
+                    if (createAction.kind === "deck-add-menu")
+                      dispatchDeckAddCard(createAction.deck);
+                  }}
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  {tCards("addCard")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="gap-2"
+                  data-testid="header-batch-import"
+                  onSelect={() => {
+                    if (createAction.kind === "deck-add-menu")
+                      dispatchFlamingo(FLAMINGO_EVENT.batchImport, {
+                        detail: { ownerId: deckOwnerId(createAction.deck) },
+                      });
+                  }}
+                >
+                  <Import className="h-4 w-4" aria-hidden="true" />
+                  {tCardgroups("batchImport")}
+                </DropdownMenuItem>
+                {createAction.deck.kind === "cardgroup" && (
+                  <DropdownMenuItem
+                    className="gap-2"
+                    data-testid="header-merge"
+                    onSelect={() => {
+                      if (createAction.kind === "deck-add-menu")
+                        dispatchFlamingo(FLAMINGO_EVENT.merge, {
+                          detail: { ownerId: deckOwnerId(createAction.deck) },
+                        });
+                    }}
+                  >
+                    <Layers className="h-4 w-4" aria-hidden="true" />
+                    {tCardgroups("mergeFromCatalog")}
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <button
+              type="button"
+              onClick={handleCreate}
+              aria-label={createAction.label}
+              className="rounded-md p-2 hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <Plus className="h-5 w-5" aria-hidden="true" />
+            </button>
+          ))}
         <MobileMenuTrigger />
       </div>
 

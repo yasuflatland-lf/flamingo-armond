@@ -215,59 +215,6 @@ describe("<LogoDrawer>", () => {
     window.removeEventListener("flamingo:add-cardgroup", listener);
   });
 
-  it("S-E1: on /cardgroups/:id/edit the '+' (Add new card) dispatches add-card with the decoded id and falls back to an encoded /cards/new href", async () => {
-    const user = userEvent.setup();
-    mockUsePathname.mockReturnValue("/cardgroups/abc-123/edit");
-    const listener = vi.fn();
-    window.addEventListener("flamingo:add-card", listener);
-    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
-
-    await user.click(screen.getByRole("button", { name: /add new card/i }));
-
-    expect(listener).toHaveBeenCalledTimes(1);
-    const event = listener.mock.calls[0]?.[0] as CustomEvent<{ cardgroupId: string }>;
-    expect(event.cancelable).toBe(true);
-    expect(event.detail).toEqual({ cardgroupId: "abc-123" });
-    expect(mockPush).toHaveBeenCalledWith("/cards/new?cardgroup=abc-123");
-
-    window.removeEventListener("flamingo:add-card", listener);
-  });
-
-  it("S-E1b: on /cardgroups/:id/edit the '+' does not navigate when the add-card event is handled", async () => {
-    const user = userEvent.setup();
-    mockUsePathname.mockReturnValue("/cardgroups/abc-123/edit");
-    const listener = vi.fn((event: Event) => event.preventDefault());
-    window.addEventListener("flamingo:add-card", listener);
-    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
-
-    await user.click(screen.getByRole("button", { name: /add new card/i }));
-
-    expect(listener).toHaveBeenCalledTimes(1);
-    expect(mockPush).not.toHaveBeenCalled();
-
-    window.removeEventListener("flamingo:add-card", listener);
-  });
-
-  it("edit-route special-char encoding: percent-encoded id is decoded for the event and re-encoded in the fallback href", async () => {
-    const user = userEvent.setup();
-    // %26 decodes to & — the raw cardgroupId must be "abc&evil" and href must re-encode it.
-    mockUsePathname.mockReturnValue("/cardgroups/abc%26evil/edit");
-    const listener = vi.fn();
-    window.addEventListener("flamingo:add-card", listener);
-    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
-
-    await user.click(screen.getByRole("button", { name: /add new card/i }));
-
-    expect(listener).toHaveBeenCalledTimes(1);
-    const event = listener.mock.calls[0]?.[0] as CustomEvent<{ cardgroupId: string }>;
-    // cardgroupId carries the raw (decoded) value.
-    expect(event.detail).toEqual({ cardgroupId: "abc&evil" });
-    // Fallback href must re-encode the id so the URL is safe.
-    expect(mockPush).toHaveBeenCalledWith("/cards/new?cardgroup=abc%26evil");
-
-    window.removeEventListener("flamingo:add-card", listener);
-  });
-
   it("malformed edit path: '+' button is not rendered when the segment is a malformed percent-escape", () => {
     // safeDecodePathSegment returns null for %ZZ -> resolver returns null -> no '+' rendered.
     mockUsePathname.mockReturnValue("/cardgroups/abc%ZZ/edit");
@@ -330,42 +277,6 @@ describe("<LogoDrawer>", () => {
     expect(mockPush).toHaveBeenCalledTimes(1);
     const target = mockPush.mock.calls[0]?.[0] as string;
     expect(target).toContain("new=true");
-  });
-
-  it("S-ME1: on /admin/masters/:id/edit the '+' (Add new card) dispatches add-master-card with the decoded masterId and does not navigate", async () => {
-    const user = userEvent.setup();
-    mockUsePathname.mockReturnValue("/admin/masters/m-1/edit");
-    const listener = vi.fn();
-    window.addEventListener("flamingo:add-master-card", listener);
-    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={true} />);
-
-    await user.click(screen.getByRole("button", { name: /add new card/i }));
-
-    expect(listener).toHaveBeenCalledTimes(1);
-    const event = listener.mock.calls[0]?.[0] as CustomEvent<{ masterId: string }>;
-    expect(event.cancelable).toBe(true);
-    expect(event.detail).toEqual({ masterId: "m-1" });
-    // Master cards have no separate-page create target, so the '+' never falls
-    // back to a route push the way the cardgroup add-card '+' does.
-    expect(mockPush).not.toHaveBeenCalled();
-
-    window.removeEventListener("flamingo:add-master-card", listener);
-  });
-
-  it("S-ME2: master-edit '+' decodes a percent-encoded masterId for the event detail", async () => {
-    const user = userEvent.setup();
-    mockUsePathname.mockReturnValue("/admin/masters/a%26b/edit");
-    const listener = vi.fn();
-    window.addEventListener("flamingo:add-master-card", listener);
-    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={true} />);
-
-    await user.click(screen.getByRole("button", { name: /add new card/i }));
-
-    expect(listener).toHaveBeenCalledTimes(1);
-    const event = listener.mock.calls[0]?.[0] as CustomEvent<{ masterId: string }>;
-    expect(event.detail).toEqual({ masterId: "a&b" });
-
-    window.removeEventListener("flamingo:add-master-card", listener);
   });
 
   it("S-G1: on an unknown route (/profile) the '+' button is not rendered", () => {
@@ -461,5 +372,46 @@ describe("<LogoDrawer>", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
 
     expect(trigger).toHaveFocus();
+  });
+
+  describe("deck-add-menu '+' on deck-detail routes", () => {
+    it("master edit: '+' opens a menu with Add card + Batch import (no Merge)", async () => {
+      const user = userEvent.setup();
+      mockUsePathname.mockReturnValue("/admin/masters/m-1/edit");
+      renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin />);
+
+      await user.click(screen.getByRole("button", { name: "Add" }));
+      expect(screen.getByRole("menuitem", { name: /add card/i })).toBeInTheDocument();
+      expect(screen.getByRole("menuitem", { name: /batch import/i })).toBeInTheDocument();
+      expect(screen.queryByRole("menuitem", { name: /merge/i })).not.toBeInTheDocument();
+    });
+
+    it("master edit: Batch import item dispatches flamingo:batch-import with ownerId", async () => {
+      const user = userEvent.setup();
+      mockUsePathname.mockReturnValue("/admin/masters/m-1/edit");
+      const onEvent = vi.fn();
+      window.addEventListener("flamingo:batch-import", onEvent as EventListener);
+      renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin />);
+
+      await user.click(screen.getByRole("button", { name: "Add" }));
+      await user.click(screen.getByRole("menuitem", { name: /batch import/i }));
+      window.removeEventListener("flamingo:batch-import", onEvent as EventListener);
+
+      expect(onEvent).toHaveBeenCalledTimes(1);
+      expect((onEvent.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({ ownerId: "m-1" });
+    });
+
+    it("cardgroup edit: menu has Merge, and Add card falls back to /cards/new when uncancelled", async () => {
+      const user = userEvent.setup();
+      mockUsePathname.mockReturnValue("/cardgroups/abc/edit");
+      renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+      await user.click(screen.getByRole("button", { name: "Add" }));
+      expect(screen.getByRole("menuitem", { name: /merge from catalog/i })).toBeInTheDocument();
+      await user.click(screen.getByRole("menuitem", { name: /add card/i }));
+      // No in-page listener is mounted in this unit, so the cancelable add-card
+      // event is uncancelled and the fallback navigation fires.
+      expect(mockPush).toHaveBeenCalledWith("/cards/new?cardgroup=abc");
+    });
   });
 });
