@@ -96,6 +96,7 @@ Use `isUnauthenticatedGraphQLError` for all code paths — including simple redi
 - [A failed `void refetch()` surfaces via the `useQuery` hook's `error` state — no local transport-error machinery needed](../../docs/frontend/rsc-error-handling/apollo-v4-refetch-rejection-and-hook-error.md)
 - [`useMutation` rejects while `useLazyQuery` resolves — `result.error` after a mutation is dead code](../../docs/frontend/rsc-error-handling/mutate-rejects-while-lazyquery-resolves.md)
 - [Fire-and-forget mutation: structured warn for null payload, non-success variant, and rejection](../../docs/frontend/rsc-error-handling/fire-and-forget-mutation-warn-on-null-and-non-success.md)
+- [Refetch after a mutation success: isolate it from the error-classification catch, and match the `refetchQueries` predicate on identity only](../../docs/frontend/rsc-error-handling/refetch-after-mutation-success-isolation.md)
 - [`UNAUTHENTICATED` collapses to generic copy; `FORBIDDEN` preserves the server's specific reason](../../docs/frontend/rsc-error-handling/unauthenticated-vs-forbidden-message-asymmetry.md)
 - [Owner-gated mutation: no FORBIDDEN-specific banner — the route gate makes the usecase owner-check a backstop](../../docs/frontend/rsc-error-handling/owner-gated-mutation-no-forbidden-banner.md)
 - [Drop the backend not-found message at the client boundary — render localized copy, carry no `message` in the outcome](../../docs/frontend/rsc-error-handling/drop-backend-not-found-message-at-client.md)
