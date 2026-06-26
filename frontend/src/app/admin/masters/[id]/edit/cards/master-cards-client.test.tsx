@@ -169,6 +169,26 @@ describe("<MasterCardsClient>", () => {
     expect(await screen.findByTestId("batch-import-payload")).toBeInTheDocument();
   });
 
+  it("opens the batch-import sheet when flamingo:batch-import fires for this master", async () => {
+    renderClient();
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("flamingo:batch-import", { detail: { ownerId: MASTER_ID } }),
+      );
+    });
+    expect(await screen.findByTestId("batch-import-payload")).toBeInTheDocument();
+  });
+
+  it("ignores flamingo:batch-import for a different ownerId", () => {
+    renderClient();
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("flamingo:batch-import", { detail: { ownerId: "other" } }),
+      );
+    });
+    expect(screen.queryByTestId("batch-import-payload")).not.toBeInTheDocument();
+  });
+
   it("renders the localized fetchMore-failure banner under the ja locale", async () => {
     const pageInfoWithNext = {
       __typename: "PageInfo" as const,

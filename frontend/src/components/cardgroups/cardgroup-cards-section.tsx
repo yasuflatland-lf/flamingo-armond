@@ -3,7 +3,7 @@
 import { Import, Layers, Play, Plus } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   type CardConnectionPageInfo,
@@ -13,6 +13,7 @@ import {
 import { MergeFromCatalogSheet } from "@/components/cardgroups/merge-from-catalog-sheet";
 import { Button } from "@/components/ui/button";
 import { SplitButtonMenu } from "@/components/ui/split-button-menu";
+import { FLAMINGO_EVENT, subscribeFlamingo } from "@/lib/events/flamingo-events";
 
 type Props = {
   cardgroupId: string;
@@ -48,6 +49,13 @@ export function CardgroupCardsSection({
   const t = useTranslations("Cardgroups");
   const [mergeOpen, setMergeOpen] = useState(false);
   const onMerge = () => setMergeOpen(true);
+
+  useEffect(() => {
+    return subscribeFlamingo(FLAMINGO_EVENT.merge, (detail) => {
+      if (detail?.ownerId !== cardgroupId) return;
+      setMergeOpen(true);
+    });
+  }, [cardgroupId]);
 
   // The render-prop form lets CardsClient pass its live totalCount (read from
   // Apollo cache, kept in sync with delete/bulk-delete/fetchMore) into the

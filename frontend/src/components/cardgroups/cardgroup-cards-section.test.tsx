@@ -2,7 +2,7 @@
 
 import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -209,6 +209,16 @@ describe("<CardgroupCardsSection>", () => {
     await user.click(screen.getByTestId("page-header-merge"));
     // onMerge is () => setMergeOpen(true), owned by the section, so clicking
     // the slot's button opens the merge sheet.
+    await waitFor(() => {
+      expect(screen.getByTestId("merge-from-catalog-search")).toBeInTheDocument();
+    });
+  });
+
+  it("opens the merge sheet when flamingo:merge fires for this cardgroup", async () => {
+    renderSection("cg-1");
+    act(() => {
+      window.dispatchEvent(new CustomEvent("flamingo:merge", { detail: { ownerId: "cg-1" } }));
+    });
     await waitFor(() => {
       expect(screen.getByTestId("merge-from-catalog-search")).toBeInTheDocument();
     });

@@ -21,7 +21,11 @@ import type {
   CreateCardOutcome,
   UpdateCardOutcome,
 } from "@/lib/cards/card-mutation-outcomes";
-import { type FlamingoEventName, subscribeFlamingo } from "@/lib/events/flamingo-events";
+import {
+  FLAMINGO_EVENT,
+  type FlamingoEventName,
+  subscribeFlamingo,
+} from "@/lib/events/flamingo-events";
 import { useCardSheetForm } from "@/lib/forms/use-sheet-form";
 
 function EditCardSheetContent({
@@ -266,6 +270,15 @@ export function CardListScreen({
       sheet.openAddSheet();
     });
   }, [addCardEvent, sheet.openAddSheet]);
+
+  // The header "+" Add menu opens batch import via a global event (mobile path);
+  // the desktop split-button calls onBatchImport directly. Both end at openBatchImport.
+  useEffect(() => {
+    return subscribeFlamingo(FLAMINGO_EVENT.batchImport, (detail) => {
+      if (detail?.ownerId !== ownerId) return;
+      openBatchImport();
+    });
+  }, [ownerId, openBatchImport]);
 
   async function handleBulkDelete() {
     const ids = Array.from(selection.selectedIds);
