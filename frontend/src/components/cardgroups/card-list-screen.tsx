@@ -1,5 +1,6 @@
 "use client";
 
+import { Check } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { ReactNode, RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -65,17 +66,29 @@ function AddCardSheetContent({
   error,
   validationError,
   onDirty,
+  addedCount,
 }: {
   submit: (values: { front: string; back: string }) => Promise<void>;
   submitting: boolean;
   error: unknown;
   validationError: { field: string; message: string } | null;
   onDirty: () => void;
+  addedCount: number;
 }) {
   const close = useFormSheetClose();
+  const t = useTranslations("Cards");
 
   return (
-    <div onInput={onDirty}>
+    <div onInput={onDirty} className="space-y-3">
+      {addedCount > 0 ? (
+        <p
+          className="flex items-center gap-1.5 text-sm text-success"
+          data-testid="add-card-added-count"
+        >
+          <Check aria-hidden="true" className="h-4 w-4" />
+          {t("addedCount", { count: addedCount })}
+        </p>
+      ) : null}
       <CardForm
         mode="create"
         idPrefix="add-card-"
@@ -386,11 +399,13 @@ export function CardListScreen({
             confirmOnDismiss
           >
             <AddCardSheetContent
+              key={`add-card-${sheet.createNonce}`}
               submit={sheet.handleCreate}
               submitting={creating}
               error={createError}
               validationError={sheet.createValidationError}
               onDirty={sheet.markAddDirty}
+              addedCount={sheet.addedCount}
             />
           </FormSheet>
 
