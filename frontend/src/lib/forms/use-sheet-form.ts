@@ -63,9 +63,11 @@ export type UseCardSheetFormInput = {
  * The add/edit-card sheet state machine shared, byte-for-byte, by the cardgroup
  * and master-deck card screens. Owns the add-sheet open/dirty flags, the editing
  * row id, both field-level validation errors, and the create/update outcome
- * routing (incl. the close-on-success and `unexpected` → inline-`front`-error
- * fallbacks). The caller supplies the mutation runners (from
- * `useCardMutations` / `useMasterCardMutations`) and the localized fallbacks.
+ * routing. A successful CREATE keeps the add sheet open and bumps
+ * `addedCount`/`createNonce` (continuous add); a successful UPDATE closes the
+ * edit sheet. Both map `unexpected` → an inline `front` error. The caller
+ * supplies the mutation runners (from `useCardMutations` /
+ * `useMasterCardMutations`) and the localized fallbacks.
  */
 export function useCardSheetForm({
   createCard,
