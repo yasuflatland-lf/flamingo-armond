@@ -60,12 +60,15 @@ test.describe("admin master card CRUD", () => {
     // Assert the new card row is now visible in the list.
     await expect(page.getByText(cardFront)).toBeVisible({ timeout: 10_000 });
 
-    // Wait for the add-card sheet to finish its close animation and unmount
-    // before opening the edit sheet. The add and edit sheets share the same
-    // [id$="-back-field"] / form-sheet-body submit shape, so while the add sheet
-    // lingers mid-exit the edit-step locators below would match two elements
-    // (strict-mode violation). Gating on the add field's removal makes the edit
-    // step deterministic.
+    // The add-card sheet now STAYS OPEN after a successful create (continuous
+    // add): the fields clear and an "N added" counter shows so the user can keep
+    // adding. Dismiss it explicitly with Escape before the edit step — the add
+    // and edit sheets share the same [id$="-back-field"] / form-sheet-body submit
+    // shape, so a lingering add sheet would make the edit-step locators match two
+    // elements (strict-mode violation). The form is freshly remounted and not
+    // dirty after the save, so Escape closes it without a confirm-dismiss prompt.
+    // Gating on the add field's removal makes the edit step deterministic.
+    await page.keyboard.press("Escape");
     await expect(page.locator("#add-card-back-field")).toHaveCount(0);
 
     // EDIT: click the card's edit-target div to open the edit sheet, change back text, save.
