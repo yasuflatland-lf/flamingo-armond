@@ -224,6 +224,14 @@ describe("<CardgroupCardsSection>", () => {
     });
   });
 
+  it("ignores flamingo:merge for a different ownerId", () => {
+    renderSection("cg-1");
+    act(() => {
+      window.dispatchEvent(new CustomEvent("flamingo:merge", { detail: { ownerId: "other" } }));
+    });
+    expect(screen.queryByTestId("merge-from-catalog-search")).not.toBeInTheDocument();
+  });
+
   it("desktop split-button 'Merge from catalog' item opens the merge sheet", async () => {
     const user = userEvent.setup();
     renderSection("cg-1");
