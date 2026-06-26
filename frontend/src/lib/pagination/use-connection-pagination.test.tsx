@@ -190,6 +190,7 @@ type HookResult = UseConnectionPaginationResult<
 type ProbeProps = {
   searchQuery: string | null;
   initial: { edges: CgEdge[]; pageInfo: CgPageInfo; totalCount: number };
+  skip?: boolean;
 };
 
 type Holder = { current: HookResult | null };
@@ -216,6 +217,7 @@ function HookProbe({ props, holder }: { props: ProbeProps; holder: Holder }) {
     initial: props.initial,
     resolveFetchMoreError,
     logScope: "[test]",
+    skip: props.skip,
   });
 
   holder.current = value;
@@ -227,6 +229,7 @@ type RenderOptions = {
   cache: InMemoryCache;
   searchQuery?: string | null;
   initial?: { edges: CgEdge[]; pageInfo: CgPageInfo; totalCount: number };
+  skip?: boolean;
 };
 
 function renderProbe(opts: RenderOptions) {
@@ -237,7 +240,7 @@ function renderProbe(opts: RenderOptions) {
     createElement(
       MockedProvider,
       { mocks: opts.mocks as never, cache: opts.cache } as never,
-      createElement(HookProbe, { props: { searchQuery, initial }, holder }),
+      createElement(HookProbe, { props: { searchQuery, initial, skip: opts.skip }, holder }),
     );
 
   const utils = render(wrap(opts.searchQuery ?? null));
@@ -282,6 +285,18 @@ describe("useConnectionPagination", () => {
     expect(result.current.pageInfo.hasNextPage).toBe(false);
     expect(result.current.fetchMoreError).toBeNull();
     expect(result.current.queryVariables).toEqual(DEFAULT_VARS);
+  });
+
+  it("skip:true fires no query — returns the initial fallback without a network call", () => {
+    // No cache seed and no mocks: if the query fired, the leak spy would catch
+    // an unmocked MyCardgroupsConnection operation in teardown. skip must gate
+    // it so a mounted-but-inactive consumer (e.g. a closed sheet) pays nothing.
+    const cache = new InMemoryCache();
+    const { result } = renderProbe({ mocks: [], cache, skip: true });
+
+    expect(result.current.edges).toHaveLength(0);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.queryError).toBeUndefined();
   });
 
   it("observer-driven fetchMore advances the cursor and appends the next page", async () => {

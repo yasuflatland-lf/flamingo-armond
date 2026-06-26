@@ -59,6 +59,13 @@ export interface UseConnectionPaginationInput<
   resolveFetchMoreError: (err: unknown) => string;
   /** Log prefix for the structured `fetchMore failed` warn, e.g. `"[cardgroups]"`. */
   logScope: string;
+  /**
+   * When `true`, the underlying `useQuery` is skipped so no network request
+   * fires. Used by consumers that are mounted but inactive — e.g. a sheet that
+   * is always rendered but only queries once opened (`skip: !open`). Defaults
+   * to `false` (always query), so existing callers are unaffected.
+   */
+  skip?: boolean;
 }
 
 export interface UseConnectionPaginationResult<
@@ -112,6 +119,7 @@ export function useConnectionPagination<
     initial,
     resolveFetchMoreError,
     logScope,
+    skip,
   } = input;
 
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
@@ -142,6 +150,7 @@ export function useConnectionPagination<
     variables,
     fetchPolicy: "cache-first",
     notifyOnNetworkStatusChange: true,
+    skip,
   });
 
   const connection = selectConnection(data);
