@@ -666,6 +666,8 @@ type mockCopyMasterToUserUC struct {
 	mergeResult *MergeMasterResult
 	mergeErr    error
 	mergeFn     func(ctx context.Context, masterID string, destCGID domain.CardgroupID, ownerID domain.UserID) (*MergeMasterResult, error)
+	previewOut  PreviewMergeResult
+	previewErr  error
 }
 
 func (m *mockCopyMasterToUserUC) CopyMasterToUser(ctx context.Context, masterID, ownerID string) (*domain.Cardgroup, error) {
@@ -690,6 +692,13 @@ func (m *mockCopyMasterToUserUC) MergeMasterIntoCardgroup(ctx context.Context, m
 		return nil, m.mergeErr
 	}
 	return m.mergeResult, nil
+}
+
+func (m *mockCopyMasterToUserUC) PreviewMergeMasterIntoCardgroup(_ context.Context, _ string, _ domain.CardgroupID, _ domain.UserID) (PreviewMergeResult, error) {
+	if m.previewErr != nil {
+		return PreviewMergeResult{}, m.previewErr
+	}
+	return m.previewOut, nil
 }
 
 func TestImportMaster_Unauthenticated(t *testing.T) {
@@ -1190,5 +1199,59 @@ func TestMasterCatalogUsecase_MergeMaster_Delegate_ContextCancelled_PassesThroug
 	assertCancelled(t, err)
 	if err != context.Canceled {
 		t.Fatalf("expected unwrapped context.Canceled, got %v", err)
+	}
+}
+
+// --- PreviewMergeMaster tests ------------------------------------------------
+
+func TestPreviewMergeMaster_UnauthenticatedCaller(t *testing.T) {
+	t.Parallel()
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.PreviewMergeMaster(context.Background(), "m1", "cg-1")
+	if !errors.Is(err, ucerr.ErrUnauthenticated) {
+		t.Fatalf("expected ErrUnauthenticated, got %v", err)
+	}
+}
+
+func TestPreviewMergeMaster_NotFoundWhenMasterUnpublished(t *testing.T) {
+	// FindPublishedByID returning ErrNotFound (unknown or draft) must yield NotFound:true,
+	// not an error — the non-disclosure gate collapses unknown + draft into one signal.
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{} // default: returns repository.ErrNotFound
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	out, err := uc.PreviewMergeMaster(authedCtx("u1"), "m1", "cg-1")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !out.NotFound {
+		t.Fatalf("expected NotFound=true for unknown/draft master")
+	}
+}
+
+func TestPreviewMergeMaster_HappyPathDelegatesToDeckUC(t *testing.T) {
+	// A published master: PreviewMergeMaster must delegate to the deck usecase and
+	// pass its Added/Updated tallies straight through.
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Starter"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	deck := &mockCopyMasterToUserUC{
+		previewOut: PreviewMergeResult{Added: 3, Updated: 1},
+	}
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+
+	out, err := uc.PreviewMergeMaster(authedCtx("u1"), "master-id", "cg-id")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.NotFound {
+		t.Fatal("expected NotFound=false for a published master")
+	}
+	if out.Added != 3 || out.Updated != 1 {
+		t.Fatalf("expected Added=3 Updated=1, got Added=%d Updated=%d", out.Added, out.Updated)
 	}
 }

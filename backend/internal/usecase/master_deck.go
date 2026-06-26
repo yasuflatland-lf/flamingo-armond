@@ -28,9 +28,11 @@ type masterDeckCardRepo interface {
 
 // masterDeckUserCardRepo is the subset of repository.CardRepository the master
 // deck usecase consumes: bulk-insert the copied cards inside the caller's
-// transaction.
+// transaction, and count how many fronts already exist in the destination
+// cardgroup for the read-only preview path.
 type masterDeckUserCardRepo interface {
 	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (repository.UpsertManyTxResult, error)
+	CountExistingFronts(ctx context.Context, cardgroupID string, fronts []string) (int64, error)
 }
 
 // masterDeckUserCardgroupRepo is the subset of repository.CardgroupRepository the
@@ -80,6 +82,18 @@ type MergeMasterResult struct {
 // same deck re-syncs the destination to the current catalog content.
 type MergeMasterIntoCardgroupUsecase interface {
 	MergeMasterIntoCardgroup(ctx context.Context, masterID string, destCardgroupID domain.CardgroupID, ownerID domain.UserID) (*MergeMasterResult, error)
+}
+
+// PreviewMergeResult is the projected tally of a merge computed without writing.
+type PreviewMergeResult struct {
+	Added   int64
+	Updated int64
+}
+
+// PreviewMergeMasterIntoCardgroupUsecase computes the projected add/update tally
+// of merging a master deck into a destination cardgroup, without mutating.
+type PreviewMergeMasterIntoCardgroupUsecase interface {
+	PreviewMergeMasterIntoCardgroup(ctx context.Context, masterID string, destCardgroupID domain.CardgroupID, ownerID domain.UserID) (PreviewMergeResult, error)
 }
 
 // masterDeckUsecase implements three public entry points: CopyMasterToUser (single
@@ -363,4 +377,41 @@ func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 		return nil, eris.Wrap(err, "usecase: master deck: merge master into cardgroup: find destination")
 	}
 	return &MergeMasterResult{Cardgroup: cg, Added: res.Inserted, Updated: res.Updated}, nil
+}
+
+// PreviewMergeMasterIntoCardgroup mirrors MergeMasterIntoCardgroup as a read-only
+// dry run: it runs the same ownership gate, then counts how many of the master
+// deck's fronts already exist in the destination (case-sensitively, matching the
+// cards (cardgroup_id, front) text unique index the merge upserts against).
+// Added + Updated equals the master deck's card count.
+func (u *masterDeckUsecase) PreviewMergeMasterIntoCardgroup(
+	ctx context.Context, masterID string, destCardgroupID domain.CardgroupID, ownerID domain.UserID,
+) (PreviewMergeResult, error) {
+	if err := authorizeCardgroupOrBadInput(ctx, u.userCG, destCardgroupID, ownerID); err != nil {
+		return PreviewMergeResult{}, err
+	}
+
+	cards, err := u.masterCard.ListByMasterCardgroup(ctx, masterID)
+	if err != nil {
+		if isContextDone(err) {
+			return PreviewMergeResult{}, err
+		}
+		return PreviewMergeResult{}, eris.Wrap(err, "usecase: master deck: preview merge: list master cards")
+	}
+
+	fronts := make([]string, len(cards))
+	for i, c := range cards {
+		fronts[i] = string(c.Front)
+	}
+
+	overlap, err := u.userCard.CountExistingFronts(ctx, string(destCardgroupID), fronts)
+	if err != nil {
+		if isContextDone(err) {
+			return PreviewMergeResult{}, err
+		}
+		return PreviewMergeResult{}, eris.Wrap(err, "usecase: master deck: preview merge: count existing fronts")
+	}
+
+	total := int64(len(cards))
+	return PreviewMergeResult{Added: total - overlap, Updated: overlap}, nil
 }

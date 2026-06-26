@@ -65,6 +65,20 @@ type fakeUserCardRepo struct {
 	// result, when Inserted or Updated is non-zero, overrides the default
 	// Inserted=len(cards) return. Used by merge tests to inject specific tallies.
 	result repository.UpsertManyTxResult
+	// existingFronts backs CountExistingFronts: maps cardgroupID -> front -> present.
+	// Case-sensitive plain map lookup mirrors the text unique index the merge upserts against.
+	existingFronts map[string]map[string]bool
+}
+
+func (f *fakeUserCardRepo) CountExistingFronts(_ context.Context, cardgroupID string, fronts []string) (int64, error) {
+	present := f.existingFronts[cardgroupID]
+	var n int64
+	for _, fr := range fronts {
+		if present[fr] {
+			n++
+		}
+	}
+	return n, nil
 }
 
 func (f *fakeUserCardRepo) UpsertManyTx(_ context.Context, _ *gorm.DB, cards []*domain.Card) (repository.UpsertManyTxResult, error) {
@@ -888,4 +902,36 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_PostTxFindByIDError_Propagat
 	_, err := uc.MergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID(ownerID))
 	require.Error(t, err)
 	assertInternalChain(t, err, "usecase: master deck: merge master into cardgroup: find destination")
+}
+
+// --- PreviewMergeMasterIntoCardgroup tests ------------------------------------
+
+func TestPreviewMergeMasterIntoCardgroup_CountsAddedAndUpdated(t *testing.T) {
+	t.Parallel()
+
+	const masterID = "m1"
+	const destID = "cg-1"
+	card := &fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
+		masterID: {
+			masterCard("mc1", masterID, "Apple", "a", 0),
+			masterCard("mc2", masterID, "Banana", "b", 1),
+			masterCard("mc3", masterID, "Cherry", "c", 2),
+		},
+	}}
+	// Destination already has "Apple" and "Banana" (case-sensitive). "cherry" lower
+	// is NOT present, so all three master fronts: 2 updated, 1 added.
+	user := &fakeUserCardRepo{existingFronts: map[string]map[string]bool{
+		destID: {"Apple": true, "Banana": true},
+	}}
+	userCG := &fakeUserCG{byID: map[string]*domain.Cardgroup{
+		destID: {ID: domain.CardgroupID(destID), OwnerID: "owner-1", Name: domain.CardgroupName("My Deck")},
+	}}
+	cg := &fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Starter")}}
+
+	uc := NewMasterDeckUsecaseWithTx(cg, card, user, userCG, stubTxRunner, newTestLogger())
+
+	got, err := uc.PreviewMergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID("owner-1"))
+	require.NoError(t, err)
+	require.Equal(t, int64(1), got.Added, "Cherry is new")
+	require.Equal(t, int64(2), got.Updated, "Apple + Banana already present")
 }

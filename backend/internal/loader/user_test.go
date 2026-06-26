@@ -224,6 +224,9 @@ func (r *countingCardRepo) UpsertManyTx(_ context.Context, _ *gorm.DB, _ []*doma
 func (r *countingCardRepo) FindByCardgroupAndFront(_ context.Context, _, _ string) (*domain.Card, error) {
 	panic("countingCardRepo.FindByCardgroupAndFront not configured")
 }
+func (r *countingCardRepo) CountExistingFronts(_ context.Context, _ string, _ []string) (int64, error) {
+	panic("countingCardRepo.CountExistingFronts not configured")
+}
 
 func emptyCardRepo() *countingCardRepo {
 	return &countingCardRepo{
