@@ -28,17 +28,18 @@ export function BulkActionBar({ count, busy, onConfirm, onClear }: BulkActionBar
 
   return (
     <div
-      className="mb-3 flex items-center gap-3 rounded-md border border-border bg-muted/50 px-4 py-2"
+      className="mb-3 flex flex-col gap-2 rounded-md border border-border bg-muted/50 px-3 py-3 sm:flex-row sm:items-center sm:gap-3 sm:px-4 sm:py-2"
       data-testid="cards-bulk-action-bar"
     >
-      <span className="flex-1 text-sm font-medium">{t("selectedCount", { count })}</span>
+      <span className="text-sm font-medium sm:flex-1">{t("selectedCount", { count })}</span>
       <AlertDialog>
         <AlertDialogTrigger asChild>
           <Button
-            variant="outline"
+            variant="destructive"
             size="sm"
             disabled={busy}
             data-testid="cards-bulk-delete-button"
+            className="w-full sm:w-auto"
           >
             {tCommon("deleteSelected")}
             <Trash2 aria-hidden="true" className="ml-1.5 h-4 w-4" />
@@ -61,7 +62,7 @@ export function BulkActionBar({ count, busy, onConfirm, onClear }: BulkActionBar
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <Button variant="outline" size="sm" onClick={onClear}>
+      <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={onClear}>
         {tCommon("cancel")}
         <X aria-hidden="true" className="ml-1.5 h-4 w-4" />
       </Button>
