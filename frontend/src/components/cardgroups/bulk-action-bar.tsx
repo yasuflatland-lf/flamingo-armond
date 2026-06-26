@@ -31,7 +31,9 @@ export function BulkActionBar({ count, busy, onConfirm, onClear }: BulkActionBar
       className="mb-3 flex flex-col gap-2 rounded-md border border-border bg-muted/50 px-3 py-3 sm:flex-row sm:items-center sm:gap-3 sm:px-4 sm:py-2"
       data-testid="cards-bulk-action-bar"
     >
-      <span className="text-sm font-medium sm:flex-1">{t("selectedCount", { count })}</span>
+      <span className="text-center text-sm font-medium sm:flex-1 sm:text-left">
+        {t("selectedCount", { count })}
+      </span>
       <AlertDialog>
         <AlertDialogTrigger asChild>
           <Button
