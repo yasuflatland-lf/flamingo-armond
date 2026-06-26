@@ -93,3 +93,23 @@ export const ImportMasterCardgroupMutation = graphql(`
     }
   }
 `);
+
+export const MergeMasterCardgroupMutation = graphql(`
+  mutation MergeMasterCardgroup($input: MergeMasterCardgroupInput!) {
+    mergeMasterCardgroup(input: $input) {
+      __typename
+      ... on MergeMasterCardgroupSuccess {
+        cardgroup {
+          id
+          name
+          updatedAt
+        }
+        addedCount
+        updatedCount
+      }
+      ... on MasterNotFoundError {
+        message
+      }
+    }
+  }
+`);
