@@ -120,3 +120,45 @@ func TestMergeMasterCardgroup_XORInvariantViolation(t *testing.T) {
 		t.Fatalf("expected INTERNAL wire error, got %v", err)
 	}
 }
+
+func TestMergeMasterCardgroupPreview_Success(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubMasterCatalogUC{
+		previewOut: usecase.PreviewMergeOutcome{Added: 7, Updated: 2},
+	}
+	r := &Resolver{MasterCatalogUC: stub}
+
+	got, err := r.Query().MergeMasterCardgroupPreview(context.Background(), model.MergeMasterCardgroupInput{
+		MasterCardgroupID: "master-id",
+		CardgroupID:       "cg-id",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	pv, ok := got.(model.MergeMasterCardgroupPreview)
+	if !ok {
+		t.Fatalf("expected MergeMasterCardgroupPreview, got %T", got)
+	}
+	if pv.AddedCount != 7 || pv.UpdatedCount != 2 {
+		t.Fatalf("expected 7/2, got %d/%d", pv.AddedCount, pv.UpdatedCount)
+	}
+}
+
+func TestMergeMasterCardgroupPreview_NotFound(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubMasterCatalogUC{previewOut: usecase.PreviewMergeOutcome{NotFound: true}}
+	r := &Resolver{MasterCatalogUC: stub}
+
+	got, err := r.Query().MergeMasterCardgroupPreview(context.Background(), model.MergeMasterCardgroupInput{
+		MasterCardgroupID: "missing",
+		CardgroupID:       "cg-id",
+	})
+	if err != nil {
+		t.Fatalf("not-found must be data, not error; got %v", err)
+	}
+	if _, ok := got.(model.MasterNotFoundError); !ok {
+		t.Fatalf("expected MasterNotFoundError, got %T", got)
+	}
+}
