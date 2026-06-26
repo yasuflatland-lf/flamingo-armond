@@ -83,11 +83,24 @@ type MasterCatalogConnectionOutput struct {
 }
 
 // masterDeckUsecaseFacade is the master-deck capability the catalog consumes:
-// snapshot a single published master (import), and seed all default starters for
-// the caller. *masterDeckUsecase satisfies both halves.
+// snapshot a single published master (import), seed all default starters for
+// the caller, and merge a published master into an existing caller-owned
+// cardgroup. *masterDeckUsecase satisfies all three halves.
 type masterDeckUsecaseFacade interface {
 	CopyMasterToUserUsecase
 	SeedForNewUserUsecase
+	MergeMasterIntoCardgroupUsecase
+}
+
+// MergeMasterOutcome is the usecase result of MergeMaster. On the happy path
+// Cardgroup is set and NotFound is false; NotFound=true (Cardgroup nil) when the
+// master id is unknown or not published (draft existence subsumed). Destination
+// cardgroup auth failures are returned as errors, not via this outcome.
+type MergeMasterOutcome struct {
+	Cardgroup *domain.Cardgroup
+	Added     int64
+	Updated   int64
+	NotFound  bool
 }
 
 // MasterCatalogUsecase is the published-catalog surface plus the admin
@@ -100,6 +113,7 @@ type MasterCatalogUsecase interface {
 	// (non-disclosure gate). Anonymous callers receive UNAUTHENTICATED.
 	FindPublishedMaster(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 	ImportMaster(ctx context.Context, masterID string) (ImportMasterOutcome, error)
+	MergeMaster(ctx context.Context, masterID, cardgroupID string) (MergeMasterOutcome, error)
 	SeedDefaultStarters(ctx context.Context) ([]*domain.Cardgroup, error)
 
 	// admin-gated management surface
@@ -646,6 +660,43 @@ func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string
 		return ImportMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: import: copy master to user")
 	}
 	return ImportMasterOutcome{Cardgroup: cg}, nil
+}
+
+// MergeMaster merges the published master cardgroup identified by masterID into
+// the caller-owned cardgroup cardgroupID. The master is gated through
+// FindPublishedByID, collapsing unknown and draft into MergeMasterOutcome{NotFound:true}
+// so draft existence is never disclosed. Destination ownership is enforced by the
+// delegated usecase (BAD_USER_INPUT for unknown, UNAUTHENTICATED for foreign),
+// surfaced as an error rather than via the outcome. Unauthenticated callers
+// receive ucerr.ErrUnauthenticated. The merge is a one-time snapshot.
+func (u *masterCatalogUsecase) MergeMaster(ctx context.Context, masterID, cardgroupID string) (MergeMasterOutcome, error) {
+	caller := auth.UserFrom(ctx)
+	if caller == nil {
+		return MergeMasterOutcome{}, ucerr.ErrUnauthenticated
+	}
+
+	if _, err := u.repo.FindPublishedByID(ctx, masterID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return MergeMasterOutcome{NotFound: true}, nil
+		}
+		if isContextDone(err) {
+			return MergeMasterOutcome{}, err
+		}
+		return MergeMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: merge: verify published")
+	}
+
+	res, err := u.deckUC.MergeMasterIntoCardgroup(ctx, masterID, domain.CardgroupID(cardgroupID), domain.UserID(caller.Sub))
+	if err != nil {
+		if isContextDone(err) {
+			return MergeMasterOutcome{}, err
+		}
+		// Wrap unconditionally, exactly like ImportMaster wraps CopyMasterToUser.
+		// A ucerr.ValidationError / ucerr.ErrUnauthenticated from the delegated
+		// ownership gate is still classified correctly because FromUsecaseError
+		// walks the eris chain (errors.Is / errors.AsType). No pass-through guard.
+		return MergeMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: merge: merge master into cardgroup")
+	}
+	return MergeMasterOutcome{Cardgroup: res.Cardgroup, Added: res.Added, Updated: res.Updated}, nil
 }
 
 // FindPublishedMaster returns a single PUBLISHED master deck by id for any

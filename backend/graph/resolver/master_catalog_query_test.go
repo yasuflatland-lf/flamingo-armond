@@ -94,6 +94,10 @@ func (s *stubMasterCatalogUC) SeedDefaultStarters(_ context.Context) ([]*domain.
 	return s.seedOut, s.seedErr
 }
 
+func (s *stubMasterCatalogUC) MergeMaster(_ context.Context, _, _ string) (usecase.MergeMasterOutcome, error) {
+	return usecase.MergeMasterOutcome{}, nil
+}
+
 // TestQueryResolver_MasterCatalog_Success verifies the resolver maps the model
 // enums to usecase enums on the way in and the usecase output to the wire
 // connection on the way out.
