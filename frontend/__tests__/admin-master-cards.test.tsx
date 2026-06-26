@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 /**
  * Broad page-level test for the MasterManagementClient tree.
  * Exercises the full card-editor integration: SSR-seeded render and

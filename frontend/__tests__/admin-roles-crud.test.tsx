@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 /**
  * Behavioural tests for the AdminRolesClient list shell.
  *

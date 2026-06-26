@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 /**
  * Broad page-level tests for /admin/roles (AdminRolesPage RSC).
  *

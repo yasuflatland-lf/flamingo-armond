@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 
 /**
  * Tests for UndoDeleteProvider and useUndoDelete hook.

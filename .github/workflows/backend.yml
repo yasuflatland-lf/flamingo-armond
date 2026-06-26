@@ -34,6 +34,26 @@ jobs:
         with:
           working_directory: backend
 
+      # mise-action only caches the Go toolchain install, not the build or
+      # module cache. Without this, every run recompiles all dependencies and
+      # the standard library from scratch — the dominant cost behind gqlgen
+      # generate, go-arch-lint, build, and `go test`.
+      - name: Resolve Go cache paths
+        id: go-cache
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Go build and module cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ steps.go-cache.outputs.build }}
+            ${{ steps.go-cache.outputs.mod }}
+          key: ${{ runner.os }}-go-${{ hashFiles('backend/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
       - name: Download modules
         run: go mod download
 

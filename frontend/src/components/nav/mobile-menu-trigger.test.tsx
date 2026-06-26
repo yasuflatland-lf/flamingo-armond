@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Sheet } from "@/components/ui/sheet";
