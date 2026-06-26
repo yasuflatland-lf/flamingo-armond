@@ -53,7 +53,7 @@ jobs:
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
@@ -94,6 +94,19 @@ jobs:
 
       - name: TypeScript typecheck
         run: pnpm --filter frontend typecheck
+
+      # Next.js writes its build cache to `frontend/.next/cache`; restoring it
+      # lets `next build` skip recompiling unchanged routes. Keyed on lockfile +
+      # source hash for correct invalidation, with restore-keys fallbacks for
+      # partial reuse when only sources change. `.next/` is already gitignored.
+      - name: Cache Next.js build cache
+        uses: actions/cache@v6
+        with:
+          path: frontend/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('frontend/src/**/*.{js,jsx,ts,tsx}') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-
+            ${{ runner.os }}-nextjs-
 
       - name: Build
         run: pnpm --filter frontend build
