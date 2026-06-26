@@ -1,11 +1,13 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type AddCardDetail,
   type AddMasterCardDetail,
+  type DeckOwnerDetail,
   dispatchFlamingo,
   FLAMINGO_EVENT,
   type SearchStateDetail,
+  subscribeFlamingo,
 } from "./flamingo-events";
 
 // Listeners registered per-test, torn down in afterEach so a failing assertion
@@ -31,6 +33,8 @@ describe("FLAMINGO_EVENT", () => {
       addCardgroup: "flamingo:add-cardgroup",
       addCard: "flamingo:add-card",
       addMasterCard: "flamingo:add-master-card",
+      batchImport: "flamingo:batch-import",
+      merge: "flamingo:merge",
     });
   });
 });
@@ -92,5 +96,24 @@ describe("dispatchFlamingo", () => {
         cancelable: true,
       }),
     ).toBe(false);
+  });
+});
+
+describe("batch-import + merge events", () => {
+  it("round-trips a DeckOwnerDetail payload for batch-import", () => {
+    const handler = vi.fn();
+    const off = subscribeFlamingo(FLAMINGO_EVENT.batchImport, handler);
+    dispatchFlamingo(FLAMINGO_EVENT.batchImport, { detail: { ownerId: "deck-1" } });
+    off();
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0][0]).toEqual({ ownerId: "deck-1" });
+  });
+
+  it("round-trips a DeckOwnerDetail payload for merge", () => {
+    const handler = vi.fn();
+    const off = subscribeFlamingo(FLAMINGO_EVENT.merge, handler);
+    dispatchFlamingo(FLAMINGO_EVENT.merge, { detail: { ownerId: "deck-2" } });
+    off();
+    expect(handler).toHaveBeenCalledWith({ ownerId: "deck-2" }, expect.any(CustomEvent));
   });
 });

@@ -25,6 +25,11 @@ export interface AddMasterCardDetail {
   masterId: string;
 }
 
+/** `flamingo:batch-import` / `flamingo:merge` payload: header "+" menu -> the in-page sheet. */
+export interface DeckOwnerDetail {
+  ownerId: string;
+}
+
 // Augment WindowEventMap so add/removeEventListener infer the CustomEvent detail
 // type at every call site with zero per-site annotation. Keys must be string
 // literals, so they are spelled out here and mirrored by FLAMINGO_EVENT below.
@@ -35,6 +40,8 @@ declare global {
     "flamingo:add-cardgroup": CustomEvent<undefined>;
     "flamingo:add-card": CustomEvent<AddCardDetail>;
     "flamingo:add-master-card": CustomEvent<AddMasterCardDetail>;
+    "flamingo:batch-import": CustomEvent<DeckOwnerDetail>;
+    "flamingo:merge": CustomEvent<DeckOwnerDetail>;
   }
 }
 
@@ -45,6 +52,8 @@ export const FLAMINGO_EVENT = {
   addCardgroup: "flamingo:add-cardgroup",
   addCard: "flamingo:add-card",
   addMasterCard: "flamingo:add-master-card",
+  batchImport: "flamingo:batch-import",
+  merge: "flamingo:merge",
 } as const;
 
 export type FlamingoEventName = (typeof FLAMINGO_EVENT)[keyof typeof FLAMINGO_EVENT];
