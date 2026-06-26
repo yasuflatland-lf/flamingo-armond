@@ -4,9 +4,7 @@ import { Import, Layers, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
-import { toast } from "sonner";
 import { CardgroupRenameForm } from "@/components/cardgroups/cardgroup-rename-form";
-import { MergeFromCatalogSheet } from "@/components/cardgroups/merge-from-catalog-sheet";
 import { useDeleteCardgroup } from "@/components/cardgroups/use-delete-cardgroup";
 import { DetailPageHeader } from "@/components/nav/detail-page-header";
 import {
@@ -41,12 +39,18 @@ type Props = {
    * compile time rather than silently defaulting to a no-op.
    */
   onBatchImport: () => void;
+  /**
+   * Opens the merge-from-catalog sheet (owned by `CardgroupCardsSection`).
+   * Surfaced here so the overflow menu can host merge on mobile (`md:hidden`),
+   * mirroring how batch import is threaded. On desktop, the split-button menu
+   * in the cards section hosts the merge item instead.
+   */
+  onMerge: () => void;
 };
 
-export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props) {
+export function CardgroupHeader({ cardgroup, totalCount, onBatchImport, onMerge }: Props) {
   const router = useRouter();
   const [renameOpen, setRenameOpen] = useState(false);
-  const [mergeOpen, setMergeOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
@@ -95,12 +99,12 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
           <Import className="h-4 w-4" />
           {t("batchImport")}
         </DropdownMenuItem>
-        {/* Merge from catalog — copies a published master deck into this
-            cardgroup. A constructive action, so it sits before the separator and
-            stays visible on all viewports. */}
+        {/* Mobile-only: merge from catalog lives here after the sheet and
+            open-state were moved to CardgroupCardsSection. Hidden on desktop,
+            where the cards toolbar's split-button menu hosts the merge item. */}
         <DropdownMenuItem
-          onSelect={() => setMergeOpen(true)}
-          className="gap-2"
+          onSelect={onMerge}
+          className="gap-2 md:hidden"
           data-testid="cardgroup-merge-menuitem"
         >
           <Layers className="h-4 w-4" />
@@ -155,16 +159,6 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
           onSubmittingChange={setRenaming}
         />
       </FormSheet>
-
-      <MergeFromCatalogSheet
-        open={mergeOpen}
-        onOpenChange={setMergeOpen}
-        targetCardgroupId={cardgroup.id}
-        targetCardgroupName={cardgroup.name}
-        onMerged={({ addedCount, updatedCount }) => {
-          toast(t("mergeSuccess", { added: addedCount, updated: updatedCount }));
-        }}
-      />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
