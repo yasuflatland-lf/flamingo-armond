@@ -11,8 +11,6 @@ import { CardgroupHeader } from "./cardgroup-header";
 
 const mockPush = vi.fn();
 const mockRefresh = vi.fn();
-const onBatchImport = vi.fn();
-const onMerge = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
@@ -38,12 +36,7 @@ function makeUpdateMock(
 function renderHeader(mocks: MockedResponse[] = [], totalCount = 5) {
   renderWithIntl(
     <MockedProvider mocks={mocks}>
-      <CardgroupHeader
-        cardgroup={CARDGROUP}
-        totalCount={totalCount}
-        onBatchImport={onBatchImport}
-        onMerge={onMerge}
-      />
+      <CardgroupHeader cardgroup={CARDGROUP} totalCount={totalCount} />
     </MockedProvider>,
   );
 }
@@ -69,8 +62,6 @@ describe("<CardgroupHeader>", () => {
   beforeEach(() => {
     mockPush.mockClear();
     mockRefresh.mockClear();
-    onBatchImport.mockClear();
-    onMerge.mockClear();
   });
 
   it("renders the cardgroup name as h1", () => {
@@ -249,39 +240,13 @@ describe("<CardgroupHeader>", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("overflow menu holds rename, batch import, and delete", async () => {
+  it("overflow contains only Rename and Delete (no import/merge)", async () => {
     const user = userEvent.setup();
-    renderHeader([], 12);
+    renderHeader();
     await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
-    expect(screen.getByRole("menuitem", { name: /^rename$/i })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /batch import/i })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /delete cardgroup/i })).toBeInTheDocument();
-  });
-
-  it("overflow menu 'Batch import' item calls onBatchImport", async () => {
-    const user = userEvent.setup();
-    renderHeader([], 12);
-    await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
-    await user.click(screen.getByRole("menuitem", { name: /batch import/i }));
-    expect(onBatchImport).toHaveBeenCalledTimes(1);
-  });
-
-  it("overflow menu hosts a 'Merge from catalog' item that calls onMerge", async () => {
-    const user = userEvent.setup();
-    renderHeader([], 12);
-
-    await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
-
-    const mergeItem = await screen.findByTestId("cardgroup-merge-menuitem-mobile");
-    expect(mergeItem).toBeInTheDocument();
-    expect(mergeItem).toHaveTextContent(/merge from catalog/i);
-
-    await user.click(mergeItem);
-
-    // The merge sheet is now owned by CardgroupCardsSection, not the header.
-    // The header's merge item only calls the onMerge callback.
-    expect(onMerge).toHaveBeenCalledOnce();
-    expect(screen.queryByTestId("merge-from-catalog-search")).not.toBeInTheDocument();
+    expect(screen.getByTestId("cardgroup-rename-menuitem")).toBeInTheDocument();
+    expect(screen.queryByTestId("cardgroup-import-menuitem")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("cardgroup-merge-menuitem-mobile")).not.toBeInTheDocument();
   });
 
   it("delete network rejection shows error banner and dialog stays open", async () => {

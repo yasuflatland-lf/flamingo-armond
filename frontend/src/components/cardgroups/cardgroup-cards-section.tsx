@@ -24,17 +24,13 @@ type Props = {
   /**
    * Optional render prop that lets the parent render a page-level header with
    * the live totalCount sourced from the Apollo cache. When provided, the
-   * render prop receives `{ totalCount, onBatchImport, onMerge }` and is
-   * invoked above the toolbar row. `onBatchImport` and `onMerge` let the
-   * header's overflow menu host those actions on mobile (the standalone mobile
-   * toolbar buttons were removed). When omitted, no page-level header is
+   * render prop receives `{ totalCount }` and is invoked above the toolbar row.
+   * Batch import and Merge are no longer threaded through here — they are
+   * handled on mobile via the global "+" Add menu and on desktop via the
+   * split-button menu in this section. When omitted, no page-level header is
    * rendered.
    */
-  renderPageHeader?: (args: {
-    totalCount: number;
-    onBatchImport: () => void;
-    onMerge: () => void;
-  }) => ReactNode;
+  renderPageHeader?: (args: { totalCount: number }) => ReactNode;
 };
 
 export function CardgroupCardsSection({
@@ -73,12 +69,13 @@ export function CardgroupCardsSection({
     // cluster sits on its own row below it, right-aligned on desktop. On mobile
     // the two also stack — header on top, full-width Start learning hero below.
     <div>
-      {renderPageHeader?.({ totalCount, onBatchImport, onMerge })}
+      {renderPageHeader?.({ totalCount })}
       <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-end md:gap-2">
         {/* Primary CTA: full-width brand hero on mobile (h-11 = 44px tap target),
-            compact on desktop. Add card on mobile is provided by the global "+"
-            header action, so no Add button is duplicated here on small screens.
-            Batch import on mobile lives in the page header's overflow menu. */}
+            compact on desktop. On mobile, Add card, Batch import, and Merge all
+            live in the global "+" header Add menu; the page-header overflow is
+            lifecycle-only (Rename + Delete). No duplicate add/import buttons
+            are rendered here on small screens. */}
         <Button asChild variant="brand" className="h-11 w-full px-8 md:h-9 md:w-auto md:px-4">
           <Link href={learnHref}>
             <Play aria-hidden="true" className="h-4 w-4" />

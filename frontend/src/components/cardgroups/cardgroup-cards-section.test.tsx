@@ -85,11 +85,7 @@ const PAGE_INFO = {
 function renderSection(
   cardgroupId = "cg-1",
   initialTotalCount = 7,
-  renderPageHeader?: (args: {
-    totalCount: number;
-    onBatchImport: () => void;
-    onMerge: () => void;
-  }) => ReactNode,
+  renderPageHeader?: (args: { totalCount: number }) => ReactNode,
   extraMocks: MockedResponse[] = [],
 ) {
   renderWithIntl(
@@ -181,37 +177,6 @@ describe("<CardgroupCardsSection>", () => {
     const stub = screen.getByTestId("cards-client-stub");
     expect(stub).toContainElement(screen.getByRole("link", { name: /start learning/i }));
     expect(stub).toContainElement(screen.getByRole("button", { name: /add card \+/i }));
-  });
-
-  it("forwards onBatchImport into the renderPageHeader slot", async () => {
-    // The mobile batch-import control now lives in the page header's overflow
-    // menu, so the section must thread CardsClient's onBatchImport up to the
-    // renderPageHeader render prop, not just into its own toolbar.
-    const user = userEvent.setup();
-    renderSection("cg-1", 7, ({ onBatchImport: headerImport }) => (
-      <button type="button" data-testid="page-header-import" onClick={headerImport}>
-        header import
-      </button>
-    ));
-    await user.click(screen.getByTestId("page-header-import"));
-    expect(onBatchImport).toHaveBeenCalledTimes(1);
-  });
-
-  it("forwards onMerge into the renderPageHeader slot and it opens the merge sheet", async () => {
-    // The mobile merge control lives in the page header's overflow menu, so the
-    // section must thread its onMerge callback up to the renderPageHeader prop.
-    const user = userEvent.setup();
-    renderSection("cg-1", 7, ({ onMerge: headerMerge }) => (
-      <button type="button" data-testid="page-header-merge" onClick={headerMerge}>
-        header merge
-      </button>
-    ));
-    await user.click(screen.getByTestId("page-header-merge"));
-    // onMerge is () => setMergeOpen(true), owned by the section, so clicking
-    // the slot's button opens the merge sheet.
-    await waitFor(() => {
-      expect(screen.getByTestId("merge-from-catalog-search")).toBeInTheDocument();
-    });
   });
 
   it("opens the merge sheet when flamingo:merge fires for this cardgroup", async () => {
