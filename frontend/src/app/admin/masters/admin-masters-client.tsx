@@ -6,13 +6,12 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { AdminListSearch } from "@/components/admin/admin-list-search";
 import { AdminQueryErrorBanner } from "@/components/admin/admin-query-error-banner";
 import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
-import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
 import { Button } from "@/components/ui/button";
 import { FormSheet } from "@/components/ui/form-sheet";
-import { Input } from "@/components/ui/input";
 import type {
   AdminMastersQuery as AdminMastersQueryResult,
   AdminMastersQueryVariables,
@@ -131,106 +130,91 @@ export function AdminMastersClient() {
   if (initialLoading) return <AdminMastersSkeleton />;
 
   return (
-    <>
-      <SearchTakeoverBar
-        open={search.searchOpen}
-        value={search.input}
-        onChange={search.setInput}
-        onClear={search.clear}
-        onClose={search.closeSearch}
+    <ListingPageShell
+      title={t("title")}
+      count={totalCount}
+      countLabel={tCommon("totalCount", { count: totalCount })}
+      primaryActions={
+        <Button
+          type="button"
+          variant="brand"
+          className="hidden md:inline-flex"
+          data-testid="admin-masters-new-btn"
+          onClick={() => sheet.open({ mode: "new" })}
+        >
+          <span>{t("newMaster")}</span>
+          <Plus aria-hidden="true" />
+        </Button>
+      }
+    >
+      <AdminListSearch
+        search={search}
         placeholder={t("searchPlaceholder")}
         ariaLabel={t("searchLabel")}
       />
-      <ListingPageShell
-        title={t("title")}
-        count={totalCount}
-        countLabel={tCommon("totalCount", { count: totalCount })}
-        primaryActions={
-          <Button
-            type="button"
-            variant="brand"
-            className="hidden md:inline-flex"
-            data-testid="admin-masters-new-btn"
-            onClick={() => sheet.open({ mode: "new" })}
-          >
-            <span>{t("newMaster")}</span>
-            <Plus aria-hidden="true" />
-          </Button>
-        }
+
+      <AdminQueryErrorBanner
+        kind={queryErrorKind}
+        onRetry={refetch}
+        testId="admin-masters-query-error"
+        copy={{
+          viewForbidden: t("viewForbidden"),
+          sessionExpired: t("sessionExpired"),
+          signInAgain: t("pleaseSignInAgain"),
+          retry: tCommon("retry"),
+        }}
+      />
+
+      {!initialLoading && !queryErrorKind && edges.length === 0 && (
+        <p className="text-sm text-muted-foreground" data-testid="admin-masters-empty">
+          {t("noMastersFound")}
+        </p>
+      )}
+
+      {edges.length > 0 && (
+        <ul className="space-y-3" data-testid="admin-masters-list">
+          {edges.map((edge) => (
+            <AdminMasterRow key={edge.cursor} master={edge.node} />
+          ))}
+        </ul>
+      )}
+
+      <ConnectionListFooter
+        sentinelRef={sentinelRef}
+        fetchMoreError={fetchMoreError}
+        onRetry={retryFetchMore}
+        fetchingMore={fetchingMore}
+        hasNextPage={hasNextPage}
+        retryLabel={tCommon("retry")}
+        loadingMoreLabel={t("loadingMore")}
+        testIdPrefix="admin-masters"
+      />
+
+      <FormSheet
+        title={t("createMasterTitle")}
+        open={sheet.state.mode === "new"}
+        onOpenChange={(next) => {
+          if (!next) {
+            resetCreate();
+            setCreateValidationError(null);
+            setCreateDirty(false);
+            sheet.close();
+          }
+        }}
+        submitting={creating}
+        dirty={createDirty}
+        confirmOnDismiss
       >
-        <div className="hidden md:block">
-          <Input
-            type="search"
-            placeholder={t("searchPlaceholder")}
-            value={search.input}
-            onChange={(e) => search.setInput(e.target.value)}
-            aria-label={t("searchLabel")}
+        {sheet.state.mode === "new" ? (
+          <AdminMasterForm
+            mode="create"
+            submitting={creating}
+            submit={handleCreate}
+            validationError={createValidationError}
+            onDirtyChange={setCreateDirty}
           />
-        </div>
-
-        <AdminQueryErrorBanner
-          kind={queryErrorKind}
-          onRetry={refetch}
-          testId="admin-masters-query-error"
-          copy={{
-            viewForbidden: t("viewForbidden"),
-            sessionExpired: t("sessionExpired"),
-            signInAgain: t("pleaseSignInAgain"),
-            retry: tCommon("retry"),
-          }}
-        />
-
-        {!initialLoading && !queryErrorKind && edges.length === 0 && (
-          <p className="text-sm text-muted-foreground" data-testid="admin-masters-empty">
-            {t("noMastersFound")}
-          </p>
-        )}
-
-        {edges.length > 0 && (
-          <ul className="space-y-3" data-testid="admin-masters-list">
-            {edges.map((edge) => (
-              <AdminMasterRow key={edge.cursor} master={edge.node} />
-            ))}
-          </ul>
-        )}
-
-        <ConnectionListFooter
-          sentinelRef={sentinelRef}
-          fetchMoreError={fetchMoreError}
-          onRetry={retryFetchMore}
-          fetchingMore={fetchingMore}
-          hasNextPage={hasNextPage}
-          retryLabel={tCommon("retry")}
-          loadingMoreLabel={t("loadingMore")}
-          testIdPrefix="admin-masters"
-        />
-
-        <FormSheet
-          title={t("createMasterTitle")}
-          open={sheet.state.mode === "new"}
-          onOpenChange={(next) => {
-            if (!next) {
-              resetCreate();
-              setCreateValidationError(null);
-              setCreateDirty(false);
-              sheet.close();
-            }
-          }}
-          submitting={creating}
-          dirty={createDirty}
-          confirmOnDismiss
-        >
-          {sheet.state.mode === "new" ? (
-            <AdminMasterForm
-              mode="create"
-              submitting={creating}
-              submit={handleCreate}
-              validationError={createValidationError}
-              onDirtyChange={setCreateDirty}
-            />
-          ) : null}
-        </FormSheet>
-      </ListingPageShell>
-    </>
+        ) : null}
+      </FormSheet>
+    </ListingPageShell>
   );
 }
