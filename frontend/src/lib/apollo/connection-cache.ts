@@ -1,4 +1,4 @@
-import type { ApolloCache, OperationVariables } from "@apollo/client";
+import type { ApolloCache, OperationVariables, Reference } from "@apollo/client";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
 /**
@@ -188,4 +188,56 @@ export function removeConnectionEdges<
     cache.evict({ id: cache.identify({ __typename: entityTypename, id }) });
   }
   cache.gc();
+}
+
+interface RemoveConnectionEdgeAcrossVariantsInput {
+  /** The connection field key on the root query (e.g. `"adminMasters"`, `"users"`). */
+  connectionField: string;
+  /** The `__typename` of the entity, used to evict the normalized entry. */
+  entityTypename: string;
+  /** The id of the node to remove from every cached variant of the connection. */
+  id: string;
+}
+
+/**
+ * Remove the edge whose `node.id` matches `id` from EVERY cached variant of the
+ * connection field (across all `search`/filter argument keys at once), decrement
+ * each variant's `totalCount` (clamped at 0), then evict + gc the normalized entity.
+ *
+ * This uses `cache.modify` deliberately — unlike `removeConnectionEdges`, which
+ * targets a single `variables` key via `readQuery`/`writeQuery`, `cache.modify`
+ * visits every cached instance of the field, so a delete drops the entity from
+ * all active search-filter variants in one pass. The filter resolves the edge by
+ * the normalized `node.id` (never `edge.cursor`, which is an opaque "v1:..." value
+ * that never equals the raw id) and short-circuits when nothing matched so an
+ * unaffected variant keeps its cached reference. See `.claude/rules/pagination.md`.
+ */
+export function removeConnectionEdgeAcrossVariants(
+  cache: ApolloCache,
+  input: RemoveConnectionEdgeAcrossVariantsInput,
+): void {
+  const { connectionField, entityTypename, id } = input;
+
+  cache.modify({
+    fields: {
+      [connectionField](existing, { readField }) {
+        const conn = existing as {
+          edges?: ReadonlyArray<{ node: Reference }>;
+          totalCount?: number;
+        };
+        if (!conn.edges) return existing;
+        // Filter by the normalized node id, not by `cursor` (the edge cursor is
+        // an opaque "v1:..." value that never equals the raw id).
+        const next = conn.edges.filter((edge) => readField<string>("id", edge.node) !== id);
+        if (next.length === conn.edges.length) return existing;
+        return { ...conn, edges: next, totalCount: Math.max(0, (conn.totalCount ?? 0) - 1) };
+      },
+    },
+  });
+
+  const cacheId = cache.identify({ __typename: entityTypename, id });
+  if (cacheId) {
+    cache.evict({ id: cacheId });
+    cache.gc();
+  }
 }

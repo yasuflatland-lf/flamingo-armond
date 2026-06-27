@@ -1,9 +1,11 @@
 "use client";
 
 import { useApolloClient, useMutation } from "@apollo/client/react";
-import type { Reference } from "@apollo/client/utilities";
 import { useCallback } from "react";
-import type { AdminMastersQuery as AdminMastersQueryResult } from "@/generated/graphql";
+import {
+  appendConnectionEdge,
+  removeConnectionEdgeAcrossVariants,
+} from "@/lib/apollo/connection-cache";
 import { classifyToAuthOutcome } from "@/lib/apollo/errors";
 import type { MasterFormValues } from "./admin-master-form";
 import {
@@ -72,44 +74,30 @@ export function useMasterMutations() {
         // mutate the cache.
         if (data?.adminCreateMasterCardgroup?.__typename !== "CreateMasterCardgroupSuccess") return;
         const created = data.adminCreateMasterCardgroup.master;
-        // cache.modify is forbidden — readQuery + writeQuery handles the cold cache
-        // too. Write the search=null variant only; ADMIN_MASTERS_BASE_VARS keeps the
-        // key in sync with the client useConnectionPagination query. See
-        // .claude/rules/pagination.md.
-        const existing = cache.readQuery<AdminMastersQueryResult>({
-          query: AdminMastersQuery,
+        // Write the search=null variant only; ADMIN_MASTERS_BASE_VARS keeps the key
+        // in sync with the client useConnectionPagination query. The shared helper
+        // handles the warm-prepend / cold-seed branches and adds a node.id dedup
+        // guard. See .claude/rules/pagination.md.
+        appendConnectionEdge(cache, {
+          document: AdminMastersQuery,
           variables: { ...ADMIN_MASTERS_BASE_VARS, search: null },
-        });
-        const createdEdge = {
-          __typename: "MasterCatalogEdge" as const,
-          cursor: created.id,
+          connectionField: "adminMasters",
+          edgeTypename: "MasterCatalogEdge",
           node: created,
-        };
-        cache.writeQuery<AdminMastersQueryResult>({
-          query: AdminMastersQuery,
-          variables: { ...ADMIN_MASTERS_BASE_VARS, search: null },
-          data: existing?.adminMasters
-            ? {
-                adminMasters: {
-                  ...existing.adminMasters,
-                  edges: [createdEdge, ...existing.adminMasters.edges],
-                  totalCount: existing.adminMasters.totalCount + 1,
-                },
-              }
-            : {
-                adminMasters: {
-                  __typename: "MasterCatalogConnection",
-                  edges: [createdEdge],
-                  pageInfo: {
-                    __typename: "PageInfo",
-                    hasNextPage: false,
-                    hasPreviousPage: false,
-                    startCursor: created.id,
-                    endCursor: created.id,
-                  },
-                  totalCount: 1,
-                },
-              },
+          buildColdConnection: () => ({
+            __typename: "MasterCatalogConnection" as const,
+            edges: [
+              { __typename: "MasterCatalogEdge" as const, cursor: created.id, node: created },
+            ],
+            pageInfo: {
+              __typename: "PageInfo" as const,
+              hasNextPage: false,
+              hasPreviousPage: false,
+              startCursor: created.id,
+              endCursor: created.id,
+            },
+            totalCount: 1,
+          }),
         });
       },
     },
@@ -171,27 +159,11 @@ export function useMasterMutations() {
         if (!result.data?.adminDeleteMasterCardgroup) {
           throw new Error("adminDeleteMasterCardgroup returned false");
         }
-        apolloClient.cache.modify({
-          fields: {
-            adminMasters(existing, { readField }) {
-              const conn = existing as {
-                edges?: ReadonlyArray<{ node: Reference }>;
-                totalCount?: number;
-              };
-              if (!conn.edges) return existing;
-              // Filter by the normalized node id, not by `cursor` (the edge cursor is
-              // an opaque "v1:..." value that never equals the raw id).
-              const next = conn.edges.filter((edge) => readField<string>("id", edge.node) !== id);
-              if (next.length === conn.edges.length) return existing;
-              return { ...conn, edges: next, totalCount: Math.max(0, (conn.totalCount ?? 0) - 1) };
-            },
-          },
+        removeConnectionEdgeAcrossVariants(apolloClient.cache, {
+          connectionField: "adminMasters",
+          entityTypename: "MasterCardgroup",
+          id,
         });
-        const cacheId = apolloClient.cache.identify({ __typename: "MasterCardgroup", id });
-        if (cacheId) {
-          apolloClient.cache.evict({ id: cacheId });
-          apolloClient.cache.gc();
-        }
         return { status: "success" };
       } catch (err) {
         return classifyToAuthOutcome<AuthKind>(err, "useMasterMutations", "deleteMaster", {
