@@ -28,7 +28,7 @@ import { useConnectionPagination } from "@/lib/pagination/use-connection-paginat
 import { useSeedConnectionCache } from "@/lib/pagination/use-seed-connection-cache";
 import { useUndoDelete } from "@/lib/undo-delete";
 import { CARDGROUPS_DEFAULT_VARS, DeleteCardgroupMutation } from "./queries";
-import { useCreateCardgroup } from "./use-create-cardgroup";
+import { useCreateCardgroupForm } from "./use-create-cardgroup-form";
 
 type Connection = MyCardgroupsConnectionQuery["myCardgroupsConnection"];
 type CardgroupEdge = Connection["edges"][number];
@@ -146,25 +146,31 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   // flamingo:add-cardgroup event, by the desktop "New cardgroup" button, and
   // by the empty-state CTA. The full-page /cardgroups/new route stays for the
   // onboarding (welcome) and returnTo flows.
-  const { create: createCardgroup, loading: creating } = useCreateCardgroup();
+  const {
+    submit: submitCreateCardgroup,
+    loading: creating,
+    validationError: addValidationError,
+    authError: addAuthError,
+    limitError,
+    unexpectedError,
+    reset: resetCreateForm,
+  } = useCreateCardgroupForm();
   const [addOpen, setAddOpen] = useState(false);
   const [addDirty, setAddDirty] = useState(false);
-  const [addValidationError, setAddValidationError] = useState<{
-    field: string;
-    message: string;
-  } | null>(null);
-  const [addAuthError, setAddAuthError] = useState<"unauthenticated" | "forbidden" | null>(null);
-  const [addUnexpectedError, setAddUnexpectedError] = useState<string | null>(null);
-  const [addLimitError, setAddLimitError] = useState<string | null>(null);
+
+  // Translate the hook's structured error state to display copy. The drawer is
+  // modal, so surface a banner for both an unparseable payload ("unexpected")
+  // and a transport failure ("rejected") rather than failing silently.
+  const addLimitError = limitError
+    ? t("limitReached", { limit: limitError.limit, current: limitError.current })
+    : null;
+  const addUnexpectedError = unexpectedError ? tCommon("somethingWentWrong") : null;
 
   const openAddSheet = useCallback(() => {
-    setAddValidationError(null);
-    setAddAuthError(null);
-    setAddUnexpectedError(null);
-    setAddLimitError(null);
+    resetCreateForm();
     setAddDirty(false);
     setAddOpen(true);
-  }, []);
+  }, [resetCreateForm]);
 
   useEffect(() => {
     // Cancel any default navigation to /cardgroups/new and open the drawer in
@@ -176,35 +182,13 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   }, [openAddSheet]);
 
   async function handleCreateCardgroup(values: { name: string }) {
-    setAddValidationError(null);
-    setAddAuthError(null);
-    setAddUnexpectedError(null);
-    setAddLimitError(null);
+    const outcome = await submitCreateCardgroup(values);
 
-    const outcome = await createCardgroup(values.name);
-
-    switch (outcome.status) {
-      case "validation":
-        setAddValidationError({ field: outcome.field, message: outcome.message });
-        return;
-      case "auth":
-        setAddAuthError(outcome.kind);
-        return;
-      case "limit":
-        setAddLimitError(t("limitReached", { limit: outcome.limit, current: outcome.current }));
-        return;
-      case "unexpected":
-      case "rejected":
-        // The drawer is modal, so surface a banner for both an unparseable
-        // payload and a transport failure rather than failing silently.
-        setAddUnexpectedError(tCommon("somethingWentWrong"));
-        return;
-      case "success":
-        // The connection cache is updated inside useCreateCardgroup, so the new
-        // row appears in the list without a refetch. Just close the drawer.
-        setAddDirty(false);
-        setAddOpen(false);
-        return;
+    if (outcome.status === "success") {
+      // The connection cache is updated inside useCreateCardgroup, so the new
+      // row appears in the list without a refetch. Just close the drawer.
+      setAddDirty(false);
+      setAddOpen(false);
     }
   }
 
@@ -414,10 +398,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
             setAddOpen(nextOpen);
             if (!nextOpen) {
               setAddDirty(false);
-              setAddValidationError(null);
-              setAddAuthError(null);
-              setAddUnexpectedError(null);
-              setAddLimitError(null);
+              resetCreateForm();
             }
           }}
           submitting={creating}
