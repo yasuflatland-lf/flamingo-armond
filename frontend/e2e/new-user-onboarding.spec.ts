@@ -66,12 +66,13 @@ test.describe
       expect(newCardgroupId).toMatch(UUID_RE);
       await expect(page.getByRole("heading", { name: cardgroupName })).toBeVisible();
 
-      // 3. Click the nav-header "+" button. On /cardgroups/<id>/edit its
-      // aria-label is "Add new card"; clicking it opens the "Add card"
-      // FormSheet inline — no navigation to /cards/new.
-      const addCardButton = page.getByRole("button", { name: "Add new card" });
-      await expect(addCardButton).toBeVisible();
-      await addCardButton.click();
+      // 3. The nav-header "+" on /cardgroups/<id>/edit opens an Add menu
+      // (Add card / Batch import / Merge). Open it via its locale-independent
+      // testid, then choose "Add card", which dispatches the cancelable
+      // flamingo:add-card event the in-page sheet claims — opening the "Add
+      // card" FormSheet inline with no navigation to /cards/new.
+      await page.getByTestId("header-add-menu-trigger").click();
+      await page.getByTestId("header-add-card").click();
 
       // 4. FormSheet opens inline. On mobile (390x844, below md=768) FormSheet
       // renders as a vaul Drawer. Verify the form is interactive via the Front

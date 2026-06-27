@@ -72,6 +72,7 @@ export function CardForm({
             label={t("frontLabel")}
             idOverride={`${idPrefix}${field.name}-field`}
             className="space-y-1"
+            autoFocus={mode === "create"}
             backendError={
               validationError?.field === "front" ? validationError.message : fieldErrors.front
             }

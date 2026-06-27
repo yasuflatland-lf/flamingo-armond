@@ -1,9 +1,12 @@
 // @vitest-environment happy-dom
 import { MockedProvider } from "@apollo/client/testing/react";
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AdminMasterCardsConnectionDocument } from "@/generated/graphql";
+import {
+  AdminCreateMasterCardDocument,
+  AdminMasterCardsConnectionDocument,
+} from "@/generated/graphql";
 import { UndoDeleteProvider } from "@/lib/undo-delete";
 import { renderWithIntl } from "@/test/render-with-intl";
 import jaMessages from "../../../../../../../messages/ja.json";
@@ -102,9 +105,9 @@ type SectionHeader =
       onBatchImport: () => void;
     }) => React.ReactNode);
 
-function renderClient(sectionHeader?: SectionHeader) {
+function renderClient(sectionHeader?: SectionHeader, extraMocks: object[] = []) {
   renderWithIntl(
-    <MockedProvider mocks={[seed]}>
+    <MockedProvider mocks={[seed, ...extraMocks] as never}>
       <UndoDeleteProvider>
         <MasterCardsClient
           masterId={MASTER_ID}
@@ -167,6 +170,68 @@ describe("<MasterCardsClient>", () => {
     await userEvent.click(screen.getByTestId("hdr-import"));
     // The shared batch-import wizard renders its paste textarea inside the sheet.
     expect(await screen.findByTestId("batch-import-payload")).toBeInTheDocument();
+  });
+
+  it("opens the batch-import sheet when flamingo:batch-import fires for this master", async () => {
+    renderClient();
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("flamingo:batch-import", { detail: { ownerId: MASTER_ID } }),
+      );
+    });
+    expect(await screen.findByTestId("batch-import-payload")).toBeInTheDocument();
+  });
+
+  it("ignores flamingo:batch-import for a different ownerId", () => {
+    renderClient();
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("flamingo:batch-import", { detail: { ownerId: "other" } }),
+      );
+    });
+    expect(screen.queryByTestId("batch-import-payload")).not.toBeInTheDocument();
+  });
+
+  it("keeps the add sheet open after creating, shows the added count, clears the fields", async () => {
+    const createMock = {
+      request: {
+        query: AdminCreateMasterCardDocument,
+        variables: { input: { masterCardgroupId: MASTER_ID, front: "hello", back: "world" } },
+      },
+      result: {
+        data: {
+          adminCreateMasterCard: {
+            __typename: "CreateMasterCardSuccess" as const,
+            masterCard: {
+              __typename: "MasterCard" as const,
+              id: "new-1",
+              masterCardgroupId: MASTER_ID,
+              front: "hello",
+              back: "world",
+              position: 0,
+              createdAt: "2026-01-01T00:00:00Z",
+              updatedAt: "2026-01-01T00:00:00Z",
+            },
+          },
+        },
+      },
+    };
+
+    const user = userEvent.setup();
+    renderClient(undefined, [createMock]);
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("flamingo:add-master-card", { detail: { masterId: MASTER_ID } }),
+      );
+    });
+    const sheet = await screen.findByRole("dialog");
+    await user.type(within(sheet).getByLabelText(/front/i), "hello");
+    await user.type(within(sheet).getByLabelText(/back/i), "world");
+    await user.click(within(sheet).getByRole("button", { name: /^add$/i }));
+
+    // Sheet stays open; counter shows 1; fields cleared for the next card.
+    expect(await within(sheet).findByText(/1 added/i)).toBeInTheDocument();
+    expect(within(sheet).getByLabelText(/front/i)).toHaveValue("");
   });
 
   it("renders the localized fetchMore-failure banner under the ja locale", async () => {

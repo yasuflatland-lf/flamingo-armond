@@ -19,11 +19,9 @@ type MasterCardsSectionProps = {
   initialTotalCount: number;
   /**
    * Renders the deck-level page header (title / status badge / overflow menu)
-   * with the live `totalCount`. Receives `onBatchImport` so the header's mobile
-   * overflow menu can host batch import (the standalone mobile toolbar button
-   * was removed). Omitted → no page header.
+   * with the live `totalCount`. Omitted → no page header.
    */
-  renderPageHeader?: (args: { totalCount: number; onBatchImport: () => void }) => ReactNode;
+  renderPageHeader?: (args: { totalCount: number }) => ReactNode;
 };
 
 export function MasterCardsSection({
@@ -50,9 +48,9 @@ export function MasterCardsSection({
     onBatchImport: () => void;
   }) => (
     <div>
-      {renderPageHeader?.({ totalCount, onBatchImport })}
-      {/* Mobile (<md): batch import lives in the page header's overflow menu;
-          Add card is the global header "+". */}
+      {renderPageHeader?.({ totalCount })}
+      {/* Mobile (<md): both Add card and Batch import live in the global header
+          "+" Add menu; the page-header overflow is lifecycle-only. */}
       {/* Desktop (md+): Add card + a dropdown that folds in Batch import. */}
       <div className="mb-3 hidden justify-end md:flex">
         <div className="inline-flex">

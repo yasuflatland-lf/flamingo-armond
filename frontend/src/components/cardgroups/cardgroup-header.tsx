@@ -1,6 +1,6 @@
 "use client";
 
-import { Import, Layers, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
@@ -32,23 +32,9 @@ import { getBackendErrorBanner } from "@/lib/apollo/errors";
 type Props = {
   cardgroup: { id: string; name: string };
   totalCount: number;
-  /**
-   * Opens the batch-import sheet (owned by `CardsClient`). Surfaced here so the
-   * overflow menu can host batch import on mobile, where the standalone toolbar
-   * button was removed. Required so the wire from `CardsClient` is enforced at
-   * compile time rather than silently defaulting to a no-op.
-   */
-  onBatchImport: () => void;
-  /**
-   * Opens the merge-from-catalog sheet (owned by `CardgroupCardsSection`).
-   * Surfaced here so the overflow menu can host merge on mobile (`md:hidden`),
-   * mirroring how batch import is threaded. On desktop, the split-button menu
-   * in the cards section hosts the merge item instead.
-   */
-  onMerge: () => void;
 };
 
-export function CardgroupHeader({ cardgroup, totalCount, onBatchImport, onMerge }: Props) {
+export function CardgroupHeader({ cardgroup, totalCount }: Props) {
   const router = useRouter();
   const [renameOpen, setRenameOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -88,31 +74,11 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport, onMerge 
           <Pencil className="h-4 w-4" />
           {t("rename")}
         </DropdownMenuItem>
-        {/* Mobile-only: batch import lives here after the standalone toolbar
-            button was removed. Hidden on desktop, where the cards toolbar's
-            split-button menu still hosts batch import. */}
-        <DropdownMenuItem
-          onSelect={onBatchImport}
-          className="gap-2 md:hidden"
-          data-testid="cardgroup-import-menuitem"
-        >
-          <Import className="h-4 w-4" />
-          {t("batchImport")}
-        </DropdownMenuItem>
-        {/* Mobile-only: merge from catalog lives here after the sheet and
-            open-state were moved to CardgroupCardsSection. Hidden on desktop,
-            where the cards toolbar's split-button menu hosts the merge item. */}
-        <DropdownMenuItem
-          onSelect={onMerge}
-          className="gap-2 md:hidden"
-          data-testid="cardgroup-merge-menuitem-mobile"
-        >
-          <Layers className="h-4 w-4" />
-          {t("mergeFromCatalog")}
-        </DropdownMenuItem>
-        {/* Separator divides the constructive actions from Delete. On desktop
-            only Rename is visible above it; the import and merge items are
-            md:hidden (mobile-only add surfaces). */}
+        {/* Separator divides the constructive Rename action from the
+            destructive Delete action. Both Batch import and Merge are now
+            hosted in the global "+" Add menu on mobile and in the desktop
+            split-button menu in the cards section, so the overflow is
+            lifecycle-only: Rename + Delete. */}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={() => setDeleteDialogOpen(true)}

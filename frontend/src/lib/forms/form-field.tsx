@@ -36,6 +36,8 @@ type CommonProps = {
   placeholder?: string;
   /** Extra classes for the field wrapper. Default spacing is `space-y-2`. */
   className?: string;
+  /** Autofocus this control on mount (e.g. the create-form's first field). */
+  autoFocus?: boolean;
 };
 
 type FormFieldProps =
@@ -54,7 +56,7 @@ type FormFieldProps =
  * renders an inline checkbox + label with no `FieldError` row.
  */
 export function FormField(props: FormFieldProps) {
-  const { label, backendError, idOverride, disabled, placeholder, className } = props;
+  const { label, backendError, idOverride, disabled, placeholder, className, autoFocus } = props;
   const id = idOverride ?? props.field.name;
 
   if (props.kind === "checkbox") {
@@ -87,6 +89,7 @@ export function FormField(props: FormFieldProps) {
         onChange={(e) => field.handleChange(e.target.value)}
         disabled={disabled}
         placeholder={placeholder}
+        autoFocus={autoFocus}
       />
     ) : (
       <Input
@@ -98,6 +101,7 @@ export function FormField(props: FormFieldProps) {
         onChange={(e) => field.handleChange(e.target.value)}
         disabled={disabled}
         placeholder={placeholder}
+        autoFocus={autoFocus}
       />
     );
 

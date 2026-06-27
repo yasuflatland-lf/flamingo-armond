@@ -188,7 +188,8 @@
     "addCardSheetTitle": "Add card",
     "selectedCount": "{count} selected",
     "deleteCardsTitle": "Delete {count} cards?",
-    "deleteConfirmCount": "Delete {count}"
+    "deleteConfirmCount": "Delete {count}",
+    "addedCount": "{count} added"
   },
   "BatchImport": {
     "cardsToImport": "Cards to import",
