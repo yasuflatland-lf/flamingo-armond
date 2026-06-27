@@ -13,5 +13,7 @@ type cardReader interface {
 }
 
 func cardBatchFunc(repo cardReader) dataloader.BatchFunc[string, *domain.Card] {
-	return newMapKeyedBatch(repo.FindByIDs, "card")
+	return newMapKeyedBatch(func(ctx context.Context, keys []string) (map[string]*domain.Card, error) {
+		return repo.FindByIDs(ctx, keys)
+	}, "card")
 }

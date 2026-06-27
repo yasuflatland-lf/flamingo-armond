@@ -19,6 +19,13 @@ import (
 // absent from the map. label is the caller-supplied aggregate name used in the
 // not-found wrap — the shared helper holds no fixed prefix so the error context
 // stays caller-owned (see .claude/rules/error-wrapping.md).
+//
+// Callers MUST pass a closure that invokes their repository lazily
+// (func(ctx, keys) { return repo.FindByIDs(ctx, keys) }), never a bound
+// repo.FindByIDs method value. New constructs every batch function eagerly —
+// including with nil repositories in tests that do not exercise a given loader —
+// and a bound method value on a nil interface panics at construction time
+// (see .claude/rules/go-library-gotchas.md "Method dispatch on a nil pointer panics").
 func newMapKeyedBatch[V any](load func(context.Context, []string) (map[string]*V, error), label string) dataloader.BatchFunc[string, *V] {
 	return func(ctx context.Context, keys []string) []*dataloader.Result[*V] {
 		out := make([]*dataloader.Result[*V], len(keys))
