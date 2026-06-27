@@ -1,6 +1,7 @@
 import type { ApolloCache } from "@apollo/client";
 import type { MyCardgroupsConnectionQuery } from "@/generated/graphql";
 import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
+import { appendConnectionEdge } from "@/lib/apollo/connection-cache";
 import { CARDGROUPS_DEFAULT_VARS } from "./queries";
 
 /**
@@ -17,54 +18,37 @@ type MyCardgroupNode =
  * cached `myCardgroupsConnection` and bump `totalCount`, so the new deck appears
  * on `/cardgroups` without a refetch.
  *
- * Shared by `useCreateCardgroup` (the `/cardgroups` feature) and `useImportMaster`
- * (the `/catalog` feature, which seeds the cardgroups connection across features).
- * Both call this from inside their `__typename`-narrowed `update` callback after
- * pulling the complete node off the success payload.
+ * Shared by `useCreateCardgroup` (the `/cardgroups` feature), `useImportMaster`
+ * (the `/catalog` feature, which seeds the cardgroups connection across features),
+ * and `useSeedDefaultStarters` (onboarding). Each calls this from inside its
+ * `__typename`-narrowed `update` callback after pulling the complete node off the
+ * success payload.
  *
- * `cache.modify` is forbidden — `readQuery` + `writeQuery` handles the cold cache
- * (a user landing on `/cardgroups` or `/catalog` without an SSR seed) correctly.
+ * Delegates the warm-prepend / cold-build / dedup mechanics to the generic
+ * `appendConnectionEdge`. The cold-cache build is supplied so a user landing on
+ * `/cardgroups` or `/catalog` without an SSR seed still sees the new edge.
  * `CARDGROUPS_DEFAULT_VARS` keeps the cache key in sync with the `/cardgroups` SSR
  * seed and client `useQuery`; any mismatch makes this write invisible. See
  * .claude/rules/pagination.md.
- *
- * No `cache.writeFragment` is needed: the appended node already carries its full
- * `{ __typename, id, name, updatedAt }` projection, so the `writeQuery` normalizes
- * it into the standalone `Cardgroup:<id>` entry on its own.
  */
 export function prependMyCardgroupEdge(cache: ApolloCache, node: MyCardgroupNode): void {
-  const existingConnection = cache.readQuery({
-    query: MyCardgroupsConnectionDocument,
+  appendConnectionEdge(cache, {
+    document: MyCardgroupsConnectionDocument,
     variables: CARDGROUPS_DEFAULT_VARS,
-  });
-  const newEdge = {
-    __typename: "CardgroupEdge" as const,
-    cursor: node.id,
+    connectionField: "myCardgroupsConnection",
+    edgeTypename: "CardgroupEdge",
     node,
-  };
-  const nextConnection = existingConnection
-    ? {
-        ...existingConnection.myCardgroupsConnection,
-        edges: [newEdge, ...existingConnection.myCardgroupsConnection.edges],
-        totalCount: existingConnection.myCardgroupsConnection.totalCount + 1,
-      }
-    : {
-        // Cold cache: build a minimal connection so the listing page can render
-        // the new edge immediately when the user lands there.
-        __typename: "CardgroupConnection" as const,
-        edges: [newEdge],
-        pageInfo: {
-          __typename: "PageInfo" as const,
-          hasNextPage: false,
-          hasPreviousPage: false,
-          startCursor: node.id,
-          endCursor: node.id,
-        },
-        totalCount: 1,
-      };
-  cache.writeQuery({
-    query: MyCardgroupsConnectionDocument,
-    variables: CARDGROUPS_DEFAULT_VARS,
-    data: { myCardgroupsConnection: nextConnection },
+    buildColdConnection: () => ({
+      __typename: "CardgroupConnection" as const,
+      edges: [{ __typename: "CardgroupEdge" as const, cursor: node.id, node }],
+      pageInfo: {
+        __typename: "PageInfo" as const,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        startCursor: node.id,
+        endCursor: node.id,
+      },
+      totalCount: 1,
+    }),
   });
 }
