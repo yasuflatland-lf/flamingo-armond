@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type CSSProperties, useCallback, useState } from "react";
@@ -9,6 +8,7 @@ import type { CatalogCardFieldsFragment } from "@/app/catalog/queries";
 import { useImportMaster } from "@/app/catalog/use-import-master";
 import { OnboardingShell } from "@/components/onboarding/onboarding-shell";
 import { BrandSplash } from "@/components/pwa/brand-splash";
+import { AuthErrorBanner } from "@/components/ui/auth-error-banner";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import type { FragmentType } from "@/generated/fragment-masking";
@@ -127,12 +127,11 @@ export function OnboardingStartClient({ cardgroups }: OnboardingStartClientProps
         {hasBanner && (
           <div className="mt-6 space-y-6 text-left">
             {importAuthError ? (
-              <ErrorBanner data-testid="onboarding-import-auth-error">
-                <span>{t("sessionExpired")}</span>
-                <Link href="/login" className="underline">
-                  {t("signInAgain")}
-                </Link>
-              </ErrorBanner>
+              <AuthErrorBanner
+                testId="onboarding-import-auth-error"
+                message={t("sessionExpired")}
+                signInLabel={t("signInAgain")}
+              />
             ) : null}
             {importError ? (
               <ErrorBanner data-testid="onboarding-import-error">{importError}</ErrorBanner>

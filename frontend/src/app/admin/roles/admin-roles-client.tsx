@@ -1,12 +1,12 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
 import { RoleForm } from "@/components/admin/role-form";
 import { RoleListItem } from "@/components/admin/role-list-item";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
+import { AuthErrorBanner } from "@/components/ui/auth-error-banner";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
@@ -38,25 +38,6 @@ type Props = { initialRoles: RoleItem[] };
 
 type ValidationError = { field: string; message: string };
 
-function AuthBanner({
-  testId,
-  authError,
-}: {
-  testId: string;
-  authError: "unauthenticated" | "forbidden";
-}) {
-  const t = useTranslations("Admin");
-  return (
-    <ErrorBanner data-testid={testId}>
-      <span>{authError === "unauthenticated" ? t("sessionExpired") : t("forbidden")}</span>{" "}
-      <Link href="/login" className="underline">
-        {t("signInAgain")}
-      </Link>
-      .
-    </ErrorBanner>
-  );
-}
-
 function CreateRoleSheetBody({
   submitting,
   validationError,
@@ -79,7 +60,13 @@ function CreateRoleSheetBody({
 
   return (
     <div onInput={onDirty}>
-      {authError ? <AuthBanner testId="admin-role-new-auth-error" authError={authError} /> : null}
+      {authError ? (
+        <AuthErrorBanner
+          testId="admin-role-new-auth-error"
+          message={authError === "unauthenticated" ? t("sessionExpired") : t("forbidden")}
+          signInLabel={t("signInAgain")}
+        />
+      ) : null}
       {validationError ? (
         <ErrorBanner data-testid="admin-role-new-validation-error">
           {validationError.message}
@@ -156,7 +143,13 @@ function EditRoleSheetBody({
           {t("systemRoleBanner")}
         </div>
       ) : null}
-      {authError ? <AuthBanner testId="admin-role-edit-auth-error" authError={authError} /> : null}
+      {authError ? (
+        <AuthErrorBanner
+          testId="admin-role-edit-auth-error"
+          message={authError === "unauthenticated" ? t("sessionExpired") : t("forbidden")}
+          signInLabel={t("signInAgain")}
+        />
+      ) : null}
       {systemRoleError ? (
         <ErrorBanner data-testid="admin-role-edit-system-role-error">{systemRoleError}</ErrorBanner>
       ) : null}

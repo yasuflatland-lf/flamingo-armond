@@ -3,7 +3,6 @@
 import { NetworkStatus } from "@apollo/client";
 import { useApolloClient, useMutation } from "@apollo/client/react";
 import { Plus } from "lucide-react";
-import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
@@ -12,6 +11,7 @@ import { CardgroupsToolbar } from "@/components/cardgroups/cardgroups-toolbar";
 import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
+import { AuthErrorBanner } from "@/components/ui/auth-error-banner";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
@@ -84,13 +84,11 @@ function CreateCardgroupSheetContent({
   return (
     <div onInput={onDirty} className="space-y-4">
       {authError ? (
-        <ErrorBanner data-testid="cardgroup-create-auth-error">
-          <span>{authError === "unauthenticated" ? t("sessionExpired") : t("noPermission")}</span>
-          <Link href="/login" className="underline">
-            {t("signInAgain")}
-          </Link>
-          .
-        </ErrorBanner>
+        <AuthErrorBanner
+          testId="cardgroup-create-auth-error"
+          message={authError === "unauthenticated" ? t("sessionExpired") : t("noPermission")}
+          signInLabel={t("signInAgain")}
+        />
       ) : null}
 
       {limitError ? (
