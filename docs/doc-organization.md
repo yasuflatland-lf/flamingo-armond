@@ -98,7 +98,7 @@ When deleting a stub from `docs/<area>/`, run the cross-reference grep **inside*
 
 ### Anchor regexes drop variant filename forms
 
-A regex like `global-header\.tsx` matches the production file but not `global-header.test.tsx` — the `.test.` infix breaks the anchor. When sweeping for stale references to a deleted source file, use a **substring** grep on the filename stem (`grep -rn "global-header"`), not a `\.tsx`-anchored regex. The same gotcha applies to `*.stories.tsx`, `*.spec.ts`, and any file family that decorates the stem with an infix before the extension. A code-drift sweep originally anchored on the production extension and missed the stale reference in the matching test file; the substring form caught it on a follow-up pass.
+A regex like `global-header\.tsx` matches the production file but not `global-header.test.tsx` — the `.test.` infix breaks the anchor. When sweeping for stale references to a deleted source file, use a **substring** grep on the filename stem (`grep -rn "global-header"`), not a `\.tsx`-anchored regex. The same gotcha applies to `*.spec.ts` and any file family that decorates the stem with an infix before the extension. A code-drift sweep originally anchored on the production extension and missed the stale reference in the matching test file; the substring form caught it on a follow-up pass.
 
 ## Prose enumerations override plan headings during execution
 
