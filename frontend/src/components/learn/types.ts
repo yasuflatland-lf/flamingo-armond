@@ -12,6 +12,28 @@
 export type SwipeDirection = "left" | "right" | "down";
 
 /**
+ * Color/label identity shared by a rating across surfaces. The string also
+ * doubles as the next-intl message key under the `Learn` namespace
+ * (`again`/`hard`/`easy`), so a single token drives both the localized label
+ * and the per-surface color class map.
+ */
+export type RatingTone = "again" | "hard" | "easy";
+
+/**
+ * Single source of truth for the swipe-rating semantics. Both `LearnActionBar`
+ * and `SwipeDirectionOverlay` read the label key and color tone from here so a
+ * rating's wording or color identity is defined once. Each surface keeps its
+ * own literal Tailwind class strings keyed by `tone` (a 56px circular button's
+ * classes differ from the overlay chip's) — only the label + color *identity*
+ * is shared, not the literal classes.
+ */
+export const RATING_META: Record<SwipeDirection, { labelKey: RatingTone; tone: RatingTone }> = {
+  left: { labelKey: "again", tone: "again" },
+  down: { labelKey: "hard", tone: "hard" },
+  right: { labelKey: "easy", tone: "easy" },
+};
+
+/**
  * Re-export of the generated GraphQL `LearnDisplayMode` enum so the schema is
  * the single source of truth and the component layer can never drift from it.
  */
