@@ -167,7 +167,13 @@ type HookProps = {
   initialEdges: ReturnType<typeof connection>["edges"];
   initialPageInfo: ReturnType<typeof connection>["pageInfo"];
   initialTotalCount: number;
+  fetchMoreErrorMessage: string;
 };
+
+// Sentinel for the localized fetchMore fallback. The hook now requires the
+// caller to pass this in; the rendered-copy assertion lives in the consumer
+// test (cards-client.test.tsx) under the ja locale.
+const FETCH_MORE_MSG = "Could not load more cards. Please try again.";
 
 type HarnessOptions = {
   mocks: ReadonlyArray<unknown>;
@@ -218,6 +224,7 @@ function renderUseCardsConnection(opts: HarnessOptions) {
     initialEdges: seed.edges,
     initialPageInfo: seed.pageInfo,
     initialTotalCount: seed.totalCount,
+    fetchMoreErrorMessage: FETCH_MORE_MSG,
   };
 
   const wrap = (props: HookProps): ReactNode =>
@@ -534,6 +541,7 @@ describe("useCardsConnection", () => {
       initialEdges: page1.edges,
       initialPageInfo: page1.pageInfo,
       initialTotalCount: page1.totalCount,
+      fetchMoreErrorMessage: FETCH_MORE_MSG,
     });
 
     await waitFor(() => {
@@ -643,6 +651,7 @@ describe("useCardsConnection", () => {
       initialEdges: page1.edges,
       initialPageInfo: page1.pageInfo,
       initialTotalCount: page1.totalCount,
+      fetchMoreErrorMessage: FETCH_MORE_MSG,
     });
 
     // During the in-flight window: networkStatus is setVariables (not fetchMore),

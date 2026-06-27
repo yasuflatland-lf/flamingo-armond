@@ -21,6 +21,12 @@ export interface UseCardsConnectionInput {
   initialEdges: CardEdge[];
   initialPageInfo: CardConnectionPageInfo;
   initialTotalCount: number;
+  /**
+   * Localized fallback banner for a fetchMore failure with no backend-mapped
+   * message. The hook is not a component and cannot call `useTranslations`, so
+   * the client passes the localized string in (mirrors `useMasterCardsConnection`).
+   */
+  fetchMoreErrorMessage: string;
 }
 
 export type UseCardsConnectionResult = UseConnectionPaginationResult<
@@ -50,7 +56,14 @@ function mergeCardsConnection(
 // pagination-rule invariants (in-flight guard, Effect Event observer advance,
 // split debounce-vs-immediate-reset) live in the generic hook.
 export function useCardsConnection(input: UseCardsConnectionInput): UseCardsConnectionResult {
-  const { cardgroupId, searchQuery, initialEdges, initialPageInfo, initialTotalCount } = input;
+  const {
+    cardgroupId,
+    searchQuery,
+    initialEdges,
+    initialPageInfo,
+    initialTotalCount,
+    fetchMoreErrorMessage,
+  } = input;
 
   // When searchQuery is null we use cardsDefaultVars verbatim so the cache key
   // matches the SSR seed exactly. For non-null searches we spread and override
@@ -88,8 +101,7 @@ export function useCardsConnection(input: UseCardsConnectionInput): UseCardsConn
     buildFetchMoreVariables,
     mergeConnection: mergeCardsConnection,
     initial: { edges: initialEdges, pageInfo: initialPageInfo, totalCount: initialTotalCount },
-    resolveFetchMoreError: (err) =>
-      getBackendErrorBanner(err) ?? "Could not load more cards. Please try again.",
+    resolveFetchMoreError: (err) => getBackendErrorBanner(err) ?? fetchMoreErrorMessage,
     logScope: "[cards-client]",
   });
 }

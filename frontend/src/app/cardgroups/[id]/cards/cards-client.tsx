@@ -46,6 +46,7 @@ export function CardsClient({
     initialEdges,
     initialPageInfo,
     initialTotalCount,
+    fetchMoreErrorMessage: t("fetchMoreFailed"),
   });
 
   const mutations = useCardMutations({ cardgroupId, queryVariables: connection.queryVariables });

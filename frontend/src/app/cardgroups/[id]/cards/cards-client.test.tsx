@@ -18,6 +18,7 @@ import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
 } from "../../../../../__tests__/utils/mock-apollo-paginated";
+import jaMessages from "../../../../../messages/ja.json";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -1572,6 +1573,66 @@ describe("<CardsClient>", () => {
     });
     // Banner cleared after success.
     expect(screen.queryByTestId("cards-fetch-more-error")).not.toBeInTheDocument();
+  });
+
+  // T4b: localized fetchMore fallback. A field-level-only error is the one
+  // shape getBackendErrorBanner returns undefined for, so the hook falls back
+  // to the caller-supplied `t("fetchMoreFailed")`. Rendered under the ja locale
+  // to prove the consumer wires the localized string (a plain network error
+  // would hit getBackendErrorBanner's own mapping and never reach the fallback).
+  it("renders the localized fetchMore-failure banner under the ja locale", async () => {
+    const cache = new InMemoryCache();
+    const page1 = connection([CARD_1, CARD_2], true);
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: DEFAULT_VARS,
+      data: { cardsByCardgroupConnection: page1 },
+    });
+
+    const initialMock = {
+      request: { query: CardsByCardgroupConnectionDocument, variables: DEFAULT_VARS },
+      result: { data: { cardsByCardgroupConnection: page1 } },
+    };
+
+    const { CombinedGraphQLErrors } = await import("@apollo/client/errors");
+    const fieldOnlyError = new CombinedGraphQLErrors({
+      data: null,
+      errors: [{ message: "bad input", extensions: { code: "BAD_USER_INPUT", field: "search" } }],
+    });
+    const fetchMoreErrorMock = {
+      request: {
+        query: CardsByCardgroupConnectionDocument,
+        variables: { ...DEFAULT_VARS, after: CARD_2.id },
+      },
+      error: fieldOnlyError,
+    };
+
+    renderWithIntl(
+      <MockedProvider mocks={[initialMock, fetchMoreErrorMock] as never} cache={cache}>
+        <UndoDeleteProvider>
+          <CardsClient
+            cardgroupId={CG_ID}
+            cardgroupName="Test Cardgroup"
+            initialEdges={page1.edges}
+            initialPageInfo={page1.pageInfo}
+            initialTotalCount={page1.totalCount}
+          />
+        </UndoDeleteProvider>
+      </MockedProvider>,
+      { locale: "ja", messages: jaMessages },
+    );
+
+    expect(await screen.findByText("Hello")).toBeInTheDocument();
+
+    // Drive the sentinel into view → fetchMore fires and fails field-only.
+    fireIntersect();
+
+    const banner = await screen.findByTestId("cards-fetch-more-error");
+    // The localized ja copy now flows through next-intl rather than the old
+    // hardcoded English literal. Reference the catalog string to keep CJK out
+    // of source (language-policy), and assert the old English literal is absent.
+    expect(banner).toHaveTextContent(jaMessages.Cards.fetchMoreFailed);
+    expect(banner).not.toHaveTextContent("Could not load more cards");
   });
 
   // T5: closeOtherRows is the parent-side wiring; the SwipeableRow mock
