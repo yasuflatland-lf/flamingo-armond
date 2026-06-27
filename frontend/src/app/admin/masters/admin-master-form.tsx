@@ -4,11 +4,8 @@ import { useForm } from "@tanstack/react-form";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { DirtyStateBridge } from "@/lib/forms/dirty-state-bridge";
-import { FieldError } from "@/lib/forms/field-error";
+import { FormField } from "@/lib/forms/form-field";
 import { submitFormHandler, wrapSubmit } from "@/lib/forms/submit-handler";
 import { masterDescriptionSchema, masterNameSchema, masterSortOrderSchema } from "@/schemas/master";
 import type { AdminMasterListItem } from "./admin-master-row";
@@ -89,19 +86,14 @@ export function AdminMasterForm({
         validators={{ onChange: nameSchema, onBlur: nameSchema, onSubmit: nameSchema }}
       >
         {(field) => (
-          <div className="space-y-2">
-            <Label htmlFor={field.name}>{t("nameLabel")}</Label>
-            <Input
-              id={field.name}
-              name={field.name}
-              data-testid="master-field-name"
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(e.target.value)}
-              placeholder={t("namePlaceholder")}
-            />
-            <FieldError zodErrors={field.state.meta.errors} backendError={nameFieldError} />
-          </div>
+          <FormField
+            field={field}
+            kind="text"
+            label={t("nameLabel")}
+            testId="master-field-name"
+            backendError={nameFieldError}
+            placeholder={t("namePlaceholder")}
+          />
         )}
       </form.Field>
 
@@ -114,19 +106,14 @@ export function AdminMasterForm({
         }}
       >
         {(field) => (
-          <div className="space-y-2">
-            <Label htmlFor={field.name}>{t("descriptionLabel")}</Label>
-            <Textarea
-              id={field.name}
-              name={field.name}
-              data-testid="master-field-description"
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(e.target.value)}
-              placeholder={t("descriptionPlaceholder")}
-            />
-            <FieldError zodErrors={field.state.meta.errors} backendError={descriptionFieldError} />
-          </div>
+          <FormField
+            field={field}
+            kind="textarea"
+            label={t("descriptionLabel")}
+            testId="master-field-description"
+            backendError={descriptionFieldError}
+            placeholder={t("descriptionPlaceholder")}
+          />
         )}
       </form.Field>
 
@@ -139,36 +126,23 @@ export function AdminMasterForm({
         }}
       >
         {(field) => (
-          <div className="space-y-2">
-            <Label htmlFor={field.name}>{t("sortOrderLabel")}</Label>
-            <Input
-              id={field.name}
-              name={field.name}
-              type="number"
-              data-testid="master-field-sortOrder"
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(e.target.value)}
-            />
-            <FieldError zodErrors={field.state.meta.errors} />
-          </div>
+          <FormField
+            field={field}
+            kind="number"
+            label={t("sortOrderLabel")}
+            testId="master-field-sortOrder"
+          />
         )}
       </form.Field>
 
       <form.Field name="isDefaultStarter">
         {(field) => (
-          <div className="flex items-center gap-2">
-            <input
-              id={field.name}
-              name={field.name}
-              type="checkbox"
-              data-testid="master-field-isDefaultStarter"
-              checked={field.state.value}
-              onChange={(e) => field.handleChange(e.target.checked)}
-              className="h-4 w-4 rounded border-input"
-            />
-            <Label htmlFor={field.name}>{t("isDefaultStarterLabel")}</Label>
-          </div>
+          <FormField
+            field={field}
+            kind="checkbox"
+            label={t("isDefaultStarterLabel")}
+            testId="master-field-isDefaultStarter"
+          />
         )}
       </form.Field>
 

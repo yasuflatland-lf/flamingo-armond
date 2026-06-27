@@ -34,6 +34,8 @@ type CommonProps = {
   idOverride?: string;
   disabled?: boolean;
   placeholder?: string;
+  /** Forwarded to the rendered control as `data-testid`. */
+  testId?: string;
   /** Extra classes for the field wrapper. Default spacing is `space-y-2`. */
   className?: string;
 };
@@ -54,7 +56,7 @@ type FormFieldProps =
  * renders an inline checkbox + label with no `FieldError` row.
  */
 export function FormField(props: FormFieldProps) {
-  const { label, backendError, idOverride, disabled, placeholder, className } = props;
+  const { label, backendError, idOverride, disabled, placeholder, testId, className } = props;
   const id = idOverride ?? props.field.name;
 
   if (props.kind === "checkbox") {
@@ -65,6 +67,7 @@ export function FormField(props: FormFieldProps) {
           id={id}
           name={field.name}
           type="checkbox"
+          data-testid={testId}
           checked={field.state.value}
           onBlur={field.handleBlur}
           onChange={(e) => field.handleChange(e.target.checked)}
@@ -82,6 +85,7 @@ export function FormField(props: FormFieldProps) {
       <Textarea
         id={id}
         name={field.name}
+        data-testid={testId}
         value={field.state.value}
         onBlur={field.handleBlur}
         onChange={(e) => field.handleChange(e.target.value)}
@@ -93,6 +97,7 @@ export function FormField(props: FormFieldProps) {
         id={id}
         name={field.name}
         type={kind === "number" ? "number" : undefined}
+        data-testid={testId}
         value={field.state.value}
         onBlur={field.handleBlur}
         onChange={(e) => field.handleChange(e.target.value)}
