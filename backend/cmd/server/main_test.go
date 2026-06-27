@@ -280,6 +280,29 @@ func TestBuildResolver_NotionEnabledRetryConfigError(t *testing.T) {
 	}
 }
 
+// TestBuildNotionIntegration_RetryConfigError drives the extracted helper's only
+// error path directly: a malformed NOTION_MAX_ATTEMPTS makes
+// notion.RetryConfigFromEnv fail, so buildNotionIntegration must return that error
+// unchanged and nil for both the card observer and the sync handler. The error
+// path returns before any DB-backed wiring, so no testcontainer Postgres is
+// needed, mirroring the fake-driven bootstrapSuperUserPromoter unit tests.
+func TestBuildNotionIntegration_RetryConfigError(t *testing.T) {
+	t.Setenv("NOTION_MAX_ATTEMPTS", "not-a-number")
+
+	observer, handler, err := buildNotionIntegration(
+		&appRepos{}, notionsync.EnvConfig{}, slog.New(slog.DiscardHandler),
+	)
+	if err == nil {
+		t.Fatal("expected error from invalid NOTION_MAX_ATTEMPTS, got nil")
+	}
+	if observer != nil {
+		t.Errorf("expected nil card observer on error, got %v", observer)
+	}
+	if handler != nil {
+		t.Errorf("expected nil notion sync handler on error, got %v", handler)
+	}
+}
+
 func freePort(t *testing.T) string {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
