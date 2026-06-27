@@ -5,10 +5,7 @@ import { useLazyQuery, useQuery } from "@apollo/client/react";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo } from "react";
 import { toast } from "sonner";
-import { AdminListSearch } from "@/components/admin/admin-list-search";
-import { AdminQueryErrorBanner } from "@/components/admin/admin-query-error-banner";
-import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
-import { ListingPageShell } from "@/components/layout/listing-page-shell";
+import { PaginatedAdminListScreen } from "@/components/admin/paginated-admin-list-screen";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { useFragment } from "@/generated/fragment-masking";
 import type {
@@ -227,55 +224,44 @@ export function AdminUsersClient() {
   // (e.g. after ConcurrentUpdateError) would unmount the open sheet and lose any banner.
   const initialLoading = networkStatus === NetworkStatus.loading && edges.length === 0;
 
-  if (initialLoading) {
-    return <AdminUsersSkeleton />;
-  }
-
   return (
-    <ListingPageShell
+    <PaginatedAdminListScreen
+      search={{
+        search,
+        placeholder: t("searchPlaceholder"),
+        ariaLabel: t("searchLabel"),
+      }}
       title={tNav("users")}
       count={totalCount}
       countLabel={tCommon("totalCount", { count: totalCount })}
-      toolbar={
-        <AdminListSearch
-          search={search}
-          placeholder={t("searchPlaceholder")}
-          ariaLabel={t("searchLabel")}
-        />
-      }
+      queryErrorKind={queryErrorKind}
+      errorCopy={{
+        viewForbidden: t("viewForbidden"),
+        sessionExpired: t("sessionExpired"),
+        signInAgain: t("pleaseSignInAgain"),
+        retry: tCommon("retry"),
+      }}
+      onRetry={refetch}
+      queryErrorClassName="mb-4"
+      isEmpty={edges.length === 0}
+      emptyLabel={t("noUsersFound")}
+      footer={{
+        sentinelRef,
+        fetchMoreError,
+        onRetry: retryFetchMore,
+        fetchingMore,
+        hasNextPage,
+        retryLabel: tCommon("retry"),
+        loadingMoreLabel: t("loadingMore"),
+      }}
+      loading={initialLoading}
+      skeleton={<AdminUsersSkeleton />}
+      testIdPrefix="admin-users"
     >
-      {/*
-        Admin users query-error banner. UNAUTHENTICATED here means the session
-        expired mid-page: the server-side gate in page.tsx + the admin layout
-        block the initial load (redirecting to "/"), so the degraded /login
-        banner only fires post-mount. FORBIDDEN renders without Retry since
-        re-issuing the same query would fail again. See
-        .claude/rules/frontend-rsc-error-handling.md.
-      */}
-      <AdminQueryErrorBanner
-        kind={queryErrorKind}
-        onRetry={refetch}
-        testId="admin-users-query-error"
-        className="mb-4"
-        copy={{
-          viewForbidden: t("viewForbidden"),
-          sessionExpired: t("sessionExpired"),
-          signInAgain: t("pleaseSignInAgain"),
-          retry: tCommon("retry"),
-        }}
-      />
-
       {rolesBannerError && (
         <ErrorBanner className="mb-4" data-testid="admin-users-roles-error">
           {rolesBannerError}
         </ErrorBanner>
-      )}
-
-      {/* Empty state */}
-      {!initialLoading && !queryErrorKind && edges.length === 0 && (
-        <p className="text-sm text-muted-foreground" data-testid="admin-users-empty">
-          {t("noUsersFound")}
-        </p>
       )}
 
       {/* User list */}
@@ -291,17 +277,6 @@ export function AdminUsersClient() {
         </ul>
       )}
 
-      <ConnectionListFooter
-        sentinelRef={sentinelRef}
-        fetchMoreError={fetchMoreError}
-        onRetry={retryFetchMore}
-        fetchingMore={fetchingMore}
-        hasNextPage={hasNextPage}
-        retryLabel={tCommon("retry")}
-        loadingMoreLabel={t("loadingMore")}
-        testIdPrefix="admin-users"
-      />
-
       <AdminUserProfileSheet
         open={editUserId !== null}
         user={sheetUser}
@@ -316,6 +291,6 @@ export function AdminUsersClient() {
         onReloadRequested={reloadEditedUser}
         onDelete={handleDeleteUser}
       />
-    </ListingPageShell>
+    </PaginatedAdminListScreen>
   );
 }
