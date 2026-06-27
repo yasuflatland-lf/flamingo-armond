@@ -194,6 +194,19 @@ func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsec
 	return &masterCatalogUsecase{repo: repo, deckUC: deckUC, adminGate: adminGate, logger: logger}
 }
 
+// masterCatalogPageFetch is the repository page-fetch closure shape shared by
+// MasterCatalogRepository.FindPublishedPage and FindAdminPage. listMasterCatalogCore
+// takes one as an argument so the shared page-assembly body stays agnostic to the
+// status filter (published-only vs. all statuses).
+type masterCatalogPageFetch func(
+	ctx context.Context,
+	after, before *repository.MasterCatalogCursor,
+	first, last int,
+	orderBy repository.MasterCatalogOrderBy,
+	dir repository.SortOrder,
+	search *string,
+) ([]*repository.MasterCatalogItem, int64, error)
+
 // ListPublishedConnection paginates the published master catalog with
 // Relay-style cursors. Forward paging uses (first, after); backward uses
 // (last, before). The five mixed-direction combinations are rejected with
@@ -205,8 +218,39 @@ func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsec
 func (u *masterCatalogUsecase) ListPublishedConnection(
 	ctx context.Context, in MasterCatalogConnectionInput,
 ) (*MasterCatalogConnectionOutput, error) {
-	if auth.UserFrom(ctx) == nil {
-		return nil, ucerr.ErrUnauthenticated
+	return u.listMasterCatalogCore(ctx, in, true, "usecase: master catalog: find published page",
+		func(ctx context.Context) error {
+			if auth.UserFrom(ctx) == nil {
+				return ucerr.ErrUnauthenticated
+			}
+			return nil
+		},
+		u.repo.FindPublishedPage,
+	)
+}
+
+// listMasterCatalogCore holds the shared page-assembly body for
+// ListPublishedConnection and ListAdminConnection. The gate closure runs first and
+// supplies the per-caller authorization / visibility check (anonymous-allowed
+// authentication for the published catalog vs. adminGate.Require for the admin
+// surface); everything from cursor resolution onward is identical except two
+// caller-supplied knobs: publishedOnly threads into resolveMasterCursor to pick the
+// hydration scope (true = published catalog, a DRAFT or unknown id is rejected as
+// cursor-not-found so drafts never leak; false = admin, DRAFT decks are valid
+// cursors), and fetch is the repository page method (FindPublishedPage /
+// FindAdminPage). opPrefix is the caller's eris wrap message, supplied so the shared
+// find-page wrap carries the correct attribution (error-wrapping rule: shared helpers
+// take the caller prefix as an argument, never hardcode it).
+func (u *masterCatalogUsecase) listMasterCatalogCore(
+	ctx context.Context,
+	in MasterCatalogConnectionInput,
+	publishedOnly bool,
+	opPrefix string,
+	gate func(context.Context) error,
+	fetch masterCatalogPageFetch,
+) (*MasterCatalogConnectionOutput, error) {
+	if err := gate(ctx); err != nil {
+		return nil, err
 	}
 
 	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveStandardPageSize)
@@ -219,11 +263,11 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 		return nil, err
 	}
 
-	after, err := u.resolveMasterCursor(ctx, in.After, orderBy, "after", true)
+	after, err := u.resolveMasterCursor(ctx, in.After, orderBy, "after", publishedOnly)
 	if err != nil {
 		return nil, err
 	}
-	before, err := u.resolveMasterCursor(ctx, in.Before, orderBy, "before", true)
+	before, err := u.resolveMasterCursor(ctx, in.Before, orderBy, "before", publishedOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -233,15 +277,15 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 	search := normalizeSearch(in.Search)
 
 	// totalCount is the search-aware total carried by the page method, captured
-	// inside the fetch closure. FindPublishedPage runs its COUNT(*) on the same
+	// inside the fetch closure. The page method runs its COUNT(*) on the same
 	// filtered base before its zero-page short-circuit, so a totalCount-only
 	// request still observes the real value.
 	var total int64
 	items, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
 		func(wantFirst, wantLast int) ([]*repository.MasterCatalogItem, error) {
-			rows, t, e := u.repo.FindPublishedPage(ctx, after, before, wantFirst, wantLast, orderBy, dir, search)
+			rows, t, e := fetch(ctx, after, before, wantFirst, wantLast, orderBy, dir, search)
 			if e != nil {
-				return nil, eris.Wrap(e, "usecase: master catalog: find published page")
+				return nil, eris.Wrap(e, opPrefix)
 			}
 			total = t
 			return rows, nil
@@ -251,6 +295,8 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 		return nil, err
 	}
 
+	// StartCur / EndCur carry the RAW node id; the resolver's connection layer
+	// applies the cursor encoder once. Encoding here would double-encode.
 	out := &MasterCatalogConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Items: items}
 	out.StartCur, out.EndCur = firstLastCursor(items, func(it *repository.MasterCatalogItem) string { return it.Cardgroup.ID })
 	return out, nil
@@ -599,57 +645,20 @@ func (u *masterCatalogUsecase) DeleteMaster(ctx context.Context, id string) erro
 // ListAdminConnection paginates ALL master cardgroups (DRAFT + PUBLISHED) for the
 // admin UI. Admin-only. Mirrors ListPublishedConnection but gates on adminGate and
 // calls the status-unfiltered FindAdminPage repository method (whose returned
-// total counts decks of any status).
+// total counts decks of any status). The body from page assembly onward is shared
+// with ListPublishedConnection via listMasterCatalogCore; only the gate,
+// publishedOnly scope (false = admin, DRAFT cursors valid), the repository page
+// method, and the eris wrap prefix differ.
 func (u *masterCatalogUsecase) ListAdminConnection(
 	ctx context.Context, in MasterCatalogConnectionInput,
 ) (*MasterCatalogConnectionOutput, error) {
-	if _, err := u.adminGate.Require(ctx, "usecase: master catalog: list admin"); err != nil {
-		return nil, err
-	}
-
-	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveStandardPageSize)
-	if err != nil {
-		return nil, err
-	}
-
-	orderBy, dir, err := resolveMasterCatalogOrderBy(in.OrderBy, in.OrderDirection)
-	if err != nil {
-		return nil, err
-	}
-
-	after, err := u.resolveMasterCursor(ctx, in.After, orderBy, "after", false)
-	if err != nil {
-		return nil, err
-	}
-	before, err := u.resolveMasterCursor(ctx, in.Before, orderBy, "before", false)
-	if err != nil {
-		return nil, err
-	}
-
-	// Normalize search once so the count and the page query see the same filter
-	// (nil and whitespace-only both mean "no filter").
-	search := normalizeSearch(in.Search)
-
-	// totalCount is the search-aware total carried by the page method, captured
-	// inside the fetch closure (see ListPublishedConnection for the contract).
-	var total int64
-	items, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
-		func(wantFirst, wantLast int) ([]*repository.MasterCatalogItem, error) {
-			rows, t, e := u.repo.FindAdminPage(ctx, after, before, wantFirst, wantLast, orderBy, dir, search)
-			if e != nil {
-				return nil, eris.Wrap(e, "usecase: master catalog: find admin page")
-			}
-			total = t
-			return rows, nil
+	return u.listMasterCatalogCore(ctx, in, false, "usecase: master catalog: find admin page",
+		func(ctx context.Context) error {
+			_, err := u.adminGate.Require(ctx, "usecase: master catalog: list admin")
+			return err
 		},
+		u.repo.FindAdminPage,
 	)
-	if err != nil {
-		return nil, err
-	}
-
-	out := &MasterCatalogConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Items: items}
-	out.StartCur, out.EndCur = firstLastCursor(items, func(it *repository.MasterCatalogItem) string { return it.Cardgroup.ID })
-	return out, nil
 }
 
 // ImportMaster copies the published master cardgroup identified by masterID into a
