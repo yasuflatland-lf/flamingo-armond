@@ -172,16 +172,11 @@ func buildResolver(
 	var notionSyncHandler *notionsync.Handler
 	var cardObserver usecase.CardObserver
 	if !notionSyncDisabled {
-		retryCfg, err := notion.RetryConfigFromEnv()
+		var err error
+		cardObserver, notionSyncHandler, err = buildNotionIntegration(repos, notionEnv, logger)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		retryCfg.Logger = logger
-		notionFetcher := notion.NewFetcher(notionEnv.NotionToken, retryCfg)
-		notionWriter := notion.NewWriter(notionEnv.NotionToken, retryCfg)
-		cardObserver = notion.NewCardWritebacker(notionWriter, notionEnv.HandlerConfig.PageIDs[0], logger)
-		notionSyncUC := usecase.NewMasterNotionSyncUsecase(notionFetcher, repos.masterCardgroup, repos.masterCard, repos.gorm, logger)
-		notionSyncHandler = notionsync.New(notionSyncUC, notionEnv.HandlerConfig)
 	}
 	cardUC := usecase.NewCardUsecase(repos.gorm, repos.card, repos.cardgroup, repos.userCardFSRS, cardObserver, logger)
 	// Type the word list as the domain.CEFRWordList port so the dependency
@@ -196,6 +191,31 @@ func buildResolver(
 
 	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, updateLearnDisplayModeUC, learnUC, cefrUC, masterCatalogUC, masterCardUC)
 	return resolvers, pingHandler, notionSyncHandler, nil
+}
+
+// buildNotionIntegration constructs the optional Notion sync infrastructure (the
+// fetcher, writer, and card writebacker) plus the sync handler, reading retry
+// tuning from the environment. Extracted from buildResolver so the optional
+// wiring and its single error path are independently testable, mirroring
+// bootstrapSuperUserPromoter. The caller gates this on notionSyncDisabled to
+// preserve the disabled-path nil semantics; the only error path is
+// notion.RetryConfigFromEnv failing on a malformed env var.
+func buildNotionIntegration(
+	repos *appRepos,
+	notionEnv notionsync.EnvConfig,
+	logger *slog.Logger,
+) (usecase.CardObserver, *notionsync.Handler, error) {
+	retryCfg, err := notion.RetryConfigFromEnv()
+	if err != nil {
+		return nil, nil, err
+	}
+	retryCfg.Logger = logger
+	notionFetcher := notion.NewFetcher(notionEnv.NotionToken, retryCfg)
+	notionWriter := notion.NewWriter(notionEnv.NotionToken, retryCfg)
+	cardObserver := notion.NewCardWritebacker(notionWriter, notionEnv.HandlerConfig.PageIDs[0], logger)
+	notionSyncUC := usecase.NewMasterNotionSyncUsecase(notionFetcher, repos.masterCardgroup, repos.masterCard, repos.gorm, logger)
+	notionSyncHandler := notionsync.New(notionSyncUC, notionEnv.HandlerConfig)
+	return cardObserver, notionSyncHandler, nil
 }
 
 func newGraphQLServer(r *resolver.Resolver, introspectionEnabled bool) *handler.Server {
