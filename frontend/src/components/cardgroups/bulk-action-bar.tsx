@@ -41,7 +41,7 @@ export function BulkActionBar({ count, busy, onConfirm, onClear }: BulkActionBar
             size="sm"
             disabled={busy}
             data-testid="cards-bulk-delete-button"
-            className="w-full sm:w-auto"
+            className="w-full border border-destructive/45 sm:w-auto"
           >
             {tCommon("deleteSelected")}
             <Trash2 aria-hidden="true" className="ml-1.5 h-4 w-4" />
@@ -64,7 +64,7 @@ export function BulkActionBar({ count, busy, onConfirm, onClear }: BulkActionBar
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={onClear}>
+      <Button variant="ghost" size="sm" className="w-full sm:w-auto" onClick={onClear}>
         {tCommon("cancel")}
         <X aria-hidden="true" className="ml-1.5 h-4 w-4" />
       </Button>
