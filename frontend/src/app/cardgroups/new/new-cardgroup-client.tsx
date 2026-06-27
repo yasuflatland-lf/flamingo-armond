@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useCreateCardgroup } from "@/app/cardgroups/use-create-cardgroup";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
 import { ErrorBanner } from "@/components/ui/error-banner";
+import { useSheetForm } from "@/lib/forms/use-sheet-form";
 
 interface NewCardgroupClientProps {
   showWelcome?: boolean;
@@ -19,13 +20,6 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
   const router = useRouter();
   const t = useTranslations("Cardgroups");
   const tCommon = useTranslations("Common");
-
-  // Typed InputValidationError variant — field-level validation failure
-  // surfaced by the server. Cleared on each new submission attempt.
-  const [validationError, setValidationError] = useState<{
-    field: string;
-    message: string;
-  } | null>(null);
 
   // Semantically distinct from validationError: this surfaces a degraded
   // "Something went wrong" banner when the server returns a __typename the
@@ -46,17 +40,23 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
 
   const { create, loading } = useCreateCardgroup();
 
+  // Full-page create: success navigates away (parameterized by the returned
+  // cardgroup id), so the `success` arm stays in the switch below. `useSheetForm`
+  // owns only the field-level `validationError` + its clear-on-submit reset;
+  // there is no sheet to close, so `onSuccess` is a no-op.
+  const onSuccess = useCallback(() => undefined, []);
+  const { validationError, run } = useSheetForm(onSuccess);
+
   async function handleSubmit(values: { name: string }) {
-    setValidationError(null);
     setUnexpectedPayloadError(null);
     setAuthError(null);
     setLimitError(null);
 
-    const outcome = await create(values.name);
+    const outcome = await run(() => create(values.name));
 
     switch (outcome.status) {
       case "validation":
-        setValidationError({ field: outcome.field, message: outcome.message });
+        // `run` cleared and stored the field-level error.
         return;
       case "auth":
         setAuthError(outcome.kind);
