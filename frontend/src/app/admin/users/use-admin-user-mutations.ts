@@ -1,8 +1,8 @@
 "use client";
 
-import type { Reference } from "@apollo/client";
 import { useApolloClient, useMutation } from "@apollo/client/react";
 import { useCallback } from "react";
+import { removeConnectionEdgeAcrossVariants } from "@/lib/apollo/connection-cache";
 import { AdminDeleteUserMutation } from "./queries";
 
 /**
@@ -30,35 +30,11 @@ export function useAdminUserMutations() {
       if (!result.data?.adminDeleteUser) {
         throw new Error("adminDeleteUser returned false");
       }
-      apolloClient.cache.modify({
-        fields: {
-          users(existing, { readField }) {
-            const connection = existing as {
-              edges?: ReadonlyArray<{ node: Reference }>;
-              totalCount?: number;
-            };
-            if (!connection.edges) return existing;
-            // Filter by the normalized node id, NOT by `edge.cursor`: the backend
-            // emits an opaque "v1:..." cursor that never equals the raw user id
-            // (.claude/rules/pagination.md "Resolve an edge by node.id, never by
-            // edge.cursor"). Matches masters/cards/cardgroups.
-            const edges = connection.edges.filter(
-              (edge) => readField<string>("id", edge.node) !== id,
-            );
-            if (edges.length === connection.edges.length) return existing;
-            return {
-              ...connection,
-              edges,
-              totalCount: Math.max(0, (connection.totalCount ?? 0) - 1),
-            };
-          },
-        },
+      removeConnectionEdgeAcrossVariants(apolloClient.cache, {
+        connectionField: "users",
+        entityTypename: "User",
+        id,
       });
-      const cacheId = apolloClient.cache.identify({ __typename: "User", id });
-      if (cacheId) {
-        apolloClient.cache.evict({ id: cacheId });
-        apolloClient.cache.gc();
-      }
     },
     [apolloClient, runDeleteUser],
   );

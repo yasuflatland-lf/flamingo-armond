@@ -5,7 +5,11 @@ import {
   type CardsByCardgroupConnectionQuery,
   type CardsByCardgroupConnectionQueryVariables,
 } from "@/generated/graphql";
-import { appendConnectionEdge, removeConnectionEdges } from "./connection-cache";
+import {
+  appendConnectionEdge,
+  removeConnectionEdgeAcrossVariants,
+  removeConnectionEdges,
+} from "./connection-cache";
 
 const CARDGROUP_ID = "cg-1";
 
@@ -233,5 +237,87 @@ describe("removeConnectionEdges", () => {
 
     expect(evictSpy).toHaveBeenCalledWith({ id: "Card:a" });
     expect(gcSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("removeConnectionEdgeAcrossVariants", () => {
+  // A second cached variant of the same field, keyed on a different `search`
+  // argument. `cache.modify` visits every cached instance of the field, so a
+  // single call must drop the entity from both variants at once.
+  const FILTERED_VARS: CardsByCardgroupConnectionQueryVariables = {
+    cardgroupId: CARDGROUP_ID,
+    first: 20,
+    search: "a",
+  };
+
+  function seedVariant(
+    cache: InMemoryCache,
+    variables: CardsByCardgroupConnectionQueryVariables,
+    ids: string[],
+    totalCount = ids.length,
+  ) {
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables,
+      data: { cardsByCardgroupConnection: makeConnection(ids, totalCount) },
+    });
+  }
+
+  function readVariant(cache: InMemoryCache, variables: CardsByCardgroupConnectionQueryVariables) {
+    return cache.readQuery({ query: CardsByCardgroupConnectionDocument, variables });
+  }
+
+  it("removes the matching edge from every cached variant and clamps totalCount at 0", () => {
+    const cache = new InMemoryCache();
+    seedVariant(cache, VARS, ["a", "b", "c"], 3);
+    // The filtered variant under-counts totalCount (1) relative to its loaded
+    // edges, so removing "b" exercises the Math.max(0, …) clamp.
+    seedVariant(cache, FILTERED_VARS, ["a", "b"], 1);
+
+    removeConnectionEdgeAcrossVariants(cache, {
+      connectionField: "cardsByCardgroupConnection",
+      entityTypename: "Card",
+      id: "b",
+    });
+
+    const nullVariant = readVariant(cache, VARS);
+    expect(nullVariant?.cardsByCardgroupConnection.edges.map((e) => e.node.id)).toEqual(["a", "c"]);
+    expect(nullVariant?.cardsByCardgroupConnection.totalCount).toBe(2);
+
+    const filteredVariant = readVariant(cache, FILTERED_VARS);
+    expect(filteredVariant?.cardsByCardgroupConnection.edges.map((e) => e.node.id)).toEqual(["a"]);
+    expect(filteredVariant?.cardsByCardgroupConnection.totalCount).toBe(0);
+  });
+
+  it("evicts the normalized entity and runs gc", () => {
+    const cache = new InMemoryCache();
+    seedVariant(cache, VARS, ["a", "b"], 2);
+    const evictSpy = vi.spyOn(cache, "evict");
+    const gcSpy = vi.spyOn(cache, "gc");
+
+    removeConnectionEdgeAcrossVariants(cache, {
+      connectionField: "cardsByCardgroupConnection",
+      entityTypename: "Card",
+      id: "a",
+    });
+
+    expect(evictSpy).toHaveBeenCalledWith({ id: "Card:a" });
+    expect(gcSpy).toHaveBeenCalledTimes(1);
+    expect(cache.extract()["Card:a"]).toBeUndefined();
+  });
+
+  it("leaves a variant that does not contain the id untouched", () => {
+    const cache = new InMemoryCache();
+    seedVariant(cache, VARS, ["x", "y"], 2);
+
+    removeConnectionEdgeAcrossVariants(cache, {
+      connectionField: "cardsByCardgroupConnection",
+      entityTypename: "Card",
+      id: "z",
+    });
+
+    const result = readVariant(cache, VARS);
+    expect(result?.cardsByCardgroupConnection.edges.map((e) => e.node.id)).toEqual(["x", "y"]);
+    expect(result?.cardsByCardgroupConnection.totalCount).toBe(2);
   });
 });
