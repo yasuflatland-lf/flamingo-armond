@@ -5,9 +5,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PracticeTodaysCardsQuery as PracticeTodaysCardsDocument } from "@/app/learn/queries";
 import { AllCaughtUp } from "@/components/learn/all-caught-up";
-import { LearnActionBar } from "@/components/learn/learn-action-bar";
-import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
-import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
+import { SwipeSession } from "@/components/learn/swipe-session";
 import type { SwipeDirection } from "@/components/learn/types";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -87,17 +85,11 @@ export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
     });
   }, [error, cardgroupId]);
 
-  const swipeStackRef = useRef<SwipeCardStackHandle | null>(null);
-
   const onCardSwiped = useCallback((card: PracticeCard, direction: SwipeDirection) => {
     // The ONLY effect of a practice swipe: re-arrange the local queue. No
     // mutation, no network. again/hard re-queue the card a few positions later;
     // easy retires it for the round.
     setQueue((current) => advancePracticeQueue(current, card.id, outcomeFromDirection(direction)));
-  }, []);
-
-  const handleRate = useCallback((direction: SwipeDirection) => {
-    swipeStackRef.current?.triggerSwipe(direction);
   }, []);
 
   const studyAgain = useCallback(() => {
@@ -179,23 +171,18 @@ export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
   }
 
   return (
-    <section className="grid min-h-0 flex-1 grid-rows-[auto_1fr_auto] gap-3">
-      <div
-        className="mx-auto w-full max-w-xl rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground"
-        role="status"
-      >
-        {t("practiceBanner")}
-      </div>
-
-      <div className="relative flex min-h-0 items-center justify-center overflow-hidden">
-        <SwipeCardStack
-          ref={swipeStackRef}
-          cards={queue}
-          displayMode="ALWAYS_VISIBLE"
-          onCardSwiped={onCardSwiped}
-        />
-      </div>
-      <LearnActionBar onRate={handleRate} disabled={queue.length === 0} />
-    </section>
+    <SwipeSession
+      cards={queue}
+      displayMode="ALWAYS_VISIBLE"
+      onCardSwiped={onCardSwiped}
+      topSlot={
+        <div
+          className="mx-auto w-full max-w-xl rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground"
+          role="status"
+        >
+          {t("practiceBanner")}
+        </div>
+      }
+    />
   );
 }
