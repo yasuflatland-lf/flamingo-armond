@@ -10,9 +10,7 @@ import {
   SetLastViewedCardgroupMutation,
 } from "@/app/learn/queries";
 import { AllCaughtUp } from "@/components/learn/all-caught-up";
-import { LearnActionBar } from "@/components/learn/learn-action-bar";
-import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
-import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
+import { SwipeSession } from "@/components/learn/swipe-session";
 import type { LearnDisplayMode, SwipeDirection } from "@/components/learn/types";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import type { LearnNextDueCardsQuery } from "@/generated/graphql";
@@ -53,7 +51,6 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
   // (FSRS-safe re-study of today's cards). It is only entered from the
   // AllCaughtUp "Study again" action when the daily learn queue is exhausted.
   const [phase, setPhase] = useState<"learn" | "practice">("learn");
-  const swipeStackRef = useRef<SwipeCardStackHandle | null>(null);
 
   const [handleSwipe, { error }] = useMutation(HandleSwipeMutation);
   const backendError = useMemo(() => getBackendErrorBanner(error), [error]);
@@ -265,14 +262,6 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
     [cardgroupId, handleSwipe],
   );
 
-  // SwipeCardStack owns the overlay paint + commit-delay timing internally,
-  // so handleRate only needs to forward the direction through the imperative
-  // handle. Keeping handleRate stable across renders preserves React.memo
-  // bailouts on LearnActionBar.
-  const handleRate = useCallback((direction: SwipeDirection) => {
-    swipeStackRef.current?.triggerSwipe(direction);
-  }, []);
-
   if (phase === "practice") {
     return <PracticeClient cardgroupId={cardgroupId} />;
   }
@@ -282,26 +271,18 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
   }
 
   return (
-    <section className="grid min-h-0 flex-1 grid-rows-[auto_1fr_auto] gap-3">
-      {visibleError ? (
-        <ErrorBanner className="mx-auto w-full max-w-xl">{visibleError}</ErrorBanner>
-      ) : (
-        // Placeholder so the card stays in the 1fr row and the action bar in
-        // the trailing auto row when the banner is absent. Without it, grid
-        // auto-flow would assign the action bar to the 1fr row.
-        <div aria-hidden="true" />
-      )}
-
-      <div className="relative flex min-h-0 items-center justify-center overflow-hidden">
-        <SwipeCardStack
-          ref={swipeStackRef}
-          cards={queue}
-          displayMode={displayMode}
-          onCardSwiped={onSwipe}
-          completedCount={completed}
-        />
-      </div>
-      <LearnActionBar onRate={handleRate} disabled={queue.length === 0} />
-    </section>
+    <SwipeSession
+      cards={queue}
+      displayMode={displayMode}
+      onCardSwiped={onSwipe}
+      completedCount={completed}
+      // When no banner, SwipeSession renders an `aria-hidden` spacer in the
+      // leading row so the card and action bar keep their grid rows.
+      topSlot={
+        visibleError ? (
+          <ErrorBanner className="mx-auto w-full max-w-xl">{visibleError}</ErrorBanner>
+        ) : undefined
+      }
+    />
   );
 }
