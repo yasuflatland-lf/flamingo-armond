@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Eye, EyeOff, Import, MoreHorizontal, Settings, Trash2 } from "lucide-react";
+import { ChevronDown, Eye, EyeOff, MoreHorizontal, Settings, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
@@ -34,19 +34,11 @@ import type { AdminMasterDeck } from "./queries";
 type Props = {
   master: AdminMasterDeck;
   cardCount: number;
-  /**
-   * Opens the batch-import sheet (owned by `MasterCardsClient`). Surfaced here
-   * so the mobile overflow menu can host batch import, where the standalone
-   * toolbar button was removed. Required so the wire from `MasterCardsClient`
-   * is enforced at compile time rather than silently defaulting to a no-op.
-   */
-  onBatchImport: () => void;
 };
 
-export function MasterEditHeader({ master, cardCount, onBatchImport }: Props) {
+export function MasterEditHeader({ master, cardCount }: Props) {
   const t = useTranslations("AdminMasters");
   const tCommon = useTranslations("Common");
-  const tCardgroups = useTranslations("Cardgroups");
   const router = useRouter();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -236,18 +228,6 @@ export function MasterEditHeader({ master, cardCount, onBatchImport }: Props) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {/* Batch import lives here on mobile after the standalone toolbar
-              button was removed. The trigger is md:hidden, so this menu only
-              opens on mobile; desktop keeps batch import in the cards toolbar's
-              split-button menu. */}
-          <DropdownMenuItem
-            onSelect={onBatchImport}
-            data-testid="master-edit-import-mobile"
-            className="gap-2"
-          >
-            <Import aria-hidden="true" className="h-4 w-4" />
-            {tCardgroups("batchImport")}
-          </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() => setSettingsOpen(true)}
             data-testid="master-edit-deck-settings-mobile"

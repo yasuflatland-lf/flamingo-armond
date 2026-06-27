@@ -381,7 +381,7 @@ describe("<CatalogDeckClient>", () => {
 
     // A transport error is mapped by getBackendErrorBanner (the localized
     // fetchMoreErrorMessage fallback only fires when that mapping returns undefined).
-    const banner = await screen.findByTestId("cards-fetch-more-error");
+    const banner = await screen.findByTestId("catalog-deck-fetch-more-error");
     expect(banner).toHaveTextContent("Could not reach the server. Please try again.");
 
     // Retry re-runs fetchMore and succeeds — proves the halt-gate clears.

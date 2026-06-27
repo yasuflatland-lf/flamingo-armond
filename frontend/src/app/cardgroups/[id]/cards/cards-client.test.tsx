@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -373,7 +373,7 @@ describe("<CardsClient>", () => {
     expect(screen.getByDisplayValue("Hello")).toBeInTheDocument();
   });
 
-  it("successful create inserts the card into the active connection and closes the sheet", async () => {
+  it("successful create inserts the card into the active connection, keeps the sheet open, and shows the counter", async () => {
     const user = userEvent.setup();
     const cache = new InMemoryCache();
     cache.writeQuery({
@@ -394,9 +394,10 @@ describe("<CardsClient>", () => {
 
     expect(await screen.findByText("New front")).toBeInTheDocument();
     expect(screen.getByText("Cards (3)")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.queryByRole("heading", { name: /add card/i })).not.toBeInTheDocument();
-    });
+    // Sheet stays open: counter increments and front field clears for the next card.
+    expect(await screen.findByTestId("add-card-added-count")).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByLabelText(/front/i)).toHaveValue("");
     expect(
       cache.readQuery({
         query: CardsByCardgroupConnectionDocument,
@@ -436,11 +437,14 @@ describe("<CardsClient>", () => {
     await user.type(screen.getByLabelText(/back/i), "Cebra");
     await user.click(screen.getByRole("button", { name: /^add$/i }));
 
-    await waitFor(() => {
-      expect(screen.queryByRole("heading", { name: /add card/i })).not.toBeInTheDocument();
-    });
+    // Sheet stays open (continuous add) — counter is visible; search filter still active.
+    expect(await screen.findByTestId("add-card-added-count")).toBeInTheDocument();
     expect(screen.queryByText("Zebra")).not.toBeInTheDocument();
     expect(screen.getByText("Cards (1)")).toBeInTheDocument();
+
+    // Close the sheet before interacting with the search input outside the dialog.
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /cancel/i }));
 
     await user.clear(screen.getByTestId("cards-search-input"));
     await vi.advanceTimersByTimeAsync(300);

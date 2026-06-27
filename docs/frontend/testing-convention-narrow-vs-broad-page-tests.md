@@ -324,7 +324,7 @@ Note: the specific `lucide-<name>` class is a library implementation detail — 
 expect(container.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
 ```
 
-Reserve the specific-class assertion for cases where the exact icon identity matters for visual regression, and prefer a Playwright screenshot or Storybook snapshot for those cases.
+Reserve the specific-class assertion for cases where the exact icon identity matters for visual regression, and prefer a Playwright screenshot for those cases.
 
 ### Test keyboard tab order with `element.focus()` + single `user.tab()`, not DOM position
 

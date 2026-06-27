@@ -63,9 +63,11 @@ export type UseCardSheetFormInput = {
  * The add/edit-card sheet state machine shared, byte-for-byte, by the cardgroup
  * and master-deck card screens. Owns the add-sheet open/dirty flags, the editing
  * row id, both field-level validation errors, and the create/update outcome
- * routing (incl. the close-on-success and `unexpected` → inline-`front`-error
- * fallbacks). The caller supplies the mutation runners (from
- * `useCardMutations` / `useMasterCardMutations`) and the localized fallbacks.
+ * routing. A successful CREATE keeps the add sheet open and bumps
+ * `addedCount`/`createNonce` (continuous add); a successful UPDATE closes the
+ * edit sheet. Both map `unexpected` → an inline `front` error. The caller
+ * supplies the mutation runners (from `useCardMutations` /
+ * `useMasterCardMutations`) and the localized fallbacks.
  */
 export function useCardSheetForm({
   createCard,
@@ -77,11 +79,14 @@ export function useCardSheetForm({
   const [addOpen, setAddOpen] = useState(false);
   const [addDirty, setAddDirty] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [addedCount, setAddedCount] = useState(0);
+  const [createNonce, setCreateNonce] = useState(0);
 
   const createForm = useSheetForm(
     useCallback(() => {
       setAddDirty(false);
-      setAddOpen(false);
+      setAddedCount((c) => c + 1);
+      setCreateNonce((n) => n + 1);
     }, []),
   );
   const updateForm = useSheetForm(useCallback(() => setEditingId(null), []));
@@ -101,6 +106,7 @@ export function useCardSheetForm({
     resetCreateCard();
     clearCreateError();
     setAddDirty(false);
+    setAddedCount(0);
     setAddOpen(true);
   }, [resetCreateCard, clearCreateError]);
 
@@ -113,6 +119,7 @@ export function useCardSheetForm({
         resetCreateCard();
         setAddDirty(false);
         clearCreateError();
+        setAddedCount(0);
       }
     },
     [resetCreateCard, clearCreateError],
@@ -160,6 +167,8 @@ export function useCardSheetForm({
   return {
     addOpen,
     addDirty,
+    addedCount,
+    createNonce,
     markAddDirty,
     editingId,
     createValidationError: createForm.validationError,

@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { AdminMasterCardsConnectionDocument } from "@/generated/graphql";
 import { UndoDeleteProvider } from "@/lib/undo-delete";
@@ -39,52 +38,6 @@ const node = {
   createdAt: "2026-01-01T00:00:00Z",
   updatedAt: "2026-01-01T00:00:00Z",
 };
-
-it("threads onBatchImport into renderPageHeader so the header can open the import sheet", async () => {
-  // The mobile batch-import control now lives in the page header's overflow
-  // menu, so the section must forward MasterCardsClient's onBatchImport up to
-  // the renderPageHeader render prop; invoking it opens the real import sheet.
-  const user = userEvent.setup();
-  renderWithIntl(
-    <MockedProvider
-      mocks={[
-        {
-          request: {
-            query: AdminMasterCardsConnectionDocument,
-            variables: masterCardsDefaultVars(MASTER_ID),
-          },
-          result: {
-            data: {
-              adminMasterCardsConnection: {
-                __typename: "MasterCardConnection",
-                edges: [{ __typename: "MasterCardEdge", cursor: "c-1", node }],
-                pageInfo,
-                totalCount: 3,
-              },
-            },
-          },
-        },
-      ]}
-    >
-      <UndoDeleteProvider>
-        <MasterCardsSection
-          masterId={MASTER_ID}
-          deckName="Deck One"
-          initialEdges={[{ __typename: "MasterCardEdge", cursor: "c-1", node }]}
-          initialPageInfo={pageInfo}
-          initialTotalCount={3}
-          renderPageHeader={({ onBatchImport }) => (
-            <button type="button" data-testid="hdr-import" onClick={onBatchImport}>
-              import
-            </button>
-          )}
-        />
-      </UndoDeleteProvider>
-    </MockedProvider>,
-  );
-  await user.click(await screen.findByTestId("hdr-import"));
-  expect(await screen.findByTestId("batch-import-payload")).toBeInTheDocument();
-});
 
 it("renders MasterCardsClient with the seed and exposes the live count to renderPageHeader", async () => {
   renderWithIntl(

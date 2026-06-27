@@ -188,7 +188,8 @@
     "addCardSheetTitle": "カードを追加",
     "selectedCount": "{count}件選択中",
     "deleteCardsTitle": "{count}件のカードを削除しますか？",
-    "deleteConfirmCount": "{count}件を削除"
+    "deleteConfirmCount": "{count}件を削除",
+    "addedCount": "{count}件追加"
   },
   "BatchImport": {
     "cardsToImport": "インポートするカード",
