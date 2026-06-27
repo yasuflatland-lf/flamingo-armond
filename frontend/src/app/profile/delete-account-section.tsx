@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation } from "@apollo/client/react";
+import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
@@ -103,7 +104,8 @@ export function DeleteAccountSection() {
 
       <AlertDialog open={open} onOpenChange={handleOpenChange}>
         <AlertDialogTrigger asChild>
-          <Button type="button" variant="destructive" data-testid="delete-account-trigger">
+          <Button type="button" variant="destructiveGhost" data-testid="delete-account-trigger">
+            <Trash2 aria-hidden="true" className="h-4 w-4" />
             {t("deleteAccountButton")}
           </Button>
         </AlertDialogTrigger>
