@@ -231,10 +231,8 @@ func (r *cardRepo) Update(ctx context.Context, id string, patch CardUpdate) (*do
 	if res.Error != nil {
 		return nil, eris.Wrap(res.Error, "repository: card: update")
 	}
-	if res.RowsAffected == 0 {
-		return nil, ErrNotFound
-	}
-	return r.FindByID(ctx, id)
+	return refetchAfterUpdate(res.RowsAffected, ErrNotFound,
+		func() (*domain.Card, error) { return r.FindByID(ctx, id) }, "")
 }
 
 func (r *cardRepo) Delete(ctx context.Context, id string) error {

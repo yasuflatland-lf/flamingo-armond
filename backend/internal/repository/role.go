@@ -167,14 +167,9 @@ func (r *roleRepo) Update(ctx context.Context, id, name string) (*domain.Role, e
 		}
 		return nil, eris.Wrap(res.Error, "repository: role: update")
 	}
-	if res.RowsAffected == 0 {
-		return nil, ErrRoleNotFound
-	}
-	role, err := r.FindByID(ctx, id)
-	if err != nil {
-		return nil, eris.Wrap(err, "repository: role: update: find after update")
-	}
-	return role, nil
+	return refetchAfterUpdate(res.RowsAffected, ErrRoleNotFound,
+		func() (*domain.Role, error) { return r.FindByID(ctx, id) },
+		"repository: role: update: find after update")
 }
 
 func (r *roleRepo) Delete(ctx context.Context, id string) error {

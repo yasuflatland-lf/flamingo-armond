@@ -165,11 +165,9 @@ func (r *userRepo) Update(ctx context.Context, id string, patch UserUpdate) (*do
 	if res.Error != nil {
 		return nil, eris.Wrap(res.Error, "repository: user: update")
 	}
-	if res.RowsAffected == 0 {
-		return nil, ErrNotFound
-	}
 	// Re-fetch so callers see the trigger-refreshed updated_at.
-	return r.FindByID(ctx, id)
+	return refetchAfterUpdate(res.RowsAffected, ErrNotFound,
+		func() (*domain.User, error) { return r.FindByID(ctx, id) }, "")
 }
 
 func (r *userRepo) UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch UserUpdate) error {
