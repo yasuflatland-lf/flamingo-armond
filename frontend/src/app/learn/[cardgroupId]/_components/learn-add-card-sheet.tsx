@@ -7,6 +7,7 @@ import { useCardMutations } from "@/app/cardgroups/[id]/cards/use-card-mutations
 import { CardForm } from "@/components/cardgroups/card-form";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import { FLAMINGO_EVENT, subscribeFlamingo } from "@/lib/events/flamingo-events";
+import { useSheetForm } from "@/lib/forms/use-sheet-form";
 
 function AddCardSheetContent({
   submit,
@@ -52,10 +53,13 @@ export function LearnAddCardSheet({ cardgroupId }: { cardgroupId: string }) {
   const t = useTranslations("Cards");
   const [open, setOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [validationError, setValidationError] = useState<{
-    field: string;
-    message: string;
-  } | null>(null);
+
+  const onSuccessClose = useCallback(() => {
+    setDirty(false);
+    setOpen(false);
+  }, []);
+  const { validationError, run, setValidationError, clearValidationError } =
+    useSheetForm(onSuccessClose);
 
   // The Learn screen has no cards-connection subscription of its own, so the
   // shared hook's create path seeds the cardgroup's default-vars connection
@@ -68,10 +72,10 @@ export function LearnAddCardSheet({ cardgroupId }: { cardgroupId: string }) {
 
   const openSheet = useCallback(() => {
     resetCreateCard();
-    setValidationError(null);
+    clearValidationError();
     setDirty(false);
     setOpen(true);
-  }, [resetCreateCard]);
+  }, [resetCreateCard, clearValidationError]);
 
   useEffect(() => {
     return subscribeFlamingo(FLAMINGO_EVENT.addCard, (detail, event) => {
@@ -83,15 +87,8 @@ export function LearnAddCardSheet({ cardgroupId }: { cardgroupId: string }) {
 
   async function handleCreate(values: { front: string; back: string }) {
     resetCreateCard();
-    setValidationError(null);
-    const outcome = await createCard(values);
-    if (outcome.status === "success") {
-      setDirty(false);
-      setValidationError(null);
-      setOpen(false);
-    } else if (outcome.status === "validation") {
-      setValidationError({ field: outcome.field, message: outcome.message });
-    } else if (outcome.status === "unexpected") {
+    const outcome = await run(() => createCard(values));
+    if (outcome.status === "unexpected") {
       setValidationError({ field: "front", message: t("addFailed") });
     }
     // outcome.status === "rejected": the hook already logged the rejection;
@@ -107,7 +104,7 @@ export function LearnAddCardSheet({ cardgroupId }: { cardgroupId: string }) {
         if (!nextOpen) {
           resetCreateCard();
           setDirty(false);
-          setValidationError(null);
+          clearValidationError();
         }
       }}
       submitting={creating}

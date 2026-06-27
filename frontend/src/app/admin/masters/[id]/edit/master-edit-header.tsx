@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { FormSheet } from "@/components/ui/form-sheet";
 import { SplitButtonMenu } from "@/components/ui/split-button-menu";
+import { useSheetForm } from "@/lib/forms/use-sheet-form";
 import { cn } from "@/lib/utils";
 import type { AdminMasterDeck } from "./queries";
 
@@ -51,12 +52,17 @@ export function MasterEditHeader({ master, cardCount, onBatchImport }: Props) {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsDirty, setSettingsDirty] = useState(false);
-  const [validationError, setValidationError] = useState<{ field: string; message: string } | null>(
-    null,
-  );
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [publishing, setPublishing] = useState(false);
+
+  const onSettingsSaved = useCallback(() => {
+    toast.success(t("updateSuccess"));
+    setSettingsDirty(false);
+    setSettingsOpen(false);
+    router.refresh();
+  }, [t, router]);
+  const { validationError, run, clearValidationError } = useSheetForm(onSettingsSaved);
 
   const { updateMaster, deleteMaster, publishMaster, unpublishMaster, updating } =
     useMasterMutations();
@@ -73,17 +79,11 @@ export function MasterEditHeader({ master, cardCount, onBatchImport }: Props) {
 
   const handleUpdate = useCallback(
     async (values: MasterFormValues) => {
-      setValidationError(null);
-      const outcome = await updateMaster(master.id, values);
+      const outcome = await run(() => updateMaster(master.id, values));
       switch (outcome.status) {
         case "validation":
-          setValidationError({ field: outcome.field, message: outcome.message });
-          return;
         case "success":
-          toast.success(t("updateSuccess"));
-          setSettingsDirty(false);
-          setSettingsOpen(false);
-          router.refresh();
+          // `run` stored the field error / fired `onSettingsSaved` respectively.
           return;
         case "auth":
           authToast(outcome.kind);
@@ -92,7 +92,7 @@ export function MasterEditHeader({ master, cardCount, onBatchImport }: Props) {
           toast.error(t("unexpectedError"));
       }
     },
-    [master.id, updateMaster, t, authToast, router],
+    [master.id, updateMaster, run, t, authToast],
   );
 
   const handlePublishToggle = useCallback(async () => {
@@ -333,7 +333,7 @@ export function MasterEditHeader({ master, cardCount, onBatchImport }: Props) {
         open={settingsOpen}
         onOpenChange={(next) => {
           if (!next) {
-            setValidationError(null);
+            clearValidationError();
             setSettingsDirty(false);
             setSettingsOpen(false);
           }
