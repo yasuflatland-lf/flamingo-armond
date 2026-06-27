@@ -1,9 +1,8 @@
 "use client";
 
 import { NetworkStatus } from "@apollo/client";
-import { useApolloClient } from "@apollo/client/react";
 import { useTranslations } from "next-intl";
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
@@ -15,6 +14,7 @@ import {
 import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
 import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
+import { useSeedConnectionCache } from "@/lib/pagination/use-seed-connection-cache";
 import { CatalogListItem } from "./catalog-list-item";
 import { CATALOG_DEFAULT_VARS } from "./queries";
 
@@ -65,35 +65,21 @@ function mergeCatalogConnection(
  *    is showing; the user must click Retry to resume.
  */
 export default function CatalogClient({ initialConnection }: CatalogClientProps) {
-  const apollo = useApolloClient();
   const t = useTranslations("Catalog");
   const tCommon = useTranslations("Common");
 
   const search = useHeaderTakeoverSearch();
   const searchQuery = search.query;
 
-  // Strict Mode double-mount safety: only write the SSR seed into the cache once.
-  const seededRef = useRef(false);
-
-  // Seed the cache synchronously during render (before useQuery runs) with the
-  // SSR initialConnection so the first useQuery pass (cache-first) finds the data
-  // already in the cache and renders without a network round-trip. Doing this in
-  // a useEffect would create a window between first paint and the post-render
-  // write where useQuery sees an empty cache. The seededRef guard is synchronous,
-  // so it survives Strict Mode's double-invoke without a second write.
-  if (!seededRef.current && initialConnection === null) {
-    console.warn(
-      "[catalog-client] initialConnection is null — SSR seed skipped; useQuery will fetch fresh",
-    );
-  }
-  if (!seededRef.current && initialConnection != null) {
-    seededRef.current = true;
-    apollo.writeQuery({
-      query: MasterCatalogDocument,
-      variables: CATALOG_DEFAULT_VARS,
-      data: { masterCatalog: initialConnection },
-    });
-  }
+  // Seed the SSR connection into the cache synchronously before useQuery runs.
+  // CATALOG_DEFAULT_VARS keeps the cache key identical to the SSR seed and the
+  // client useQuery — any mismatch silently splits the cache.
+  useSeedConnectionCache({
+    document: MasterCatalogDocument,
+    variables: CATALOG_DEFAULT_VARS,
+    data: { masterCatalog: initialConnection },
+    warnScope: "catalog-client",
+  });
 
   // When searchQuery is null we use CATALOG_DEFAULT_VARS verbatim so the cache key
   // matches the SSR seed exactly. For non-null searches we spread and override

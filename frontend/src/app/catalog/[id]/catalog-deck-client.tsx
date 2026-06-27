@@ -1,9 +1,8 @@
 "use client";
 
-import { useApolloClient } from "@apollo/client/react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useImportMaster } from "@/app/catalog/use-import-master";
 import { CardSearchInput } from "@/components/cardgroups/card-search-input";
@@ -16,6 +15,7 @@ import {
   type CatalogMasterCardsConnectionQuery,
 } from "@/generated/graphql";
 import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
+import { useSeedConnectionCache } from "@/lib/pagination/use-seed-connection-cache";
 import type { CatalogDeck } from "./catalog-deck-header";
 import { CatalogDeckHeader } from "./catalog-deck-header";
 import { catalogCardsDefaultVars } from "./queries";
@@ -58,33 +58,29 @@ export default function CatalogDeckClient({
   initialPageInfo,
   initialTotalCount,
 }: CatalogDeckClientProps) {
-  const apollo = useApolloClient();
   const t = useTranslations("Catalog");
   const tCards = useTranslations("Cards");
   const tCommon = useTranslations("Common");
 
   const search = useHeaderTakeoverSearch();
 
-  // Strict Mode double-mount safety: only write the SSR seed into the cache once.
-  // The seededRef guard is synchronous, so it survives the double-invoke without
-  // a second write. Doing this in a useEffect would create a window between first
-  // paint and the post-render write where useQuery sees an empty cache.
-  const seededRef = useRef(false);
-  if (!seededRef.current) {
-    seededRef.current = true;
-    apollo.writeQuery({
-      query: CatalogMasterCardsConnectionDocument,
-      variables: catalogCardsDefaultVars(id),
-      data: {
-        masterCardsConnection: {
-          __typename: "MasterCardConnection",
-          edges: initialEdges,
-          pageInfo: initialPageInfo,
-          totalCount: initialTotalCount,
-        },
+  // Seed the SSR master-cards connection into the cache synchronously before
+  // useQuery runs. catalogCardsDefaultVars(id) keeps the cache key identical to
+  // the SSR seed and the client useQuery — any mismatch silently splits the
+  // cache. The connection object is built here (where __typename is assembled);
+  // initial props are required, so no warnScope/null-skip is needed.
+  useSeedConnectionCache({
+    document: CatalogMasterCardsConnectionDocument,
+    variables: catalogCardsDefaultVars(id),
+    data: {
+      masterCardsConnection: {
+        __typename: "MasterCardConnection",
+        edges: initialEdges,
+        pageInfo: initialPageInfo,
+        totalCount: initialTotalCount,
       },
-    });
-  }
+    },
+  });
 
   const { edges, pageInfo, totalCount, fetchingMore, fetchMoreError, retryFetchMore, sentinelRef } =
     useCatalogCardsConnection({
