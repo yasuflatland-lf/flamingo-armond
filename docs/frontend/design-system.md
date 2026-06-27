@@ -14,47 +14,101 @@ Source of truth for the values quoted below:
 [`frontend/src/app/globals.css`](../../frontend/src/app/globals.css) (tokens) and
 [`frontend/src/components/ui/button.tsx`](../../frontend/src/components/ui/button.tsx) (variants).
 
+## The coral-minimal model
+
+Coral is the brand and it carries the accent roles. **Danger** is a separate, deepened
+crimson (`--destructive`, `oklch(0.51 0.21 25)`) that reads unambiguously as "stop /
+irreversible" even next to coral. The system is governed by two conventions, not by a
+rule that the two colors must never co-locate:
+
+- **Emphasis ladder** — exactly one filled coral CTA per view; every other control steps
+  back to a lower-emphasis variant. This is what keeps a screen from looking like a wall
+  of coral buttons.
+- **Danger two-tier** — an inline delete *trigger* is low-emphasis ghost-red
+  (`destructiveGhost`); the data-loss *commit* inside the confirm dialog is the only
+  filled crimson. The trigger invites; the commit re-affirms.
+
+These supersede the older "two reds that never co-locate" defense. Coral and crimson are
+allowed to share a surface because the emphasis ladder and the two-tier already disambiguate
+intent: the filled coral is the one constructive CTA, the filled crimson appears only at the
+moment of irreversible commit, and everything else is neutral or ghost.
+
 ## Semantic color tokens
 
-The action-button palette resolves to three semantically distinct fills (light mode):
+The action-button palette and the status/accent tokens resolve to these values (light mode):
 
 | Token | oklch (L / C / H) | Renders as | Meaning |
 |---|---|---|---|
 | `--primary` | `0.205 / 0 / 0` | near-black, neutral | Neutral default emphasis — **not** a brand or danger signal |
 | `--primary-foreground` | `0.985 / 0 / 0` | near-white | Text on `--primary` |
-| `--brand-primary` | `0.7364 / 0.189 / 18.45` | bright flamingo coral | The product's primary constructive CTA color |
+| `--brand-primary` | `0.7364 / 0.189 / 18.45` | bright flamingo coral (L74) | The brand **fill** — primary CTA, progress, selected, focus ring |
 | `--brand-primary-foreground` | `1 / 0 / 0` | white | Text on `--brand-primary` |
-| `--destructive` | `0.577 / 0.245 / 27.325` | deep blood-red | Danger / irreversible / data-loss |
+| `--brand-link` | `0.5 / 0.15 / 20` | darker coral | Link / accent **text** — AA on white (see "Accent coral" below) |
+| `--destructive` | `0.51 / 0.21 / 25` | deepened crimson | Danger / irreversible / data-loss |
 | `--destructive-foreground` | `0.985 / 0 / 0` | near-white | Text on `--destructive` |
+| `--warning` | `0.8 / 0.145 / 78` | soft amber band | Caution band (non-blocking warning surface), not a button fill |
+| `--warning-foreground` | `0.4 / 0.1 / 72` | dark amber | Text on `--warning` (and AA on white) |
+| `--success` | `0.63 / 0.17 / 149` | green | Status indicator only (e.g. published-deck dot), never a CTA fill |
 | `--secondary` | `0.97 / 0 / 0` | light gray | Low-emphasis secondary |
+
+`--ring` is now coral (`oklch(0.7364 0.189 18.45)`, the same value as `--brand-primary`), so
+focus outlines read as brand rather than a neutral gray.
 
 Adjacent palettes that are **not** part of the action-button system: `--brand-tint*`
 (subtle brand-tinted surfaces) and `--cefr-a/b/c*` (domain difficulty bands, contrast-guarded
-in `cefr-badge.test.tsx`). They do not participate in the red-is-danger rule below.
+in `cefr-badge.test.tsx`). They do not participate in the danger conventions below.
 
-## Red is reserved for danger
+## Accent coral: brand fill vs link text
 
-There are two reds in the system and they do different jobs:
+Coral exists in two distinct token roles because a single coral value cannot serve both the
+fill role and the text role and still pass WCAG AA:
 
-- `brand` (CTA) — **bright coral**, lightness ≈ 74%, chroma 0.189, hue 18.
-- `destructive` (danger) — **deep red**, lightness ≈ 58%, chroma 0.245, hue 27.
+- **Brand fill — `--brand-primary` (L74).** Used as a *background fill* under white text:
+  primary CTA buttons, progress bars, selected states, and the focus ring (`--ring`). The
+  white `--brand-primary-foreground` on the L74 coral fill is the intended high-contrast
+  pairing.
+- **Link / accent text — `--brand-link` (L50).** Used as *foreground text* on a white
+  surface: inline links and the `link` button variant. The L74 brand fill is too light to
+  use as text on white (it fails the WCAG-AA 4.5:1 body-text threshold), so the darker L50
+  `--brand-link` carries the accent-text role and clears AA on white.
 
-The principle: **`destructive` red means "stop / irreversible". Never style a constructive
-action (Save, Create, Login) with `destructive`, and never leave a destructive action in a
-neutral variant.** A constructive primary action stays `brand`; a destructive action is
-`destructive`.
+The rule of thumb: coral **on** white (text) is `--brand-link`; coral **as** the surface
+(fill behind white text) is `--brand-primary`. Never use the L74 fill token as text color.
 
-Keeping a coral `brand` CTA *and* a danger `destructive` red does **not** create ambiguity,
-for two reasons:
+## Emphasis ladder
 
-1. **The tokens are distinguishable** — deep red (L58, more saturated) vs. bright coral (L74)
-   read as different colors when seen side by side.
-2. **They never co-locate** — a delete dialog has no Save button; a form's Save has no delete
-   beside it. The "two reds collide" concern is theoretical, not a surface that actually renders.
+A view has exactly **one** filled coral CTA. Everything else steps down the ladder so the
+single primary action stays visually dominant:
 
-This is why the brand-red CTAs across the app were deliberately **kept** rather than flattened
-to neutral: the safety goal is met by making destructive actions reliably red, not by removing
-the brand from constructive ones.
+| Role | Variant | Renders as |
+|---|---|---|
+| Primary CTA (one per view) | `brand` | filled coral |
+| Secondary action | `ghost` (or `outline` in dense lists / dialogs) | neutral, no fill until hover |
+| Danger trigger (inline) | `destructiveGhost` | red text, transparent, faint red hover |
+| Danger commit (confirm) | `destructive` | filled crimson |
+| Cancel / Keep-editing | `outline` | bordered, transparent |
+
+`ghost` is the recommended **secondary** default; promote a secondary to `outline` only where a
+visible border earns its keep — dense lists, toolbars, and dialog footers where a borderless
+control would be hard to discover. Two filled coral buttons on one view is the ladder smell to
+watch for: demote all but the genuine primary.
+
+## Danger two-tier
+
+Danger is expressed at two emphasis levels, and the level tracks how close the user is to
+irreversible loss:
+
+- **Trigger (inline) — `destructiveGhost` + a `Trash2` icon.** An inline Delete affordance is
+  low-emphasis: `bg-transparent text-destructive hover:bg-destructive/10`. It reads as red but
+  never paints a filled red row in a list. The trigger only *opens* the confirm — it does not
+  itself destroy data.
+- **Commit (confirm) — filled `destructive`.** The `AlertDialogAction` that actually deletes /
+  overwrites / discards is the **only** filled crimson in the flow. This re-affirms the
+  existing filled-destructive confirm rule below, which is **unchanged**.
+
+A filled red row in a list is the anti-pattern this two-tier replaces: it shouts danger at rest,
+before the user has expressed any delete intent. Ghost-red at the trigger, filled crimson only at
+the commit.
 
 ## Button variants
 
@@ -63,13 +117,14 @@ not by appearance:
 
 | Variant | Fill | Use for |
 |---|---|---|
-| `brand` | flamingo coral | **Primary constructive CTA** — Save, Create, Login, Import, Publish, Study again |
-| `destructive` | deep red | **Destructive / data-loss confirmation** — see the dialog convention below |
-| `outline` | bordered, transparent | Cancel, Keep-editing, toggle-off, secondary action beside a primary |
-| `default` | neutral near-black | Neutral emphasis where neither brand nor danger applies |
+| `brand` | flamingo coral (`--brand-primary`) | **Primary constructive CTA** — Save, Create, Login, Import, Publish, Study again (one per view) |
+| `destructive` | filled crimson (`--destructive`) | **Destructive / data-loss commit** — the confirm-dialog action; see the dialog convention below |
+| `destructiveGhost` | none until hover (`text-destructive`, faint red hover) | **Low-emphasis danger trigger** — inline Delete that opens a confirm |
+| `outline` | bordered, transparent | Cancel, Keep-editing, toggle-off, secondary action in dense lists / dialogs |
+| `ghost` | none until hover | **Recommended secondary** — toolbar / icon-only actions and step-back secondaries inside dense UI |
+| `link` | text + underline (coral `--brand-link`) | Inline text-link affordance |
+| `default` | neutral near-black (`--primary`) | Neutral emphasis where neither brand nor danger applies |
 | `secondary` | light gray | Low-emphasis secondary |
-| `ghost` | none until hover | Toolbar / icon-only actions inside dense UI |
-| `link` | text + underline | Inline text-link affordance |
 
 `default` is the cva fallback (`defaultVariants.variant`). Because it is neutral near-black, an
 action that *should* be brand or danger but omits its variant renders as a flat neutral button —
@@ -85,8 +140,8 @@ buttons like this:
   (neutral near-black).
 
 So a confirm button that performs a destructive or data-loss action renders **neutral black by
-default** and reads as a safe "next" button. Every such confirm MUST opt into the danger color
-explicitly:
+default** and reads as a safe "next" button. Every such confirm — the danger **commit** in the
+two-tier — MUST opt into the filled danger color explicitly:
 
 ```tsx
 import { buttonVariants } from "@/components/ui/button";
@@ -103,11 +158,15 @@ import { buttonVariants } from "@/components/ui/button";
 (tailwind-merge) lets the later `bg-destructive` win over the default `bg-primary`, so passing
 the destructive classes via `className` is sufficient — no override of the component is needed.
 
+The inline trigger that *opens* this dialog is the lower tier: it uses `destructiveGhost`
+(transparent, red text + `Trash2`), never filled `destructive`. Only the commit above is filled.
+
 ### What counts as a "danger" confirm
 
-Route the confirm to `destructive` whenever the action **deletes or irreversibly loses data**:
+Route the confirm commit to `destructive` whenever the action **deletes or irreversibly loses
+data**:
 
-| Action | Example site | Variant |
+| Action | Example site | Commit variant |
 |---|---|---|
 | Permanent delete | `admin-master-form.tsx` (Delete master), `cardgroup-header.tsx` (Delete group) | `destructive` |
 | Bulk delete | `bulk-action-bar.tsx` (delete selected cards) | `destructive` |
@@ -116,7 +175,7 @@ Route the confirm to `destructive` whenever the action **deletes or irreversibly
 
 Constructive confirms in the same dialogs stay non-red: `AlertDialogCancel` is `outline`,
 "Keep editing" is `outline`. A constructive *primary* action elsewhere (Save / Create) is `brand`,
-never `destructive`.
+never `destructive`. The inline trigger that opens any of these dialogs is `destructiveGhost`.
 
 ## Accessibility notes
 
@@ -126,9 +185,10 @@ never `destructive`.
 - **Cancel is the safe default focus.** In a Radix `AlertDialog`, focus lands on `AlertDialogCancel`,
   so an accidental Enter dismisses rather than confirms a destructive action. Preserve that — do
   not autofocus the destructive `AlertDialogAction`.
-- **Foreground contrast.** `--destructive-foreground` (near-white) on the deep-red `--destructive`
-  fill, and `--brand-primary-foreground` (white) on coral, are the intended pairings; do not hand-pick
-  a different text color on these fills.
+- **Foreground contrast.** `--destructive-foreground` (near-white) on the crimson `--destructive`
+  fill, and `--brand-primary-foreground` (white) on the L74 coral fill, are the intended pairings;
+  do not hand-pick a different text color on these fills. For coral *text* on white use `--brand-link`
+  (L50), which clears WCAG AA — the L74 fill token fails as text on white.
 
 ## Further reading
 
