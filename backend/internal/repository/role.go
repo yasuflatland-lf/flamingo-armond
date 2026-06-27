@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -193,11 +192,7 @@ func (r *roleRepo) Delete(ctx context.Context, id string) error {
 // roles.name column to ErrRoleDuplicate. Returns nil for any other error so
 // callers can use it as a pre-filter before falling through to eris.Wrap.
 func classifyUniqueError(err error) error {
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
-		return nil
-	}
-	if strings.Contains(pgErr.ConstraintName, "name") {
+	if pgConstraintViolation(err, "23505", "name") {
 		return ErrRoleDuplicate
 	}
 	return nil
@@ -210,14 +205,10 @@ func classifyUniqueError(err error) error {
 // FK-classification logic can be unit-tested with a fabricated *pgconn.PgError
 // without needing a live DB race.
 func classifyFKError(err error) error {
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) || pgErr.Code != "23503" {
-		return nil
-	}
-	if strings.Contains(pgErr.ConstraintName, "user_id") {
+	if pgConstraintViolation(err, "23503", "user_id") {
 		return ErrUserNotFound
 	}
-	if strings.Contains(pgErr.ConstraintName, "role_id") {
+	if pgConstraintViolation(err, "23503", "role_id") {
 		return ErrRoleNotFound
 	}
 	return nil

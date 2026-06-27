@@ -3,10 +3,8 @@ package repository
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 
@@ -130,11 +128,7 @@ SET last_viewed_cardgroup_id = EXCLUDED.last_viewed_cardgroup_id,
 // column name is unique to this FK in the user_preferences table. Returns nil
 // when err is not a FK violation so callers can fall through to eris.Wrap.
 func classifyUserPreferenceCardgroupFKError(err error) error {
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) || pgErr.Code != "23503" {
-		return nil
-	}
-	if strings.Contains(pgErr.ConstraintName, "last_viewed_cardgroup_id") {
+	if pgConstraintViolation(err, "23503", "last_viewed_cardgroup_id") {
 		return ErrCardgroupNotFound
 	}
 	return nil

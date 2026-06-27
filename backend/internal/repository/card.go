@@ -3,10 +3,8 @@ package repository
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -181,9 +179,7 @@ func (r *cardRepo) ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, car
 
 func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {
 	if err := r.db.WithContext(ctx).Create(cardToRow(card)).Error; err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" &&
-			strings.Contains(pgErr.ConstraintName, "uq_cards_cardgroup_front") {
+		if pgConstraintViolation(err, "23505", "uq_cards_cardgroup_front") {
 			return ErrCardDuplicateFront
 		}
 		return eris.Wrap(err, "repository: card: create")

@@ -3,10 +3,8 @@ package repository
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 
@@ -32,11 +30,7 @@ var ErrMasterCardgroupNotFound = errors.Join(
 // classification can be unit-tested with a fabricated *pgconn.PgError without a
 // live DB race (mirrors role.go's classifyFKError).
 func classifyMasterCardFKError(err error) error {
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) || pgErr.Code != "23503" {
-		return nil
-	}
-	if strings.Contains(pgErr.ConstraintName, "master_cardgroup_id") {
+	if pgConstraintViolation(err, "23503", "master_cardgroup_id") {
 		return ErrMasterCardgroupNotFound
 	}
 	return nil
@@ -322,9 +316,7 @@ func (r *masterCardRepo) Create(ctx context.Context, c *domain.MasterCard) error
 		c.ID = id
 	}
 	if err := r.db.WithContext(ctx).Create(masterCardToRow(c)).Error; err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" &&
-			strings.Contains(pgErr.ConstraintName, "uq_master_cards_cg_front") {
+		if pgConstraintViolation(err, "23505", "uq_master_cards_cg_front") {
 			return ErrCardDuplicateFront
 		}
 		if classified := classifyMasterCardFKError(err); classified != nil {
