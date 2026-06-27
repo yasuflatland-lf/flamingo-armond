@@ -132,3 +132,26 @@ func translateRoleNameErr(err error) error {
 		return eris.Wrap(err, "usecase: translate role name error")
 	}
 }
+
+// SentinelMapping maps a repository error sentinel to an input-validation field/message pair.
+type SentinelMapping struct {
+	Sentinel error
+	Field    string
+	Message  string
+}
+
+// classifyRepoErr classifies a repository error sentinel set into either input-validation data
+// or a propagating error. The mappings list defines the sentinel-to-field/message mapping;
+// if no mapping matches, context-done errors pass through unchanged and other errors are
+// wrapped with the supplied prefix per error-wrapping conventions.
+func classifyRepoErr(err error, wrap string, mappings []SentinelMapping) (*InputValidationInfo, error) {
+	for _, m := range mappings {
+		if errors.Is(err, m.Sentinel) {
+			return NewInputValidationInfo(m.Field, m.Message), nil
+		}
+	}
+	if isContextDone(err) {
+		return nil, err
+	}
+	return nil, eris.Wrap(err, wrap)
+}

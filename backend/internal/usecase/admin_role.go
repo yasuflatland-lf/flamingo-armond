@@ -243,33 +243,14 @@ func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
 
 // mapAdminRoleError classifies the role-repository sentinel set into either
 // input-validation data (first slot non-nil) or a propagating error (second
-// slot non-nil). The shape mirrors mapAdminEditMutationError so promoted
-// outcome-bearing callers can route validation refusals into outcome data
-// uniformly:
-//   - repository.ErrRoleNotFound            -> InputValidationInfo{Field: notFoundField}
-//   - repository.ErrRoleDuplicate           -> InputValidationInfo{Field: "name"}
-//   - context.Canceled / DeadlineExceeded   -> passthrough via error
-//   - default                               -> eris.Wrap(err, wrap) via error
-//
-// The notFoundField argument lets callers name the request field that was bad
-// (e.g. "id" for Update / Delete / Get-from-Update) without hardcoding a
-// single field name here. Forbidden conditions are constructed at the call
-// sites, not via this mapper.
-//
-// Unpromoted callers (Update, Delete) wrap the first-slot InputValidationInfo
-// back into a *ucerr.ValidationError via lowerValidationInfo so their
-// error-returning signatures stay intact.
+// slot non-nil) by delegating to classifyRepoErr with the role-specific
+// sentinel mappings. The notFoundField argument lets callers name the request
+// field that was bad (e.g. "id" for Update / Delete / Get-from-Update).
 func mapAdminRoleError(err error, notFoundField, wrap string) (*InputValidationInfo, error) {
-	switch {
-	case errors.Is(err, repository.ErrRoleNotFound):
-		return NewInputValidationInfo(notFoundField, "role not found"), nil
-	case errors.Is(err, repository.ErrRoleDuplicate):
-		return NewInputValidationInfo("name", "role name already exists"), nil
-	case isContextDone(err):
-		return nil, err
-	default:
-		return nil, eris.Wrap(err, wrap)
-	}
+	return classifyRepoErr(err, wrap, []SentinelMapping{
+		{repository.ErrRoleNotFound, notFoundField, "role not found"},
+		{repository.ErrRoleDuplicate, "name", "role name already exists"},
+	})
 }
 
 // lowerValidationInfo is the inverse of liftValidationErr for unpromoted
