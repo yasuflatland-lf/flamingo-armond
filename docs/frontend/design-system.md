@@ -110,6 +110,21 @@ A filled red row in a list is the anti-pattern this two-tier replaces: it shouts
 before the user has expressed any delete intent. Ghost-red at the trigger, filled crimson only at
 the commit.
 
+### Selection toolbars: the destructive action is the bar's primary
+
+A contextual selection bar — e.g. the cards bulk-action bar
+([`bulk-action-bar.tsx`](../../frontend/src/components/cardgroups/bulk-action-bar.tsx)) — is the
+one place where a danger trigger is also the **primary** action of its view: the user entered
+selection mode *in order to* delete. There the inline `destructiveGhost` trigger carries a local
+affordance border (`border border-destructive/45`) so it reads as clearly tappable and findable,
+and its sibling **Cancel is demoted from `outline` to `ghost`** so the single bordered control is
+the destructive one. This is a deliberate, local exception to the "Cancel → `outline`" ladder row
+above: emphasis tracks intent, and the bar's intent is to delete. The trigger stays transparent
+(border only, never a filled red row), and the real safety gate remains the filled `destructive`
+commit in the confirm dialog. Standalone danger triggers outside a selection bar (Delete account,
+Delete user) keep the plain borderless `destructiveGhost` — there delete is a rare, dangerous
+escape hatch, not the view's purpose, so it stays recessive.
+
 ## Button variants
 
 [`Button`](../../frontend/src/components/ui/button.tsx) exposes these variants. Pick by intent,
