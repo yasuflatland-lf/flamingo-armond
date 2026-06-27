@@ -2,13 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useCallback, useState } from "react";
-import { useCreateCardgroup } from "@/app/cardgroups/use-create-cardgroup";
+import { useCreateCardgroupForm } from "@/app/cardgroups/use-create-cardgroup-form";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
 import { AuthErrorBanner } from "@/components/ui/auth-error-banner";
 import { ErrorBanner } from "@/components/ui/error-banner";
-import { useSheetForm } from "@/lib/forms/use-sheet-form";
 
 interface NewCardgroupClientProps {
   showWelcome?: boolean;
@@ -21,65 +19,38 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
   const t = useTranslations("Cardgroups");
   const tCommon = useTranslations("Common");
 
-  // Semantically distinct from validationError: this surfaces a degraded
-  // "Something went wrong" banner when the server returns a __typename the
-  // client was not regenerated against, or null payload from a partial-
-  // response null bubble.
-  const [unexpectedPayloadError, setUnexpectedPayloadError] = useState<string | null>(null);
+  // The hook owns the create mutation, outcome routing, and the structured
+  // error state (validation / auth / limit / unexpected). Auth failures are
+  // surfaced as a degraded banner with a <Link href="/login"> rather than a
+  // redirect — see .claude/rules/frontend-rsc-error-handling.md § "Mid-session
+  // UNAUTHENTICATED in a client component".
+  const { submit, loading, validationError, authError, limitError, unexpectedError } =
+    useCreateCardgroupForm();
 
-  // Server-enforced cardgroup limit reached. Rendered as a banner so the
-  // user knows creation is blocked without a field-level error indicator.
-  const [limitError, setLimitError] = useState<string | null>(null);
+  // Server-enforced cardgroup limit reached. Rendered as a banner so the user
+  // knows creation is blocked without a field-level error indicator.
+  const formattedLimitError = limitError
+    ? t("limitReached", { limit: limitError.limit, current: limitError.current })
+    : null;
 
-  // Mid-session auth failures. Cleared on each new submission attempt so a
-  // retry after re-login does not show a stale banner.
-  // Per .claude/rules/frontend-rsc-error-handling.md § "Mid-session
-  // UNAUTHENTICATED in a client component: degraded banner with
-  // <Link href="/login">, not redirect()".
-  const [authError, setAuthError] = useState<"unauthenticated" | "forbidden" | null>(null);
-
-  const { create, loading } = useCreateCardgroup();
-
-  // Full-page create: success navigates away (parameterized by the returned
-  // cardgroup id), so the `success` arm stays in the switch below. `useSheetForm`
-  // owns only the field-level `validationError` + its clear-on-submit reset;
-  // there is no sheet to close, so `onSuccess` is a no-op.
-  const onSuccess = useCallback(() => undefined, []);
-  const { validationError, run } = useSheetForm(onSuccess);
+  // Degraded "Something went wrong" banner when the server returns a __typename
+  // the client was not regenerated against, or a null payload from a partial-
+  // response null bubble. A transport rejection ("rejected") stays silent — the
+  // IO hook already warned — to preserve the established full-page behavior.
+  const unexpectedPayloadError =
+    unexpectedError === "unexpected" ? tCommon("somethingWentWrong") : null;
 
   async function handleSubmit(values: { name: string }) {
-    setUnexpectedPayloadError(null);
-    setAuthError(null);
-    setLimitError(null);
+    const outcome = await submit(values);
 
-    const outcome = await run(() => create(values.name));
-
-    switch (outcome.status) {
-      case "validation":
-        // `run` cleared and stored the field-level error.
+    if (outcome.status === "success") {
+      if (returnTo) {
+        const sep = returnTo.includes("?") ? "&" : "?";
+        router.push(`${returnTo}${sep}cardgroup=${outcome.cardgroupId}`);
         return;
-      case "auth":
-        setAuthError(outcome.kind);
-        return;
-      case "limit":
-        setLimitError(t("limitReached", { limit: outcome.limit, current: outcome.current }));
-        return;
-      case "unexpected":
-        setUnexpectedPayloadError(tCommon("somethingWentWrong"));
-        return;
-      case "rejected":
-        // Transport/network failure: the hook already warned. Stay silent (no
-        // banner) to preserve the established full-page behavior.
-        return;
-      case "success":
-        if (returnTo) {
-          const sep = returnTo.includes("?") ? "&" : "?";
-          router.push(`${returnTo}${sep}cardgroup=${outcome.cardgroupId}`);
-          return;
-        }
-        router.push(`/cardgroups/${outcome.cardgroupId}`);
-        router.refresh();
-        return;
+      }
+      router.push(`/cardgroups/${outcome.cardgroupId}`);
+      router.refresh();
     }
   }
 
@@ -121,9 +92,9 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
         </ErrorBanner>
       ) : null}
 
-      {limitError ? (
+      {formattedLimitError ? (
         <ErrorBanner className="mb-4" data-testid="cardgroup-new-limit-error">
-          {limitError}
+          {formattedLimitError}
         </ErrorBanner>
       ) : null}
 
