@@ -431,21 +431,14 @@ type PublishMasterOutcome struct {
 
 // mapMasterAdminErr classifies a repository error from an admin master method
 // into either input-validation data (first slot) or a propagating error (second
-// slot), mirroring mapAdminRoleError. The ucerr.NewValidationError emission lives
-// HERE, not in the caller's method body, so the schema-lint bare-object gate does
-// not flag adminUnpublishMasterCardgroup (which returns a bare MasterCardgroup!).
-//   - repository.ErrNotFound              -> InputValidationInfo{Field: notFoundField}
-//   - context.Canceled / DeadlineExceeded -> passthrough via error
-//   - default                             -> eris.Wrap(err, wrap) via error
+// slot) by delegating to classifyRepoErr with the master-specific sentinel
+// mapping. The input-validation emission lives HERE, not in the caller's method
+// body, so the schema-lint bare-object gate does not flag
+// adminUnpublishMasterCardgroup (which returns a bare MasterCardgroup!).
 func mapMasterAdminErr(err error, notFoundField, wrap string) (*InputValidationInfo, error) {
-	switch {
-	case errors.Is(err, repository.ErrNotFound):
-		return NewInputValidationInfo(notFoundField, "master cardgroup not found"), nil
-	case isContextDone(err):
-		return nil, err
-	default:
-		return nil, eris.Wrap(err, wrap)
-	}
+	return classifyRepoErr(err, wrap, []SentinelMapping{
+		{repository.ErrNotFound, notFoundField, "master cardgroup not found"},
+	})
 }
 
 // derefOr returns *p when p is non-nil, otherwise def.

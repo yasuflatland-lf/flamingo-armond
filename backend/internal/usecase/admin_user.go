@@ -473,18 +473,11 @@ func (u *adminUserUsecase) DeleteUser(ctx context.Context, id string) error {
 }
 
 func mapAdminEditMutationError(err error) (*InputValidationInfo, error) {
-	switch {
-	case errors.Is(err, repository.ErrUserNotFound):
-		return NewInputValidationInfo("id", "user not found"), nil
-	case errors.Is(err, repository.ErrRoleNotFound):
-		return NewInputValidationInfo("roleIds", "role not found"), nil
-	case errors.Is(err, repository.ErrNotFound):
-		return NewInputValidationInfo("id", "user or role not found"), nil
-	case isContextDone(err):
-		return nil, err
-	default:
-		return nil, eris.Wrap(err, "usecase: admin user edit: tx")
-	}
+	return classifyRepoErr(err, "usecase: admin user edit: tx", []SentinelMapping{
+		{repository.ErrUserNotFound, "id", "user not found"},
+		{repository.ErrRoleNotFound, "roleIds", "role not found"},
+		{repository.ErrNotFound, "id", "user or role not found"},
+	})
 }
 
 // maxAdminEditRoleIDs caps the number of role ids accepted by a single
