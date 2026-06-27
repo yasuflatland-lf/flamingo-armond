@@ -4,6 +4,7 @@ import { useMutation } from "@apollo/client/react";
 import { useCallback } from "react";
 import { CARDGROUPS_DEFAULT_VARS, DeleteCardgroupMutation } from "@/app/cardgroups/queries";
 import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
+import { removeConnectionEdges } from "@/lib/apollo/connection-cache";
 
 /**
  * Owns the cardgroup delete mutation and its Connection-delete cache surgery:
@@ -32,31 +33,14 @@ export function useDeleteCardgroup() {
         variables: { id },
         update(cache, { data }) {
           if (!data?.deleteCardgroup) return;
-
-          const existingConnection = cache.readQuery({
-            query: MyCardgroupsConnectionDocument,
+          removeConnectionEdges(cache, {
+            document: MyCardgroupsConnectionDocument,
             variables: CARDGROUPS_DEFAULT_VARS,
+            connectionField: "myCardgroupsConnection",
+            entityTypename: "Cardgroup",
+            ids: [id],
+            deletedCount: 1,
           });
-          if (existingConnection) {
-            cache.writeQuery({
-              query: MyCardgroupsConnectionDocument,
-              variables: CARDGROUPS_DEFAULT_VARS,
-              data: {
-                myCardgroupsConnection: {
-                  ...existingConnection.myCardgroupsConnection,
-                  edges: existingConnection.myCardgroupsConnection.edges.filter(
-                    (edge) => edge.node.id !== id,
-                  ),
-                  totalCount: Math.max(0, existingConnection.myCardgroupsConnection.totalCount - 1),
-                },
-              },
-            });
-          }
-
-          cache.evict({
-            id: cache.identify({ __typename: "Cardgroup", id }),
-          });
-          cache.gc();
         },
       }).catch((err) => {
         console.error("[useDeleteCardgroup] delete rejection", err);
