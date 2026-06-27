@@ -343,11 +343,9 @@ func (r *cardgroupRepo) Update(ctx context.Context, id string, patch CardgroupUp
 	if res.Error != nil {
 		return nil, eris.Wrap(res.Error, "repository: cardgroup: update")
 	}
-	if res.RowsAffected == 0 {
-		return nil, ErrNotFound
-	}
 	// Re-fetch so callers see the trigger-refreshed updated_at.
-	return r.FindByID(ctx, id)
+	return refetchAfterUpdate(res.RowsAffected, ErrNotFound,
+		func() (*domain.Cardgroup, error) { return r.FindByID(ctx, id) }, "")
 }
 
 // Delete removes the cardgroup identified by id. Returns ErrNotFound when no

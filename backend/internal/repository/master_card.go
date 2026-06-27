@@ -363,10 +363,8 @@ func (r *masterCardRepo) Update(ctx context.Context, id string, patch MasterCard
 	if res.Error != nil {
 		return nil, eris.Wrap(res.Error, "repository: master card: update")
 	}
-	if res.RowsAffected == 0 {
-		return nil, ErrNotFound
-	}
-	return r.FindByID(ctx, id)
+	return refetchAfterUpdate(res.RowsAffected, ErrNotFound,
+		func() (*domain.MasterCard, error) { return r.FindByID(ctx, id) }, "")
 }
 
 // DeleteMany hard-deletes the master cards whose ids are in the list, returning

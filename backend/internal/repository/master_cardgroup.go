@@ -231,11 +231,9 @@ func (r *masterCardgroupRepo) Update(ctx context.Context, id string, patch Maste
 	if res.Error != nil {
 		return nil, eris.Wrap(res.Error, "repository: master cardgroup: update")
 	}
-	if res.RowsAffected == 0 {
-		return nil, ErrNotFound
-	}
 	// Re-fetch so callers see the trigger-refreshed updated_at.
-	return r.FindByID(ctx, id)
+	return refetchAfterUpdate(res.RowsAffected, ErrNotFound,
+		func() (*domain.MasterCardgroup, error) { return r.FindByID(ctx, id) }, "")
 }
 
 // Delete removes the master cardgroup identified by id. Returns ErrNotFound
