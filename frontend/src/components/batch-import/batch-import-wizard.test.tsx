@@ -312,9 +312,9 @@ describe("<BatchImportWizard>", () => {
     await advanceToStep2(user);
     await user.click(await screen.findByTestId("batch-import-confirm-btn"));
     await waitFor(() => expect(screen.getByText(/duplicate front/i)).toBeInTheDocument());
-    // Duplicate rows are counted and labelled as warnings, not errors (amber, not red).
+    // Duplicate rows are counted and labelled as warnings, not errors (warning band, not red).
     const warningRow = screen.getByText(/duplicate front/i).closest("li");
-    expect(warningRow).toHaveClass("bg-amber-50");
+    expect(warningRow).toHaveClass("bg-warning/15");
     expect(warningRow).not.toHaveClass("bg-destructive/10");
     // The result summary counts the duplicate as a warning, not an error.
     const statuses = screen.getAllByRole("status");
