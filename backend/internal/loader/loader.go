@@ -5,11 +5,58 @@ import (
 
 	"github.com/graph-gophers/dataloader/v7"
 	"github.com/labstack/echo/v5"
+	"github.com/rotisserie/eris"
 
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
 )
+
+// newMapKeyedBatch builds a DataLoader batch function for an aggregate whose
+// repository exposes a map-keyed FindByIDs-style lookup. load maps the requested
+// keys to a map[id]*V; the returned batch function resolves each key to its loaded
+// value, or to eris.Wrapf(repository.ErrNotFound, "<label> <key>") when the id is
+// absent from the map. label is the caller-supplied aggregate name used in the
+// not-found wrap — the shared helper holds no fixed prefix so the error context
+// stays caller-owned (see .claude/rules/error-wrapping.md).
+//
+// Callers MUST pass a closure that invokes their repository lazily
+// (func(ctx, keys) { return repo.FindByIDs(ctx, keys) }), never a bound
+// repo.FindByIDs method value. New constructs every batch function eagerly —
+// including with nil repositories in tests that do not exercise a given loader —
+// and a bound method value on a nil interface panics at construction time
+// (see .claude/rules/go-library-gotchas.md "Method dispatch on a nil pointer panics").
+func newMapKeyedBatch[V any](load func(context.Context, []string) (map[string]*V, error), label string) dataloader.BatchFunc[string, *V] {
+	return func(ctx context.Context, keys []string) []*dataloader.Result[*V] {
+		out := make([]*dataloader.Result[*V], len(keys))
+
+		// Defensive: dataloader normally never invokes the batch fn with an
+		// empty key slice, but the GORM "WHERE id IN ()" gotcha would turn
+		// such a call into a full-table scan. Short-circuit instead.
+		if len(keys) == 0 {
+			return out
+		}
+
+		byID, err := load(ctx, keys)
+		if err != nil {
+			for i := range keys {
+				out[i] = &dataloader.Result[*V]{Error: err}
+			}
+			return out
+		}
+
+		for i, k := range keys {
+			if v, ok := byID[k]; ok {
+				out[i] = &dataloader.Result[*V]{Data: v}
+				continue
+			}
+			out[i] = &dataloader.Result[*V]{
+				Error: eris.Wrapf(repository.ErrNotFound, "%s %s", label, k),
+			}
+		}
+		return out
+	}
+}
 
 // userCardFSRSReader is the narrow interface the loader needs from the
 // UserCardFSRS repository. The loader only calls FindByUserAndCardIDs; it
