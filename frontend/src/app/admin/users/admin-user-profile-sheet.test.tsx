@@ -122,7 +122,9 @@ describe("AdminUserProfileSheet", () => {
     await user.clear(screen.getByLabelText(/display name/i));
     await user.click(screen.getByRole("button", { name: /save changes/i }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Display name is required");
+    // The field is now validated through the shared schema via form.Field, so the
+    // message renders in the inline FieldError rather than the save ErrorBanner.
+    expect(await screen.findByText("Display name is required")).toBeInTheDocument();
   });
 
   it("rejects a reserved display name via the shared schema", async () => {
@@ -133,7 +135,7 @@ describe("AdminUserProfileSheet", () => {
     await user.type(screen.getByLabelText(/display name/i), "admin");
     await user.click(screen.getByRole("button", { name: /save changes/i }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Display name is reserved");
+    expect(await screen.findByText("Display name is reserved")).toBeInTheDocument();
   });
 
   it("profile-only dirty save sends one adminEditUser mutation with final roles", async () => {

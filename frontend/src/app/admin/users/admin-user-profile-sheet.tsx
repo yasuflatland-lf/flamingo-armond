@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation } from "@apollo/client/react";
+import { useForm, useStore } from "@tanstack/react-form";
 import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -17,12 +18,47 @@ import {
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { mutationAuthBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
-import { graphemeCount } from "@/schemas/grapheme";
-import { BIO_MAX, DISPLAY_NAME_MAX, updateProfileSchema } from "@/schemas/profile";
+import { FieldError } from "@/lib/forms/field-error";
+import { submitFormHandler } from "@/lib/forms/submit-handler";
+import { updateProfileSchema } from "@/schemas/profile";
 import type { AdminUserListItem, AdminUserRole } from "./admin-user-row";
 import { AdminEditUserMutation } from "./queries";
+
+// The displayName/bio block is validated through the shared profile schema —
+// the same source of truth the /profile and onboarding forms use — so the
+// admin sheet never duplicates the field rules inline.
+const displayNameFieldSchema = updateProfileSchema.shape.displayName;
+const bioFieldSchema = updateProfileSchema.shape.bio;
+
+/**
+ * Values owned by the TanStack form (the profile block). Roles stage separately.
+ * `bio` is `string | undefined` so it matches the optional `bio` field schema's
+ * input type — the same shape the /profile form uses.
+ */
+type ProfileFieldValues = { displayName: string; bio: string | undefined };
+
+/**
+ * Thin wrapper around {@link useForm} that pins the value type so the form
+ * instance can be passed to {@link AdminUserProfileSheetBody} with a concrete
+ * type (TanStack's `useForm` exposes ~12 generics that are awkward to spell out
+ * by hand).
+ */
+function useProfileFieldsForm(opts: {
+  defaultValues: ProfileFieldValues;
+  onSubmit: (ctx: {
+    value: ProfileFieldValues;
+    formApi: { state: { isDirty: boolean } };
+  }) => Promise<void>;
+}) {
+  return useForm(opts);
+}
+
+type ProfileFieldsForm = ReturnType<typeof useProfileFieldsForm>;
 
 type Props = {
   open: boolean;
@@ -62,8 +98,6 @@ export function AdminUserProfileSheet({
 }: Props) {
   const t = useTranslations("Admin");
   const tCommon = useTranslations("Common");
-  const [displayName, setDisplayName] = useState("");
-  const [bio, setBio] = useState("");
   const [saveError, setSaveError] = useState("");
   const [stagedRoleIds, setStagedRoleIds] = useState<Set<string>>(() => new Set());
   const [runEdit, { loading: saving, reset: resetEdit }] = useMutation(AdminEditUserMutation);
@@ -75,10 +109,72 @@ export function AdminUserProfileSheet({
   // form switches to a *different* user.
   const lastSyncedId = useRef<string | null>(null);
 
+  const form = useProfileFieldsForm({
+    defaultValues: {
+      displayName: user?.displayName ?? "",
+      bio: user?.bio ?? "",
+    },
+    onSubmit: async ({ value, formApi }) => {
+      if (!user) return;
+
+      // Only displayName/bio that actually changed are sent; roles are always
+      // sent as the final staged set.
+      const profileDirty = formApi.state.isDirty;
+      setSaveError("");
+      try {
+        const result = await runEdit({
+          variables: {
+            id: user.id,
+            expectedVersion: user.version,
+            ...(profileDirty
+              ? { displayName: value.displayName.trim(), bio: value.bio || null }
+              : {}),
+            roleIds: Array.from(stagedRoleIds),
+          },
+        });
+        const payload = result.data?.adminEditUser;
+        const typename = payload?.__typename ?? null;
+        switch (payload?.__typename) {
+          case "AdminEditUserSuccess":
+            onSaved();
+            return;
+          case "InputValidationError":
+          case "CannotRevokeOwnAdminRoleError":
+            setSaveError(payload.message);
+            return;
+          case "ConcurrentUpdateError":
+            // The banner survives the same-id reload triggered here — see the
+            // form-sync effect's last-synced-id guard.
+            setSaveError(t("concurrentError"));
+            onReloadRequested?.();
+            return;
+          default:
+            console.warn("[admin/users] unexpected save payload", {
+              userId: user.id,
+              typename,
+            });
+            setSaveError(tCommon("somethingWentWrong"));
+        }
+      } catch (err) {
+        const codes = liftGraphQLCodes(err);
+        console.warn("[admin/users] adminEditUser rejected", {
+          userId: user.id,
+          name: err instanceof Error ? err.name : "unknown",
+          codes,
+        });
+        setSaveError(
+          mutationAuthBanner(err, {
+            forbidden: t("forbidden"),
+            unauthenticated: t("unauthenticated"),
+            fallback: t("unexpectedError"),
+          }),
+        );
+      }
+    },
+  });
+
+  const profileDirty = useStore(form.store, (state) => state.isDirty);
   const initialRoleIds = useMemo(() => new Set(user?.roles.map((role) => role.id) ?? []), [user]);
-  const displayNameDirty = displayName !== (user?.displayName ?? "");
-  const bioDirty = bio !== (user?.bio ?? "");
-  const profileDirty = displayNameDirty || bioDirty;
   const rolesDirty = !sameSet(stagedRoleIds, initialRoleIds);
   const dirty = profileDirty || rolesDirty;
 
@@ -89,8 +185,7 @@ export function AdminUserProfileSheet({
       lastSyncedId.current = null;
       return;
     }
-    setDisplayName(user.displayName ?? "");
-    setBio(user.bio ?? "");
+    form.reset({ displayName: user.displayName ?? "", bio: user.bio ?? "" });
     setStagedRoleIds(new Set(user.roles.map((role) => role.id)));
     // Only clear the banner when switching to a different user. A same-id reload
     // (the concurrent-update refresh) keeps the conflict banner visible.
@@ -99,89 +194,13 @@ export function AdminUserProfileSheet({
     }
     lastSyncedId.current = user.id;
     resetEdit();
-  }, [user, resetEdit]);
-
-  function clearSaveStatus(): void {
-    setSaveError("");
-  }
+  }, [user, resetEdit, form]);
 
   function handleOpenChange(nextOpen: boolean) {
     if (nextOpen) return;
     setSaveError("");
     resetEdit();
     onDismiss();
-  }
-
-  function validate(): string {
-    if (!profileDirty) return "";
-    const displayNameResult = updateProfileSchema.shape.displayName.safeParse(displayName);
-    if (!displayNameResult.success) {
-      return displayNameResult.error.issues[0]?.message ?? "";
-    }
-    const bioResult = updateProfileSchema.shape.bio.safeParse(bio);
-    if (!bioResult.success) {
-      return bioResult.error.issues[0]?.message ?? "";
-    }
-    return "";
-  }
-
-  async function handleSave() {
-    if (!user) return;
-
-    const validationError = validate();
-    if (validationError) {
-      setSaveError(validationError);
-      return;
-    }
-
-    clearSaveStatus();
-    try {
-      const result = await runEdit({
-        variables: {
-          id: user.id,
-          expectedVersion: user.version,
-          ...(profileDirty ? { displayName: displayName.trim(), bio: bio || null } : {}),
-          roleIds: Array.from(stagedRoleIds),
-        },
-      });
-      const payload = result.data?.adminEditUser;
-      const typename = payload?.__typename ?? null;
-      switch (payload?.__typename) {
-        case "AdminEditUserSuccess":
-          onSaved();
-          return;
-        case "InputValidationError":
-        case "CannotRevokeOwnAdminRoleError":
-          setSaveError(payload.message);
-          return;
-        case "ConcurrentUpdateError":
-          // The banner survives the same-id reload triggered here — see the
-          // form-sync effect's last-synced-id guard.
-          setSaveError(t("concurrentError"));
-          onReloadRequested?.();
-          return;
-        default:
-          console.warn("[admin/users] unexpected save payload", {
-            userId: user.id,
-            typename,
-          });
-          setSaveError(tCommon("somethingWentWrong"));
-      }
-    } catch (err) {
-      const codes = liftGraphQLCodes(err);
-      console.warn("[admin/users] adminEditUser rejected", {
-        userId: user.id,
-        name: err instanceof Error ? err.name : "unknown",
-        codes,
-      });
-      setSaveError(
-        mutationAuthBanner(err, {
-          forbidden: t("forbidden"),
-          unauthenticated: t("unauthenticated"),
-          fallback: t("unexpectedError"),
-        }),
-      );
-    }
   }
 
   function toggleRole(roleId: string): void {
@@ -194,7 +213,7 @@ export function AdminUserProfileSheet({
       }
       return next;
     });
-    clearSaveStatus();
+    setSaveError("");
   }
 
   return (
@@ -209,8 +228,7 @@ export function AdminUserProfileSheet({
     >
       <AdminUserProfileSheetBody
         allRoles={allRoles}
-        bio={bio}
-        displayName={displayName}
+        form={form}
         loading={loading}
         open={open}
         queryError={queryError}
@@ -218,16 +236,7 @@ export function AdminUserProfileSheet({
         saving={saving}
         stagedRoleIds={stagedRoleIds}
         user={user}
-        onBioChange={(nextBio) => {
-          setBio(nextBio);
-          clearSaveStatus();
-        }}
-        onDisplayNameChange={(nextDisplayName) => {
-          setDisplayName(nextDisplayName);
-          clearSaveStatus();
-        }}
         onRoleToggle={toggleRole}
-        onSave={handleSave}
         onDelete={onDelete}
       />
     </FormSheet>
@@ -236,8 +245,7 @@ export function AdminUserProfileSheet({
 
 function AdminUserProfileSheetBody({
   allRoles,
-  bio,
-  displayName,
+  form,
   loading,
   open,
   queryError,
@@ -245,15 +253,11 @@ function AdminUserProfileSheetBody({
   saving,
   stagedRoleIds,
   user,
-  onBioChange,
-  onDisplayNameChange,
   onRoleToggle,
-  onSave,
   onDelete,
 }: {
   allRoles: AdminUserRole[];
-  bio: string;
-  displayName: string;
+  form: ProfileFieldsForm;
   loading: boolean;
   open: boolean;
   queryError: string | null;
@@ -261,10 +265,7 @@ function AdminUserProfileSheetBody({
   saving: boolean;
   stagedRoleIds: ReadonlySet<string>;
   user: AdminUserListItem | null;
-  onBioChange: (bio: string) => void;
-  onDisplayNameChange: (displayName: string) => void;
   onRoleToggle: (roleId: string) => void;
-  onSave: () => void;
   onDelete?: (id: string) => Promise<void>;
 }) {
   const t = useTranslations("Admin");
@@ -316,80 +317,93 @@ function AdminUserProfileSheetBody({
 
       {user && (
         <>
-          <div className="space-y-2">
-            <label htmlFor="admin-user-display-name" className="block text-sm font-medium">
-              {t("displayNameLabel")}
-            </label>
-            <input
-              id="admin-user-display-name"
-              type="text"
-              value={displayName}
-              onChange={(event) => {
-                onDisplayNameChange(event.target.value);
+          <form onSubmit={submitFormHandler(form)} className="space-y-6">
+            <form.Field
+              name="displayName"
+              validators={{
+                onChange: displayNameFieldSchema,
+                onBlur: displayNameFieldSchema,
+                onSubmit: displayNameFieldSchema,
               }}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-            <p className="text-xs text-muted-foreground">
-              {graphemeCount(displayName.trim())}/{DISPLAY_NAME_MAX}
-            </p>
-          </div>
+            >
+              {(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor={field.name}>{t("displayNameLabel")}</Label>
+                  <Input
+                    id={field.name}
+                    name={field.name}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                  />
+                  <FieldError zodErrors={field.state.meta.errors} />
+                </div>
+              )}
+            </form.Field>
 
-          <div className="space-y-2">
-            <label htmlFor="admin-user-bio" className="block text-sm font-medium">
-              {t("bioLabel")}
-            </label>
-            <textarea
-              id="admin-user-bio"
-              value={bio}
-              onChange={(event) => {
-                onBioChange(event.target.value);
+            <form.Field
+              name="bio"
+              validators={{
+                onChange: bioFieldSchema,
+                onBlur: bioFieldSchema,
+                onSubmit: bioFieldSchema,
               }}
-              rows={4}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              placeholder={t("bioPlaceholder")}
-            />
-            <p className="text-xs text-muted-foreground">
-              {graphemeCount(bio)}/{BIO_MAX}
-            </p>
-          </div>
+            >
+              {(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor={field.name}>{t("bioLabel")}</Label>
+                  <Textarea
+                    id={field.name}
+                    name={field.name}
+                    value={field.state.value ?? ""}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                    rows={4}
+                    placeholder={t("bioPlaceholder")}
+                  />
+                  <FieldError zodErrors={field.state.meta.errors} />
+                </div>
+              )}
+            </form.Field>
 
-          <div className="space-y-3">
-            <p className="text-sm font-medium">{tNav("roles")}</p>
-            {allRoles.length === 0 ? (
-              <p className="text-xs text-muted-foreground">{t("noRolesAvailable")}</p>
-            ) : (
-              <div className="grid gap-2">
-                {allRoles.map((role) => {
-                  const checkboxId = `admin-user-sheet-role-${user.id}-${role.id}`;
-                  return (
-                    <label
-                      key={role.id}
-                      htmlFor={checkboxId}
-                      className="flex items-center gap-2 text-sm"
-                    >
-                      <input
-                        id={checkboxId}
-                        type="checkbox"
-                        checked={stagedRoleIds.has(role.id)}
-                        onChange={() => onRoleToggle(role.id)}
-                        className="h-4 w-4 rounded border-input accent-brand"
-                      />
-                      <span>{role.name}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+            <div className="space-y-3">
+              <p className="text-sm font-medium">{tNav("roles")}</p>
+              {allRoles.length === 0 ? (
+                <p className="text-xs text-muted-foreground">{t("noRolesAvailable")}</p>
+              ) : (
+                <div className="grid gap-2">
+                  {allRoles.map((role) => {
+                    const checkboxId = `admin-user-sheet-role-${user.id}-${role.id}`;
+                    return (
+                      <label
+                        key={role.id}
+                        htmlFor={checkboxId}
+                        className="flex items-center gap-2 text-sm"
+                      >
+                        <input
+                          id={checkboxId}
+                          type="checkbox"
+                          checked={stagedRoleIds.has(role.id)}
+                          onChange={() => onRoleToggle(role.id)}
+                          className="h-4 w-4 rounded border-input accent-brand"
+                        />
+                        <span>{role.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="brand" onClick={onSave} disabled={saving}>
-              {saving ? tCommon("saving") : t("saveChanges")}
-            </Button>
-            <Button type="button" variant="outline" onClick={close}>
-              {tCommon("cancel")}
-            </Button>
-          </div>
+            <div className="flex items-center gap-2">
+              <Button type="submit" variant="brand" disabled={saving}>
+                {saving ? tCommon("saving") : t("saveChanges")}
+              </Button>
+              <Button type="button" variant="outline" onClick={close}>
+                {tCommon("cancel")}
+              </Button>
+            </div>
+          </form>
 
           {onDelete && (
             <div className="space-y-3 border-t border-destructive/30 pt-6">

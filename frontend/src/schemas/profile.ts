@@ -3,8 +3,8 @@ import { graphemeCount } from "./grapheme";
 
 // Mirrors UpdateProfileInput in schema/schema.graphql; bio: undefined = unchanged, "" = explicit clear.
 // UAX #29 grapheme cluster counting keeps FE and BE length rules in sync.
-export const DISPLAY_NAME_MAX = 50;
-export const BIO_MAX = 500;
+const DISPLAY_NAME_MAX = 50;
+const BIO_MAX = 500;
 
 // Advisory mirror of backend/internal/domain/display_name.go `reservedDisplayNames`.
 // The backend (`domain.ParseDisplayName`) remains the sole authority; this set only
