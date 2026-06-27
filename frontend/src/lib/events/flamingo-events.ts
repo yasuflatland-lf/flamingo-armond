@@ -25,8 +25,11 @@ export interface AddMasterCardDetail {
   masterId: string;
 }
 
-/** `flamingo:batch-import` / `flamingo:merge` payload: header "+" menu -> the in-page sheet. */
-export interface DeckOwnerDetail {
+// `flamingo:batch-import` / `flamingo:merge` payload: header "+" menu -> the in-page
+// sheet. Not exported — consumers read `detail.ownerId` via the WindowEventMap-inferred
+// type (subscribeFlamingo's generic), never by importing this name, so exporting it would
+// trip knip's unused-export check. Referenced only by the augmentation below.
+interface DeckOwnerDetail {
   ownerId: string;
 }
 
