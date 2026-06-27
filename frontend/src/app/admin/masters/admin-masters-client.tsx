@@ -6,10 +6,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AdminListSearch } from "@/components/admin/admin-list-search";
-import { AdminQueryErrorBanner } from "@/components/admin/admin-query-error-banner";
-import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
-import { ListingPageShell } from "@/components/layout/listing-page-shell";
+import { PaginatedAdminListScreen } from "@/components/admin/paginated-admin-list-screen";
 import { Button } from "@/components/ui/button";
 import { FormSheet } from "@/components/ui/form-sheet";
 import type {
@@ -127,10 +124,13 @@ export function AdminMastersClient() {
 
   const initialLoading = networkStatus === NetworkStatus.loading && edges.length === 0;
 
-  if (initialLoading) return <AdminMastersSkeleton />;
-
   return (
-    <ListingPageShell
+    <PaginatedAdminListScreen
+      search={{
+        search,
+        placeholder: t("searchPlaceholder"),
+        ariaLabel: t("searchLabel"),
+      }}
       title={t("title")}
       count={totalCount}
       countLabel={tCommon("totalCount", { count: totalCount })}
@@ -146,31 +146,29 @@ export function AdminMastersClient() {
           <Plus aria-hidden="true" />
         </Button>
       }
+      queryErrorKind={queryErrorKind}
+      errorCopy={{
+        viewForbidden: t("viewForbidden"),
+        sessionExpired: t("sessionExpired"),
+        signInAgain: t("pleaseSignInAgain"),
+        retry: tCommon("retry"),
+      }}
+      onRetry={refetch}
+      isEmpty={edges.length === 0}
+      emptyLabel={t("noMastersFound")}
+      footer={{
+        sentinelRef,
+        fetchMoreError,
+        onRetry: retryFetchMore,
+        fetchingMore,
+        hasNextPage,
+        retryLabel: tCommon("retry"),
+        loadingMoreLabel: t("loadingMore"),
+      }}
+      loading={initialLoading}
+      skeleton={<AdminMastersSkeleton />}
+      testIdPrefix="admin-masters"
     >
-      <AdminListSearch
-        search={search}
-        placeholder={t("searchPlaceholder")}
-        ariaLabel={t("searchLabel")}
-      />
-
-      <AdminQueryErrorBanner
-        kind={queryErrorKind}
-        onRetry={refetch}
-        testId="admin-masters-query-error"
-        copy={{
-          viewForbidden: t("viewForbidden"),
-          sessionExpired: t("sessionExpired"),
-          signInAgain: t("pleaseSignInAgain"),
-          retry: tCommon("retry"),
-        }}
-      />
-
-      {!initialLoading && !queryErrorKind && edges.length === 0 && (
-        <p className="text-sm text-muted-foreground" data-testid="admin-masters-empty">
-          {t("noMastersFound")}
-        </p>
-      )}
-
       {edges.length > 0 && (
         <ul className="space-y-3" data-testid="admin-masters-list">
           {edges.map((edge) => (
@@ -178,17 +176,6 @@ export function AdminMastersClient() {
           ))}
         </ul>
       )}
-
-      <ConnectionListFooter
-        sentinelRef={sentinelRef}
-        fetchMoreError={fetchMoreError}
-        onRetry={retryFetchMore}
-        fetchingMore={fetchingMore}
-        hasNextPage={hasNextPage}
-        retryLabel={tCommon("retry")}
-        loadingMoreLabel={t("loadingMore")}
-        testIdPrefix="admin-masters"
-      />
 
       <FormSheet
         title={t("createMasterTitle")}
@@ -215,6 +202,6 @@ export function AdminMastersClient() {
           />
         ) : null}
       </FormSheet>
-    </ListingPageShell>
+    </PaginatedAdminListScreen>
   );
 }
