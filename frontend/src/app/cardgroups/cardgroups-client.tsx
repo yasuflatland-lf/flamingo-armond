@@ -5,7 +5,7 @@ import { useApolloClient, useMutation } from "@apollo/client/react";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
 import { CardgroupListItem } from "@/components/cardgroups/cardgroup-list-item";
 import { CardgroupsToolbar } from "@/components/cardgroups/cardgroups-toolbar";
@@ -25,6 +25,7 @@ import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { FLAMINGO_EVENT, subscribeFlamingo } from "@/lib/events/flamingo-events";
 import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
+import { useSeedConnectionCache } from "@/lib/pagination/use-seed-connection-cache";
 import { useUndoDelete } from "@/lib/undo-delete";
 import { CARDGROUPS_DEFAULT_VARS, DeleteCardgroupMutation } from "./queries";
 import { useCreateCardgroup } from "./use-create-cardgroup";
@@ -209,31 +210,15 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
     }
   }
 
-  // Strict Mode double-mount safety: only write the SSR seed into the cache once.
-  const seededRef = useRef(false);
-
-  // Seed the cache synchronously during render (before useQuery runs) with the
-  // SSR initialConnection so the first useQuery pass (cache-first) finds the
-  // data already in the cache and renders without a network round-trip. Doing
-  // this in a useEffect would create a window between first paint and the
-  // post-render write where useQuery sees an empty cache.
-  // CARDGROUPS_DEFAULT_VARS keeps the cache key identical to the SSR seed and
-  // the client useQuery — any mismatch silently splits the cache.
-  // The seededRef guard is synchronous, so it survives Strict Mode's
-  // double-invoke without producing a second write.
-  if (!seededRef.current && initialConnection === null) {
-    console.warn(
-      "[cardgroups-client] initialConnection is null — SSR seed skipped; useQuery will fetch fresh",
-    );
-  }
-  if (!seededRef.current && initialConnection != null) {
-    seededRef.current = true;
-    apollo.writeQuery({
-      query: MyCardgroupsConnectionDocument,
-      variables: CARDGROUPS_DEFAULT_VARS,
-      data: { myCardgroupsConnection: initialConnection },
-    });
-  }
+  // Seed the SSR connection into the cache synchronously before useQuery runs.
+  // CARDGROUPS_DEFAULT_VARS keeps the cache key identical to the SSR seed and the
+  // client useQuery — any mismatch silently splits the cache.
+  useSeedConnectionCache({
+    document: MyCardgroupsConnectionDocument,
+    variables: CARDGROUPS_DEFAULT_VARS,
+    data: { myCardgroupsConnection: initialConnection },
+    warnScope: "cardgroups-client",
+  });
 
   // When searchQuery is null we use CARDGROUPS_DEFAULT_VARS verbatim so the
   // cache key matches the SSR seed exactly. For non-null searches we spread and
