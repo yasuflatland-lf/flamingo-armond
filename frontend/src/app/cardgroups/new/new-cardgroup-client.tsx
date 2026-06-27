@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 import { useCreateCardgroup } from "@/app/cardgroups/use-create-cardgroup";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
+import { AuthErrorBanner } from "@/components/ui/auth-error-banner";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { useSheetForm } from "@/lib/forms/use-sheet-form";
 
@@ -107,13 +107,12 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
       )}
 
       {authError ? (
-        <ErrorBanner className="mb-4" data-testid="cardgroup-new-auth-error">
-          <span>{authError === "unauthenticated" ? t("sessionExpired") : t("noPermission")}</span>
-          <Link href="/login" className="underline">
-            {t("signInAgain")}
-          </Link>
-          .
-        </ErrorBanner>
+        <AuthErrorBanner
+          className="mb-4"
+          testId="cardgroup-new-auth-error"
+          message={authError === "unauthenticated" ? t("sessionExpired") : t("noPermission")}
+          signInLabel={t("signInAgain")}
+        />
       ) : null}
 
       {validationError ? (

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
@@ -9,6 +8,7 @@ import { CardSearchInput } from "@/components/cardgroups/card-search-input";
 import { ReadOnlyCardRow } from "@/components/cardgroups/read-only-card-row";
 import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
 import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
+import { AuthErrorBanner } from "@/components/ui/auth-error-banner";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import {
   CatalogMasterCardsConnectionDocument,
@@ -159,12 +159,11 @@ export default function CatalogDeckClient({
 
         <div className="space-y-3">
           {importAuthError ? (
-            <ErrorBanner data-testid="catalog-deck-import-auth-error">
-              <span>{t("sessionExpired")}</span>
-              <Link href="/login" className="underline">
-                {t("signInAgain")}
-              </Link>
-            </ErrorBanner>
+            <AuthErrorBanner
+              testId="catalog-deck-import-auth-error"
+              message={t("sessionExpired")}
+              signInLabel={t("signInAgain")}
+            />
           ) : null}
 
           {importError ? (
