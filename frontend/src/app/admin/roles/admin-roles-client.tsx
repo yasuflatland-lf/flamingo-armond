@@ -1,6 +1,5 @@
 "use client";
 
-import { useLazyQuery, useMutation } from "@apollo/client/react";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -11,17 +10,27 @@ import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
-import { classifyMutationAuthError, getBackendErrorBanner } from "@/lib/apollo/errors";
+import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { useUndoDelete } from "@/lib/undo-delete";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
-import {
-  AdminCreateRoleMutation,
-  AdminDeleteRoleMutation,
-  AdminRoleQuery,
-  AdminUpdateRoleMutation,
-  SYSTEM_ROLE_NAMES,
-} from "./queries";
+import { SYSTEM_ROLE_NAMES } from "./queries";
+import { useRoleMutations } from "./use-role-mutations";
+
+/** Auth banner discriminant carried by the collapsed create/edit error state. */
+type AuthKind = "unauthenticated" | "forbidden";
+
+/** Collapsed create-sheet banner state — one of the typed outcomes the hook returns. */
+type CreateError =
+  | { kind: "validation"; field: string; message: string }
+  | { kind: "auth"; authError: AuthKind }
+  | { kind: "unexpected" };
+
+/** Collapsed edit-sheet banner state — one of the typed outcomes the hook returns. */
+type EditError =
+  | { kind: "systemRole"; message: string }
+  | { kind: "auth"; authError: AuthKind }
+  | { kind: "unexpected" };
 
 export type RoleItem = { id: string; name: string };
 
@@ -181,50 +190,40 @@ export function AdminRolesClient({ initialRoles }: Props) {
   const tNav = useTranslations("Nav");
   const [roles, setRoles] = useState<RoleItem[]>(initialRoles);
   const [createDirty, setCreateDirty] = useState(false);
-  const [createValidationError, setCreateValidationError] = useState<ValidationError | null>(null);
-  const [createUnexpectedPayloadError, setCreateUnexpectedPayloadError] = useState<string | null>(
-    null,
-  );
-  const [createAuthError, setCreateAuthError] = useState<"unauthenticated" | "forbidden" | null>(
-    null,
-  );
-  const [editSystemRoleError, setEditSystemRoleError] = useState<string | null>(null);
-  const [editUnexpectedPayloadError, setEditUnexpectedPayloadError] = useState<string | null>(null);
-  const [editAuthError, setEditAuthError] = useState<"unauthenticated" | "forbidden" | null>(null);
+  const [createError, setCreateError] = useState<CreateError | null>(null);
+  const [editError, setEditError] = useState<EditError | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const [createRole, { loading: creating, reset: resetCreateRole }] =
-    useMutation(AdminCreateRoleMutation);
-  const [updateRole, { loading: updating, error: updateMutationError, reset: resetUpdateRole }] =
-    useMutation(AdminUpdateRoleMutation);
-  const [deleteRoleMutate, { loading: deleting }] = useMutation(AdminDeleteRoleMutation);
-  const [
+  const {
+    createRole,
+    updateRole,
+    deleteRole,
     loadRole,
-    {
-      data: editRoleData,
-      loading: loadingEditRole,
-      error: editRoleQueryError,
-      called: loadRoleCalled,
-      variables: loadRoleVariables,
-    },
-  ] = useLazyQuery(AdminRoleQuery, { fetchPolicy: "no-cache" });
+    editRoleData,
+    loadingEditRole,
+    editRoleQueryError,
+    loadRoleCalled,
+    loadRoleVariables,
+    updateMutationError,
+    creating,
+    updating,
+    deleting,
+    resetCreateRole,
+    resetUpdateRole,
+  } = useRoleMutations();
   const { scheduleDelete } = useUndoDelete();
   const { state, open, close } = useSheetSearchParam();
   const sheetMode = state.mode;
   const editId = state.mode === "edit" ? state.id : null;
 
   const resetCreateSheetState = useCallback(() => {
-    setCreateValidationError(null);
-    setCreateUnexpectedPayloadError(null);
-    setCreateAuthError(null);
+    setCreateError(null);
     setCreateDirty(false);
     resetCreateRole();
   }, [resetCreateRole]);
 
   const resetEditSheetState = useCallback(() => {
-    setEditSystemRoleError(null);
-    setEditUnexpectedPayloadError(null);
-    setEditAuthError(null);
+    setEditError(null);
     resetUpdateRole();
   }, [resetUpdateRole]);
 
@@ -289,12 +288,12 @@ export function AdminRolesClient({ initialRoles }: Props) {
       optimisticRollback: () => {
         setRoles((prev) => [...prev.slice(0, index), role, ...prev.slice(index)]);
       },
-      commitDelete: () => deleteRoleMutate({ variables: { id } }),
+      commitDelete: () => deleteRole(id),
       onCommitFailed: (err) => {
         const codes = liftGraphQLCodes(err);
-        // This branch deliberately does NOT use the shared
-        // classifyMutationAuthError / mutationAuthBanner helpers (used by the
-        // create/update branches): those are kind-only and would discard the
+        // This branch deliberately does NOT route through the shared
+        // classifyToAuthOutcome helper (used by useRoleMutations for the
+        // create/update branches): that is kind-only and would discard the
         // server's FORBIDDEN message. UNAUTHENTICATED collapses to a generic
         // sign-in prompt — the user has no actionable detail to recover from.
         // FORBIDDEN keeps the server's specific reason because the same code
@@ -319,90 +318,53 @@ export function AdminRolesClient({ initialRoles }: Props) {
   }
 
   async function handleCreateSubmit(values: { name: string }) {
-    setCreateValidationError(null);
-    setCreateUnexpectedPayloadError(null);
-    setCreateAuthError(null);
+    setCreateError(null);
 
-    const name = values.name.trim().toLowerCase();
-    const result = await createRole({ variables: { name } }).catch((err) => {
-      const authKind = classifyMutationAuthError(err);
-      if (authKind !== "other") {
-        setCreateAuthError(authKind);
-        return null;
-      }
-      // err.message is omitted — backend messages may echo user input.
-      // codes is safe to log (fixed enum of GraphQL extension codes).
-      console.warn("[admin/roles] createRole rejected", {
-        name: err instanceof Error ? err.name : "unknown",
-        codes: liftGraphQLCodes(err),
-      });
-      return null;
-    });
-
-    if (!result) return;
-
-    const payload = result.data?.createRole;
-    const typename = payload?.__typename ?? null;
-
-    if (payload?.__typename === "InputValidationError") {
-      setCreateValidationError({ field: payload.field, message: payload.message });
-      return;
+    const outcome = await createRole(values);
+    switch (outcome.status) {
+      case "success":
+        resetCreateSheetState();
+        close({ refresh: true });
+        return;
+      case "validation":
+        setCreateError({ kind: "validation", field: outcome.field, message: outcome.message });
+        return;
+      case "auth":
+        setCreateError({ kind: "auth", authError: outcome.kind });
+        return;
+      case "unexpected":
+        setCreateError({ kind: "unexpected" });
+        return;
+      default:
+        // "rejected" — classifyToAuthOutcome already emitted a scoped warn.
+        return;
     }
-
-    if (payload?.__typename === "CreateRoleSuccess") {
-      resetCreateSheetState();
-      close({ refresh: true });
-      return;
-    }
-
-    console.warn("[admin/roles] unexpected createRole payload", {
-      typename,
-    });
-    setCreateUnexpectedPayloadError(tCommon("somethingWentWrong"));
   }
 
   async function handleEditSubmit(values: { name: string }) {
     if (!editRole) return;
 
-    setEditSystemRoleError(null);
-    setEditUnexpectedPayloadError(null);
-    setEditAuthError(null);
+    setEditError(null);
 
-    const name = values.name.trim().toLowerCase();
-    const result = await updateRole({ variables: { id: editRole.id, name } }).catch((err) => {
-      const authKind = classifyMutationAuthError(err);
-      if (authKind !== "other") {
-        setEditAuthError(authKind);
-        return null;
-      }
-      console.warn("[admin/roles] updateRole rejected", {
-        roleId: editRole.id,
-        name: err instanceof Error ? err.name : "unknown",
-        codes: liftGraphQLCodes(err),
-      });
-      return null;
-    });
-
-    if (!result) return;
-
-    const payload = result.data?.updateRole;
-    const typename = payload?.__typename ?? null;
-
-    if (payload?.__typename === "CannotModifySystemRoleError") {
-      setEditSystemRoleError(payload.message);
-      return;
+    const outcome = await updateRole(editRole.id, values);
+    switch (outcome.status) {
+      case "success":
+        resetEditSheetState();
+        close({ refresh: true });
+        return;
+      case "systemRole":
+        setEditError({ kind: "systemRole", message: outcome.message });
+        return;
+      case "auth":
+        setEditError({ kind: "auth", authError: outcome.kind });
+        return;
+      case "unexpected":
+        setEditError({ kind: "unexpected" });
+        return;
+      default:
+        // "rejected" — classifyToAuthOutcome already emitted a scoped warn.
+        return;
     }
-
-    if (payload?.__typename === "UpdateRoleSuccess") {
-      resetEditSheetState();
-      close({ refresh: true });
-      return;
-    }
-
-    console.warn("[admin/roles] unexpected updateRole payload", {
-      typename,
-    });
-    setEditUnexpectedPayloadError(tCommon("somethingWentWrong"));
   }
 
   return (
@@ -477,13 +439,12 @@ export function AdminRolesClient({ initialRoles }: Props) {
         {state.mode === "new" ? (
           <CreateRoleSheetBody
             submitting={creating}
-            validationError={createValidationError}
-            authError={createAuthError}
-            unexpectedPayloadError={createUnexpectedPayloadError}
-            onDirty={() => {
-              setCreateValidationError(null);
-              setCreateUnexpectedPayloadError(null);
-            }}
+            validationError={createError?.kind === "validation" ? createError : null}
+            authError={createError?.kind === "auth" ? createError.authError : null}
+            unexpectedPayloadError={
+              createError?.kind === "unexpected" ? tCommon("somethingWentWrong") : null
+            }
+            onDirty={() => setCreateError((prev) => (prev?.kind === "auth" ? prev : null))}
             onDirtyChange={setCreateDirty}
             submit={handleCreateSubmit}
           />
@@ -509,9 +470,11 @@ export function AdminRolesClient({ initialRoles }: Props) {
             loading={editRoleLoading}
             submitting={updating}
             mutationError={updateMutationError}
-            authError={editAuthError}
-            systemRoleError={editSystemRoleError}
-            unexpectedPayloadError={editUnexpectedPayloadError}
+            authError={editError?.kind === "auth" ? editError.authError : null}
+            systemRoleError={editError?.kind === "systemRole" ? editError.message : null}
+            unexpectedPayloadError={
+              editError?.kind === "unexpected" ? tCommon("somethingWentWrong") : null
+            }
             queryErrorBanner={editQueryErrorBanner}
             submit={handleEditSubmit}
           />
