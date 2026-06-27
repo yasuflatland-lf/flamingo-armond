@@ -71,8 +71,24 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The Playwright browser download (network), the Supabase stack (Docker
+      # image pulls), and the backend build (CPU) are mutually independent and
+      # bottleneck on different resources, so running them concurrently cuts
+      # wall-clock setup time. The browser download and the backend build run as
+      # background steps that overlap with `supabase start`; the job reconverges
+      # at the `wait-all` below, before the backend process needs its binary and
+      # the Supabase DB URL. Each background step keeps its own log stream in the
+      # Actions UI.
       - name: Install Playwright Chromium
         run: pnpm --filter frontend exec playwright install --with-deps chromium
+        background: true
+
+      - name: Generate and build backend
+        working-directory: backend
+        run: |
+          go tool gqlgen generate
+          go build -o /tmp/flamingo-backend ./cmd/server
+        background: true
 
       - name: Start Supabase
         run: supabase start
@@ -98,13 +114,10 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
           } >> "$GITHUB_ENV"
 
-      - name: Generate backend GraphQL
-        working-directory: backend
-        run: go tool gqlgen generate
-
-      - name: Build backend
-        working-directory: backend
-        run: go build -o /tmp/flamingo-backend ./cmd/server
+      # Reconverge the background tracks: the Playwright browser and the backend
+      # binary must both exist, and the Supabase DB URL must be exported, before
+      # the backend process starts.
+      - wait-all:
 
       - name: Start backend
         working-directory: backend
