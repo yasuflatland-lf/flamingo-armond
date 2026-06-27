@@ -6,9 +6,9 @@ import { useTranslations } from "next-intl";
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useImportMaster } from "@/app/catalog/use-import-master";
-import { CardFetchMoreError } from "@/components/cardgroups/card-fetch-more-error";
 import { CardSearchInput } from "@/components/cardgroups/card-search-input";
 import { ReadOnlyCardRow } from "@/components/cardgroups/read-only-card-row";
+import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
 import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import {
@@ -61,6 +61,7 @@ export default function CatalogDeckClient({
   const apollo = useApolloClient();
   const t = useTranslations("Catalog");
   const tCards = useTranslations("Cards");
+  const tCommon = useTranslations("Common");
 
   const search = useHeaderTakeoverSearch();
 
@@ -206,20 +207,16 @@ export default function CatalogDeckClient({
             </ul>
           )}
 
-          <div ref={sentinelRef} aria-hidden="true" data-testid="catalog-deck-sentinel" />
-
-          {fetchMoreError && (
-            <CardFetchMoreError message={fetchMoreError} onRetry={retryFetchMore} />
-          )}
-
-          {!fetchMoreError && fetchingMore && pageInfo.hasNextPage && (
-            <p
-              className="mt-3 text-center text-xs text-muted-foreground"
-              data-testid="catalog-deck-loading-more"
-            >
-              {tCards("loadingMore")}
-            </p>
-          )}
+          <ConnectionListFooter
+            sentinelRef={sentinelRef}
+            hasNextPage={pageInfo.hasNextPage}
+            fetchingMore={fetchingMore}
+            fetchMoreError={fetchMoreError}
+            onRetry={retryFetchMore}
+            retryLabel={tCommon("retry")}
+            loadingMoreLabel={tCards("loadingMore")}
+            testIdPrefix="catalog-deck"
+          />
         </div>
       </main>
     </>
