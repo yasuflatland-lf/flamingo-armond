@@ -78,10 +78,6 @@ type CardgroupUsecase interface {
 	ListCardgroupsByOwnerConnection(ctx context.Context, in CardgroupConnectionInput) (*CardgroupConnectionOutput, error)
 }
 
-// generalUserCardgroupLimit caps the number of cardgroups a non-admin owner
-// may create. Admins are exempt. Enforced in Create via checkCardgroupLimit.
-const generalUserCardgroupLimit = 5
-
 type cardgroupUsecase struct {
 	repo   CardgroupRepository
 	admin  AdminChecker
@@ -152,8 +148,8 @@ type cardgroupOwnerCounter interface {
 }
 
 // checkCardgroupLimit returns a non-nil *CardgroupLimitInfo when a non-admin
-// owner already holds generalUserCardgroupLimit cardgroups. Admins are exempt
-// (returns nil, nil without counting). Context cancellation and deadline
+// owner already holds domain.GeneralUserCardgroupLimit cardgroups. Admins are
+// exempt (returns nil, nil without counting). Context cancellation and deadline
 // errors pass through unwrapped; other infrastructure failures propagate wrapped.
 func checkCardgroupLimit(ctx context.Context, counter cardgroupOwnerCounter, admin AdminChecker, ownerID string) (*CardgroupLimitInfo, error) {
 	isAdmin, err := admin.IsAdmin(ctx, ownerID)
@@ -173,8 +169,8 @@ func checkCardgroupLimit(ctx context.Context, counter cardgroupOwnerCounter, adm
 		}
 		return nil, eris.Wrap(err, "usecase: cardgroup: count by owner")
 	}
-	if count >= generalUserCardgroupLimit {
-		return &CardgroupLimitInfo{Limit: generalUserCardgroupLimit, Current: int(count)}, nil
+	if domain.GeneralUserCardgroupQuotaReached(count) {
+		return &CardgroupLimitInfo{Limit: domain.GeneralUserCardgroupLimit, Current: int(count)}, nil
 	}
 	return nil, nil
 }
@@ -197,7 +193,7 @@ func (u *cardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 
 	// Name validation (no DB) runs first to avoid the IsAdmin + Count queries
 	// on the common invalid-name path. Non-admins are capped at
-	// generalUserCardgroupLimit cardgroups; admins are exempt.
+	// domain.GeneralUserCardgroupLimit cardgroups; admins are exempt.
 	limit, err := checkCardgroupLimit(ctx, u.repo, u.admin, user.Sub)
 	if err != nil {
 		return CreateCardgroupOutcome{}, err
