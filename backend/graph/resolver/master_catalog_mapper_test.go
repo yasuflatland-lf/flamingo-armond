@@ -11,7 +11,6 @@ import (
 	"backend/graph/model"
 	"backend/internal/cursor"
 	"backend/internal/domain"
-	"backend/internal/repository"
 	"backend/internal/usecase"
 )
 
@@ -46,7 +45,7 @@ func TestToMasterCardgroupModel_FullMapping(t *testing.T) {
 
 	created := time.Date(2026, 6, 13, 1, 2, 3, 0, time.UTC)
 	updated := created.Add(time.Hour)
-	item := &repository.MasterCatalogItem{
+	item := &usecase.MasterCatalogItem{
 		Cardgroup: &domain.MasterCardgroup{
 			ID:               "mcg-1",
 			Name:             domain.CardgroupName("Starter Deck"),
@@ -81,7 +80,7 @@ func TestToMasterCardgroupModel_Nil(t *testing.T) {
 	t.Parallel()
 
 	assert.Nil(t, toMasterCardgroupModel(nil))
-	assert.Nil(t, toMasterCardgroupModel(&repository.MasterCatalogItem{Cardgroup: nil, CardCount: 1}))
+	assert.Nil(t, toMasterCardgroupModel(&usecase.MasterCatalogItem{Cardgroup: nil, CardCount: 1}))
 }
 
 // TestToMasterCatalogConnectionModel_Nil returns an empty (non-nil) connection
@@ -103,7 +102,7 @@ func TestToMasterCatalogConnectionModel_Mapping(t *testing.T) {
 	t.Parallel()
 
 	out := &usecase.MasterCatalogConnectionOutput{
-		Items: []*repository.MasterCatalogItem{
+		Items: []*usecase.MasterCatalogItem{
 			{Cardgroup: &domain.MasterCardgroup{ID: "a", Name: domain.CardgroupName("A"), Status: domain.MasterStatusPublished}, CardCount: 1},
 			{Cardgroup: &domain.MasterCardgroup{ID: "b", Name: domain.CardgroupName("B"), Status: domain.MasterStatusPublished}, CardCount: 2},
 		},
@@ -136,7 +135,7 @@ func TestToMasterCatalogConnectionModel_SkipsNilNode(t *testing.T) {
 	t.Parallel()
 
 	out := &usecase.MasterCatalogConnectionOutput{
-		Items: []*repository.MasterCatalogItem{
+		Items: []*usecase.MasterCatalogItem{
 			{Cardgroup: nil, CardCount: 0},
 			{Cardgroup: &domain.MasterCardgroup{ID: "b", Name: domain.CardgroupName("B"), Status: domain.MasterStatusPublished}, CardCount: 2},
 		},

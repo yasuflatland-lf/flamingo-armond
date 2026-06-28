@@ -7,7 +7,6 @@ import (
 	"backend/graph/model"
 	"backend/internal/cursor"
 	"backend/internal/domain"
-	"backend/internal/repository"
 	"backend/internal/usecase"
 )
 
@@ -102,7 +101,7 @@ func toMasterCatalogConnectionModel(ctx context.Context, out *usecase.MasterCata
 	}
 	edges := buildEdges(ctx, out.Items, "toMasterCatalogConnectionModel",
 		toMasterCardgroupModel,
-		func(item *repository.MasterCatalogItem) string { return item.Cardgroup.ID },
+		func(item *usecase.MasterCatalogItem) string { return item.Cardgroup.ID },
 		func(cur string, n *model.MasterCardgroup) *model.MasterCatalogEdge {
 			return &model.MasterCatalogEdge{Cursor: cur, Node: n}
 		},

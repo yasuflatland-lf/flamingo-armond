@@ -71,10 +71,16 @@ type MasterCatalogConnectionInput struct {
 	OrderDirection *SortOrder
 }
 
+// MasterCatalogItem is the usecase-level read model for one catalog row.
+type MasterCatalogItem struct {
+	Cardgroup *domain.MasterCardgroup
+	CardCount int64
+}
+
 // MasterCatalogConnectionOutput is the usecase-level page result. The resolver
 // wraps it into a model.MasterCatalogConnection.
 type MasterCatalogConnectionOutput struct {
-	Items      []*repository.MasterCatalogItem
+	Items      []*MasterCatalogItem
 	TotalCount int64
 	HasNext    bool
 	HasPrev    bool
@@ -282,13 +288,17 @@ func (u *masterCatalogUsecase) listMasterCatalogCore(
 	// request still observes the real value.
 	var total int64
 	items, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
-		func(wantFirst, wantLast int) ([]*repository.MasterCatalogItem, error) {
+		func(wantFirst, wantLast int) ([]*MasterCatalogItem, error) {
 			rows, t, e := fetch(ctx, after, before, wantFirst, wantLast, orderBy, dir, search)
 			if e != nil {
 				return nil, eris.Wrap(e, opPrefix)
 			}
 			total = t
-			return rows, nil
+			out := make([]*MasterCatalogItem, len(rows))
+			for i, r := range rows {
+				out[i] = &MasterCatalogItem{Cardgroup: r.Cardgroup, CardCount: r.CardCount}
+			}
+			return out, nil
 		},
 	)
 	if err != nil {
@@ -298,7 +308,7 @@ func (u *masterCatalogUsecase) listMasterCatalogCore(
 	// StartCur / EndCur carry the RAW node id; the resolver's connection layer
 	// applies the cursor encoder once. Encoding here would double-encode.
 	out := &MasterCatalogConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Items: items}
-	out.StartCur, out.EndCur = firstLastCursor(items, func(it *repository.MasterCatalogItem) string { return it.Cardgroup.ID })
+	out.StartCur, out.EndCur = firstLastCursor(items, func(it *MasterCatalogItem) string { return it.Cardgroup.ID })
 	return out, nil
 }
 

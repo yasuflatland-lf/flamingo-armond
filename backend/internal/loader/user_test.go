@@ -420,7 +420,7 @@ func TestUserLoader_PartialNotFound(t *testing.T) {
 	if results[2] == nil || results[2].ID != "present-2" {
 		t.Fatalf("present-2: bad result: %+v", results[2])
 	}
-	if !errors.Is(errs[1], repository.ErrNotFound) {
+	if !errors.Is(errs[1], loader.ErrNotFound) {
 		t.Fatalf("missing: want ErrNotFound, got %v", errs[1])
 	}
 	if results[1] != nil {

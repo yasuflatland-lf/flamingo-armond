@@ -11,7 +11,6 @@ import (
 	"backend/graph/model"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
-	"backend/internal/repository"
 	"backend/internal/usecase"
 	"backend/internal/usecase/ucerr"
 )
@@ -116,7 +115,7 @@ func TestQueryResolver_MasterCatalog_Success(t *testing.T) {
 
 	stub := &stubMasterCatalogUC{
 		out: &usecase.MasterCatalogConnectionOutput{
-			Items: []*repository.MasterCatalogItem{
+			Items: []*usecase.MasterCatalogItem{
 				{Cardgroup: &domain.MasterCardgroup{ID: "x", Name: domain.CardgroupName("X"), Status: domain.MasterStatusPublished}, CardCount: 5},
 			},
 			TotalCount: 1,

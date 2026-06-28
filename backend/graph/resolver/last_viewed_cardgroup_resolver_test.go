@@ -14,7 +14,6 @@ import (
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
 	"backend/internal/loader"
-	"backend/internal/repository"
 	"backend/internal/usecase"
 	"backend/internal/usecase/ucerr"
 )
@@ -70,7 +69,7 @@ func ctxWithBothLoaders(
 					if cg, ok := cgs[k]; ok {
 						out[i] = &dataloader.Result[*domain.Cardgroup]{Data: cg}
 					} else {
-						out[i] = &dataloader.Result[*domain.Cardgroup]{Error: repository.ErrNotFound}
+						out[i] = &dataloader.Result[*domain.Cardgroup]{Error: loader.ErrNotFound}
 					}
 				}
 				return out
