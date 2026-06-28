@@ -325,6 +325,17 @@ describe("<LogoDrawer>", () => {
     window.removeEventListener("flamingo:open-search", openSpy);
   });
 
+  it("shows the search trigger on the catalog deck-detail route /catalog/[id]", () => {
+    // The public catalog deck-detail screen renders its card list directly and
+    // wires the header-takeover filter, so the mobile magnifier must appear here
+    // (the desktop CardSearchInput is hidden on mobile, making this the only
+    // search affordance). Regression guard for the previously-unwired trigger.
+    mockUsePathname.mockReturnValue("/catalog/abc");
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+    expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+  });
+
   it("hides the search trigger on a non-filterable route", () => {
     mockUsePathname.mockReturnValue("/profile");
     renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
