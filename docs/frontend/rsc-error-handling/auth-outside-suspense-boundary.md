@@ -76,9 +76,9 @@ Reference: `frontend/src/app/cardgroups/page.tsx`, `frontend/src/app/cardgroups/
 
 The rule above applies specifically to auth *gates* that must `redirect()` on failure. A component whose auth failure mode is degradation rather than redirection may safely run inside a `<Suspense>` boundary — provided it wraps its awaits in `try/catch` so transport rejections do not escape.
 
-`frontend/src/components/auth-shell.tsx` is now a **synchronous prop-driven wrapper** (`{ user, isAdmin, children }`) that performs no auth I/O and therefore never suspends. Identity is resolved upstream by the middleware (`frontend/src/lib/supabase/middleware.ts`), which calls `getClaims()` (wrapped in try/catch) and forwards the result via request headers; `app/layout.tsx` reads them via `readAuthContext` and passes the resulting `user` and `isAdmin` props down to `AuthShell`. The `<Suspense fallback={<BootSplash />}>` boundary that previously wrapped `AuthShell` has been removed — because `AuthShell` is synchronous, no Suspense boundary is needed around it.
+`ConditionalShell` renders `AppShell` (`frontend/src/components/conditional-shell.tsx` → `frontend/src/components/nav/app-shell.tsx`) as a **synchronous prop-driven wrapper** (`{ user, isAdmin, children }`) that performs no auth I/O and therefore never suspends. Identity is resolved upstream by the middleware (`frontend/src/lib/supabase/middleware.ts`), which calls `getClaims()` (wrapped in try/catch) and forwards the result via request headers; `app/layout.tsx` reads them via `readAuthContext` and passes the resulting `user` and `isAdmin` props down through `ConditionalShell` to `AppShell`. The shell is synchronous, so no Suspense boundary wraps it.
 
-The abstract rule — that a component whose failure mode is degradation rather than redirection may safely run inside a `<Suspense>` boundary — remains valid for other async RSC patterns, but `AuthShell` is no longer an instance of it.
+The abstract rule — that a component whose failure mode is degradation rather than redirection may safely run inside a `<Suspense>` boundary — remains valid for other async RSC patterns. The synchronous shell is not an instance of it: it performs no async work to suspend on.
 
 The distinguishing question is: **what happens on failure?**
 

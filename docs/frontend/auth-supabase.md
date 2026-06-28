@@ -34,7 +34,7 @@ The `matcher` must also explicitly exclude `/api/:path*` and `/auth/callback`. W
 | `x-user-email` | string (empty when anonymous) | `user.email` from `getUser()` |
 | `x-user-is-admin` | `"true"\|"false"` | `getClaims()` → `claims.app_metadata.role === "admin"` |
 
-Any client-supplied copies of these headers are stripped at the top of `updateSession` before the middleware sets its own — a client must never be able to spoof them. The headers are set on the forwarded **request** (not on the response), so the browser never sees them; this is the same posture as `x-nonce` (see [`csp.md`](csp.md)). The root layout reads all three via `readAuthContext` (`frontend/src/lib/supabase/auth-status.ts`) and passes the derived `{ status, email, isAdmin }` props to `AuthShell`.
+Any client-supplied copies of these headers are stripped at the top of `updateSession` before the middleware sets its own — a client must never be able to spoof them. The headers are set on the forwarded **request** (not on the response), so the browser never sees them; this is the same posture as `x-nonce` (see [`csp.md`](csp.md)). The root layout reads all three via `readAuthContext` (`frontend/src/lib/supabase/auth-status.ts`) and passes the derived `{ status, email, isAdmin }` props to `AppShell` (via `ConditionalShell`).
 
 #### Which pages call `getUser()` directly vs. reading the forwarded header
 
@@ -42,7 +42,7 @@ Any client-supplied copies of these headers are stripped at the top of `updateSe
 
 ### `isAdmin` is read from the JWT claim via the middleware, not from a GraphQL query
 
-The **middleware** (`frontend/src/lib/supabase/middleware.ts`) computes the `isAdmin` flag by calling `supabase.auth.getClaims()` (wrapped in try/catch, fails closed to `false`) and checking `claims.app_metadata?.role === "admin"`. It forwards the result as the `x-user-is-admin` request header. The root layout (`frontend/src/app/layout.tsx`) reads this header via `readAuthContext` (`frontend/src/lib/supabase/auth-status.ts`) and passes `isAdmin` as a prop to `AuthShell`. The claim is emitted at JWT mint time by the Supabase Custom Access Token Hook, which joins `public.user_roles` server-side — see [`docs/backend/custom-access-token-hook.md`](../backend/custom-access-token-hook.md). The frontend therefore reads the role from the cookie-side JWT (no network round-trip) and skips a GraphQL `me` query on every RSC navigation.
+The **middleware** (`frontend/src/lib/supabase/middleware.ts`) computes the `isAdmin` flag by calling `supabase.auth.getClaims()` (wrapped in try/catch, fails closed to `false`) and checking `claims.app_metadata?.role === "admin"`. It forwards the result as the `x-user-is-admin` request header. The root layout (`frontend/src/app/layout.tsx`) reads this header via `readAuthContext` (`frontend/src/lib/supabase/auth-status.ts`) and passes `isAdmin` as a prop to `AppShell` (via `ConditionalShell`). The claim is emitted at JWT mint time by the Supabase Custom Access Token Hook, which joins `public.user_roles` server-side — see [`docs/backend/custom-access-token-hook.md`](../backend/custom-access-token-hook.md). The frontend therefore reads the role from the cookie-side JWT (no network round-trip) and skips a GraphQL `me` query on every RSC navigation.
 
 The role lives **only** in the JWT claim — it is NOT mirrored into `auth.users.app_metadata` (the Custom Access Token Hook injects it at mint time without writing to `raw_app_meta_data`), so `getUser().user.app_metadata?.role` always returns `undefined`. Read it via `getClaims()`.
 

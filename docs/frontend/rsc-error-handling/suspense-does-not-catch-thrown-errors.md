@@ -33,7 +33,7 @@ export async function SomeDataContent() {
 }
 ```
 
-Note: `frontend/src/components/auth-shell.tsx` previously held this pattern but is now a **synchronous prop-driven wrapper** (`{ user, isAdmin, children }`) that performs no auth I/O. The equivalent degradation logic moved to `frontend/src/lib/supabase/middleware.ts`, which wraps the `getClaims()` call in a try/catch and fails closed to `isAdmin=false` so the app stays up on transport failures. See [`getclaims-three-way-return.md`](getclaims-three-way-return.md).
+Note: the shell rendered by `ConditionalShell` (`frontend/src/components/conditional-shell.tsx`) → `AppShell` (`frontend/src/components/nav/app-shell.tsx`) does not need this pattern. It is a **synchronous prop-driven wrapper** (`{ user, isAdmin, children }`) that performs no auth I/O. The equivalent degradation logic lives in `frontend/src/lib/supabase/middleware.ts`, which wraps the `getClaims()` call in a try/catch and fails closed to `isAdmin=false` so the app stays up on transport failures. See [`getclaims-three-way-return.md`](getclaims-three-way-return.md).
 
 ## Relation to the "auth gate runs outside Suspense" rule
 
@@ -44,9 +44,9 @@ These two rules address **different components with different responsibilities**
 | Component | Role | Allowed to redirect? | Inside Suspense? |
 |---|---|---|---|
 | Route `page.tsx` outer RSC | Auth *gate* — must enforce access | Yes — redirects on failure | No — runs before the `<Suspense>` return |
-| Root layout + `AuthShell` | Display-hint *shell* — reads middleware-forwarded headers via `readAuthContext`; passes `user` / `isAdmin` props | No — degrades to anonymous | No — `AuthShell` is synchronous (no auth I/O); no Suspense boundary needed |
+| Root layout + shell (`ConditionalShell` → `AppShell`) | Display-hint *shell* — reads middleware-forwarded headers via `readAuthContext`; passes `user` / `isAdmin` props | No — degrades to anonymous | No — the shell is synchronous (no auth I/O); no Suspense boundary needed |
 
-The auth gate (page outer RSC) runs outside Suspense because it needs to redirect, and redirects from inside a suspended subtree flash the fallback first. `AuthShell` is now a synchronous prop-driven wrapper — identity resolution moved to the middleware (out of the React render path entirely), so the root layout reads pre-computed headers via `readAuthContext` and the Suspense boundary was removed.
+The auth gate (page outer RSC) runs outside Suspense because it needs to redirect, and redirects from inside a suspended subtree flash the fallback first. The shell (`ConditionalShell` → `AppShell`) is a synchronous prop-driven wrapper — identity resolution lives in the middleware, out of the React render path entirely, so the root layout reads pre-computed headers via `readAuthContext` and the shell needs no Suspense boundary.
 
 Both rules share the same underlying constraint: `<Suspense>` does not catch thrown errors. The auth gate addresses this by staying outside Suspense entirely. Async RSC data-loaders that live inside Suspense boundaries address it by wrapping their awaits in `try/catch`. Which approach applies depends on whether the component's failure mode is "redirect" (stay outside) or "degrade" (stay inside, catch).
 
