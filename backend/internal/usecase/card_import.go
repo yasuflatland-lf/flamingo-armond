@@ -56,6 +56,11 @@ const (
 	CardImportErrKindDuplicate    CardImportErrorKind = "DUPLICATE"
 )
 
+// IsSoftSkip reports whether a row with this error kind may be silently skipped.
+func (k CardImportErrorKind) IsSoftSkip() bool {
+	return k == CardImportErrKindFrontOnly || k == CardImportErrKindBackOnly
+}
+
 // CardImportError mirrors textdic.ValidationError so callers in the resolver
 // layer can reshape it into the GraphQL model without importing the textdic
 // package directly.
@@ -222,32 +227,11 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 
 	mappedErrs := cardImportErrorsFromTextdic(parseErrs)
 
-	// Deduplicate parsed words by front within this payload. Postgres error 21000
-	// ("ON CONFLICT DO UPDATE command cannot affect row a second time") fires when
-	// the same conflict key appears more than once in a single INSERT statement.
-	// Last occurrence wins; earlier occurrences are dropped and reported in Errors.
-	lastIndex := make(map[string]int, len(words))
-	for i, w := range words {
-		lastIndex[w.Front] = i
-	}
-	deduped := make([]textdic.ParsedWord, 0, len(words))
-	for i, w := range words {
-		if lastIndex[w.Front] != i {
-			// w is the earlier (dropped) occurrence; the row that survives is at
-			// lastIndex, so its Back is the value that overrode this one.
-			winningBack := words[lastIndex[w.Front]].Back
-			mappedErrs = append(mappedErrs, CardImportError{
-				Line:    w.Line,
-				Message: fmt.Sprintf("duplicated front (%s) was overridden with the new back (%s)", w.Front, winningBack),
-				Kind:    CardImportErrKindDuplicate,
-				Front:   w.Front,
-				Back:    w.Back,
-			})
-			continue
-		}
-		deduped = append(deduped, w)
-	}
+	// Deduplicate parsed words by front within this payload. cards.front is
+	// plain text, so the conflict key is the front verbatim (identity key).
+	deduped, dupErrs := dedupeParsedWords(words, func(s string) string { return s })
 	words = deduped
+	mappedErrs = append(mappedErrs, dupErrs...)
 
 	// Empty (but well-formed) parse: nothing to persist; surface the parser's
 	// per-line diagnostics so the caller can act on them.
@@ -346,4 +330,39 @@ func checkImportCaps(words []textdic.ParsedWord) []capViolation {
 		}
 	}
 	return out
+}
+
+// dedupeParsedWords drops earlier duplicates by key(front), last occurrence wins,
+// and reports each dropped row as a CardImportErrKindDuplicate error.
+//
+// Postgres error 21000 ("ON CONFLICT DO UPDATE command cannot affect row a second
+// time") fires when the same conflict key appears more than once in a single
+// INSERT statement, so this dedupe must run before UpsertManyTx. The key function
+// adapts the conflict-key semantics to the target column: identity for plain-text
+// cards.front, frontMatchKey (case-fold) for citext master_cards.front so case
+// variants collapse to one row.
+func dedupeParsedWords(words []textdic.ParsedWord, key func(string) string) ([]textdic.ParsedWord, []CardImportError) {
+	lastIndex := make(map[string]int, len(words))
+	for i, w := range words {
+		lastIndex[key(w.Front)] = i
+	}
+	deduped := make([]textdic.ParsedWord, 0, len(words))
+	var dropErrors []CardImportError
+	for i, w := range words {
+		if lastIndex[key(w.Front)] != i {
+			// w is the earlier (dropped) occurrence; the row that survives is at
+			// lastIndex, so its Back is the value that overrode this one.
+			winningBack := words[lastIndex[key(w.Front)]].Back
+			dropErrors = append(dropErrors, CardImportError{
+				Line:    w.Line,
+				Message: fmt.Sprintf("duplicated front (%s) was overridden with the new back (%s)", w.Front, winningBack),
+				Kind:    CardImportErrKindDuplicate,
+				Front:   w.Front,
+				Back:    w.Back,
+			})
+			continue
+		}
+		deduped = append(deduped, w)
+	}
+	return deduped, dropErrors
 }

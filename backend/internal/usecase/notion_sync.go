@@ -238,10 +238,7 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 // obviously hard. UNKNOWN indicates a bug and also falls into the hard branch.
 func allCardImportErrorsSkipped(errs []CardImportError) bool {
 	for _, e := range errs {
-		switch e.Kind {
-		case CardImportErrKindFrontOnly, CardImportErrKindBackOnly:
-			continue
-		default:
+		if !e.Kind.IsSoftSkip() {
 			return false
 		}
 	}

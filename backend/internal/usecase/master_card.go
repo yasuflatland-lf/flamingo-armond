@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -414,39 +413,20 @@ func (u *masterCardUsecase) ImportMasterCards(ctx context.Context, in ImportMast
 	}
 
 	if len(words) > cardImportParsedRowCap {
-		return ImportMasterCardsOutput{}, ucerr.NewValidationError("payload", "payload exceeds 5000 row cap")
+		return ImportMasterCardsOutput{}, ucerr.NewValidationError("payload", fmt.Sprintf("payload exceeds %d row cap", cardImportParsedRowCap))
 	}
 
 	mappedErrs := cardImportErrorsFromTextdic(parseErrs)
 
 	// Deduplicate parsed words by front within this payload (last occurrence
-	// wins); earlier occurrences are dropped and reported. Postgres error 21000
-	// fires when a conflict key repeats in one INSERT, so the dedupe must happen
-	// before UpsertManyTx. master_cards.front is citext, so the conflict key is
-	// case-insensitive — the map key is therefore case-folded (unlike the
-	// plain-text cards.front mirror in card_import.go) so "Apple" and "apple"
-	// collapse to one row rather than both reaching the ON CONFLICT INSERT.
-	lastIndex := make(map[string]int, len(words))
-	for i, w := range words {
-		lastIndex[strings.ToLower(w.Front)] = i
-	}
-	deduped := make([]textdic.ParsedWord, 0, len(words))
-	for i, w := range words {
-		lower := strings.ToLower(w.Front)
-		if lastIndex[lower] != i {
-			winningBack := words[lastIndex[lower]].Back
-			mappedErrs = append(mappedErrs, CardImportError{
-				Line:    w.Line,
-				Message: fmt.Sprintf("duplicated front (%s) was overridden with the new back (%s)", w.Front, winningBack),
-				Kind:    CardImportErrKindDuplicate,
-				Front:   w.Front,
-				Back:    w.Back,
-			})
-			continue
-		}
-		deduped = append(deduped, w)
-	}
+	// wins); earlier occurrences are dropped and reported. master_cards.front is
+	// citext, so the conflict key is case-insensitive — frontMatchKey case-folds
+	// the dedupe key (unlike the plain-text cards.front mirror in card_import.go)
+	// so "Apple" and "apple" collapse to one row rather than both reaching the
+	// ON CONFLICT INSERT (which would trip Postgres error 21000).
+	deduped, dupErrs := dedupeParsedWords(words, frontMatchKey)
 	words = deduped
+	mappedErrs = append(mappedErrs, dupErrs...)
 
 	// Empty (but well-formed) parse: nothing to persist; surface the parser's
 	// per-line diagnostics so the caller can act on them.
