@@ -18,6 +18,18 @@ const (
 	ModeInWhile   PerformanceMode = 4
 
 	MinReviewsForModeCalculation = 20
+
+	// Success-rate band thresholds for ModeFromMetrics. A success rate at or
+	// above each threshold selects the named mode (or higher).
+	defaultModeThreshold = 0.60
+	goodModeThreshold    = 0.75
+	easyModeThreshold    = 0.85
+	inWhileModeThreshold = 0.95
+
+	// Average-difficulty nudges shift the band-selected mode by one step:
+	// hard recent cards drop the mode, easy recent cards raise it.
+	highDifficultyThreshold = 0.7
+	lowDifficultyThreshold  = 0.3
 )
 
 // IsValid reports whether the mode is in the recognised range.
@@ -51,7 +63,7 @@ func ComputeMetrics(swipes []domain.SwipeRecord, now time.Time) PerformanceMetri
 	daysSeen := make(map[string]struct{}, len(swipes))
 
 	for _, swipe := range swipes {
-		if swipe.Rating >= domain.RatingGood {
+		if swipe.Rating.IsSuccess() {
 			successes++
 		}
 		if swipe.StateAfter.ElapsedDays <= swipe.StateAfter.ScheduledDays {
@@ -65,7 +77,7 @@ func ComputeMetrics(swipes []domain.SwipeRecord, now time.Time) PerformanceMetri
 		}
 
 		difficultySum += normalizedDifficulty(swipe.StateAfter.Difficulty)
-		daysSeen[swipe.ReviewedAt.In(now.Location()).Format(time.DateOnly)] = struct{}{}
+		daysSeen[domain.LearnDayKey(swipe.ReviewedAt)] = struct{}{}
 	}
 
 	return PerformanceMetrics{
@@ -85,19 +97,19 @@ func ModeFromMetrics(m PerformanceMetrics) PerformanceMode {
 
 	mode := ModeInWhile
 	switch {
-	case m.SuccessRate < 0.60:
+	case m.SuccessRate < defaultModeThreshold:
 		mode = ModeDifficult
-	case m.SuccessRate < 0.75:
+	case m.SuccessRate < goodModeThreshold:
 		mode = ModeDefault
-	case m.SuccessRate < 0.85:
+	case m.SuccessRate < easyModeThreshold:
 		mode = ModeGood
-	case m.SuccessRate < 0.95:
+	case m.SuccessRate < inWhileModeThreshold:
 		mode = ModeEasy
 	}
 
-	if m.AvgDifficulty >= 0.7 {
+	if m.AvgDifficulty >= highDifficultyThreshold {
 		mode--
-	} else if m.AvgDifficulty <= 0.3 {
+	} else if m.AvgDifficulty <= lowDifficultyThreshold {
 		mode++
 	}
 
@@ -126,19 +138,17 @@ func isKnownCardReview(swipe domain.SwipeRecord) bool {
 		swipe.StateAfter.Lapses > 0
 }
 
+// studyStreak counts consecutive JST learn-days ending at the current learn-day,
+// breaking on the first day with no swipe. If the current learn-day has no
+// swipe, the streak is 0.
 func studyStreak(daysSeen map[string]struct{}, now time.Time) int {
 	streak := 0
-	for day := startOfDay(now); ; day = day.AddDate(0, 0, -1) {
-		if _, ok := daysSeen[day.Format(time.DateOnly)]; !ok {
+	for day := domain.StartOfLearnDay(now); ; day = day.AddDate(0, 0, -1) {
+		if _, ok := daysSeen[domain.LearnDayKey(day)]; !ok {
 			return streak
 		}
 		streak++
 	}
-}
-
-func startOfDay(t time.Time) time.Time {
-	year, month, day := t.Date()
-	return time.Date(year, month, day, 0, 0, 0, 0, t.Location())
 }
 
 func ratio(numerator, denominator int) float64 {

@@ -17,3 +17,6 @@ func StartOfLearnDay(now time.Time) time.Time {
 	y, m, d := local.Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, learnDayZone)
 }
+
+// LearnDayKey returns the canonical JST learn-day key (YYYY-MM-DD) for t.
+func LearnDayKey(t time.Time) string { return StartOfLearnDay(t).Format(time.DateOnly) }
