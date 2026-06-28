@@ -97,7 +97,7 @@ Adding `app/loading.tsx` alone does **not** fix this. `loading.tsx` wraps the `p
 
 The layout now returns `<html><body>` synchronously. Auth identity (`shellUser`, `isAdmin`) is resolved by the middleware and forwarded to the RSC render via request headers, so the layout reads it from a fast in-memory map that Next.js pre-populates before the component runs — no async Supabase await remains in the layout function body.
 
-The layout has a single render path: it reads the forwarded headers via `readAuthContext` and passes the resolved values synchronously into the client `ConditionalShell` wrapper. `ConditionalShell` reads `usePathname()` and decides per route whether to mount the navigation shell — bare `children` (no shell, no nav) on the bare routes `/`, `/login`, `/onboarding`, `/onboarding/start`, `/terms`, and `/privacy` (`/` is bare because it is a redirect-only dispatcher whose shell would merely flash the nav rail before it redirects — see [`routing-topology.md` § "Bare-shell routes (no `AppShell`)"](./routing-topology.md#bare-shell-routes-no-appshell)), the full `AuthShell` (plus `AppleInstallHint`) everywhere else. The decision lives in a client component because the server layout does not re-render on soft navigations, so a server-side branch would leave the shell from the previously-rendered route in place (see [`frontend/src/components/conditional-shell.tsx`](../../frontend/src/components/conditional-shell.tsx)):
+The layout has a single render path: it reads the forwarded headers via `readAuthContext` and passes the resolved values synchronously into the client `ConditionalShell` wrapper. `ConditionalShell` reads `usePathname()` and decides per route whether to mount the navigation shell — bare `children` (no shell, no nav) on the bare routes `/`, `/login`, `/onboarding`, `/onboarding/start`, `/terms`, and `/privacy` (`/` is bare because it is a redirect-only dispatcher whose shell would merely flash the nav rail before it redirects — see [`routing-topology.md` § "Bare-shell routes (no `AppShell`)"](./routing-topology.md#bare-shell-routes-no-appshell)), the full `AppShell` (plus `AppleInstallHint`) everywhere else. The decision lives in a client component because the server layout does not re-render on soft navigations, so a server-side branch would leave the shell from the previously-rendered route in place (see [`frontend/src/components/conditional-shell.tsx`](../../frontend/src/components/conditional-shell.tsx)):
 
 ```tsx
 // frontend/src/app/layout.tsx (simplified)
@@ -110,7 +110,7 @@ const isAdmin = auth.status === "authenticated" && auth.isAdmin;
 <body suppressHydrationWarning>
   <NextIntlClientProvider>
     <Providers nonce={nonce}>
-      {/* Client wrapper: mounts AuthShell (+ AppleInstallHint) only on
+      {/* Client wrapper: mounts AppShell (+ AppleInstallHint) only on
           full-shell routes; renders bare children on /login, /onboarding,
           /terms, /privacy. */}
       <ConditionalShell user={shellUser} isAdmin={isAdmin}>
@@ -125,13 +125,13 @@ const isAdmin = auth.status === "authenticated" && auth.isAdmin;
 
 The layout returns `<html><body>` synchronously because auth state is read from request headers set by middleware before the RSC render; no streaming-blocking await remains in the layout. The page skeleton streams immediately on every navigation.
 
-### AuthShell degradation contract
+### Shell degradation contract
 
-`AuthShell` is now a synchronous prop-driven wrapper — it no longer performs any auth I/O. The degradation contract has moved to the middleware (`frontend/src/middleware.ts`): `getClaims()` is wrapped in a `try/catch` that fails closed to `isAdmin = false` on any exception, including non-`AuthError` throws from `validateExp` (plain `Error`) and WebCrypto (`DOMException`). The catch branch logs `err.name` only (no `err.message`, which may carry user-supplied content) and proceeds with the degraded identity. Because the middleware runs before the RSC tree, `AuthShell` always receives a fully-resolved `user` and `isAdmin` prop and never needs to handle an error path.
+The shell (`ConditionalShell` → `AppShell`) is synchronous and prop-driven — it performs no auth I/O. The degradation contract lives in the middleware (`frontend/src/middleware.ts`): `getClaims()` is wrapped in a `try/catch` that fails closed to `isAdmin = false` on any exception, including non-`AuthError` throws from `validateExp` (plain `Error`) and WebCrypto (`DOMException`). The catch branch logs `err.name` only (no `err.message`, which may carry user-supplied content) and proceeds with the degraded identity. Because the middleware runs before the RSC tree, the shell always receives a fully-resolved `user` and `isAdmin` prop and never needs to handle an error path.
 
 ### Log prefix continuity
 
-Middleware logs the identity-resolution failure with the `[middleware]` scope prefix. `AuthShell` retains the `[layout]` prefix for any layout-level structural errors. Operator runbooks and test assertions pin to those strings; they are not interchangeable.
+Middleware logs the identity-resolution failure with the `[middleware]` scope prefix. The root layout / shell uses the `[layout]` prefix for any layout-level structural errors. Operator runbooks and test assertions pin to those strings; they are not interchangeable.
 
 ### N5 — collapsing two loading states into one
 
