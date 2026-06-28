@@ -10,7 +10,6 @@ import (
 	"backend/graph/model"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
-	"backend/internal/repository"
 	"backend/internal/usecase"
 	"backend/internal/usecase/ucerr"
 )
@@ -209,7 +208,7 @@ func TestAdminDeleteMasterCardgroup_WrapsForbidden(t *testing.T) {
 func TestAdminMasters_Success(t *testing.T) {
 	t.Parallel()
 	stub := &stubMasterCatalogUC{adminOut: &usecase.MasterCatalogConnectionOutput{
-		Items: []*repository.MasterCatalogItem{
+		Items: []*usecase.MasterCatalogItem{
 			{Cardgroup: &domain.MasterCardgroup{ID: "m1", Name: domain.CardgroupName("Draft"), Status: domain.MasterStatusDraft}, CardCount: 0},
 		},
 		TotalCount: 1,

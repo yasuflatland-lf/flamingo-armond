@@ -83,7 +83,6 @@ deps:
       - domain
       - gqlerr
       - loader
-      - repository
       - textdic
       - usecase
   cmd_server:

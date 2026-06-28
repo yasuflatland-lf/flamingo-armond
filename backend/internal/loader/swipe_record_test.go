@@ -12,7 +12,6 @@ import (
 
 	"backend/internal/domain"
 	"backend/internal/loader"
-	"backend/internal/repository"
 )
 
 type countingSwipeRecordRepo struct {
@@ -117,7 +116,7 @@ func TestSwipeRecordLoader_PartialNotFound(t *testing.T) {
 	if errs[0] != nil || results[0] == nil || results[0].ID != "present" {
 		t.Fatalf("present: result=%+v err=%v", results[0], errs[0])
 	}
-	if !errors.Is(errs[1], repository.ErrNotFound) {
+	if !errors.Is(errs[1], loader.ErrNotFound) {
 		t.Fatalf("missing: want ErrNotFound, got %v", errs[1])
 	}
 	if results[1] != nil {

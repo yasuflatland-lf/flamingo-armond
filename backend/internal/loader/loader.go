@@ -2,6 +2,7 @@ package loader
 
 import (
 	"context"
+	"errors"
 
 	"github.com/graph-gophers/dataloader/v7"
 	"github.com/labstack/echo/v5"
@@ -12,10 +13,17 @@ import (
 	"backend/internal/repository"
 )
 
+// ErrNotFound is the loader-layer sentinel wrapped for a key absent from a batch
+// result. It lets the presentation layer (resolver) branch on a missing key via
+// errors.Is without importing the infrastructure repository package. The
+// repository keeps its own repository.ErrNotFound for method-level not-found
+// results; this sentinel is distinct and scoped to loader batch output.
+var ErrNotFound = errors.New("loader: not found")
+
 // newMapKeyedBatch builds a DataLoader batch function for an aggregate whose
 // repository exposes a map-keyed FindByIDs-style lookup. load maps the requested
 // keys to a map[id]*V; the returned batch function resolves each key to its loaded
-// value, or to eris.Wrapf(repository.ErrNotFound, "<label> <key>") when the id is
+// value, or to eris.Wrapf(ErrNotFound, "<label> <key>") when the id is
 // absent from the map. label is the caller-supplied aggregate name used in the
 // not-found wrap — the shared helper holds no fixed prefix so the error context
 // stays caller-owned (see .claude/rules/error-wrapping.md).
@@ -51,7 +59,7 @@ func newMapKeyedBatch[V any](load func(context.Context, []string) (map[string]*V
 				continue
 			}
 			out[i] = &dataloader.Result[*V]{
-				Error: eris.Wrapf(repository.ErrNotFound, "%s %s", label, k),
+				Error: eris.Wrapf(ErrNotFound, "%s %s", label, k),
 			}
 		}
 		return out

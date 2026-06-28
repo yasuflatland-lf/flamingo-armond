@@ -8,7 +8,6 @@ import (
 
 	"backend/graph/model"
 	"backend/internal/domain"
-	"backend/internal/repository"
 	"backend/internal/usecase"
 )
 
@@ -49,7 +48,7 @@ func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 // its card count) to the generated GraphQL model. The status is mapped to the
 // uppercase wire enum; an unrecognised status surfaces as the empty enum value
 // so the field still serializes.
-func toMasterCardgroupModel(item *repository.MasterCatalogItem) *model.MasterCardgroup {
+func toMasterCardgroupModel(item *usecase.MasterCatalogItem) *model.MasterCardgroup {
 	if item == nil || item.Cardgroup == nil {
 		return nil
 	}

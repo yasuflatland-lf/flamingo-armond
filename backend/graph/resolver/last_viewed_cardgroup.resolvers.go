@@ -8,7 +8,7 @@ package resolver
 import (
 	"backend/graph/model"
 	"backend/internal/gqlerr"
-	"backend/internal/repository"
+	"backend/internal/loader"
 	"context"
 	"errors"
 )
@@ -53,7 +53,7 @@ func (r *userResolver) LastViewedCardgroup(ctx context.Context, obj *model.User)
 
 	cg, err := loaders.Cardgroup.Load(ctx, *pref.LastViewedCardgroupID)()
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
+		if errors.Is(err, loader.ErrNotFound) {
 			return nil, nil
 		}
 		return nil, classifyLoaderErr(ctx, err, "resolver: cardgroup")
