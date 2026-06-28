@@ -28,10 +28,11 @@ type Card struct {
 	Back        CardText
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
-	// Position is the card's place within its cardgroup's source document
-	// (Notion sync order). It defaults to 0 for cards not created via Notion
-	// sync; the ordering policy treats cards with equal Position as one
-	// shuffle group, preserving prior behavior for non-Notion groups.
+	// Position persists the card's place within its cardgroup's source
+	// document (Notion sync order). It defaults to 0 for cards not created
+	// via Notion sync. The learn-session OrderingPolicy does not consult
+	// Position: due-card ordering is driven by the discovery-first policy in
+	// domain/service, whose DueCard view does not carry this field.
 	Position int
 }
 
