@@ -2,7 +2,8 @@
 
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { AuthShell } from "./auth-shell";
+import { AppShell } from "@/components/nav/app-shell";
+import { Toaster } from "@/components/ui/sonner";
 import { AppleInstallHint } from "./pwa/apple-install-hint";
 
 /**
@@ -88,9 +89,10 @@ export function ConditionalShell({ user, isAdmin, children }: ConditionalShellPr
 
   return (
     <>
-      <AuthShell user={user} isAdmin={isAdmin}>
+      <AppShell user={user} isAdmin={isAdmin}>
         {children}
-      </AuthShell>
+        <Toaster />
+      </AppShell>
       {/* AppleInstallHint calls useTranslations("Pwa"), so it MUST render inside
           NextIntlClientProvider — its ancestor in the root layout. Gated to the
           full-shell routes so the install banner never covers the sign-in or

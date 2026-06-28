@@ -8,10 +8,10 @@ vi.mock("next/navigation", () => ({
   usePathname: () => mockUsePathname(),
 }));
 
-// AuthShell is opaque here — we only assert presence/absence and the forwarded
+// AppShell is opaque here — we only assert presence/absence and the forwarded
 // identity props. Render a sentinel element carrying the props as data-attrs.
-vi.mock("./auth-shell", () => ({
-  AuthShell: ({
+vi.mock("@/components/nav/app-shell", () => ({
+  AppShell: ({
     user,
     isAdmin,
     children,
@@ -20,11 +20,13 @@ vi.mock("./auth-shell", () => ({
     isAdmin: boolean;
     children: React.ReactNode;
   }) => (
-    <div data-testid="auth-shell" data-email={user?.email ?? ""} data-is-admin={String(isAdmin)}>
+    <div data-testid="app-shell" data-email={user?.email ?? ""} data-is-admin={String(isAdmin)}>
       {children}
     </div>
   ),
 }));
+
+vi.mock("@/components/ui/sonner", () => ({ Toaster: () => <div data-testid="toaster" /> }));
 
 vi.mock("./pwa/apple-install-hint", () => ({
   AppleInstallHint: () => <div data-testid="apple-install-hint" />,
@@ -54,7 +56,7 @@ describe("<ConditionalShell>", () => {
       );
 
       expect(screen.getByTestId("page")).toBeInTheDocument();
-      expect(screen.queryByTestId("auth-shell")).toBeNull();
+      expect(screen.queryByTestId("app-shell")).toBeNull();
       expect(screen.queryByTestId("apple-install-hint")).toBeNull();
     });
 
@@ -79,7 +81,7 @@ describe("<ConditionalShell>", () => {
         </ConditionalShell>,
       );
 
-      expect(screen.queryByTestId("auth-shell")).toBeNull();
+      expect(screen.queryByTestId("app-shell")).toBeNull();
     });
   });
 
@@ -104,7 +106,7 @@ describe("<ConditionalShell>", () => {
       );
 
       expect(screen.getByTestId("page")).toBeInTheDocument();
-      expect(screen.queryByTestId("auth-shell")).toBeNull();
+      expect(screen.queryByTestId("app-shell")).toBeNull();
       expect(screen.queryByTestId("apple-install-hint")).toBeNull();
     });
   });
@@ -127,12 +129,13 @@ describe("<ConditionalShell>", () => {
         </ConditionalShell>,
       );
 
-      expect(screen.getByTestId("auth-shell")).toBeInTheDocument();
+      expect(screen.getByTestId("app-shell")).toBeInTheDocument();
       expect(screen.getByTestId("page")).toBeInTheDocument();
+      expect(screen.getByTestId("toaster")).toBeInTheDocument();
       expect(screen.getByTestId("apple-install-hint")).toBeInTheDocument();
     });
 
-    it("forwards user and isAdmin to AuthShell", () => {
+    it("forwards user and isAdmin to AppShell", () => {
       mockUsePathname.mockReturnValue("/cardgroups");
       render(
         <ConditionalShell user={{ email: "admin@b.c" }} isAdmin={true}>
@@ -140,7 +143,7 @@ describe("<ConditionalShell>", () => {
         </ConditionalShell>,
       );
 
-      const shell = screen.getByTestId("auth-shell");
+      const shell = screen.getByTestId("app-shell");
       expect(shell.getAttribute("data-email")).toBe("admin@b.c");
       expect(shell.getAttribute("data-is-admin")).toBe("true");
     });
@@ -153,7 +156,7 @@ describe("<ConditionalShell>", () => {
         </ConditionalShell>,
       );
 
-      const shell = screen.getByTestId("auth-shell");
+      const shell = screen.getByTestId("app-shell");
       expect(shell.getAttribute("data-email")).toBe("");
       expect(shell.getAttribute("data-is-admin")).toBe("false");
     });
@@ -175,7 +178,7 @@ describe("<ConditionalShell>", () => {
           <div data-testid="page" />
         </ConditionalShell>,
       );
-      expect(screen.getByTestId("auth-shell")).toBeInTheDocument();
+      expect(screen.getByTestId("app-shell")).toBeInTheDocument();
 
       // Simulate a soft navigation to /login: usePathname() now returns /login.
       mockUsePathname.mockReturnValue("/login");
@@ -185,7 +188,7 @@ describe("<ConditionalShell>", () => {
         </ConditionalShell>,
       );
 
-      expect(screen.queryByTestId("auth-shell")).toBeNull();
+      expect(screen.queryByTestId("app-shell")).toBeNull();
       expect(screen.getByTestId("page")).toBeInTheDocument();
     });
 
@@ -196,7 +199,7 @@ describe("<ConditionalShell>", () => {
           <div data-testid="page" />
         </ConditionalShell>,
       );
-      expect(screen.queryByTestId("auth-shell")).toBeNull();
+      expect(screen.queryByTestId("app-shell")).toBeNull();
 
       mockUsePathname.mockReturnValue("/cardgroups");
       rerender(
@@ -205,7 +208,7 @@ describe("<ConditionalShell>", () => {
         </ConditionalShell>,
       );
 
-      expect(screen.getByTestId("auth-shell")).toBeInTheDocument();
+      expect(screen.getByTestId("app-shell")).toBeInTheDocument();
     });
   });
 });
