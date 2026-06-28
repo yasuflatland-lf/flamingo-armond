@@ -82,6 +82,9 @@ type CardgroupRepository interface {
 	// handle so the insert participates in the caller's transaction. The caller
 	// is responsible for pre-filling cg.ID (uuid v7) and both timestamps.
 	CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Cardgroup) error
+	// AcquireUserSeedLockTx takes a per-user advisory lock (released at tx end)
+	// so concurrent seed-for-new-user calls for the same user do not race.
+	AcquireUserSeedLockTx(ctx context.Context, tx *gorm.DB, userID string) error
 	EnsureByName(ctx context.Context, ownerID, name string) (*domain.Cardgroup, error)
 	Update(ctx context.Context, id string, patch CardgroupUpdate) (*domain.Cardgroup, error)
 	Delete(ctx context.Context, id string) error
@@ -275,6 +278,18 @@ func (r *cardgroupRepo) Create(ctx context.Context, cg *domain.Cardgroup) error 
 func (r *cardgroupRepo) CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Cardgroup) error {
 	if err := tx.WithContext(ctx).Create(cardgroupToRow(cg)).Error; err != nil {
 		return eris.Wrap(err, "repository: cardgroup: create tx")
+	}
+	return nil
+}
+
+// AcquireUserSeedLockTx takes a per-user advisory lock (released at tx end) so
+// concurrent seed-for-new-user calls for the same user do not race. hashtext
+// returns int4, so pg_advisory_xact_lock(0, hashtext(userID)) keys the lock on
+// the user within a fixed namespace where unrelated callers do not contend; the
+// lock releases automatically at transaction end.
+func (r *cardgroupRepo) AcquireUserSeedLockTx(ctx context.Context, tx *gorm.DB, userID string) error {
+	if err := tx.Exec("SELECT pg_advisory_xact_lock(0, hashtext(?))", userID).Error; err != nil {
+		return eris.Wrap(err, "repository: cardgroup: acquire user seed lock")
 	}
 	return nil
 }

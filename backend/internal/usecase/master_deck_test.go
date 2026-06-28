@@ -120,6 +120,9 @@ type fakeUserCG struct {
 	findByIDCalls     int
 	findByIDErr       error
 	findByIDErrOnCall int // 1-based; 0 = never inject
+	lockCalls         int
+	lockUser          string
+	lockCountAtCall   int // snapshot of CountByOwner calls when the lock was taken (0 ⇒ lock before count)
 }
 
 func (f *fakeUserCG) FindByID(_ context.Context, id string) (*domain.Cardgroup, error) {
@@ -138,6 +141,16 @@ func (f *fakeUserCG) CountByOwner(_ context.Context, ownerID string, _ *string) 
 	f.calls++
 	f.lastUser = ownerID
 	return f.count, f.countErr
+}
+
+// AcquireUserSeedLockTx records that the per-user advisory lock was taken and
+// snapshots how many CountByOwner calls had run at that point, so the seed
+// usecase test can assert the lock is taken before the idempotency count.
+func (f *fakeUserCG) AcquireUserSeedLockTx(_ context.Context, _ *gorm.DB, userID string) error {
+	f.lockCalls++
+	f.lockUser = userID
+	f.lockCountAtCall = f.calls
+	return nil
 }
 
 func (f *fakeUserCG) CreateTx(_ context.Context, _ *gorm.DB, cg *domain.Cardgroup) error {
@@ -162,8 +175,9 @@ func (fakeResult) RowsAffected() (int64, error) { return 1, nil }
 // without a real database connection. Paired with WithoutReturning so the
 // cardgroup INSERT goes through ExecContext (no RETURNING → no *sql.Rows to
 // fabricate). This lets the production copy path run end-to-end — the inline
-// tx.Create for the cardgroup and the advisory-lock Exec both execute against
-// the recorder, while the card batch is captured at the userCard mock boundary.
+// tx.Create for the cardgroup executes against the recorder, while the card
+// batch is captured at the userCard mock boundary. (The advisory lock now lives
+// in the repository, so it is recorded at the fakeUserCG boundary instead.)
 type recordPool struct {
 	sqls []string
 	args [][]any
@@ -478,20 +492,19 @@ func TestSeedForNewUser_TakesAdvisoryLockBeforeCounting(t *testing.T) {
 	user := &fakeUserCardRepo{}
 	userCG := &fakeUserCG{count: 5} // short-circuit after the lock
 
-	uc, pool, _ := newSeedUsecase(t, cg, card, user, userCG)
+	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
 
 	_, err := uc.SeedForNewUser(context.Background(), "lock-user")
 	require.NoError(t, err)
 
-	// The first statement executed against the tx is the transaction-scoped
-	// advisory lock; the idempotency COUNT (mocked) runs after it.
-	require.NotEmpty(t, pool.sqls)
-	assert.Contains(t, pool.sqls[0], "pg_advisory_xact_lock(0, hashtext(")
-	// The lock is keyed on the user id: the single bound argument is the user,
-	// so two distinct users never contend on the same advisory lock.
-	require.NotEmpty(t, pool.args)
-	require.Len(t, pool.args[0], 1)
-	assert.Equal(t, "lock-user", pool.args[0][0])
+	// The advisory lock (now owned by the repository) is taken exactly once and
+	// before the idempotency COUNT: lockCountAtCall snapshots the CountByOwner
+	// call counter at lock time, so 0 proves the lock came first.
+	assert.Equal(t, 1, userCG.lockCalls, "the advisory lock is taken once")
+	assert.Equal(t, 0, userCG.lockCountAtCall, "the lock is taken before the idempotency count")
+	// The lock is keyed on the user id, so two distinct users never contend on
+	// the same advisory lock.
+	assert.Equal(t, "lock-user", userCG.lockUser)
 }
 
 func TestSeedForNewUser_NoStarters_NoCopies(t *testing.T) {

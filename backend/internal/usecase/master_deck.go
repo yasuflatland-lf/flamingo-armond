@@ -47,6 +47,10 @@ type masterDeckUserCardgroupRepo interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
 	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
 	CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Cardgroup) error
+	// AcquireUserSeedLockTx takes a per-user transaction-scoped advisory lock so
+	// two concurrent seed-for-new-user calls for the same user serialize. The
+	// dialect detail (the advisory-lock SQL) lives in the repository.
+	AcquireUserSeedLockTx(ctx context.Context, tx *gorm.DB, userID string) error
 }
 
 // SeedForNewUserUsecase provisions the published default-starter master decks
@@ -224,11 +228,11 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) (
 	// convention; callers receive `[]` regardless of which path fired).
 	seeded := []*domain.Cardgroup{}
 	if err := u.tx(ctx, func(tx *gorm.DB) error {
-		// hashtext returns int4; pg_advisory_xact_lock(0, hashtext(userID)) keys
-		// the lock on the user within a fixed namespace so unrelated callers do
-		// not contend. The lock releases automatically at transaction end.
-		if err := tx.Exec("SELECT pg_advisory_xact_lock(0, hashtext(?))", userID).Error; err != nil {
-			return eris.Wrap(err, "usecase: master deck: seed for new user: advisory lock")
+		// Take a per-user transaction-scoped advisory lock so two concurrent seed
+		// attempts for the same user serialize. The advisory-lock SQL (a Postgres
+		// dialect detail) lives in the repository; the lock releases at tx end.
+		if err := u.userCG.AcquireUserSeedLockTx(ctx, tx, userID); err != nil {
+			return err
 		}
 
 		count, err := u.userCG.CountByOwner(ctx, userID, nil)
