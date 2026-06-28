@@ -10,6 +10,6 @@ jobs:
     name: CLAUDE.md hierarchy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Verify hierarchical CLAUDE.md scheme
         run: bash scripts/check-claude-md-hierarchy.sh
