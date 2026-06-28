@@ -448,7 +448,7 @@ func createCardgroupBodyWithLimit(name string) string {
 }
 
 // TestResolver_CreateCardgroup_LimitReached verifies that a non-admin caller
-// who already owns generalUserCardgroupLimit (5) cardgroups receives the
+// who already owns domain.GeneralUserCardgroupLimit (5) cardgroups receives the
 // CardgroupLimitReachedError union variant with the correct Limit and Current
 // fields rather than a GraphQL protocol error.
 func TestResolver_CreateCardgroup_LimitReached(t *testing.T) {

@@ -365,7 +365,7 @@ func TestCardgroupUsecase_Create_GeneralUser_UnderLimit_Succeeds(t *testing.T) {
 // LimitReached outcome, and repo.Create is NOT called.
 func TestCardgroupUsecase_Create_GeneralUser_AtLimit_Rejected(t *testing.T) {
 	t.Parallel()
-	repo := &mockCardgroupRepository{countResult: generalUserCardgroupLimit}
+	repo := &mockCardgroupRepository{countResult: domain.GeneralUserCardgroupLimit}
 	uc := NewCardgroupUsecase(repo, &mockAdminChecker{isAdmin: false}, newTestLogger())
 
 	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "Sixth"})
@@ -379,11 +379,11 @@ func TestCardgroupUsecase_Create_GeneralUser_AtLimit_Rejected(t *testing.T) {
 	if outcome.LimitReached == nil {
 		t.Fatal("expected non-nil LimitReached at the limit")
 	}
-	if outcome.LimitReached.Limit != generalUserCardgroupLimit {
-		t.Fatalf("expected LimitReached.Limit=%d, got %d", generalUserCardgroupLimit, outcome.LimitReached.Limit)
+	if outcome.LimitReached.Limit != domain.GeneralUserCardgroupLimit {
+		t.Fatalf("expected LimitReached.Limit=%d, got %d", domain.GeneralUserCardgroupLimit, outcome.LimitReached.Limit)
 	}
-	if outcome.LimitReached.Current != generalUserCardgroupLimit {
-		t.Fatalf("expected LimitReached.Current=%d, got %d", generalUserCardgroupLimit, outcome.LimitReached.Current)
+	if outcome.LimitReached.Current != domain.GeneralUserCardgroupLimit {
+		t.Fatalf("expected LimitReached.Current=%d, got %d", domain.GeneralUserCardgroupLimit, outcome.LimitReached.Current)
 	}
 	if repo.capturedCreate != nil {
 		t.Fatal("repository.Create must not be called when the limit is reached")
@@ -423,7 +423,7 @@ func TestCardgroupUsecase_Create_Admin_SkipsCounting(t *testing.T) {
 	t.Parallel()
 	// countResult is set to the cap to prove that even when the count WOULD
 	// reject a general user, an admin is never subjected to it.
-	repo := &mockCardgroupRepository{countResult: generalUserCardgroupLimit}
+	repo := &mockCardgroupRepository{countResult: domain.GeneralUserCardgroupLimit}
 	admin := &mockAdminChecker{isAdmin: true}
 	uc := NewCardgroupUsecase(repo, admin, newTestLogger())
 
@@ -520,7 +520,7 @@ func TestCardgroupUsecase_Create_IsAdminCancelled_IdentityPreserved(t *testing.T
 // consulted.
 func TestCardgroupUsecase_Create_LimitAndInvalidName_NameValidationFirst(t *testing.T) {
 	t.Parallel()
-	repo := &mockCardgroupRepository{countResult: generalUserCardgroupLimit}
+	repo := &mockCardgroupRepository{countResult: domain.GeneralUserCardgroupLimit}
 	admin := &mockAdminChecker{isAdmin: false}
 	uc := NewCardgroupUsecase(repo, admin, newTestLogger())
 
@@ -1768,7 +1768,7 @@ func (s *stubCardgroupCounter) CountByOwner(_ context.Context, _ string, _ *stri
 // the helper returns (nil, nil) and the counter is never consulted.
 func TestCheckCardgroupLimit_Admin_Exempt(t *testing.T) {
 	t.Parallel()
-	counter := &stubCardgroupCounter{count: generalUserCardgroupLimit}
+	counter := &stubCardgroupCounter{count: domain.GeneralUserCardgroupLimit}
 	admin := &mockAdminChecker{isAdmin: true}
 
 	info, err := checkCardgroupLimit(context.Background(), counter, admin, "admin-1")
@@ -1788,7 +1788,7 @@ func TestCheckCardgroupLimit_Admin_Exempt(t *testing.T) {
 // limit returns (nil, nil) — no limit info, no error.
 func TestCheckCardgroupLimit_UnderLimit(t *testing.T) {
 	t.Parallel()
-	counter := &stubCardgroupCounter{count: generalUserCardgroupLimit - 1}
+	counter := &stubCardgroupCounter{count: domain.GeneralUserCardgroupLimit - 1}
 	admin := &mockAdminChecker{isAdmin: false}
 
 	info, err := checkCardgroupLimit(context.Background(), counter, admin, "user-1")
@@ -1814,8 +1814,8 @@ func TestCheckCardgroupLimit_AtOrOverLimit(t *testing.T) {
 		count       int64
 		wantCurrent int
 	}{
-		{name: "at limit", count: generalUserCardgroupLimit, wantCurrent: generalUserCardgroupLimit},
-		{name: "over limit", count: generalUserCardgroupLimit + 3, wantCurrent: generalUserCardgroupLimit + 3},
+		{name: "at limit", count: domain.GeneralUserCardgroupLimit, wantCurrent: domain.GeneralUserCardgroupLimit},
+		{name: "over limit", count: domain.GeneralUserCardgroupLimit + 3, wantCurrent: domain.GeneralUserCardgroupLimit + 3},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
@@ -1831,8 +1831,8 @@ func TestCheckCardgroupLimit_AtOrOverLimit(t *testing.T) {
 			if info == nil {
 				t.Fatal("expected non-nil LimitInfo at/over the limit")
 			}
-			if info.Limit != generalUserCardgroupLimit {
-				t.Fatalf("expected Limit=%d, got %d", generalUserCardgroupLimit, info.Limit)
+			if info.Limit != domain.GeneralUserCardgroupLimit {
+				t.Fatalf("expected Limit=%d, got %d", domain.GeneralUserCardgroupLimit, info.Limit)
 			}
 			if info.Current != tc.wantCurrent {
 				t.Fatalf("expected Current=%d, got %d", tc.wantCurrent, info.Current)
