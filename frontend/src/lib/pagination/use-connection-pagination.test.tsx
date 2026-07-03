@@ -454,4 +454,80 @@ describe("useConnectionPagination", () => {
     });
     expect(result.current.queryVariables).toEqual({ ...DEFAULT_VARS, search: "x" });
   });
+
+  it("re-arms the observer after a page merge that keeps the sentinel in view (issue #790)", async () => {
+    // Model the browser's IntersectionObserver initial-record delivery: observe()
+    // queues exactly ONE intersection notification for the current layout and
+    // never re-fires without a fresh observe(). A short page whose merge does not
+    // scroll the sentinel out of view therefore only advances if the effect
+    // re-attaches (re-arms) the observer after the merge. Before the fix the
+    // observer effect's deps were [hasNextPage, fetchMoreError] — both unchanged
+    // by a successful mid-list fetchMore — so the effect never re-ran, the
+    // observer was never re-observed, and the loop stalled after one page.
+    class AutoFireIntersectionObserver {
+      private cb: IntersectionObserverCallback;
+      private disconnected = false;
+      constructor(cb: IntersectionObserverCallback) {
+        this.cb = cb;
+      }
+      observe() {
+        queueMicrotask(() => {
+          if (this.disconnected) return;
+          this.cb(
+            [{ isIntersecting: true } as IntersectionObserverEntry],
+            this as unknown as IntersectionObserver,
+          );
+        });
+      }
+      unobserve() {}
+      disconnect() {
+        this.disconnected = true;
+      }
+      takeRecords(): IntersectionObserverEntry[] {
+        return [];
+      }
+    }
+    vi.stubGlobal("IntersectionObserver", AutoFireIntersectionObserver);
+
+    const CG_4 = {
+      __typename: "Cardgroup" as const,
+      id: "cg-4",
+      name: "Delta",
+      updatedAt: "2024-03-01T04:00:00.000Z",
+    };
+
+    const cache = new InMemoryCache();
+    // page 1 (seed) and page 2 both keep hasNextPage true, so the sentinel stays
+    // "in view" across the page-2 merge; page 3 ends the loop (hasNextPage false).
+    seedCache(cache, connection([CG_1, CG_2], true));
+
+    const page2Mock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: { ...DEFAULT_VARS, after: CG_2.id, search: null },
+      },
+      result: { data: { myCardgroupsConnection: connection([CG_3], true) } },
+    };
+    const page3Mock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: { ...DEFAULT_VARS, after: CG_3.id, search: null },
+      },
+      result: { data: { myCardgroupsConnection: connection([CG_4]) } },
+    };
+
+    const { result } = renderProbe({ mocks: [page2Mock, page3Mock], cache });
+
+    expect(result.current.edges).toHaveLength(2);
+
+    // The initial observe fires page 2; re-arming after the merge fires page 3.
+    // On the pre-fix code the observer is never re-attached, so edges stall at 3
+    // and this waitFor times out — the regression proof.
+    await waitFor(() => {
+      expect(result.current.edges).toHaveLength(4);
+    });
+    expect(result.current.edges[2]?.node.id).toBe(CG_3.id);
+    expect(result.current.edges[3]?.node.id).toBe(CG_4.id);
+    expect(result.current.fetchMoreError).toBeNull();
+  });
 });

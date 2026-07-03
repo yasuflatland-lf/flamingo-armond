@@ -200,6 +200,13 @@ export function useConnectionPagination<
     });
   });
 
+  // `edges.length` re-arms the observer after each successful page merge. A
+  // mid-list fetchMore leaves hasNextPage/fetchMoreError unchanged, so without
+  // this trigger the effect never re-runs and the observer's initial record —
+  // already consumed — never re-fires. Re-observing generates a fresh initial
+  // IntersectionObserver record that re-fires if the sentinel is still visible
+  // (short page / tall viewport that never scrolled the sentinel out of view).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: edges.length is an intentional re-arm trigger; it is not referenced in the body because the effect detaches and re-attaches the observer after each page merge, not reads the edge count.
   useEffect(() => {
     if (!pageInfo.hasNextPage) return;
     // Stop the observer loop while a previous fetch failed; user must click Retry to resume.
@@ -214,7 +221,7 @@ export function useConnectionPagination<
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, [pageInfo.hasNextPage, fetchMoreError]);
+  }, [pageInfo.hasNextPage, fetchMoreError, edges.length]);
 
   const retryFetchMore = useCallback(() => {
     setFetchMoreError(null);
