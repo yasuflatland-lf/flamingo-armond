@@ -74,6 +74,22 @@ func (rt *retryAfterRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 		}
 		discardAndClose(res.Body)
 
+		// Rewind the request body so the next RoundTrip re-sends the full
+		// payload. http.NewRequest sets GetBody for bytes.Buffer / bytes.Reader
+		// / strings.Reader bodies, which covers every notionapi-built request.
+		// Without this, a write request's body is consumed on attempt 1 and the
+		// retry sends content-length: N with 0 bytes, which Notion rejects.
+		if req.Body != nil {
+			if req.GetBody == nil {
+				return res, nil // non-rewindable body: do not retry, surface the response
+			}
+			body, err := req.GetBody()
+			if err != nil {
+				return nil, eris.Wrap(err, "notion: rewind request body")
+			}
+			req.Body = body
+		}
+
 		if time.Since(start)+wait > rt.cfg.MaxElapsed {
 			return nil, eris.Wrap(ErrRetryElapsed, "notion: retry request")
 		}
