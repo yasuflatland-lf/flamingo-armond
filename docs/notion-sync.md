@@ -14,7 +14,7 @@ Required:
 Optional:
 
 - `NOTION_MAX_ATTEMPTS`: default `5`.
-- `NOTION_MAX_ELAPSED`: default `2m`.
+- `NOTION_MAX_ELAPSED`: default `20s` (kept below the server's 30s `WriteTimeout`).
 
 Master cardgroups are owner-less: the destination deck is identified by `NOTION_MASTER_CARDGROUP_NAME` alone. The backend resolves the name to a master cardgroup id via `MasterCardgroupRepository.EnsureByName`, which serializes lookup-then-insert under a `pg_advisory_xact_lock(hashtext('master'), hashtext(name))` so concurrent runs cannot create duplicate-name rows. No owner UUID is required.
 
@@ -92,7 +92,7 @@ All NOTION_* values are stored in the root `.env` file (gitignored). The Makefil
 | `NOTION_MASTER_CARDGROUP_NAME` | yes | Destination master cardgroup name; created when absent. Owner-less — no owner email/UUID is required. |
 | `NOTION_SYNC_TOKEN` | yes | Shared bearer token — written to both Render env and the GHA secret (see note below) |
 | `NOTION_MAX_ATTEMPTS` | no | Defaults to `5` |
-| `NOTION_MAX_ELAPSED` | no | Defaults to `2m` |
+| `NOTION_MAX_ELAPSED` | no | Defaults to `20s` |
 
 `NOTION_SYNC_TOKEN` is deliberately written to **two destinations with the same value**: the Render service env and the `NOTION_SYNC_TOKEN` GitHub Actions secret. This is what guarantees bearer-auth integrity — the backend validates the token in the incoming `Authorization: Bearer` header, and the GHA workflow supplies it as that same secret. If the two values drift, every sync request returns `401`.
 
@@ -162,5 +162,9 @@ The endpoint maps internal sentinels to HTTP statuses as follows:
 - `502 Bad Gateway` — Notion API call failures (`ErrNotionSyncFetch`).
 - `504 Gateway Timeout` — retry budget exhausted (`NOTION_MAX_ATTEMPTS`, `NOTION_MAX_ELAPSED`) or request context cancelled / timed out.
 - `500 Internal Server Error` — persistence failures (`ErrNotionSyncPersist`) and any unmapped error.
+
+The handler wraps the whole sync in a request-context deadline (25s) that sits below the server's 30s `WriteTimeout`. This guarantees a slow sync is cancelled and returns a deliverable `504` before the connection write deadline expires — otherwise the sync commits on the backend but the response write fails against the expired deadline, so the caller sees a connection reset for work that actually succeeded and a retry re-runs the entire sync.
+
+The operator-visible tradeoff is that a legitimate large sync whose work lands in the 25–30s band now surfaces as a deliverable `504` even when the persistence step already committed. Confirm a run's true outcome from the server-side `notion sync complete` log line rather than trusting the HTTP status alone: a `504` accompanied by that log record means the sync succeeded and the timeout only truncated the response.
 
 Concurrent triggers from GitHub Actions (cron + workflow_dispatch) are serialized via the workflow's concurrency group, so only one sync runs at a time on that path.

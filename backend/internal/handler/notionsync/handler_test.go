@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v5"
 	"github.com/rotisserie/eris"
@@ -32,6 +33,55 @@ func (s *stubSyncUsecase) Sync(_ context.Context, in usecase.SyncToMasterInput) 
 		return usecase.MasterNotionSyncOutput{}, s.err
 	}
 	return s.out, nil
+}
+
+// blockingSyncUsecase blocks until the request context is cancelled, then
+// returns ctx.Err(). It models a sync that runs longer than the handler's
+// timeout budget. The time.After arm is a safety valve: an unpatched handler
+// passes an uncancelled request context, so this stub fails fast (returning a
+// non-timeout error) instead of hanging the suite.
+type blockingSyncUsecase struct {
+	calls int
+}
+
+func (s *blockingSyncUsecase) Sync(ctx context.Context, _ usecase.SyncToMasterInput) (usecase.MasterNotionSyncOutput, error) {
+	s.calls++
+	select {
+	case <-ctx.Done():
+		return usecase.MasterNotionSyncOutput{}, ctx.Err()
+	case <-time.After(2 * time.Second):
+		return usecase.MasterNotionSyncOutput{}, errors.New("sync context was not cancelled within the deadline budget")
+	}
+}
+
+// TestHandle_SyncExceedsDeadline_Returns504 verifies that a sync exceeding the
+// handler's timeout budget is cancelled and produces a deliverable 504 response,
+// rather than running to completion and having the deferred write fail against
+// the server's WriteTimeout (a connection reset for work that succeeded). The
+// handler wraps the request context with syncTimeout below the write deadline;
+// it is shortened here so the deadline fires quickly.
+func TestHandle_SyncExceedsDeadline_Returns504(t *testing.T) {
+	t.Parallel()
+
+	uc := &blockingSyncUsecase{}
+	h := New(uc, Config{Token: "secret"})
+	h.syncTimeout = 20 * time.Millisecond
+
+	req := httptest.NewRequest(http.MethodPost, "/internal/notion-sync", strings.NewReader(""))
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	e := echo.New()
+	c := e.NewContext(req, rec)
+
+	if err := h.Handle(c); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if rec.Code != http.StatusGatewayTimeout {
+		t.Fatalf("status = %d, want 504", rec.Code)
+	}
+	if uc.calls != 1 {
+		t.Fatalf("usecase calls = %d, want 1", uc.calls)
+	}
 }
 
 func TestHandlerUnauthorized(t *testing.T) {

@@ -64,7 +64,7 @@ These values target a public API on Render. Revisit if the threat model or deplo
 | `NOTION_MASTER_CARDGROUP_NAME` | no\* | — | Name of the master cardgroup in the `master_cardgroups` table that the sync job targets. |
 | `NOTION_SYNC_TOKEN` | no\* | — | Bearer token for `POST /internal/notion-sync`. |
 | `NOTION_MAX_ATTEMPTS` | no | `5` | Retry attempt cap for Notion 429/5xx responses. Must be positive when set. |
-| `NOTION_MAX_ELAPSED` | no | `2m` | Maximum cumulative Notion retry wait per request. Must be a positive Go duration when set. |
+| `NOTION_MAX_ELAPSED` | no | `20s` | Maximum cumulative Notion retry wait per request. Kept below the server's 30s `WriteTimeout`; must be a positive Go duration when set. |
 | `SUPER_USER_EMAILS` | no | *(empty)* | Comma-separated trusted email addresses promoted to `admin` on first authenticated request. See `docs/backend-auth.md` § "Bootstrap admin". |
 
 `PORT`, `SHUTDOWN_TIMEOUT`, `NOTION_MAX_ATTEMPTS`, `NOTION_MAX_ELAPSED`, and `SUPER_USER_EMAILS` are optional with safe defaults. The three `SUPABASE_JWT_*` variables, `SUPABASE_DB_URL`, and `PING_TOKEN` are strictly required — the server refuses to start if any is missing.
