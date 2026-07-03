@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { CardContent, type SwipeCardData } from "./swipe-card";
+import { CardContent, SwipeCard, type SwipeCardData } from "./swipe-card";
 
 const CARD: SwipeCardData = {
   id: "card-1",
@@ -150,5 +150,19 @@ describe("<CardContent>", () => {
     const outerCard = contentBlock?.parentElement;
     expect(outerCard).not.toBeNull();
     expect(outerCard).toHaveClass("relative");
+  });
+});
+
+describe("<SwipeCard>", () => {
+  it("is wrapped in React.memo so the stacked cards bail out of re-render during a drag", () => {
+    // The three stacked SwipeCard instances receive referentially-stable props
+    // across the per-frame drag-progress state updates that re-render
+    // SwipeCardStack; the memo wrapper is what turns that stability into a
+    // re-render bailout so only SwipeDirectionOverlay repaints. Assert the
+    // export is a memo component structurally — AnimatedCard is a next/dynamic
+    // (ssr:false) chunk that resolves to null in jsdom, so a render-count spy on
+    // the real component is not observable here (the stack-level render-count
+    // spy in swipe-card-stack.test.tsx exercises the runtime behavior).
+    expect((SwipeCard as unknown as { $$typeof: symbol }).$$typeof).toBe(Symbol.for("react.memo"));
   });
 });

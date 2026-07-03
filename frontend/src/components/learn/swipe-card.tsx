@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import type { RefObject } from "react";
+import { memo, type RefObject } from "react";
 import type { CefrLevel } from "@/generated/graphql";
 import type { AnimatedCardHandle } from "./animated-card";
 import type { SwipeDirection } from "./types";
@@ -139,6 +139,14 @@ export function CardContent({ card, revealed }: { card: SwipeCardData; revealed:
   );
 }
 
-export function SwipeCard(props: Props) {
+// Memoized so the three stacked SwipeCard instances bail out of re-render while
+// a drag is in flight. Every prop the stack passes down — the card object, the
+// isActive/revealed booleans, the useCallback([]) handlers, and handleRef — is
+// referentially stable across the per-frame drag-progress state updates that
+// re-render SwipeCardStack, so a shallow-prop bailout leaves only
+// SwipeDirectionOverlay repainting. The card transform itself is driven
+// imperatively inside AnimatedCard (api.start with immediate), never through a
+// React re-render, so the cards have no reason to re-render mid-gesture.
+export const SwipeCard = memo(function SwipeCard(props: Props) {
   return <AnimatedCard {...props} />;
-}
+});
