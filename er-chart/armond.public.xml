@@ -156,9 +156,6 @@
             <column ascending="true" name="cardgroup_id"/>
             <column ascending="false" name="reviewed_at"/>
          </index>
-         <index name="idx_swipe_records_user_id" unique="false">
-            <column ascending="true" name="user_id"/>
-         </index>
          <index name="idx_swipe_records_user_reviewed" unique="false">
             <column ascending="true" name="user_id"/>
             <column ascending="false" name="reviewed_at"/>
@@ -251,8 +248,9 @@
          <index name="users_pkey" unique="true">
             <column ascending="true" name="id"/>
          </index>
-         <index name="idx_users_updated_at" unique="false">
-            <column ascending="true" name="updated_at"/>
+         <index name="idx_users_created_at_id" unique="false">
+            <column ascending="false" name="created_at"/>
+            <column ascending="true" name="id"/>
          </index>
       </table>
    </tables>
