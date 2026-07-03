@@ -271,6 +271,31 @@ export function CardListScreen({
     }
   }, []);
 
+  // Stable, id-parameterized row handlers so every CardRow receives the same
+  // callback identity across renders. Combined with `memo` on CardRow, a search
+  // keystroke (which re-renders this screen via the immediate `search.input`)
+  // re-renders only the search input, not the N accumulated gesture rows.
+  const cardDeletedLabel = t("cardDeleted");
+  const getRowRef = useCallback((id: string): RefObject<SwipeableRowHandle | null> => {
+    let ref = rowRefs.current.get(id);
+    if (!ref) {
+      ref = { current: null };
+      rowRefs.current.set(id, ref);
+    }
+    return ref;
+  }, []);
+  const handleEditRow = useCallback(
+    (id: string) => {
+      closeOtherRows(id);
+      sheet.beginEdit(id);
+    },
+    [closeOtherRows, sheet.beginEdit],
+  );
+  const handleDeleteRow = useCallback(
+    (id: string) => deleteRow(id, cardDeletedLabel),
+    [deleteRow, cardDeletedLabel],
+  );
+
   const editingCard = edges.find((edge) => edge.node.id === sheet.editingId)?.node;
 
   const openBatchImport = useCallback(() => setBatchImportOpen(true), []);
@@ -368,21 +393,12 @@ export function CardListScreen({
                   <li key={card.id} className="rounded-md border border-border overflow-hidden">
                     <CardRow
                       card={card}
-                      rowRef={(() => {
-                        if (!rowRefs.current.has(card.id)) {
-                          rowRefs.current.set(card.id, { current: null });
-                        }
-                        // biome-ignore lint/style/noNonNullAssertion: we just set the entry above so it is always defined.
-                        return rowRefs.current.get(card.id)!;
-                      })()}
+                      rowRef={getRowRef(card.id)}
                       selected={selection.isSelected(card.id)}
                       disabled={selection.count > 0 || sheet.editingId === card.id}
-                      onSelectToggle={() => selection.toggleSelected(card.id)}
-                      onEdit={() => {
-                        closeOtherRows(card.id);
-                        sheet.beginEdit(card.id);
-                      }}
-                      onDelete={() => deleteRow(card.id, t("cardDeleted"))}
+                      onSelectToggle={selection.toggleSelected}
+                      onEdit={handleEditRow}
+                      onDelete={handleDeleteRow}
                     />
                   </li>
                 );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import type { RefObject } from "react";
+import { memo, type RefObject } from "react";
 import { HoverRevealDeleteButton } from "./hover-reveal-delete-button";
 import { SwipeableRow, type SwipeableRowHandle } from "./swipeable-row";
 
@@ -10,12 +10,23 @@ export type CardRowProps = {
   rowRef: RefObject<SwipeableRowHandle | null>;
   selected: boolean;
   disabled: boolean;
-  onSelectToggle: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
+  /**
+   * Card-id-parameterized callbacks so the parent can pass a single stable
+   * handler for every row (rather than a fresh per-row closure). This keeps the
+   * `memo` bailout below intact: an unrelated re-render of the list (e.g. a
+   * search keystroke) does not re-render every gesture-bound row.
+   */
+  onSelectToggle: (id: string) => void;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
 };
 
-export function CardRow({
+// Wrapped in `memo`: the card list accumulates all fetched rows (no
+// virtualization), so without this every row re-renders on each search keystroke
+// or selection toggle, remounting a `useSpring`/`useDrag` gesture controller per
+// row. All props are referentially stable (Apollo cache node, per-id ref, stable
+// handlers), so the bailout holds and only genuinely-changed rows re-render.
+export const CardRow = memo(function CardRow({
   card,
   rowRef,
   selected,
@@ -28,7 +39,7 @@ export function CardRow({
   return (
     <SwipeableRow
       ref={rowRef}
-      onDelete={onDelete}
+      onDelete={() => onDelete(card.id)}
       disabled={disabled}
       ariaLabel={t("deleteCardAriaLabel")}
     >
@@ -43,7 +54,7 @@ export function CardRow({
             type="checkbox"
             className="h-4 w-4 cursor-pointer accent-primary"
             checked={selected}
-            onChange={onSelectToggle}
+            onChange={() => onSelectToggle(card.id)}
             aria-label={t("selectCardAriaLabel")}
             data-testid={`card-select-${card.id}`}
           />
@@ -65,11 +76,11 @@ export function CardRow({
         <div
           role="button"
           tabIndex={0}
-          onClick={onEdit}
+          onClick={() => onEdit(card.id)}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
-              onEdit();
+              onEdit(card.id);
             }
           }}
           className="min-w-0 flex-1 cursor-pointer space-y-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring after:absolute after:inset-0 after:content-[''] sm:after:content-none"
@@ -87,7 +98,7 @@ export function CardRow({
         >
           <HoverRevealDeleteButton
             ariaLabel={t("deleteCardAriaLabel")}
-            onDelete={onDelete}
+            onDelete={() => onDelete(card.id)}
             data-testid={`card-delete-${card.id}`}
             className="pointer-events-none sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 motion-reduce:pointer-events-auto"
           />
@@ -95,4 +106,4 @@ export function CardRow({
       </div>
     </SwipeableRow>
   );
-}
+});
