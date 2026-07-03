@@ -1361,4 +1361,262 @@ describe("<LearnClient> queue prefetch", () => {
       consoleWarnSpy.mockRestore();
     }
   });
+
+  it("does not re-append a still-in-flight swiped card returned by a racing prefetch", async () => {
+    // Regression for issue #789. `onSwipe` optimistically removes the swiped
+    // card then awaits `handleSwipe`. The removal shrinks the queue past the
+    // threshold and fires a network-only `LearnNextDueCards` prefetch WHILE the
+    // swipe mutation is still in flight. If the backend read beats the FSRS
+    // write commit, the just-swiped card still reads as "due" and comes back in
+    // the batch; because the dedup `seen` set is built from the post-removal
+    // queue (which no longer holds the card), it would be re-appended — a
+    // duplicate FSRS review. The in-flight-id filter drops it while still
+    // merging a genuinely new card from the same batch.
+    const initial = makeQueue(PREFETCH_THRESHOLD + 1); // q-1..q-6 — above threshold, no mount prefetch
+    const swipedCard = initial[0] as PrefetchCard; // q-1, "Front 1"
+    const freshCard: PrefetchCard = {
+      __typename: "Card" as const,
+      id: "p-new",
+      front: "Prefetched New",
+      back: "Prefetched Back",
+      cefrLevel: null,
+      userCardState: userCardState("2026-04-30T00:00:00Z", 0),
+      cardgroupId: CG_ID,
+    };
+    // The racing prefetch returns the just-swiped card AND a genuinely new card.
+    const prefetch = makePrefetchMock([swipedCard, freshCard]);
+    // Hold `handleSwipe` open so the prefetch resolves and merges while the swipe
+    // mutation is still pending (the FSRS write has not committed).
+    const swipe = {
+      request: {
+        query: HandleSwipeDocument,
+        variables: { input: { cardId: "q-1", cardgroupId: CG_ID, mode: 4 } },
+      },
+      delay: 80,
+      result: {
+        data: {
+          handleSwipe: {
+            __typename: "HandleSwipeSuccess" as const,
+            response: {
+              __typename: "SwipeResponse" as const,
+              performanceMode: 0,
+              metrics: DEFAULT_METRICS,
+            },
+          },
+        },
+      },
+    };
+
+    const user = userEvent.setup();
+    renderLearnClient([prefetch.mock, swipe], initial, { skipDefaultPrefetchMocks: true });
+
+    // Swipe q-1 — queue shrinks 6 → 5, crossing the threshold and firing the
+    // racing prefetch while `handleSwipe` is still pending.
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+    // The racing prefetch fires and resolves.
+    await waitFor(() => {
+      expect(prefetch.callCount()).toBe(1);
+    });
+
+    // The genuinely new card IS merged (proving the merge ran and dedup filtered
+    // ONLY the in-flight id)...
+    await waitFor(() => {
+      const latest = capturedCardSnapshots.at(-1);
+      expect(latest?.map((c) => c.id)).toContain("p-new");
+    });
+
+    // ...but the just-swiped, still-in-flight card is NOT re-appended.
+    const merged = capturedCardSnapshots.at(-1);
+    const ids = merged?.map((c) => c.id) ?? [];
+    expect(ids).not.toContain("q-1");
+  });
+
+  it("does not re-fire prefetch on tail swipes once the due pool is exhausted", async () => {
+    // Perf regression for issue #789. Once `LearnNextDueCards` returns nothing
+    // due, the pool is exhausted; every subsequent tail swipe (queue 5 → 4 → …)
+    // would otherwise fire another redundant network-only 20-card query that
+    // returns nothing new. The exhaustion guard suppresses those until a swipe
+    // succeeds (which may make a rated card due again).
+    //
+    // Only ONE prefetch mock is supplied (the mount fetch). A second, unmatched
+    // prefetch dispatched by the tail swipe would trip the file-wide
+    // MockedProvider leak spy (`assertNoLeaks` in the shared afterEach) — the
+    // same negative-assertion idiom the "does not prefetch when queue is above
+    // threshold / empty" tests above rely on.
+    const initial = makeQueue(PREFETCH_THRESHOLD); // q-1..q-5 — at threshold
+    const prefetch = makePrefetchMock([]); // mount fetch → nothing due → exhausted
+    const swipe = {
+      request: {
+        query: HandleSwipeDocument,
+        variables: { input: { cardId: "q-1", cardgroupId: CG_ID, mode: 4 } },
+      },
+      result: {
+        data: {
+          handleSwipe: {
+            __typename: "HandleSwipeSuccess" as const,
+            response: {
+              __typename: "SwipeResponse" as const,
+              performanceMode: 0,
+              metrics: DEFAULT_METRICS,
+            },
+          },
+        },
+      },
+    };
+
+    const user = userEvent.setup();
+    renderLearnClient([prefetch.mock, swipe], initial, { skipDefaultPrefetchMocks: true });
+
+    // Mount prefetch fires once and finds nothing due.
+    await waitFor(() => {
+      expect(prefetch.callCount()).toBe(1);
+    });
+    // Let the resolved prefetch's `.then` run so the exhaustion guard is set
+    // before the swipe re-crosses the threshold.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // Swipe the head card — queue shrinks 5 → 4, re-crossing the threshold. With
+    // no exhaustion guard this dispatches a second, unmatched prefetch.
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+    // Queue advanced to the next card.
+    await waitFor(() => {
+      expect(screen.getByText("Front 2")).toBeInTheDocument();
+    });
+    // Give any (buggy) second prefetch dispatch a chance to surface as a leak.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // Still exactly the one mount prefetch — the tail swipe fired no further
+    // query (a second dispatch also trips `assertNoLeaks` in afterEach).
+    expect(prefetch.callCount()).toBe(1);
+  });
+
+  it("resumes prefetch after a successful swipe clears the exhaustion guard", async () => {
+    // Recovery counterpart to the suppression test above (regression guard for
+    // issue #789). Once the pool is exhausted (`exhaustedRef` set), a swipe that
+    // SUCCEEDS must re-open prefetching: a rated card may become due again, so
+    // `HandleSwipeSuccess` resets `exhaustedRef`. The NEXT tail swipe that
+    // re-crosses the threshold then dispatches a fresh prefetch. If the
+    // `exhaustedRef.current = false` reset on `HandleSwipeSuccess` were removed,
+    // the guard would stay set for the rest of the session and this second
+    // prefetch would never fire — the assertions below go red.
+    //
+    // Three `LearnNextDueCards` mocks are consumed in order:
+    //  1. mount fetch → nothing due → exhausted;
+    //  2. recovery fetch (after the second swipe) → a genuinely due card,
+    //     proving prefetch resumed;
+    //  3. merging that single card leaves the queue at 4 (still ≤ threshold), so
+    //     the effect fires once more — a terminating empty fetch that
+    //     re-exhausts the pool and stops the cascade (an unmatched fourth
+    //     dispatch would trip `assertNoLeaks` in the shared afterEach).
+    // This mirrors the "warns and re-allows prefetch after a failed attempt"
+    // recovery convention (second prefetch mock + a swipe that re-crosses the
+    // threshold), extended with the extra swipe the exhaustion guard requires.
+    const initial = makeQueue(PREFETCH_THRESHOLD); // q-1..q-5 — at threshold
+    const mountPrefetch = makePrefetchMock([]); // mount fetch → nothing due → exhausted
+    const recoveryCard: PrefetchCard = {
+      __typename: "Card" as const,
+      id: "r-recovery",
+      front: "Recovered Due Card",
+      back: "Recovered Back",
+      cefrLevel: null,
+      userCardState: userCardState("2026-04-30T00:00:00Z", 0),
+      cardgroupId: CG_ID,
+    };
+    const recovery = makePrefetchMock([recoveryCard]); // after the 2nd swipe → a due card
+    const terminator = makePrefetchMock([]); // post-merge fire re-exhausts, ending the cascade
+    // Each swipe mock tracks whether its result fn ran so the test can wait for
+    // the FIRST swipe's mutation to actually resolve (which clears the guard)
+    // before dispatching the second swipe — the optimistic queue advance is
+    // synchronous and would otherwise let the second swipe race ahead of the
+    // guard reset.
+    const makeSwipeSuccess = (cardId: string) => {
+      let called = false;
+      return {
+        mock: {
+          request: {
+            query: HandleSwipeDocument,
+            variables: { input: { cardId, cardgroupId: CG_ID, mode: 4 } },
+          },
+          result: () => {
+            called = true;
+            return {
+              data: {
+                handleSwipe: {
+                  __typename: "HandleSwipeSuccess" as const,
+                  response: {
+                    __typename: "SwipeResponse" as const,
+                    performanceMode: 0,
+                    metrics: DEFAULT_METRICS,
+                  },
+                },
+              },
+            };
+          },
+        },
+        wasCalled: () => called,
+      };
+    };
+    const swipe1 = makeSwipeSuccess("q-1");
+    const swipe2 = makeSwipeSuccess("q-2");
+
+    const user = userEvent.setup();
+    renderLearnClient(
+      [mountPrefetch.mock, recovery.mock, terminator.mock, swipe1.mock, swipe2.mock],
+      initial,
+      { skipDefaultPrefetchMocks: true },
+    );
+
+    // Mount prefetch fires once and finds nothing due → exhaustion guard set.
+    await waitFor(() => {
+      expect(mountPrefetch.callCount()).toBe(1);
+    });
+    // Let the resolved mount prefetch's `.then` run so `exhaustedRef` is set.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // First swipe (q-1) succeeds. The optimistic removal shrinks 5 → 4 and
+    // re-fires the effect, but the guard is still set at that instant, so no
+    // prefetch fires here — the swipe's `HandleSwipeSuccess` then clears the guard.
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+    // Wait for the first swipe's mutation to actually resolve (its result fn
+    // runs)...
+    await waitFor(() => {
+      expect(swipe1.wasCalled()).toBe(true);
+    });
+    // ...then drain microtasks so the `HandleSwipeSuccess` continuation clears
+    // `exhaustedRef` BEFORE the second swipe re-crosses the threshold. Without
+    // this ordering the guard would still be set when the second swipe fires.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // Queue advanced to the next card (q-2 is now head).
+    await waitFor(() => {
+      expect(screen.getByText("Front 2")).toBeInTheDocument();
+    });
+    // The first swipe did NOT resume prefetch — the guard held while it ran.
+    expect(recovery.callCount()).toBe(0);
+
+    // Second swipe (q-2) shrinks 4 → 3, re-crossing the threshold with the guard
+    // now cleared. This is the dispatch the exhaustion guard would suppress if it
+    // never reset — so it must fire the recovery prefetch.
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+    // The recovery prefetch fires (its result fn runs)...
+    await waitFor(() => {
+      expect(recovery.callCount()).toBe(1);
+    });
+    // ...and the due card it returns is merged into the queue, proving prefetch
+    // resumed after the successful swipe cleared the exhaustion guard.
+    await waitFor(() => {
+      const latest = capturedCardSnapshots.at(-1);
+      expect(latest?.map((c) => c.id)).toContain("r-recovery");
+    });
+  });
 });
