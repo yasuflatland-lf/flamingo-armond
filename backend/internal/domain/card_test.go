@@ -99,6 +99,68 @@ func TestNewCard_IDFailure(t *testing.T) {
 	require.Contains(t, err.Error(), "domain: new uuid v7")
 }
 
+func TestNewCardFromValidated(t *testing.T) {
+	t.Parallel()
+
+	t.Run("valid VOs construct a fully-formed card without re-validation", func(t *testing.T) {
+		t.Parallel()
+
+		c, err := NewCardFromValidated(CardgroupID("cg-1"), CardText("front"), CardText("back"), 7)
+		require.NoError(t, err)
+		require.NotEmpty(t, c.ID, "constructor must generate an ID")
+		require.Equal(t, CardgroupID("cg-1"), c.CardgroupID)
+		require.Equal(t, CardText("front"), c.Front)
+		require.Equal(t, CardText("back"), c.Back)
+		require.Equal(t, 7, c.Position)
+		require.False(t, c.CreatedAt.IsZero(), "constructor must stamp CreatedAt")
+		require.Equal(t, c.CreatedAt, c.UpdatedAt, "CreatedAt and UpdatedAt must match at construction")
+	})
+
+	t.Run("VOs are stored verbatim, not re-parsed", func(t *testing.T) {
+		t.Parallel()
+
+		// A CardText VO with surrounding whitespace can only exist if a caller
+		// bypasses ParseCardText; NewCardFromValidated must not trim it, proving
+		// it skips ParseCardText.
+		c, err := NewCardFromValidated(CardgroupID("cg"), CardText("  raw  "), CardText("back"), 0)
+		require.NoError(t, err)
+		require.Equal(t, CardText("  raw  "), c.Front, "front must be stored verbatim, not re-trimmed")
+	})
+
+	cases := []struct {
+		name        string
+		front       CardText
+		back        CardText
+		sentinelErr error
+	}{
+		{"zero front VO rejected", CardText(""), CardText("back"), ErrCardFrontRequired},
+		{"zero back VO rejected", CardText("front"), CardText(""), ErrCardBackRequired},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c, err := NewCardFromValidated(CardgroupID("cg"), tc.front, tc.back, 0)
+			require.Nil(t, c, "no aggregate may be constructed from a zero-value CardText")
+			require.ErrorIs(t, err, tc.sentinelErr, "got %v", err)
+		})
+	}
+}
+
+// TestNewCardFromValidated_IDFailure pins the id-generation failure path through
+// the newV7 test seam; the non-zero VO checks run first, so valid VOs reach NewID.
+func TestNewCardFromValidated_IDFailure(t *testing.T) {
+	orig := newV7
+	newV7 = func() (uuid.UUID, error) { return uuid.UUID{}, errors.New("crypto/rand unavailable") }
+	t.Cleanup(func() { newV7 = orig })
+
+	c, err := NewCardFromValidated(CardgroupID("cg"), CardText("front"), CardText("back"), 0)
+	require.Nil(t, c)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "card: new id")
+	require.Contains(t, err.Error(), "domain: new uuid v7")
+}
+
 func TestCardBelongsToCardgroup(t *testing.T) {
 	t.Parallel()
 
