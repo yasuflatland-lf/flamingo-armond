@@ -274,7 +274,7 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) (
 // them in, so this helper stays free of the listing step and the caller controls
 // the operation order. pin, when non-nil, overrides every copied card's
 // CreatedAt/UpdatedAt (import pins to the new cardgroup's CreatedAt for a
-// consistent batch timestamp; merge passes nil and keeps NewCard's now()).
+// consistent batch timestamp; merge passes nil and keeps the constructor's now()).
 // Returns the insert/update tally. MUST NOT embed a fixed eris layer prefix — the
 // public callers apply their own wrap so the error_chain attributes the failure
 // to the calling operation.
@@ -283,7 +283,7 @@ func (u *masterDeckUsecase) copyMasterCardsIntoTx(
 ) (repository.UpsertManyTxResult, error) {
 	userCards := make([]*domain.Card, 0, len(masterCards))
 	for _, mc := range masterCards {
-		card, err := domain.NewCard(destCG, mc.Front.String(), mc.Back.String(), mc.Position)
+		card, err := domain.NewCardFromValidated(destCG, mc.Front, mc.Back, mc.Position)
 		if err != nil {
 			return repository.UpsertManyTxResult{}, eris.Wrap(err, "new card from master")
 		}
