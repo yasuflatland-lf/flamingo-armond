@@ -149,9 +149,23 @@ func (r *userRoleRepo) SetUserRolesTx(ctx context.Context, tx *gorm.DB, userID s
 		seen[roleID] = true
 		uniqueRoleIDs = append(uniqueRoleIDs, roleID)
 	}
-	for _, roleID := range uniqueRoleIDs {
-		if err := requireExistsOn(ctx, tx, "roles", roleID, "repository: user role: set: check role", ErrRoleNotFound); err != nil {
-			return err
+	// Validate that every submitted role exists in one batched COUNT rather than
+	// N sequential round trips inside the row-locked transaction. The empty-slice
+	// short-circuit must stay ahead of the IN query: GORM drops an empty-slice IN
+	// clause and scans the whole table (see .claude/rules/go-library-gotchas.md).
+	if len(uniqueRoleIDs) > 0 {
+		var n int64
+		if err := tx.WithContext(ctx).
+			Table("roles").
+			Where("id IN ?", uniqueRoleIDs).
+			Count(&n).Error; err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
+			return eris.Wrap(err, "repository: user role: set: check roles")
+		}
+		if n != int64(len(uniqueRoleIDs)) {
+			return ErrRoleNotFound
 		}
 	}
 

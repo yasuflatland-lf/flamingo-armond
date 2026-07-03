@@ -271,6 +271,40 @@ func TestUserRoleRepository_SetUserRolesTx_RoleNotFoundRollsBack(t *testing.T) {
 	assertUserRoleIDs(t, ctx, repo, userID, []string{adminID})
 }
 
+// TestUserRoleRepository_SetUserRolesTx_DuplicateRoleIDsDeDupe pins the batched
+// existence check: duplicate ids in a single call collapse into uniqueRoleIDs
+// before the COUNT comparison, so a repeated (but existing) role validates and
+// is assigned exactly once. A count keyed off the raw (un-deduped) length would
+// see COUNT=1 != len=2 and wrongly reject with ErrRoleNotFound.
+func TestUserRoleRepository_SetUserRolesTx_DuplicateRoleIDsDeDupe(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	userID := insertAuthUser(t, ctx)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
+
+	adminID := insertRole(t, ctx, "admin")
+	generalID := insertRole(t, ctx, "general")
+
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.SetUserRolesTx(ctx, tx, userID, []string{adminID, adminID, generalID, adminID})
+	})
+	if err != nil {
+		t.Fatalf("SetUserRolesTx(duplicates of existing roles): %v", err)
+	}
+
+	assertUserRoleIDs(t, ctx, repo, userID, []string{adminID, generalID})
+
+	// A duplicate id paired with a nonexistent id must still reject: dedup leaves
+	// two unique ids but only one exists, so COUNT=1 != len=2 → ErrRoleNotFound.
+	missingRole := uuid.NewString()
+	err = testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.SetUserRolesTx(ctx, tx, userID, []string{adminID, missingRole, adminID})
+	})
+	if !errors.Is(err, repository.ErrRoleNotFound) {
+		t.Fatalf("SetUserRolesTx(dup + missing): want ErrRoleNotFound, got %v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // ListByUser
 // ---------------------------------------------------------------------------
