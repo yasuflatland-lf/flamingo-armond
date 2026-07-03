@@ -63,6 +63,65 @@ Three properties make the parity real, not just nominal:
    out of the message is the same discipline as
    [`typed-classifier-over-string-prefix.md`](../error-wrapping/typed-classifier-over-string-prefix.md).
 
+## The parity is conditioned on two textdic output properties
+
+The "preview `valid: true` ⇒ commit succeeds" claim is **not unconditional**. A
+single shared validator removes *nominal* divergence, but `checkImportCaps` and
+the downstream commit-path constructors are two consumers that read *different
+branches* of the same `domain.ParseCardText` result — so they can still disagree
+on inputs the shared helper never sees. The parity holds today only because
+`textdic.Process` guarantees two properties of every `ParsedWord` it returns:
+
+- **A1 — non-empty.** Each returned word's front and back are non-empty. The
+  goyacc grammar only builds a node for the `WORD DEFINITION` production, and
+  `service.go` drops any node with `n.Word == ""`, so a lone/empty side never
+  reaches a caller as a word.
+- **A2 — edge-trimmed.** Each returned word's front and back are already
+  whitespace-trimmed (`lexWord` / `lexRun` apply `TrimRightFunc`, `skipWhiteSpace`
+  drops leading whitespace), so `strings.TrimSpace(x) == x` for both sides.
+
+Why each property is load-bearing for the parity:
+
+- **A1 guards the preview↔commit verdict.** `checkImportCaps` records *only* the
+  `ErrCardFrontTooLong` / `ErrCardBackTooLong` branch of `ParseCardText` — it
+  silently ignores the `ErrCardFrontRequired` / `ErrCardBackRequired` (empty)
+  branch. An empty front or back therefore produces **no** cap violation, so the
+  preview reports `valid: true`; but the commit builds each row via
+  `domain.NewCardFromValidated`, which rejects the zero-value `CardText`, and the
+  whole batch aborts with `BAD_USER_INPUT`. Preview says valid, commit rejects —
+  the exact parity failure this doc exists to prevent.
+- **A2 guards against a commit-only INTERNAL.** The dedup key is the **raw**
+  front (`identityKey`), while the DB conflict key is the **trimmed** front
+  (`uq_cards_cardgroup_front`). If a row's raw front were not trim-stable, two
+  rows differing only by trailing whitespace would survive dedup as distinct raw
+  keys yet collide on one trimmed conflict key inside a single `INSERT`, raising
+  Postgres `21000` ("cannot affect row a second time") → an opaque `INTERNAL`.
+  This is the same "key must match the storage layer's equivalence relation"
+  discipline as the citext `frontMatchKey` case-fold in
+  [`citext-dedup-before-multirow-upsert.md`](citext-dedup-before-multirow-upsert.md).
+
+Both properties hold for the **only** current producer of these words
+(`textdic.Process`), so neither failure is reachable today — a fact confirmed by
+reading `lexer.go` / `grammar.y` and by an empirical probe over adversarial
+whitespace/empty-line payloads. The point is that the guarantee is *conditional
+on the parser*, not a property of the shared-validator design alone.
+
+**Trigger for the enforcement change.** If a second input source is ever wired
+into `checkImportCaps` (anything other than `textdic.Process` — a direct API
+payload shape, a different parser, a CSV path) that can emit an empty or
+un-trimmed side, then before that source ships:
+
+1. `checkImportCaps` must record the `Required` (empty) branch as a violation
+   too — not just `TooLong` — so an empty side is caught at preview time; **and**
+2. the dedup key must switch from the raw front to the trimmed front (reuse the
+   `CardText` VO `checkImportCaps` already returns) so the dedup equivalence
+   matches the DB conflict key.
+
+Do neither preemptively: on the current `textdic`-only path both branches are
+unreachable, so adding them now would be dead defensive code. This section is the
+standing trigger that tells a future contributor exactly when the code defense
+becomes load-bearing.
+
 ## Reuse the shared gate's parsed VOs instead of re-scanning downstream
 
 Once the shared gate runs upstream, a later aggregate-constructor check for the
