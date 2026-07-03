@@ -7,6 +7,7 @@ package resolver
 
 import (
 	"backend/graph/model"
+	"backend/internal/auth"
 	"backend/internal/gqlerr"
 	"backend/internal/usecase"
 	"context"
@@ -143,11 +144,39 @@ func (r *queryResolver) Role(ctx context.Context, id string) (*model.Role, error
 	return toRoleModel(role), nil
 }
 
-// Roles is the resolver for the roles field.
+// Roles resolves the user's roles through the per-request RoleByUserID
+// DataLoader so the admin users list issues a single batched roles query per
+// page instead of one query per row. Authorization mirrors the prior usecase
+// path: a caller reads their own roles unconditionally; reading another user's
+// roles requires the admin role, computed from the same batch (the caller's
+// key joins the request's batch, so there is no extra round trip).
 func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Role, error) {
-	roles, err := r.UserUC.RolesFor(ctx, obj.ID)
+	loaders, gqlErr := loadersOrInternal(ctx)
+	if gqlErr != nil {
+		return nil, gqlErr
+	}
+	caller := auth.UserFrom(ctx)
+	if caller == nil || caller.Sub == "" {
+		return nil, gqlerr.Unauthenticated()
+	}
+
+	// Register the target-roles load before the admin-status load so both keys
+	// share one batch window; the caller's key then joins the page's batch.
+	rolesThunk := loaders.RoleByUserID.Load(ctx, obj.ID)
+
+	if caller.Sub != obj.ID {
+		callerRoles, err := loaders.RoleByUserID.Load(ctx, caller.Sub)()
+		if err != nil {
+			return nil, classifyLoaderErr(ctx, err, "resolver: user roles: admin check")
+		}
+		if !rolesContainAdmin(callerRoles) {
+			return nil, gqlerr.NewForbidden("admin only")
+		}
+	}
+
+	roles, err := rolesThunk()
 	if err != nil {
-		return nil, gqlerr.FromUsecaseError(ctx, err)
+		return nil, classifyLoaderErr(ctx, err, "resolver: user roles")
 	}
 	return toRoleModels(ctx, roles), nil
 }

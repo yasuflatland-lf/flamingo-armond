@@ -7,6 +7,7 @@ import (
 	"github.com/rotisserie/eris"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
+	"backend/internal/domain"
 	"backend/internal/gqlerr"
 	"backend/internal/loader"
 )
@@ -31,6 +32,18 @@ func classifyLoaderErr(ctx context.Context, err error, label string) *gqlerror.E
 		return gqlerr.Cancelled(ctx, err)
 	}
 	return gqlerr.Internal(ctx, eris.Wrap(err, label))
+}
+
+// rolesContainAdmin reports whether a batched role slice (as returned by the
+// RoleByUserID DataLoader) includes the built-in admin role. Nil entries are
+// skipped defensively.
+func rolesContainAdmin(roles []*domain.Role) bool {
+	for _, role := range roles {
+		if role != nil && role.Name == domain.AdminRoleName {
+			return true
+		}
+	}
+	return false
 }
 
 // noVariantSet builds the INTERNAL error returned when an outcome union has no

@@ -2,6 +2,7 @@ package resolver_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -10,8 +11,8 @@ import (
 	"github.com/graph-gophers/dataloader/v7"
 
 	"backend/graph/generated"
+	"backend/graph/model"
 	"backend/graph/resolver"
-	"backend/internal/auth"
 	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
@@ -114,24 +115,6 @@ func newAdminUserSrv(adminUC usecase.AdminUserUsecase) *handler.Server {
 	return srv
 }
 
-// newAdminUserSrvWithAuth builds a server like newAdminUserSrv but also wires
-// an AuthSvc backed by the given UserRoleRepository. Tests that exercise the
-// User.roles admin gate need this because the resolver consults AuthSvc when
-// the caller is reading another user's roles.
-func newAdminUserSrvWithAuth(adminUC usecase.AdminUserUsecase, isAdmin bool, rolesByUser ...map[string][]*domain.Role) *handler.Server {
-	roleRepo := &mockUserRoleRepository{isAdmin: isAdmin}
-	authSvc := auth.NewService(roleRepo)
-	userRoles := map[string][]*domain.Role{}
-	if len(rolesByUser) > 0 && rolesByUser[0] != nil {
-		userRoles = rolesByUser[0]
-	}
-	userUC := usecase.NewUserUsecase(&mockUserRepository{}, &mockRoleByUserIDRepo{byUserID: userRoles}, authSvc, newDiscardLogger())
-	r := resolver.NewResolver(userUC, nil, nil, nil, authSvc, nil, adminUC, nil, nil, nil, nil, nil, nil, nil)
-	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
-	srv.AddTransport(transport.POST{})
-	return srv
-}
-
 // ctxWithRoles returns a context enriched with a loader.Loaders that has
 // RoleByUserID backed by rolesByUser. Other loaders are nil and must not be
 // invoked in the tests that use this helper.
@@ -161,6 +144,24 @@ func ctxWithRolesRepo(base context.Context, repo *mockRoleByUserIDRepo) context.
 						roles = []*domain.Role{}
 					}
 					out[i] = &dataloader.Result[[]*domain.Role]{Data: roles}
+				}
+				return out
+			},
+		),
+	}
+	return loader.WithContext(base, loaders)
+}
+
+// ctxWithRolesLoaderError installs a RoleByUserID loader whose batch function
+// fails every key with loadErr. Used to exercise the resolver's loader-error
+// classification (CANCELLED for context errors, INTERNAL otherwise).
+func ctxWithRolesLoaderError(base context.Context, loadErr error) context.Context {
+	loaders := &loader.Loaders{
+		RoleByUserID: dataloader.NewBatchedLoader(
+			func(_ context.Context, keys []string) []*dataloader.Result[[]*domain.Role] {
+				out := make([]*dataloader.Result[[]*domain.Role], len(keys))
+				for i := range keys {
+					out[i] = &dataloader.Result[[]*domain.Role]{Error: loadErr}
 				}
 				return out
 			},
@@ -266,15 +267,16 @@ func TestAdminUserResolver_Users_AdminHappyPath(t *testing.T) {
 // user node.
 const usersWithRolesQuery = `{"query":"{ users(first: 3) { edges { node { id roles { id name } } } } }"}`
 
-// TestAdminUserResolver_Roles_FromUsecase verifies that User.roles delegates
-// to UserUsecase.RolesFor and returns the expected role shape.
-func TestAdminUserResolver_Roles_FromUsecase(t *testing.T) {
+// TestAdminUserResolver_Roles_BatchesIntoOneQueryPerPage verifies that
+// resolving User.roles for every node in the admin users list issues a single
+// batched roles query for the whole page — the caller's own admin-status key
+// joins the same batch — instead of one query per row (the N+1 this change
+// removes). It also pins the role shape returned for each user.
+func TestAdminUserResolver_Roles_BatchesIntoOneQueryPerPage(t *testing.T) {
 	t.Parallel()
 
-	adminRoleName := domain.RoleName("admin")
-	generalRoleName := domain.RoleName("general")
-	adminRole := &domain.Role{ID: "role-admin", Name: adminRoleName}
-	generalRole := &domain.Role{ID: "role-general", Name: generalRoleName}
+	adminRole := &domain.Role{ID: "role-admin", Name: domain.AdminRoleName}
+	generalRole := &domain.Role{ID: "role-general", Name: domain.GeneralRoleName}
 
 	mock := &mockAdminUserUsecase{
 		listResult: &usecase.AdminUserConnection{
@@ -286,15 +288,16 @@ func TestAdminUserResolver_Roles_FromUsecase(t *testing.T) {
 			TotalCount: 3,
 		},
 	}
-	rolesByUser := map[string][]*domain.Role{
-		"u1": {adminRole, generalRole},
-		"u2": {generalRole},
-		"u3": {},
-	}
-	// Caller is admin (isAdmin=true) so the User.roles gate lets the usecase
-	// load roles for all three foreign user IDs.
-	srv := newAdminUserSrvWithAuth(mock, true, rolesByUser)
-	ctx := authedCtx("admin")
+	// The caller "admin" holds the admin role so the gate passes for the three
+	// foreign rows; its key rides the same request batch as u1/u2/u3.
+	repo := &mockRoleByUserIDRepo{byUserID: map[string][]*domain.Role{
+		"admin": {adminRole},
+		"u1":    {adminRole, generalRole},
+		"u2":    {generalRole},
+		"u3":    {},
+	}}
+	srv := newAdminUserSrv(mock)
+	ctx := ctxWithRolesRepo(authedCtx("admin"), repo)
 	resp := gqlRequest(t, srv, ctx, usersWithRolesQuery)
 
 	if _, hasErrs := resp["errors"]; hasErrs {
@@ -310,27 +313,27 @@ func TestAdminUserResolver_Roles_FromUsecase(t *testing.T) {
 		t.Fatalf("expected 3 edges, got %d", len(edges))
 	}
 
-	// u1 should have 2 roles.
-	u1, _ := edges[0].(map[string]any)["node"].(map[string]any)
-	u1roles, _ := u1["roles"].([]any)
-	if len(u1roles) != 2 {
-		t.Fatalf("expected u1 to have 2 roles, got %d", len(u1roles))
+	// u1 → 2 roles, u2 → 1 role, u3 → 0 roles.
+	for i, want := range []int{2, 1, 0} {
+		node, _ := edges[i].(map[string]any)["node"].(map[string]any)
+		roles, _ := node["roles"].([]any)
+		if len(roles) != want {
+			t.Fatalf("edges[%d] roles = %d, want %d", i, len(roles), want)
+		}
 	}
 
-	// u2 should have 1 role.
-	u2, _ := edges[1].(map[string]any)["node"].(map[string]any)
-	u2roles, _ := u2["roles"].([]any)
-	if len(u2roles) != 1 {
-		t.Fatalf("expected u2 to have 1 role, got %d", len(u2roles))
+	// The N+1 kill: exactly one batched ListByUserIDs call for the whole page,
+	// not one per row. mockRoleByUserIDRepo.ListByUser also increments
+	// listCallCount, so this simultaneously proves the non-batched path is
+	// never taken.
+	if got := repo.listCallCount; got != 1 {
+		t.Fatalf("expected exactly 1 batched roles query per page, got %d (keys: %v)", got, repo.lastIDs)
 	}
-
-	// u3 should have 0 roles.
-	u3, _ := edges[2].(map[string]any)["node"].(map[string]any)
-	u3roles, _ := u3["roles"].([]any)
-	if len(u3roles) != 0 {
-		t.Fatalf("expected u3 to have 0 roles, got %d", len(u3roles))
+	// The caller's admin-status key joined the page batch (4 unique keys:
+	// caller + 3 rows), confirming no separate round trip for the admin check.
+	if len(repo.lastIDs) != 4 {
+		t.Fatalf("expected the single batch to carry caller + 3 rows, got keys: %v", repo.lastIDs)
 	}
-
 }
 
 // ---------------------------------------------------------------------------
@@ -351,10 +354,14 @@ func TestAdminUserResolver_Roles_NonAdminNonSelf_Forbidden(t *testing.T) {
 	mock := &mockAdminUserUsecase{
 		getResult: &domain.User{ID: "u-target"},
 	}
-	// isAdmin=false models a non-admin caller.
-	srv := newAdminUserSrvWithAuth(mock, false)
+	srv := newAdminUserSrv(mock)
 
-	ctx := authedCtx("u-caller")
+	// The caller holds only a non-admin role, so the gate rejects reading a
+	// foreign user's roles.
+	generalRole := &domain.Role{ID: "role-general", Name: domain.GeneralRoleName}
+	ctx := ctxWithRoles(authedCtx("u-caller"), map[string][]*domain.Role{
+		"u-caller": {generalRole},
+	})
 	body := `{"query":"{ adminUser(id: \"u-target\") { id roles { id name } } }"}`
 	resp := gqlRequest(t, srv, ctx, body)
 
@@ -382,25 +389,17 @@ func TestAdminUserResolver_Roles_NonAdminNonSelf_Forbidden(t *testing.T) {
 func TestAdminUserResolver_Roles_SelfIntrospection_Allowed(t *testing.T) {
 	t.Parallel()
 
-	// Wire UserUsecase so me { ... } can resolve. The AdminUserUsecase is
-	// unused by this query; pass the mock to satisfy the resolver wiring.
+	// me { ... } resolves via UserUsecase; the roles field routes through the
+	// per-request loader. A non-admin caller may still read their own roles
+	// because caller.Sub == obj.ID skips the admin gate entirely.
 	userMock := &mockUserRepository{
 		findResult: &domain.User{ID: "u-self", DisplayName: dnPtr("Alice")},
 	}
-	rolesByUser := map[string][]*domain.Role{
-		"u-self": {{ID: "r-general", Name: "general"}},
-	}
-	rolesRepo := &mockRoleByUserIDRepo{byUserID: rolesByUser}
-	// isAdmin=false models a non-admin caller; the self-introspection branch
-	// must skip the IsAdmin check entirely.
-	roleRepo := &mockUserRoleRepository{isAdmin: false}
-	authSvc := auth.NewService(roleRepo)
-	uc := usecase.NewUserUsecase(userMock, rolesRepo, authSvc, newDiscardLogger())
-	r := resolver.NewResolver(uc, nil, nil, nil, authSvc, nil, &mockAdminUserUsecase{}, nil, nil, nil, nil, nil, nil, nil)
-	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
-	srv.AddTransport(transport.POST{})
+	srv := newServer(userMock)
 
-	ctx := authedCtx("u-self")
+	ctx := ctxWithRoles(authedCtx("u-self"), map[string][]*domain.Role{
+		"u-self": {{ID: "r-general", Name: domain.GeneralRoleName}},
+	})
 	body := `{"query":"{ me { id roles { id name } } }"}`
 	resp := gqlRequest(t, srv, ctx, body)
 
@@ -419,6 +418,58 @@ func TestAdminUserResolver_Roles_SelfIntrospection_Allowed(t *testing.T) {
 	first, _ := roles[0].(map[string]any)
 	if first["id"] != "r-general" || first["name"] != "general" {
 		t.Fatalf("roles[0] = %v, want {id:r-general name:general}", first)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// User.roles resolver — direct-unit error/guard branches
+// ---------------------------------------------------------------------------
+
+// TestUserResolver_Roles_Unauthenticated verifies that an anonymous caller
+// (no auth user on the context) receives UNAUTHENTICATED even when the loader
+// is installed.
+func TestUserResolver_Roles_Unauthenticated(t *testing.T) {
+	t.Parallel()
+
+	ctx := ctxWithRoles(context.Background(), map[string][]*domain.Role{"u-1": {}})
+	_, err := (&resolver.Resolver{}).User().Roles(ctx, &model.User{ID: "u-1"})
+	if !gqlerr.IsCode(err, gqlerr.CodeUnauthenticated) {
+		t.Fatalf("want UNAUTHENTICATED, got %v", err)
+	}
+}
+
+// TestUserResolver_Roles_MissingLoaderInternal verifies that resolving roles
+// without the DataLoader middleware installed returns INTERNAL.
+func TestUserResolver_Roles_MissingLoaderInternal(t *testing.T) {
+	t.Parallel()
+
+	_, err := (&resolver.Resolver{}).User().Roles(authedCtx("u-1"), &model.User{ID: "u-1"})
+	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+		t.Fatalf("want INTERNAL when loader middleware is not installed, got %v", err)
+	}
+}
+
+// TestUserResolver_Roles_LoaderErrorInternal verifies that a generic loader
+// failure on the self path (caller.Sub == obj.ID) classifies as INTERNAL.
+func TestUserResolver_Roles_LoaderErrorInternal(t *testing.T) {
+	t.Parallel()
+
+	ctx := ctxWithRolesLoaderError(authedCtx("u-1"), errors.New("db down"))
+	_, err := (&resolver.Resolver{}).User().Roles(ctx, &model.User{ID: "u-1"})
+	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+		t.Fatalf("want INTERNAL for a generic loader error, got %v", err)
+	}
+}
+
+// TestUserResolver_Roles_ContextCancelled verifies that a cancelled-context
+// loader error classifies as CANCELLED.
+func TestUserResolver_Roles_ContextCancelled(t *testing.T) {
+	t.Parallel()
+
+	ctx := ctxWithRolesLoaderError(authedCtx("u-1"), context.Canceled)
+	_, err := (&resolver.Resolver{}).User().Roles(ctx, &model.User{ID: "u-1"})
+	if !gqlerr.IsCode(err, gqlerr.CodeCancelled) {
+		t.Fatalf("want CANCELLED for a cancelled-context loader error, got %v", err)
 	}
 }
 
@@ -531,13 +582,14 @@ func TestAdminUserResolver_AdminEditUser_HappyPath(t *testing.T) {
 		},
 	}
 	rolesByUser := map[string][]*domain.Role{
+		"admin": {{ID: "r-admin", Name: domain.AdminRoleName}},
 		"u-target": {
 			{ID: "r-admin", Name: "admin"},
 			{ID: "r-general", Name: "general"},
 		},
 	}
-	srv := newAdminUserSrvWithAuth(mock, true, rolesByUser)
-	resp := gqlRequest(t, srv, authedCtx("admin"), adminEditUserMutation)
+	srv := newAdminUserSrv(mock)
+	resp := gqlRequest(t, srv, ctxWithRoles(authedCtx("admin"), rolesByUser), adminEditUserMutation)
 
 	if _, hasErrs := resp["errors"]; hasErrs {
 		t.Fatalf("unexpected errors: %v", resp["errors"])
@@ -577,13 +629,14 @@ func TestAdminUserResolver_AdminEditUser_MapsExpectedVersionAndUserVersion(t *te
 		},
 	}
 	rolesByUser := map[string][]*domain.Role{
+		"admin": {{ID: "r-admin", Name: domain.AdminRoleName}},
 		"u-target": {
 			{ID: "r-admin", Name: "admin"},
 			{ID: "r-general", Name: "general"},
 		},
 	}
-	srv := newAdminUserSrvWithAuth(mock, true, rolesByUser)
-	resp := gqlRequest(t, srv, authedCtx("admin"), adminEditUserMutationWithExpectedVersion)
+	srv := newAdminUserSrv(mock)
+	resp := gqlRequest(t, srv, ctxWithRoles(authedCtx("admin"), rolesByUser), adminEditUserMutationWithExpectedVersion)
 
 	if _, hasErrs := resp["errors"]; hasErrs {
 		t.Fatalf("unexpected errors: %v", resp["errors"])

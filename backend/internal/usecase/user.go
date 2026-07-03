@@ -35,7 +35,6 @@ type UserRolesRepository interface {
 // UserUsecase is the authenticated user profile and role-query surface.
 type UserUsecase interface {
 	Me(ctx context.Context) (*domain.User, error)
-	RolesFor(ctx context.Context, targetID string) ([]*domain.Role, error)
 	UpdateUser(ctx context.Context, in UpdateUserInput) (UpdateProfileOutcome, error)
 	// DeleteMyAccount deletes the authenticated caller's own account and all
 	// associated data. Returns ucerr.ErrUnauthenticated when no caller is on the
@@ -74,39 +73,6 @@ func (u *userUsecase) Me(ctx context.Context) (*domain.User, error) {
 		return &domain.User{ID: domain.UserID(user.Sub)}, nil
 	}
 	return nil, eris.Wrap(err, "usecase: Me: find user by ID")
-}
-
-func (u *userUsecase) RolesFor(ctx context.Context, targetID string) ([]*domain.Role, error) {
-	caller := auth.UserFrom(ctx)
-	if err := requireCallerSub(caller); err != nil {
-		return nil, err
-	}
-	if caller.Sub != targetID {
-		if u.auth == nil {
-			return nil, eris.New("usecase: user roles: admin checker not configured")
-		}
-		ok, err := u.auth.IsAdmin(ctx, caller.Sub)
-		if err != nil {
-			if isContextDone(err) {
-				return nil, err
-			}
-			return nil, eris.Wrap(err, "usecase: user roles: check admin")
-		}
-		if !ok {
-			return nil, ucerr.NewForbiddenError("admin only")
-		}
-	}
-	if u.roles == nil {
-		return nil, eris.New("usecase: user roles: roles repository not configured")
-	}
-	roles, err := u.roles.ListByUser(ctx, targetID)
-	if err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: user roles: list by user")
-	}
-	return roles, nil
 }
 
 type UpdateUserInput struct {
