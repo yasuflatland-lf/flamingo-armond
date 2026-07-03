@@ -17,6 +17,14 @@ var (
 	ErrRetryAttempts = errors.New("notion: retry attempts exceeded")
 )
 
+// defaultMaxElapsed bounds the cumulative Notion retry wait per request. It is
+// deliberately kept below the server's 30s WriteTimeout so a slow sync surfaces
+// a deliverable error response instead of a write-deadline connection reset.
+// Operators may raise it via NOTION_MAX_ELAPSED, but the notion-sync handler
+// independently caps the whole sync with a request-context deadline below the
+// write timeout.
+const defaultMaxElapsed = 20 * time.Second
+
 type RetryConfig struct {
 	MaxAttempts int
 	MaxElapsed  time.Duration
@@ -34,7 +42,7 @@ func NewRetryAfterRoundTripper(cfg RetryConfig) http.RoundTripper {
 		cfg.MaxAttempts = 5
 	}
 	if cfg.MaxElapsed <= 0 {
-		cfg.MaxElapsed = 2 * time.Minute
+		cfg.MaxElapsed = defaultMaxElapsed
 	}
 	if cfg.Transport == nil {
 		cfg.Transport = http.DefaultTransport

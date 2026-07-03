@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v5"
 
@@ -26,10 +27,21 @@ type Config struct {
 	MasterCardgroupName string
 }
 
+// defaultSyncTimeout bounds the whole sync (fetch + parse + persist) so the
+// handler writes a deliverable error response before the server's 30s
+// WriteTimeout expires. Without this cap, a sync slower than the write deadline
+// still commits on the backend, but the deferred response write fails against
+// the expired connection deadline: the caller sees a connection reset for work
+// that actually succeeded, and a retry re-runs the entire sync. Kept below the
+// WriteTimeout so context cancellation, not the write deadline, terminates the
+// request.
+const defaultSyncTimeout = 25 * time.Second
+
 type Handler struct {
-	uc     SyncUsecase
-	config Config
-	logger *slog.Logger
+	uc          SyncUsecase
+	config      Config
+	logger      *slog.Logger
+	syncTimeout time.Duration
 }
 
 func New(uc SyncUsecase, cfg Config) *Handler {
@@ -39,7 +51,7 @@ func New(uc SyncUsecase, cfg Config) *Handler {
 	if cfg.Token == "" {
 		panic("notionsync.New: token must not be empty")
 	}
-	return &Handler{uc: uc, config: cfg, logger: slog.Default()}
+	return &Handler{uc: uc, config: cfg, logger: slog.Default(), syncTimeout: defaultSyncTimeout}
 }
 
 func (h *Handler) Handle(c *echo.Context) error {
@@ -50,7 +62,14 @@ func (h *Handler) Handle(c *echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	}
 
-	out, err := h.uc.Sync(c.Request().Context(), usecase.SyncToMasterInput{
+	// Cap the whole sync below the server's WriteTimeout so the deadline is hit
+	// via context cancellation (yielding a deliverable 504 via handleError)
+	// rather than by the connection write deadline (which resets the connection
+	// on work that already completed).
+	ctx, cancel := context.WithTimeout(c.Request().Context(), h.syncTimeout)
+	defer cancel()
+
+	out, err := h.uc.Sync(ctx, usecase.SyncToMasterInput{
 		PageIDs:             h.config.PageIDs,
 		MasterCardgroupName: h.config.MasterCardgroupName,
 	})

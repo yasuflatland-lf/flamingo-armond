@@ -18,7 +18,7 @@ func TestRetryConfigFromEnv(t *testing.T) {
 		{
 			name:         "defaults when no env set",
 			wantAttempts: 5,
-			wantElapsed:  2 * time.Minute,
+			wantElapsed:  20 * time.Second,
 		},
 		{
 			name:         "valid override of both vars",
@@ -64,13 +64,13 @@ func TestRetryConfigFromEnv(t *testing.T) {
 			name:         "whitespace-only NOTION_MAX_ATTEMPTS treated as unset",
 			maxAttempts:  "   ",
 			wantAttempts: 5,
-			wantElapsed:  2 * time.Minute,
+			wantElapsed:  20 * time.Second,
 		},
 		{
 			name:         "whitespace-only NOTION_MAX_ELAPSED treated as unset",
 			maxElapsed:   "   ",
 			wantAttempts: 5,
-			wantElapsed:  2 * time.Minute,
+			wantElapsed:  20 * time.Second,
 		},
 	}
 
@@ -79,12 +79,14 @@ func TestRetryConfigFromEnv(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// t.Setenv requires sequential subtests — no t.Parallel() here.
 
-			if tc.maxAttempts != "" {
-				t.Setenv("NOTION_MAX_ATTEMPTS", tc.maxAttempts)
-			}
-			if tc.maxElapsed != "" {
-				t.Setenv("NOTION_MAX_ELAPSED", tc.maxElapsed)
-			}
+			// Set both vars unconditionally (to "" for the "unset" cases) so an
+			// ambient NOTION_MAX_* — e.g. exported from a local .env by mise —
+			// cannot leak into cases that assert the built-in defaults. An empty
+			// or whitespace-only value is treated as unset by RetryConfigFromEnv
+			// (TrimSpace == ""), and t.Setenv still restores the prior value on
+			// cleanup.
+			t.Setenv("NOTION_MAX_ATTEMPTS", tc.maxAttempts)
+			t.Setenv("NOTION_MAX_ELAPSED", tc.maxElapsed)
 
 			cfg, err := RetryConfigFromEnv()
 

@@ -11,12 +11,13 @@ import (
 
 // RetryConfigFromEnv reads NOTION_MAX_ATTEMPTS and NOTION_MAX_ELAPSED from the
 // environment and returns a RetryConfig with those two fields populated.
-// Defaults: MaxAttempts=5, MaxElapsed=2*time.Minute. Other RetryConfig fields
-// (Transport, Logger, Sleep) are left zero for the caller to fill.
+// Defaults: MaxAttempts=5, MaxElapsed=defaultMaxElapsed (20s, below the server's
+// 30s WriteTimeout). Other RetryConfig fields (Transport, Logger, Sleep) are
+// left zero for the caller to fill.
 func RetryConfigFromEnv() (RetryConfig, error) {
 	cfg := RetryConfig{
 		MaxAttempts: 5,
-		MaxElapsed:  2 * time.Minute,
+		MaxElapsed:  defaultMaxElapsed,
 	}
 	if raw := strings.TrimSpace(os.Getenv("NOTION_MAX_ATTEMPTS")); raw != "" {
 		n, err := strconv.Atoi(raw)
