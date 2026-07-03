@@ -165,13 +165,24 @@ func (u *cardImportUsecase) Validate(ctx context.Context, payload string) (Valid
 		return ValidateCardImportOutcome{}, eris.Wrap(perr, "usecase: card import validate: parse")
 	}
 
+	errs := cardImportErrorsFromTextdic(parseErrs)
+	_, caps := checkImportCaps(words)
+	for _, v := range caps {
+		errs = append(errs, CardImportError{Line: v.Line, Message: v.Message, Kind: CardImportErrKindHard})
+	}
+	// Whole-payload reject (row cap): mirror Import's all-or-nothing reject and
+	// echo an empty ParsedCards rather than the full parsed set. checkImportCaps
+	// short-circuits the row cap to a single payload-level violation ahead of any
+	// per-row scan, so an over-cap payload cannot be previewed row-by-row anyway
+	// and shipping the full parsed set is wasted allocation plus wasted bytes on
+	// the wire. Below the row cap the full preview is retained so per-line errors
+	// stay actionable.
+	if len(words) > cardImportParsedRowCap {
+		return ValidateCardImportOutcome{Valid: false, Errors: errs}, nil
+	}
 	parsed := make([]ParsedCard, 0, len(words))
 	for _, w := range words {
 		parsed = append(parsed, ParsedCard{Front: w.Front, Back: w.Back, Line: w.Line})
-	}
-	errs := cardImportErrorsFromTextdic(parseErrs)
-	for _, v := range checkImportCaps(words) {
-		errs = append(errs, CardImportError{Line: v.Line, Message: v.Message, Kind: CardImportErrKindHard})
 	}
 	return ValidateCardImportOutcome{
 		Valid:       len(errs) == 0 && len(parsed) > 0,
@@ -220,16 +231,28 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 	// checker, so the two paths cannot diverge. Checked on the raw parsed words
 	// (before dedup) so Import and Validate agree exactly. The first violation
 	// aborts the whole batch (all-or-nothing); the row cap short-circuits ahead
-	// of any per-row length error inside the helper.
-	if caps := checkImportCaps(words); len(caps) > 0 {
+	// of any per-row length error inside the helper. On the pass path the checker
+	// hands back the already-parsed CardText VOs so the build loop below can reuse
+	// them instead of grapheme-scanning every row a second time.
+	validated, caps := checkImportCaps(words)
+	if len(caps) > 0 {
 		return ImportCardsOutput{}, ucerr.NewValidationError(caps[0].Field, caps[0].Message)
 	}
 
 	mappedErrs := cardImportErrorsFromTextdic(parseErrs)
 
+	// validated is parallel to the raw words; key each row's VOs by the dedup key
+	// (last occurrence wins, matching dedupeParsedWords' survivor) so the post-dedup
+	// build loop can look up the already-parsed VOs for the surviving rows.
+	identityKey := func(s string) string { return s }
+	voByKey := make(map[string]validatedCard, len(words))
+	for i, w := range words {
+		voByKey[identityKey(w.Front)] = validated[i]
+	}
+
 	// Deduplicate parsed words by front within this payload. cards.front is
 	// plain text, so the conflict key is the front verbatim (identity key).
-	deduped, dupErrs := dedupeParsedWords(words, func(s string) string { return s })
+	deduped, dupErrs := dedupeParsedWords(words, identityKey)
 	words = deduped
 	mappedErrs = append(mappedErrs, dupErrs...)
 
@@ -242,17 +265,19 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 	now := time.Now().UTC()
 	cards := make([]*domain.Card, 0, len(words))
 	for _, w := range words {
-		// Build through the enforcing constructor. The per-side length cap is now
-		// caught upstream by checkImportCaps, so NewCard's length check here is
-		// defense-in-depth; the realistic remaining failure is ID generation.
-		// Surface any error as a typed validation error rather than letting an
-		// over-length value reach the repository / DB CHECK as an opaque
+		// Build from the CardText VOs checkImportCaps already parsed for this row
+		// (single grapheme scan per row). NewCardFromValidated skips the re-scan
+		// domain.NewCard would perform; the per-side length cap was enforced
+		// upstream by checkImportCaps, and the realistic remaining failure is ID
+		// generation. Surface any error as a typed validation error rather than
+		// letting a bad value reach the repository / DB CHECK as an opaque
 		// constraint violation.
-		c, err := domain.NewCard(domain.CardgroupID(input.CardgroupID), w.Front, w.Back, 0)
+		vc := voByKey[identityKey(w.Front)]
+		c, err := domain.NewCardFromValidated(domain.CardgroupID(input.CardgroupID), vc.front, vc.back, 0)
 		if err != nil {
 			return ImportCardsOutput{}, translateCardErr(err)
 		}
-		// NewCard stamps per-card timestamps; pin the whole batch to one now.
+		// NewCardFromValidated stamps per-card timestamps; pin the whole batch to one now.
 		c.CreatedAt = now
 		c.UpdatedAt = now
 		cards = append(cards, c)
@@ -307,29 +332,46 @@ type capViolation struct {
 	Message string
 }
 
+// validatedCard bundles the trimmed, grapheme-bounded CardText VOs that
+// checkImportCaps parses for one import row. Returning them lets Import build the
+// Card via domain.NewCardFromValidated instead of re-running domain.ParseCardText
+// on the same strings — one grapheme scan per row rather than two.
+type validatedCard struct {
+	front domain.CardText
+	back  domain.CardText
+}
+
 // checkImportCaps enforces the two import caps shared by Validate and Import: the
 // parsed-row cap (cardImportParsedRowCap) and the per-side grapheme cap
 // (domain.CardTextMax). It is the single source of cap logic for both paths so
 // they cannot re-diverge.
 //
-// The row cap takes precedence and short-circuits: an over-cap payload returns
-// only the row-cap violation (the caller must cut rows before any per-row error is
-// actionable), mirroring Import's "row cap is a top-level reject" ordering. Below
-// the row cap, every row's front and back are checked via domain.ParseCardText.
-func checkImportCaps(words []textdic.ParsedWord) []capViolation {
+// The row cap takes precedence and short-circuits: an over-cap payload returns a
+// nil VO slice and only the row-cap violation (the caller must cut rows before any
+// per-row error is actionable), mirroring Import's "row cap is a top-level reject"
+// ordering. Below the row cap, every row's front and back are parsed via
+// domain.ParseCardText and the resulting VOs are returned parallel to words. When
+// the returned violation slice is empty every row passed and validated[i] holds
+// row i's front/back VOs for reuse; when it is non-empty the caller aborts the
+// whole batch, so the VO slice is unused.
+func checkImportCaps(words []textdic.ParsedWord) ([]validatedCard, []capViolation) {
 	if len(words) > cardImportParsedRowCap {
-		return []capViolation{{Line: 0, Field: "payload", Message: fmt.Sprintf("payload exceeds %d row cap", cardImportParsedRowCap)}}
+		return nil, []capViolation{{Line: 0, Field: "payload", Message: fmt.Sprintf("payload exceeds %d row cap", cardImportParsedRowCap)}}
 	}
+	validated := make([]validatedCard, len(words))
 	var out []capViolation
-	for _, w := range words {
-		if _, err := domain.ParseCardText(w.Front, domain.ErrCardFrontRequired, domain.ErrCardFrontTooLong); errors.Is(err, domain.ErrCardFrontTooLong) {
+	for i, w := range words {
+		front, ferr := domain.ParseCardText(w.Front, domain.ErrCardFrontRequired, domain.ErrCardFrontTooLong)
+		if errors.Is(ferr, domain.ErrCardFrontTooLong) {
 			out = append(out, capViolation{Line: w.Line, Field: "front", Message: fmt.Sprintf("front must be at most %d characters", domain.CardTextMax)})
 		}
-		if _, err := domain.ParseCardText(w.Back, domain.ErrCardBackRequired, domain.ErrCardBackTooLong); errors.Is(err, domain.ErrCardBackTooLong) {
+		back, berr := domain.ParseCardText(w.Back, domain.ErrCardBackRequired, domain.ErrCardBackTooLong)
+		if errors.Is(berr, domain.ErrCardBackTooLong) {
 			out = append(out, capViolation{Line: w.Line, Field: "back", Message: fmt.Sprintf("back must be at most %d characters", domain.CardTextMax)})
 		}
+		validated[i] = validatedCard{front: front, back: back}
 	}
-	return out
+	return validated, out
 }
 
 // dedupeParsedWords drops earlier duplicates by key(front), last occurrence wins,

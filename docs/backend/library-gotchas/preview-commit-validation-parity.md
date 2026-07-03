@@ -63,19 +63,33 @@ Three properties make the parity real, not just nominal:
    out of the message is the same discipline as
    [`typed-classifier-over-string-prefix.md`](../error-wrapping/typed-classifier-over-string-prefix.md).
 
-## A downstream aggregate check stays as defense-in-depth, not dead code
+## Reuse the shared gate's parsed VOs instead of re-scanning downstream
 
 Once the shared gate runs upstream, a later aggregate-constructor check for the
-same invariant (here `domain.NewCard` re-validating front/back length) looks
-unreachable. Keep it: it is genuinely reachable via a *different* failure
-(`NewCard` also generates an ID, whose `crypto/rand` failure flows through the
-same `if err != nil`), and the length branch is correct defense-in-depth. This
-is the "retain" verdict in
-[`defense-in-depth-classification-internal.md`](../error-wrapping/defense-in-depth-classification-internal.md),
-not the "collapse" verdict in
-[`dead-pipeline-after-upstream-gate-collapse.md`](dead-pipeline-after-upstream-gate-collapse.md) —
-the distinguishing cue is that the inner check guards a *structural aggregate
-invariant* and has a second live caller path, so it is not pure dead code.
+same invariant looks unreachable. Whether to keep the second scan turns on
+whether an already-parsed value object is available to reuse:
+
+- **No validated-VO constructor available → keep the re-check as defense-in-depth.**
+  A constructor that only accepts raw strings re-runs the length check, but that
+  scan also guards a *structural aggregate invariant* and the constructor has a
+  second live failure path (e.g. `domain.NewCard` also generates an ID, whose
+  `crypto/rand` failure flows through the same `if err != nil`). That is the
+  "retain" verdict in
+  [`defense-in-depth-classification-internal.md`](../error-wrapping/defense-in-depth-classification-internal.md).
+- **A validated-VO constructor is available → reuse the VOs, do not re-scan.**
+  `checkImportCaps` returns the trimmed `domain.CardText` VOs it parsed for each
+  row; the `Import` build loop builds the `Card` via `domain.NewCardFromValidated`
+  from those VOs — one grapheme scan per row, not two. The residual
+  defense-in-depth is `NewCardFromValidated`'s zero-value guard (it rejects
+  `CardText("")` via the field sentinel) plus the same ID-generation failure path;
+  the per-side length cap is enforced upstream by `checkImportCaps`, so re-running
+  `domain.ParseCardText` in the build loop would be pure redundant work. This is
+  the "collapse" verdict in
+  [`dead-pipeline-after-upstream-gate-collapse.md`](dead-pipeline-after-upstream-gate-collapse.md)
+  applied to a *duplicated scan*: the check is not deleted, it is hoisted to its
+  single source and its output reused. A source-level guard test pins the loop to
+  `NewCardFromValidated` (a silent regression to `NewCard` would double-scan with
+  no behavioral difference).
 
 ## Verification harness
 

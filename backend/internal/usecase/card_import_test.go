@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -960,7 +961,9 @@ func stringFront(prefix string, n int) string {
 // TestCardImportUsecase_ValidateDetectsRowCap covers the 5000-row cap in the
 // preview path: a payload that parses to >5000 rows is reported as a single
 // payload-level HARD error (Line 0), and Valid flips to false even though every
-// row parsed cleanly.
+// row parsed cleanly. The over-cap payload is an all-or-nothing reject, so the
+// preview echoes an EMPTY ParsedCards slice (mirroring Import's whole-batch
+// reject) rather than the full parsed set the import can never persist.
 func TestCardImportUsecase_ValidateDetectsRowCap(t *testing.T) {
 	t.Parallel()
 
@@ -986,8 +989,8 @@ func TestCardImportUsecase_ValidateDetectsRowCap(t *testing.T) {
 	if e.Kind != CardImportErrKindHard || e.Line != 0 {
 		t.Fatalf("expected a HARD Line-0 row-cap error, got %+v", e)
 	}
-	if len(out.ParsedCards) != n {
-		t.Fatalf("expected %d parsed cards returned in the preview, got %d", n, len(out.ParsedCards))
+	if len(out.ParsedCards) != 0 {
+		t.Fatalf("expected an empty ParsedCards on the over-cap reject, got %d", len(out.ParsedCards))
 	}
 }
 
@@ -1062,5 +1065,75 @@ func TestCardImportUsecase_ValidateDetectsOverLengthBack(t *testing.T) {
 	}
 	if !strings.Contains(e.Message, "back") {
 		t.Fatalf("expected message to name the back side, got %q", e.Message)
+	}
+}
+
+// TestCheckImportCaps_ReturnsValidatedVOs pins the single-scan optimization at
+// its source: on the pass path checkImportCaps returns the trimmed CardText VOs
+// parallel to the input words so Import can build cards via
+// domain.NewCardFromValidated without a second grapheme scan. The row-cap
+// short-circuit returns a nil VO slice and only the payload-level violation
+// (no per-row scan).
+func TestCheckImportCaps_ReturnsValidatedVOs(t *testing.T) {
+	t.Parallel()
+
+	words := []textdic.ParsedWord{
+		{Front: "  apple  ", Back: "  " + jpRunes(3) + "  ", Line: 1},
+		{Front: "dog", Back: jpRunes(2), Line: 2},
+	}
+	validated, caps := checkImportCaps(words)
+	if len(caps) != 0 {
+		t.Fatalf("expected no cap violations, got %+v", caps)
+	}
+	if len(validated) != len(words) {
+		t.Fatalf("expected %d validated rows parallel to input, got %d", len(words), len(validated))
+	}
+	// The VOs must be the trimmed ParseCardText output, ready for reuse by
+	// NewCardFromValidated — proving the grapheme scan already happened here.
+	if validated[0].front != domain.CardText("apple") {
+		t.Fatalf("validated[0].front = %q, want trimmed %q", validated[0].front, "apple")
+	}
+	if validated[0].back != domain.CardText(jpRunes(3)) {
+		t.Fatalf("validated[0].back = %q, want trimmed back VO", validated[0].back)
+	}
+	if validated[1].front != domain.CardText("dog") {
+		t.Fatalf("validated[1].front = %q, want %q", validated[1].front, "dog")
+	}
+
+	// Over the row cap: nil VO slice + only the payload-level violation.
+	over := make([]textdic.ParsedWord, cardImportParsedRowCap+1)
+	for i := range over {
+		over[i] = textdic.ParsedWord{Front: stringFront("f", i), Back: jpRunes(2), Line: i + 1}
+	}
+	vOver, capsOver := checkImportCaps(over)
+	if vOver != nil {
+		t.Fatalf("expected a nil VO slice on the row-cap short-circuit, got len %d", len(vOver))
+	}
+	if len(capsOver) != 1 || capsOver[0].Field != "payload" || capsOver[0].Line != 0 {
+		t.Fatalf("expected a single payload-level row-cap violation, got %+v", capsOver)
+	}
+}
+
+// TestCardImport_BuildLoopReusesValidatedVOs pins the single grapheme-scan-per-row
+// optimization structurally: the Import build loop must construct cards via
+// domain.NewCardFromValidated (reusing the CardText VOs checkImportCaps already
+// parsed) and must NOT call domain.NewCard, which re-runs domain.ParseCardText — a
+// second grapheme scan of every row's front and back. A regression to NewCard
+// would silently double-scan every import batch with no behavioral difference, so
+// only a source-level guard can catch it. Mirrors the static-source regression
+// guard pattern used on the frontend.
+func TestCardImport_BuildLoopReusesValidatedVOs(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("card_import.go")
+	if err != nil {
+		t.Fatalf("read card_import.go: %v", err)
+	}
+	s := string(src)
+	if !strings.Contains(s, "domain.NewCardFromValidated(") {
+		t.Fatal("card_import.go must build import cards via domain.NewCardFromValidated to reuse checkImportCaps' VOs (one grapheme scan per row)")
+	}
+	if strings.Contains(s, "domain.NewCard(") {
+		t.Fatal("card_import.go must not call domain.NewCard (re-runs domain.ParseCardText, double-scanning each row); use domain.NewCardFromValidated with the VOs from checkImportCaps")
 	}
 }
