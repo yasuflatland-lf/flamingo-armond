@@ -25,9 +25,22 @@ function settleFlyOuts() {
 // null. The stack's triggerSwipe must then fall back to committing directly.
 let suppressHandle = false;
 
+// Captures the ACTIVE (index 0) card's onSwipeProgress so tests can drive
+// arbitrary (direction, progress) frames — the default stub only exposes
+// right/0.5 via pointerDown, too coarse to exercise the sub-threshold quantizer.
+let activeSwipeProgress:
+  | ((direction: "left" | "down" | "right" | null, progress: number) => void)
+  | null = null;
+// Render-count spy for the ACTIVE SwipeCard. Because the stub is NOT memoized,
+// it re-renders whenever the stack re-renders, so a flat count across a drag
+// frame proves the stack skipped the state update (the quantizer bailed).
+let activeCardRenderCount = 0;
+
 beforeEach(() => {
   pendingFlyOuts = [];
   suppressHandle = false;
+  activeSwipeProgress = null;
+  activeCardRenderCount = 0;
 });
 
 // SwipeCard loads AnimatedCard via next/dynamic (ssr: false).
@@ -41,6 +54,7 @@ vi.mock("./swipe-card", async (importOriginal) => {
     ...actual,
     SwipeCard: ({
       card,
+      isActive,
       handleRef,
       revealed,
       onReveal,
@@ -55,6 +69,13 @@ vi.mock("./swipe-card", async (importOriginal) => {
       onSwipe: (card: SwipeCardData, direction: "left" | "down" | "right") => void;
       onSwipeProgress?: (direction: "left" | "down" | "right" | null, progress: number) => void;
     }) => {
+      // Render-count + progress-handler spies for the active card (see the
+      // module-level vars). Recorded during render — this stub is intentionally
+      // NOT memoized, so its render tracks the stack's re-renders one-to-one.
+      if (isActive) {
+        activeCardRenderCount += 1;
+        activeSwipeProgress = onSwipeProgress ?? null;
+      }
       const mounted = useRef(true);
       useEffect(
         () => () => {
@@ -750,5 +771,77 @@ describe("SwipeCardStack — overlay state resets on active card change", () => 
     expect(screen.queryByText("Easy")).not.toBeInTheDocument();
     expect(screen.queryByText("Again")).not.toBeInTheDocument();
     expect(screen.queryByText("Hard")).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// describe: sub-threshold drag-progress quantization (no re-render)
+// ---------------------------------------------------------------------------
+
+describe("SwipeCardStack — quantizes sub-threshold drag-progress state", () => {
+  it("skips the state update (and the card re-render) on a sub-threshold, same-direction delta", () => {
+    renderWithIntl(
+      <SwipeCardStack cards={[cardA]} displayMode="ALWAYS_VISIBLE" onCardSwiped={vi.fn()} />,
+    );
+
+    // First frame establishes the direction and a baseline progress → applies.
+    act(() => {
+      activeSwipeProgress?.("right", 0.1);
+    });
+    expect(screen.getByText("Easy")).toBeInTheDocument();
+    const afterFirst = activeCardRenderCount;
+
+    // Sub-threshold, same-direction delta (0.02 < 0.04) → the setState is
+    // skipped, so the stack — and its card subtree — does NOT re-render.
+    act(() => {
+      activeSwipeProgress?.("right", 0.12);
+    });
+    expect(activeCardRenderCount).toBe(afterFirst);
+
+    // A supra-threshold delta measured from the last APPLIED value (0.12 from
+    // the 0.1 baseline, since the skipped frame never moved it) DOES update.
+    act(() => {
+      activeSwipeProgress?.("right", 0.22);
+    });
+    expect(activeCardRenderCount).toBeGreaterThan(afterFirst);
+  });
+
+  it("always propagates a direction change even when the progress delta is sub-threshold", () => {
+    renderWithIntl(
+      <SwipeCardStack cards={[cardA]} displayMode="ALWAYS_VISIBLE" onCardSwiped={vi.fn()} />,
+    );
+
+    act(() => {
+      activeSwipeProgress?.("right", 0.3);
+    });
+    expect(screen.getByText("Easy")).toBeInTheDocument();
+    const before = activeCardRenderCount;
+
+    // |0.31 - 0.30| = 0.01 < 0.04, but the direction flips right → left, so the
+    // rating-label swap must never be gated.
+    act(() => {
+      activeSwipeProgress?.("left", 0.31);
+    });
+    expect(activeCardRenderCount).toBeGreaterThan(before);
+    expect(screen.getByText("Again")).toBeInTheDocument();
+    expect(screen.queryByText("Easy")).not.toBeInTheDocument();
+  });
+
+  it("always propagates the release frame (null, 0) from a sub-threshold position", () => {
+    renderWithIntl(
+      <SwipeCardStack cards={[cardA]} displayMode="ALWAYS_VISIBLE" onCardSwiped={vi.fn()} />,
+    );
+
+    act(() => {
+      activeSwipeProgress?.("right", 0.02);
+    });
+    expect(screen.getByText("Easy")).toBeInTheDocument();
+
+    // Release frame: |0 - 0.02| = 0.02 < 0.04, but a null direction must never
+    // be gated — the overlay must clear on pointer-release.
+    act(() => {
+      activeSwipeProgress?.(null, 0);
+    });
+    expect(screen.queryByText("Easy")).not.toBeInTheDocument();
   });
 });

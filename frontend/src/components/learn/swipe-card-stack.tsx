@@ -36,6 +36,15 @@ function initialPhaseForDisplayMode(displayMode: LearnDisplayMode): LearnCardPha
   return displayMode === "ALWAYS_VISIBLE" ? "revealed" : "front_only";
 }
 
+// Perceptual threshold for quantizing per-frame drag-progress state updates.
+// When the swipe direction is unchanged and the progress delta stays below this
+// value, handleSwipeProgress skips the setState. SwipeDirectionOverlay maps
+// progress → opacity as 0.25 + progress * 0.75, so a 0.04 progress step is a
+// ~0.03 opacity step — below the just-noticeable difference — while cutting
+// pointer-move-rate state updates (and the stack re-render they trigger) by an
+// order of magnitude.
+const SWIPE_PROGRESS_EPSILON = 0.04;
+
 export function SwipeCardStack<TCard extends SwipeCardData>({
   cards,
   displayMode,
@@ -64,6 +73,13 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
   // LearnClient's whole subtree on every pointer move.
   const [swipeDirection, setSwipeDirection] = useState<SwipeDirection | null>(null);
   const [swipeProgress, setSwipeProgress] = useState(0);
+  // Mirror the applied overlay state so the quantizer in handleSwipeProgress can
+  // compare each incoming frame against the value last committed. Tracking
+  // committed state (re-assigned every render) keeps the baseline accurate even
+  // when the state is reset outside the handler (commitCard, triggerSwipe, the
+  // active-card-change effect), with no extra bookkeeping at those setState sites.
+  const swipeStateRef = useRef({ direction: swipeDirection, progress: swipeProgress });
+  swipeStateRef.current = { direction: swipeDirection, progress: swipeProgress };
   const reducedMotion = useReducedMotion();
   const reducedMotionRef = useRef(reducedMotion);
   useEffect(() => {
@@ -100,6 +116,19 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
   }, []);
 
   const handleSwipeProgress = useCallback((direction: SwipeDirection | null, progress: number) => {
+    // Quantize per-frame drag updates: when the direction is unchanged and the
+    // progress delta is sub-threshold, skip the state update — the overlay fade
+    // is visually identical but the stack avoids an input-event-rate re-render.
+    // The release frame (direction === null) and any direction change always
+    // propagate so the overlay-clear and rating-label swap are never dropped.
+    const prev = swipeStateRef.current;
+    if (
+      direction !== null &&
+      direction === prev.direction &&
+      Math.abs(progress - prev.progress) < SWIPE_PROGRESS_EPSILON
+    ) {
+      return;
+    }
     setSwipeDirection(direction);
     setSwipeProgress(progress);
   }, []);
