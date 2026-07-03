@@ -207,6 +207,7 @@
     "showPreview": "Show preview ({count})",
     "hideErrors": "Hide errors",
     "showErrors": "Show errors ({count})",
+    "andMoreRows": "…and {count, plural, one {# more row} other {# more rows}}",
     "errorLine": "Line {line}:",
     "previewLine": "Line",
     "previewFront": "Front",

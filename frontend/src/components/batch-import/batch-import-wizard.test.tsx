@@ -4,14 +4,77 @@ import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+// Render-count probe: wrap next-intl's `useTranslations` (calling through to the
+// real impl, so translations still resolve) and count invocations. A component
+// calls `useTranslations` exactly once per render, so this counts renders.
+const intlProbe = vi.hoisted(() => ({ calls: 0 }));
+vi.mock("next-intl", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next-intl")>();
+  return {
+    ...actual,
+    useTranslations: (...args: Parameters<typeof actual.useTranslations>) => {
+      intlProbe.calls += 1;
+      return actual.useTranslations(...args);
+    },
+  };
+});
+
 import {
   CardsByCardgroupConnectionDocument,
   ValidateCardImportDocument,
 } from "@/generated/graphql";
 import { encodePayload } from "@/test/batch-import-test-utils";
 import { renderWithIntl } from "@/test/render-with-intl";
-import { BatchImportWizard, type ImportResult, resolveStep1Button } from "./batch-import-wizard";
+import {
+  BatchImportWizard,
+  ErrorList,
+  type ImportResult,
+  resolveStep1Button,
+  ValidateResult,
+} from "./batch-import-wizard";
+
+// Mirrors PREVIEW_ROW_CAP in batch-import-wizard.tsx. Kept as a local literal so
+// the test pins the documented cap rather than importing an internal constant.
+const PREVIEW_ROW_CAP = 200;
+
+function makeValidResult(n: number): MockedResponse["result"] {
+  return {
+    data: {
+      validateCardImport: {
+        __typename: "CardImportValidationResult" as const,
+        valid: true,
+        parsedCards: Array.from({ length: n }, (_, i) => ({
+          __typename: "ParsedCard" as const,
+          front: `f${i + 1}`,
+          back: `b${i + 1}`,
+          line: i + 1,
+        })),
+        errors: [],
+      },
+    },
+  };
+}
+
+function makeInvalidResult(n: number): MockedResponse["result"] {
+  return {
+    data: {
+      validateCardImport: {
+        __typename: "CardImportValidationResult" as const,
+        valid: false,
+        parsedCards: [],
+        errors: Array.from({ length: n }, (_, i) => ({
+          __typename: "CardImportError" as const,
+          line: i + 1,
+          message: `err${i + 1}`,
+          kind: "UNRECOGNIZED" as const,
+        })),
+      },
+    },
+  };
+}
 
 const TARGET_ID = "tgt-1";
 const TARGET_NAME = "Spanish Vocab";
@@ -498,5 +561,96 @@ describe("BatchImportWizard footer layout", () => {
       await screen.findByRole("button", { name: /back to edit/i }),
       screen.getByRole("button", { name: /done/i }),
     );
+  });
+});
+
+describe("BatchImportWizard preview cap", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("caps the preview table at PREVIEW_ROW_CAP rows and summarises the rest", async () => {
+    const user = userEvent.setup();
+    renderWizard({ mocks: [validateMock(TWO_LINE_TEXT, makeValidResult(250))] });
+    await typePayload(user, TWO_LINE_TEXT);
+    await user.click(screen.getByRole("button", { name: /^validate$/i }));
+    // The collapsed toggle still reports the FULL parsed count.
+    await user.click(await screen.findByRole("button", { name: /show preview \(250\)/i }));
+    await waitFor(() => expect(screen.getByText("f1")).toBeInTheDocument());
+    // The capped row renders; rows past the cap do not.
+    expect(screen.getByText(`f${PREVIEW_ROW_CAP}`)).toBeInTheDocument();
+    expect(screen.queryByText(`f${PREVIEW_ROW_CAP + 1}`)).toBeNull();
+    expect(screen.queryByText("f250")).toBeNull();
+    // A single overflow line summarises the hidden rows.
+    expect(screen.getByText(/50 more rows/i)).toBeInTheDocument();
+  });
+
+  it("caps the error list at PREVIEW_ROW_CAP rows and summarises the rest", async () => {
+    const user = userEvent.setup();
+    renderWizard({ mocks: [validateMock(TWO_LINE_TEXT, makeInvalidResult(250))] });
+    await typePayload(user, TWO_LINE_TEXT);
+    await user.click(screen.getByRole("button", { name: /^validate$/i }));
+    // Invalid result auto-opens the error list; it renders the cap plus one summary li.
+    await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(PREVIEW_ROW_CAP + 1));
+    expect(screen.getByText(/50 more rows/i)).toBeInTheDocument();
+  });
+});
+
+describe("BatchImportWizard result-table memoization", () => {
+  // Structural guard: the result tables are React.memo components, so a stable
+  // `result` / `errors` prop bails out of the wizard's per-keystroke re-renders.
+  it("wraps ValidateResult and ErrorList in React.memo", () => {
+    const memoTag = Symbol.for("react.memo");
+    expect((ValidateResult as unknown as { $$typeof: symbol }).$$typeof).toBe(memoTag);
+    expect((ErrorList as unknown as { $$typeof: symbol }).$$typeof).toBe(memoTag);
+  });
+
+  // Behavioral proof via a render-count probe: `ValidateResult` calls
+  // `useTranslations` exactly once per its own render (see the module mock at
+  // the top of this file), so `intlProbe.calls` tracks its render count in this
+  // isolated tree. An unrelated parent state change leaves it unchanged (memo
+  // bail-out); a changed `result` reference bumps it (real re-render), proving
+  // the bail-out is a genuine memo hit rather than a probe that never advances.
+  it("does not re-render the preview when unrelated parent state changes", async () => {
+    const user = userEvent.setup();
+    const resultA = {
+      valid: true,
+      parsedCards: [{ front: "apple", back: "red fruit", line: 1 }],
+      errors: [],
+    };
+    const resultB = {
+      valid: true,
+      parsedCards: [{ front: "banana", back: "yellow fruit", line: 1 }],
+      errors: [],
+    };
+
+    function Harness() {
+      const [tick, setTick] = useState(0);
+      const [useB, setUseB] = useState(false);
+      return (
+        <>
+          <button type="button" data-testid="bump" onClick={() => setTick((t) => t + 1)}>
+            {tick}
+          </button>
+          <button type="button" data-testid="swap" onClick={() => setUseB(true)}>
+            swap
+          </button>
+          <ValidateResult result={useB ? resultB : resultA} />
+        </>
+      );
+    }
+
+    intlProbe.calls = 0;
+    renderWithIntl(<Harness />);
+    const baseline = intlProbe.calls;
+    expect(baseline).toBeGreaterThan(0);
+
+    // Unrelated parent state change: memoized child bails out, no extra render.
+    await user.click(screen.getByTestId("bump"));
+    expect(intlProbe.calls).toBe(baseline);
+
+    // A changed `result` reference re-renders the memoized child.
+    await user.click(screen.getByTestId("swap"));
+    await waitFor(() => expect(intlProbe.calls).toBeGreaterThan(baseline));
   });
 });
