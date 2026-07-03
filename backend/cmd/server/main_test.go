@@ -520,6 +520,77 @@ func TestGraphQLHealth(t *testing.T) {
 	}
 }
 
+// TestQueryEndpoint_RejectsOversizedBody asserts that a POST to /query whose
+// body exceeds the body-size cap is rejected with 413 before gqlgen buffers it
+// into memory. Without the middleware.BodyLimit guard in newRouter, gqlgen's
+// transport.POST reads the whole body and this request would not return 413.
+// The /query group uses noopAuthMW, so this vector is reachable unauthenticated.
+func TestQueryEndpoint_RejectsOversizedBody(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+
+	// One byte over the cap. Content is irrelevant: BodyLimit rejects on the
+	// Content-Length header before the GraphQL transport reads the body.
+	oversized := bytes.Repeat([]byte("a"), int(queryBodyLimitBytes)+1)
+	res, err := http.Post(ts.URL+"/query", "application/json", bytes.NewReader(oversized))
+	if err != nil {
+		t.Fatalf("POST /query: %v", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusRequestEntityTooLarge)
+	}
+}
+
+// TestQueryEndpoint_AcceptsLargePayloadUnderCap asserts that a legitimately
+// large request — bigger than the 1 MiB card-import cap but under the 2 MiB
+// body limit — still passes the BodyLimit guard and executes normally. The
+// query is padded to ~1.5 MiB with a trailing GraphQL comment, which the lexer
+// ignores, so { health } resolves to "ok".
+func TestQueryEndpoint_AcceptsLargePayloadUnderCap(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+
+	// 1.5 MiB of comment padding: comfortably above the 1 MiB card-import cap,
+	// comfortably below the 2 MiB body limit.
+	padding := strings.Repeat("a", 1536*1024)
+	query := "{ health }\n#" + padding
+	reqBody, err := json.Marshal(map[string]string{"query": query})
+	if err != nil {
+		t.Fatalf("marshal query: %v", err)
+	}
+	if len(reqBody) <= 1024*1024 || len(reqBody) >= int(queryBodyLimitBytes) {
+		t.Fatalf("test body size %d not between 1 MiB and the 2 MiB cap", len(reqBody))
+	}
+
+	res, err := http.Post(ts.URL+"/query", "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("POST /query: %v", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (large-but-under-cap payload must not be rejected)", res.StatusCode)
+	}
+
+	var payload struct {
+		Data struct {
+			Health string `json:"health"`
+		} `json:"data"`
+		Errors []any `json:"errors"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(payload.Errors) != 0 {
+		t.Fatalf("errors = %+v, want none", payload.Errors)
+	}
+	if payload.Data.Health != "ok" {
+		t.Fatalf("data.health = %q, want %q", payload.Data.Health, "ok")
+	}
+}
+
 // jwtFixture bundles an ECDSA signing key plus a JWKS endpoint that exposes its
 // public key, so integration tests can mint Supabase-shaped JWTs that the real
 // auth.AuthMiddleware will accept.

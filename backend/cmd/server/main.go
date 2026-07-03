@@ -46,6 +46,11 @@ import (
 
 const defaultShutdownTimeout = 25 * time.Second
 
+// queryBodyLimitBytes caps the request body at ~2 MiB. It is the single source
+// of truth for the BodyLimit installed in newRouter; main_test.go references it
+// directly so the test and the production limit can never drift.
+const queryBodyLimitBytes int64 = 2 * 1024 * 1024
+
 type serverConfig struct {
 	shutdownTimeout time.Duration
 	// introspectionEnabled is the single source of truth for whether GraphQL
@@ -258,6 +263,15 @@ func newRouter(
 	e.Use(internalmw.RequestID())
 	e.Use(middleware.Recover())
 	e.Use(middleware.RequestLogger())
+	// Cap the request body at ~2 MiB. gqlgen's transport.POST buffers the entire
+	// /query body into memory before parsing, so without this limit an
+	// unauthenticated oversized POST is a remote memory-exhaustion vector. The
+	// cap leaves headroom over the 1 MiB card-import payload plus JSON overhead.
+	// A request with an honest Content-Length header is rejected with 413 before
+	// the body is read; a chunked / no-Content-Length request is instead capped
+	// during the read by BodyLimit's wrapped limitedReader once the bytes read
+	// exceed the cap.
+	e.Use(middleware.BodyLimit(queryBodyLimitBytes))
 
 	e.GET("/", func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{
