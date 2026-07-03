@@ -563,6 +563,13 @@ func TestSuperUserPromoter_M8_AssignToUserError(t *testing.T) {
 // M9: concurrent first-login — two goroutines both hit the middleware for the
 // same user before either has promoted. The stub mirrors ON CONFLICT DO NOTHING
 // by returning nil for both calls. Both goroutines must complete with 200.
+//
+// With the process-lifetime confirmed-sub cache, the exact IsAdmin/AssignToUser
+// call counts on this path are non-deterministic: if one goroutine records the
+// sub before the other reads the cache, the second skips both DB calls. So the
+// counts are bounded (at least one call to promote, at most one per goroutine)
+// rather than pinned to an exact value. The invariant the cache must preserve is
+// that both goroutines complete with 200 and the user ends up promoted.
 func TestSuperUserPromoter_M9_ConcurrentFirstLogin(t *testing.T) {
 	// Not parallel: captureDefaultLogger mutates global slog default.
 	var buf bytes.Buffer
@@ -614,11 +621,83 @@ func TestSuperUserPromoter_M9_ConcurrentFirstLogin(t *testing.T) {
 			t.Errorf("goroutine %d: expected 200, got %d", i, code)
 		}
 	}
-	if n := isAdminCalls.Load(); n != int64(goroutines) {
-		t.Errorf("expected %d IsAdmin calls, got %d", goroutines, n)
+	// The cache makes the counts race-dependent: at least one call promotes the
+	// user, and no goroutine issues more than one call. See the cache note above.
+	if n := isAdminCalls.Load(); n < 1 || n > int64(goroutines) {
+		t.Errorf("expected 1..%d IsAdmin calls, got %d", goroutines, n)
 	}
-	if n := assignCalls.Load(); n != int64(goroutines) {
-		t.Errorf("expected %d AssignToUser calls, got %d", goroutines, n)
+	if n := assignCalls.Load(); n < 1 || n > int64(goroutines) {
+		t.Errorf("expected 1..%d AssignToUser calls, got %d", goroutines, n)
+	}
+}
+
+// TestSuperUserPromoter_CachesConfirmedAdmin verifies that an already-admin
+// super-user triggers at most one IsAdmin role query across repeated requests
+// within a process: the first request records the sub in the confirmed-sub
+// cache and every later request short-circuits before the query.
+func TestSuperUserPromoter_CachesConfirmedAdmin(t *testing.T) {
+	t.Parallel()
+	var isAdminCalls, assignCalls atomic.Int64
+	checker := stubAdminChecker{fn: func(_ context.Context, _ string) (bool, error) {
+		isAdminCalls.Add(1)
+		return true, nil // already admin
+	}}
+	assigner := stubRoleAssigner{fn: func(_ context.Context, _, _ string) error {
+		assignCalls.Add(1)
+		return nil
+	}}
+	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner, nil)
+
+	u := &AuthUser{Sub: "user-1", Email: "a@x.com", EmailVerified: true}
+	const requests = 5
+	for i := 0; i < requests; i++ {
+		rec := runMiddleware(t, promoter, u)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d: expected 200, got %d", i, rec.Code)
+		}
+	}
+	if n := isAdminCalls.Load(); n != 1 {
+		t.Errorf("expected exactly 1 IsAdmin call across %d requests, got %d", requests, n)
+	}
+	if n := assignCalls.Load(); n != 0 {
+		t.Errorf("expected 0 AssignToUser calls, got %d", n)
+	}
+}
+
+// TestSuperUserPromoter_CachesAfterPromotion verifies a cold cache still promotes
+// correctly, and that once a sub has been promoted the confirmed-sub cache halts
+// every subsequent IsAdmin query and AssignToUser call for that sub.
+func TestSuperUserPromoter_CachesAfterPromotion(t *testing.T) {
+	t.Parallel()
+	var isAdminCalls, assignCalls atomic.Int64
+	checker := stubAdminChecker{fn: func(_ context.Context, _ string) (bool, error) {
+		isAdminCalls.Add(1)
+		return false, nil // never admin at query time
+	}}
+	assigner := stubRoleAssigner{fn: func(_ context.Context, _, _ string) error {
+		assignCalls.Add(1)
+		return nil
+	}}
+	// Discard the INFO promotion log so the test can run in parallel without
+	// mutating the global slog default.
+	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner, logger)
+
+	u := &AuthUser{Sub: "user-1", Email: "a@x.com", EmailVerified: true}
+	const requests = 5
+	for i := 0; i < requests; i++ {
+		rec := runMiddleware(t, promoter, u)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d: expected 200, got %d", i, rec.Code)
+		}
+	}
+	// Cold cache: the first request runs IsAdmin then AssignToUser. Every later
+	// request short-circuits on the cache, so both counters stay at 1.
+	if n := isAdminCalls.Load(); n != 1 {
+		t.Errorf("expected exactly 1 IsAdmin call across %d requests, got %d", requests, n)
+	}
+	if n := assignCalls.Load(); n != 1 {
+		t.Errorf("expected exactly 1 AssignToUser call across %d requests, got %d", requests, n)
 	}
 }
 

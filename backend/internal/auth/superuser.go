@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/labstack/echo/v5"
 	"github.com/rotisserie/eris"
@@ -31,6 +32,15 @@ type SuperUserPromoter struct {
 	checker     adminChecker
 	assigner    roleAssigner
 	logger      *slog.Logger
+
+	// confirmed is the process-lifetime set of subs already known to hold the
+	// admin role. Once a sub is recorded, the middleware skips the per-request
+	// IsAdmin role query for it. A process-lifetime cache with no TTL/eviction
+	// is safe here because promotion only ever *adds* the admin role (it is
+	// never removed), and SUPER_USER_EMAILS membership cannot change without a
+	// process restart — so a cached sub never needs re-checking within a
+	// process. The zero value is ready to use.
+	confirmed sync.Map // map[string]struct{}
 }
 
 // ParseSuperUserSet splits a comma-separated string of email addresses into a
@@ -131,6 +141,13 @@ func (p *SuperUserPromoter) Middleware() echo.MiddlewareFunc {
 				return next(c)
 			}
 
+			// Already confirmed as admin in this process: skip the role query.
+			// Promotion is idempotent and the admin role is never revoked, so a
+			// previously-confirmed sub needs no re-check (see the confirmed field).
+			if _, ok := p.confirmed.Load(u.Sub); ok {
+				return next(c)
+			}
+
 			isAdmin, err := p.checker.IsAdmin(ctx, u.Sub)
 			if err != nil {
 				logging.LogWarn(ctx, p.logger, "superuser: admin check failed",
@@ -140,6 +157,8 @@ func (p *SuperUserPromoter) Middleware() echo.MiddlewareFunc {
 			}
 			if isAdmin {
 				// Hot-path short-circuit: already has the role, nothing to do.
+				// Record it so subsequent requests skip the IsAdmin query.
+				p.confirmed.Store(u.Sub, struct{}{})
 				return next(c)
 			}
 
@@ -150,6 +169,8 @@ func (p *SuperUserPromoter) Middleware() echo.MiddlewareFunc {
 				return next(c)
 			}
 
+			// Promotion succeeded: record the sub so future requests skip the query.
+			p.confirmed.Store(u.Sub, struct{}{})
 			p.logger.InfoContext(ctx, "superuser: promoted to admin", slog.String("user_id", u.Sub))
 			return next(c)
 		}
