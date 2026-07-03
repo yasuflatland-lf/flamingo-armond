@@ -1,4 +1,4 @@
-/** Result classification of the middleware's getUser() call. */
+/** Result classification of the middleware's getClaims() call. */
 export type AuthStatus = "authenticated" | "anonymous" | "stale" | "error";
 
 /**
