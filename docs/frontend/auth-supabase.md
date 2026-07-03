@@ -20,25 +20,25 @@ Backend JWT verification is enabled. Without a Supabase session, only unauthenti
 
 ### Middleware cookie rotation
 
-`src/middleware.ts` calls `updateSession(request)` from `lib/supabase/middleware.ts`. The implementation MUST call `supabase.auth.getUser()` once — without it Supabase does not refresh expiring tokens and the session silently drops. The `matcher` excludes `_next/static`, `_next/image`, `favicon.ico`, common image extensions, and the static PWA endpoints `sw.js`, `offline.html`, and `manifest.webmanifest`. The PWA exclusions exist because those endpoints carry no session to rotate, so running `getUser()` / cookie-rotation on them is wasted work — `sw.js` especially, since it is re-fetched on every page load due to its `no-cache` header. See [`pwa.md`](pwa.md) for the full PWA context.
+`src/middleware.ts` calls `updateSession(request)` from `lib/supabase/middleware.ts`. The implementation calls `supabase.auth.getClaims()` once. `getClaims()` verifies the JWT locally (this project signs with asymmetric keys and auth-js caches the JWKS in a module-global) and, via its internal `getSession()`, refreshes an expiring token — the `setAll` cookie hook captures the rotation. This replaces the former per-navigation `getUser()` call, which always sent an Auth-server round trip purely to re-verify the same token. The `matcher` excludes `_next/static`, `_next/image`, `favicon.ico`, common image extensions, and the static PWA endpoints `sw.js`, `offline.html`, and `manifest.webmanifest`. The PWA exclusions exist because those endpoints carry no session to rotate, so running `getUser()` / cookie-rotation on them is wasted work — `sw.js` especially, since it is re-fetched on every page load due to its `no-cache` header. See [`pwa.md`](pwa.md) for the full PWA context.
 
 The `matcher` must also explicitly exclude `/api/:path*` and `/auth/callback`. Without the `/api` exclusion, every Apollo browser POST to `/api/graphql` triggers a full Supabase token-refresh round-trip in middleware, adding latency per GraphQL call. Without the `/auth/callback` exclusion, middleware cookie writes race against the route handler's own `exchangeCodeForSession` and can corrupt the new session.
 
 #### Middleware-forwarded identity headers
 
-`frontend/src/lib/supabase/middleware.ts` (`updateSession`) is the single source of auth identity for server-side rendering. After calling `getUser()` (which also rotates the session cookie), it derives three server-internal request headers and sets them before passing the request on:
+`frontend/src/lib/supabase/middleware.ts` (`updateSession`) is the single source of auth identity for server-side rendering. After calling `getClaims()` (whose internal `getSession()` rotates the session cookie), it derives three server-internal request headers and sets them before passing the request on:
 
 | Header | Type | Source |
 |---|---|---|
-| `x-auth-status` | `authenticated\|anonymous\|stale\|error` | `getUser()` result + `isStaleSessionError` check |
-| `x-user-email` | string (empty when anonymous) | `user.email` from `getUser()` |
+| `x-auth-status` | `authenticated\|anonymous\|stale\|error` | `getClaims()` result (claims present → `authenticated`; `{ data: null, error: null }` → `anonymous`; error → `stale`/`error` via `isStaleSessionError`) |
+| `x-user-email` | string (empty when anonymous) | `claims.email` from `getClaims()` |
 | `x-user-is-admin` | `"true"\|"false"` | `getClaims()` → `claims.app_metadata.role === "admin"` |
 
 Any client-supplied copies of these headers are stripped at the top of `updateSession` before the middleware sets its own — a client must never be able to spoof them. The headers are set on the forwarded **request** (not on the response), so the browser never sees them; this is the same posture as `x-nonce` (see [`csp.md`](csp.md)). The root layout reads all three via `readAuthContext` (`frontend/src/lib/supabase/auth-status.ts`) and passes the derived `{ status, email, isAdmin }` props to `AppShell` (via `ConditionalShell`).
 
-#### Which pages call `getUser()` directly vs. reading the forwarded header
+#### No page calls `getUser()` directly — every page reads the forwarded header
 
-`getUser()` is called in exactly four places: the middleware (`frontend/src/lib/supabase/middleware.ts`), `app/admin/layout.tsx`, `app/admin/users/page.tsx`, and `app/login/page.tsx`. Every other protected page reads the middleware-forwarded `x-auth-status` header via `readAuthContext(await headers())` and redirects to `/login` when the status is not `authenticated`. For the full RSC error-handling contract — including the `AuthSessionMissingError` filter that every direct `getUser()` caller must apply — see [`.claude/rules/frontend-rsc-error-handling.md`](../../.claude/rules/frontend-rsc-error-handling.md).
+No production code calls `supabase.auth.getUser()` directly. The middleware (`frontend/src/lib/supabase/middleware.ts`) verifies the JWT via `getClaims()` (above) and forwards `x-auth-status`; every protected page — including `app/admin/layout.tsx`, `app/admin/users/page.tsx`, and `app/login/page.tsx` — reads that header via `readAuthContext(await headers())` and branches on the status (most redirect to `/login` when it is not `authenticated`; the admin pages redirect to `/`; `login/page.tsx` inverts the check). For the full RSC error-handling contract — including the `AuthSessionMissingError` filter that any future direct `getUser()` caller must apply — see [`.claude/rules/frontend-rsc-error-handling.md`](../../.claude/rules/frontend-rsc-error-handling.md).
 
 ### `isAdmin` is read from the JWT claim via the middleware, not from a GraphQL query
 

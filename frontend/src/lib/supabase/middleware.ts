@@ -79,58 +79,60 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  // CRITICAL: getUser() is what triggers token refresh — removing this call
-  // silently breaks session renewal, leaving users with expired tokens.
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-  const nonIgnorable = error != null && !isIgnorableAuthError(error);
-  if (nonIgnorable) {
-    // err.message omitted — a Supabase auth error message may carry user-identifying content.
-    console.error("[supabase/middleware] getUser() failed:", error.name);
-  }
-
+  // getClaims() is the single auth source. It verifies the JWT locally (this
+  // project uses asymmetric signing keys and auth-js caches the JWKS in a
+  // module-global), and via its internal getSession() call refreshes an expiring
+  // token — the setAll cookie hook above captures the rotation. This replaces the
+  // former getUser() call, which always sent an Auth-server round trip on every
+  // navigation purely to re-verify the same token. getClaims uses jose/WebCrypto
+  // and is Edge-compatible.
+  //
   // isAdmin is a UI hint only (real gate is app/admin/layout.tsx). The admin role
   // claim is injected into the JWT by the Custom Access Token Hook and is NOT
-  // mirrored into auth.users app_metadata, so it must be read from the verified
-  // claims (getClaims), not from the getUser() user record. getClaims uses
-  // jose/WebCrypto and is Edge-compatible.
+  // mirrored into auth.users app_metadata, so it is read from the verified claims.
+  let authStatus: AuthStatus = "anonymous";
+  let email = "";
   let isAdmin = false;
-  if (user) {
-    try {
-      const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
-      if (claimsError) {
+  try {
+    // getClaims() has a three-way return: success ({ data: { claims }, error: null }),
+    // failure ({ data: null, error }), and anonymous ({ data: null, error: null }).
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+    if (claimsError != null) {
+      // A refresh/verification failure. Deleted-user detection now lands here (at
+      // the token-refresh boundary) instead of on getUser(); it is bounded by the
+      // jwt_expiry refresh cadence (supabase/config.toml).
+      if (isStaleSessionError(claimsError)) {
+        authStatus = "stale";
+      } else if (isIgnorableAuthError(claimsError)) {
+        authStatus = "anonymous";
+      } else {
+        authStatus = "error";
         // err.message omitted — a Supabase auth error message may carry user-identifying content.
-        console.warn(
-          "[supabase/middleware] getClaims() failed — isAdmin defaulting to false:",
-          claimsError.name,
-        );
+        console.error("[supabase/middleware] getClaims() failed:", claimsError.name);
       }
-      isAdmin = claimsData?.claims?.app_metadata?.role === "admin";
-    } catch (err) {
-      // getClaims() can throw non-AuthError exceptions (plain Error from validateExp,
-      // DOMException from WebCrypto) that escape the SDK's internal AuthError catch.
-      // isAdmin is a UI hint only (real gate is app/admin/layout.tsx), so fail closed.
-      console.warn(
-        "[supabase/middleware] getClaims() threw unexpectedly — isAdmin defaulting to false:",
-        err instanceof Error ? err.name : "unknown",
-      );
+    } else if (claimsData == null) {
+      // Anonymous request: no session. getClaims() returns { data: null, error: null }
+      // (NOT AuthSessionMissingError) in this case.
+      authStatus = "anonymous";
+    } else {
+      authStatus = "authenticated";
+      email = claimsData.claims.email ?? "";
+      isAdmin = claimsData.claims.app_metadata?.role === "admin";
     }
-  }
-  let authStatus: AuthStatus;
-  if (user) {
-    authStatus = "authenticated";
-  } else if (isStaleSessionError(error)) {
-    authStatus = "stale";
-  } else if (nonIgnorable) {
+  } catch (err) {
+    // getClaims() can throw non-AuthError exceptions (plain Error from validateExp,
+    // DOMException from WebCrypto) that escape the SDK's internal AuthError catch.
+    // Fail closed to the degraded (logo-only) shell — an uncaught throw would 500
+    // the whole request.
     authStatus = "error";
-  } else {
-    authStatus = "anonymous";
+    console.warn(
+      "[supabase/middleware] getClaims() threw unexpectedly — degrading to error status:",
+      err instanceof Error ? err.name : "unknown",
+    );
   }
 
   requestHeaders.set(AUTH_STATUS_HEADER, authStatus);
-  requestHeaders.set(USER_EMAIL_HEADER, user?.email ?? "");
+  requestHeaders.set(USER_EMAIL_HEADER, email);
   requestHeaders.set(USER_IS_ADMIN_HEADER, isAdmin ? "true" : "false");
 
   // Rebuild the forwarded response from the now-complete request headers,
