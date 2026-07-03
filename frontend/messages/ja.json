@@ -207,6 +207,7 @@
     "showPreview": "プレビューを表示 ({count})",
     "hideErrors": "エラーを非表示",
     "showErrors": "エラーを表示 ({count})",
+    "andMoreRows": "…ほか{count}行",
     "errorLine": "{line}行目:",
     "previewLine": "行",
     "previewFront": "表面",

@@ -5,7 +5,7 @@ import type { DocumentNode } from "graphql";
 import { ChevronDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { JSX, ReactNode } from "react";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { ValidateCardImportQuery } from "@/app/cardgroups/[id]/cards/queries";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -135,21 +135,35 @@ function ImportStepper(props: {
 }
 
 /**
+ * Maximum number of preview / error rows rendered at once. The backend accepts
+ * up to 5000 import rows, so an uncapped preview mounts thousands of DOM nodes
+ * and re-reconciles them on every textarea keystroke. Rows beyond the cap are
+ * summarised by an "…and N more" line — the full result still imports; only the
+ * on-screen preview is truncated.
+ */
+const PREVIEW_ROW_CAP = 200;
+
+/**
  * Renders a list of line-level import/validation messages. A `DUPLICATE`-kind
  * row reads as a non-fatal warning (amber — the row still persisted via
  * last-write-wins); every other kind, and any row without a kind (validation
  * step), reads as a blocking error (red).
+ *
+ * The list is capped at `PREVIEW_ROW_CAP` rows and memoized so a referentially
+ * stable `errors` prop bails out of the wizard's per-keystroke re-renders.
  */
-function ErrorList(props: {
+export const ErrorList = memo(function ErrorList(props: {
   errors: Array<{ line: number; message: string; kind?: CardImportErrorKind }>;
   className?: string;
   role?: string;
 }): JSX.Element {
   const { errors, className, role } = props;
   const t = useTranslations("BatchImport");
+  const shown = errors.slice(0, PREVIEW_ROW_CAP);
+  const remaining = errors.length - shown.length;
   return (
     <ul className={cn("space-y-1", className)} role={role}>
-      {errors.map((err) => (
+      {shown.map((err) => (
         <li
           key={`${err.line}-${err.message}`}
           className={cn(
@@ -162,18 +176,31 @@ function ErrorList(props: {
           <span className="font-medium">{t("errorLine", { line: err.line })}</span> {err.message}
         </li>
       ))}
+      {remaining > 0 && (
+        <li className="px-3 py-2 text-sm text-muted-foreground">
+          {t("andMoreRows", { count: remaining })}
+        </li>
+      )}
     </ul>
   );
-}
+});
 
 /**
  * Unified collapsible for the validate result: a preview table when valid, an
  * error list when invalid. Collapsed when valid, open when invalid.
+ *
+ * The preview table is capped at `PREVIEW_ROW_CAP` rows and the component is
+ * memoized so a referentially stable `result` prop bails out of the wizard's
+ * per-keystroke re-renders.
  */
-function ValidateResult(props: { result: ValidationResult }): JSX.Element {
+export const ValidateResult = memo(function ValidateResult(props: {
+  result: ValidationResult;
+}): JSX.Element {
   const { result } = props;
   const t = useTranslations("BatchImport");
   const [open, setOpen] = useState<boolean>(!result.valid);
+  const previewCards = result.parsedCards.slice(0, PREVIEW_ROW_CAP);
+  const remainingRows = result.parsedCards.length - previewCards.length;
 
   let triggerLabel: string;
   if (result.valid) {
@@ -214,13 +241,20 @@ function ValidateResult(props: { result: ValidationResult }): JSX.Element {
                 </tr>
               </thead>
               <tbody>
-                {result.parsedCards.map((card) => (
+                {previewCards.map((card) => (
                   <tr key={card.line} className="border-t border-border">
                     <td className="px-3 py-2 text-muted-foreground">{card.line}</td>
                     <td className="px-3 py-2">{card.front}</td>
                     <td className="px-3 py-2">{card.back}</td>
                   </tr>
                 ))}
+                {remainingRows > 0 && (
+                  <tr className="border-t border-border">
+                    <td colSpan={3} className="px-3 py-2 text-muted-foreground">
+                      {t("andMoreRows", { count: remainingRows })}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -230,7 +264,7 @@ function ValidateResult(props: { result: ValidationResult }): JSX.Element {
       </CollapsibleContent>
     </Collapsible>
   );
-}
+});
 
 /**
  * Two-slot wizard footer: a secondary/back affordance on the left and the
