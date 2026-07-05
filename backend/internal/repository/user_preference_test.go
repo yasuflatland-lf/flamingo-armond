@@ -377,6 +377,69 @@ func TestUserPreferenceRepository_UpdateLearnDisplayMode_UpdateRow(t *testing.T)
 	}
 }
 
+// TestUserPreferenceRepository_UpdateNewCardRatio_CreateRow verifies that
+// UpdateNewCardRatio creates a new user_preferences row when none exists, and
+// that FindByUserID reflects the stored fraction (proving the raw INSERT ...
+// ON CONFLICT SQL and the new_card_ratio CHECK constraint against a real
+// Postgres instance).
+func TestUserPreferenceRepository_UpdateNewCardRatio_CreateRow(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	userID := insertAuthUser(t, ctx)
+
+	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	if err := repo.UpdateNewCardRatio(ctx, userID, 3, 7); err != nil {
+		t.Fatalf("UpdateNewCardRatio (create): %v", err)
+	}
+
+	got, err := repo.FindByUserID(ctx, userID)
+	if err != nil {
+		t.Fatalf("FindByUserID after create: %v", err)
+	}
+	if got.NewCardRatio.Numerator() != 3 || got.NewCardRatio.Denominator() != 7 {
+		t.Fatalf("after create: NewCardRatio = %d/%d, want 3/7",
+			got.NewCardRatio.Numerator(), got.NewCardRatio.Denominator())
+	}
+}
+
+// TestUserPreferenceRepository_UpdateNewCardRatio_UpdateRow verifies that
+// calling UpdateNewCardRatio a second time updates the columns without creating
+// a duplicate row.
+func TestUserPreferenceRepository_UpdateNewCardRatio_UpdateRow(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	userID := insertAuthUser(t, ctx)
+
+	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	if err := repo.UpdateNewCardRatio(ctx, userID, 3, 7); err != nil {
+		t.Fatalf("UpdateNewCardRatio (first): %v", err)
+	}
+	if err := repo.UpdateNewCardRatio(ctx, userID, 2, 9); err != nil {
+		t.Fatalf("UpdateNewCardRatio (second): %v", err)
+	}
+
+	got, err := repo.FindByUserID(ctx, userID)
+	if err != nil {
+		t.Fatalf("FindByUserID after update: %v", err)
+	}
+	if got.NewCardRatio.Numerator() != 2 || got.NewCardRatio.Denominator() != 9 {
+		t.Fatalf("after update: NewCardRatio = %d/%d, want 2/9",
+			got.NewCardRatio.Numerator(), got.NewCardRatio.Denominator())
+	}
+
+	// Confirm the row was updated, not duplicated.
+	sqlDB := sqlDBHandle(t)
+	var count int
+	if err := sqlDB.QueryRowContext(ctx,
+		`SELECT count(*) FROM public.user_preferences WHERE user_id = $1`, userID).
+		Scan(&count); err != nil {
+		t.Fatalf("count user_preferences for user %q: %v", userID, err)
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly 1 user_preferences row, got %d", count)
+	}
+}
+
 // TestUserPreferenceRepository_OnDeleteCardgroup_SetsNull guards against
 // accidental CASCADE on last_viewed_cardgroup_id: deleting a cardgroup must
 // set that column to NULL rather than removing the user_preferences row.

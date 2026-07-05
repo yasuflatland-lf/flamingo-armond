@@ -44,7 +44,7 @@ func newLearnDisplayModeSrv(
 	updateUC usecase.UpdateLearnDisplayModeUsecase,
 ) *handler.Server {
 	userUC := usecase.NewUserUsecase(userMock, nil, nil, newDiscardLogger())
-	r := resolver.NewResolver(userUC, nil, nil, nil, nil, nil, nil, nil, nil, updateUC, nil, nil, nil, nil)
+	r := resolver.NewResolver(userUC, nil, nil, nil, nil, nil, nil, nil, nil, updateUC, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv

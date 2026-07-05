@@ -17,6 +17,7 @@ type Resolver struct {
 	AdminRoleUC              usecase.AdminRoleUsecase
 	LastViewedCardgroupUC    usecase.LastViewedCardgroupUsecase
 	UpdateLearnDisplayModeUC usecase.UpdateLearnDisplayModeUsecase
+	UpdateNewCardRatioUC     usecase.UpdateNewCardRatioUsecase
 	CEFRUC                   usecase.CEFRClassifier
 	MasterCatalogUC          usecase.MasterCatalogUsecase
 	MasterCardUC             usecase.MasterCardUsecase
@@ -35,6 +36,7 @@ func NewResolver(
 	adminRoleUC usecase.AdminRoleUsecase,
 	lastViewedCardgroupUC usecase.LastViewedCardgroupUsecase,
 	updateLearnDisplayModeUC usecase.UpdateLearnDisplayModeUsecase,
+	updateNewCardRatioUC usecase.UpdateNewCardRatioUsecase,
 	learnUC usecase.LearnUsecase,
 	cefrUC usecase.CEFRClassifier,
 	masterCatalogUC usecase.MasterCatalogUsecase,
@@ -51,6 +53,7 @@ func NewResolver(
 		AdminRoleUC:              adminRoleUC,
 		LastViewedCardgroupUC:    lastViewedCardgroupUC,
 		UpdateLearnDisplayModeUC: updateLearnDisplayModeUC,
+		UpdateNewCardRatioUC:     updateNewCardRatioUC,
 		LearnUC:                  learnUC,
 		CEFRUC:                   cefrUC,
 		MasterCatalogUC:          masterCatalogUC,

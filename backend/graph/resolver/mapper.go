@@ -175,6 +175,10 @@ func toLearnDisplayModeModel(m domain.LearnDisplayMode) model.LearnDisplayMode {
 	}
 }
 
+func toNewCardRatioModel(r domain.NewCardRatio) *model.NewCardRatio {
+	return &model.NewCardRatio{Numerator: r.Numerator(), Denominator: r.Denominator()}
+}
+
 func fromLearnDisplayModeModel(m model.LearnDisplayMode) (domain.LearnDisplayMode, error) {
 	switch m {
 	case model.LearnDisplayModeFlipToReveal:

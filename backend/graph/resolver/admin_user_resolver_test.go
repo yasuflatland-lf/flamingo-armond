@@ -109,7 +109,7 @@ func (m *mockRoleByUserIDRepo) CountAdmins(_ context.Context) (int64, error) {
 // AdminUserUsecase. Other usecase fields are nil — only admin-user resolvers
 // are exercised here.
 func newAdminUserSrv(adminUC usecase.AdminUserUsecase) *handler.Server {
-	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, adminUC, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, adminUC, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv

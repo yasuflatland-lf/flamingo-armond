@@ -333,6 +333,11 @@ func (r *countingUserPreferenceRepo) UpdateLearnDisplayMode(_ context.Context, _
 	panic("countingUserPreferenceRepo.UpdateLearnDisplayMode not configured")
 }
 
+// UpdateNewCardRatio is needed to satisfy repository.UserPreferenceRepository.
+func (r *countingUserPreferenceRepo) UpdateNewCardRatio(_ context.Context, _ string, _, _ int) error {
+	panic("countingUserPreferenceRepo.UpdateNewCardRatio not configured")
+}
+
 func emptyUserPreferenceRepo() *countingUserPreferenceRepo {
 	return &countingUserPreferenceRepo{
 		findByUserIDs: func(_ context.Context, _ []string) ([]*domain.UserPreference, error) {
