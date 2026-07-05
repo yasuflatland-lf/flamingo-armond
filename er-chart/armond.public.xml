@@ -203,6 +203,8 @@
          </column>
          <column autoUpdated="false" defaultValue="now()" digits="6" id="2" name="updated_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
          <column autoUpdated="false" defaultValue="'flip_to_reveal'::text" digits="0" id="3" name="learn_display_mode" nullable="false" remarks="" size="2147483647" type="text" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="4" digits="0" id="4" name="new_card_ratio_num" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="5" digits="0" id="5" name="new_card_ratio_den" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
          <primaryKey column="user_id" sequenceNumberInPK="1"/>
          <index name="user_preferences_pkey" unique="true">
             <column ascending="true" name="user_id"/>
@@ -211,6 +213,7 @@
             <column ascending="true" name="last_viewed_cardgroup_id"/>
          </index>
          <checkConstraint constraint="(learn_display_mode = ANY (ARRAY['flip_to_reveal'::text, 'always_visible'::text]))" name="user_preferences_learn_display_mode_check"/>
+         <checkConstraint constraint="((new_card_ratio_num &gt;= 1) AND (new_card_ratio_num &lt; new_card_ratio_den) AND (new_card_ratio_den &lt;= 100))" name="user_preferences_new_card_ratio_check"/>
       </table>
       <table name="user_roles" remarks="" schema="public" type="TABLE">
          <column autoUpdated="false" defaultValue="null" digits="0" id="0" name="user_id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">

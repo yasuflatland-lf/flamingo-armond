@@ -186,6 +186,40 @@
                                     </td>
                                     <td></td>
                                 </tr>
+                                <tr>
+                                    <td><span id="new_card_ratio_num">new_card_ratio_num</span></td>
+                                    <td>int4</td>
+                                    <td>10</td>
+                                    <td title=''></td>
+                                    <td title=''></td>
+                                    <td>4</td>
+                                    <td>
+                                        <table border='0' cellspacing='0' cellpadding='0'>
+                                        </table>
+                                    </td>
+                                    <td>
+                                        <table border='0' cellspacing='0' cellpadding='0'>
+                                        </table>
+                                    </td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td><span id="new_card_ratio_den">new_card_ratio_den</span></td>
+                                    <td>int4</td>
+                                    <td>10</td>
+                                    <td title=''></td>
+                                    <td title=''></td>
+                                    <td>5</td>
+                                    <td>
+                                        <table border='0' cellspacing='0' cellpadding='0'>
+                                        </table>
+                                    </td>
+                                    <td>
+                                        <table border='0' cellspacing='0' cellpadding='0'>
+                                        </table>
+                                    </td>
+                                    <td></td>
+                                </tr>
                                 </tbody>
                             </table>
                         </div>
@@ -260,6 +294,10 @@
                                     <td>user_preferences_learn_display_mode_check</td>
                                     <td>(learn_display_mode &#61; ANY (ARRAY[&#39;flip_to_reveal&#39;::text, &#39;always_visible&#39;::text]))</td>
                                 </tr>
+                                <tr>
+                                    <td>user_preferences_new_card_ratio_check</td>
+                                    <td>((new_card_ratio_num &gt;&#61; 1) AND (new_card_ratio_num &lt; new_card_ratio_den) AND (new_card_ratio_den &lt;&#61; 100))</td>
+                                </tr>
                                 </tbody>
                             </table>
                         </div>
@@ -285,20 +323,20 @@
                                         <map id="oneDegreeRelationshipsDiagram" name="oneDegreeRelationshipsDiagram">
 <area shape="rect" id="node1" href="cardgroups.html" target="_top" title="cardgroups" alt="" coords="231,60,425,236">
 <area shape="rect" id="node2" href="users.html" target="_top" title="users" alt="" coords="5,37,187,184">
-<area shape="rect" id="node3" href="user_preferences.html" target="_top" title="user_preferences" alt="" coords="469,5,919,192">
+<area shape="rect" id="node3" href="user_preferences.html" target="_top" title="user_preferences" alt="" coords="469,5,919,251">
 </map>
                                         <a name='diagram'><img id="oneDegreeImg" src="../diagrams/tables/user_preferences.1degree.png" usemap="#oneDegreeRelationshipsDiagram" class="diagram" border="0" align="left"></a>
                                     </div>
                                     <div class="chart tab-pane " id="twodegreesDegreeImg-chart" style="position: relative; overflow-x:auto;">
                                         <map id="twoDegreesRelationshipsDiagram" name="twoDegreesRelationshipsDiagram">
-<area shape="rect" id="node1" href="cardgroups.html" target="_top" title="cardgroups" alt="" coords="417,208,612,296">
-<area shape="rect" id="node2" href="users.html" target="_top" title="users" alt="" coords="237,208,373,296">
-<area shape="rect" id="node8" title="auth.users" alt="" coords="5,205,193,293">
-<area shape="rect" id="node3" href="cards.html" target="_top" title="cards" alt="" coords="813,271,949,359">
-<area shape="rect" id="node4" href="swipe_records.html" target="_top" title="swipe_records" alt="" coords="1149,97,1372,185">
-<area shape="rect" id="node5" href="user_card_fsrs.html" target="_top" title="user_card_fsrs" alt="" coords="1149,305,1372,393">
-<area shape="rect" id="node6" href="user_preferences.html" target="_top" title="user_preferences" alt="" coords="656,67,1105,253">
-<area shape="rect" id="node7" href="user_roles.html" target="_top" title="user_roles" alt="" coords="423,412,607,500">
+<area shape="rect" id="node1" href="cardgroups.html" target="_top" title="cardgroups" alt="" coords="417,243,612,331">
+<area shape="rect" id="node2" href="users.html" target="_top" title="users" alt="" coords="237,243,373,331">
+<area shape="rect" id="node8" title="auth.users" alt="" coords="5,240,193,328">
+<area shape="rect" id="node3" href="cards.html" target="_top" title="cards" alt="" coords="813,335,949,423">
+<area shape="rect" id="node4" href="swipe_records.html" target="_top" title="swipe_records" alt="" coords="1149,132,1372,220">
+<area shape="rect" id="node5" href="user_card_fsrs.html" target="_top" title="user_card_fsrs" alt="" coords="1149,369,1372,457">
+<area shape="rect" id="node6" href="user_preferences.html" target="_top" title="user_preferences" alt="" coords="656,72,1105,317">
+<area shape="rect" id="node7" href="user_roles.html" target="_top" title="user_roles" alt="" coords="423,476,607,564">
 </map>
                                         <a name='diagram'><img id="twodegreesDegreeImg" src="../diagrams/tables/user_preferences.2degrees.png" usemap="#twoDegreesRelationshipsDiagram" class="diagram" border="0" align="left"></a>
                                     </div>
