@@ -12,6 +12,7 @@
 #   ansible-playbook playbooks/setup-prod.yml --tags loopback
 #   ansible-playbook playbooks/setup-prod.yml --tags postapply
 #   ansible-playbook playbooks/setup-prod.yml --tags seed-admin-prod
+#   ansible-playbook playbooks/setup-prod.yml --tags autofix-app
 #
 # Tag map:
 #   preflight       -> Phase 1  (pre-bring-up token/app scanner)
@@ -22,6 +23,8 @@
 #   postapply       -> Phase 6  (post-bring-up deploy kick + smoke)
 #   supabase-hooks  -> Phase 7  (enable custom_access_token hook via Management API)
 #   seed-admin-prod -> one-shot admin promotion from SUPER_USER_EMAILS (re-runnable)
+#   autofix-app     -> one-shot GitHub App credential registration for the
+#                      autofix-backend-generated workflow (re-runnable)
 #
 # supabase.yml is imported twice with different `step` vars so that
 # --tags supabase runs only Phase 2 and --tags loopback runs only Phase 5.
@@ -74,3 +77,7 @@
     - name: Seed admin role from SUPER_USER_EMAILS in production DB
       ansible.builtin.import_tasks: setup-prod/seed-admin-prod.yml
       tags: [seed-admin-prod, never]
+
+    - name: Register autofix GitHub App credentials (repository variable + secret)
+      ansible.builtin.import_tasks: setup-prod/autofix-app.yml
+      tags: [autofix-app, never]
