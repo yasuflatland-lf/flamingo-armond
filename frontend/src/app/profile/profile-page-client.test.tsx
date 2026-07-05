@@ -91,6 +91,8 @@ describe("<ProfilePageClient>", () => {
           email="alice@example.com"
           initial={initial}
           displayMode="FLIP_TO_REVEAL"
+          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          isAdmin={false}
         />
       </MockedProvider>,
     );
@@ -113,12 +115,54 @@ describe("<ProfilePageClient>", () => {
           email="alice@example.com"
           initial={initial}
           displayMode="FLIP_TO_REVEAL"
+          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          isAdmin={false}
         />
       </MockedProvider>,
     );
 
     expect(screen.getByRole("heading", { name: /settings/i })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: /language/i })).toBeInTheDocument();
+  });
+
+  it("renders the new-card-ratio section for admins", () => {
+    mockSearchParamsValue = "";
+
+    renderWithIntl(
+      <MockedProvider mocks={[]}>
+        <ProfilePageClient
+          email="alice@example.com"
+          initial={initial}
+          displayMode="FLIP_TO_REVEAL"
+          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          isAdmin={true}
+        />
+      </MockedProvider>,
+    );
+
+    // The section (and its slider) are wired into the settings section only for
+    // admins — proving the render-gating prop is threaded from the consumer.
+    expect(screen.getByRole("slider", { name: /new card ratio/i })).toBeInTheDocument();
+    expect(screen.getByTestId("new-card-ratio-slider")).toBeInTheDocument();
+  });
+
+  it("does not render the new-card-ratio section for non-admins", () => {
+    mockSearchParamsValue = "";
+
+    renderWithIntl(
+      <MockedProvider mocks={[]}>
+        <ProfilePageClient
+          email="alice@example.com"
+          initial={initial}
+          displayMode="FLIP_TO_REVEAL"
+          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          isAdmin={false}
+        />
+      </MockedProvider>,
+    );
+
+    expect(screen.queryByRole("slider", { name: /new card ratio/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("new-card-ratio-slider")).not.toBeInTheDocument();
   });
 
   it("opens the sheet when ?edit=self (singleton sentinel) is present in the query", () => {
@@ -130,6 +174,8 @@ describe("<ProfilePageClient>", () => {
           email="alice@example.com"
           initial={initial}
           displayMode="FLIP_TO_REVEAL"
+          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          isAdmin={false}
         />
       </MockedProvider>,
     );
@@ -148,6 +194,8 @@ describe("<ProfilePageClient>", () => {
           email="alice@example.com"
           initial={initial}
           displayMode="FLIP_TO_REVEAL"
+          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          isAdmin={false}
         />
       </MockedProvider>,
     );
@@ -170,6 +218,8 @@ describe("<ProfilePageClient>", () => {
           email="alice@example.com"
           initial={initial}
           displayMode="FLIP_TO_REVEAL"
+          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          isAdmin={false}
         />
       </MockedProvider>,
     );
@@ -218,6 +268,8 @@ describe("<ProfilePageClient>", () => {
           email="alice@example.com"
           initial={initial}
           displayMode="FLIP_TO_REVEAL"
+          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          isAdmin={false}
         />
       </MockedProvider>,
     );
@@ -245,6 +297,8 @@ describe("<ProfilePageClient>", () => {
           email="alice@example.com"
           initial={initial}
           displayMode="FLIP_TO_REVEAL"
+          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          isAdmin={false}
         />
       </MockedProvider>,
     );
