@@ -165,7 +165,7 @@ func buildResolver(
 	masterDeckUC := usecase.NewMasterDeckUsecase(repos.masterCardgroup, repos.masterCard, repos.card, repos.cardgroup, repos.gorm, logger)
 	userUC := usecase.NewUserUsecase(repos.user, repos.userRole, authSvc, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(repos.cardgroup, authSvc, logger)
-	learnUC := usecase.NewLearnUsecase(repos.card, repos.cardgroup, service.NewOrderingPolicy(), nil, 0, 0, nil, logger)
+	learnUC := usecase.NewLearnUsecase(repos.card, repos.cardgroup, repos.userPreference, service.NewOrderingPolicy(), nil, 0, 0, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(repos.gorm, repos.card, repos.cardgroup, repos.swipeRecord, service.NewFSRSScheduler(), repos.userCardFSRS, logger)
 	cardImportUC := usecase.NewCardImportUsecase(repos.cardgroup, repos.card, repos.gorm, logger)
 	adminUserUC := usecase.NewAdminUser(repos.gorm, repos.user, repos.role, repos.userRole, adminGate, logger)

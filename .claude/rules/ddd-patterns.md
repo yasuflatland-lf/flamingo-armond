@@ -169,7 +169,8 @@ rating Again/Hard) over long-interval Review-state filler, and exclude cards
 swiped today via a JST start-of-day cutoff. SQL `random()` decides *which* rows
 enter each window (selection); the injected `*rand.Rand` in
 `OrderingPolicy.Apply` decides their arrangement (deterministic in tests) and
-interleaves at `NewCardRatio=4 : ReviewCardRatio=1`. This replaces a tie-scoped
+interleaves at the caller-supplied `domain.NewCardRatio` (`domain.DefaultNewCardRatio`
+= 4:1 absent a stored preference). This replaces a tie-scoped
 shuffle that never fired on dense real data (microsecond-precision `due` and
 distinct `position` make ties structurally impossible).
 

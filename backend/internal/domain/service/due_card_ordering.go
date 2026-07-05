@@ -7,15 +7,6 @@ import (
 	"backend/internal/domain"
 )
 
-// NewCardRatio and ReviewCardRatio define the new/review interleave ratio.
-// Fixed at 4:1 (four new per one review): a default 20-card session is 16
-// never-seen discoveries plus 4 reviews of cards rated Again/Hard on a
-// previous day. Revisit if discovery pace outruns retention.
-const (
-	NewCardRatio    = 4
-	ReviewCardRatio = 1
-)
-
 // OrderingPolicy applies session-local ordering to due cards.
 //
 // The zero value is ready to use; the constructor is provided for symmetry
@@ -33,17 +24,20 @@ func NewOrderingPolicy() *OrderingPolicy { return &OrderingPolicy{} }
 //     pre-sorts learning-phase rows (Learning/Relearning) ahead of Review
 //     rows, and shuffling never crosses that boundary, so a Review-state
 //     filler can never displace a learning-phase card from the review slots.
-//  2. New and review cards are interleaved at NewCardRatio:ReviewCardRatio
-//     with review-first emission. When one bucket empties, the remaining
-//     cards from the other bucket are appended in their post-shuffle order.
+//  2. New and review cards are interleaved at the caller-supplied ratio
+//     (ratio.NewShare new per ratio.ReviewShare review) with review-first
+//     emission. When one bucket empties, the remaining cards from the other
+//     bucket are appended in their post-shuffle order.
 //
 // The caller is responsible for truncating to a per-session limit. Apply
 // returns all cards from due without imposing a length cap; the input slice
 // is not modified, as partition produces fresh slices before shuffling.
 //
 // rng must be non-nil. Tests inject a seeded *rand.Rand for deterministic
-// order; production constructs one per session.
-func (p *OrderingPolicy) Apply(due []domain.DueCard, rng *rand.Rand) []*domain.Card {
+// order; production constructs one per session. ratio is the per-user
+// new-vs-review interleave ratio; its VO invariants guarantee both shares are
+// >= 1, so interleave's positive-ratio guard is satisfied by construction.
+func (p *OrderingPolicy) Apply(due []domain.DueCard, rng *rand.Rand, ratio domain.NewCardRatio) []*domain.Card {
 	if rng == nil {
 		panic("domain/service: OrderingPolicy.Apply requires non-nil rng")
 	}
@@ -57,7 +51,7 @@ func (p *OrderingPolicy) Apply(due []domain.DueCard, rng *rand.Rand) []*domain.C
 		newCards[a], newCards[b] = newCards[b], newCards[a]
 	})
 	shuffleWithinPhase(reviewCards, rng)
-	return interleave(newCards, reviewCards, NewCardRatio, ReviewCardRatio)
+	return interleave(newCards, reviewCards, ratio.NewShare(), ratio.ReviewShare())
 }
 
 // partition splits due into new (FSRSStateNew) vs review (everything else),

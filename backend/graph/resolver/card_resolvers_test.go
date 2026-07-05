@@ -87,6 +87,15 @@ func (m *cardMockCGRepo) FindByID(_ context.Context, _ string) (*domain.Cardgrou
 	return m.findResult, m.findErr
 }
 
+// learnUserPrefsStub satisfies usecase.UserPrefsForLearn. Returning ErrNotFound
+// keeps NextDueCards on the default new-card ratio, so the learn resolver tests
+// exercise the unchanged 4:1 ordering.
+type learnUserPrefsStub struct{}
+
+func (learnUserPrefsStub) FindByUserID(_ context.Context, _ string) (*domain.UserPreference, error) {
+	return nil, repository.ErrNotFound
+}
+
 // duplicateCardMockRepo embeds cardMockRepo and overrides the two methods
 // exercised by the duplicate-front branch: Create returns ErrCardDuplicateFront
 // and FindByCardgroupAndFront returns the configured existing card.
@@ -132,6 +141,7 @@ func newLearnSrv(cardRepo *cardMockRepo, cgRepo *cardMockCGRepo) *handler.Server
 	learnUC := usecase.NewLearnUsecase(
 		cardRepo,
 		cgRepo,
+		learnUserPrefsStub{},
 		service.NewOrderingPolicy(),
 		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 		20,
