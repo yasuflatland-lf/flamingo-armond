@@ -34,6 +34,14 @@ type CardgroupRepoForLearn interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
 }
 
+// UserPrefsForLearn is the narrow consumer interface for reading the caller's
+// stored preferences (the per-user new-card ratio). Satisfied by
+// repository.UserPreferenceRepository. ErrNotFound (no row) and a nil pref fall
+// back to domain.DefaultNewCardRatio at the read site.
+type UserPrefsForLearn interface {
+	FindByUserID(ctx context.Context, userID string) (*domain.UserPreference, error)
+}
+
 // LearnUsecase surfaces due-card retrieval for a learning session.
 type LearnUsecase interface {
 	NextDueCards(ctx context.Context, cardgroupID string, limit *int) ([]*domain.Card, error)
@@ -53,6 +61,7 @@ type LearnUsecase interface {
 type learnUsecase struct {
 	cardRepo      CardRepoForLearn
 	cardgroupRepo CardgroupRepoForLearn
+	userPrefs     UserPrefsForLearn
 	ordering      *service.OrderingPolicy
 	randSource    func() *rand.Rand
 	clock         Clock
@@ -72,6 +81,7 @@ func (systemClock) Now() time.Time { return time.Now() }
 func NewLearnUsecase(
 	cardRepo CardRepoForLearn,
 	cardgroupRepo CardgroupRepoForLearn,
+	userPrefs UserPrefsForLearn,
 	ordering *service.OrderingPolicy,
 	randSource func() *rand.Rand,
 	defaultLimit, maxLimit int,
@@ -86,6 +96,9 @@ func NewLearnUsecase(
 	}
 	if cardgroupRepo == nil {
 		panic("usecase: learn: cardgroupRepo must not be nil")
+	}
+	if userPrefs == nil {
+		panic("usecase: learn: userPrefs must not be nil")
 	}
 	if ordering == nil {
 		ordering = service.NewOrderingPolicy()
@@ -110,6 +123,7 @@ func NewLearnUsecase(
 	return &learnUsecase{
 		cardRepo:      cardRepo,
 		cardgroupRepo: cardgroupRepo,
+		userPrefs:     userPrefs,
 		ordering:      ordering,
 		randSource:    randSource,
 		clock:         clock,
@@ -165,7 +179,21 @@ func (u *learnUsecase) NextDueCards(ctx context.Context, cardgroupID string, lim
 		}
 		return nil, eris.Wrap(err, "usecase: learn: find due cards")
 	}
-	ordered := u.ordering.Apply(due, u.randSource())
+	// Load the caller's per-user new-vs-review ratio. A missing preference row
+	// (ErrNotFound), a nil pref, or a zero-value ratio all fall back to the
+	// default; a real infrastructure error propagates (context-done unwrapped).
+	ratio := domain.DefaultNewCardRatio
+	pref, err := u.userPrefs.FindByUserID(ctx, user.Sub)
+	switch {
+	case err == nil && pref != nil && !pref.NewCardRatio.IsZero():
+		ratio = pref.NewCardRatio
+	case err != nil && !errors.Is(err, repository.ErrNotFound):
+		if isContextDone(err) {
+			return nil, err
+		}
+		return nil, eris.Wrap(err, "usecase: learn: load user preference")
+	}
+	ordered := u.ordering.Apply(due, u.randSource(), ratio)
 	if len(ordered) > n {
 		ordered = ordered[:n]
 	}

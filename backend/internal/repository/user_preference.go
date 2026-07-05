@@ -18,6 +18,8 @@ type gormUserPreference struct {
 	UserID                string    `gorm:"column:user_id;primaryKey;type:uuid"`
 	LastViewedCardgroupID *string   `gorm:"column:last_viewed_cardgroup_id;type:uuid"`
 	LearnDisplayMode      string    `gorm:"column:learn_display_mode"`
+	NewCardRatioNum       int       `gorm:"column:new_card_ratio_num"`
+	NewCardRatioDen       int       `gorm:"column:new_card_ratio_den"`
 	UpdatedAt             time.Time `gorm:"column:updated_at"`
 }
 
@@ -154,15 +156,24 @@ SET learn_display_mode = EXCLUDED.learn_display_mode,
 // silent fallback keeps reads non-fatal during rolling deploys and for legacy
 // rows written before the column existed; a corrupt value in production is
 // surfaced only as the safe default, not a load error.
+//
+// new_card_ratio_num / new_card_ratio_den follow the same non-fatal posture:
+// an out-of-bounds or legacy zero value falls back to domain.DefaultNewCardRatio
+// rather than failing the read.
 func toDomainUserPreference(g gormUserPreference) *domain.UserPreference {
 	mode := domain.DefaultLearnDisplayMode
 	if parsed, err := domain.ParseLearnDisplayMode(g.LearnDisplayMode); err == nil {
 		mode = parsed
 	}
+	ratio := domain.DefaultNewCardRatio
+	if parsed, err := domain.ParseNewCardRatio(g.NewCardRatioNum, g.NewCardRatioDen); err == nil {
+		ratio = parsed
+	}
 	return &domain.UserPreference{
 		UserID:                domain.UserID(g.UserID),
 		LastViewedCardgroupID: g.LastViewedCardgroupID,
 		LearnDisplayMode:      mode,
+		NewCardRatio:          ratio,
 		UpdatedAt:             g.UpdatedAt,
 	}
 }

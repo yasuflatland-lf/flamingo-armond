@@ -8,5 +8,6 @@ type UserPreference struct {
 	UserID                UserID
 	LastViewedCardgroupID *string
 	LearnDisplayMode      LearnDisplayMode
+	NewCardRatio          NewCardRatio // zero value means "use DefaultNewCardRatio"
 	UpdatedAt             time.Time
 }

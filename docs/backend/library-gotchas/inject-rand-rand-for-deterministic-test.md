@@ -14,15 +14,17 @@ pass a fixed seed and can assert an exact output order.
 //
 //  1. The new partition is fully shuffled; the review partition is shuffled
 //     within same-phase runs (shuffleWithinPhase) using rng.
-//  2. New and review cards are interleaved at NewCardRatio:ReviewCardRatio.
+//  2. New and review cards are interleaved at the caller-supplied ratio
+//     (ratio.NewShare new per ratio.ReviewShare review), review-first.
 //
 // rng must be non-nil. Tests inject a seeded *rand.Rand for deterministic
-// order; production constructs one per session.
-func (p *OrderingPolicy) Apply(due []domain.DueCard, rng *rand.Rand) []*domain.Card {
+// order; production constructs one per session. ratio is the per-user
+// new-vs-review interleave ratio (domain.NewCardRatio).
+func (p *OrderingPolicy) Apply(due []domain.DueCard, rng *rand.Rand, ratio domain.NewCardRatio) []*domain.Card {
     if rng == nil {
         panic("domain/service: OrderingPolicy.Apply requires non-nil rng")
     }
-    // ... partition, shuffleWithinPhase, interleave ...
+    // ... partition, shuffleWithinPhase, interleave(newCards, reviewCards, ratio.NewShare(), ratio.ReviewShare()) ...
 }
 ```
 

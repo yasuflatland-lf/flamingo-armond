@@ -40,7 +40,7 @@ deterministic while the database does the sampling:
 | Stage | Owner | Behaviour |
 |---|---|---|
 | Selection (which rows enter each window) | `repository.FindDueCardsForUser` | Two independent `LIMIT` windows: a review window (`due <= now AND last_review < reviewedBefore`, ordered learning-phase-first via a `CASE` then `random()`) concatenated with a new window (no FSRS row, ordered by `random()`). |
-| Arrangement (order within the batch) | `service.OrderingPolicy.Apply` | Injected `*rand.Rand` shuffles the new partition fully and the review partition within same-phase runs; then interleaves at `NewCardRatio=4 : ReviewCardRatio=1` with review-first emission. |
+| Arrangement (order within the batch) | `service.OrderingPolicy.Apply` | Injected `*rand.Rand` shuffles the new partition fully and the review partition within same-phase runs; then interleaves at the caller-supplied ratio (`domain.DefaultNewCardRatio` = 4:1 absent a stored preference) with review-first emission. |
 | Truncation | `usecase.LearnUsecase.NextDueCards` | Caps the interleaved result to the session limit (`ordered[:n]`), yielding the 16/4 split for a 20-card request. |
 
 `random()` runs in Postgres and cannot be seeded from Go, so it decides only
@@ -82,7 +82,8 @@ learn ordering — new cards are sampled randomly, not walked in document order.
 
 - `backend/internal/domain/fsrs_state.go` — `FSRSCardState.IsLearningPhase()`.
 - `backend/internal/domain/service/due_card_ordering.go` — `OrderingPolicy.Apply`,
-  `shuffleWithinPhase`, `interleave`, `NewCardRatio` / `ReviewCardRatio`.
+  `shuffleWithinPhase`, `interleave` (new/review shares supplied by the caller's ratio).
+- `backend/internal/domain/new_card_ratio.go` — `NewCardRatio` VO, `DefaultNewCardRatio` (4/5, the default 4:1 interleave).
 - `backend/internal/repository/card.go` — `FindDueCardsForUser`, `findDueCardsOn`,
   `dueRowsOn` (the two-window selection).
 - `backend/internal/usecase/learn.go` — `startOfDayJST`, `LearnUsecase.NextDueCards`
