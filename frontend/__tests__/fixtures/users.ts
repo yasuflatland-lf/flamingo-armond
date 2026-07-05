@@ -33,6 +33,7 @@ export const adminUserFixture: User = {
   lastSignInAt: null,
   lastViewedCardgroup: null,
   learnDisplayMode: LearnDisplayMode.FlipToReveal,
+  newCardRatio: { __typename: "NewCardRatio", numerator: 4, denominator: 5 },
   roles: [adminRoleFixture],
 };
 
@@ -47,6 +48,7 @@ export const generalUserFixture: User = {
   lastSignInAt: null,
   lastViewedCardgroup: null,
   learnDisplayMode: LearnDisplayMode.FlipToReveal,
+  newCardRatio: { __typename: "NewCardRatio", numerator: 4, denominator: 5 },
   roles: [{ __typename: "Role", id: "role-general", name: "general" }],
 };
 
@@ -61,5 +63,6 @@ export const userWithoutRolesFixture: User = {
   lastSignInAt: null,
   lastViewedCardgroup: null,
   learnDisplayMode: LearnDisplayMode.FlipToReveal,
+  newCardRatio: { __typename: "NewCardRatio", numerator: 4, denominator: 5 },
   roles: [],
 };
