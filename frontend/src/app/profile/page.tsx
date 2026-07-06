@@ -18,6 +18,10 @@ const MeQuery = graphql(`
       bio
       avatarUrl
       learnDisplayMode
+      newCardRatio {
+        numerator
+        denominator
+      }
     }
   }
 `);
@@ -50,6 +54,8 @@ export default async function ProfilePage() {
         bio: data.me.bio ?? "",
       }}
       displayMode={data.me.learnDisplayMode}
+      newCardRatio={data.me.newCardRatio}
+      isAdmin={auth.isAdmin}
     />
   );
 }

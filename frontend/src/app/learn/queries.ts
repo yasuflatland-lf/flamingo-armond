@@ -99,3 +99,15 @@ export const UpdateLearnDisplayModeMutation = graphql(`
     }
   }
 `);
+
+export const UpdateNewCardRatioMutation = graphql(`
+  mutation UpdateNewCardRatio($numerator: Int!, $denominator: Int!) {
+    updateNewCardRatio(numerator: $numerator, denominator: $denominator) {
+      id
+      newCardRatio {
+        numerator
+        denominator
+      }
+    }
+  }
+`);
