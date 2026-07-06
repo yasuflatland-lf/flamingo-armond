@@ -34,7 +34,7 @@ func (m *mockLastViewedCardgroupUsecase) Set(_ context.Context, cardgroupID stri
 
 // newLastViewedSrv builds a gqlgen Server wired to uc; other usecase fields are nil.
 func newLastViewedSrv(uc usecase.LastViewedCardgroupUsecase) *handler.Server {
-	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, uc, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, uc, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -197,7 +197,7 @@ func TestSetLastViewedCardgroup_NilVariant_ReturnsInternal(t *testing.T) {
 // field resolvers via the me query.
 func newMeServer(userMock *mockUserRepository) *handler.Server {
 	uc := usecase.NewUserUsecase(userMock, nil, nil, newDiscardLogger())
-	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv

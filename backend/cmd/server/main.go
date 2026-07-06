@@ -172,6 +172,7 @@ func buildResolver(
 	adminRoleUC := usecase.NewAdminRole(repos.role, adminGate, logger)
 	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(repos.userPreference, repos.user, logger)
 	updateLearnDisplayModeUC := usecase.NewUpdateLearnDisplayMode(repos.userPreference, repos.user, logger)
+	updateNewCardRatioUC := usecase.NewUpdateNewCardRatio(repos.userPreference, repos.user, logger)
 	pingHandler := ping.New(repos.pingRecord, pingToken)
 
 	var notionSyncHandler *notionsync.Handler
@@ -194,7 +195,7 @@ func buildResolver(
 	masterCatalogUC := usecase.NewMasterCatalogUsecase(repos.masterCardgroup, masterDeckUC, adminGate, logger)
 	masterCardUC := usecase.NewMasterCardUsecase(repos.gorm, repos.masterCard, repos.masterCardgroup, adminGate, logger)
 
-	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, updateLearnDisplayModeUC, learnUC, cefrUC, masterCatalogUC, masterCardUC)
+	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, updateLearnDisplayModeUC, updateNewCardRatioUC, learnUC, cefrUC, masterCatalogUC, masterCardUC)
 	return resolvers, pingHandler, notionSyncHandler, nil
 }
 

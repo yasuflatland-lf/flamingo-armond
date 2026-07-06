@@ -49,6 +49,7 @@ const cardgroupFixture: Cardgroup = {
     lastSignInAt: null,
     lastViewedCardgroup: null,
     learnDisplayMode: LearnDisplayMode.FlipToReveal,
+    newCardRatio: { __typename: "NewCardRatio", numerator: 4, denominator: 5 },
     roles: [],
   },
   createdAt: "2026-01-15T00:00:00Z",

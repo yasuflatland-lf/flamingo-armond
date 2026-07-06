@@ -56,6 +56,11 @@ type UserPreferenceRepository interface {
 	// here. The column CHECK constraint is a backstop for direct DB writes that
 	// bypass the usecase layer.
 	UpdateLearnDisplayMode(ctx context.Context, userID, mode string) error
+	// UpdateNewCardRatio upserts userID's new-card ratio. num/den are the reduced
+	// fraction from a domain.NewCardRatio (numerator = new share, denominator =
+	// total); the VO guarantees the invariant before this is called. The column
+	// CHECK is a backstop for direct DB writes.
+	UpdateNewCardRatio(ctx context.Context, userID string, num, den int) error
 }
 
 type userPreferenceRepo struct{ db *gorm.DB }
@@ -145,6 +150,20 @@ SET learn_display_mode = EXCLUDED.learn_display_mode,
 	res := r.db.WithContext(ctx).Exec(sql, userID, mode)
 	if res.Error != nil {
 		return eris.Wrap(res.Error, "repository: user preference: upsert learn display mode")
+	}
+	return nil
+}
+
+func (r *userPreferenceRepo) UpdateNewCardRatio(ctx context.Context, userID string, num, den int) error {
+	sql := `INSERT INTO user_preferences (user_id, new_card_ratio_num, new_card_ratio_den, updated_at)
+VALUES (?, ?, ?, now())
+ON CONFLICT (user_id) DO UPDATE
+SET new_card_ratio_num = EXCLUDED.new_card_ratio_num,
+    new_card_ratio_den = EXCLUDED.new_card_ratio_den,
+    updated_at         = EXCLUDED.updated_at`
+	res := r.db.WithContext(ctx).Exec(sql, userID, num, den)
+	if res.Error != nil {
+		return eris.Wrap(res.Error, "repository: user preference: upsert new card ratio")
 	}
 	return nil
 }
