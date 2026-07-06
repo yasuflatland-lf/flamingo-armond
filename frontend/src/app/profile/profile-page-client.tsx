@@ -7,7 +7,7 @@ import { useCallback, useRef, useState } from "react";
 import { LanguageSwitcher } from "@/components/settings/language-switcher";
 import { Button } from "@/components/ui/button";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
-import type { LearnDisplayMode, MeQuery } from "@/generated/graphql";
+import type { LearnDisplayMode } from "@/generated/graphql";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { DeleteAccountSection } from "./delete-account-section";
 import { DisplayModeSection } from "./display-mode-section";
@@ -18,7 +18,10 @@ type Props = {
   email: string | null;
   initial: { displayName: string; bio: string };
   displayMode: LearnDisplayMode;
-  newCardRatio: NonNullable<MeQuery["me"]>["newCardRatio"];
+  // Structural shape rather than a query-derived type: the ratio is fetched by a
+  // separate, admin-only, failure-tolerant query in page.tsx and falls back to a
+  // plain default object, so it is not tied to any single query's result type.
+  newCardRatio: { numerator: number; denominator: number };
   isAdmin: boolean;
 };
 

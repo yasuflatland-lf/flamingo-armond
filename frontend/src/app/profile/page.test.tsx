@@ -57,8 +57,13 @@ function makeMeData(opts: { displayName?: string; bio?: string } = {}) {
       displayName: opts.displayName ?? "Test User",
       bio: opts.bio ?? "My bio",
       avatarUrl: null,
+      learnDisplayMode: "FLIP_TO_REVEAL",
     },
   };
+}
+
+function makeRatioData(numerator: number, denominator: number) {
+  return { me: { id: "u-1", newCardRatio: { numerator, denominator } } };
 }
 
 function setAuthHeaders(status: string, email?: string | null) {
@@ -67,6 +72,16 @@ function setAuthHeaders(status: string, email?: string | null) {
     h.set("x-user-email", email);
   }
   vi.mocked(headers).mockResolvedValue(h as Awaited<ReturnType<typeof headers>>);
+}
+
+function setAdminAuthHeaders(email = "admin@test.com") {
+  vi.mocked(headers).mockResolvedValue(
+    new Headers({
+      "x-auth-status": "authenticated",
+      "x-user-email": email,
+      "x-user-is-admin": "true",
+    }) as Awaited<ReturnType<typeof headers>>,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -234,12 +249,92 @@ describe("ProfilePage — happy path", () => {
 });
 
 // ---------------------------------------------------------------------------
+// newCardRatio: admin-only, failure-tolerant secondary fetch
+// ---------------------------------------------------------------------------
+
+describe("ProfilePage — newCardRatio (admin-only, failure-tolerant)", () => {
+  test("non-admin → newCardRatio is not fetched; only the core query runs", async () => {
+    // Default beforeEach headers are authenticated but NOT admin.
+    vi.mocked(gqlFetch).mockResolvedValueOnce(makeMeData() as never);
+
+    const result = await ProfilePage();
+
+    // Exactly one gqlFetch: the core Me query. The ratio query is skipped.
+    expect(gqlFetch).toHaveBeenCalledTimes(1);
+    const el = findProfileFormElement(result);
+    expect(el?.props.isAdmin).toBe(false);
+  });
+
+  test("admin → newCardRatio fetched via a second query and forwarded", async () => {
+    setAdminAuthHeaders();
+    vi.mocked(gqlFetch)
+      .mockResolvedValueOnce(makeMeData() as never) // core Me query
+      .mockResolvedValueOnce(makeRatioData(3, 4) as never); // MeNewCardRatio query
+
+    const result = await ProfilePage();
+
+    expect(gqlFetch).toHaveBeenCalledTimes(2);
+    const el = findProfileFormElement(result);
+    expect(el?.props.isAdmin).toBe(true);
+    expect(el?.props.newCardRatio).toEqual({ numerator: 3, denominator: 4 });
+  });
+
+  test("admin → newCardRatio fetch failure degrades to the default; profile still renders", async () => {
+    setAdminAuthHeaders();
+    vi.mocked(gqlFetch)
+      .mockResolvedValueOnce(makeMeData() as never) // core Me query succeeds
+      .mockRejectedValueOnce(
+        // Simulates a backend that cannot serve newCardRatio yet (schema desync).
+        new Error(
+          `GraphQL errors: ${JSON.stringify([
+            { message: 'Cannot query field "newCardRatio" on type "User".' },
+          ])}`,
+        ),
+      );
+
+    const result = await ProfilePage();
+
+    // The page does NOT throw and does NOT redirect — the failure is swallowed.
+    expect(redirect).not.toHaveBeenCalled();
+    const el = findProfileFormElement(result);
+    // Falls back to the backend default ratio (4/5).
+    expect(el?.props.newCardRatio).toEqual({ numerator: 4, denominator: 5 });
+    // The degradation is logged for operator triage, name-only (PII redaction).
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[profile] newCardRatio fetch failed"),
+      { name: "Error" },
+    );
+  });
+
+  test("admin → newCardRatio UNAUTHENTICATED redirects to /login (session expired mid-request)", async () => {
+    setAdminAuthHeaders();
+    vi.mocked(gqlFetch)
+      .mockResolvedValueOnce(makeMeData() as never) // core Me query succeeds
+      .mockRejectedValueOnce(
+        // A genuine UNAUTHENTICATED (not a schema-desync validation error) still
+        // redirects, preserving the repo-wide auth-gated-RSC invariant.
+        new Error(
+          `GraphQL errors: ${JSON.stringify([{ extensions: { code: "UNAUTHENTICATED" } }])}`,
+        ),
+      );
+
+    await expect(ProfilePage()).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
+
+    expect(redirect).toHaveBeenCalledWith("/login");
+    // The redirect path is taken before the degrade-and-log branch.
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // JSX tree helpers
 // ---------------------------------------------------------------------------
 
 type ProfileFormProps = {
   email: string | null;
   initial: { displayName: string; bio: string };
+  isAdmin: boolean;
+  newCardRatio: { numerator: number; denominator: number };
 };
 
 /**

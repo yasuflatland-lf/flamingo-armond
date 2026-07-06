@@ -91,7 +91,7 @@ describe("<ProfilePageClient>", () => {
           email="alice@example.com"
           initial={initial}
           displayMode="FLIP_TO_REVEAL"
-          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          newCardRatio={{ numerator: 4, denominator: 5 }}
           isAdmin={false}
         />
       </MockedProvider>,
@@ -115,7 +115,7 @@ describe("<ProfilePageClient>", () => {
           email="alice@example.com"
           initial={initial}
           displayMode="FLIP_TO_REVEAL"
-          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          newCardRatio={{ numerator: 4, denominator: 5 }}
           isAdmin={false}
         />
       </MockedProvider>,
@@ -134,7 +134,7 @@ describe("<ProfilePageClient>", () => {
           email="alice@example.com"
           initial={initial}
           displayMode="FLIP_TO_REVEAL"
-          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          newCardRatio={{ numerator: 4, denominator: 5 }}
           isAdmin={true}
         />
       </MockedProvider>,
@@ -155,7 +155,7 @@ describe("<ProfilePageClient>", () => {
           email="alice@example.com"
           initial={initial}
           displayMode="FLIP_TO_REVEAL"
-          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          newCardRatio={{ numerator: 4, denominator: 5 }}
           isAdmin={false}
         />
       </MockedProvider>,
@@ -174,7 +174,7 @@ describe("<ProfilePageClient>", () => {
           email="alice@example.com"
           initial={initial}
           displayMode="FLIP_TO_REVEAL"
-          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          newCardRatio={{ numerator: 4, denominator: 5 }}
           isAdmin={false}
         />
       </MockedProvider>,
@@ -194,7 +194,7 @@ describe("<ProfilePageClient>", () => {
           email="alice@example.com"
           initial={initial}
           displayMode="FLIP_TO_REVEAL"
-          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          newCardRatio={{ numerator: 4, denominator: 5 }}
           isAdmin={false}
         />
       </MockedProvider>,
@@ -218,7 +218,7 @@ describe("<ProfilePageClient>", () => {
           email="alice@example.com"
           initial={initial}
           displayMode="FLIP_TO_REVEAL"
-          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          newCardRatio={{ numerator: 4, denominator: 5 }}
           isAdmin={false}
         />
       </MockedProvider>,
@@ -268,7 +268,7 @@ describe("<ProfilePageClient>", () => {
           email="alice@example.com"
           initial={initial}
           displayMode="FLIP_TO_REVEAL"
-          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          newCardRatio={{ numerator: 4, denominator: 5 }}
           isAdmin={false}
         />
       </MockedProvider>,
@@ -297,7 +297,7 @@ describe("<ProfilePageClient>", () => {
           email="alice@example.com"
           initial={initial}
           displayMode="FLIP_TO_REVEAL"
-          newCardRatio={{ __typename: "NewCardRatio", numerator: 4, denominator: 5 }}
+          newCardRatio={{ numerator: 4, denominator: 5 }}
           isAdmin={false}
         />
       </MockedProvider>,
