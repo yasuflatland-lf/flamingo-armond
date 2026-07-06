@@ -1,0 +1,193 @@
+---
+# One-shot: register the GitHub App credentials used by the
+# autofix-backend-generated workflow.
+#
+# The workflow (.github/workflows/autofix-backend-generated.yml) pushes
+# regenerated go.sum / gqlgen artifacts back to backend dependency PR branches
+# with a GitHub App installation token. This task file registers the app's
+# credentials on the repository:
+#   AUTOFIX_APP_CLIENT_ID   -- repository VARIABLE (not sensitive, readable back)
+#   AUTOFIX_APP_PRIVATE_KEY -- repository SECRET (contents of the app's .pem)
+#
+# The app itself must be registered by hand first (GitHub has no API for app
+# registration); the checklist lives in the workflow file header. Short form:
+# Settings > Developer settings > GitHub Apps > New GitHub App; webhook Active
+# unchecked; Repository permissions Contents = Read and write only; install on
+# this repository only; then generate a private key (.pem downloads) and note
+# the Client ID.
+#
+# Invocation (opt-in via tag; never runs as part of an untagged bring-up):
+#   ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags autofix-app
+#
+# Idempotency mirrors the RENDER_DEPLOY_HOOK_URL pattern in render.yml:
+# existence is checked first, prompts offer "press Enter to keep", and the
+# private key is streamed to gh via stdin so it never appears in argv or logs.
+
+# --- Existence checks (names only; safe to log) ---
+- name: Check whether AUTOFIX_APP_CLIENT_ID variable already exists
+  ansible.builtin.shell:
+    cmd: gh variable get AUTOFIX_APP_CLIENT_ID --repo {{ repo }}
+  register: _autofix_client_id_check
+  changed_when: false
+  failed_when: false
+
+- name: Check whether AUTOFIX_APP_PRIVATE_KEY secret already exists
+  ansible.builtin.shell:
+    cmd: gh secret list --repo {{ repo }} --json name -q '[.[] | select(.name == "AUTOFIX_APP_PRIVATE_KEY")] | length'
+  register: _autofix_key_check
+  changed_when: false
+  failed_when: false
+
+- name: Determine autofix credential presence
+  ansible.builtin.set_fact:
+    autofix_client_id_registered: "{{ _autofix_client_id_check.rc == 0 }}"
+    autofix_key_registered: "{{ (_autofix_key_check.rc == 0) and ((_autofix_key_check.stdout | default('0') | trim | int) > 0) }}"
+
+# --- Collect Client ID (not a secret; the app page shows it openly) ---
+- name: Prompt for the autofix GitHub App Client ID
+  ansible.builtin.pause:
+    prompt: |-
+      Client ID of the autofix GitHub App (shown on the app's settings page,
+      Settings > Developer settings > GitHub Apps > your app).
+
+      Client ID [current: {{ '(registered in GitHub; press Enter to keep)' if autofix_client_id_registered else '(not registered yet)' }}]
+  register: _autofix_client_id_input
+
+- name: Store autofix_client_id fact (empty if keeping existing variable)
+  ansible.builtin.set_fact:
+    autofix_client_id: "{{ _autofix_client_id_input.user_input | default('') | trim }}"
+
+- name: Require Client ID on first run
+  ansible.builtin.fail:
+    msg: |
+      AUTOFIX_APP_CLIENT_ID is not yet registered and no value was provided.
+      Copy the Client ID from the app's settings page, then re-run:
+        ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags autofix-app
+  when:
+    - (autofix_client_id | length) == 0
+    - not autofix_client_id_registered
+
+- name: Validate Client ID format
+  ansible.builtin.assert:
+    that:
+      - autofix_client_id is match('^\S+$')
+    fail_msg: |
+      The Client ID must be a single token without whitespace. Copy it verbatim
+      from the app's settings page.
+  when: (autofix_client_id | length) > 0
+
+# --- Collect private key .pem path (path prompt; multi-line paste is fragile) ---
+- name: Prompt for the autofix GitHub App private key (.pem) path
+  ansible.builtin.pause:
+    prompt: |-
+      Path to the app's private key .pem file (downloaded from the app's
+      settings page via "Generate a private key").
+
+      .pem path [current: {{ '(key registered in GitHub; press Enter to keep)' if autofix_key_registered else '(not registered yet)' }}]
+  register: _autofix_pem_input
+
+- name: Store autofix_pem_path fact (empty if keeping existing secret)
+  ansible.builtin.set_fact:
+    autofix_pem_path: "{{ _autofix_pem_input.user_input | default('') | trim | expanduser }}"
+
+- name: Require private key on first run
+  ansible.builtin.fail:
+    msg: |
+      AUTOFIX_APP_PRIVATE_KEY is not yet registered and no .pem path was
+      provided. Generate a private key on the app's settings page (a .pem file
+      downloads), then re-run:
+        ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags autofix-app
+  when:
+    - (autofix_pem_path | length) == 0
+    - not autofix_key_registered
+
+- name: Stat the .pem file
+  ansible.builtin.stat:
+    path: "{{ autofix_pem_path }}"
+  register: _autofix_pem_stat
+  when: (autofix_pem_path | length) > 0
+
+- name: Validate the .pem file exists and looks like a private key
+  ansible.builtin.shell:
+    cmd: head -n 1 {{ autofix_pem_path | quote }} | grep -q -- '-----BEGIN .*PRIVATE KEY-----'
+  register: _autofix_pem_header
+  changed_when: false
+  failed_when: false
+  when: (autofix_pem_path | length) > 0
+
+- name: Fail if the .pem path is not a GitHub App private key
+  ansible.builtin.fail:
+    msg: |
+      '{{ autofix_pem_path }}' {{ 'does not exist' if not (_autofix_pem_stat.stat.exists | default(false)) else 'does not start with a PEM private-key header' }}.
+      Point at the .pem file downloaded from the app's settings page.
+  when:
+    - (autofix_pem_path | length) > 0
+    - (not (_autofix_pem_stat.stat.exists | default(false))) or (_autofix_pem_header.rc != 0)
+
+# --- Register Client ID as a repository variable ---
+- name: Register AUTOFIX_APP_CLIENT_ID as a GitHub Actions variable
+  ansible.builtin.shell:
+    cmd: gh variable set AUTOFIX_APP_CLIENT_ID --repo {{ repo }}
+    stdin: "{{ autofix_client_id }}"
+    stdin_add_newline: false
+  register: _gh_autofix_client_id_result
+  failed_when: false
+  changed_when: _gh_autofix_client_id_result.rc == 0
+  when: (autofix_client_id | length) > 0
+
+- name: Fail with remediation if gh variable set failed
+  ansible.builtin.fail:
+    msg: |
+      gh variable set AUTOFIX_APP_CLIENT_ID failed (rc={{ _gh_autofix_client_id_result.rc }}).
+
+      gh diagnostic:
+        stderr: {{ _gh_autofix_client_id_result.stderr | default('(none)') }}
+        stdout: {{ _gh_autofix_client_id_result.stdout | default('(none)') }}
+
+      Common causes:
+        - gh CLI lost the `repo` write scope. Re-run:
+            gh auth refresh -s repo
+        - GitHub API rate limit. Wait a minute and retry.
+        - `repo` var is wrong / repo not found. Verify {{ repo }} is correct.
+
+      Then retry: ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags autofix-app
+  when:
+    - (autofix_client_id | length) > 0
+    - _gh_autofix_client_id_result.rc != 0
+
+# --- Register private key as a repository secret ---
+# The shell redirect streams the pem straight from disk into gh: the key body
+# never enters an Ansible variable, argv, or the log (belt and braces: no_log).
+- name: Register AUTOFIX_APP_PRIVATE_KEY as a GitHub Actions secret
+  ansible.builtin.shell:
+    cmd: gh secret set AUTOFIX_APP_PRIVATE_KEY --repo {{ repo }} < {{ autofix_pem_path | quote }}
+  register: _gh_autofix_key_result
+  no_log: true
+  failed_when: false
+  changed_when: _gh_autofix_key_result.rc == 0
+  when: (autofix_pem_path | length) > 0
+
+- name: Fail with remediation if gh secret set failed
+  ansible.builtin.fail:
+    msg: |
+      gh secret set AUTOFIX_APP_PRIVATE_KEY failed (rc={{ _gh_autofix_key_result.rc }}).
+
+      Common causes:
+        - gh CLI lost the `repo` write scope. Re-run:
+            gh auth refresh -s repo
+        - GitHub API rate limit. Wait a minute and retry.
+        - `repo` var is wrong / repo not found. Verify {{ repo }} is correct.
+
+      Then retry: ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags autofix-app
+  when:
+    - (autofix_pem_path | length) > 0
+    - _gh_autofix_key_result.rc != 0
+
+- name: Confirm autofix GitHub App credentials registered
+  ansible.builtin.debug:
+    msg: |
+      Autofix GitHub App credentials are registered on {{ repo }}
+      (AUTOFIX_APP_CLIENT_ID variable, AUTOFIX_APP_PRIVATE_KEY secret).
+      Next: re-fire the pull_request event on any red backend dependency PR
+      (close/reopen it, or let Renovate rebase) and the autofix workflow will
+      push the regenerated artifacts.

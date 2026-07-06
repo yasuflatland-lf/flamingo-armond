@@ -18,12 +18,30 @@ name: Autofix backend generated artifacts
 #
 # Token requirement (one-time operator setup)
 # -------------------------------------------
-# The commit is pushed with AUTOFIX_PAT, NOT the default GITHUB_TOKEN. A push made
-# with GITHUB_TOKEN does not trigger new workflow runs, so the required backend CI
-# check would never run on the new head SHA and the PR would stay unmergeable.
-# AUTOFIX_PAT must be a fine-grained Personal Access Token scoped to this repo with
-# "Contents: Read and write" permission, stored as the repository secret
-# AUTOFIX_PAT. Without it the workflow fails fast with an explanatory message.
+# The commit is pushed with a GitHub App installation token, NOT the default
+# GITHUB_TOKEN. A push made with GITHUB_TOKEN does not trigger new workflow
+# runs, so the required backend CI check would never run on the new head SHA
+# and the PR would stay unmergeable. A GitHub App is used instead of a PAT
+# because the app's private key never expires and the app belongs to the
+# repository, not to a human account; the short-lived installation token is
+# minted fresh on every run and is scoped to this repository only.
+#
+# One-time app registration (web UI; GitHub has no API for this):
+#   1. Settings > Developer settings > GitHub Apps > New GitHub App.
+#      - GitHub App name: flamingo-armond-autofix (any unique name works)
+#      - Homepage URL: this repository's URL
+#      - Webhook: uncheck "Active"
+#      - Repository permissions: Contents = Read and write (nothing else)
+#      - Where can this GitHub App be installed: Only on this account
+#   2. On the app's settings page: note the Client ID and generate a
+#      private key (a .pem file downloads).
+#   3. Install App > Only select repositories > this repository.
+#   4. Register the credentials on this repository - either run
+#        ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags autofix-app
+#      or set them manually:
+#        - repository variable AUTOFIX_APP_CLIENT_ID  = the app's Client ID
+#        - repository secret   AUTOFIX_APP_PRIVATE_KEY = the .pem file contents
+# Without these the workflow fails fast with an explanatory message.
 
 on:
   pull_request:
@@ -35,8 +53,10 @@ on:
       - '.tool-versions'
       - 'mise.toml'
 
+# The push uses the app installation token, so the default GITHUB_TOKEN only
+# needs read access for checkout/tool downloads.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: autofix-backend-${{ github.head_ref }}
@@ -46,28 +66,39 @@ jobs:
   autofix:
     name: Regenerate go.sum & gqlgen artifacts
     # Same-repo branches only (Renovate and local feature branches). Never run the
-    # PAT-authenticated push for fork PRs - that would expose write credentials to
-    # untrusted code.
+    # app-token-authenticated push for fork PRs - that would expose write
+    # credentials to untrusted code.
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     steps:
-      - name: Fail fast if AUTOFIX_PAT is missing
+      - name: Fail fast if GitHub App credentials are missing
         env:
-          AUTOFIX_PAT: ${{ secrets.AUTOFIX_PAT }}
+          CLIENT_ID: ${{ vars.AUTOFIX_APP_CLIENT_ID }}
+          PRIVATE_KEY: ${{ secrets.AUTOFIX_APP_PRIVATE_KEY }}
         run: |
-          if [ -z "$AUTOFIX_PAT" ]; then
-            echo "::error::AUTOFIX_PAT secret is not set. Create a fine-grained PAT" \
-                 "(Contents: Read and write on this repo) and add it as the" \
-                 "AUTOFIX_PAT repository secret. See the header of this workflow file."
+          if [ -z "$CLIENT_ID" ] || [ -z "$PRIVATE_KEY" ]; then
+            echo "::error::AUTOFIX_APP_CLIENT_ID repository variable or" \
+                 "AUTOFIX_APP_PRIVATE_KEY repository secret is not set. Register the" \
+                 "autofix GitHub App and its credentials - see the header of this" \
+                 "workflow file, or run: ansible-playbook -i playbooks/inventory.local" \
+                 "playbooks/setup-prod.yml --tags autofix-app"
             exit 1
           fi
+
+      - name: Mint GitHub App installation token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.AUTOFIX_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOFIX_APP_PRIVATE_KEY }}
+          # owner/repositories omitted: the token is scoped to this repository only.
 
       - name: Checkout PR branch
         uses: actions/checkout@v7
         with:
           ref: ${{ github.head_ref }}
-          # PAT so the auto-commit re-triggers the required backend CI on the new SHA.
-          token: ${{ secrets.AUTOFIX_PAT }}
+          # App token so the auto-commit re-triggers the required backend CI on the new SHA.
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Set up mise (Go from .tool-versions)
         uses: jdx/mise-action@v4
@@ -83,17 +114,23 @@ jobs:
         run: go tool gqlgen generate
 
       - name: Commit and push if anything changed
-        # HEAD_REF is read via env (not inline ${{ }}) so a crafted branch name
-        # cannot inject into the shell command.
+        # HEAD_REF and APP_SLUG are read via env (not inline ${{ }}) so crafted
+        # values cannot inject into the shell command.
         env:
           HEAD_REF: ${{ github.head_ref }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           if [ -z "$(git status --porcelain)" ]; then
             echo "Generated artifacts already current - nothing to commit."
             exit 0
           fi
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Commit as the app's bot user (identity convention documented by
+          # actions/create-github-app-token). The lookup fails the step loudly
+          # if the app slug cannot be resolved.
+          BOT_USER_ID="$(gh api "/users/${APP_SLUG}[bot]" --jq .id)"
+          git config user.name  "${APP_SLUG}[bot]"
+          git config user.email "${BOT_USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
           # gitignored outputs (graph/generated, graph/model) are excluded by add -A;
           # only go.mod, go.sum and graph/resolver/*.resolvers.go are tracked.
           git add -A
