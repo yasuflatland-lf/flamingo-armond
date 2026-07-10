@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { MyLearningStatsQuery } from "@/generated/graphql";
 import { renderWithIntl } from "@/test/render-with-intl";
@@ -39,7 +39,8 @@ const populatedStats: Stats = {
     lapseRate: 0.12,
     studyStreak: 9,
     reviewCount: 1430,
-    avgDifficulty: 6.2,
+    // Served normalized to 0..1 by the backend; the panel rescales ×10 → "6.2".
+    avgDifficulty: 0.62,
   },
   strugglingCards: [
     {
@@ -51,7 +52,6 @@ const populatedStats: Stats = {
         cardgroup: { __typename: "Cardgroup", id: "cg-2", name: "Japanese Kanji" },
       },
       lapses: 7,
-      stability: 3.4,
     },
   ],
 };
@@ -90,17 +90,25 @@ describe("<StatsClient>", () => {
       expect(screen.getByText("300")).toBeInTheDocument(); // mature
     });
 
-    it("renders all six diagnostic tiles with the specified formatting", () => {
+    it("renders all six diagnostic tiles, each value paired under its own label", () => {
       renderStats(populatedStats);
 
-      // Rate metrics are fractions 0..1 rendered as whole percent.
-      expect(screen.getByText("78%")).toBeInTheDocument(); // retention
-      expect(screen.getByText("84%")).toBeInTheDocument(); // success
-      expect(screen.getByText("12%")).toBeInTheDocument(); // lapse
-      // Streak uses the pluralized message; reviews is grouped; avg is one decimal.
-      expect(screen.getByText("9 days")).toBeInTheDocument();
-      expect(screen.getByText("1,430")).toBeInTheDocument();
-      expect(screen.getByText("6.2")).toBeInTheDocument();
+      // Scope each value to the StatTile that carries its label, so a transposed
+      // metric (e.g. retention/success swapped) would fail rather than pass on
+      // mere value-presence. The label span's grandparent is the tile card.
+      const tile = (label: string) => {
+        const card = screen.getByText(label).closest("div")?.parentElement;
+        if (!card) throw new Error(`StatTile card not found for "${label}"`);
+        return within(card);
+      };
+
+      expect(tile("Retention").getByText("78%")).toBeInTheDocument();
+      expect(tile("Success").getByText("84%")).toBeInTheDocument();
+      expect(tile("Lapse").getByText("12%")).toBeInTheDocument();
+      expect(tile("Streak").getByText("9 days")).toBeInTheDocument();
+      expect(tile("Reviews").getByText("1,430")).toBeInTheDocument();
+      // avgDifficulty is served normalized 0..1 and rescaled ×10 for display.
+      expect(tile("Avg difficulty").getByText("6.2")).toBeInTheDocument();
     });
 
     it("renders per-deck rows with the acquired/total count and a filled progressbar", () => {
@@ -120,6 +128,52 @@ describe("<StatsClient>", () => {
       expect(screen.getByText("Ephemeral")).toBeInTheDocument();
       expect(screen.getByText("Japanese Kanji")).toBeInTheDocument();
       expect(screen.getByText("7 lapses")).toBeInTheDocument();
+    });
+  });
+
+  describe("ICU plural singular forms", () => {
+    it("renders '1 day' for a single-day streak", () => {
+      renderStats({
+        ...populatedStats,
+        performance: { ...populatedStats.performance, studyStreak: 1 },
+      });
+      expect(screen.getByText("1 day")).toBeInTheDocument();
+    });
+
+    it("renders '1 lapse' for a single-lapse card", () => {
+      renderStats({
+        ...populatedStats,
+        strugglingCards: [
+          {
+            __typename: "StrugglingCard",
+            card: {
+              __typename: "Card",
+              id: "card-1",
+              front: "Ephemeral",
+              cardgroup: { __typename: "Cardgroup", id: "cg-2", name: "Japanese Kanji" },
+            },
+            lapses: 1,
+          },
+        ],
+      });
+      expect(screen.getByText("1 lapse")).toBeInTheDocument();
+    });
+  });
+
+  describe("dormant learner (reviewCount === 0)", () => {
+    it("replaces the diagnostic tiles with an empty state (no fabricated rates)", () => {
+      renderStats({
+        ...populatedStats,
+        performance: { ...populatedStats.performance, reviewCount: 0 },
+      });
+
+      expect(
+        screen.getByText("Not enough recent activity in the last 365 days."),
+      ).toBeInTheDocument();
+      // The (placeholder) rate values are not shown as if they were real data.
+      expect(screen.queryByText("78%")).not.toBeInTheDocument();
+      // The diagnostics heading still renders above the empty state.
+      expect(screen.getByText("Diagnostics")).toBeInTheDocument();
     });
   });
 

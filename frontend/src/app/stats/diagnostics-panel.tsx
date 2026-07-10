@@ -5,16 +5,23 @@ import { useFormatter, useTranslations } from "next-intl";
 import { StatTile } from "@/components/ui/stat-tile";
 import type { MyLearningStatsQuery } from "@/generated/graphql";
 
-type Performance = MyLearningStatsQuery["myLearningStats"]["performance"];
+// Aliased to the GraphQL type name (not the bare word `Performance`, which would
+// shadow the ambient DOM `Performance` interface in this DOM-lib file).
+type PerformanceMetrics = MyLearningStatsQuery["myLearningStats"]["performance"];
 
 /**
  * Diagnostics KPI row for `/stats`: six `StatTile`s over the trailing-365-day
  * window. Rate metrics (`retentionRate` / `successRate` / `lapseRate`) are
- * fractions 0..1 rendered as whole-percent via `useFormatter`; `avgDifficulty`
- * is a raw FSRS float shown to one decimal; `studyStreak` uses the pluralized
- * `streakValue` message; `reviewCount` is a grouped integer.
+ * fractions 0..1 rendered as whole-percent via `useFormatter`. `avgDifficulty`
+ * is normalized by the backend to 0..1 (see `service.normalizedDifficulty`), so
+ * it is rescaled ×10 for display on the familiar 0–10 FSRS difficulty scale,
+ * shown to one decimal. `studyStreak` uses the pluralized `diagnosticsStreakValue`
+ * message; `reviewCount` is a grouped integer. When `reviewCount === 0` (a dormant
+ * learner with no reviews in the window) the backend returns placeholder 50%
+ * rates, so the tiles are replaced by an empty state instead of showing fabricated
+ * data as real.
  */
-export function DiagnosticsPanel({ performance }: { performance: Performance }) {
+export function DiagnosticsPanel({ performance }: { performance: PerformanceMetrics }) {
   const t = useTranslations("Stats");
   const format = useFormatter();
 
@@ -66,23 +73,39 @@ export function DiagnosticsPanel({ performance }: { performance: Performance }) 
     {
       key: "avgDifficulty",
       label: t("diagnosticsAvgDifficulty"),
-      value: format.number(performance.avgDifficulty, { maximumFractionDigits: 1 }),
+      // Backend serves this normalized to 0..1; rescale ×10 to the 0–10 FSRS scale.
+      value: format.number(performance.avgDifficulty * 10, { maximumFractionDigits: 1 }),
       caption: t("diagnosticsAvgDifficultyCaption"),
       icon: Gauge,
     },
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-      {tiles.map((tile) => (
-        <StatTile
-          key={tile.key}
-          label={tile.label}
-          value={tile.value}
-          caption={tile.caption}
-          icon={tile.icon}
-        />
-      ))}
+    <div className="flex flex-col gap-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold">{t("diagnosticsHeading")}</h2>
+        <span className="shrink-0 text-xs text-muted-foreground">{t("diagnosticsWindow")}</span>
+      </div>
+      {performance.reviewCount === 0 ? (
+        // Dormant learner: no reviews in the window. The backend returns
+        // placeholder 50% rates for an empty window, so show an empty state
+        // rather than render fabricated data as if it were real.
+        <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          {t("diagnosticsNoActivity")}
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {tiles.map((tile) => (
+            <StatTile
+              key={tile.key}
+              label={tile.label}
+              value={tile.value}
+              caption={tile.caption}
+              icon={tile.icon}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,14 +1,16 @@
 "use client";
 
-import { CircleCheck } from "lucide-react";
+import { CircleCheck, Sprout, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { buttonVariants } from "@/components/ui/button";
 
 /**
- * The three `/stats` empty states, all in the dashed-border `AllCaughtUp` idiom.
- * Each carries at most one filled `brand` CTA (the emphasis ladder). Copy flows
- * through `useTranslations("Stats")`.
+ * The three `/stats` empty states. They share the dashed-border empty-state look
+ * of `AllCaughtUp` (`components/learn/all-caught-up.tsx`) but are reimplemented
+ * locally because the CTA composition differs per state. Each carries at most one
+ * filled `brand` CTA (the emphasis ladder), and a muted lucide icon (matching the
+ * app's icon language — no emoji). Copy flows through `useTranslations("Stats")`.
  */
 
 /**
@@ -18,10 +20,8 @@ import { buttonVariants } from "@/components/ui/button";
 export function WelcomeEmpty() {
   const t = useTranslations("Stats");
   return (
-    <div className="rounded-lg border border-dashed border-border p-8 text-center">
-      <p aria-hidden="true" className="text-4xl">
-        🌱
-      </p>
+    <div className="flex flex-col items-center rounded-lg border border-dashed border-border p-8 text-center">
+      <Sprout aria-hidden="true" className="h-8 w-8 text-muted-foreground" />
       <h2 className="mt-2 text-xl font-semibold">{t("emptyNewUser")}</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{t("emptyNewUserBody")}</p>
       <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -42,10 +42,8 @@ export function WelcomeEmpty() {
 export function NotStudiedEmpty() {
   const t = useTranslations("Stats");
   return (
-    <div className="rounded-lg border border-dashed border-border p-8 text-center">
-      <p aria-hidden="true" className="text-4xl">
-        📈
-      </p>
+    <div className="flex flex-col items-center rounded-lg border border-dashed border-border p-8 text-center">
+      <TrendingUp aria-hidden="true" className="h-8 w-8 text-muted-foreground" />
       <h2 className="mt-2 text-xl font-semibold">{t("emptyNotStudied")}</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
         {t("emptyNotStudiedBody")}

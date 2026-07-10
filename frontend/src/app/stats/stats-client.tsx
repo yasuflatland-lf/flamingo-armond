@@ -24,11 +24,13 @@ export function StatsClient({ stats }: { stats: MyLearningStatsQuery["myLearning
 
   let content: ReactNode;
   if (studied === 0 && !hasDecks) {
-    // Brand-new user: no decks, nothing studied. All sections collapse.
+    // Brand-new user: owns no deck that has any cards (the backend omits
+    // zero-card decks from `decks`), and nothing studied. All sections collapse.
     content = <WelcomeEmpty />;
   } else if (studied === 0) {
     // Has decks but no reviews yet: per-deck rows render at 0%, and the
-    // struggling slot is necessarily empty (no lapses without studied cards).
+    // struggling slot is necessarily empty (no lapses without studied cards) —
+    // rendered directly here, mirroring StrugglingList's own empty-cards guard.
     content = (
       <div className="flex flex-col gap-4 sm:gap-6">
         <NotStudiedEmpty />

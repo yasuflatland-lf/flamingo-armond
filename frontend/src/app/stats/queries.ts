@@ -21,7 +21,6 @@ export const MyLearningStatsQuery = graphql(`
       strugglingCards {
         card { id front cardgroup { id name } }
         lapses
-        stability
       }
     }
   }

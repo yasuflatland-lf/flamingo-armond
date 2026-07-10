@@ -413,7 +413,7 @@
   },
   "Stats": {
     "title": "学習の記録",
-    "subtitle": "すべてのデッキにおける学習成果 — 過去365日間。",
+    "subtitle": "すべてのデッキにおける学習成果。",
     "masteryLabel": "習得した単語",
     "masteryAcquiredOf": "/ {total, number}語 学習済み",
     "masteryInProgress": "学習中",
@@ -444,6 +444,9 @@
     "emptyCreateDeck": "デッキを作成",
     "emptyNotStudied": "まだ表示できる記録がありません",
     "emptyNotStudiedBody": "カードをいくつか学習すると、習得状況の内訳と診断指標がここに表示されます。",
-    "emptyStartStudying": "学習を始める"
+    "emptyStartStudying": "学習を始める",
+    "diagnosticsHeading": "診断",
+    "diagnosticsWindow": "過去365日間",
+    "diagnosticsNoActivity": "過去365日間の学習履歴が不足しています。"
   }
 }

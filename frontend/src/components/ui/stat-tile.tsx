@@ -8,10 +8,9 @@ export type StatTileProps = {
 };
 
 /**
- * Presentation-only KPI card for the planned learning-stats diagnostics display
- * (see `schema/stats.graphql`'s `PerformanceMetrics`); it has no frontend
- * consumer yet. It renders a single pre-formatted metric — a label, a large
- * numeric value, and an optional caption — inside shadcn card chrome.
+ * Presentation-only KPI card used by the `/stats` diagnostics row
+ * (`DiagnosticsPanel`). It renders a single pre-formatted metric — a label, a
+ * large numeric value, and an optional caption — inside shadcn card chrome.
  * Number formatting (locale, units, rounding) is the CALLER's responsibility;
  * `value` is a ready-to-render string and always carries `tabular-nums` so
  * columns of tiles align digit-for-digit. An optional `icon` component renders

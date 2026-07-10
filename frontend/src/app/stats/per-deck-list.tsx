@@ -11,7 +11,11 @@ type Decks = MyLearningStatsQuery["myLearningStats"]["decks"];
  * one card): the deck name, a `ProgressMeter` filled to `acquired / totalCards`,
  * the raw `acquired/total` count, and the whole-percent share. `acquired` counts
  * Learned + Mature cards (the two are disjoint on the backend). `totalCards === 0`
- * guards to 0% (the meter itself also clamps a zero denominator).
+ * guards to 0% and the share is clamped to `<= 100%` (mirroring `ProgressMeter`'s
+ * own defensive clamp) so the percent text can never disagree with the bar.
+ *
+ * Callers must render this only for a non-empty `decks` list (`StatsClient` gates
+ * on `hasDecks`); an empty list would render a headed-but-empty section.
  */
 export function PerDeckList({ decks }: { decks: Decks }) {
   const t = useTranslations("Stats");
@@ -23,7 +27,7 @@ export function PerDeckList({ decks }: { decks: Decks }) {
       <ul className="mt-4 flex flex-col gap-4">
         {decks.map((deck) => {
           const acquired = deck.learnedCards + deck.matureCards;
-          const share = deck.totalCards > 0 ? acquired / deck.totalCards : 0;
+          const share = deck.totalCards > 0 ? Math.min(1, acquired / deck.totalCards) : 0;
           return (
             <li key={deck.cardgroup.id} className="flex flex-col gap-1.5">
               <div className="flex items-baseline justify-between gap-2">

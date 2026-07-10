@@ -413,7 +413,7 @@
   },
   "Stats": {
     "title": "Progress",
-    "subtitle": "Your learning outcomes across all decks — last 365 days.",
+    "subtitle": "Your learning outcomes across all decks.",
     "masteryLabel": "Words acquired",
     "masteryAcquiredOf": "/ {total, number} studied",
     "masteryInProgress": "In progress",
@@ -444,6 +444,9 @@
     "emptyCreateDeck": "Create a deck",
     "emptyNotStudied": "No progress to show yet",
     "emptyNotStudiedBody": "Study a few cards and your mastery breakdown and diagnostic metrics will appear here.",
-    "emptyStartStudying": "Start studying"
+    "emptyStartStudying": "Start studying",
+    "diagnosticsHeading": "Diagnostics",
+    "diagnosticsWindow": "Last 365 days",
+    "diagnosticsNoActivity": "Not enough recent activity in the last 365 days."
   }
 }

@@ -63,7 +63,8 @@ const populatedStats: MyLearningStatsQuery["myLearningStats"] = {
     lapseRate: 0.12,
     studyStreak: 9,
     reviewCount: 1430,
-    avgDifficulty: 6.2,
+    // Served normalized to 0..1 by the backend (rescaled ×10 for display).
+    avgDifficulty: 0.62,
   },
   strugglingCards: [
     {
@@ -75,7 +76,6 @@ const populatedStats: MyLearningStatsQuery["myLearningStats"] = {
         cardgroup: { __typename: "Cardgroup", id: "cg-2", name: "Japanese Kanji" },
       },
       lapses: 7,
-      stability: 3.4,
     },
   ],
 };
