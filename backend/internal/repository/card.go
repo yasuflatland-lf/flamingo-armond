@@ -170,7 +170,7 @@ func (r *cardRepo) FindByCardgroup(ctx context.Context, cardgroupID string) ([]*
 }
 
 func (r *cardRepo) ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, cardgroupID string) ([]string, error) {
-	fronts, err := listFrontsByCardgroupTx(ctx, tx, cardgroupID, "cards", "cardgroup_id")
+	fronts, err := listFrontsByGroupTx(ctx, tx, cardgroupID, "cards", "cardgroup_id")
 	if err != nil {
 		return nil, eris.Wrap(err, "repository: card: list fronts by cardgroup")
 	}

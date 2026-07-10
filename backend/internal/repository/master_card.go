@@ -90,7 +90,7 @@ type MasterCardUpdate struct {
 
 // MasterCardRepository provides persistence operations for the MasterCard
 // aggregate. The bulk Tx methods share the table-parameterized helpers in
-// card.go (upsertManyTx / listFrontsByCardgroupTx / deleteByCardgroupAndFrontsTx)
+// card.go (upsertManyTx / listFrontsByGroupTx / deleteByGroupAndFrontsTx)
 // with "master_cards" and "master_cardgroup_id".
 type MasterCardRepository interface {
 	ListByMasterCardgroup(ctx context.Context, masterCardgroupID string) ([]*domain.MasterCard, error)
@@ -412,7 +412,7 @@ func (r *masterCardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []
 
 // ListFrontsByMasterCardgroupTx returns the sorted `front` values for the group.
 func (r *masterCardRepo) ListFrontsByMasterCardgroupTx(ctx context.Context, tx *gorm.DB, masterCardgroupID string) ([]string, error) {
-	fronts, err := listFrontsByCardgroupTx(ctx, tx, masterCardgroupID, "master_cards", "master_cardgroup_id")
+	fronts, err := listFrontsByGroupTx(ctx, tx, masterCardgroupID, "master_cards", "master_cardgroup_id")
 	if err != nil {
 		return nil, eris.Wrap(err, "repository: master card: list fronts by master cardgroup")
 	}
@@ -423,7 +423,7 @@ func (r *masterCardRepo) ListFrontsByMasterCardgroupTx(ctx context.Context, tx *
 // (master_cardgroup_id, front) natural key. Empty fronts short-circuits to
 // (0, nil) inside the shared helper.
 func (r *masterCardRepo) DeleteByMasterCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, masterCardgroupID string, fronts []string) (int64, error) {
-	affected, err := deleteByCardgroupAndFrontsTx(ctx, tx, masterCardgroupID, fronts, "master_cards", "master_cardgroup_id")
+	affected, err := deleteByGroupAndFrontsTx(ctx, tx, masterCardgroupID, fronts, "master_cards", "master_cardgroup_id")
 	if err != nil {
 		return 0, eris.Wrap(err, "repository: master card: delete by master cardgroup and fronts")
 	}
