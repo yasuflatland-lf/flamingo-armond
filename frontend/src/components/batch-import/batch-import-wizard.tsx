@@ -51,7 +51,7 @@ function isWarningKind(kind: CardImportErrorKind | undefined): boolean {
  * Classify a raw Apollo error into a user-facing banner string, delegating to
  * the shared backend-error banner helper.
  */
-function classifyError(err: unknown, fallback: string): string {
+function resolveErrorBanner(err: unknown, fallback: string): string {
   if (!err) return "";
   return getBackendErrorBanner(err) ?? fallback;
 }
@@ -335,10 +335,10 @@ export function BatchImportWizard(props: {
         setValidatedPayload(payloadText);
       }
       if (result.error) {
-        setBannerError(classifyError(result.error, t("unexpectedError")));
+        setBannerError(resolveErrorBanner(result.error, t("unexpectedError")));
       }
     } catch (err) {
-      setBannerError(classifyError(err, t("unexpectedError")));
+      setBannerError(resolveErrorBanner(err, t("unexpectedError")));
     }
   }
 
@@ -376,7 +376,7 @@ export function BatchImportWizard(props: {
       // Partial failure (error rows present): keep the sheet open so the result
       // banner and error rows stay visible.
     } catch (err) {
-      setBannerError(classifyError(err, t("unexpectedError")));
+      setBannerError(resolveErrorBanner(err, t("unexpectedError")));
     }
   }
 

@@ -77,7 +77,7 @@ type Props = {
   onDelete?: (id: string) => Promise<void>;
 };
 
-function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+function areSetsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
   if (a.size !== b.size) return false;
   for (const value of a) {
     if (!b.has(value)) return false;
@@ -175,7 +175,7 @@ export function AdminUserProfileSheet({
 
   const profileDirty = useStore(form.store, (state) => state.isDirty);
   const initialRoleIds = useMemo(() => new Set(user?.roles.map((role) => role.id) ?? []), [user]);
-  const rolesDirty = !sameSet(stagedRoleIds, initialRoleIds);
+  const rolesDirty = !areSetsEqual(stagedRoleIds, initialRoleIds);
   const dirty = profileDirty || rolesDirty;
 
   useEffect(() => {

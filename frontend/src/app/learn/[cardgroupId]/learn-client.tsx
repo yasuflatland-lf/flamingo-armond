@@ -45,7 +45,7 @@ type Props = {
 
 export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
-  const [completed, setCompleted] = useState(0);
+  const [completedCount, setCompleted] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
   // Top-level phase switch. "practice" hands the whole screen to PracticeClient
   // (FSRS-safe re-study of today's cards). It is only entered from the
@@ -329,7 +329,7 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
       cards={queue}
       displayMode={displayMode}
       onCardSwiped={onSwipe}
-      completedCount={completed}
+      completedCount={completedCount}
       // When no banner, SwipeSession renders an `aria-hidden` spacer in the
       // leading row so the card and action bar keep their grid rows.
       topSlot={
