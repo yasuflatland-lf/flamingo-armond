@@ -40,7 +40,7 @@ func (r *mutationResolver) AdminEditUser(ctx context.Context, id string, input m
 		}, nil
 	}
 	if outcome.User == nil {
-		return nil, noVariantSet(ctx, "AdminEditUserOutcome")
+		return nil, newNoVariantSetError(ctx, "AdminEditUserOutcome")
 	}
 	return model.AdminEditUserSuccess{User: toUserModel(outcome.User)}, nil
 }
@@ -60,7 +60,7 @@ func (r *mutationResolver) CreateRole(ctx context.Context, name string) (model.C
 		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.Role == nil {
-		return nil, noVariantSet(ctx, "CreateRoleOutcome")
+		return nil, newNoVariantSetError(ctx, "CreateRoleOutcome")
 	}
 	return model.CreateRoleSuccess{Role: toRoleModel(outcome.Role)}, nil
 }
@@ -84,7 +84,7 @@ func (r *mutationResolver) UpdateRole(ctx context.Context, id string, name strin
 		}, nil
 	}
 	if outcome.Role == nil {
-		return nil, noVariantSet(ctx, "UpdateRoleOutcome")
+		return nil, newNoVariantSetError(ctx, "UpdateRoleOutcome")
 	}
 	return model.UpdateRoleSuccess{Role: toRoleModel(outcome.Role)}, nil
 }

@@ -7,7 +7,7 @@ import (
 )
 
 // PerformanceMode is the difficulty level inferred from a user's recent
-// performance. Values intentionally span ModeDifficult (0) .. ModeInWhile (4).
+// performance. Values intentionally span ModeDifficult (0) .. ModeMastered (4).
 type PerformanceMode int
 
 const (
@@ -15,7 +15,7 @@ const (
 	ModeDefault   PerformanceMode = 1
 	ModeGood      PerformanceMode = 2
 	ModeEasy      PerformanceMode = 3
-	ModeInWhile   PerformanceMode = 4
+	ModeMastered   PerformanceMode = 4
 
 	MinReviewsForModeCalculation = 20
 
@@ -24,7 +24,7 @@ const (
 	defaultModeThreshold = 0.60
 	goodModeThreshold    = 0.75
 	easyModeThreshold    = 0.85
-	inWhileModeThreshold = 0.95
+	masteredModeThreshold = 0.95
 
 	// Average-difficulty nudges shift the band-selected mode by one step:
 	// hard recent cards drop the mode, easy recent cards raise it.
@@ -34,7 +34,7 @@ const (
 
 // IsValid reports whether the mode is in the recognised range.
 func (m PerformanceMode) IsValid() bool {
-	return m >= ModeDifficult && m <= ModeInWhile
+	return m >= ModeDifficult && m <= ModeMastered
 }
 
 type PerformanceMetrics struct {
@@ -95,7 +95,7 @@ func ModeFromMetrics(m PerformanceMetrics) PerformanceMode {
 		return ModeDefault
 	}
 
-	mode := ModeInWhile
+	mode := ModeMastered
 	switch {
 	case m.SuccessRate < defaultModeThreshold:
 		mode = ModeDifficult
@@ -103,7 +103,7 @@ func ModeFromMetrics(m PerformanceMetrics) PerformanceMode {
 		mode = ModeDefault
 	case m.SuccessRate < easyModeThreshold:
 		mode = ModeGood
-	case m.SuccessRate < inWhileModeThreshold:
+	case m.SuccessRate < masteredModeThreshold:
 		mode = ModeEasy
 	}
 
@@ -162,8 +162,8 @@ func clampMode(mode PerformanceMode) PerformanceMode {
 	if mode < ModeDifficult {
 		return ModeDifficult
 	}
-	if mode > ModeInWhile {
-		return ModeInWhile
+	if mode > ModeMastered {
+		return ModeMastered
 	}
 	return mode
 }

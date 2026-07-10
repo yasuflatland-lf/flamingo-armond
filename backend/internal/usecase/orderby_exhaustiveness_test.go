@@ -32,15 +32,15 @@ func TestResolveOrderBy_AllCardOrderByValuesMapped(t *testing.T) {
 	}
 	for _, c := range cases {
 		ob := c.in
-		got, _, err := resolveOrderBy(&ob, nil)
+		got, _, err := resolveCardOrderBy(&ob, nil)
 		if err != nil {
-			t.Errorf("resolveOrderBy(%q): unexpected error %v", c.in, err)
+			t.Errorf("resolveCardOrderBy(%q): unexpected error %v", c.in, err)
 		}
 		if got == "" {
-			t.Errorf("resolveOrderBy(%q): mapped to the empty repository value (default arm)", c.in)
+			t.Errorf("resolveCardOrderBy(%q): mapped to the empty repository value (default arm)", c.in)
 		}
 		if got != c.want {
-			t.Errorf("resolveOrderBy(%q) = %q, want %q", c.in, got, c.want)
+			t.Errorf("resolveCardOrderBy(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }

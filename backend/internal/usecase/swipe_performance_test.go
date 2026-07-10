@@ -60,9 +60,9 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 			wantReview: 20,
 		},
 		{
-			name:       "ninety five percent success becomes in while",
+			name:       "ninety five percent success becomes mastered",
 			recent:     performanceSwipes(base, 18, 1, 5),
-			wantMode:   int(service.ModeInWhile),
+			wantMode:   int(service.ModeMastered),
 			wantReview: 20,
 		},
 	}

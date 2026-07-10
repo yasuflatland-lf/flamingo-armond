@@ -372,16 +372,16 @@ func (u *cardUsecase) ListCardsByCardgroupConnection(
 		return nil, err
 	}
 
-	orderBy, dir, err := resolveOrderBy(in.OrderBy, in.OrderDirection)
+	orderBy, dir, err := resolveCardOrderBy(in.OrderBy, in.OrderDirection)
 	if err != nil {
 		return nil, err
 	}
 
-	after, err := u.resolveCursor(ctx, in.After, in.CardgroupID, orderBy, "after")
+	after, err := u.resolveCardCursor(ctx, in.After, in.CardgroupID, orderBy, "after")
 	if err != nil {
 		return nil, err
 	}
-	before, err := u.resolveCursor(ctx, in.Before, in.CardgroupID, orderBy, "before")
+	before, err := u.resolveCardCursor(ctx, in.Before, in.CardgroupID, orderBy, "before")
 	if err != nil {
 		return nil, err
 	}
@@ -421,20 +421,20 @@ var cardOrderByColumns = map[CardOrderBy]repository.CardOrderBy{
 	CardOrderByDue:       repository.CardOrderByDue,
 }
 
-// resolveOrderBy maps the typed usecase enums to the repository allowlist.
+// resolveCardOrderBy maps the typed usecase enums to the repository allowlist.
 // Defaults to (ID, ASC) when both are nil. The default arm is defense in
 // depth — gqlgen UnmarshalGQL already rejects invalid enum strings upstream.
-func resolveOrderBy(orderBy *CardOrderBy, dir *SortOrder) (repository.CardOrderBy, repository.SortOrder, error) {
+func resolveCardOrderBy(orderBy *CardOrderBy, dir *SortOrder) (repository.CardOrderBy, repository.SortOrder, error) {
 	return resolveOrderByColumn(orderBy, dir, cardOrderByColumns, repository.CardOrderByID, repository.SortAsc)
 }
 
-// resolveCursor decodes an opaque cursor string into a *repository.CardCursor
+// resolveCardCursor decodes an opaque cursor string into a *repository.CardCursor
 // with the field needed for the active orderBy populated. The cursor may be a
 // v1 envelope ("v1:" + base64) or a legacy bare UUID; both are accepted during
 // the backward-compatibility window. Returns BAD_USER_INPUT when the cursor
 // cannot be decoded, the card cannot be found, or the card belongs to a
 // different cardgroup.
-func (u *cardUsecase) resolveCursor(
+func (u *cardUsecase) resolveCardCursor(
 	ctx context.Context,
 	cursorStr *string,
 	cardgroupID string,
@@ -466,7 +466,7 @@ func (u *cardUsecase) resolveCursor(
 	case repository.CardOrderByDue:
 		due := card.CreatedAt
 		if u.userFSRSRepo == nil {
-			u.logger.WarnContext(ctx, "card: resolveCursor: falling back to createdAt for OrderByDue because userFSRSRepo is nil or not configured")
+			u.logger.WarnContext(ctx, "card: resolveCardCursor: falling back to createdAt for OrderByDue because userFSRSRepo is nil or not configured")
 		} else if user := auth.UserFrom(ctx); user != nil {
 			byCardID, err := u.userFSRSRepo.FindByUserAndCardIDs(ctx, user.Sub, []string{id})
 			if err != nil {

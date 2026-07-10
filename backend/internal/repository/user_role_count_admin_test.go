@@ -37,8 +37,8 @@ func TestUserRoleRepository_CountAdmins(t *testing.T) {
 		t.Fatalf("FindByName(admin): %v", err)
 	}
 	userID := insertAuthUser(t, ctx)
-	if err := repo.AssignToUser(ctx, userID, role.ID); err != nil {
-		t.Fatalf("AssignToUser: %v", err)
+	if err := repo.AssignRoleToUser(ctx, userID, role.ID); err != nil {
+		t.Fatalf("AssignRoleToUser: %v", err)
 	}
 
 	n2, err := repo.CountAdmins(ctx)

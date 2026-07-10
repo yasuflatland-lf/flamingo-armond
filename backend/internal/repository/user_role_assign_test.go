@@ -31,10 +31,10 @@ func insertRole(t *testing.T, ctx context.Context, name string) string {
 }
 
 // ---------------------------------------------------------------------------
-// AssignToUser
+// AssignRoleToUser
 // ---------------------------------------------------------------------------
 
-func TestUserRoleRepository_AssignToUser_HappyPath(t *testing.T) {
+func TestUserRoleRepository_AssignRoleToUser_HappyPath(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
@@ -46,8 +46,8 @@ func TestUserRoleRepository_AssignToUser_HappyPath(t *testing.T) {
 		t.Fatalf("FindByName(admin): %v", err)
 	}
 
-	if err := repo.AssignToUser(ctx, userID, admin.ID); err != nil {
-		t.Fatalf("AssignToUser: %v", err)
+	if err := repo.AssignRoleToUser(ctx, userID, admin.ID); err != nil {
+		t.Fatalf("AssignRoleToUser: %v", err)
 	}
 
 	roles, err := repo.ListByUser(ctx, userID)
@@ -62,7 +62,7 @@ func TestUserRoleRepository_AssignToUser_HappyPath(t *testing.T) {
 	}
 }
 
-func TestUserRoleRepository_AssignToUser_Idempotent(t *testing.T) {
+func TestUserRoleRepository_AssignRoleToUser_Idempotent(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
@@ -74,12 +74,12 @@ func TestUserRoleRepository_AssignToUser_Idempotent(t *testing.T) {
 		t.Fatalf("FindByName(admin): %v", err)
 	}
 
-	if err := repo.AssignToUser(ctx, userID, admin.ID); err != nil {
-		t.Fatalf("AssignToUser (first): %v", err)
+	if err := repo.AssignRoleToUser(ctx, userID, admin.ID); err != nil {
+		t.Fatalf("AssignRoleToUser (first): %v", err)
 	}
 	// Second call must not return an error.
-	if err := repo.AssignToUser(ctx, userID, admin.ID); err != nil {
-		t.Fatalf("AssignToUser (second, idempotent): %v", err)
+	if err := repo.AssignRoleToUser(ctx, userID, admin.ID); err != nil {
+		t.Fatalf("AssignRoleToUser (second, idempotent): %v", err)
 	}
 
 	roles, err := repo.ListByUser(ctx, userID)
@@ -91,7 +91,7 @@ func TestUserRoleRepository_AssignToUser_Idempotent(t *testing.T) {
 	}
 }
 
-func TestUserRoleRepository_AssignToUser_UserNotFound(t *testing.T) {
+func TestUserRoleRepository_AssignRoleToUser_UserNotFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	roleRepo := repository.NewRoleRepository(testDB.GORM)
@@ -103,44 +103,44 @@ func TestUserRoleRepository_AssignToUser_UserNotFound(t *testing.T) {
 	}
 
 	missingUser := uuid.NewString()
-	err = repo.AssignToUser(ctx, missingUser, admin.ID)
+	err = repo.AssignRoleToUser(ctx, missingUser, admin.ID)
 	if !errors.Is(err, repository.ErrUserNotFound) {
-		t.Fatalf("AssignToUser(missing user): want ErrUserNotFound, got %v", err)
+		t.Fatalf("AssignRoleToUser(missing user): want ErrUserNotFound, got %v", err)
 	}
 	// Backward-compat: legacy callers that match on ErrNotFound must still see
 	// the joined sentinel.
 	if !errors.Is(err, repository.ErrNotFound) {
-		t.Fatalf("AssignToUser(missing user): want errors.Is(_, ErrNotFound) true, got %v", err)
+		t.Fatalf("AssignRoleToUser(missing user): want errors.Is(_, ErrNotFound) true, got %v", err)
 	}
 }
 
-func TestUserRoleRepository_AssignToUser_RoleNotFound(t *testing.T) {
+func TestUserRoleRepository_AssignRoleToUser_RoleNotFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
 	repo := repository.NewUserRoleRepository(testDB.GORM)
 
 	missingRole := uuid.NewString()
-	err := repo.AssignToUser(ctx, userID, missingRole)
+	err := repo.AssignRoleToUser(ctx, userID, missingRole)
 	if !errors.Is(err, repository.ErrRoleNotFound) {
-		t.Fatalf("AssignToUser(missing role): want ErrRoleNotFound, got %v", err)
+		t.Fatalf("AssignRoleToUser(missing role): want ErrRoleNotFound, got %v", err)
 	}
 	if !errors.Is(err, repository.ErrNotFound) {
-		t.Fatalf("AssignToUser(missing role): want errors.Is(_, ErrNotFound) true, got %v", err)
+		t.Fatalf("AssignRoleToUser(missing role): want errors.Is(_, ErrNotFound) true, got %v", err)
 	}
 }
 
-// TestUserRoleRepository_AssignToUser_RoleNotFoundDistinct asserts that the new
+// TestUserRoleRepository_AssignRoleToUser_RoleNotFoundDistinct asserts that the new
 // sentinels are distinct: a missing-role error must not match the
 // missing-user sentinel, and vice versa.
-func TestUserRoleRepository_AssignToUser_RoleNotFoundDistinct(t *testing.T) {
+func TestUserRoleRepository_AssignRoleToUser_RoleNotFoundDistinct(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
 	repo := repository.NewUserRoleRepository(testDB.GORM)
 
 	missingRole := uuid.NewString()
-	err := repo.AssignToUser(ctx, userID, missingRole)
+	err := repo.AssignRoleToUser(ctx, userID, missingRole)
 	if !errors.Is(err, repository.ErrRoleNotFound) {
 		t.Fatalf("want ErrRoleNotFound, got %v", err)
 	}
@@ -164,8 +164,8 @@ func TestUserRoleRepository_SetUserRolesTx_ReplacesRoleSet(t *testing.T) {
 	reviewerID := insertRole(t, ctx, "reviewer")
 
 	for _, roleID := range []string{adminID, generalID} {
-		if err := repo.AssignToUser(ctx, userID, roleID); err != nil {
-			t.Fatalf("AssignToUser(%s): %v", roleID, err)
+		if err := repo.AssignRoleToUser(ctx, userID, roleID); err != nil {
+			t.Fatalf("AssignRoleToUser(%s): %v", roleID, err)
 		}
 	}
 
@@ -188,8 +188,8 @@ func TestUserRoleRepository_SetUserRolesTx_EmptyTargetClearsAllRoles(t *testing.
 	adminID := insertRole(t, ctx, "admin")
 	generalID := insertRole(t, ctx, "general")
 	for _, roleID := range []string{adminID, generalID} {
-		if err := repo.AssignToUser(ctx, userID, roleID); err != nil {
-			t.Fatalf("AssignToUser(%s): %v", roleID, err)
+		if err := repo.AssignRoleToUser(ctx, userID, roleID); err != nil {
+			t.Fatalf("AssignRoleToUser(%s): %v", roleID, err)
 		}
 	}
 
@@ -253,8 +253,8 @@ func TestUserRoleRepository_SetUserRolesTx_RoleNotFoundRollsBack(t *testing.T) {
 	repo := repository.NewUserRoleRepository(testDB.GORM)
 
 	adminID := insertRole(t, ctx, "admin")
-	if err := repo.AssignToUser(ctx, userID, adminID); err != nil {
-		t.Fatalf("AssignToUser: %v", err)
+	if err := repo.AssignRoleToUser(ctx, userID, adminID); err != nil {
+		t.Fatalf("AssignRoleToUser: %v", err)
 	}
 
 	missingRole := uuid.NewString()
@@ -339,8 +339,8 @@ func TestUserRoleRepository_ListByUser_OrderedByNameAsc(t *testing.T) {
 	reviewerID := insertRole(t, ctx, "reviewer")
 
 	for _, roleID := range []string{reviewerID, adminID, generalID} {
-		if err := repo.AssignToUser(ctx, userID, roleID); err != nil {
-			t.Fatalf("AssignToUser(%s): %v", roleID, err)
+		if err := repo.AssignRoleToUser(ctx, userID, roleID); err != nil {
+			t.Fatalf("AssignRoleToUser(%s): %v", roleID, err)
 		}
 	}
 
@@ -485,14 +485,14 @@ func TestUserRoleRepository_ListByUserIDs_MultipleUsers_NameAsc(t *testing.T) {
 	// Assign in deliberate reverse-alphabetical order for each user.
 	for _, uid := range []string{userA, userB, userC} {
 		for _, rid := range []string{reviewerID, adminID} {
-			if err := repo.AssignToUser(ctx, uid, rid); err != nil {
-				t.Fatalf("AssignToUser(%s, %s): %v", uid, rid, err)
+			if err := repo.AssignRoleToUser(ctx, uid, rid); err != nil {
+				t.Fatalf("AssignRoleToUser(%s, %s): %v", uid, rid, err)
 			}
 		}
 	}
 	// userC also gets "general" to exercise a third distinct ordering.
-	if err := repo.AssignToUser(ctx, userC, generalID); err != nil {
-		t.Fatalf("AssignToUser(userC, general): %v", err)
+	if err := repo.AssignRoleToUser(ctx, userC, generalID); err != nil {
+		t.Fatalf("AssignRoleToUser(userC, general): %v", err)
 	}
 
 	result, err := repo.ListByUserIDs(ctx, []string{userA, userB, userC})
@@ -541,8 +541,8 @@ func TestUserRoleRepository_ListByUserIDs_UnknownUserAbsentFromMap(t *testing.T)
 	unknownUser := uuid.NewString()
 
 	adminID := insertRole(t, ctx, "admin")
-	if err := repo.AssignToUser(ctx, knownUser, adminID); err != nil {
-		t.Fatalf("AssignToUser: %v", err)
+	if err := repo.AssignRoleToUser(ctx, knownUser, adminID); err != nil {
+		t.Fatalf("AssignRoleToUser: %v", err)
 	}
 
 	result, err := repo.ListByUserIDs(ctx, []string{knownUser, unknownUser})

@@ -39,7 +39,7 @@ type CardReadRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Card, error)
 	FindByIDForUpdateTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error)
-	FindByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error)
+	ListByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error)
 	ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, cardgroupID string) ([]string, error)
 	// FindByCardgroupAndFront returns the card identified by the (cardgroup_id,
 	// front) unique key, or ErrNotFound when no such row exists. The front value
@@ -161,7 +161,7 @@ func (r *cardRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*dom
 	return out, nil
 }
 
-func (r *cardRepo) FindByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error) {
+func (r *cardRepo) ListByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error) {
 	var rows []gormCard
 	if err := r.db.WithContext(ctx).
 		Where("cardgroup_id = ?", cardgroupID).

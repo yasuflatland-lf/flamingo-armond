@@ -31,7 +31,7 @@ type stubRoleAssigner struct {
 	fn func(ctx context.Context, userID, roleID string) error
 }
 
-func (s stubRoleAssigner) AssignToUser(ctx context.Context, userID, roleID string) error {
+func (s stubRoleAssigner) AssignRoleToUser(ctx context.Context, userID, roleID string) error {
 	return s.fn(ctx, userID, roleID)
 }
 
@@ -188,7 +188,7 @@ func makeSet(emails ...string) map[string]struct{} {
 // C. Middleware tests M1–M9
 // ---------------------------------------------------------------------------
 
-// M1: empty emails map — IsAdmin and AssignToUser must never be called.
+// M1: empty emails map — IsAdmin and AssignRoleToUser must never be called.
 func TestSuperUserPromoter_M1_EmptyEmails(t *testing.T) {
 	t.Parallel()
 	var isAdminCalls, assignCalls atomic.Int64
@@ -212,7 +212,7 @@ func TestSuperUserPromoter_M1_EmptyEmails(t *testing.T) {
 		t.Errorf("expected 0 IsAdmin calls, got %d", n)
 	}
 	if n := assignCalls.Load(); n != 0 {
-		t.Errorf("expected 0 AssignToUser calls, got %d", n)
+		t.Errorf("expected 0 AssignRoleToUser calls, got %d", n)
 	}
 }
 
@@ -239,7 +239,7 @@ func TestSuperUserPromoter_M2_AnonymousRequest(t *testing.T) {
 		t.Errorf("expected 0 IsAdmin calls, got %d", n)
 	}
 	if n := assignCalls.Load(); n != 0 {
-		t.Errorf("expected 0 AssignToUser calls, got %d", n)
+		t.Errorf("expected 0 AssignRoleToUser calls, got %d", n)
 	}
 }
 
@@ -267,7 +267,7 @@ func TestSuperUserPromoter_M3_EmailNotInSet(t *testing.T) {
 		t.Errorf("expected 0 IsAdmin calls, got %d", n)
 	}
 	if n := assignCalls.Load(); n != 0 {
-		t.Errorf("expected 0 AssignToUser calls, got %d", n)
+		t.Errorf("expected 0 AssignRoleToUser calls, got %d", n)
 	}
 }
 
@@ -295,11 +295,11 @@ func TestSuperUserPromoter_M4_EmailVerifiedFalse(t *testing.T) {
 		t.Errorf("expected 0 IsAdmin calls, got %d", n)
 	}
 	if n := assignCalls.Load(); n != 0 {
-		t.Errorf("expected 0 AssignToUser calls, got %d", n)
+		t.Errorf("expected 0 AssignRoleToUser calls, got %d", n)
 	}
 }
 
-// M5: email matches + verified + already admin — IsAdmin called once, AssignToUser not called, no log.
+// M5: email matches + verified + already admin — IsAdmin called once, AssignRoleToUser not called, no log.
 func TestSuperUserPromoter_M5_AlreadyAdmin(t *testing.T) {
 	// Not parallel: captureDefaultLogger mutates global slog default.
 	var buf bytes.Buffer
@@ -326,14 +326,14 @@ func TestSuperUserPromoter_M5_AlreadyAdmin(t *testing.T) {
 		t.Errorf("expected 1 IsAdmin call, got %d", n)
 	}
 	if n := assignCalls.Load(); n != 0 {
-		t.Errorf("expected 0 AssignToUser calls, got %d", n)
+		t.Errorf("expected 0 AssignRoleToUser calls, got %d", n)
 	}
 	if buf.Len() > 0 {
 		t.Errorf("expected no log output, got: %s", buf.String())
 	}
 }
 
-// M6: email matches + verified + not yet admin — AssignToUser called, INFO log with user_id.
+// M6: email matches + verified + not yet admin — AssignRoleToUser called, INFO log with user_id.
 func TestSuperUserPromoter_M6_SuccessfulPromotion(t *testing.T) {
 	// Not parallel: captureDefaultLogger mutates global slog default.
 	var buf bytes.Buffer
@@ -366,13 +366,13 @@ func TestSuperUserPromoter_M6_SuccessfulPromotion(t *testing.T) {
 		t.Errorf("expected 1 IsAdmin call, got %d", n)
 	}
 	if n := assignCalls.Load(); n != 1 {
-		t.Errorf("expected 1 AssignToUser call, got %d", n)
+		t.Errorf("expected 1 AssignRoleToUser call, got %d", n)
 	}
 	if gotUserID != wantUserID {
-		t.Errorf("AssignToUser userID: want %q, got %q", wantUserID, gotUserID)
+		t.Errorf("AssignRoleToUser userID: want %q, got %q", wantUserID, gotUserID)
 	}
 	if gotRoleID != wantRoleID {
-		t.Errorf("AssignToUser roleID: want %q, got %q", wantRoleID, gotRoleID)
+		t.Errorf("AssignRoleToUser roleID: want %q, got %q", wantRoleID, gotRoleID)
 	}
 
 	// Verify INFO log contains user_id but not the email.
@@ -395,7 +395,7 @@ func TestSuperUserPromoter_M6_SuccessfulPromotion(t *testing.T) {
 	}
 }
 
-// M7: IsAdmin returns an error — WARN log with error_chain, AssignToUser not called, 200.
+// M7: IsAdmin returns an error — WARN log with error_chain, AssignRoleToUser not called, 200.
 func TestSuperUserPromoter_M7_IsAdminError(t *testing.T) {
 	// Not parallel: captureDefaultLogger mutates global slog default.
 	var buf bytes.Buffer
@@ -419,7 +419,7 @@ func TestSuperUserPromoter_M7_IsAdminError(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 	if n := assignCalls.Load(); n != 0 {
-		t.Errorf("expected 0 AssignToUser calls, got %d", n)
+		t.Errorf("expected 0 AssignRoleToUser calls, got %d", n)
 	}
 
 	records := decodeLogLines(t, &buf)
@@ -472,7 +472,7 @@ func TestSuperUserPromoter_InjectedLogger_WarnsOnAdminCheckFailure(t *testing.T)
 		return false, eris.New("db: connection refused")
 	}}
 	assigner := stubRoleAssigner{fn: func(_ context.Context, _, _ string) error {
-		t.Fatal("AssignToUser must not be called when the admin check fails")
+		t.Fatal("AssignRoleToUser must not be called when the admin check fails")
 		return nil
 	}}
 	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner, logger)
@@ -506,8 +506,8 @@ func TestSuperUserPromoter_InjectedLogger_WarnsOnAdminCheckFailure(t *testing.T)
 	}
 }
 
-// M8: AssignToUser returns an error — WARN log with error_chain, 200.
-func TestSuperUserPromoter_M8_AssignToUserError(t *testing.T) {
+// M8: AssignRoleToUser returns an error — WARN log with error_chain, 200.
+func TestSuperUserPromoter_M8_AssignRoleToUserError(t *testing.T) {
 	// Not parallel: captureDefaultLogger mutates global slog default.
 	var buf bytes.Buffer
 	captureDefaultLogger(t, &buf)
@@ -564,7 +564,7 @@ func TestSuperUserPromoter_M8_AssignToUserError(t *testing.T) {
 // same user before either has promoted. The stub mirrors ON CONFLICT DO NOTHING
 // by returning nil for both calls. Both goroutines must complete with 200.
 //
-// With the process-lifetime confirmed-sub cache, the exact IsAdmin/AssignToUser
+// With the process-lifetime confirmed-sub cache, the exact IsAdmin/AssignRoleToUser
 // call counts on this path are non-deterministic: if one goroutine records the
 // sub before the other reads the cache, the second skips both DB calls. So the
 // counts are bounded (at least one call to promote, at most one per goroutine)
@@ -627,7 +627,7 @@ func TestSuperUserPromoter_M9_ConcurrentFirstLogin(t *testing.T) {
 		t.Errorf("expected 1..%d IsAdmin calls, got %d", goroutines, n)
 	}
 	if n := assignCalls.Load(); n < 1 || n > int64(goroutines) {
-		t.Errorf("expected 1..%d AssignToUser calls, got %d", goroutines, n)
+		t.Errorf("expected 1..%d AssignRoleToUser calls, got %d", goroutines, n)
 	}
 }
 
@@ -660,13 +660,13 @@ func TestSuperUserPromoter_CachesConfirmedAdmin(t *testing.T) {
 		t.Errorf("expected exactly 1 IsAdmin call across %d requests, got %d", requests, n)
 	}
 	if n := assignCalls.Load(); n != 0 {
-		t.Errorf("expected 0 AssignToUser calls, got %d", n)
+		t.Errorf("expected 0 AssignRoleToUser calls, got %d", n)
 	}
 }
 
 // TestSuperUserPromoter_CachesAfterPromotion verifies a cold cache still promotes
 // correctly, and that once a sub has been promoted the confirmed-sub cache halts
-// every subsequent IsAdmin query and AssignToUser call for that sub.
+// every subsequent IsAdmin query and AssignRoleToUser call for that sub.
 func TestSuperUserPromoter_CachesAfterPromotion(t *testing.T) {
 	t.Parallel()
 	var isAdminCalls, assignCalls atomic.Int64
@@ -691,19 +691,19 @@ func TestSuperUserPromoter_CachesAfterPromotion(t *testing.T) {
 			t.Fatalf("request %d: expected 200, got %d", i, rec.Code)
 		}
 	}
-	// Cold cache: the first request runs IsAdmin then AssignToUser. Every later
+	// Cold cache: the first request runs IsAdmin then AssignRoleToUser. Every later
 	// request short-circuits on the cache, so both counters stay at 1.
 	if n := isAdminCalls.Load(); n != 1 {
 		t.Errorf("expected exactly 1 IsAdmin call across %d requests, got %d", requests, n)
 	}
 	if n := assignCalls.Load(); n != 1 {
-		t.Errorf("expected exactly 1 AssignToUser call across %d requests, got %d", requests, n)
+		t.Errorf("expected exactly 1 AssignRoleToUser call across %d requests, got %d", requests, n)
 	}
 }
 
 // TestSuperUserPromoter_AuthUserWithEmptySub verifies that a non-nil AuthUser
 // with an empty Sub field (u.Sub == "") is treated as anonymous and neither
-// IsAdmin nor AssignToUser is called, even when the email is in the set.
+// IsAdmin nor AssignRoleToUser is called, even when the email is in the set.
 func TestSuperUserPromoter_AuthUserWithEmptySub(t *testing.T) {
 	t.Parallel()
 	var checkerCalls atomic.Int64
@@ -730,7 +730,7 @@ func TestSuperUserPromoter_AuthUserWithEmptySub(t *testing.T) {
 		t.Errorf("expected IsAdmin not called, got %d", checkerCalls.Load())
 	}
 	if assignerCalls.Load() != 0 {
-		t.Errorf("expected AssignToUser not called, got %d", assignerCalls.Load())
+		t.Errorf("expected AssignRoleToUser not called, got %d", assignerCalls.Load())
 	}
 }
 

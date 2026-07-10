@@ -2325,7 +2325,7 @@ type panicUserRoleRepo struct{}
 func (panicUserRoleRepo) HasRole(_ context.Context, _ string, _ domain.RoleName) (bool, error) {
 	panic("not used in this test")
 }
-func (panicUserRoleRepo) AssignToUser(_ context.Context, _, _ string) error {
+func (panicUserRoleRepo) AssignRoleToUser(_ context.Context, _, _ string) error {
 	panic("not used in this test")
 }
 func (panicUserRoleRepo) SetUserRolesTx(_ context.Context, _ *gorm.DB, _ string, _ []string) error {

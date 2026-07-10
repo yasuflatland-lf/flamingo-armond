@@ -34,7 +34,8 @@ type CardImportUsecase interface {
 }
 
 // ImportCardsInput is the wire-shape consumed by CardImportUsecase.Import.
-// Payload reuses the validateCardImport base64-encoded text format.
+// Payload reuses the base64-encoded text format of the `validateCardImport`
+// GraphQL query.
 type ImportCardsInput struct {
 	CardgroupID string
 	Payload     string // standard base64-encoded plain-text card import payload

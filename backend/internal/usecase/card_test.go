@@ -753,7 +753,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_BackwardPaging(t *testing.T)
 }
 
 // TestCardUsecase_ListCardsByCardgroupConnection_ResolveCursorHydratesDueField
-// pins down that resolveCursor populates the field matching the active
+// pins down that resolveCardCursor populates the field matching the active
 // orderBy on the *CardCursor passed to FindPageByCardgroup.
 func TestCardUsecase_ListCardsByCardgroupConnection_ResolveCursorHydratesDueField(t *testing.T) {
 	t.Parallel()
@@ -852,7 +852,7 @@ func TestCardUsecase_ResolveCursor_MalformedV1_ReturnsBadUserInput(t *testing.T)
 		nil, nil, newTestLogger(),
 	)
 	malformed := "v1:!!!not-base64!!!"
-	_, err := uc.(*cardUsecase).resolveCursor(
+	_, err := uc.(*cardUsecase).resolveCardCursor(
 		context.Background(),
 		&malformed, "cg1", repository.CardOrderByID, "after",
 	)
@@ -871,7 +871,7 @@ func TestCardUsecase_ResolveCursor_V1EncodedID(t *testing.T) {
 	)
 	// "v1:" + base64.RawURLEncoding.EncodeToString([]byte("card-abc")) == "v1:Y2FyZC1hYmM"
 	encoded := "v1:Y2FyZC1hYmM"
-	c, err := uc.(*cardUsecase).resolveCursor(
+	c, err := uc.(*cardUsecase).resolveCardCursor(
 		context.Background(),
 		&encoded, "cg1", repository.CardOrderByID, "after",
 	)

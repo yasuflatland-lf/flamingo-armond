@@ -35,7 +35,7 @@ func (r *mutationResolver) AdminCreateMasterCard(ctx context.Context, input mode
 		}, nil
 	}
 	if outcome.Card == nil {
-		return nil, noVariantSet(ctx, "CreateMasterCardOutcome")
+		return nil, newNoVariantSetError(ctx, "CreateMasterCardOutcome")
 	}
 	return model.CreateMasterCardSuccess{MasterCard: toMasterCardModel(outcome.Card)}, nil
 }
@@ -60,7 +60,7 @@ func (r *mutationResolver) AdminUpdateMasterCard(ctx context.Context, id string,
 		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.Card == nil {
-		return nil, noVariantSet(ctx, "UpdateMasterCardOutcome")
+		return nil, newNoVariantSetError(ctx, "UpdateMasterCardOutcome")
 	}
 	return model.UpdateMasterCardSuccess{MasterCard: toMasterCardModel(outcome.Card)}, nil
 }

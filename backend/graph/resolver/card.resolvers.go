@@ -93,7 +93,7 @@ func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCardIn
 		}, nil
 	}
 	if outcome.Card == nil {
-		return nil, noVariantSet(ctx, "CreateCardOutcome")
+		return nil, newNoVariantSetError(ctx, "CreateCardOutcome")
 	}
 	return model.CreateCardSuccess{Card: toCardModel(outcome.Card)}, nil
 }
@@ -116,7 +116,7 @@ func (r *mutationResolver) UpdateCard(ctx context.Context, id string, input mode
 		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.Card == nil {
-		return nil, noVariantSet(ctx, "UpdateCardOutcome")
+		return nil, newNoVariantSetError(ctx, "UpdateCardOutcome")
 	}
 	return model.UpdateCardSuccess{Card: toCardModel(outcome.Card)}, nil
 }

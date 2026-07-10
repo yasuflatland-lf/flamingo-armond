@@ -31,7 +31,7 @@ func (r *mutationResolver) UpdateProfile(ctx context.Context, input model.Update
 		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.User == nil {
-		return nil, noVariantSet(ctx, "UpdateProfileOutcome")
+		return nil, newNoVariantSetError(ctx, "UpdateProfileOutcome")
 	}
 	return model.UpdateProfileSuccess{User: toUserModel(outcome.User)}, nil
 }

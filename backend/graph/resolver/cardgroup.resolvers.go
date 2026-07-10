@@ -50,7 +50,7 @@ func (r *mutationResolver) CreateCardgroup(ctx context.Context, input model.NewC
 		}, nil
 	}
 	if outcome.Cardgroup == nil {
-		return nil, noVariantSet(ctx, "CreateCardgroupOutcome")
+		return nil, newNoVariantSetError(ctx, "CreateCardgroupOutcome")
 	}
 	return model.CreateCardgroupSuccess{Cardgroup: toCardgroupModel(outcome.Cardgroup)}, nil
 }
@@ -70,7 +70,7 @@ func (r *mutationResolver) UpdateCardgroup(ctx context.Context, id string, input
 		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.Cardgroup == nil {
-		return nil, noVariantSet(ctx, "UpdateCardgroupOutcome")
+		return nil, newNoVariantSetError(ctx, "UpdateCardgroupOutcome")
 	}
 	return model.UpdateCardgroupSuccess{Cardgroup: toCardgroupModel(outcome.Cardgroup)}, nil
 }

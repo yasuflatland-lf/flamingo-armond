@@ -88,8 +88,8 @@ type emptyUserRoleRepoStub struct{}
 func (emptyUserRoleRepoStub) HasRole(_ context.Context, _ string, _ domain.RoleName) (bool, error) {
 	panic("emptyUserRoleRepoStub.HasRole not expected")
 }
-func (emptyUserRoleRepoStub) AssignToUser(_ context.Context, _, _ string) error {
-	panic("emptyUserRoleRepoStub.AssignToUser not expected")
+func (emptyUserRoleRepoStub) AssignRoleToUser(_ context.Context, _, _ string) error {
+	panic("emptyUserRoleRepoStub.AssignRoleToUser not expected")
 }
 func (emptyUserRoleRepoStub) SetUserRolesTx(_ context.Context, _ *gorm.DB, _ string, _ []string) error {
 	panic("emptyUserRoleRepoStub.SetUserRolesTx not expected")
@@ -182,8 +182,8 @@ func (r *countingCardRepo) FindByIDs(ctx context.Context, ids []string) (map[str
 	}
 	return r.findByIDs(ctx, ids)
 }
-func (r *countingCardRepo) FindByCardgroup(_ context.Context, _ string) ([]*domain.Card, error) {
-	panic("countingCardRepo.FindByCardgroup not configured")
+func (r *countingCardRepo) ListByCardgroup(_ context.Context, _ string) ([]*domain.Card, error) {
+	panic("countingCardRepo.ListByCardgroup not configured")
 }
 func (r *countingCardRepo) ListFrontsByCardgroupTx(_ context.Context, _ *gorm.DB, _ string) ([]string, error) {
 	panic("countingCardRepo.ListFrontsByCardgroupTx not configured")

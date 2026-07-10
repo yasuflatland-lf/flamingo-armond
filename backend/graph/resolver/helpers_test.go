@@ -371,20 +371,20 @@ func TestClassifyLoaderErr_GenericErrorIsInternalWithLabel(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// noVariantSet — outcome-union "no variant" internal guard
+// newNoVariantSetError — outcome-union "no variant" internal guard
 // ---------------------------------------------------------------------------
 
-// TestNoVariantSet_MessageAndCode verifies that noVariantSet emits the exact
+// TestNewNoVariantSetError_MessageAndCode verifies that newNoVariantSetError emits the exact
 // "resolver: <name> has no variant set" message in the logged chain and an
 // INTERNAL wire code.
-func TestNoVariantSet_MessageAndCode(t *testing.T) {
+func TestNewNoVariantSetError_MessageAndCode(t *testing.T) {
 	// Not parallel: mutates the global slog default.
 	var buf bytes.Buffer
 	prev := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	got := noVariantSet(context.Background(), "CreateCardOutcome")
+	got := newNoVariantSetError(context.Background(), "CreateCardOutcome")
 
 	require.NotNil(t, got)
 	assert.True(t, gqlerr.IsCode(got, gqlerr.CodeInternal),
