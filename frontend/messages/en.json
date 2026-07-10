@@ -21,6 +21,7 @@
   "Nav": {
     "cardgroups": "Cardgroups",
     "catalog": "Catalog",
+    "progress": "Progress",
     "profile": "Profile",
     "signIn": "Sign in",
     "logout": "Logout",

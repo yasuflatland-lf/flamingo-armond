@@ -102,6 +102,13 @@ describe("<GlobalRail>", () => {
 
       expect(screen.getByRole("link", { name: /catalog/i })).toHaveAttribute("href", "/catalog");
     });
+
+    it("renders the Progress link pointing at /stats when signed in", () => {
+      mockUsePathname.mockReturnValue("/");
+      renderRail({ user: { email: "u@example.com" }, isAdmin: false });
+
+      expect(screen.getByRole("link", { name: /progress/i })).toHaveAttribute("href", "/stats");
+    });
   });
 
   describe("S2 — Admin gate", () => {
@@ -153,6 +160,18 @@ describe("<GlobalRail>", () => {
         "page",
       );
       expect(screen.getByRole("link", { name: /cardgroups/i })).not.toHaveAttribute("aria-current");
+    });
+
+    it("marks Progress as the current page when pathname is /stats", () => {
+      mockUsePathname.mockReturnValue("/stats");
+      renderRail({ user: { email: "u@example.com" }, isAdmin: true });
+
+      expect(screen.getByRole("link", { name: /progress/i })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      expect(screen.getByRole("link", { name: /cardgroups/i })).not.toHaveAttribute("aria-current");
+      expect(screen.getByRole("link", { name: /catalog/i })).not.toHaveAttribute("aria-current");
     });
 
     it("marks Catalog as the current page on a /catalog/ sub-route", () => {

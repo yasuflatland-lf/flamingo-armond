@@ -62,6 +62,17 @@ describe("<LogoDrawer>", () => {
     expect(catalogLink).toHaveAttribute("href", "/catalog");
   });
 
+  it("drawer shows the Progress link pointing at /stats", async () => {
+    const user = userEvent.setup();
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+    await user.click(screen.getByRole("button", { name: "Open menu" }));
+
+    const progressLink = screen.getByRole("link", { name: /progress/i });
+    expect(progressLink).toBeInTheDocument();
+    expect(progressLink).toHaveAttribute("href", "/stats");
+  });
+
   it("logo is a home link with aria-label='Flamingo home' and href='/'", () => {
     renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
