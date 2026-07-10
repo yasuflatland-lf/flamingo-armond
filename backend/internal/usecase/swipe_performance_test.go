@@ -238,7 +238,7 @@ func performanceSwipe(rating domain.Rating, reviewedAt time.Time, difficulty flo
 			Difficulty:    difficulty,
 			ElapsedDays:   1,
 			ScheduledDays: 1,
-			State:         domain.FSRSStateReview,
+			Phase:         domain.FSRSPhaseReview,
 		},
 	}
 }

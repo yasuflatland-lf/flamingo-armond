@@ -25,7 +25,7 @@ func (s *FSRSScheduler) Apply(state domain.FSRSState, rating domain.Rating, now 
 		ScheduledDays: uint64(state.ScheduledDays),
 		Reps:          uint64(state.Reps),
 		Lapses:        uint64(state.Lapses),
-		State:         fsrs.State(state.State),
+		State:         fsrs.State(state.Phase),
 		LastReview:    state.LastReview,
 	}, now, fsrs.Rating(rating))
 
@@ -37,7 +37,7 @@ func (s *FSRSScheduler) Apply(state domain.FSRSState, rating domain.Rating, now 
 		ScheduledDays: int(info.Card.ScheduledDays),
 		Reps:          int(info.Card.Reps),
 		Lapses:        int(info.Card.Lapses),
-		State:         domain.FSRSCardState(info.Card.State),
+		Phase:         domain.FSRSPhase(info.Card.State),
 		LastReview:    now,
 	}
 }

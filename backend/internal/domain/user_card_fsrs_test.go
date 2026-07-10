@@ -33,7 +33,7 @@ func TestUserCardFSRS_ApplyRating_HappyPath(t *testing.T) {
 		Reps:       1,
 		Stability:  3.0,
 		Difficulty: 4.5,
-		State:      FSRSStateLearning,
+		Phase:      FSRSPhaseLearning,
 		LastReview: t1,
 	}
 	stub := &stubScheduler{out: outState}

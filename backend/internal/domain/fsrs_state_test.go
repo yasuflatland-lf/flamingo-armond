@@ -10,13 +10,13 @@ func TestFSRSCardState_IsLearningPhase(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		state FSRSCardState
+		state FSRSPhase
 		want  bool
 	}{
-		{FSRSStateNew, false},
-		{FSRSStateLearning, true},
-		{FSRSStateReview, false},
-		{FSRSStateRelearning, true},
+		{FSRSPhaseNew, false},
+		{FSRSPhaseLearning, true},
+		{FSRSPhaseReview, false},
+		{FSRSPhaseRelearning, true},
 	}
 	for _, tc := range cases {
 		require.Equal(t, tc.want, tc.state.IsLearningPhase(), "state %d", tc.state)

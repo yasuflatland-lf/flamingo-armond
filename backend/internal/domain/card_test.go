@@ -225,7 +225,7 @@ func TestNewFSRSStateForNewCard(t *testing.T) {
 	require.Zero(t, got.ScheduledDays)
 	require.Zero(t, got.Reps)
 	require.Zero(t, got.Lapses)
-	require.Equal(t, FSRSStateNew, got.State)
+	require.Equal(t, FSRSPhaseNew, got.Phase)
 	require.Equal(t, now, got.LastReview)
 }
 

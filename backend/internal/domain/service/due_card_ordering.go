@@ -54,13 +54,13 @@ func (p *OrderingPolicy) Apply(due []domain.DueCard, rng *rand.Rand, ratio domai
 	return interleave(newCards, reviewCards, ratio.NewShare(), ratio.ReviewShare())
 }
 
-// partition splits due into new (FSRSStateNew) vs review (everything else),
+// partition splits due into new (FSRSPhaseNew) vs review (everything else),
 // preserving the input order. The repository pre-sorts review rows
 // learning-phase first, then random() within each phase; new rows arrive in
 // random() sample order.
 func partition(due []domain.DueCard) (newC, reviewC []domain.DueCard) {
 	for _, d := range due {
-		if d.State == domain.FSRSStateNew {
+		if d.Phase == domain.FSRSPhaseNew {
 			newC = append(newC, d)
 		} else {
 			reviewC = append(reviewC, d)
@@ -79,7 +79,7 @@ func shuffleWithinPhase(cards []domain.DueCard, rng *rand.Rand) {
 	// Loop runs through len(cards) inclusive so the trailing run is flushed
 	// without a tail handler.
 	for i := 1; i <= len(cards); i++ {
-		if i == len(cards) || cards[i].State.IsLearningPhase() != cards[start].State.IsLearningPhase() {
+		if i == len(cards) || cards[i].Phase.IsLearningPhase() != cards[start].Phase.IsLearningPhase() {
 			if i-start > 1 {
 				run := cards[start:i]
 				rng.Shuffle(len(run), func(a, b int) { run[a], run[b] = run[b], run[a] })
