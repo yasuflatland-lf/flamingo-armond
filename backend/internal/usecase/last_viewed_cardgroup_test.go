@@ -26,7 +26,7 @@ func (m *mockPrefRepo) UpsertLastViewedCardgroup(_ context.Context, userID, card
 	return m.err
 }
 
-// mockUserRefetchRepo stubs userPreferenceRefetchRepo for the post-upsert refetch step.
+// mockUserRefetchRepo stubs lastViewedCardgroupUsersRepo for the post-upsert refetch step.
 type mockUserRefetchRepo struct {
 	user  *domain.User
 	err   error
