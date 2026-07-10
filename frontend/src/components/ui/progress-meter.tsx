@@ -8,9 +8,8 @@ export type ProgressMeterProps = {
 };
 
 /**
- * Presentation-only horizontal progress meter for the planned learning-stats
- * per-deck acquisition display (see `schema/stats.graphql`'s `DeckMastery`); it
- * has no frontend consumer yet. A coral fill (`bg-brand-primary`) advances over
+ * Presentation-only horizontal progress meter used by the `/stats` per-deck
+ * acquisition rows (`PerDeckList`). A coral fill (`bg-brand-primary`) advances over
  * a muted track (`bg-muted`). The rendered percentage is derived once from
  * `value / max` and defensively clamped to `[0, 100]`: a non-positive `max`
  * (division by zero) and a non-finite or negative `value` all collapse to an
