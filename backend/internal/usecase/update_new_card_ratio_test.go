@@ -10,7 +10,7 @@ import (
 )
 
 // mockNewCardRatioPrefRepo stubs updateNewCardRatioPrefsRepo for
-// UpdateNewCardRatio calls.
+// UpsertNewCardRatio calls.
 type mockNewCardRatioPrefRepo struct {
 	err       error
 	called    int
@@ -19,7 +19,7 @@ type mockNewCardRatioPrefRepo struct {
 	gotDen    int
 }
 
-func (m *mockNewCardRatioPrefRepo) UpdateNewCardRatio(_ context.Context, userID string, num, den int) error {
+func (m *mockNewCardRatioPrefRepo) UpsertNewCardRatio(_ context.Context, userID string, num, den int) error {
 	m.called++
 	m.gotUserID = userID
 	m.gotNum = num
@@ -78,13 +78,13 @@ func TestUpdateNewCardRatio_Success(t *testing.T) {
 		t.Fatalf("Set: returned user ID mismatch: got %+v, want ID=%q", got, "u1")
 	}
 	if prefs.called != 1 {
-		t.Fatalf("expected 1 UpdateNewCardRatio call, got %d", prefs.called)
+		t.Fatalf("expected 1 UpsertNewCardRatio call, got %d", prefs.called)
 	}
 	if prefs.gotUserID != "u1" {
-		t.Fatalf("UpdateNewCardRatio called with userID %q, want %q", prefs.gotUserID, "u1")
+		t.Fatalf("UpsertNewCardRatio called with userID %q, want %q", prefs.gotUserID, "u1")
 	}
 	if prefs.gotNum != 3 || prefs.gotDen != 5 {
-		t.Fatalf("UpdateNewCardRatio called with %d/%d, want reduced 3/5", prefs.gotNum, prefs.gotDen)
+		t.Fatalf("UpsertNewCardRatio called with %d/%d, want reduced 3/5", prefs.gotNum, prefs.gotDen)
 	}
 	if users.calls != 1 {
 		t.Fatalf("expected 1 FindByID call after update, got %d", users.calls)

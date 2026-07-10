@@ -331,7 +331,7 @@ func TestUserPreferenceRepository_OnDeleteUser_CascadesPreferenceRow(t *testing.
 }
 
 // TestUserPreferenceRepository_UpdateLearnDisplayMode_CreateRow verifies that
-// UpdateLearnDisplayMode creates a new user_preferences row when none exists,
+// UpsertLearnDisplayMode creates a new user_preferences row when none exists,
 // and that FindByUserID reflects the stored mode.
 func TestUserPreferenceRepository_UpdateLearnDisplayMode_CreateRow(t *testing.T) {
 	t.Parallel()
@@ -339,8 +339,8 @@ func TestUserPreferenceRepository_UpdateLearnDisplayMode_CreateRow(t *testing.T)
 	userID := insertAuthUser(t, ctx)
 
 	repo := repository.NewUserPreferenceRepository(testDB.GORM)
-	if err := repo.UpdateLearnDisplayMode(ctx, userID, "always_visible"); err != nil {
-		t.Fatalf("UpdateLearnDisplayMode (create): %v", err)
+	if err := repo.UpsertLearnDisplayMode(ctx, userID, "always_visible"); err != nil {
+		t.Fatalf("UpsertLearnDisplayMode (create): %v", err)
 	}
 
 	got, err := repo.FindByUserID(ctx, userID)
@@ -353,7 +353,7 @@ func TestUserPreferenceRepository_UpdateLearnDisplayMode_CreateRow(t *testing.T)
 }
 
 // TestUserPreferenceRepository_UpdateLearnDisplayMode_UpdateRow verifies that
-// calling UpdateLearnDisplayMode a second time updates the column without
+// calling UpsertLearnDisplayMode a second time updates the column without
 // creating a duplicate row.
 func TestUserPreferenceRepository_UpdateLearnDisplayMode_UpdateRow(t *testing.T) {
 	t.Parallel()
@@ -361,11 +361,11 @@ func TestUserPreferenceRepository_UpdateLearnDisplayMode_UpdateRow(t *testing.T)
 	userID := insertAuthUser(t, ctx)
 
 	repo := repository.NewUserPreferenceRepository(testDB.GORM)
-	if err := repo.UpdateLearnDisplayMode(ctx, userID, "always_visible"); err != nil {
-		t.Fatalf("UpdateLearnDisplayMode (first): %v", err)
+	if err := repo.UpsertLearnDisplayMode(ctx, userID, "always_visible"); err != nil {
+		t.Fatalf("UpsertLearnDisplayMode (first): %v", err)
 	}
-	if err := repo.UpdateLearnDisplayMode(ctx, userID, "flip_to_reveal"); err != nil {
-		t.Fatalf("UpdateLearnDisplayMode (second): %v", err)
+	if err := repo.UpsertLearnDisplayMode(ctx, userID, "flip_to_reveal"); err != nil {
+		t.Fatalf("UpsertLearnDisplayMode (second): %v", err)
 	}
 
 	got, err := repo.FindByUserID(ctx, userID)
@@ -378,7 +378,7 @@ func TestUserPreferenceRepository_UpdateLearnDisplayMode_UpdateRow(t *testing.T)
 }
 
 // TestUserPreferenceRepository_UpdateNewCardRatio_CreateRow verifies that
-// UpdateNewCardRatio creates a new user_preferences row when none exists, and
+// UpsertNewCardRatio creates a new user_preferences row when none exists, and
 // that FindByUserID reflects the stored fraction (proving the raw INSERT ...
 // ON CONFLICT SQL and the new_card_ratio CHECK constraint against a real
 // Postgres instance).
@@ -388,8 +388,8 @@ func TestUserPreferenceRepository_UpdateNewCardRatio_CreateRow(t *testing.T) {
 	userID := insertAuthUser(t, ctx)
 
 	repo := repository.NewUserPreferenceRepository(testDB.GORM)
-	if err := repo.UpdateNewCardRatio(ctx, userID, 3, 7); err != nil {
-		t.Fatalf("UpdateNewCardRatio (create): %v", err)
+	if err := repo.UpsertNewCardRatio(ctx, userID, 3, 7); err != nil {
+		t.Fatalf("UpsertNewCardRatio (create): %v", err)
 	}
 
 	got, err := repo.FindByUserID(ctx, userID)
@@ -403,7 +403,7 @@ func TestUserPreferenceRepository_UpdateNewCardRatio_CreateRow(t *testing.T) {
 }
 
 // TestUserPreferenceRepository_UpdateNewCardRatio_UpdateRow verifies that
-// calling UpdateNewCardRatio a second time updates the columns without creating
+// calling UpsertNewCardRatio a second time updates the columns without creating
 // a duplicate row.
 func TestUserPreferenceRepository_UpdateNewCardRatio_UpdateRow(t *testing.T) {
 	t.Parallel()
@@ -411,11 +411,11 @@ func TestUserPreferenceRepository_UpdateNewCardRatio_UpdateRow(t *testing.T) {
 	userID := insertAuthUser(t, ctx)
 
 	repo := repository.NewUserPreferenceRepository(testDB.GORM)
-	if err := repo.UpdateNewCardRatio(ctx, userID, 3, 7); err != nil {
-		t.Fatalf("UpdateNewCardRatio (first): %v", err)
+	if err := repo.UpsertNewCardRatio(ctx, userID, 3, 7); err != nil {
+		t.Fatalf("UpsertNewCardRatio (first): %v", err)
 	}
-	if err := repo.UpdateNewCardRatio(ctx, userID, 2, 9); err != nil {
-		t.Fatalf("UpdateNewCardRatio (second): %v", err)
+	if err := repo.UpsertNewCardRatio(ctx, userID, 2, 9); err != nil {
+		t.Fatalf("UpsertNewCardRatio (second): %v", err)
 	}
 
 	got, err := repo.FindByUserID(ctx, userID)

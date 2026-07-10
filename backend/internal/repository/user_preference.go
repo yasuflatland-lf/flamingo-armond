@@ -50,17 +50,17 @@ type UserPreferenceRepository interface {
 	// "cardgroup not owned" so the caller cannot probe other users' cardgroups
 	// via error shape.
 	UpsertLastViewedCardgroup(ctx context.Context, userID, cardgroupID string) error
-	// UpdateLearnDisplayMode upserts userID's learn display mode. The mode string
+	// UpsertLearnDisplayMode upserts userID's learn display mode. The mode string
 	// is the persisted form of a domain.LearnDisplayMode converted via
 	// mode.String() at the usecase call site; unvalidated strings are never passed
 	// here. The column CHECK constraint is a backstop for direct DB writes that
 	// bypass the usecase layer.
-	UpdateLearnDisplayMode(ctx context.Context, userID, mode string) error
-	// UpdateNewCardRatio upserts userID's new-card ratio. num/den are the reduced
+	UpsertLearnDisplayMode(ctx context.Context, userID, mode string) error
+	// UpsertNewCardRatio upserts the userID's new-card ratio. num/den are the reduced
 	// fraction from a domain.NewCardRatio (numerator = new share, denominator =
 	// total); the VO guarantees the invariant before this is called. The column
 	// CHECK is a backstop for direct DB writes.
-	UpdateNewCardRatio(ctx context.Context, userID string, num, den int) error
+	UpsertNewCardRatio(ctx context.Context, userID string, num, den int) error
 }
 
 type userPreferenceRepo struct{ db *gorm.DB }
@@ -141,7 +141,7 @@ func classifyUserPreferenceCardgroupFKError(err error) error {
 	return nil
 }
 
-func (r *userPreferenceRepo) UpdateLearnDisplayMode(ctx context.Context, userID, mode string) error {
+func (r *userPreferenceRepo) UpsertLearnDisplayMode(ctx context.Context, userID, mode string) error {
 	sql := `INSERT INTO user_preferences (user_id, learn_display_mode, updated_at)
 VALUES (?, ?, now())
 ON CONFLICT (user_id) DO UPDATE
@@ -154,7 +154,7 @@ SET learn_display_mode = EXCLUDED.learn_display_mode,
 	return nil
 }
 
-func (r *userPreferenceRepo) UpdateNewCardRatio(ctx context.Context, userID string, num, den int) error {
+func (r *userPreferenceRepo) UpsertNewCardRatio(ctx context.Context, userID string, num, den int) error {
 	sql := `INSERT INTO user_preferences (user_id, new_card_ratio_num, new_card_ratio_den, updated_at)
 VALUES (?, ?, ?, now())
 ON CONFLICT (user_id) DO UPDATE

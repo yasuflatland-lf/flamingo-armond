@@ -10,7 +10,7 @@ import (
 )
 
 // mockLearnModePrefRepo stubs updateLearnDisplayModePrefsRepo for
-// UpdateLearnDisplayMode calls.
+// UpsertLearnDisplayMode calls.
 type mockLearnModePrefRepo struct {
 	err       error
 	called    int
@@ -18,7 +18,7 @@ type mockLearnModePrefRepo struct {
 	gotMode   string
 }
 
-func (m *mockLearnModePrefRepo) UpdateLearnDisplayMode(_ context.Context, userID, mode string) error {
+func (m *mockLearnModePrefRepo) UpsertLearnDisplayMode(_ context.Context, userID, mode string) error {
 	m.called++
 	m.gotUserID = userID
 	m.gotMode = mode
@@ -71,13 +71,13 @@ func TestUpdateLearnDisplayMode_Success(t *testing.T) {
 		t.Fatalf("Set: returned user ID mismatch: got %+v, want ID=%q", got, "u1")
 	}
 	if prefs.called != 1 {
-		t.Fatalf("expected 1 UpdateLearnDisplayMode call, got %d", prefs.called)
+		t.Fatalf("expected 1 UpsertLearnDisplayMode call, got %d", prefs.called)
 	}
 	if prefs.gotUserID != "u1" {
-		t.Fatalf("UpdateLearnDisplayMode called with userID %q, want %q", prefs.gotUserID, "u1")
+		t.Fatalf("UpsertLearnDisplayMode called with userID %q, want %q", prefs.gotUserID, "u1")
 	}
 	if prefs.gotMode != domain.LearnDisplayFlipToReveal.String() {
-		t.Fatalf("UpdateLearnDisplayMode called with mode %q, want %q", prefs.gotMode, domain.LearnDisplayFlipToReveal.String())
+		t.Fatalf("UpsertLearnDisplayMode called with mode %q, want %q", prefs.gotMode, domain.LearnDisplayFlipToReveal.String())
 	}
 	if users.calls != 1 {
 		t.Fatalf("expected 1 FindByID call after update, got %d", users.calls)
