@@ -1,19 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { resolveHeaderSearchAction } from "./header-search-action";
+import { shouldShowHeaderSearch } from "./header-search-action";
 
-describe("resolveHeaderSearchAction", () => {
+describe("shouldShowHeaderSearch", () => {
   it("returns true on filterable list routes", () => {
-    expect(resolveHeaderSearchAction("/cardgroups")).toBe(true);
-    expect(resolveHeaderSearchAction("/catalog")).toBe(true);
-    expect(resolveHeaderSearchAction("/admin/masters")).toBe(true);
-    expect(resolveHeaderSearchAction("/admin/users")).toBe(true);
+    expect(shouldShowHeaderSearch("/cardgroups")).toBe(true);
+    expect(shouldShowHeaderSearch("/catalog")).toBe(true);
+    expect(shouldShowHeaderSearch("/admin/masters")).toBe(true);
+    expect(shouldShowHeaderSearch("/admin/users")).toBe(true);
   });
 
   it("returns true on the nested card-list edit routes", () => {
-    expect(resolveHeaderSearchAction("/cardgroups/abc/edit")).toBe(true);
-    expect(resolveHeaderSearchAction("/cardgroups/abc/edit/")).toBe(true);
-    expect(resolveHeaderSearchAction("/admin/masters/abc/edit")).toBe(true);
-    expect(resolveHeaderSearchAction("/admin/masters/abc/edit/")).toBe(true);
+    expect(shouldShowHeaderSearch("/cardgroups/abc/edit")).toBe(true);
+    expect(shouldShowHeaderSearch("/cardgroups/abc/edit/")).toBe(true);
+    expect(shouldShowHeaderSearch("/admin/masters/abc/edit")).toBe(true);
+    expect(shouldShowHeaderSearch("/admin/masters/abc/edit/")).toBe(true);
   });
 
   it("returns true on the catalog deck-detail route", () => {
@@ -21,13 +21,13 @@ describe("resolveHeaderSearchAction", () => {
     // nested [id]/edit screen), the public catalog deck-detail route renders the
     // card list directly at /catalog/[id] and wires the header-takeover filter,
     // so the detail route itself is searchable.
-    expect(resolveHeaderSearchAction("/catalog/abc")).toBe(true);
-    expect(resolveHeaderSearchAction("/catalog/abc/")).toBe(true);
+    expect(shouldShowHeaderSearch("/catalog/abc")).toBe(true);
+    expect(shouldShowHeaderSearch("/catalog/abc/")).toBe(true);
   });
 
   it("returns false on non-filterable routes", () => {
-    expect(resolveHeaderSearchAction("/")).toBe(false);
-    expect(resolveHeaderSearchAction("/learn/123")).toBe(false);
+    expect(shouldShowHeaderSearch("/")).toBe(false);
+    expect(shouldShowHeaderSearch("/learn/123")).toBe(false);
   });
 
   it("returns false on the detail (non-edit) routes", () => {
@@ -36,7 +36,7 @@ describe("resolveHeaderSearchAction", () => {
     // are. (The masters list route /admin/masters is itself searchable, so it is
     // not listed here. The catalog deck-detail route is the deliberate exception,
     // covered above, because its card list renders at /catalog/[id] directly.)
-    expect(resolveHeaderSearchAction("/cardgroups/abc")).toBe(false);
-    expect(resolveHeaderSearchAction("/admin/masters/abc")).toBe(false);
+    expect(shouldShowHeaderSearch("/cardgroups/abc")).toBe(false);
+    expect(shouldShowHeaderSearch("/admin/masters/abc")).toBe(false);
   });
 });

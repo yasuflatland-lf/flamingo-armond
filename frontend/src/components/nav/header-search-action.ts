@@ -30,7 +30,7 @@ const SEARCH_PATTERNS: RegExp[] = [
  * Built to extend: add routes to `SEARCH_EXACT` / `SEARCH_PATTERNS` (and wire
  * the page) when other list screens adopt the header-takeover filter.
  */
-export function resolveHeaderSearchAction(pathname: string): boolean {
+export function shouldShowHeaderSearch(pathname: string): boolean {
   if (SEARCH_EXACT.has(pathname)) return true;
   return SEARCH_PATTERNS.some((re) => re.test(pathname));
 }

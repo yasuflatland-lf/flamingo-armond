@@ -59,8 +59,8 @@ interface PaginatedAdminListScreenProps {
     loadingMoreLabel: string;
   };
   /** True on the very first load (`NetworkStatus.loading` with no edges yet). */
-  loading: boolean;
-  /** Full-page skeleton rendered while `loading`. */
+  initialLoading: boolean;
+  /** Full-page skeleton rendered while `initialLoading`. */
   skeleton: ReactNode;
   /**
    * testid namespace shared across the query-error banner (`{prefix}-query-error`),
@@ -84,7 +84,7 @@ interface PaginatedAdminListScreenProps {
  *
  * The skeleton gate lives here too: a mid-session refetch must not re-trigger it
  * (that would unmount an open sheet and lose any banner), so the caller passes the
- * already-computed `loading` flag rather than a raw network status.
+ * already-computed `initialLoading` flag rather than a raw network status.
  */
 export function PaginatedAdminListScreen({
   search,
@@ -99,12 +99,12 @@ export function PaginatedAdminListScreen({
   isEmpty,
   emptyLabel,
   footer,
-  loading,
+  initialLoading,
   skeleton,
   testIdPrefix,
   children,
 }: PaginatedAdminListScreenProps) {
-  if (loading) return <>{skeleton}</>;
+  if (initialLoading) return <>{skeleton}</>;
 
   return (
     <ListingPageShell

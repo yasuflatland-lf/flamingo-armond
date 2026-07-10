@@ -165,7 +165,7 @@ export function AdminMastersClient() {
         retryLabel: tCommon("retry"),
         loadingMoreLabel: t("loadingMore"),
       }}
-      loading={initialLoading}
+      initialLoading={initialLoading}
       skeleton={<AdminMastersSkeleton />}
       testIdPrefix="admin-masters"
     >
