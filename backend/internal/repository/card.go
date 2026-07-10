@@ -37,7 +37,7 @@ type CardUpdate struct {
 
 type CardReadRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Card, error)
-	FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
+	FindByIDForUpdateTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error)
 	FindByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error)
 	ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, cardgroupID string) ([]string, error)
@@ -122,7 +122,7 @@ func (r *cardRepo) FindByID(ctx context.Context, id string) (*domain.Card, error
 	return findCardByID(ctx, r.db, id)
 }
 
-func (r *cardRepo) FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error) {
+func (r *cardRepo) FindByIDForUpdateTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error) {
 	return findCardByID(ctx, tx.Clauses(clause.Locking{Strength: "UPDATE"}), id)
 }
 

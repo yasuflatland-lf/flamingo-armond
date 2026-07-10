@@ -13,7 +13,7 @@ import (
 )
 
 // TestSwipeUsecase_HandleSwipe_FindCardByIDError_PinsChain verifies that an
-// infrastructure error from FindByIDTx is wrapped with the canonical
+// infrastructure error from FindByIDForUpdateTx is wrapped with the canonical
 // "usecase: swipe: find card by id" prefix so the error_chain log attribute
 // points at the correct operation.  repository.ErrNotFound is NOT used here;
 // that sentinel travels to the Validation outcome variant and is covered by
@@ -220,7 +220,7 @@ func TestSwipeUsecase_HandleSwipe_InsertSwipeRecordError_PinsChain(t *testing.T)
 }
 
 // TestSwipeUsecase_HandleSwipe_FindCardByID_PropagatesCancelled verifies that
-// context.Canceled returned from FindByIDTx passes through unwrapped so the
+// context.Canceled returned from FindByIDForUpdateTx passes through unwrapped so the
 // caller can distinguish a cancellation from an infrastructure failure.
 func TestSwipeUsecase_HandleSwipe_FindCardByID_PropagatesCancelled(t *testing.T) {
 	t.Parallel()
@@ -252,7 +252,7 @@ func TestSwipeUsecase_HandleSwipe_FindCardByID_PropagatesCancelled(t *testing.T)
 
 // TestSwipeUsecase_HandleSwipe_FindUserCardFSRS_PropagatesCancelled verifies
 // that context.Canceled returned from FindByUserAndCardIDsTx passes through
-// unwrapped after FindByIDTx succeeds.
+// unwrapped after FindByIDForUpdateTx succeeds.
 func TestSwipeUsecase_HandleSwipe_FindUserCardFSRS_PropagatesCancelled(t *testing.T) {
 	t.Parallel()
 

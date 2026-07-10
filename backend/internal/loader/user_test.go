@@ -173,8 +173,8 @@ func emptyCardgroupRepo() *countingCardgroupRepo {
 func (r *countingCardRepo) FindByID(_ context.Context, _ string) (*domain.Card, error) {
 	panic("countingCardRepo.FindByID not configured")
 }
-func (r *countingCardRepo) FindByIDTx(_ context.Context, _ *gorm.DB, _ string) (*domain.Card, error) {
-	panic("countingCardRepo.FindByIDTx not configured")
+func (r *countingCardRepo) FindByIDForUpdateTx(_ context.Context, _ *gorm.DB, _ string) (*domain.Card, error) {
+	panic("countingCardRepo.FindByIDForUpdateTx not configured")
 }
 func (r *countingCardRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error) {
 	if r.findByIDs == nil {

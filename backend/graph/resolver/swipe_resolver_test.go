@@ -26,7 +26,7 @@ type swipeCardRepo struct {
 	findByIDTxErr    error
 }
 
-func (m *swipeCardRepo) FindByIDTx(_ context.Context, _ *gorm.DB, _ string) (*domain.Card, error) {
+func (m *swipeCardRepo) FindByIDForUpdateTx(_ context.Context, _ *gorm.DB, _ string) (*domain.Card, error) {
 	return m.findByIDTxResult, m.findByIDTxErr
 }
 

@@ -21,7 +21,7 @@ const (
 )
 
 type CardRepoForSwipe interface {
-	FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
+	FindByIDForUpdateTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
 }
 
 type CardgroupRepoForSwipe interface {
@@ -156,7 +156,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		return HandleSwipeOutcome{}, eris.New("usecase: swipe: user card fsrs repository is not configured")
 	}
 	err = u.tx(ctx, func(tx *gorm.DB) error {
-		card, err := u.cardRepo.FindByIDTx(ctx, tx, in.CardID)
+		card, err := u.cardRepo.FindByIDForUpdateTx(ctx, tx, in.CardID)
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
 				return ucerr.NewValidationError("cardId", "card not found")

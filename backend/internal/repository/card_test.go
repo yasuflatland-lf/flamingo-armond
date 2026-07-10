@@ -189,7 +189,7 @@ func TestCardRepository_FindByIDTx_LocksRowForUpdate(t *testing.T) {
 	tx1 := testDB.GORM.WithContext(ctx).Begin()
 	require.NoError(t, tx1.Error)
 	defer tx1.Rollback()
-	_, err := repo.FindByIDTx(ctx, tx1, card.ID)
+	_, err := repo.FindByIDForUpdateTx(ctx, tx1, card.ID)
 	require.NoError(t, err)
 
 	tx2 := testDB.GORM.WithContext(ctx).Begin()
