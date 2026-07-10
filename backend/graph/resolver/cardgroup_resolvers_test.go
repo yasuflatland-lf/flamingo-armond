@@ -99,7 +99,7 @@ func newCardgroupSrv(repo usecase.CardgroupRepository) *handler.Server {
 // the cardgroup-limit code path (isAdmin: false).
 func newCardgroupSrvWithAdmin(repo usecase.CardgroupRepository, admin usecase.AdminChecker) *handler.Server {
 	cgUC := usecase.NewCardgroupUsecase(repo, admin, newDiscardLogger())
-	r := resolver.NewResolver(nil, cgUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(nil, cgUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv

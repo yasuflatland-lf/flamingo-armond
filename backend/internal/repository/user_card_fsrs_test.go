@@ -151,3 +151,112 @@ func TestUserCardFSRSRepository_FindByUserAndCardIDsTx_EmptySlice(t *testing.T) 
 	require.NotNil(t, got)
 	require.Empty(t, got)
 }
+
+// TestUserCardFSRSRepository_ListFSRSStatesByUser_ScopesByViewer proves
+// ListFSRSStatesByUser returns only the caller's studied rows, joined to cards
+// for the owning cardgroup, and never leaks another user's FSRS row — even when
+// both users studied the same card. Cross-tenant negative test per
+// docs/backend/library-gotchas/repository-cross-tenant-negative-test.md.
+func TestUserCardFSRSRepository_ListFSRSStatesByUser_ScopesByViewer(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	otherUserID := insertAuthUser(t, ctx)
+	cgA := insertCardgroupForUser(t, ctx, ownerID, "Stats Deck A")
+	cgOther := insertCardgroupForUser(t, ctx, otherUserID, "Other Stats Deck")
+	cardRepo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+
+	mature := newCard(domain.CardgroupID(cgA), "mature", "back")
+	learned := newCard(domain.CardgroupID(cgA), "learned", "back")
+	otherCard := newCard(domain.CardgroupID(cgOther), "other", "back")
+	require.NoError(t, cardRepo.Create(ctx, mature))
+	require.NoError(t, cardRepo.Create(ctx, learned))
+	require.NoError(t, cardRepo.Create(ctx, otherCard))
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	// Owner: one mature (Review, 25d) and one learned (Review, 5d) card.
+	ownerMature := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), mature.ID, now)
+	ownerMature.State.Phase = domain.FSRSPhaseReview
+	ownerMature.State.Stability = 25
+	ownerLearned := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), learned.ID, now)
+	ownerLearned.State.Phase = domain.FSRSPhaseReview
+	ownerLearned.State.Stability = 5
+	ownerLearned.State.Lapses = 3
+
+	// Other user studies their own card AND the owner's mature card, with a
+	// distinct stability so a leak would be detectable.
+	otherOwn := domain.NewUserCardFSRSForNewCard(domain.UserID(otherUserID), otherCard.ID, now)
+	otherOwn.State.Phase = domain.FSRSPhaseReview
+	otherOwn.State.Stability = 30
+	otherOnOwnerCard := domain.NewUserCardFSRSForNewCard(domain.UserID(otherUserID), mature.ID, now)
+	otherOnOwnerCard.State.Phase = domain.FSRSPhaseReview
+	otherOnOwnerCard.State.Stability = 99
+
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, s := range []*domain.UserCardFSRS{ownerMature, ownerLearned, otherOwn, otherOnOwnerCard} {
+			if err := ucsRepo.UpsertTx(ctx, tx, s); err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
+
+	rows, err := ucsRepo.ListFSRSStatesByUser(ctx, ownerID)
+	require.NoError(t, err)
+	require.Len(t, rows, 2, "owner has exactly two studied cards")
+
+	byCard := make(map[string]repository.FSRSStatRow, len(rows))
+	for _, r := range rows {
+		byCard[r.CardID] = r
+	}
+	require.NotContains(t, byCard, otherCard.ID, "another user's card must never leak")
+
+	gotMature, ok := byCard[mature.ID]
+	require.True(t, ok)
+	require.Equal(t, cgA, gotMature.CardgroupID)
+	require.Equal(t, domain.FSRSPhaseReview, gotMature.Phase)
+	require.InDelta(t, 25.0, gotMature.Stability, 1e-9,
+		"owner's own stability (25), not the other user's row on the same card (99)")
+
+	gotLearned, ok := byCard[learned.ID]
+	require.True(t, ok)
+	require.Equal(t, cgA, gotLearned.CardgroupID)
+	require.Equal(t, 3, gotLearned.Lapses)
+	require.InDelta(t, 5.0, gotLearned.Stability, 1e-9)
+
+	// The other user sees their own two rows, keyed correctly.
+	otherRows, err := ucsRepo.ListFSRSStatesByUser(ctx, otherUserID)
+	require.NoError(t, err)
+	require.Len(t, otherRows, 2)
+}
+
+// TestUserCardFSRSRepository_CountCardsByCardgroupForUser_ScopesByOwner proves
+// CountCardsByCardgroupForUser returns per-deck totals only for cardgroups the
+// user owns (cardgroups.owner_id = ?), including decks with zero studied cards,
+// and never counts another user's deck.
+func TestUserCardFSRSRepository_CountCardsByCardgroupForUser_ScopesByOwner(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	otherUserID := insertAuthUser(t, ctx)
+	cgA := insertCardgroupForUser(t, ctx, ownerID, "Count Deck A")
+	cgB := insertCardgroupForUser(t, ctx, ownerID, "Count Deck B")
+	cgOther := insertCardgroupForUser(t, ctx, otherUserID, "Other Count Deck")
+	cardRepo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+
+	// Deck A: two cards. Deck B: one card. Other deck: one card.
+	require.NoError(t, cardRepo.Create(ctx, newCard(domain.CardgroupID(cgA), "a1", "back")))
+	require.NoError(t, cardRepo.Create(ctx, newCard(domain.CardgroupID(cgA), "a2", "back")))
+	require.NoError(t, cardRepo.Create(ctx, newCard(domain.CardgroupID(cgB), "b1", "back")))
+	require.NoError(t, cardRepo.Create(ctx, newCard(domain.CardgroupID(cgOther), "o1", "back")))
+
+	totals, err := ucsRepo.CountCardsByCardgroupForUser(ctx, ownerID)
+	require.NoError(t, err)
+	require.Len(t, totals, 2, "owner owns exactly two decks")
+	require.Equal(t, 2, totals[cgA])
+	require.Equal(t, 1, totals[cgB], "a deck with zero studied cards still reports its total")
+	require.NotContains(t, totals, cgOther, "another user's deck must never leak")
+}

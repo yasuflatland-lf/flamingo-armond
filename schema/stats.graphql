@@ -1,0 +1,36 @@
+"""A learner's aggregate learning statistics."""
+type LearningStats {
+  """Disjoint three-tier mastery counts across all studied cards."""
+  mastery: MasteryBreakdown!
+  """Per-deck acquisition, one entry per owned deck (decks with no studied cards included)."""
+  decks: [DeckMastery!]!
+}
+
+"""Disjoint three-tier mastery counts across all studied cards. The three tiers sum to totalStudied."""
+type MasteryBreakdown {
+  """Cards not yet in the Review phase (New / Learning / Relearning)."""
+  inProgress: Int!
+  """Review-phase cards below the maturity stability threshold."""
+  learned: Int!
+  """Review-phase cards at or above the maturity stability threshold (durably retained)."""
+  mature: Int!
+  """Total number of studied cards; equals inProgress + learned + mature."""
+  totalStudied: Int!
+}
+
+"""Per-deck acquisition. learnedCards/matureCards are disjoint; acquired = learnedCards + matureCards."""
+type DeckMastery {
+  """The owning deck."""
+  cardgroup: Cardgroup!
+  """Total cards in the deck (the acquisition denominator)."""
+  totalCards: Int!
+  """Studied cards in the deck that are Learned (disjoint from matureCards)."""
+  learnedCards: Int!
+  """Studied cards in the deck that are Mature (disjoint from learnedCards)."""
+  matureCards: Int!
+}
+
+extend type Query {
+  """The authenticated caller's learning statistics. Unauthenticated callers receive extensions.code = "UNAUTHENTICATED"."""
+  myLearningStats: LearningStats!
+}

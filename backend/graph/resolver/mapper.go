@@ -44,6 +44,49 @@ func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 	}
 }
 
+// toLearningStatsModel maps the usecase learning-stats result to the generated
+// GraphQL model, hydrating each deck's Cardgroup from its id via the existing
+// per-request DataLoader. A missing loader registry or a Load failure is
+// surfaced as an INTERNAL/CANCELLED wire error.
+func toLearningStatsModel(ctx context.Context, res *usecase.LearningStatsResult) (*model.LearningStats, error) {
+	loaders, gqlErr := loadersOrInternal(ctx)
+	if gqlErr != nil {
+		return nil, gqlErr
+	}
+	// Two-phase Load-then-resolve: issue every Cardgroup.Load first so all N
+	// keys land in the same DataLoader batch window, then invoke each captured
+	// thunk. Invoking the thunk inside the first loop would block on a
+	// single-key batch per iteration (this loop is one sequential goroutine, not
+	// gqlgen's concurrent per-object field-resolver fan-out that batches every
+	// other Load call site), defeating batching entirely.
+	thunks := make([]func() (*domain.Cardgroup, error), len(res.Decks))
+	for i, d := range res.Decks {
+		thunks[i] = loaders.Cardgroup.Load(ctx, d.CardgroupID)
+	}
+	decks := make([]*model.DeckMastery, 0, len(res.Decks))
+	for i, d := range res.Decks {
+		cg, err := thunks[i]()
+		if err != nil {
+			return nil, classifyLoaderErr(ctx, err, "resolver: stats: cardgroup")
+		}
+		decks = append(decks, &model.DeckMastery{
+			Cardgroup:    toCardgroupModel(cg),
+			TotalCards:   d.TotalCards,
+			LearnedCards: d.LearnedCards,
+			MatureCards:  d.MatureCards,
+		})
+	}
+	return &model.LearningStats{
+		Mastery: &model.MasteryBreakdown{
+			InProgress:   res.Mastery.InProgress,
+			Learned:      res.Mastery.Learned,
+			Mature:       res.Mastery.Mature,
+			TotalStudied: res.Mastery.TotalStudied,
+		},
+		Decks: decks,
+	}, nil
+}
+
 // toMasterCardgroupModel maps a published-catalog item (a master cardgroup plus
 // its card count) to the generated GraphQL model. The status is mapped to the
 // uppercase wire enum; an unrecognised status surfaces as the empty enum value
