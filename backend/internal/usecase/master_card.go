@@ -210,7 +210,7 @@ type UpdateMasterCardOutcome struct {
 }
 
 // ImportMasterCardsInput is the wire-shape consumed by ImportMasterCards. Payload
-// reuses the validateCardImport base64-encoded text format.
+// reuses the base64-encoded text format of the `validateCardImport` GraphQL query.
 type ImportMasterCardsInput struct {
 	MasterCardgroupID string
 	Payload           string // standard base64-encoded plain-text card import payload

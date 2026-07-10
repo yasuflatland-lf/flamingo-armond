@@ -116,7 +116,7 @@ type MergeMasterOutcome struct {
 	// is subsumed so draft ids are indistinguishable from absent ids. True iff Cardgroup
 	// is nil. The XOR is a producer contract, not a compile-time guarantee: a degenerate
 	// {Cardgroup:nil, NotFound:false} result is treated as INTERNAL by the resolver's
-	// defensive guard (noVariantSet).
+	// defensive guard (newNoVariantSetError).
 	NotFound bool
 }
 
@@ -240,7 +240,7 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 // supplies the per-caller authorization / visibility check (anonymous-allowed
 // authentication for the published catalog vs. adminGate.Require for the admin
 // surface); everything from cursor resolution onward is identical except two
-// caller-supplied knobs: publishedOnly threads into resolveMasterCursor to pick the
+// caller-supplied knobs: publishedOnly threads into resolveMasterCatalogCursor to pick the
 // hydration scope (true = published catalog, a DRAFT or unknown id is rejected as
 // cursor-not-found so drafts never leak; false = admin, DRAFT decks are valid
 // cursors), and fetch is the repository page method (FindPublishedPage /
@@ -269,11 +269,11 @@ func (u *masterCatalogUsecase) listMasterCatalogCore(
 		return nil, err
 	}
 
-	after, err := u.resolveMasterCursor(ctx, in.After, orderBy, "after", publishedOnly)
+	after, err := u.resolveMasterCatalogCursor(ctx, in.After, orderBy, "after", publishedOnly)
 	if err != nil {
 		return nil, err
 	}
-	before, err := u.resolveMasterCursor(ctx, in.Before, orderBy, "before", publishedOnly)
+	before, err := u.resolveMasterCatalogCursor(ctx, in.Before, orderBy, "before", publishedOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +329,7 @@ func resolveMasterCatalogOrderBy(
 	return resolveOrderByColumn(orderBy, dir, masterCatalogOrderByColumns, repository.MasterCatalogOrderBySortOrder, repository.SortAsc)
 }
 
-// resolveMasterCursor decodes an opaque cursor string into a
+// resolveMasterCatalogCursor decodes an opaque cursor string into a
 // *repository.MasterCatalogCursor with the column required by the active orderBy
 // populated. The publishedOnly flag selects the hydration scope: true hydrates
 // via FindPublishedByID (catalog scope — a draft or unknown id is rejected as
@@ -337,7 +337,7 @@ func resolveMasterCatalogOrderBy(
 // scope — DRAFT decks are valid cursors). Returns BAD_USER_INPUT when the cursor
 // cannot be decoded or references a row outside the active scope. The scope check
 // runs even when orderBy is missing a hydratable column.
-func (u *masterCatalogUsecase) resolveMasterCursor(
+func (u *masterCatalogUsecase) resolveMasterCatalogCursor(
 	ctx context.Context,
 	cursorStr *string,
 	orderBy repository.MasterCatalogOrderBy,

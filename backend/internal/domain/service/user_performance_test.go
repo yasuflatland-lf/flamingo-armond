@@ -168,8 +168,8 @@ func TestModeFromMetricsThresholdBoundaries(t *testing.T) {
 		{"at good threshold", 20, 0.75, ModeGood},
 		{"below easy threshold", 20, 0.849, ModeGood},
 		{"at easy threshold", 20, 0.85, ModeEasy},
-		{"below in while threshold", 20, 0.949, ModeEasy},
-		{"at in while threshold", 20, 0.95, ModeInWhile},
+		{"below mastered threshold", 20, 0.949, ModeEasy},
+		{"at mastered threshold", 20, 0.95, ModeMastered},
 	}
 
 	for _, tc := range cases {
@@ -201,7 +201,7 @@ func TestModeFromMetricsDifficultyAdjustments(t *testing.T) {
 		{"low difficulty increases mode", 0.80, 0.30, ModeEasy},
 		{"neutral difficulty leaves mode", 0.80, 0.50, ModeGood},
 		{"high difficulty clamps at difficult", 0.50, 0.90, ModeDifficult},
-		{"low difficulty clamps at in while", 0.99, 0.10, ModeInWhile},
+		{"low difficulty clamps at mastered", 0.99, 0.10, ModeMastered},
 	}
 
 	for _, tc := range cases {
@@ -230,7 +230,7 @@ func TestPerformanceModeIsValid(t *testing.T) {
 	}{
 		{"below range", -1, false},
 		{"difficult lower bound", ModeDifficult, true},
-		{"in while upper bound", ModeInWhile, true},
+		{"mastered upper bound", ModeMastered, true},
 		{"above range", 5, false},
 	}
 

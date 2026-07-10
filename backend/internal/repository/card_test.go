@@ -78,7 +78,7 @@ func TestCardRepository_FindByCardgroup_Scoped(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, card1))
 	require.NoError(t, repo.Create(ctx, card2))
 
-	got, err := repo.FindByCardgroup(ctx, string(cg1.ID))
+	got, err := repo.ListByCardgroup(ctx, string(cg1.ID))
 	require.NoError(t, err)
 	ids := map[string]bool{}
 	for _, card := range got {

@@ -34,7 +34,7 @@ func (r *mutationResolver) AdminCreateMasterCardgroup(ctx context.Context, input
 		return toInputValidationError(out.Validation), nil
 	}
 	if out.Master == nil {
-		return nil, noVariantSet(ctx, "CreateMasterOutcome")
+		return nil, newNoVariantSetError(ctx, "CreateMasterOutcome")
 	}
 	return model.CreateMasterCardgroupSuccess{Master: toMasterCardgroupModelFromParts(out.Master, cardCountResolvedElsewhere)}, nil
 }
@@ -59,7 +59,7 @@ func (r *mutationResolver) AdminUpdateMasterCardgroup(ctx context.Context, id st
 		return toInputValidationError(out.Validation), nil
 	}
 	if out.Master == nil {
-		return nil, noVariantSet(ctx, "UpdateMasterOutcome")
+		return nil, newNoVariantSetError(ctx, "UpdateMasterOutcome")
 	}
 	return model.UpdateMasterCardgroupSuccess{Master: toMasterCardgroupModelFromParts(out.Master, int(out.CardCount))}, nil
 }
@@ -79,7 +79,7 @@ func (r *mutationResolver) AdminPublishMasterCardgroup(ctx context.Context, id s
 		return model.MasterCardgroupEmptyError{Message: "master cardgroup has no cards and cannot be published"}, nil
 	}
 	if out.Master == nil {
-		return nil, noVariantSet(ctx, "PublishMasterOutcome")
+		return nil, newNoVariantSetError(ctx, "PublishMasterOutcome")
 	}
 	return model.PublishMasterCardgroupSuccess{Master: toMasterCardgroupModelFromParts(out.Master, int(out.CardCount))}, nil
 }
@@ -121,7 +121,7 @@ func (r *mutationResolver) ImportMasterCardgroup(ctx context.Context, masterCard
 		}, nil
 	}
 	if outcome.Cardgroup == nil {
-		return nil, noVariantSet(ctx, "ImportMasterOutcome")
+		return nil, newNoVariantSetError(ctx, "ImportMasterOutcome")
 	}
 	return model.ImportMasterCardgroupSuccess{
 		Cardgroup: toCardgroupModel(outcome.Cardgroup),
@@ -158,7 +158,7 @@ func (r *mutationResolver) MergeMasterCardgroup(ctx context.Context, input model
 		return model.MasterNotFoundError{Message: "Master cardgroup not found"}, nil
 	}
 	if outcome.Cardgroup == nil {
-		return nil, noVariantSet(ctx, "MergeMasterOutcome")
+		return nil, newNoVariantSetError(ctx, "MergeMasterOutcome")
 	}
 	return model.MergeMasterCardgroupSuccess{
 		Cardgroup:    toCardgroupModel(outcome.Cardgroup),

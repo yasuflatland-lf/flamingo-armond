@@ -32,7 +32,7 @@ func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.HandleSw
 		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.Swipe == nil {
-		return nil, noVariantSet(ctx, "HandleSwipeOutcome")
+		return nil, newNoVariantSetError(ctx, "HandleSwipeOutcome")
 	}
 	return model.HandleSwipeSuccess{Response: toSwipeResponseModel(outcome.Swipe)}, nil
 }

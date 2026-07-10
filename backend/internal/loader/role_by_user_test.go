@@ -25,8 +25,8 @@ func (s *roleBatchRepoStub) HasRole(_ context.Context, _ string, _ domain.RoleNa
 	panic("roleBatchRepoStub.HasRole not configured")
 }
 
-func (s *roleBatchRepoStub) AssignToUser(_ context.Context, _, _ string) error {
-	panic("roleBatchRepoStub.AssignToUser not configured")
+func (s *roleBatchRepoStub) AssignRoleToUser(_ context.Context, _, _ string) error {
+	panic("roleBatchRepoStub.AssignRoleToUser not configured")
 }
 
 func (s *roleBatchRepoStub) SetUserRolesTx(_ context.Context, _ *gorm.DB, _ string, _ []string) error {

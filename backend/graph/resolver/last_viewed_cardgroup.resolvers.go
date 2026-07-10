@@ -29,7 +29,7 @@ func (r *mutationResolver) SetLastViewedCardgroup(ctx context.Context, cardgroup
 		return toInputValidationError(outcome.Validation), nil
 	}
 	if outcome.User == nil {
-		return nil, noVariantSet(ctx, "SetLastViewedCardgroupOutcome")
+		return nil, newNoVariantSetError(ctx, "SetLastViewedCardgroupOutcome")
 	}
 	return model.SetLastViewedCardgroupSuccess{User: toUserModel(outcome.User)}, nil
 }

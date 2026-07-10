@@ -345,8 +345,8 @@ func TestRoleRepository_Delete_CascadesUserRoles(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	userID := insertAuthUser(t, ctx)
-	if err := userRoleRepo.AssignToUser(ctx, userID, role.ID); err != nil {
-		t.Fatalf("AssignToUser: %v", err)
+	if err := userRoleRepo.AssignRoleToUser(ctx, userID, role.ID); err != nil {
+		t.Fatalf("AssignRoleToUser: %v", err)
 	}
 
 	// Delete the role — must succeed (CASCADE removes the user_roles row).

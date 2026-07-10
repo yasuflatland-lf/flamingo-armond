@@ -46,9 +46,9 @@ func rolesContainAdmin(roles []*domain.Role) bool {
 	return false
 }
 
-// noVariantSet builds the INTERNAL error returned when an outcome union has no
+// newNoVariantSetError builds the INTERNAL error returned when an outcome union has no
 // variant set — a programming error: the usecase returned a struct with every
 // field nil.
-func noVariantSet(ctx context.Context, name string) *gqlerror.Error {
+func newNoVariantSetError(ctx context.Context, name string) *gqlerror.Error {
 	return gqlerr.Internal(ctx, eris.New("resolver: "+name+" has no variant set"))
 }

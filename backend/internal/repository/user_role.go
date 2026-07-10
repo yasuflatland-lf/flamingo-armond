@@ -33,11 +33,11 @@ type UserRoleRepository interface {
 	// Only DB errors return a non-nil error. Role lookup is by name (case-sensitive).
 	HasRole(ctx context.Context, userID string, roleName domain.RoleName) (bool, error)
 
-	// AssignToUser inserts a (user_id, role_id) row. Idempotent: if the row
+	// AssignRoleToUser inserts a (user_id, role_id) row. Idempotent: if the row
 	// already exists, returns nil without error. Returns ErrUserNotFound when
 	// the user is missing and ErrRoleNotFound when the role is missing; both
 	// also satisfy errors.Is(_, ErrNotFound) for backward-compatible matching.
-	AssignToUser(ctx context.Context, userID, roleID string) error
+	AssignRoleToUser(ctx context.Context, userID, roleID string) error
 
 	// SetUserRolesTx replaces the user's role set inside the supplied
 	// transaction. roleIDs is the final declarative state; an empty slice
@@ -108,11 +108,11 @@ func requireExistsOn(ctx context.Context, db *gorm.DB, table, id, wrap string, n
 	return nil
 }
 
-// AssignToUser inserts a user_roles row. Idempotent via ON CONFLICT DO NOTHING.
+// AssignRoleToUser inserts a user_roles row. Idempotent via ON CONFLICT DO NOTHING.
 // Validates that both the user and role exist before inserting; returns
 // ErrUserNotFound when the user is missing and ErrRoleNotFound when the role
 // is missing.
-func (r *userRoleRepo) AssignToUser(ctx context.Context, userID, roleID string) error {
+func (r *userRoleRepo) AssignRoleToUser(ctx context.Context, userID, roleID string) error {
 	if err := r.requireExists(ctx, "users", userID, "repository: user role: assign: check user", ErrUserNotFound); err != nil {
 		return err
 	}

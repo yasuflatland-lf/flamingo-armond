@@ -146,7 +146,7 @@ func (r *roleRepo) Create(ctx context.Context, name string) (*domain.Role, error
 
 	row := gormRole{ID: id.String(), Name: name}
 	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
-		if classified := classifyUniqueError(err); classified != nil {
+		if classified := classifyRoleNameDuplicate(err); classified != nil {
 			return nil, classified
 		}
 		return nil, eris.Wrap(err, "repository: role: create")
@@ -162,7 +162,7 @@ func (r *roleRepo) Update(ctx context.Context, id, name string) (*domain.Role, e
 		Where("id = ?", id).
 		Updates(map[string]any{"name": name})
 	if res.Error != nil {
-		if classified := classifyUniqueError(res.Error); classified != nil {
+		if classified := classifyRoleNameDuplicate(res.Error); classified != nil {
 			return nil, classified
 		}
 		return nil, eris.Wrap(res.Error, "repository: role: update")
@@ -183,10 +183,10 @@ func (r *roleRepo) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// classifyUniqueError maps a Postgres unique-violation (code 23505) on the
+// classifyRoleNameDuplicate maps a Postgres unique-violation (code 23505) on the
 // roles.name column to ErrRoleDuplicate. Returns nil for any other error so
 // callers can use it as a pre-filter before falling through to eris.Wrap.
-func classifyUniqueError(err error) error {
+func classifyRoleNameDuplicate(err error) error {
 	if pgConstraintViolation(err, "23505", "name") {
 		return ErrRoleDuplicate
 	}

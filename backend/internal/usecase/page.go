@@ -107,7 +107,7 @@ func resolveRelayPage(
 //
 // hasAfter/hasBefore MUST be the post-decode cursor presence — i.e. pass
 // (resolvedAfter != nil) / (resolvedBefore != nil) using the value returned
-// by the per-aggregate resolveCursor step, NOT the raw request *string. They
+// by the per-aggregate resolve*Cursor step, NOT the raw request *string. They
 // supply the "other" page-edge flag the +1 trim cannot derive: forward paging
 // sets hasPrev from hasAfter, backward paging sets hasNext from hasBefore.
 func assemblePage[T any](
