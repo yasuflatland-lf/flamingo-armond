@@ -1,4 +1,4 @@
-import { BookOpen, Library, LibraryBig, ShieldCheck, User, Users } from "lucide-react";
+import { BookOpen, ChartColumn, Library, LibraryBig, ShieldCheck, User, Users } from "lucide-react";
 import type { ComponentType } from "react";
 
 export type AdminNavItem = {
@@ -15,9 +15,9 @@ export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
 ] as const;
 
 export type CoreNavItem = {
-  href: "/cardgroups" | "/catalog";
+  href: "/cardgroups" | "/catalog" | "/stats";
   /** Key into the `Nav` message namespace — resolved via `useTranslations("Nav")`. */
-  labelKey: "cardgroups" | "catalog";
+  labelKey: "cardgroups" | "catalog" | "progress";
   icon: ComponentType<{ className?: string }>;
 };
 
@@ -31,6 +31,7 @@ export type CoreNavItem = {
 export const CORE_NAV_ITEMS: readonly CoreNavItem[] = [
   { href: "/cardgroups", labelKey: "cardgroups", icon: BookOpen },
   { href: "/catalog", labelKey: "catalog", icon: LibraryBig },
+  { href: "/stats", labelKey: "progress", icon: ChartColumn },
 ] as const;
 
 export type FooterNavItem = {
@@ -48,11 +49,11 @@ export const FOOTER_NAV_ITEMS: readonly FooterNavItem[] = [
 /**
  * Active center-nav item resolved from the current pathname.
  *
- * Only handles the static center items (Cardgroups, Catalog). Admin items and
- * the footer Profile link compute their own active state inline, so this type
- * deliberately does not include `"profile"` or `"admin"`.
+ * Only handles the static center items (Cardgroups, Catalog, Progress). Admin
+ * items and the footer Profile link compute their own active state inline, so
+ * this type deliberately does not include `"profile"` or `"admin"`.
  */
-export type ActiveItem = "cardgroups" | "catalog" | null;
+export type ActiveItem = "cardgroups" | "catalog" | "progress" | null;
 
 /** Matches `pathname` against a top-level route — exact match or a sub-route prefix. */
 export function matchesRoute(pathname: string, route: string): boolean {
@@ -78,6 +79,9 @@ export function resolveActiveItem(pathname: string): ActiveItem {
   }
   if (matchesRoute(pathname, "/catalog")) {
     return "catalog";
+  }
+  if (matchesRoute(pathname, "/stats")) {
+    return "progress";
   }
   return null;
 }
