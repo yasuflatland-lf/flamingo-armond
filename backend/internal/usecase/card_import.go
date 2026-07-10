@@ -166,12 +166,12 @@ func (u *cardImportUsecase) Validate(ctx context.Context, payload string) (Valid
 	}
 
 	errs := cardImportErrorsFromTextdic(parseErrs)
-	_, caps := checkImportCaps(words)
+	_, caps := validateImportRows(words)
 	for _, v := range caps {
 		errs = append(errs, CardImportError{Line: v.Line, Message: v.Message, Kind: CardImportErrKindHard})
 	}
 	// Whole-payload reject (row cap): mirror Import's all-or-nothing reject and
-	// echo an empty ParsedCards rather than the full parsed set. checkImportCaps
+	// echo an empty ParsedCards rather than the full parsed set. validateImportRows
 	// short-circuits the row cap to a single payload-level violation ahead of any
 	// per-row scan, so an over-cap payload cannot be previewed row-by-row anyway
 	// and shipping the full parsed set is wasted allocation plus wasted bytes on
@@ -234,7 +234,7 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 	// of any per-row length error inside the helper. On the pass path the checker
 	// hands back the already-parsed CardText VOs so the build loop below can reuse
 	// them instead of grapheme-scanning every row a second time.
-	validated, caps := checkImportCaps(words)
+	validated, caps := validateImportRows(words)
 	if len(caps) > 0 {
 		return ImportCardsOutput{}, ucerr.NewValidationError(caps[0].Field, caps[0].Message)
 	}
@@ -265,10 +265,10 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 	now := time.Now().UTC()
 	cards := make([]*domain.Card, 0, len(words))
 	for _, w := range words {
-		// Build from the CardText VOs checkImportCaps already parsed for this row
+		// Build from the CardText VOs validateImportRows already parsed for this row
 		// (single grapheme scan per row). NewCardFromValidated skips the re-scan
 		// domain.NewCard would perform; the per-side length cap was enforced
-		// upstream by checkImportCaps, and the realistic remaining failure is ID
+		// upstream by validateImportRows, and the realistic remaining failure is ID
 		// generation. Surface any error as a typed validation error rather than
 		// letting a bad value reach the repository / DB CHECK as an opaque
 		// constraint violation.
@@ -322,7 +322,7 @@ func cardImportErrorsFromTextdic(errs []textdic.ValidationError) []CardImportErr
 	return out
 }
 
-// capViolation is the internal result of checkImportCaps. Each consumer maps it
+// capViolation is the internal result of validateImportRows. Each consumer maps it
 // into its own output shape: Validate -> CardImportError{Kind: HARD}; Import ->
 // ucerr.NewValidationError. Field carries the validation field name explicitly so
 // no caller has to substring-match Message.
@@ -333,7 +333,7 @@ type capViolation struct {
 }
 
 // validatedCard bundles the trimmed, grapheme-bounded CardText VOs that
-// checkImportCaps parses for one import row. Returning them lets Import build the
+// validateImportRows parses for one import row. Returning them lets Import build the
 // Card via domain.NewCardFromValidated instead of re-running domain.ParseCardText
 // on the same strings — one grapheme scan per row rather than two.
 type validatedCard struct {
@@ -341,7 +341,7 @@ type validatedCard struct {
 	back  domain.CardText
 }
 
-// checkImportCaps enforces the two import caps shared by Validate and Import: the
+// validateImportRows enforces the two import caps shared by Validate and Import: the
 // parsed-row cap (cardImportParsedRowCap) and the per-side grapheme cap
 // (domain.CardTextMax). It is the single source of cap logic for both paths so
 // they cannot re-diverge.
@@ -354,7 +354,7 @@ type validatedCard struct {
 // the returned violation slice is empty every row passed and validated[i] holds
 // row i's front/back VOs for reuse; when it is non-empty the caller aborts the
 // whole batch, so the VO slice is unused.
-func checkImportCaps(words []textdic.ParsedWord) ([]validatedCard, []capViolation) {
+func validateImportRows(words []textdic.ParsedWord) ([]validatedCard, []capViolation) {
 	if len(words) > cardImportParsedRowCap {
 		return nil, []capViolation{{Line: 0, Field: "payload", Message: fmt.Sprintf("payload exceeds %d row cap", cardImportParsedRowCap)}}
 	}

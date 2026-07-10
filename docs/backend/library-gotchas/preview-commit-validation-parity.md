@@ -26,9 +26,9 @@ call it from **both** paths. Re-divergence becomes structurally impossible
 because there is exactly one implementation.
 
 ```go
-// checkImportCaps is the single source of cap logic for BOTH validateCardImport
+// validateImportRows is the single source of cap logic for BOTH validateCardImport
 // (preview) and importCards (commit).
-func checkImportCaps(words []textdic.ParsedWord) []capViolation { ... }
+func validateImportRows(words []textdic.ParsedWord) []capViolation { ... }
 ```
 
 Three properties make the parity real, not just nominal:
@@ -38,7 +38,7 @@ Three properties make the parity real, not just nominal:
    downstream. If the commit checked caps *after* dedup, a row that is both a
    duplicate *and* over-length would be dropped by dedup on the commit path but
    flagged on the preview path — the two would disagree on exactly the rows that
-   matter. Running `checkImportCaps(words)` on the raw parsed words *before*
+   matter. Running `validateImportRows(words)` on the raw parsed words *before*
    dedup guarantees they agree. (This is the cross-consumer corollary of the
    single-path ordering rule in
    [`classifier-check-ordering-before-pipeline-mutation.md`](../error-wrapping/classifier-check-ordering-before-pipeline-mutation.md):
@@ -66,7 +66,7 @@ Three properties make the parity real, not just nominal:
 ## The parity is conditioned on two textdic output properties
 
 The "preview `valid: true` ⇒ commit succeeds" claim is **not unconditional**. A
-single shared validator removes *nominal* divergence, but `checkImportCaps` and
+single shared validator removes *nominal* divergence, but `validateImportRows` and
 the downstream commit-path constructors are two consumers that read *different
 branches* of the same `domain.ParseCardText` result — so they can still disagree
 on inputs the shared helper never sees. The parity holds today only because
@@ -82,7 +82,7 @@ on inputs the shared helper never sees. The parity holds today only because
 
 Why each property is load-bearing for the parity:
 
-- **A1 guards the preview↔commit verdict.** `checkImportCaps` records *only* the
+- **A1 guards the preview↔commit verdict.** `validateImportRows` records *only* the
   `ErrCardFrontTooLong` / `ErrCardBackTooLong` branch of `ParseCardText` — it
   silently ignores the `ErrCardFrontRequired` / `ErrCardBackRequired` (empty)
   branch. An empty front or back therefore produces **no** cap violation, so the
@@ -107,14 +107,14 @@ whitespace/empty-line payloads. The point is that the guarantee is *conditional
 on the parser*, not a property of the shared-validator design alone.
 
 **Trigger for the enforcement change.** If a second input source is ever wired
-into `checkImportCaps` (anything other than `textdic.Process` — a direct API
+into `validateImportRows` (anything other than `textdic.Process` — a direct API
 payload shape, a different parser, a CSV path) that can emit an empty or
 un-trimmed side, then before that source ships:
 
-1. `checkImportCaps` must record the `Required` (empty) branch as a violation
+1. `validateImportRows` must record the `Required` (empty) branch as a violation
    too — not just `TooLong` — so an empty side is caught at preview time; **and**
 2. the dedup key must switch from the raw front to the trimmed front (reuse the
-   `CardText` VO `checkImportCaps` already returns) so the dedup equivalence
+   `CardText` VO `validateImportRows` already returns) so the dedup equivalence
    matches the DB conflict key.
 
 Do neither preemptively: on the current `textdic`-only path both branches are
@@ -136,12 +136,12 @@ whether an already-parsed value object is available to reuse:
   "retain" verdict in
   [`defense-in-depth-classification-internal.md`](../error-wrapping/defense-in-depth-classification-internal.md).
 - **A validated-VO constructor is available → reuse the VOs, do not re-scan.**
-  `checkImportCaps` returns the trimmed `domain.CardText` VOs it parsed for each
+  `validateImportRows` returns the trimmed `domain.CardText` VOs it parsed for each
   row; the `Import` build loop builds the `Card` via `domain.NewCardFromValidated`
   from those VOs — one grapheme scan per row, not two. The residual
   defense-in-depth is `NewCardFromValidated`'s zero-value guard (it rejects
   `CardText("")` via the field sentinel) plus the same ID-generation failure path;
-  the per-side length cap is enforced upstream by `checkImportCaps`, so re-running
+  the per-side length cap is enforced upstream by `validateImportRows`, so re-running
   `domain.ParseCardText` in the build loop would be pure redundant work. This is
   the "collapse" verdict in
   [`dead-pipeline-after-upstream-gate-collapse.md`](dead-pipeline-after-upstream-gate-collapse.md)
@@ -159,7 +159,7 @@ the commit path's existing reject tests green (assert the commit still aborts
 with the same field/message). A preview-only test would pass even if the commit
 path re-grew its own copy — pin both ends.
 
-Worked example: `backend/internal/usecase/card_import.go` `checkImportCaps`,
+Worked example: `backend/internal/usecase/card_import.go` `validateImportRows`,
 called by `Validate` and `Import`; tests in
 `backend/internal/usecase/card_import_test.go`
 (`TestCardImportUsecase_ValidateDetects*` for the preview, the existing

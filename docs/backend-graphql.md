@@ -205,7 +205,7 @@ The `auth` package exposes two distinct types with different lifetimes and data 
 | `AuthUser` (`auth/user.go`) | Request-scoped | JWT claims (Supabase) | Who is the caller? |
 | `auth.Service` (`auth/role.go`) | Boot-scoped | DB-backed (`UserRoleRepository`) | What can the caller do? |
 
-`AuthUser.Role` carries the Supabase/Postgres database role (`authenticated`, `anon`, or `service_role`) — it is NOT the application-level `admin`/`general` role; the application role lives in `public.user_roles` and is determined by `auth.Service.IsAdmin`, which performs a membership check against `domain.AdminRoleName`.
+`AuthUser` (`Sub`, `Email`, `EmailVerified`) does not surface a `Role` field — the JWT still carries a Supabase/Postgres database role claim (`authenticated`, `anon`, or `service_role`), but the Go struct never exposed it as the application role, so the field was removed. The application-level `admin`/`general` role lives in `public.user_roles` and is determined by `auth.Service.IsAdmin`, which performs a membership check against `domain.AdminRoleName`.
 
 The split is deliberate: the JWT does not carry roles in this project, so every role check goes through the DB. `auth.Service` is constructed once at boot in `run()` against the `UserRoleRepository` and injected into resolvers/usecases that need to gate on role membership.
 
@@ -310,7 +310,7 @@ Guard order for `validateCardImport`:
 2. Empty payload ⇒ `BAD_USER_INPUT` on `payload`.
 3. `base64.StdEncoding.DecodeString` ⇒ `BAD_USER_INPUT` on `payload`.
 4. `textdic.Process` ⇒ internal error only on the recovered-panic return; per-line `ValidationError`s are returned in the response payload, not as GraphQL errors.
-5. `checkImportCaps` ⇒ the 5,000 parsed-row cap and the per-side 500-grapheme cap (`domain.CardTextMax`) are appended to `errors` as `CardImportError{Kind: HARD}` (`Line: 0` for the row cap, the row's line for an over-length front/back) and `Valid` becomes `false`. This is the **same** helper `importCards` runs, so the preview cannot report `valid: true` for a payload the commit would reject — conditioned on the two `textdic.Process` output properties (non-empty and edge-trimmed sides) analysed in [`docs/backend/library-gotchas/preview-commit-validation-parity.md` § "The parity is conditioned on two textdic output properties"](backend/library-gotchas/preview-commit-validation-parity.md#the-parity-is-conditioned-on-two-textdic-output-properties).
+5. `validateImportRows` ⇒ the 5,000 parsed-row cap and the per-side 500-grapheme cap (`domain.CardTextMax`) are appended to `errors` as `CardImportError{Kind: HARD}` (`Line: 0` for the row cap, the row's line for an over-length front/back) and `Valid` becomes `false`. This is the **same** helper `importCards` runs, so the preview cannot report `valid: true` for a payload the commit would reject — conditioned on the two `textdic.Process` output properties (non-empty and edge-trimmed sides) analysed in [`docs/backend/library-gotchas/preview-commit-validation-parity.md` § "The parity is conditioned on two textdic output properties"](backend/library-gotchas/preview-commit-validation-parity.md#the-parity-is-conditioned-on-two-textdic-output-properties).
 
 Guard order for `importCards`:
 
@@ -318,7 +318,7 @@ Guard order for `importCards`:
 2. Empty `cardgroupId` ⇒ `BAD_USER_INPUT` on `cardgroupId`.
 3. Ownership lookup via `CardgroupOwnershipFinder` ⇒ `BAD_USER_INPUT` when missing, `UNAUTHENTICATED` when not owned.
 4. Empty payload / bad base64 ⇒ `BAD_USER_INPUT` on `payload`.
-5. `textdic.Process`, then the shared `checkImportCaps` gate (5,000 parsed-row cap + per-side 500-grapheme cap, checked on the **raw parsed words before dedupe** so the preview and the commit see the identical set), then dedupe, then `CardImportCardRepository.UpsertManyTx` inside the injected transaction runner. A cap violation whole-batch-aborts with `BAD_USER_INPUT` (`payload` for the row cap, `front`/`back` for an over-length row) before any upsert.
+5. `textdic.Process`, then the shared `validateImportRows` gate (5,000 parsed-row cap + per-side 500-grapheme cap, checked on the **raw parsed words before dedupe** so the preview and the commit see the identical set), then dedupe, then `CardImportCardRepository.UpsertManyTx` inside the injected transaction runner. A cap violation whole-batch-aborts with `BAD_USER_INPUT` (`payload` for the row cap, `front`/`back` for an over-length row) before any upsert.
 
 The resolver layer for these operations lives in `backend/graph/resolver/card_import.resolvers.go`; it delegates to `CardImportUC` and maps usecase output through the `CardImportError`, `CardImportErrorKind`, `CardImportValidationResult`, and `parsedCards` GraphQL fields.
 
@@ -350,7 +350,7 @@ and frontend teams reading the schema.
 
 **Dedupe is asymmetric: `importCards` dedupes, `validateCardImport` does not.** `importCards` runs dedup and surfaces dropped rows as `CardImportError` entries with `Front`/`Back` populated. `validateCardImport` runs `textdic.Process` directly and surfaces only parser-level syntax errors — those entries never carry `Front`/`Back`. The resolver mapping site for `validateCardImport` (in `backend/graph/resolver/card_import.resolvers.go`) therefore deliberately omits `nilIfEmpty(e.Front)` calls; there is nothing to map. If a future change adds dedup to `validateCardImport`, the resolver mapping site must be updated symmetrically with `importCards`.
 
-**Cap-checking is symmetric, by contrast.** Both `validateCardImport` and `importCards` run the shared `checkImportCaps` helper (5,000-row + per-side 500-grapheme), so a payload that previews as valid cannot fail the caps at commit time. The asymmetry above is specific to dedup; do not generalise it to the caps. That symmetry is itself conditioned on `textdic.Process` returning non-empty, edge-trimmed sides — the preconditions and the trigger for adding a code defense if a second input source is wired in are in [`docs/backend/library-gotchas/preview-commit-validation-parity.md` § "The parity is conditioned on two textdic output properties"](backend/library-gotchas/preview-commit-validation-parity.md#the-parity-is-conditioned-on-two-textdic-output-properties).
+**Cap-checking is symmetric, by contrast.** Both `validateCardImport` and `importCards` run the shared `validateImportRows` helper (5,000-row + per-side 500-grapheme), so a payload that previews as valid cannot fail the caps at commit time. The asymmetry above is specific to dedup; do not generalise it to the caps. That symmetry is itself conditioned on `textdic.Process` returning non-empty, edge-trimmed sides — the preconditions and the trigger for adding a code defense if a second input source is wired in are in [`docs/backend/library-gotchas/preview-commit-validation-parity.md` § "The parity is conditioned on two textdic output properties"](backend/library-gotchas/preview-commit-validation-parity.md#the-parity-is-conditioned-on-two-textdic-output-properties).
 
 ## Backend hardening
 
@@ -419,7 +419,7 @@ as the input keys. dataloader/v7 enforces this 1:1 invariant at runtime.
 
 **Loader error wrapping:** Every resolver that calls `loaders.X.Load(ctx, key)()` must wrap the returned error via `gqlerr.Internal(ctx, err)` (or another typed gqlerr) before returning. Bare loader errors have no `extensions.code` and leak internal details.
 
-**Transactional usecases must not call DataLoader:** DataLoaders are request-scoped and use the normal repository DB handle, not the `*gorm.DB` transaction handle passed into `db.Transaction(...)`. A usecase that needs read-your-writes consistency must call transaction-aware repository methods such as `FindByIDTx`, `UpdateFSRSStateTx`, or `UpsertManyTx` directly with the `tx` argument. Keep `loader.For(ctx)` out of `internal/usecase/*` files.
+**Transactional usecases must not call DataLoader:** DataLoaders are request-scoped and use the normal repository DB handle, not the `*gorm.DB` transaction handle passed into `db.Transaction(...)`. A usecase that needs read-your-writes consistency must call transaction-aware repository methods such as `FindByIDForUpdateTx`, `UpsertTx`, or `UpsertManyTx` directly with the `tx` argument. Keep `loader.For(ctx)` out of `internal/usecase/*` files.
 
 ### Error helpers (`backend/internal/gqlerr`)
 
