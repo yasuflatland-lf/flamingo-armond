@@ -67,7 +67,6 @@ func AuthMiddleware(kf keyfunc.Keyfunc, cfg Config) (echo.MiddlewareFunc, error)
 				Sub:           claims.Subject,
 				Email:         claims.Email,
 				EmailVerified: claims.EmailVerified,
-				Role:          claims.Role,
 			}
 			r := c.Request()
 			c.SetRequest(r.WithContext(withUser(r.Context(), u)))
