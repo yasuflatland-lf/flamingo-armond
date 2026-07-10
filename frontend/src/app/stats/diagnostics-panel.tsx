@@ -9,6 +9,10 @@ import type { MyLearningStatsQuery } from "@/generated/graphql";
 // shadow the ambient DOM `Performance` interface in this DOM-lib file).
 type PerformanceMetrics = MyLearningStatsQuery["myLearningStats"]["performance"];
 
+// Shared by the three rate tiles (retention / success / lapse) below — all three
+// format a 0..1 fraction as a whole-percent string.
+const PERCENT_FORMAT = { style: "percent", maximumFractionDigits: 0 } as const;
+
 /**
  * Diagnostics KPI row for `/stats`: six `StatTile`s over the trailing-365-day
  * window. Rate metrics (`retentionRate` / `successRate` / `lapseRate`) are
@@ -17,8 +21,8 @@ type PerformanceMetrics = MyLearningStatsQuery["myLearningStats"]["performance"]
  * it is rescaled ×10 for display on the familiar 0–10 FSRS difficulty scale,
  * shown to one decimal. `studyStreak` uses the pluralized `diagnosticsStreakValue`
  * message; `reviewCount` is a grouped integer. When `reviewCount === 0` (a dormant
- * learner with no reviews in the window) the backend returns placeholder 50%
- * rates, so the tiles are replaced by an empty state instead of showing fabricated
+ * learner with no reviews in the window) the backend returns placeholder rate
+ * values, so the tiles are replaced by an empty state instead of showing fabricated
  * data as real.
  */
 export function DiagnosticsPanel({ performance }: { performance: PerformanceMetrics }) {
@@ -29,30 +33,21 @@ export function DiagnosticsPanel({ performance }: { performance: PerformanceMetr
     {
       key: "retention",
       label: t("diagnosticsRetention"),
-      value: format.number(performance.retentionRate, {
-        style: "percent",
-        maximumFractionDigits: 0,
-      }),
+      value: format.number(performance.retentionRate, PERCENT_FORMAT),
       caption: t("diagnosticsRetentionCaption"),
       icon: Target,
     },
     {
       key: "success",
       label: t("diagnosticsSuccess"),
-      value: format.number(performance.successRate, {
-        style: "percent",
-        maximumFractionDigits: 0,
-      }),
+      value: format.number(performance.successRate, PERCENT_FORMAT),
       caption: t("diagnosticsSuccessCaption"),
       icon: CircleCheck,
     },
     {
       key: "lapse",
       label: t("diagnosticsLapse"),
-      value: format.number(performance.lapseRate, {
-        style: "percent",
-        maximumFractionDigits: 0,
-      }),
+      value: format.number(performance.lapseRate, PERCENT_FORMAT),
       caption: t("diagnosticsLapseCaption"),
       icon: TriangleAlert,
     },
@@ -88,7 +83,7 @@ export function DiagnosticsPanel({ performance }: { performance: PerformanceMetr
       </div>
       {performance.reviewCount === 0 ? (
         // Dormant learner: no reviews in the window. The backend returns
-        // placeholder 50% rates for an empty window, so show an empty state
+        // placeholder rate values for an empty window, so show an empty state
         // rather than render fabricated data as if it were real.
         <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
           {t("diagnosticsNoActivity")}
