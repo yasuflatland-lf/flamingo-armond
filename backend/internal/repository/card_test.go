@@ -177,7 +177,7 @@ func TestCardRepository_FindDueCards_IgnoresOtherUsersFSRSRows(t *testing.T) {
 		"otherUser's future-due row must not hide the card from the calling user's new-card window")
 }
 
-func TestCardRepository_FindByIDTx_LocksRowForUpdate(t *testing.T) {
+func TestCardRepository_FindByIDForUpdateTx_LocksRowForUpdate(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)

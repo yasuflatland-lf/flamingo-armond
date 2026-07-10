@@ -14,15 +14,15 @@ func (r *cardRepo) FindByID(ctx context.Context, id string) (*domain.Card, error
     return findCardByID(ctx, r.db, id)
 }
 
-// FindByIDTx is the transaction-aware version — operates on the caller's tx,
+// FindByIDForUpdateTx is the transaction-aware version — operates on the caller's tx,
 // adding a row lock so the caller can read-modify-write inside the transaction.
-func (r *cardRepo) FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error) {
+func (r *cardRepo) FindByIDForUpdateTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error) {
     return findCardByID(ctx, tx.Clauses(clause.Locking{Strength: "UPDATE"}), id)
 }
 
 // findCardByID holds the shared implementation.
 // db is either the default handle (from FindByID) or a transaction handle
-// (from FindByIDTx) — the lock clause is applied by the caller, not here.
+// (from FindByIDForUpdateTx) — the lock clause is applied by the caller, not here.
 func findCardByID(ctx context.Context, db *gorm.DB, id string) (*domain.Card, error) {
     var row gormCard
     if err := db.WithContext(ctx).Where("id = ?", id).Take(&row).Error; err != nil {
@@ -44,7 +44,7 @@ an `On`-suffix form (`findDueCardsOn`) used when the operation name alone would
 be ambiguous — the `On` suffix reads as "run this query *on* the supplied
 handle".
 
-**Lock placement is the caller's job.** `FindByIDTx` adds
+**Lock placement is the caller's job.** `FindByIDForUpdateTx` adds
 `clause.Locking{Strength: "UPDATE"}` before delegating; the private helper never
 applies a lock of its own. Keeping the lock at the public Tx method lets the
 standalone `FindByID` stay lock-free while the transactional path acquires the
@@ -86,7 +86,7 @@ See [`error-classifier-helper-pass-through-with-caller-prefix.md`](../error-wrap
 for the full caller-supplied-prefix pattern and its double-wrap failure mode.
 
 **Reference:** `backend/internal/repository/card.go` — `FindByID`,
-`FindByIDTx`, and `findCardByID`. The `On`-suffix variant of the same idea is
+`FindByIDForUpdateTx`, and `findCardByID`. The `On`-suffix variant of the same idea is
 `findDueCardsOn` (the shared body behind `FindDueCardsForUser`) and
 `findPracticeCardsOn` (behind `FindPracticeCardsForUser`); both delegate to the
 shared `dueRowsOn`.

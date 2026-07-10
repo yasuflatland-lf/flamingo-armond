@@ -7,6 +7,7 @@ func TestCardRepositorySatisfiesNarrowInterfaces(t *testing.T) {
 
 	var _ CardReadRepository = repo
 	var _ CardPageRepository = repo
+	var _ CardSessionRepository = repo
 	var _ CardWriteRepository = repo
 	var _ CardRepository = repo
 }

@@ -22,12 +22,12 @@ import (
 
 // swipeCardRepo satisfies usecase.CardRepoForSwipe.
 type swipeCardRepo struct {
-	findByIDTxResult *domain.Card
-	findByIDTxErr    error
+	findByIDForUpdateTxResult *domain.Card
+	findByIDForUpdateTxErr    error
 }
 
 func (m *swipeCardRepo) FindByIDForUpdateTx(_ context.Context, _ *gorm.DB, _ string) (*domain.Card, error) {
-	return m.findByIDTxResult, m.findByIDTxErr
+	return m.findByIDForUpdateTxResult, m.findByIDForUpdateTxErr
 }
 
 // swipeCGRepo satisfies usecase.CardgroupRepoForSwipe.
@@ -150,7 +150,7 @@ func TestResolver_HandleSwipe_HappyPath(t *testing.T) {
 	card := &domain.Card{ID: "c-1", CardgroupID: domain.CardgroupID("cg-1"), Front: "Q", Back: "A"}
 
 	cardRepo := &swipeCardRepo{
-		findByIDTxResult: card,
+		findByIDForUpdateTxResult: card,
 	}
 	cgRepo := &swipeCGRepo{
 		findByIDResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"},
@@ -314,7 +314,7 @@ func TestResolver_HandleSwipe_CardNotFound_InputValidation(t *testing.T) {
 	t.Parallel()
 
 	cardRepo := &swipeCardRepo{
-		findByIDTxErr: repository.ErrNotFound,
+		findByIDForUpdateTxErr: repository.ErrNotFound,
 	}
 	cgRepo := &swipeCGRepo{
 		findByIDResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"},

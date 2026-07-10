@@ -330,10 +330,10 @@ func TestUserPreferenceRepository_OnDeleteUser_CascadesPreferenceRow(t *testing.
 	}
 }
 
-// TestUserPreferenceRepository_UpdateLearnDisplayMode_CreateRow verifies that
+// TestUserPreferenceRepository_UpsertLearnDisplayMode_CreateRow verifies that
 // UpsertLearnDisplayMode creates a new user_preferences row when none exists,
 // and that FindByUserID reflects the stored mode.
-func TestUserPreferenceRepository_UpdateLearnDisplayMode_CreateRow(t *testing.T) {
+func TestUserPreferenceRepository_UpsertLearnDisplayMode_CreateRow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
@@ -352,10 +352,10 @@ func TestUserPreferenceRepository_UpdateLearnDisplayMode_CreateRow(t *testing.T)
 	}
 }
 
-// TestUserPreferenceRepository_UpdateLearnDisplayMode_UpdateRow verifies that
+// TestUserPreferenceRepository_UpsertLearnDisplayMode_UpdateRow verifies that
 // calling UpsertLearnDisplayMode a second time updates the column without
 // creating a duplicate row.
-func TestUserPreferenceRepository_UpdateLearnDisplayMode_UpdateRow(t *testing.T) {
+func TestUserPreferenceRepository_UpsertLearnDisplayMode_UpdateRow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
@@ -377,12 +377,12 @@ func TestUserPreferenceRepository_UpdateLearnDisplayMode_UpdateRow(t *testing.T)
 	}
 }
 
-// TestUserPreferenceRepository_UpdateNewCardRatio_CreateRow verifies that
+// TestUserPreferenceRepository_UpsertNewCardRatio_CreateRow verifies that
 // UpsertNewCardRatio creates a new user_preferences row when none exists, and
 // that FindByUserID reflects the stored fraction (proving the raw INSERT ...
 // ON CONFLICT SQL and the new_card_ratio CHECK constraint against a real
 // Postgres instance).
-func TestUserPreferenceRepository_UpdateNewCardRatio_CreateRow(t *testing.T) {
+func TestUserPreferenceRepository_UpsertNewCardRatio_CreateRow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
@@ -402,10 +402,10 @@ func TestUserPreferenceRepository_UpdateNewCardRatio_CreateRow(t *testing.T) {
 	}
 }
 
-// TestUserPreferenceRepository_UpdateNewCardRatio_UpdateRow verifies that
+// TestUserPreferenceRepository_UpsertNewCardRatio_UpdateRow verifies that
 // calling UpsertNewCardRatio a second time updates the columns without creating
 // a duplicate row.
-func TestUserPreferenceRepository_UpdateNewCardRatio_UpdateRow(t *testing.T) {
+func TestUserPreferenceRepository_UpsertNewCardRatio_UpdateRow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)

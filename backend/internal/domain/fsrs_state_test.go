@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFSRSCardState_IsLearningPhase(t *testing.T) {
+func TestFSRSPhase_IsLearningPhase(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {

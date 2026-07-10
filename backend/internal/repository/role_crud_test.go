@@ -98,7 +98,7 @@ func TestRoleRepository_FindByIDsTx_NilTx(t *testing.T) {
 // TestRoleRepository_FindByIDsTx_LocksRowsForUpdate proves FindByIDsTx acquires
 // a FOR UPDATE row lock on the matched roles: a second transaction issuing a
 // SELECT ... FOR UPDATE NOWAIT against the same row must fail to acquire the
-// lock. Mirrors TestCardRepository_FindByIDTx_LocksRowForUpdate.
+// lock. Mirrors TestCardRepository_FindByIDForUpdateTx_LocksRowForUpdate.
 func TestRoleRepository_FindByIDsTx_LocksRowsForUpdate(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

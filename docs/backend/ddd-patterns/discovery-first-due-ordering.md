@@ -21,9 +21,9 @@ A default 20-card session is **16 uniformly-sampled never-seen cards (80%)**
 interleaved with **4 prior-day review cards (20%)**:
 
 - **Review slots** take learning-phase cards first — those in
-  `FSRSStateLearning` or `FSRSStateRelearning`, i.e. whose latest rating was
-  Again or Hard (`domain.FSRSCardState.IsLearningPhase()`). Long-interval
-  `FSRSStateReview` cards act as filler when fewer than four learning-phase
+  `FSRSPhaseLearning` or `FSRSPhaseRelearning`, i.e. whose latest rating was
+  Again or Hard (`domain.FSRSPhase.IsLearningPhase()`). Long-interval
+  `FSRSPhaseReview` cards act as filler when fewer than four learning-phase
   cards are due.
 - A card whose `last_review` is at or after the learner's JST start-of-today is
   **excluded** from the review window, so a card swiped today never reappears
@@ -70,7 +70,7 @@ deterministic while the database does the sampling:
 ## Trade-off
 
 Discovery is bought at the cost of review efficiency. Long-interval
-`FSRSStateReview` cards (last rated Easy/Good) compete for the same four review
+`FSRSPhaseReview` cards (last rated Easy/Good) compete for the same four review
 slots per batch as learning-phase cards, so a large Review backlog drains more
 slowly than a pure due-date order would drain it. This is deliberate: the
 queue's primary job became surfacing the unseen backlog, not maximising
@@ -80,7 +80,7 @@ learn ordering — new cards are sampled randomly, not walked in document order.
 
 ## Reference
 
-- `backend/internal/domain/fsrs_state.go` — `FSRSCardState.IsLearningPhase()`.
+- `backend/internal/domain/fsrs_state.go` — `FSRSPhase.IsLearningPhase()`.
 - `backend/internal/domain/service/due_card_ordering.go` — `OrderingPolicy.Apply`,
   `shuffleWithinPhase`, `interleave` (new/review shares supplied by the caller's ratio).
 - `backend/internal/domain/new_card_ratio.go` — `NewCardRatio` VO, `DefaultNewCardRatio` (4/5, the default 4:1 interleave).

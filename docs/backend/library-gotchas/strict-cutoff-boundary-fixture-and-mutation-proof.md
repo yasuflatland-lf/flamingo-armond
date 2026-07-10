@@ -17,7 +17,7 @@ excluded:
 
 ```go
 boundary := domain.NewUserCardFSRSForNewCard(ownerID, reviewedAtBoundary.ID, now)
-boundary.State.State = domain.FSRSStateLearning
+boundary.State.Phase = domain.FSRSPhaseLearning
 boundary.State.Due = now.Add(-time.Hour)
 boundary.State.LastReview = startOfToday // exactly at boundary → excluded under strict <
 require.NoError(t, ucsRepo.UpsertTx(ctx, tx, boundary))

@@ -152,7 +152,7 @@ func dueRowsOn(db *gorm.DB, userID, where string, whereArgs []any, order string,
 }
 
 // dueCardsFromRows maps raw dueCardRow scan results into domain.DueCard values,
-// defaulting State to FSRSPhaseNew and Due to created_at when the LEFT JOIN
+// defaulting Phase to FSRSPhaseNew and Due to created_at when the LEFT JOIN
 // produced NULL FSRS columns (a new card). Shared by both fetches in
 // findDueCardsOn.
 func dueCardsFromRows(rows []dueCardRow) ([]domain.DueCard, error) {
