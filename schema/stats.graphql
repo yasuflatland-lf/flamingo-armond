@@ -2,7 +2,7 @@
 type LearningStats {
   """Disjoint three-tier mastery counts across all studied cards."""
   mastery: MasteryBreakdown!
-  """Per-deck acquisition, one entry per owned deck (decks with no studied cards included)."""
+  """Per-deck acquisition, one entry per owned deck that has at least one card (decks with cards but no studied cards are included; empty decks are omitted)."""
   decks: [DeckMastery!]!
 }
 

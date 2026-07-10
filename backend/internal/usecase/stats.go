@@ -91,6 +91,8 @@ func (u *statsUsecase) MyLearningStats(ctx context.Context) (*LearningStatsResul
 		case domain.TierMature:
 			mastery.Mature++
 			acc.mature++
+		default:
+			panic("usecase: stats: unhandled MasteryTier")
 		}
 	}
 

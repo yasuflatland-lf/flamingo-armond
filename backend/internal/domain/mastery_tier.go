@@ -2,8 +2,9 @@ package domain
 
 // MatureStabilityDays is the FSRS stability (in days) at or above which a
 // Review-phase card is considered "mature" (durably retained). 21 days mirrors
-// the Anki "mature card" convention. Single tunable; the three-tier definition
-// lives only in ClassifyMastery.
+// the Anki "mature card" cutoff (Anki thresholds on scheduled interval; we
+// apply the same familiar numeric cutoff to FSRS stability). Single tunable;
+// the three-tier definition lives only in ClassifyMastery.
 const MatureStabilityDays = 21.0
 
 // MasteryTier is the disjoint learning tier a card sits in.

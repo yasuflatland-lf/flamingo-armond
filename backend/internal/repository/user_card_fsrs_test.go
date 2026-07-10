@@ -183,7 +183,6 @@ func TestUserCardFSRSRepository_ListFSRSStatesByUser_ScopesByViewer(t *testing.T
 	ownerLearned := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), learned.ID, now)
 	ownerLearned.State.Phase = domain.FSRSPhaseReview
 	ownerLearned.State.Stability = 5
-	ownerLearned.State.Lapses = 3
 
 	// Other user studies their own card AND the owner's mature card, with a
 	// distinct stability so a leak would be detectable.
@@ -223,7 +222,6 @@ func TestUserCardFSRSRepository_ListFSRSStatesByUser_ScopesByViewer(t *testing.T
 	gotLearned, ok := byCard[learned.ID]
 	require.True(t, ok)
 	require.Equal(t, cgA, gotLearned.CardgroupID)
-	require.Equal(t, 3, gotLearned.Lapses)
 	require.InDelta(t, 5.0, gotLearned.Stability, 1e-9)
 
 	// The other user sees their own two rows, keyed correctly.
@@ -232,10 +230,40 @@ func TestUserCardFSRSRepository_ListFSRSStatesByUser_ScopesByViewer(t *testing.T
 	require.Len(t, otherRows, 2)
 }
 
+// TestUserCardFSRSRepository_ListFSRSStatesByUser_InvalidPhaseErrors proves
+// ListFSRSStatesByUser rejects a row whose persisted state column does not map
+// to a known FSRSPhase, mirroring the userCardFSRSToDomain IsValid guard used
+// by FindByUserAndCardIDs. A raw SQL insert is required to seed the invalid
+// value because the domain constructor and UpsertTx never produce one.
+func TestUserCardFSRSRepository_ListFSRSStatesByUser_InvalidPhaseErrors(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroupForUser(t, ctx, ownerID, "Invalid Phase Deck")
+	cardRepo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+
+	card := newCard(domain.CardgroupID(cg), "bad-state", "back")
+	require.NoError(t, cardRepo.Create(ctx, card))
+
+	sqlDB := sqlDBHandle(t)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	_, err := sqlDB.ExecContext(ctx,
+		`INSERT INTO public.user_card_fsrs
+			(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, elapsed_days, scheduled_days)
+		 VALUES ($1, $2, 99, $3, 0, 0, 0, 0, $3, 0, 0)`,
+		ownerID, card.ID, now)
+	require.NoError(t, err, "seed a row with an invalid FSRSPhase value via raw SQL")
+
+	_, err = ucsRepo.ListFSRSStatesByUser(ctx, ownerID)
+	require.Error(t, err, "an invalid persisted FSRSPhase must be rejected, not silently reconstituted")
+}
+
 // TestUserCardFSRSRepository_CountCardsByCardgroupForUser_ScopesByOwner proves
 // CountCardsByCardgroupForUser returns per-deck totals only for cardgroups the
-// user owns (cardgroups.owner_id = ?), including decks with zero studied cards,
-// and never counts another user's deck.
+// user owns (cardgroups.owner_id = ?) that have at least one card — a deck
+// with cards but zero studied cards is included, a deck with zero cards is
+// omitted (no acquisition denominator) — and another user's deck never leaks.
 func TestUserCardFSRSRepository_CountCardsByCardgroupForUser_ScopesByOwner(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -243,11 +271,12 @@ func TestUserCardFSRSRepository_CountCardsByCardgroupForUser_ScopesByOwner(t *te
 	otherUserID := insertAuthUser(t, ctx)
 	cgA := insertCardgroupForUser(t, ctx, ownerID, "Count Deck A")
 	cgB := insertCardgroupForUser(t, ctx, ownerID, "Count Deck B")
+	cgEmpty := insertCardgroupForUser(t, ctx, ownerID, "Count Deck Empty")
 	cgOther := insertCardgroupForUser(t, ctx, otherUserID, "Other Count Deck")
 	cardRepo := repository.NewCardRepository(testDB.GORM)
 	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
 
-	// Deck A: two cards. Deck B: one card. Other deck: one card.
+	// Deck A: two cards. Deck B: one card. Deck Empty: no cards. Other deck: one card.
 	require.NoError(t, cardRepo.Create(ctx, newCard(domain.CardgroupID(cgA), "a1", "back")))
 	require.NoError(t, cardRepo.Create(ctx, newCard(domain.CardgroupID(cgA), "a2", "back")))
 	require.NoError(t, cardRepo.Create(ctx, newCard(domain.CardgroupID(cgB), "b1", "back")))
@@ -255,8 +284,9 @@ func TestUserCardFSRSRepository_CountCardsByCardgroupForUser_ScopesByOwner(t *te
 
 	totals, err := ucsRepo.CountCardsByCardgroupForUser(ctx, ownerID)
 	require.NoError(t, err)
-	require.Len(t, totals, 2, "owner owns exactly two decks")
+	require.Len(t, totals, 2, "owner owns exactly two decks with at least one card")
 	require.Equal(t, 2, totals[cgA])
 	require.Equal(t, 1, totals[cgB], "a deck with zero studied cards still reports its total")
 	require.NotContains(t, totals, cgOther, "another user's deck must never leak")
+	require.NotContains(t, totals, cgEmpty, "an owned deck with zero cards is omitted (no acquisition denominator)")
 }

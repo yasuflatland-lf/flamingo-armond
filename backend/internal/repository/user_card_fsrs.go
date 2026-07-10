@@ -30,13 +30,13 @@ type gormUserCardFSRS struct {
 func (gormUserCardFSRS) TableName() string { return "user_card_fsrs" }
 
 // FSRSStatRow is a lightweight projection for the stats aggregate: no front
-// text, just the columns ClassifyMastery and per-deck bucketing need.
+// text — just CardID (row identity), CardgroupID (per-deck bucketing), and
+// Phase/Stability (the columns ClassifyMastery needs).
 type FSRSStatRow struct {
 	CardID      string
 	CardgroupID string
 	Phase       domain.FSRSPhase
 	Stability   float64
-	Lapses      int
 }
 
 type UserCardFSRSRepository interface {
@@ -47,7 +47,10 @@ type UserCardFSRSRepository interface {
 	// userID, joined to cards for the owning cardgroup.
 	ListFSRSStatesByUser(ctx context.Context, userID string) ([]FSRSStatRow, error)
 	// CountCardsByCardgroupForUser returns the total card count per cardgroup the
-	// user owns (the per-deck denominators + the deck list for the acquisition rate).
+	// user owns, for every owned deck that has at least one card (the per-deck
+	// denominators + the deck list for the acquisition rate). Decks with cards
+	// but zero studied cards are included; decks with zero cards are omitted —
+	// an empty deck has no acquisition denominator.
 	CountCardsByCardgroupForUser(ctx context.Context, userID string) (map[string]int, error)
 }
 
@@ -85,20 +88,27 @@ func (r *userCardFSRSRepo) ListFSRSStatesByUser(ctx context.Context, userID stri
 	var rows []FSRSStatRow
 	err := r.db.WithContext(ctx).
 		Table("user_card_fsrs AS f").
-		Select("f.card_id AS card_id, c.cardgroup_id AS cardgroup_id, f.state AS phase, f.stability AS stability, f.lapses AS lapses").
+		Select("f.card_id AS card_id, c.cardgroup_id AS cardgroup_id, f.state AS phase, f.stability AS stability").
 		Joins("JOIN cards c ON c.id = f.card_id").
 		Where("f.user_id = ?", userID).
 		Scan(&rows).Error
 	if err != nil {
 		return nil, eris.Wrap(err, "repository: user card fsrs: list states by user")
 	}
+	for i := range rows {
+		if !rows[i].Phase.IsValid() {
+			return nil, eris.Errorf("repository: user card fsrs: invalid FSRSPhase value %d for card %s", int(rows[i].Phase), rows[i].CardID)
+		}
+	}
 	return rows, nil
 }
 
 // CountCardsByCardgroupForUser returns the total card count per cardgroup the
-// user owns (cardgroups.owner_id = ?). The result seeds both the per-deck
-// denominators and the deck list, so a deck with zero studied cards still
-// appears.
+// user owns (cardgroups.owner_id = ?), for every owned deck that has at least
+// one card. The result seeds both the per-deck denominators and the deck
+// list, so a deck with cards but zero studied cards still appears — but a
+// deck with zero cards is omitted (the INNER JOIN to cards drops it; an empty
+// deck has no acquisition denominator).
 func (r *userCardFSRSRepo) CountCardsByCardgroupForUser(ctx context.Context, userID string) (map[string]int, error) {
 	type countRow struct {
 		CardgroupID string
