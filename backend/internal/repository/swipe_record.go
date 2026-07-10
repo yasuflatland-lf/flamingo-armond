@@ -34,6 +34,7 @@ type SwipeRecordRepository interface {
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.SwipeRecord, error)
 	FindByUserAndCardgroup(ctx context.Context, userID, cardgroupID string) ([]*domain.SwipeRecord, error)
 	ListRecentByUser(ctx context.Context, userID string, limit int) ([]*domain.SwipeRecord, error)
+	ListByUserSince(ctx context.Context, userID string, since time.Time) ([]*domain.SwipeRecord, error)
 	CreateTx(ctx context.Context, tx *gorm.DB, sr *domain.SwipeRecord) error
 }
 
@@ -91,6 +92,24 @@ func (r *swipeRecordRepo) ListRecentByUser(ctx context.Context, userID string, l
 	out := make([]*domain.SwipeRecord, len(rows))
 	for i := range rows {
 		out[i] = swipeRecordToDomain(rows[i])
+	}
+	return out, nil
+}
+
+// ListByUserSince returns userID's swipes with reviewed_at >= since, in
+// unspecified order (ComputeMetrics is order-independent). Windowed read for the
+// stats diagnostic snapshot.
+func (r *swipeRecordRepo) ListByUserSince(ctx context.Context, userID string, since time.Time) ([]*domain.SwipeRecord, error) {
+	var rows []gormSwipeRecord
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND reviewed_at >= ?", userID, since).
+		Find(&rows).Error
+	if err != nil {
+		return nil, eris.Wrap(err, "repository: swipe record: list by user since")
+	}
+	out := make([]*domain.SwipeRecord, 0, len(rows))
+	for i := range rows {
+		out = append(out, swipeRecordToDomain(rows[i]))
 	}
 	return out, nil
 }

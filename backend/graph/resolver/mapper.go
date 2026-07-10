@@ -8,6 +8,7 @@ import (
 
 	"backend/graph/model"
 	"backend/internal/domain"
+	"backend/internal/domain/service"
 	"backend/internal/usecase"
 )
 
@@ -45,9 +46,11 @@ func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 }
 
 // toLearningStatsModel maps the usecase learning-stats result to the generated
-// GraphQL model, hydrating each deck's Cardgroup from its id via the existing
-// per-request DataLoader. A missing loader registry or a Load failure is
-// surfaced as an INTERNAL/CANCELLED wire error.
+// GraphQL model, hydrating each deck's Cardgroup and each struggling card's
+// Card from their ids via the existing per-request DataLoader (loaders.Cardgroup
+// and loaders.Card respectively), each via its own two-phase Load-then-resolve
+// pass. A missing loader registry or a Load failure is surfaced as an
+// INTERNAL/CANCELLED wire error.
 func toLearningStatsModel(ctx context.Context, res *usecase.LearningStatsResult) (*model.LearningStats, error) {
 	loaders, gqlErr := loadersOrInternal(ctx)
 	if gqlErr != nil {
@@ -76,6 +79,26 @@ func toLearningStatsModel(ctx context.Context, res *usecase.LearningStatsResult)
 			MatureCards:  d.MatureCards,
 		})
 	}
+
+	// Hydrate each struggling card from its id via the Card DataLoader, using the
+	// same two-phase Load-then-resolve so every key lands in one batch window.
+	cardThunks := make([]func() (*domain.Card, error), len(res.StrugglingCards))
+	for i, sc := range res.StrugglingCards {
+		cardThunks[i] = loaders.Card.Load(ctx, sc.CardID)
+	}
+	struggling := make([]*model.StrugglingCard, 0, len(res.StrugglingCards))
+	for i, sc := range res.StrugglingCards {
+		card, err := cardThunks[i]()
+		if err != nil {
+			return nil, classifyLoaderErr(ctx, err, "resolver: stats: struggling card")
+		}
+		struggling = append(struggling, &model.StrugglingCard{
+			Card:      toCardModel(card),
+			Lapses:    sc.Lapses,
+			Stability: sc.Stability,
+		})
+	}
+
 	return &model.LearningStats{
 		Mastery: &model.MasteryBreakdown{
 			InProgress:   res.Mastery.InProgress,
@@ -83,7 +106,9 @@ func toLearningStatsModel(ctx context.Context, res *usecase.LearningStatsResult)
 			Mature:       res.Mastery.Mature,
 			TotalStudied: res.Mastery.TotalStudied,
 		},
-		Decks: decks,
+		Decks:           decks,
+		Performance:     toPerformanceMetricsModel(res.Performance),
+		StrugglingCards: struggling,
 	}, nil
 }
 
@@ -286,13 +311,20 @@ func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
 	}
 	return &model.SwipeResponse{
 		PerformanceMode: out.PerformanceMode,
-		Metrics: &model.PerformanceMetrics{
-			SuccessRate:   out.Metrics.SuccessRate,
-			AvgDifficulty: out.Metrics.AvgDifficulty,
-			RetentionRate: out.Metrics.RetentionRate,
-			StudyStreak:   out.Metrics.StudyStreak,
-			LapseRate:     out.Metrics.LapseRate,
-			ReviewCount:   out.Metrics.ReviewCount,
-		},
+		Metrics:         toPerformanceMetricsModel(out.Metrics),
+	}
+}
+
+// toPerformanceMetricsModel maps the domain-service performance value object to
+// the generated wire model. Shared by the swipe response and the learning-stats
+// diagnostic snapshot.
+func toPerformanceMetricsModel(m service.PerformanceMetrics) *model.PerformanceMetrics {
+	return &model.PerformanceMetrics{
+		SuccessRate:   m.SuccessRate,
+		AvgDifficulty: m.AvgDifficulty,
+		RetentionRate: m.RetentionRate,
+		StudyStreak:   m.StudyStreak,
+		LapseRate:     m.LapseRate,
+		ReviewCount:   m.ReviewCount,
 	}
 }

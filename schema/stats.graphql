@@ -4,6 +4,20 @@ type LearningStats {
   mastery: MasteryBreakdown!
   """Per-deck acquisition, one entry per owned deck that has at least one card (decks with cards but no studied cards are included; empty decks are omitted)."""
   decks: [DeckMastery!]!
+  """Diagnostic performance snapshot over the trailing 365-day window (retention, success, lapse rates, study streak, review count, average difficulty)."""
+  performance: PerformanceMetrics!
+  """Cards the learner struggles with most, ranked by lapses (desc) then stability (asc), filtered to at least one lapse, capped at 10."""
+  strugglingCards: [StrugglingCard!]!
+}
+
+"""A card the learner struggles with (high lapses / low stability)."""
+type StrugglingCard {
+  """The struggling card."""
+  card: Card!
+  """Number of times the card lapsed (rated Again from a known-review state)."""
+  lapses: Int!
+  """The card's current FSRS memory stability, in days."""
+  stability: Float!
 }
 
 """Disjoint three-tier mastery counts across all studied cards. The three tiers sum to totalStudied."""

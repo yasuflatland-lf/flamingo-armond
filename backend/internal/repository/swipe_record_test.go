@@ -147,3 +147,77 @@ func TestSwipeRecordRepository_ListRecentByUser_OrdersAndScopes(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, empty)
 }
+
+// TestSwipeRecordRepository_ListByUserSince_InclusiveBoundaryAndScopes proves
+// ListByUserSince applies a `reviewed_at >= since` (inclusive) cutoff — the row
+// at exactly `since` is returned, the row one microsecond before is excluded —
+// and never leaks another user's swipe. Exact-boundary fixture per
+// docs/backend/library-gotchas/strict-cutoff-boundary-fixture-and-mutation-proof.md:
+// the Len==2 assertion discriminates `>=` from a strict `>` (which would drop
+// the == since row).
+func TestSwipeRecordRepository_ListByUserSince_InclusiveBoundaryAndScopes(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	otherUserID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	cgOther := insertCardgroup(t, ctx, otherUserID)
+	cardRepo := repository.NewCardRepository(testDB.GORM)
+	swipeRepo := repository.NewSwipeRecordRepository(testDB.GORM)
+
+	ownerCard := newCard(cg.ID, "owner since front", "back")
+	otherCard := newCard(cgOther.ID, "other since front", "back")
+	require.NoError(t, cardRepo.Create(ctx, ownerCard))
+	require.NoError(t, cardRepo.Create(ctx, otherCard))
+
+	since := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
+	before := since.Add(-time.Microsecond) // strictly before the cutoff (Postgres µs precision)
+	after := since.Add(time.Hour)
+
+	seed := func(id, userID, cardID string, cardgroupID domain.CardgroupID, reviewedAt time.Time) *domain.SwipeRecord {
+		return &domain.SwipeRecord{
+			ID:          id,
+			UserID:      domain.UserID(userID),
+			CardID:      cardID,
+			CardgroupID: cardgroupID,
+			Rating:      domain.RatingEasy,
+			ReviewedAt:  reviewedAt,
+			StateAfter:  domain.NewFSRSStateForNewCard(reviewedAt),
+		}
+	}
+
+	const (
+		idAtSince      = "00000000-0000-0000-0000-0000000000b1"
+		idBeforeSince  = "00000000-0000-0000-0000-0000000000b2"
+		idAfterSince   = "00000000-0000-0000-0000-0000000000b3"
+		idOtherAtSince = "00000000-0000-0000-0000-0000000000b4"
+	)
+
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, sr := range []*domain.SwipeRecord{
+			seed(idAtSince, ownerID, ownerCard.ID, cg.ID, since),               // == since: included (>=)
+			seed(idBeforeSince, ownerID, ownerCard.ID, cg.ID, before),          // < since: excluded
+			seed(idAfterSince, ownerID, ownerCard.ID, cg.ID, after),            // > since: included
+			seed(idOtherAtSince, otherUserID, otherCard.ID, cgOther.ID, since), // cross-tenant: excluded
+		} {
+			if err := swipeRepo.CreateTx(ctx, tx, sr); err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
+
+	got, err := swipeRepo.ListByUserSince(ctx, ownerID, since)
+	require.NoError(t, err)
+
+	ids := make(map[string]struct{}, len(got))
+	for _, sr := range got {
+		ids[sr.ID] = struct{}{}
+		require.Equal(t, ownerID, string(sr.UserID), "another user's swipe must never leak")
+	}
+	require.Len(t, got, 2, "reviewed_at == since is included (>=) and the strictly-before row is excluded")
+	require.Contains(t, ids, idAtSince, "reviewed_at == since is inclusive")
+	require.Contains(t, ids, idAfterSince)
+	require.NotContains(t, ids, idBeforeSince, "reviewed_at strictly before since is excluded")
+	require.NotContains(t, ids, idOtherAtSince, "another user's swipe is excluded")
+}
