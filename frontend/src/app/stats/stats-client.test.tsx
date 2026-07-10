@@ -16,6 +16,7 @@ type Stats = MyLearningStatsQuery["myLearningStats"];
 //   deck share = (100 + 20) / 500 = 24%  -> aria-valuenow "24"
 const populatedStats: Stats = {
   __typename: "LearningStats",
+  ownsAnyDeck: true,
   mastery: {
     __typename: "MasteryBreakdown",
     inProgress: 420,
@@ -177,9 +178,10 @@ describe("<StatsClient>", () => {
     });
   });
 
-  describe("brand-new user (studied === 0 && decks === [])", () => {
+  describe("truly-new user (studied === 0 && decks === [] && !ownsAnyDeck)", () => {
     const welcomeStats: Stats = {
       ...populatedStats,
+      ownsAnyDeck: false,
       mastery: zeroMastery,
       decks: [],
       strugglingCards: [],
@@ -197,10 +199,46 @@ describe("<StatsClient>", () => {
         "href",
         "/cardgroups/new",
       );
+      // The empty-deck state is for owners; the truly-new user never sees it.
+      expect(screen.queryByText("Your deck has no cards yet")).not.toBeInTheDocument();
     });
 
     it("collapses every content section (mastery / diagnostics / per-deck / struggling absent)", () => {
       renderStats(welcomeStats);
+
+      expect(screen.queryByText("Words acquired")).not.toBeInTheDocument();
+      expect(screen.queryByText("Retention")).not.toBeInTheDocument();
+      expect(screen.queryByText("Per-deck acquisition")).not.toBeInTheDocument();
+      expect(screen.queryByText("Struggling cards")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("empty-deck user (studied === 0 && decks === [] && ownsAnyDeck)", () => {
+    // Owns at least one cardgroup, but every deck is empty (the backend omits
+    // zero-card decks from `decks`), so `decks` is [] yet `ownsAnyDeck` is true.
+    const emptyDeckStats: Stats = {
+      ...populatedStats,
+      ownsAnyDeck: true,
+      mastery: zeroMastery,
+      decks: [],
+      strugglingCards: [],
+    };
+
+    it("renders the empty-deck state (add cards CTA), not the welcome state", () => {
+      renderStats(emptyDeckStats);
+
+      expect(screen.getByText("Your deck has no cards yet")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Add cards" })).toHaveAttribute(
+        "href",
+        "/cardgroups",
+      );
+      // Distinguished from the truly-new user: no welcome copy, no catalog CTA.
+      expect(screen.queryByText("Your progress starts here")).not.toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "Browse the catalog" })).not.toBeInTheDocument();
+    });
+
+    it("collapses every content section (mastery / diagnostics / per-deck / struggling absent)", () => {
+      renderStats(emptyDeckStats);
 
       expect(screen.queryByText("Words acquired")).not.toBeInTheDocument();
       expect(screen.queryByText("Retention")).not.toBeInTheDocument();

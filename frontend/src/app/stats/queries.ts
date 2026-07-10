@@ -3,6 +3,7 @@ import { graphql } from "@/generated";
 export const MyLearningStatsQuery = graphql(`
   query MyLearningStats {
     myLearningStats {
+      ownsAnyDeck
       mastery { inProgress learned mature totalStudied }
       decks {
         cardgroup { id name }
