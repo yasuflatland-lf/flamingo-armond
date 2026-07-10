@@ -112,7 +112,7 @@ function simulateSwipe(element: Element, deltaX: number, deltaY = 0) {
 describe("<SwipeableRow>", () => {
   it("renders children inside the swipeable layer", () => {
     render(
-      <SwipeableRow onDelete={vi.fn()} ariaLabel={null}>
+      <SwipeableRow onDelete={vi.fn()}>
         <span>Card front</span>
       </SwipeableRow>,
     );
@@ -123,7 +123,7 @@ describe("<SwipeableRow>", () => {
   it("≥40% release → onDelete fires", async () => {
     const onDelete = vi.fn();
     render(
-      <SwipeableRow onDelete={onDelete} ariaLabel={null}>
+      <SwipeableRow onDelete={onDelete}>
         <span>Card</span>
       </SwipeableRow>,
     );
@@ -141,7 +141,7 @@ describe("<SwipeableRow>", () => {
   it("<40% release → onDelete not called and row snaps back", async () => {
     const onDelete = vi.fn();
     render(
-      <SwipeableRow onDelete={onDelete} ariaLabel={null}>
+      <SwipeableRow onDelete={onDelete}>
         <span>Card</span>
       </SwipeableRow>,
     );
@@ -157,7 +157,7 @@ describe("<SwipeableRow>", () => {
   it("vertical drag (|mx| < |my|) → no-op; onDelete not called", async () => {
     const onDelete = vi.fn();
     render(
-      <SwipeableRow onDelete={onDelete} ariaLabel={null}>
+      <SwipeableRow onDelete={onDelete}>
         <span>Card</span>
       </SwipeableRow>,
     );
@@ -173,7 +173,7 @@ describe("<SwipeableRow>", () => {
   it("disabled → gesture is cancelled; onDelete not called", async () => {
     const onDelete = vi.fn();
     render(
-      <SwipeableRow onDelete={onDelete} disabled ariaLabel={null}>
+      <SwipeableRow onDelete={onDelete} disabled>
         <span>Card</span>
       </SwipeableRow>,
     );
@@ -189,7 +189,7 @@ describe("<SwipeableRow>", () => {
     stubMatchMedia(true);
 
     render(
-      <SwipeableRow onDelete={vi.fn()} ariaLabel={null}>
+      <SwipeableRow onDelete={vi.fn()}>
         <span>Reduced motion card</span>
       </SwipeableRow>,
     );
@@ -204,7 +204,7 @@ describe("<SwipeableRow>", () => {
 
     const onDelete = vi.fn();
     const { container } = render(
-      <SwipeableRow onDelete={onDelete} ariaLabel={null}>
+      <SwipeableRow onDelete={onDelete}>
         <span>Card</span>
       </SwipeableRow>,
     );
@@ -218,7 +218,7 @@ describe("<SwipeableRow>", () => {
 
   it("renders the reveal layer with a destructive background and Trash icon", () => {
     const { container } = render(
-      <SwipeableRow onDelete={vi.fn()} ariaLabel={null}>
+      <SwipeableRow onDelete={vi.fn()}>
         <span>Card front</span>
       </SwipeableRow>,
     );
@@ -236,7 +236,7 @@ describe("<SwipeableRow>", () => {
     stubMatchMedia(true);
 
     const { container } = render(
-      <SwipeableRow onDelete={vi.fn()} ariaLabel={null}>
+      <SwipeableRow onDelete={vi.fn()}>
         <span>Card front</span>
       </SwipeableRow>,
     );
@@ -250,7 +250,7 @@ describe("<SwipeableRow>", () => {
     const ref = createRef<SwipeableRowHandle>();
 
     render(
-      <SwipeableRow ref={ref} onDelete={onDelete} ariaLabel={null}>
+      <SwipeableRow ref={ref} onDelete={onDelete}>
         <span>Card</span>
       </SwipeableRow>,
     );
