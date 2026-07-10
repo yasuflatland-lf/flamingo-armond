@@ -194,8 +194,9 @@ func buildResolver(
 	cefrUC := usecase.NewCEFRUsecase(cefrClassifier)
 	masterCatalogUC := usecase.NewMasterCatalogUsecase(repos.masterCardgroup, masterDeckUC, adminGate, logger)
 	masterCardUC := usecase.NewMasterCardUsecase(repos.gorm, repos.masterCard, repos.masterCardgroup, adminGate, logger)
+	statsUC := usecase.NewStats(repos.userCardFSRS)
 
-	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, updateLearnDisplayModeUC, updateNewCardRatioUC, learnUC, cefrUC, masterCatalogUC, masterCardUC)
+	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, updateLearnDisplayModeUC, updateNewCardRatioUC, learnUC, cefrUC, masterCatalogUC, masterCardUC, statsUC)
 	return resolvers, pingHandler, notionSyncHandler, nil
 }
 
