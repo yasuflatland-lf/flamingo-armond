@@ -8,7 +8,7 @@ import {
   CardsByCardgroupConnectionDocument,
   type CardsByCardgroupConnectionQueryVariables,
 } from "@/generated/graphql";
-import { classifyToAuthOutcome } from "@/lib/apollo/errors";
+import { classifyAndLogAuthOutcome } from "@/lib/apollo/errors";
 
 export type MergeFromCatalogOutcome =
   | { status: "success"; addedCount: number; updatedCount: number }
@@ -87,7 +87,7 @@ export function useMergeFromCatalog(targetCardgroupId: string) {
         });
         return { status: "rejected" };
       } catch (err) {
-        return classifyToAuthOutcome(err, "useMergeFromCatalog", "mergeMasterCardgroup", {
+        return classifyAndLogAuthOutcome(err, "useMergeFromCatalog", "mergeMasterCardgroup", {
           targetCardgroupId,
         });
       }

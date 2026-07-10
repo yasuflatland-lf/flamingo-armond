@@ -6,7 +6,7 @@ import {
   type CardsByCardgroupConnectionQueryVariables,
 } from "@/generated/graphql";
 import {
-  appendConnectionEdge,
+  prependConnectionEdge,
   removeConnectionEdgeAcrossVariants,
   removeConnectionEdges,
 } from "./connection-cache";
@@ -72,11 +72,11 @@ function read(cache: InMemoryCache) {
 
 const buildColdConnection = () => makeConnection(["cold"], 1);
 
-describe("appendConnectionEdge", () => {
+describe("prependConnectionEdge", () => {
   it("no-ops on a cold cache when buildColdConnection is omitted", () => {
     const cache = new InMemoryCache();
 
-    appendConnectionEdge(cache, {
+    prependConnectionEdge(cache, {
       document: CardsByCardgroupConnectionDocument,
       variables: VARS,
       connectionField: "cardsByCardgroupConnection",
@@ -90,7 +90,7 @@ describe("appendConnectionEdge", () => {
   it("seeds a fresh connection on a cold cache when buildColdConnection is provided", () => {
     const cache = new InMemoryCache();
 
-    appendConnectionEdge(cache, {
+    prependConnectionEdge(cache, {
       document: CardsByCardgroupConnectionDocument,
       variables: VARS,
       connectionField: "cardsByCardgroupConnection",
@@ -108,7 +108,7 @@ describe("appendConnectionEdge", () => {
     const cache = new InMemoryCache();
     seed(cache, makeConnection(["a", "b"], 2));
 
-    appendConnectionEdge(cache, {
+    prependConnectionEdge(cache, {
       document: CardsByCardgroupConnectionDocument,
       variables: VARS,
       connectionField: "cardsByCardgroupConnection",
@@ -129,7 +129,7 @@ describe("appendConnectionEdge", () => {
     const cache = new InMemoryCache();
     seed(cache, makeConnection(["a", "b"], 2));
 
-    appendConnectionEdge(cache, {
+    prependConnectionEdge(cache, {
       document: CardsByCardgroupConnectionDocument,
       variables: VARS,
       connectionField: "cardsByCardgroupConnection",

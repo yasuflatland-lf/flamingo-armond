@@ -1,7 +1,7 @@
 import type { ApolloCache } from "@apollo/client";
 import type { MyCardgroupsConnectionQuery } from "@/generated/graphql";
 import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
-import { appendConnectionEdge } from "@/lib/apollo/connection-cache";
+import { prependConnectionEdge } from "@/lib/apollo/connection-cache";
 import { CARDGROUPS_DEFAULT_VARS } from "./queries";
 
 /**
@@ -25,14 +25,14 @@ type MyCardgroupNode =
  * success payload.
  *
  * Delegates the warm-prepend / cold-build / dedup mechanics to the generic
- * `appendConnectionEdge`. The cold-cache build is supplied so a user landing on
+ * `prependConnectionEdge`. The cold-cache build is supplied so a user landing on
  * `/cardgroups` or `/catalog` without an SSR seed still sees the new edge.
  * `CARDGROUPS_DEFAULT_VARS` keeps the cache key in sync with the `/cardgroups` SSR
  * seed and client `useQuery`; any mismatch makes this write invisible. See
  * .claude/rules/pagination.md.
  */
 export function prependMyCardgroupEdge(cache: ApolloCache, node: MyCardgroupNode): void {
-  appendConnectionEdge(cache, {
+  prependConnectionEdge(cache, {
     document: MyCardgroupsConnectionDocument,
     variables: CARDGROUPS_DEFAULT_VARS,
     connectionField: "myCardgroupsConnection",

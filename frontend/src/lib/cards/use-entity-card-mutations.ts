@@ -4,7 +4,7 @@ import type { OperationVariables } from "@apollo/client";
 import { useApolloClient, useMutation } from "@apollo/client/react";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { useCallback, useState } from "react";
-import { appendConnectionEdge, removeConnectionEdges } from "@/lib/apollo/connection-cache";
+import { prependConnectionEdge, removeConnectionEdges } from "@/lib/apollo/connection-cache";
 import { useUndoDelete } from "@/lib/undo-delete";
 import {
   type CardFormValues,
@@ -20,7 +20,7 @@ type CardConnectionVariables = OperationVariables & { search?: string | null };
 type CardNodeLike = { id: string; front: string; back: string };
 
 /** Structural connection shape read during the optimistic per-row delete. */
-type MutableConnection = {
+type ConnectionSnapshot = {
   edges: { node: { id: string } }[];
   totalCount: number;
   [key: string]: unknown;
@@ -106,7 +106,7 @@ export interface UseEntityCardMutationsInput<TConnVars extends CardConnectionVar
  * arguments and let inference resolve the params from the documents; supply
  * explicit type arguments only if `tsc` cannot infer one.
  */
-export function createEntityCardMutationsConfig<
+export function defineEntityCardMutationsConfig<
   TConnData,
   TConnVars extends CardConnectionVariables,
   TConnKey extends keyof TConnData,
@@ -231,7 +231,7 @@ export function useEntityCardMutations<
   // `useQuery` owns populating the connection.
   const writeCreatedToConnection = useCallback(
     (node: TNode, variables: TConnVars) => {
-      appendConnectionEdge(apollo.cache, {
+      prependConnectionEdge(apollo.cache, {
         document: config.connectionDocument,
         variables,
         connectionField: config.connectionField,
@@ -317,7 +317,7 @@ export function useEntityCardMutations<
         variables: queryVariables,
       });
       if (snapshot) {
-        const current = snapshot[config.connectionField] as unknown as MutableConnection;
+        const current = snapshot[config.connectionField] as unknown as ConnectionSnapshot;
         apollo.writeQuery({
           query: config.connectionDocument,
           variables: queryVariables,
