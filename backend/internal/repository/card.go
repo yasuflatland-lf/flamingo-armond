@@ -71,6 +71,12 @@ type CardPageRepository interface {
 		dir SortOrder,
 		search *string,
 	) (cards []*domain.Card, totalCount int64, err error)
+}
+
+// CardSessionRepository reads a learn/practice session's card pool. Unlike
+// CardPageRepository these are non-paginated, limit-capped session fetches:
+// no cursor, no orderBy, no totalCount.
+type CardSessionRepository interface {
 	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now, reviewedBefore time.Time, limit int) ([]domain.DueCard, error)
 	// FindPracticeCardsForUser returns the FSRS-safe practice pool: cards the
 	// user already reviewed at or after reviewedAfter (the start-of-day cutoff).
@@ -111,6 +117,7 @@ type CardWriteRepository interface {
 type CardRepository interface {
 	CardReadRepository
 	CardPageRepository
+	CardSessionRepository
 	CardWriteRepository
 }
 
