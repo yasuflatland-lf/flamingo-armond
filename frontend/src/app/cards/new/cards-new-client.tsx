@@ -171,7 +171,7 @@ export default function CardsNewClient({
   // submit), then navigate away. When a ?return= param was supplied (and
   // passed the open-redirect guard above), push to that path; otherwise push
   // to the cardgroup's cards list. See docs/pagination/drop-optimistic-response-typed-errors.md.
-  function markCreationSucceeded() {
+  function finishCreationAndNavigate() {
     if (!currentId) return;
     void setLastViewed({ variables: { cardgroupId: currentId } }).catch((err) => {
       console.warn("[cards-new] setLastViewedCardgroup failed", { cardgroupId: currentId, err });
@@ -200,7 +200,7 @@ export default function CardsNewClient({
         });
         return;
       }
-      markCreationSucceeded();
+      finishCreationAndNavigate();
     } catch (err) {
       console.error("[cards-new-client] create card rejection", {
         name: err instanceof Error ? err.name : "unknown",
@@ -249,7 +249,7 @@ export default function CardsNewClient({
 
     if (payload?.__typename === "UpdateCardSuccess") {
       setDuplicate(null);
-      markCreationSucceeded();
+      finishCreationAndNavigate();
       return;
     }
 

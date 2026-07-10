@@ -24,12 +24,12 @@ import { StrugglingList } from "./struggling-list";
  */
 export function StatsClient({ stats }: { stats: MyLearningStatsQuery["myLearningStats"] }) {
   const t = useTranslations("Stats");
-  const studied = stats.mastery.totalStudied;
+  const studiedCount = stats.mastery.totalStudied;
   const hasDecks = stats.decks.length > 0;
   const ownsAnyDeck = stats.ownsAnyDeck;
 
   let content: ReactNode;
-  if (studied === 0 && !hasDecks && ownsAnyDeck === false) {
+  if (studiedCount === 0 && !hasDecks && ownsAnyDeck === false) {
     // Truly-new user: owns no cardgroup at all, and nothing studied. All
     // sections collapse to the welcome empty state. Test `ownsAnyDeck === false`
     // (not `!ownsAnyDeck`) so that an unexpectedly-undefined value (a query /
@@ -37,12 +37,12 @@ export function StatsClient({ stats }: { stats: MyLearningStatsQuery["myLearning
     // falls through to EmptyDeckEmpty below rather than back into this
     // "create a deck" nudge — the exact misdirection this feature removes.
     content = <WelcomeEmpty />;
-  } else if (studied === 0 && !hasDecks) {
+  } else if (studiedCount === 0 && !hasDecks) {
     // Owns at least one cardgroup but every deck is empty (the backend omits
     // zero-card decks from `decks`), and nothing studied. Nudge the user to add
     // cards rather than telling them to create a deck they already have.
     content = <EmptyDeckEmpty />;
-  } else if (studied === 0) {
+  } else if (studiedCount === 0) {
     // Has decks but no reviews yet: per-deck rows render at 0%, and the
     // struggling slot is necessarily empty (no lapses without studied cards) —
     // rendered directly here, mirroring StrugglingList's own empty-cards guard.

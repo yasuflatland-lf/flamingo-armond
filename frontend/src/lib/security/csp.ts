@@ -86,20 +86,20 @@ export function serializeCsp(directives: CspDirectiveMap): string {
   return serialized.join("; ");
 }
 
-function parseSupabaseUrl(url: string): URL {
+function parseUrlOrThrow(url: string): URL {
   try {
     return new URL(url);
   } catch {
-    throw new Error(`[csp] invalid supabaseUrl — not a valid URL: ${JSON.stringify(url)}`);
+    throw new Error(`[csp] invalid url: ${JSON.stringify(url)}`);
   }
 }
 
 function toOrigin(url: string): string {
-  return parseSupabaseUrl(url).origin;
+  return parseUrlOrThrow(url).origin;
 }
 
 function toWebSocketOrigin(url: string): string {
-  const parsed = parseSupabaseUrl(url);
+  const parsed = parseUrlOrThrow(url);
   if (parsed.protocol === "https:") {
     parsed.protocol = "wss:";
   } else if (parsed.protocol === "http:") {

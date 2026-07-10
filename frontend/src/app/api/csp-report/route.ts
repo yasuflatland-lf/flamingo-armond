@@ -24,7 +24,7 @@ type ReportEnvelope = {
   report: NormalizedReport;
 };
 
-function getContentTypeHeader(contentType: string | null) {
+function parseMediaType(contentType: string | null) {
   return contentType?.split(";")[0]?.trim().toLowerCase() ?? "";
 }
 
@@ -183,7 +183,7 @@ function normalizePayload(contentType: string, payload: unknown): ReportEnvelope
 }
 
 export async function POST(request: Request) {
-  const contentType = getContentTypeHeader(request.headers.get("content-type"));
+  const contentType = parseMediaType(request.headers.get("content-type"));
   const body = await readBody(request);
 
   if (!body.ok) {

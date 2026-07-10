@@ -22,7 +22,9 @@ type Props = {
 // Returns the translation key for the mapped user-facing message, or null when
 // the Supabase message is unmapped — null lets the caller log the raw message
 // and show generic copy.
-function classifyUpdateUserError(message: string): "emailRateLimited" | "emailAlreadyInUse" | null {
+function mapUpdateUserErrorToMessageKey(
+  message: string,
+): "emailRateLimited" | "emailAlreadyInUse" | null {
   const lower = message.toLowerCase();
   if (lower.includes("rate limit")) {
     return "emailRateLimited";
@@ -51,13 +53,13 @@ export function ChangeEmailClient({ currentEmail }: Props) {
       const supabase = createSupabaseBrowserClient();
       const { error: updateErr } = await supabase.auth.updateUser({ email: trimmed });
       if (updateErr) {
-        const classifiedKey = classifyUpdateUserError(updateErr.message);
+        const classifiedKey = mapUpdateUserErrorToMessageKey(updateErr.message);
         if (classifiedKey !== null) {
           // Classified: operators know what happened from the user copy + error.name; no raw needed.
           console.warn("[change-email] updateUser failed:", updateErr.name);
           setError(t(classifiedKey));
         } else {
-          // Unmapped: log the raw Supabase message so operators can extend classifyUpdateUserError.
+          // Unmapped: log the raw Supabase message so operators can extend mapUpdateUserErrorToMessageKey.
           // Supabase API error messages are server-generated and do not echo user-typed input,
           // so this is PII-safe.
           console.warn(

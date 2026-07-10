@@ -62,7 +62,7 @@ export function MasterEditHeader({ master, cardCount }: Props) {
   const published = master.status === "PUBLISHED";
   const emptyDraft = master.status === "DRAFT" && cardCount === 0;
 
-  const authToast = useCallback(
+  const showAuthToast = useCallback(
     (kind: AuthKind) => {
       toast.error(kind === "forbidden" ? t("forbidden") : t("unauthenticated"));
     },
@@ -78,13 +78,13 @@ export function MasterEditHeader({ master, cardCount }: Props) {
           // `run` stored the field error / fired `onSettingsSaved` respectively.
           return;
         case "auth":
-          authToast(outcome.kind);
+          showAuthToast(outcome.kind);
           return;
         default:
           toast.error(t("unexpectedError"));
       }
     },
-    [master.id, updateMaster, run, t, authToast],
+    [master.id, updateMaster, run, t, showAuthToast],
   );
 
   const handlePublishToggle = useCallback(async () => {
@@ -98,7 +98,7 @@ export function MasterEditHeader({ master, cardCount }: Props) {
             router.refresh();
             return;
           case "auth":
-            authToast(outcome.kind);
+            showAuthToast(outcome.kind);
             return;
           default:
             toast.error(t("unexpectedError"));
@@ -115,7 +115,7 @@ export function MasterEditHeader({ master, cardCount }: Props) {
           toast.error(t("publishEmptyToast"));
           return;
         case "auth":
-          authToast(outcome.kind);
+          showAuthToast(outcome.kind);
           return;
         default:
           toast.error(t("unexpectedError"));
@@ -123,7 +123,7 @@ export function MasterEditHeader({ master, cardCount }: Props) {
     } finally {
       setPublishing(false);
     }
-  }, [published, publishMaster, unpublishMaster, master.id, t, authToast, router]);
+  }, [published, publishMaster, unpublishMaster, master.id, t, showAuthToast, router]);
 
   const handleConfirmDelete = useCallback(async () => {
     setDeleting(true);
@@ -136,7 +136,7 @@ export function MasterEditHeader({ master, cardCount }: Props) {
           router.push("/admin/masters");
           return;
         case "auth":
-          authToast(outcome.kind);
+          showAuthToast(outcome.kind);
           return;
         default:
           toast.error(t("deleteMasterFailed"));
@@ -144,7 +144,7 @@ export function MasterEditHeader({ master, cardCount }: Props) {
     } finally {
       setDeleting(false);
     }
-  }, [deleteMaster, master.id, t, authToast, router]);
+  }, [deleteMaster, master.id, t, showAuthToast, router]);
 
   const publishIcon = published ? (
     <EyeOff aria-hidden="true" className="h-4 w-4" />

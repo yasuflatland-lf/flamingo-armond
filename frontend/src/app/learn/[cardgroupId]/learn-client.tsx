@@ -45,7 +45,7 @@ type Props = {
 
 export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
-  const [completed, setCompleted] = useState(0);
+  const [completedCount, setCompletedCount] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
   // Top-level phase switch. "practice" hands the whole screen to PracticeClient
   // (FSRS-safe re-study of today's cards). It is only entered from the
@@ -246,7 +246,7 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
       // is cleared in the mutation's `finally` below.
       inFlightSwipeIdsRef.current.add(card.id);
       setQueue((current) => current.filter((candidate) => candidate.id !== card.id));
-      setCompleted((current) => current + 1);
+      setCompletedCount((current) => current + 1);
 
       const result = await handleSwipe({
         variables: { input: { cardId: card.id, cardgroupId, mode } },
@@ -265,7 +265,7 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
             name: err instanceof Error ? err.name : "unknown",
           });
           setQueue((current) => [card, ...current.filter((candidate) => candidate.id !== card.id)]);
-          setCompleted((current) => Math.max(0, current - 1));
+          setCompletedCount((current) => Math.max(0, current - 1));
           setLocalError("Could not save that swipe. Please try again.");
           return null;
         })
@@ -329,7 +329,7 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
       cards={queue}
       displayMode={displayMode}
       onCardSwiped={onSwipe}
-      completedCount={completed}
+      completedCount={completedCount}
       // When no banner, SwipeSession renders an `aria-hidden` spacer in the
       // leading row so the card and action bar keep their grid rows.
       topSlot={
