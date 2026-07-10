@@ -28,27 +28,27 @@ export type CatalogListItemProps = {
  */
 export function CatalogListItem({ node }: CatalogListItemProps) {
   const t = useTranslations("Catalog");
-  const card = useFragment(CatalogCardFieldsFragment, node);
+  const deck = useFragment(CatalogCardFieldsFragment, node);
 
   return (
     <li>
       <Link
-        href={`/catalog/${card.id}`}
-        data-testid={`catalog-row-${card.id}`}
-        aria-label={t("viewDeckAriaLabel", { name: card.name })}
+        href={`/catalog/${deck.id}`}
+        data-testid={`catalog-row-${deck.id}`}
+        aria-label={t("viewDeckAriaLabel", { name: deck.name })}
         className="group block rounded-md border border-border p-4 transition-[box-shadow,transform,background-color] duration-150 ease-out hover:-translate-y-0.5 hover:bg-accent hover:shadow-md motion-reduce:transition-none motion-reduce:hover:translate-y-0 sm:py-3"
       >
         {/* Tier 1: name (lead) + card-count stat (subordinate figure, right). */}
         <div className="flex items-baseline gap-3">
           <h3 className="min-w-0 flex-1 truncate text-[15px] font-semibold leading-[1.3] tracking-[-0.01em] text-foreground">
-            {card.name}
+            {deck.name}
           </h3>
           <span className="shrink-0 whitespace-nowrap">
             <span className="text-sm font-semibold tabular-nums text-foreground">
-              {t("cardCountStat", { count: card.cardCount })}
+              {t("cardCountStat", { count: deck.cardCount })}
             </span>{" "}
             <span className="text-[10px] text-muted-foreground">
-              {t("unitCards", { count: card.cardCount })}
+              {t("unitCards", { count: deck.cardCount })}
             </span>
           </span>
         </div>
@@ -70,14 +70,14 @@ export function CatalogListItem({ node }: CatalogListItemProps) {
             brief, harmless expand on a touch tap before navigation). Always in the
             DOM for screen readers; the deck's detail page carries the description
             for mobile-first discovery. */}
-        {card.description?.trim() && (
+        {deck.description?.trim() && (
           <div className="grid grid-rows-[0fr] opacity-0 transition-[grid-template-rows,opacity] duration-200 ease-out group-hover:grid-rows-[1fr] group-hover:opacity-100 group-focus-within:grid-rows-[1fr] group-focus-within:opacity-100 motion-reduce:transition-none">
             <div className="overflow-hidden">
               <p
-                data-testid={`catalog-row-desc-${card.id}`}
+                data-testid={`catalog-row-desc-${deck.id}`}
                 className="mt-1.5 line-clamp-1 text-[11px] leading-[1.5] text-muted-foreground"
               >
-                {card.description}
+                {deck.description}
               </p>
             </div>
           </div>
