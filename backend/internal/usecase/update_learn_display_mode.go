@@ -21,7 +21,7 @@ type UpdateLearnDisplayModeUsecase interface {
 // user-preferences persistence step. Satisfied by
 // repository.UserPreferenceRepository.
 type updateLearnDisplayModePrefsRepo interface {
-	UpdateLearnDisplayMode(ctx context.Context, userID, mode string) error
+	UpsertLearnDisplayMode(ctx context.Context, userID, mode string) error
 }
 
 // updateLearnDisplayModeUsersRepo is the narrow consumer interface for the
@@ -72,7 +72,7 @@ func (u *updateLearnDisplayModeUsecase) Set(ctx context.Context, mode domain.Lea
 		return nil, err
 	}
 
-	if err := u.prefs.UpdateLearnDisplayMode(ctx, caller.Sub, mode.String()); err != nil {
+	if err := u.prefs.UpsertLearnDisplayMode(ctx, caller.Sub, mode.String()); err != nil {
 		if isContextDone(err) {
 			return nil, err
 		}

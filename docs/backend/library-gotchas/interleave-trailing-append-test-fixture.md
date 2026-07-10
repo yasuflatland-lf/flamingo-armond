@@ -56,24 +56,24 @@ in := []domain.DueCard{
 }
 ```
 
-### State zero-value collapses the partition
+### Phase zero-value collapses the partition
 
 A separate but related pitfall: `domain.DueCard{Card: c}` leaves
-`State` at its zero value (`FSRSStateNew`). A test built only from
+`Phase` at its zero value (`FSRSPhaseNew`). A test built only from
 zero-value fixtures exercises ONLY the new-bucket branch of `partition` —
 the review-bucket branch is never entered, and no interleave path runs at
 all because the review bucket is empty. Any fixture intended to exercise
 the review-bucket path or the interleave loop MUST set
-`State: FSRSStateReview` (or `Learning` / `Relearning`) explicitly:
+`Phase: FSRSPhaseReview` (or `Learning` / `Relearning`) explicitly:
 
 ```go
 // Exercises review-bucket: required for interleave coverage.
-domain.DueCard{Card: &domain.Card{ID: "next-1"}, State: domain.FSRSStateReview}
+domain.DueCard{Card: &domain.Card{ID: "next-1"}, Phase: domain.FSRSPhaseReview}
 ```
 
 **Reference:** `backend/internal/domain/service/due_card_ordering_test.go` —
 `TestOrderingPolicy_Apply_TrailingReviewAppend` (1N+7R fixture) and
 `TestOrderingPolicy_Apply_TrailingNewAppend` (5N+3R fixture) cover the two
 trailing paths. `backend/internal/usecase/swipe_performance_test.go` carries
-the inline comment `State: FSRSStateReview exercises the review-bucket path`
+the inline comment `Phase: FSRSPhaseReview exercises the review-bucket path`
 at every `findDueRows` fixture that needs the review bucket populated.

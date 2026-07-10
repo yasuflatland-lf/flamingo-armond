@@ -238,7 +238,7 @@ func performanceSwipe(rating domain.Rating, reviewedAt time.Time, difficulty flo
 			Difficulty:    difficulty,
 			ElapsedDays:   1,
 			ScheduledDays: 1,
-			State:         domain.FSRSStateReview,
+			Phase:         domain.FSRSPhaseReview,
 		},
 	}
 }
@@ -331,7 +331,7 @@ func TestSwipeUsecase_HandleSwipe_InvalidMode_ValidationVariant(t *testing.T) {
 func TestSwipeUsecase_HandleSwipe_CardNotFound_ValidationVariant(t *testing.T) {
 	t.Parallel()
 
-	// FindByIDTx returns (findResult, findErr); set findErr to ErrNotFound to
+	// FindByIDForUpdateTx returns (findResult, findErr); set findErr to ErrNotFound to
 	// exercise the not-found branch inside the transaction closure.
 	cardRepo := &mockCardRepository{
 		findErr: repository.ErrNotFound,
@@ -424,7 +424,7 @@ func TestSwipeUsecase_HandleSwipe_CardgroupNotFound_ValidationVariant(t *testing
 func TestSwipeUsecase_HandleSwipe_CardCrossCardgroup_ValidationVariant(t *testing.T) {
 	t.Parallel()
 
-	// FindByIDTx returns a card whose CardgroupID belongs to a different cardgroup.
+	// FindByIDForUpdateTx returns a card whose CardgroupID belongs to a different cardgroup.
 	// The usecase must detect the mismatch and return a Validation outcome.
 	cardRepo := &mockCardRepository{
 		findResult: &domain.Card{

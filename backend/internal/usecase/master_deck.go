@@ -17,7 +17,7 @@ import (
 // published default-starter set.
 type masterDeckCardgroupRepo interface {
 	FindByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
-	ListDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error)
+	ListPublishedDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error)
 }
 
 // masterDeckCardRepo is the subset of repository.MasterCardRepository the master
@@ -244,7 +244,7 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) (
 			return nil
 		}
 
-		starters, err := u.masterCG.ListDefaultStarters(ctx)
+		starters, err := u.masterCG.ListPublishedDefaultStarters(ctx)
 		if err != nil {
 			return eris.Wrap(err, "usecase: master deck: seed for new user: list default starters")
 		}

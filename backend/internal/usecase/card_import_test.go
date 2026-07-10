@@ -1069,19 +1069,19 @@ func TestCardImportUsecase_ValidateDetectsOverLengthBack(t *testing.T) {
 }
 
 // TestCheckImportCaps_ReturnsValidatedVOs pins the single-scan optimization at
-// its source: on the pass path checkImportCaps returns the trimmed CardText VOs
+// its source: on the pass path validateImportRows returns the trimmed CardText VOs
 // parallel to the input words so Import can build cards via
 // domain.NewCardFromValidated without a second grapheme scan. The row-cap
 // short-circuit returns a nil VO slice and only the payload-level violation
 // (no per-row scan).
-func TestCheckImportCaps_ReturnsValidatedVOs(t *testing.T) {
+func TestValidateImportRows_ReturnsValidatedVOs(t *testing.T) {
 	t.Parallel()
 
 	words := []textdic.ParsedWord{
 		{Front: "  apple  ", Back: "  " + jpRunes(3) + "  ", Line: 1},
 		{Front: "dog", Back: jpRunes(2), Line: 2},
 	}
-	validated, caps := checkImportCaps(words)
+	validated, caps := validateImportRows(words)
 	if len(caps) != 0 {
 		t.Fatalf("expected no cap violations, got %+v", caps)
 	}
@@ -1105,7 +1105,7 @@ func TestCheckImportCaps_ReturnsValidatedVOs(t *testing.T) {
 	for i := range over {
 		over[i] = textdic.ParsedWord{Front: stringFront("f", i), Back: jpRunes(2), Line: i + 1}
 	}
-	vOver, capsOver := checkImportCaps(over)
+	vOver, capsOver := validateImportRows(over)
 	if vOver != nil {
 		t.Fatalf("expected a nil VO slice on the row-cap short-circuit, got len %d", len(vOver))
 	}
@@ -1116,7 +1116,7 @@ func TestCheckImportCaps_ReturnsValidatedVOs(t *testing.T) {
 
 // TestCardImport_BuildLoopReusesValidatedVOs pins the single grapheme-scan-per-row
 // optimization structurally: the Import build loop must construct cards via
-// domain.NewCardFromValidated (reusing the CardText VOs checkImportCaps already
+// domain.NewCardFromValidated (reusing the CardText VOs validateImportRows already
 // parsed) and must NOT call domain.NewCard, which re-runs domain.ParseCardText — a
 // second grapheme scan of every row's front and back. A regression to NewCard
 // would silently double-scan every import batch with no behavioral difference, so
@@ -1131,9 +1131,9 @@ func TestCardImport_BuildLoopReusesValidatedVOs(t *testing.T) {
 	}
 	s := string(src)
 	if !strings.Contains(s, "domain.NewCardFromValidated(") {
-		t.Fatal("card_import.go must build import cards via domain.NewCardFromValidated to reuse checkImportCaps' VOs (one grapheme scan per row)")
+		t.Fatal("card_import.go must build import cards via domain.NewCardFromValidated to reuse validateImportRows' VOs (one grapheme scan per row)")
 	}
 	if strings.Contains(s, "domain.NewCard(") {
-		t.Fatal("card_import.go must not call domain.NewCard (re-runs domain.ParseCardText, double-scanning each row); use domain.NewCardFromValidated with the VOs from checkImportCaps")
+		t.Fatal("card_import.go must not call domain.NewCard (re-runs domain.ParseCardText, double-scanning each row); use domain.NewCardFromValidated with the VOs from validateImportRows")
 	}
 }

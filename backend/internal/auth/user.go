@@ -7,7 +7,6 @@ type AuthUser struct {
 	Sub           string
 	Email         string
 	EmailVerified bool
-	Role          string
 }
 
 type contextKey struct{}

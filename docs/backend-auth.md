@@ -13,7 +13,7 @@ GET  /playground  open (no auth)
 POST /query       AuthMiddleware → gqlgen handler
 ```
 
-When an `Authorization` header is **absent**, the request passes through as anonymous — no `auth.AuthUser` is attached to the context. Resolvers themselves enforce identity per request via the usecase layer. When the header is **present and valid**, `auth.UserFrom(ctx)` returns the verified `*auth.AuthUser` (`Sub`, `Email`, `Role`). When the header is **present but invalid**, the middleware short-circuits with HTTP 401 and sets `WWW-Authenticate: Bearer realm="api"`.
+When an `Authorization` header is **absent**, the request passes through as anonymous — no `auth.AuthUser` is attached to the context. Resolvers themselves enforce identity per request via the usecase layer. When the header is **present and valid**, `auth.UserFrom(ctx)` returns the verified `*auth.AuthUser` (`Sub`, `Email`, `EmailVerified`). When the header is **present but invalid**, the middleware short-circuits with HTTP 401 and sets `WWW-Authenticate: Bearer realm="api"`.
 
 ### Middleware layering
 
@@ -28,7 +28,7 @@ func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
         // anonymous — return guest data or error depending on the resolver's policy
         return nil, nil
     }
-    // u.Sub, u.Email, u.Role are available here
+    // u.Sub, u.Email, u.EmailVerified are available here
     _ = u.Sub
     return nil, nil
 }

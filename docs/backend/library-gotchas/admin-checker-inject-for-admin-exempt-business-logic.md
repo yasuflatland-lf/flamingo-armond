@@ -7,13 +7,15 @@ the wrong one produces either an overly restrictive gate or a missed exemption.
 
 ## The critical distinction: JWT database role vs. application role
 
-`auth.AuthUser.Role` carries the **Supabase/Postgres database role** set in the JWT
-(`authenticated`, `anon`, `service_role`). It is NOT the application-level
-`admin` / `general` role stored in `public.user_roles`. The application role is
-determined by `auth.Service.IsAdmin(ctx, userID)`, which performs a database membership
-check against `domain.AdminRoleName`. Reading `AuthUser.Role` to decide whether the
-caller is an admin silently compares two unrelated concepts and always returns false
-for admin users.
+The JWT carries a **Supabase/Postgres database role** claim (`authenticated`,
+`anon`, `service_role`) that is distinct from the application-level
+`admin` / `general` role stored in `public.user_roles`. `auth.AuthUser`
+(`Sub`, `Email`, `EmailVerified`) no longer surfaces a `Role` field — it was
+removed (issue #832) because it was never the application role: reading it to
+decide whether the caller is an admin silently compared two unrelated
+concepts and always returned false for admin users. The application role is
+determined by `auth.Service.IsAdmin(ctx, userID)`, which performs a database
+membership check against `domain.AdminRoleName`.
 
 ## The two patterns and when to use each
 

@@ -12,7 +12,7 @@ func TestUserFrom_EmptyContext(t *testing.T) {
 }
 
 func TestWithUser_Roundtrip(t *testing.T) {
-	u := &AuthUser{Sub: "uuid-1", Email: "a@b.c", Role: "authenticated"}
+	u := &AuthUser{Sub: "uuid-1", Email: "a@b.c"}
 	ctx := withUser(context.Background(), u)
 	got := UserFrom(ctx)
 	if got != u {

@@ -224,7 +224,7 @@ func TestResolver_LearnNextDueCards_ReturnsDueCards(t *testing.T) {
 	}
 	cardRepo := &cardMockRepo{
 		findDueRows: []domain.DueCard{
-			{Card: c1, State: domain.FSRSStateNew, Due: c1.CreatedAt},
+			{Card: c1, Phase: domain.FSRSPhaseNew, Due: c1.CreatedAt},
 		},
 	}
 	srv := newLearnSrv(
@@ -528,8 +528,8 @@ func TestResolver_PracticeTodaysCards_ReturnsCards(t *testing.T) {
 	c2 := &domain.Card{ID: "p2", CardgroupID: domain.CardgroupID("cg1"), Front: "practice front 2", Back: "back 2"}
 	cardRepo := &cardMockRepo{
 		findPracticeRows: []domain.DueCard{
-			{Card: c1, State: domain.FSRSStateReview, Due: c1.CreatedAt},
-			{Card: c2, State: domain.FSRSStateReview, Due: c2.CreatedAt},
+			{Card: c1, Phase: domain.FSRSPhaseReview, Due: c1.CreatedAt},
+			{Card: c2, Phase: domain.FSRSPhaseReview, Due: c2.CreatedAt},
 		},
 	}
 	srv := newLearnSrv(

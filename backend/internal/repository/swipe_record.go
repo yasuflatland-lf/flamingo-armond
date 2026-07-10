@@ -117,7 +117,7 @@ func swipeRecordToRow(sr *domain.SwipeRecord) *gormSwipeRecord {
 		ScheduledDays: sr.StateAfter.ScheduledDays,
 		Reps:          sr.StateAfter.Reps,
 		Lapses:        sr.StateAfter.Lapses,
-		State:         int(sr.StateAfter.State),
+		State:         int(sr.StateAfter.Phase),
 		LastReview:    sr.StateAfter.LastReview,
 	}
 }
@@ -138,7 +138,7 @@ func swipeRecordToDomain(row gormSwipeRecord) *domain.SwipeRecord {
 			ScheduledDays: row.ScheduledDays,
 			Reps:          row.Reps,
 			Lapses:        row.Lapses,
-			State:         domain.FSRSCardState(row.State),
+			Phase:         domain.FSRSPhase(row.State),
 			LastReview:    row.LastReview,
 		},
 	}

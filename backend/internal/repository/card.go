@@ -37,7 +37,7 @@ type CardUpdate struct {
 
 type CardReadRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Card, error)
-	FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
+	FindByIDForUpdateTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error)
 	FindByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error)
 	ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, cardgroupID string) ([]string, error)
@@ -71,6 +71,12 @@ type CardPageRepository interface {
 		dir SortOrder,
 		search *string,
 	) (cards []*domain.Card, totalCount int64, err error)
+}
+
+// CardSessionRepository reads a learn/practice session's card pool. Unlike
+// CardPageRepository these are non-paginated, limit-capped session fetches:
+// no cursor, no orderBy, no totalCount.
+type CardSessionRepository interface {
 	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now, reviewedBefore time.Time, limit int) ([]domain.DueCard, error)
 	// FindPracticeCardsForUser returns the FSRS-safe practice pool: cards the
 	// user already reviewed at or after reviewedAfter (the start-of-day cutoff).
@@ -111,6 +117,7 @@ type CardWriteRepository interface {
 type CardRepository interface {
 	CardReadRepository
 	CardPageRepository
+	CardSessionRepository
 	CardWriteRepository
 }
 
@@ -122,7 +129,7 @@ func (r *cardRepo) FindByID(ctx context.Context, id string) (*domain.Card, error
 	return findCardByID(ctx, r.db, id)
 }
 
-func (r *cardRepo) FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error) {
+func (r *cardRepo) FindByIDForUpdateTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error) {
 	return findCardByID(ctx, tx.Clauses(clause.Locking{Strength: "UPDATE"}), id)
 }
 
@@ -170,7 +177,7 @@ func (r *cardRepo) FindByCardgroup(ctx context.Context, cardgroupID string) ([]*
 }
 
 func (r *cardRepo) ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, cardgroupID string) ([]string, error) {
-	fronts, err := listFrontsByCardgroupTx(ctx, tx, cardgroupID, "cards", "cardgroup_id")
+	fronts, err := listFrontsByGroupTx(ctx, tx, cardgroupID, "cards", "cardgroup_id")
 	if err != nil {
 		return nil, eris.Wrap(err, "repository: card: list fronts by cardgroup")
 	}

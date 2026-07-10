@@ -177,7 +177,7 @@ func TestCardRepository_FindDueCards_IgnoresOtherUsersFSRSRows(t *testing.T) {
 		"otherUser's future-due row must not hide the card from the calling user's new-card window")
 }
 
-func TestCardRepository_FindByIDTx_LocksRowForUpdate(t *testing.T) {
+func TestCardRepository_FindByIDForUpdateTx_LocksRowForUpdate(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -189,7 +189,7 @@ func TestCardRepository_FindByIDTx_LocksRowForUpdate(t *testing.T) {
 	tx1 := testDB.GORM.WithContext(ctx).Begin()
 	require.NoError(t, tx1.Error)
 	defer tx1.Rollback()
-	_, err := repo.FindByIDTx(ctx, tx1, card.ID)
+	_, err := repo.FindByIDForUpdateTx(ctx, tx1, card.ID)
 	require.NoError(t, err)
 
 	tx2 := testDB.GORM.WithContext(ctx).Begin()
@@ -259,7 +259,7 @@ func TestCardRepository_FindDueCards_ScopedAndLimited(t *testing.T) {
 }
 
 // TestCardRepository_FindDueCards_NoFSRSRow verifies that a card with no
-// user_card_fsrs row is returned with State == FSRSStateNew and Due ==
+// user_card_fsrs row is returned with State == FSRSPhaseNew and Due ==
 // card.CreatedAt (the stable fallback).
 func TestCardRepository_FindDueCards_NoFSRSRow(t *testing.T) {
 	t.Parallel()
@@ -276,13 +276,13 @@ func TestCardRepository_FindDueCards_NoFSRSRow(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.Equal(t, card.ID, got[0].Card.ID)
-	require.Equal(t, domain.FSRSStateNew, got[0].State)
+	require.Equal(t, domain.FSRSPhaseNew, got[0].Phase)
 	require.True(t, got[0].Due.Equal(card.CreatedAt), "Due should fall back to card.CreatedAt when no FSRS row exists")
 }
 
 // TestCardRepository_FindDueCards_FSRSStateMapping verifies that existing
 // FSRS rows with Learning, Review, and Relearning states are mapped correctly
-// to the corresponding domain.FSRSCardState values.
+// to the corresponding domain.FSRSPhase values.
 func TestCardRepository_FindDueCards_FSRSStateMapping(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -294,11 +294,11 @@ func TestCardRepository_FindDueCards_FSRSStateMapping(t *testing.T) {
 
 	cases := []struct {
 		front string
-		state domain.FSRSCardState
+		state domain.FSRSPhase
 	}{
-		{"learning-card", domain.FSRSStateLearning},
-		{"review-card", domain.FSRSStateReview},
-		{"relearning-card", domain.FSRSStateRelearning},
+		{"learning-card", domain.FSRSPhaseLearning},
+		{"review-card", domain.FSRSPhaseReview},
+		{"relearning-card", domain.FSRSPhaseRelearning},
 	}
 
 	cards := make([]*domain.Card, len(cases))
@@ -311,7 +311,7 @@ func TestCardRepository_FindDueCards_FSRSStateMapping(t *testing.T) {
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for i, tc := range cases {
 			ucs := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), cards[i].ID, now)
-			ucs.State.State = tc.state
+			ucs.State.Phase = tc.state
 			ucs.State.Due = now.Add(-time.Minute) // ensure it is due
 			if err := ucsRepo.UpsertTx(ctx, tx, ucs); err != nil {
 				return err
@@ -331,13 +331,13 @@ func TestCardRepository_FindDueCards_FSRSStateMapping(t *testing.T) {
 	for i, tc := range cases {
 		dc, ok := byID[cards[i].ID]
 		require.True(t, ok, "missing card for case %q", tc.front)
-		require.Equal(t, tc.state, dc.State, "state mismatch for case %q", tc.front)
+		require.Equal(t, tc.state, dc.Phase, "state mismatch for case %q", tc.front)
 	}
 }
 
 // TestCardRepository_FindDueCards_InvalidState verifies that an out-of-range
 // state value stored in user_card_fsrs causes FindDueCardsForUser to return an
-// error rather than silently producing a zero-value FSRSCardState.
+// error rather than silently producing a zero-value FSRSPhase.
 func TestCardRepository_FindDueCards_InvalidState(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -362,7 +362,7 @@ func TestCardRepository_FindDueCards_InvalidState(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), now, now.Add(time.Second), 10)
-	require.ErrorContains(t, err, "repository: card: invalid FSRSCardState 99")
+	require.ErrorContains(t, err, "repository: card: invalid FSRSPhase 99")
 }
 
 func TestCardRepo_Create_DuplicateFront(t *testing.T) {
@@ -975,14 +975,14 @@ func TestCardRepository_FindDueCards_ExcludesCardsReviewedToday(t *testing.T) {
 
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		old := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), reviewedYesterday.ID, now)
-		old.State.State = domain.FSRSStateLearning
+		old.State.Phase = domain.FSRSPhaseLearning
 		old.State.Due = now.Add(-time.Hour)
 		old.State.LastReview = startOfToday.Add(-time.Hour) // before boundary → included
 		if err := ucsRepo.UpsertTx(ctx, tx, old); err != nil {
 			return err
 		}
 		fresh := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), reviewedToday.ID, now)
-		fresh.State.State = domain.FSRSStateLearning
+		fresh.State.Phase = domain.FSRSPhaseLearning
 		fresh.State.Due = now.Add(-time.Hour)
 		fresh.State.LastReview = startOfToday.Add(time.Hour) // after boundary → excluded
 		if err := ucsRepo.UpsertTx(ctx, tx, fresh); err != nil {
@@ -991,7 +991,7 @@ func TestCardRepository_FindDueCards_ExcludesCardsReviewedToday(t *testing.T) {
 		// Exact-boundary case: last_review == startOfToday; predicate is strict <
 		// so equality is false and the card must be excluded.
 		boundary := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), reviewedAtBoundary.ID, now)
-		boundary.State.State = domain.FSRSStateLearning
+		boundary.State.Phase = domain.FSRSPhaseLearning
 		boundary.State.Due = now.Add(-time.Hour)
 		boundary.State.LastReview = startOfToday // exactly at boundary → excluded
 		return ucsRepo.UpsertTx(ctx, tx, boundary)
@@ -1016,22 +1016,22 @@ func TestCardRepository_FindDueCards_LearningPhaseWinsReviewSlots(t *testing.T) 
 	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
 	now := time.Now().UTC().Truncate(time.Microsecond)
 
-	mk := func(front string, st domain.FSRSCardState) *domain.Card {
+	mk := func(front string, st domain.FSRSPhase) *domain.Card {
 		c := newCard(cg.ID, front, "back")
 		require.NoError(t, repo.Create(ctx, c))
 		require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			s := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), c.ID, now)
-			s.State.State = st
+			s.State.Phase = st
 			s.State.Due = now.Add(-time.Hour)
 			s.State.LastReview = now.Add(-24 * time.Hour)
 			return ucsRepo.UpsertTx(ctx, tx, s)
 		}))
 		return c
 	}
-	l1 := mk("learning-1", domain.FSRSStateLearning)
-	l2 := mk("relearning-1", domain.FSRSStateRelearning)
-	r1 := mk("review-1", domain.FSRSStateReview)
-	r2 := mk("review-2", domain.FSRSStateReview)
+	l1 := mk("learning-1", domain.FSRSPhaseLearning)
+	l2 := mk("relearning-1", domain.FSRSPhaseRelearning)
+	r1 := mk("review-1", domain.FSRSPhaseReview)
+	r2 := mk("review-2", domain.FSRSPhaseReview)
 
 	// Selection: limit=2 must pick the two learning-phase rows.
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), now, now, 2)
@@ -1106,7 +1106,7 @@ func TestCardRepository_FindPracticeCards_BoundaryComplementarity(t *testing.T) 
 
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		yesterday := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), reviewedYesterday.ID, now)
-		yesterday.State.State = domain.FSRSStateLearning
+		yesterday.State.Phase = domain.FSRSPhaseLearning
 		yesterday.State.Due = now.Add(-time.Hour)                  // due has arrived
 		yesterday.State.LastReview = boundary.Add(-24 * time.Hour) // before boundary → learn window
 		if err := ucsRepo.UpsertTx(ctx, tx, yesterday); err != nil {
@@ -1116,14 +1116,14 @@ func TestCardRepository_FindPracticeCards_BoundaryComplementarity(t *testing.T) 
 		// `>=` so equality is TRUE and the card is part of the practice pool. This
 		// pins the inclusive comparator — flipping `>=` to `>` drops this card.
 		atBoundary := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), reviewedAtBoundary.ID, now)
-		atBoundary.State.State = domain.FSRSStateLearning
+		atBoundary.State.Phase = domain.FSRSPhaseLearning
 		atBoundary.State.Due = now.Add(-time.Hour)
 		atBoundary.State.LastReview = boundary // exactly at boundary → practice pool (>=)
 		if err := ucsRepo.UpsertTx(ctx, tx, atBoundary); err != nil {
 			return err
 		}
 		today := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), reviewedToday.ID, now)
-		today.State.State = domain.FSRSStateLearning
+		today.State.Phase = domain.FSRSPhaseLearning
 		today.State.Due = now.Add(-time.Hour)
 		today.State.LastReview = boundary.Add(time.Hour) // after boundary → practice pool
 		return ucsRepo.UpsertTx(ctx, tx, today)

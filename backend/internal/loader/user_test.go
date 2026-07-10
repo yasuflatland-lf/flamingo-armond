@@ -173,8 +173,8 @@ func emptyCardgroupRepo() *countingCardgroupRepo {
 func (r *countingCardRepo) FindByID(_ context.Context, _ string) (*domain.Card, error) {
 	panic("countingCardRepo.FindByID not configured")
 }
-func (r *countingCardRepo) FindByIDTx(_ context.Context, _ *gorm.DB, _ string) (*domain.Card, error) {
-	panic("countingCardRepo.FindByIDTx not configured")
+func (r *countingCardRepo) FindByIDForUpdateTx(_ context.Context, _ *gorm.DB, _ string) (*domain.Card, error) {
+	panic("countingCardRepo.FindByIDForUpdateTx not configured")
 }
 func (r *countingCardRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error) {
 	if r.findByIDs == nil {
@@ -328,14 +328,14 @@ func (r *countingUserPreferenceRepo) UpsertLastViewedCardgroup(_ context.Context
 	panic("countingUserPreferenceRepo.UpsertLastViewedCardgroup not configured")
 }
 
-// UpdateLearnDisplayMode is needed to satisfy repository.UserPreferenceRepository.
-func (r *countingUserPreferenceRepo) UpdateLearnDisplayMode(_ context.Context, _, _ string) error {
-	panic("countingUserPreferenceRepo.UpdateLearnDisplayMode not configured")
+// UpsertLearnDisplayMode is needed to satisfy repository.UserPreferenceRepository.
+func (r *countingUserPreferenceRepo) UpsertLearnDisplayMode(_ context.Context, _, _ string) error {
+	panic("countingUserPreferenceRepo.UpsertLearnDisplayMode not configured")
 }
 
-// UpdateNewCardRatio is needed to satisfy repository.UserPreferenceRepository.
-func (r *countingUserPreferenceRepo) UpdateNewCardRatio(_ context.Context, _ string, _, _ int) error {
-	panic("countingUserPreferenceRepo.UpdateNewCardRatio not configured")
+// UpsertNewCardRatio is needed to satisfy repository.UserPreferenceRepository.
+func (r *countingUserPreferenceRepo) UpsertNewCardRatio(_ context.Context, _ string, _, _ int) error {
+	panic("countingUserPreferenceRepo.UpsertNewCardRatio not configured")
 }
 
 func emptyUserPreferenceRepo() *countingUserPreferenceRepo {

@@ -59,7 +59,7 @@ type mockCardRepository struct {
 func (m *mockCardRepository) FindByID(_ context.Context, _ string) (*domain.Card, error) {
 	return m.findResult, m.findErr
 }
-func (m *mockCardRepository) FindByIDTx(_ context.Context, _ *gorm.DB, _ string) (*domain.Card, error) {
+func (m *mockCardRepository) FindByIDForUpdateTx(_ context.Context, _ *gorm.DB, _ string) (*domain.Card, error) {
 	return m.findResult, m.findErr
 }
 func (m *mockCardRepository) DeleteByIDsTx(_ context.Context, _ *gorm.DB, ownerID string, ids []string) (int64, error) {

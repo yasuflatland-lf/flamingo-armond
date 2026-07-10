@@ -34,13 +34,13 @@ type lastViewedCardgroupRepo interface {
 	UpsertLastViewedCardgroup(ctx context.Context, userID, cardgroupID string) error
 }
 
-type userPreferenceRefetchRepo interface {
+type lastViewedCardgroupUsersRepo interface {
 	FindByID(ctx context.Context, id string) (*domain.User, error)
 }
 
 type lastViewedCardgroupUsecase struct {
 	prefs  lastViewedCardgroupRepo
-	users  userPreferenceRefetchRepo
+	users  lastViewedCardgroupUsersRepo
 	logger *slog.Logger
 }
 
@@ -60,7 +60,7 @@ func NewLastViewedCardgroup(
 // NewLastViewedCardgroupWithDeps accepts narrow interfaces for tests.
 func NewLastViewedCardgroupWithDeps(
 	prefs lastViewedCardgroupRepo,
-	users userPreferenceRefetchRepo,
+	users lastViewedCardgroupUsersRepo,
 	logger *slog.Logger,
 ) LastViewedCardgroupUsecase {
 	if logger == nil {

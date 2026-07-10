@@ -73,7 +73,7 @@ func (r *cardRepo) DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID strin
 }
 
 func (r *cardRepo) DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error) {
-	affected, err := deleteByCardgroupAndFrontsTx(ctx, tx, cardgroupID, fronts, "cards", "cardgroup_id")
+	affected, err := deleteByGroupAndFrontsTx(ctx, tx, cardgroupID, fronts, "cards", "cardgroup_id")
 	if err != nil {
 		return 0, eris.Wrap(err, "repository: card: delete by cardgroup and fronts")
 	}
@@ -185,10 +185,10 @@ func upsertManyTx(ctx context.Context, tx *gorm.DB, rows []upsertCardRow, tableN
 	return res, nil
 }
 
-// listFrontsByCardgroupTx returns the sorted distinct-by-row `front` values for
+// listFrontsByGroupTx returns the sorted distinct-by-row `front` values for
 // the given group, scoped by fkColumn = groupID, ordered front ASC. Shared by
 // cardRepo and the master_card repository. The caller owns the layer-prefix wrap.
-func listFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, groupID, tableName, fkColumn string) ([]string, error) {
+func listFrontsByGroupTx(ctx context.Context, tx *gorm.DB, groupID, tableName, fkColumn string) ([]string, error) {
 	var fronts []string
 	if err := tx.WithContext(ctx).
 		Table(tableName).
@@ -200,7 +200,7 @@ func listFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, groupID, tableNam
 	return fronts, nil
 }
 
-// deleteByCardgroupAndFrontsTx hard-deletes rows matching the scoped
+// deleteByGroupAndFrontsTx hard-deletes rows matching the scoped
 // (fkColumn, front) natural key. Shared by cardRepo and the master_card
 // repository; the caller owns the layer-prefix wrap.
 //
@@ -208,7 +208,7 @@ func listFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, groupID, tableNam
 // slice GORM v2 omits the `WHERE front IN (?)` clause altogether, which would
 // convert this `Delete` into a delete-all-rows-in-group. See
 // `.claude/rules/go-library-gotchas.md` § GORM empty IN.
-func deleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, groupID string, fronts []string, tableName, fkColumn string) (int64, error) {
+func deleteByGroupAndFrontsTx(ctx context.Context, tx *gorm.DB, groupID string, fronts []string, tableName, fkColumn string) (int64, error) {
 	if len(fronts) == 0 {
 		return 0, nil
 	}

@@ -4,3 +4,6 @@
 *.out
 coverage.html
 .env
+
+# JetBrains IDE
+.idea/

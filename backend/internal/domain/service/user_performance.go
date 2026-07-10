@@ -130,11 +130,11 @@ func normalizedDifficulty(difficulty float64) float64 {
 }
 
 func isKnownCardReview(swipe domain.SwipeRecord) bool {
-	if swipe.StateAfter.State == domain.FSRSStateReview {
+	if swipe.StateAfter.Phase == domain.FSRSPhaseReview {
 		return true
 	}
 	return swipe.Rating == domain.RatingAgain &&
-		swipe.StateAfter.State == domain.FSRSStateRelearning &&
+		swipe.StateAfter.Phase == domain.FSRSPhaseRelearning &&
 		swipe.StateAfter.Lapses > 0
 }
 

@@ -13,10 +13,10 @@ import (
 
 // dueCard builds a DueCard fixture with a Card carrying the given ID.
 // The Card's Position defaults to 0.
-func dueCard(id string, state domain.FSRSCardState, due time.Time) domain.DueCard {
+func dueCard(id string, state domain.FSRSPhase, due time.Time) domain.DueCard {
 	return domain.DueCard{
 		Card:  &domain.Card{ID: id},
-		State: state,
+		Phase: state,
 		Due:   due,
 	}
 }
@@ -48,10 +48,10 @@ func TestOrderingPolicy_Apply_OnlyNew_AlwaysShuffled(t *testing.T) {
 	// permutes [a,b,c,d] -> [c,d,a,b].
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
 	in := []domain.DueCard{
-		dueCard("n1", domain.FSRSStateNew, base),
-		dueCard("n2", domain.FSRSStateNew, base.Add(time.Minute)),
-		dueCard("n3", domain.FSRSStateNew, base.Add(2*time.Minute)),
-		dueCard("n4", domain.FSRSStateNew, base.Add(3*time.Minute)),
+		dueCard("n1", domain.FSRSPhaseNew, base),
+		dueCard("n2", domain.FSRSPhaseNew, base.Add(time.Minute)),
+		dueCard("n3", domain.FSRSPhaseNew, base.Add(2*time.Minute)),
+		dueCard("n4", domain.FSRSPhaseNew, base.Add(3*time.Minute)),
 	}
 
 	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)), domain.DefaultNewCardRatio)
@@ -70,10 +70,10 @@ func TestOrderingPolicy_Apply_OnlyReview_PhaseRunsShuffledIndependently(t *testi
 	// run) each 2-element run swaps.
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
 	in := []domain.DueCard{
-		dueCard("l1", domain.FSRSStateLearning, base),
-		dueCard("l2", domain.FSRSStateRelearning, base.Add(time.Minute)),
-		dueCard("r1", domain.FSRSStateReview, base.Add(2*time.Minute)),
-		dueCard("r2", domain.FSRSStateReview, base.Add(3*time.Minute)),
+		dueCard("l1", domain.FSRSPhaseLearning, base),
+		dueCard("l2", domain.FSRSPhaseRelearning, base.Add(time.Minute)),
+		dueCard("r1", domain.FSRSPhaseReview, base.Add(2*time.Minute)),
+		dueCard("r2", domain.FSRSPhaseReview, base.Add(3*time.Minute)),
 	}
 
 	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)), domain.DefaultNewCardRatio)
@@ -87,11 +87,11 @@ func TestOrderingPolicy_Apply_PhaseBoundaryHoldsAcrossSeeds(t *testing.T) {
 
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
 	in := []domain.DueCard{
-		dueCard("l1", domain.FSRSStateLearning, base),
-		dueCard("l2", domain.FSRSStateLearning, base.Add(time.Minute)),
-		dueCard("l3", domain.FSRSStateRelearning, base.Add(2*time.Minute)),
-		dueCard("r1", domain.FSRSStateReview, base.Add(3*time.Minute)),
-		dueCard("r2", domain.FSRSStateReview, base.Add(4*time.Minute)),
+		dueCard("l1", domain.FSRSPhaseLearning, base),
+		dueCard("l2", domain.FSRSPhaseLearning, base.Add(time.Minute)),
+		dueCard("l3", domain.FSRSPhaseRelearning, base.Add(2*time.Minute)),
+		dueCard("r1", domain.FSRSPhaseReview, base.Add(3*time.Minute)),
+		dueCard("r2", domain.FSRSPhaseReview, base.Add(4*time.Minute)),
 	}
 	learning := map[string]bool{"l1": true, "l2": true, "l3": true}
 
@@ -118,10 +118,10 @@ func TestOrderingPolicy_Apply_MixedCompositionSlots(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		id := fmt.Sprintf("rev-%d", i)
 		reviewSet[id] = true
-		in = append(in, dueCard(id, domain.FSRSStateLearning, base.Add(time.Duration(i)*time.Minute)))
+		in = append(in, dueCard(id, domain.FSRSPhaseLearning, base.Add(time.Duration(i)*time.Minute)))
 	}
 	for i := 0; i < 20; i++ {
-		in = append(in, dueCard(fmt.Sprintf("new-%d", i), domain.FSRSStateNew, base.Add(time.Duration(100+i)*time.Minute)))
+		in = append(in, dueCard(fmt.Sprintf("new-%d", i), domain.FSRSPhaseNew, base.Add(time.Duration(100+i)*time.Minute)))
 	}
 
 	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)), domain.DefaultNewCardRatio)
@@ -145,12 +145,12 @@ func TestOrderingPolicy_Apply_NonDefaultRatioInterleavesOneToOne(t *testing.T) {
 	// distinct slot composition proves the caller-supplied ratio reaches Apply.
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
 	in := []domain.DueCard{
-		dueCard("n1", domain.FSRSStateNew, base),
-		dueCard("n2", domain.FSRSStateNew, base.Add(time.Minute)),
-		dueCard("n3", domain.FSRSStateNew, base.Add(2*time.Minute)),
-		dueCard("r1", domain.FSRSStateReview, base.Add(3*time.Minute)),
-		dueCard("r2", domain.FSRSStateReview, base.Add(4*time.Minute)),
-		dueCard("r3", domain.FSRSStateReview, base.Add(5*time.Minute)),
+		dueCard("n1", domain.FSRSPhaseNew, base),
+		dueCard("n2", domain.FSRSPhaseNew, base.Add(time.Minute)),
+		dueCard("n3", domain.FSRSPhaseNew, base.Add(2*time.Minute)),
+		dueCard("r1", domain.FSRSPhaseReview, base.Add(3*time.Minute)),
+		dueCard("r2", domain.FSRSPhaseReview, base.Add(4*time.Minute)),
+		dueCard("r3", domain.FSRSPhaseReview, base.Add(5*time.Minute)),
 	}
 	reviewSet := map[string]bool{"r1": true, "r2": true, "r3": true}
 
@@ -174,12 +174,12 @@ func TestOrderingPolicy_Apply_SetEquality(t *testing.T) {
 
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
 	in := []domain.DueCard{
-		dueCard("n1", domain.FSRSStateNew, base),
-		dueCard("n2", domain.FSRSStateNew, base.Add(time.Minute)),
-		dueCard("r1", domain.FSRSStateReview, base),
-		dueCard("r2", domain.FSRSStateReview, base),
-		dueCard("r3", domain.FSRSStateLearning, base.Add(2*time.Minute)),
-		dueCard("r4", domain.FSRSStateRelearning, base.Add(3*time.Minute)),
+		dueCard("n1", domain.FSRSPhaseNew, base),
+		dueCard("n2", domain.FSRSPhaseNew, base.Add(time.Minute)),
+		dueCard("r1", domain.FSRSPhaseReview, base),
+		dueCard("r2", domain.FSRSPhaseReview, base),
+		dueCard("r3", domain.FSRSPhaseLearning, base.Add(2*time.Minute)),
+		dueCard("r4", domain.FSRSPhaseRelearning, base.Add(3*time.Minute)),
 	}
 
 	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)), domain.DefaultNewCardRatio)
@@ -213,7 +213,7 @@ func TestOrderingPolicy_Apply_PanicsOnNilCard(t *testing.T) {
 	t.Parallel()
 
 	due := []domain.DueCard{
-		{Card: nil, State: domain.FSRSStateNew},
+		{Card: nil, Phase: domain.FSRSPhaseNew},
 	}
 	require.PanicsWithValue(t,
 		"domain/service: OrderingPolicy.Apply: DueCard.Card must not be nil",
@@ -229,10 +229,10 @@ func TestInterleave_TrailingReviewAppend(t *testing.T) {
 	t.Parallel()
 
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
-	newC := []domain.DueCard{dueCard("new-0", domain.FSRSStateNew, base)}
+	newC := []domain.DueCard{dueCard("new-0", domain.FSRSPhaseNew, base)}
 	reviewC := make([]domain.DueCard, 0, 7)
 	for i := 0; i < 7; i++ {
-		reviewC = append(reviewC, dueCard(fmt.Sprintf("rev-%d", i), domain.FSRSStateReview, base.Add(time.Duration(i)*time.Minute)))
+		reviewC = append(reviewC, dueCard(fmt.Sprintf("rev-%d", i), domain.FSRSPhaseReview, base.Add(time.Duration(i)*time.Minute)))
 	}
 
 	got := interleave(newC, reviewC, 4, 1)
@@ -250,11 +250,11 @@ func TestInterleave_TrailingNewAppend(t *testing.T) {
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
 	newC := make([]domain.DueCard, 0, 10)
 	for i := 0; i < 10; i++ {
-		newC = append(newC, dueCard(fmt.Sprintf("new-%d", i), domain.FSRSStateNew, base.Add(time.Duration(100+i)*time.Minute)))
+		newC = append(newC, dueCard(fmt.Sprintf("new-%d", i), domain.FSRSPhaseNew, base.Add(time.Duration(100+i)*time.Minute)))
 	}
 	reviewC := []domain.DueCard{
-		dueCard("rev-0", domain.FSRSStateReview, base),
-		dueCard("rev-1", domain.FSRSStateReview, base.Add(time.Minute)),
+		dueCard("rev-0", domain.FSRSPhaseReview, base),
+		dueCard("rev-1", domain.FSRSPhaseReview, base.Add(time.Minute)),
 	}
 
 	got := interleave(newC, reviewC, 4, 1)
@@ -274,8 +274,8 @@ func TestInterleave_PanicsOnNonPositiveRatios(t *testing.T) {
 	t.Parallel()
 
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
-	newC := []domain.DueCard{dueCard("new-0", domain.FSRSStateNew, base)}
-	reviewC := []domain.DueCard{dueCard("rev-0", domain.FSRSStateReview, base)}
+	newC := []domain.DueCard{dueCard("new-0", domain.FSRSPhaseNew, base)}
+	reviewC := []domain.DueCard{dueCard("rev-0", domain.FSRSPhaseReview, base)}
 
 	require.Panics(t, func() { interleave(newC, reviewC, 0, 1) },
 		"zero nRatio must panic")

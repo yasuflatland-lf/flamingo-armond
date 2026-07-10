@@ -3,7 +3,7 @@ package repository
 // White-box tests for masterCardgroupToDomain. The mapper is unexported and is
 // a pure function of the row struct, so the tests live in the same package and
 // need no live DB. They pin the DB-reconstitution guard that rejects an unknown
-// MasterCardgroupStatus column value (mirrors the FSRSCardState guard in
+// MasterCardgroupStatus column value (mirrors the FSRSPhase guard in
 // userCardFSRSToDomain / dueCardsFromRows): a corrupt status would otherwise
 // flow silently into the domain and make IsPublished() return false, hiding the
 // deck instead of surfacing the corruption.

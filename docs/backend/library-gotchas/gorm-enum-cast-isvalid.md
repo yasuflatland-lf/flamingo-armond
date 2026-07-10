@@ -5,9 +5,9 @@
 Go lets you cast any integer to a named type without a bounds check:
 
 ```go
-type FSRSCardState int
+type FSRSPhase int
 
-state := FSRSCardState(row.State) // compiles even when row.State = 99
+state := FSRSPhase(row.State) // compiles even when row.State = 99
 ```
 
 When the raw integer comes from a DB column, any out-of-range value is accepted silently. A migration bug, a manual SQL edit, or a future schema change can store a value that no switch case handles, and the domain object carrying it becomes invalid without any error being raised.
@@ -16,24 +16,24 @@ Add an `IsValid() bool` method to every int-typed domain enum, and call it at ev
 
 ```go
 // domain/fsrs_state.go
-type FSRSCardState int
+type FSRSPhase int
 
 const (
-    FSRSStateNew FSRSCardState = iota
-    FSRSStateLearning
-    FSRSStateReview
-    FSRSStateRelearning
+    FSRSPhaseNew FSRSPhase = iota
+    FSRSPhaseLearning
+    FSRSPhaseReview
+    FSRSPhaseRelearning
 )
 
-func (s FSRSCardState) IsValid() bool {
-    return s >= FSRSStateNew && s <= FSRSStateRelearning
+func (p FSRSPhase) IsValid() bool {
+    return p >= FSRSPhaseNew && p <= FSRSPhaseRelearning
 }
 
 // repository/user_card_fsrs.go — reconstitution site
 func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
-    state := domain.FSRSCardState(row.State)
+    state := domain.FSRSPhase(row.State)
     if !state.IsValid() {
-        return nil, eris.Errorf("repository: invalid FSRSCardState value %d for card %s", row.State, row.CardID)
+        return nil, eris.Errorf("repository: invalid FSRSPhase value %d for card %s", row.State, row.CardID)
     }
     // ... build the domain object
 }
@@ -43,4 +43,4 @@ func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
 
 **Testing:** add a table-driven repository test that inserts a row with an out-of-range state value directly via SQL and asserts that the repository's reconstitution returns a non-nil error wrapping the out-of-range integer.
 
-Reference: `backend/internal/domain/fsrs_state.go` — `FSRSCardState.IsValid()`. `backend/internal/repository/user_card_fsrs.go` — `userCardFSRSToDomain` guards the cast with `IsValid()` and returns an `eris.Errorf` on failure.
+Reference: `backend/internal/domain/fsrs_state.go` — `FSRSPhase.IsValid()`. `backend/internal/repository/user_card_fsrs.go` — `userCardFSRSToDomain` guards the cast with `IsValid()` and returns an `eris.Errorf` on failure.

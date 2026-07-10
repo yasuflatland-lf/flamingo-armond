@@ -32,10 +32,10 @@ func TestComputeMetrics(t *testing.T) {
 		{
 			name: "success rate counts good and easy",
 			swipes: []domain.SwipeRecord{
-				swipe(domain.RatingAgain, now, state(5, 1, 1, domain.FSRSStateLearning)),
-				swipe(domain.RatingHard, now, state(5, 1, 1, domain.FSRSStateLearning)),
-				swipe(domain.RatingGood, now, state(5, 1, 1, domain.FSRSStateReview)),
-				swipe(domain.RatingEasy, now, state(5, 1, 1, domain.FSRSStateReview)),
+				swipe(domain.RatingAgain, now, state(5, 1, 1, domain.FSRSPhaseLearning)),
+				swipe(domain.RatingHard, now, state(5, 1, 1, domain.FSRSPhaseLearning)),
+				swipe(domain.RatingGood, now, state(5, 1, 1, domain.FSRSPhaseReview)),
+				swipe(domain.RatingEasy, now, state(5, 1, 1, domain.FSRSPhaseReview)),
 			},
 			want: PerformanceMetrics{
 				SuccessRate:   0.5,
@@ -49,8 +49,8 @@ func TestComputeMetrics(t *testing.T) {
 		{
 			name: "average difficulty normalizes fsrs scale",
 			swipes: []domain.SwipeRecord{
-				swipe(domain.RatingGood, now, state(3, 1, 1, domain.FSRSStateReview)),
-				swipe(domain.RatingGood, now, state(7, 1, 1, domain.FSRSStateReview)),
+				swipe(domain.RatingGood, now, state(3, 1, 1, domain.FSRSPhaseReview)),
+				swipe(domain.RatingGood, now, state(7, 1, 1, domain.FSRSPhaseReview)),
 			},
 			want: PerformanceMetrics{
 				SuccessRate:   1,
@@ -64,9 +64,9 @@ func TestComputeMetrics(t *testing.T) {
 		{
 			name: "retention rate counts reviews completed on time",
 			swipes: []domain.SwipeRecord{
-				swipe(domain.RatingGood, now, state(5, 2, 2, domain.FSRSStateReview)),
-				swipe(domain.RatingGood, now, state(5, 3, 2, domain.FSRSStateReview)),
-				swipe(domain.RatingGood, now, state(5, 1, 2, domain.FSRSStateReview)),
+				swipe(domain.RatingGood, now, state(5, 2, 2, domain.FSRSPhaseReview)),
+				swipe(domain.RatingGood, now, state(5, 3, 2, domain.FSRSPhaseReview)),
+				swipe(domain.RatingGood, now, state(5, 1, 2, domain.FSRSPhaseReview)),
 			},
 			want: PerformanceMetrics{
 				SuccessRate:   1,
@@ -80,10 +80,10 @@ func TestComputeMetrics(t *testing.T) {
 		{
 			name: "study streak counts consecutive days from provided now",
 			swipes: []domain.SwipeRecord{
-				swipe(domain.RatingGood, now.Add(-2*time.Hour), state(5, 1, 1, domain.FSRSStateReview)),
-				swipe(domain.RatingGood, now.AddDate(0, 0, -1), state(5, 1, 1, domain.FSRSStateReview)),
-				swipe(domain.RatingGood, now.AddDate(0, 0, -2), state(5, 1, 1, domain.FSRSStateReview)),
-				swipe(domain.RatingGood, now.AddDate(0, 0, -4), state(5, 1, 1, domain.FSRSStateReview)),
+				swipe(domain.RatingGood, now.Add(-2*time.Hour), state(5, 1, 1, domain.FSRSPhaseReview)),
+				swipe(domain.RatingGood, now.AddDate(0, 0, -1), state(5, 1, 1, domain.FSRSPhaseReview)),
+				swipe(domain.RatingGood, now.AddDate(0, 0, -2), state(5, 1, 1, domain.FSRSPhaseReview)),
+				swipe(domain.RatingGood, now.AddDate(0, 0, -4), state(5, 1, 1, domain.FSRSPhaseReview)),
 			},
 			want: PerformanceMetrics{
 				SuccessRate:   1,
@@ -97,9 +97,9 @@ func TestComputeMetrics(t *testing.T) {
 		{
 			name: "lapse rate counts again ratings on known cards",
 			swipes: []domain.SwipeRecord{
-				swipe(domain.RatingAgain, now, stateWithLapses(5, 1, 1, domain.FSRSStateRelearning, 1)),
-				swipe(domain.RatingGood, now, state(5, 1, 1, domain.FSRSStateReview)),
-				swipe(domain.RatingAgain, now, state(5, 1, 1, domain.FSRSStateLearning)),
+				swipe(domain.RatingAgain, now, stateWithLapses(5, 1, 1, domain.FSRSPhaseRelearning, 1)),
+				swipe(domain.RatingGood, now, state(5, 1, 1, domain.FSRSPhaseReview)),
+				swipe(domain.RatingAgain, now, state(5, 1, 1, domain.FSRSPhaseLearning)),
 			},
 			want: PerformanceMetrics{
 				SuccessRate:   1.0 / 3.0,
@@ -142,9 +142,9 @@ func TestComputeMetrics_JSTLearnDayBoundary(t *testing.T) {
 
 	swipes := []domain.SwipeRecord{
 		// 2026-05-02 00:30 JST: counts on 2026-05-02, not the previous UTC day.
-		swipe(domain.RatingEasy, time.Date(2026, 5, 1, 15, 30, 0, 0, time.UTC), state(5, 1, 1, domain.FSRSStateReview)),
+		swipe(domain.RatingEasy, time.Date(2026, 5, 1, 15, 30, 0, 0, time.UTC), state(5, 1, 1, domain.FSRSPhaseReview)),
 		// 2026-05-01 00:30 JST: the previous learn-day.
-		swipe(domain.RatingEasy, time.Date(2026, 4, 30, 15, 30, 0, 0, time.UTC), state(5, 1, 1, domain.FSRSStateReview)),
+		swipe(domain.RatingEasy, time.Date(2026, 4, 30, 15, 30, 0, 0, time.UTC), state(5, 1, 1, domain.FSRSPhaseReview)),
 	}
 
 	got := ComputeMetrics(swipes, now)
@@ -252,7 +252,7 @@ func swipe(rating domain.Rating, reviewedAt time.Time, stateAfter domain.FSRSSta
 	}
 }
 
-func state(difficulty float64, elapsedDays int, scheduledDays int, cardState domain.FSRSCardState) domain.FSRSState {
+func state(difficulty float64, elapsedDays int, scheduledDays int, cardState domain.FSRSPhase) domain.FSRSState {
 	return stateWithLapses(difficulty, elapsedDays, scheduledDays, cardState, 0)
 }
 
@@ -260,7 +260,7 @@ func stateWithLapses(
 	difficulty float64,
 	elapsedDays int,
 	scheduledDays int,
-	cardState domain.FSRSCardState,
+	cardState domain.FSRSPhase,
 	lapses int,
 ) domain.FSRSState {
 	return domain.FSRSState{
@@ -268,6 +268,6 @@ func stateWithLapses(
 		ElapsedDays:   elapsedDays,
 		ScheduledDays: scheduledDays,
 		Lapses:        lapses,
-		State:         cardState,
+		Phase:         cardState,
 	}
 }

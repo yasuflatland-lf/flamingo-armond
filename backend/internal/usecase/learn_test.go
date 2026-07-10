@@ -95,8 +95,8 @@ func TestLearnUsecaseNextDueCards(t *testing.T) {
 	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
 	// Two review cards in the same (Review) phase; under a seeded rng the
 	// in-phase run may be permuted, so assert set equality, not order.
-	first := learnDueCard("repo-first", now.Add(-2*time.Hour), domain.FSRSStateReview)
-	second := learnDueCard("repo-second", now.Add(-time.Hour), domain.FSRSStateReview)
+	first := learnDueCard("repo-first", now.Add(-2*time.Hour), domain.FSRSPhaseReview)
+	second := learnDueCard("repo-second", now.Add(-time.Hour), domain.FSRSPhaseReview)
 	cardRepo := &mockLearnCardRepo{rows: []domain.DueCard{first, second}}
 	uc := NewLearnUsecase(
 		cardRepo,
@@ -308,12 +308,12 @@ func TestLearnUsecaseNextDueCards_TruncatesToDueLimit(t *testing.T) {
 	// that composition; the exact ids within a phase are shuffled, so assert the
 	// SHAPE (which slot is review vs new), not specific ids.
 	rows := []domain.DueCard{
-		learnDueCard("new-1", now.Add(-3*time.Hour), domain.FSRSStateNew),
-		learnDueCard("new-2", now.Add(-2*time.Hour), domain.FSRSStateNew),
-		learnDueCard("new-3", now.Add(-time.Hour), domain.FSRSStateNew),
-		learnDueCard("rev-1", now.Add(-6*time.Hour), domain.FSRSStateReview),
-		learnDueCard("rev-2", now.Add(-5*time.Hour), domain.FSRSStateReview),
-		learnDueCard("rev-3", now.Add(-4*time.Hour), domain.FSRSStateReview),
+		learnDueCard("new-1", now.Add(-3*time.Hour), domain.FSRSPhaseNew),
+		learnDueCard("new-2", now.Add(-2*time.Hour), domain.FSRSPhaseNew),
+		learnDueCard("new-3", now.Add(-time.Hour), domain.FSRSPhaseNew),
+		learnDueCard("rev-1", now.Add(-6*time.Hour), domain.FSRSPhaseReview),
+		learnDueCard("rev-2", now.Add(-5*time.Hour), domain.FSRSPhaseReview),
+		learnDueCard("rev-3", now.Add(-4*time.Hour), domain.FSRSPhaseReview),
 	}
 	cardRepo := &mockLearnCardRepo{rows: rows}
 	uc := NewLearnUsecase(
@@ -348,11 +348,11 @@ func TestLearnUsecaseNextDueCards_HappyPathReviewOnly(t *testing.T) {
 	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
 	// 5 review cards; request limit=3 → expect 3 back.
 	rows := []domain.DueCard{
-		learnDueCard("rev-1", now.Add(-5*time.Hour), domain.FSRSStateReview),
-		learnDueCard("rev-2", now.Add(-4*time.Hour), domain.FSRSStateReview),
-		learnDueCard("rev-3", now.Add(-3*time.Hour), domain.FSRSStateReview),
-		learnDueCard("rev-4", now.Add(-2*time.Hour), domain.FSRSStateReview),
-		learnDueCard("rev-5", now.Add(-time.Hour), domain.FSRSStateReview),
+		learnDueCard("rev-1", now.Add(-5*time.Hour), domain.FSRSPhaseReview),
+		learnDueCard("rev-2", now.Add(-4*time.Hour), domain.FSRSPhaseReview),
+		learnDueCard("rev-3", now.Add(-3*time.Hour), domain.FSRSPhaseReview),
+		learnDueCard("rev-4", now.Add(-2*time.Hour), domain.FSRSPhaseReview),
+		learnDueCard("rev-5", now.Add(-time.Hour), domain.FSRSPhaseReview),
 	}
 	cardRepo := &mockLearnCardRepo{rows: rows}
 	uc := NewLearnUsecase(
@@ -378,12 +378,12 @@ func TestLearnUsecaseNextDueCards_HappyPathReviewOnly(t *testing.T) {
 // within a phase are shuffled, so tests assert membership, not order.
 func ratioRows(now time.Time) []domain.DueCard {
 	return []domain.DueCard{
-		learnDueCard("new-1", now.Add(-3*time.Hour), domain.FSRSStateNew),
-		learnDueCard("new-2", now.Add(-2*time.Hour), domain.FSRSStateNew),
-		learnDueCard("new-3", now.Add(-time.Hour), domain.FSRSStateNew),
-		learnDueCard("rev-1", now.Add(-6*time.Hour), domain.FSRSStateReview),
-		learnDueCard("rev-2", now.Add(-5*time.Hour), domain.FSRSStateReview),
-		learnDueCard("rev-3", now.Add(-4*time.Hour), domain.FSRSStateReview),
+		learnDueCard("new-1", now.Add(-3*time.Hour), domain.FSRSPhaseNew),
+		learnDueCard("new-2", now.Add(-2*time.Hour), domain.FSRSPhaseNew),
+		learnDueCard("new-3", now.Add(-time.Hour), domain.FSRSPhaseNew),
+		learnDueCard("rev-1", now.Add(-6*time.Hour), domain.FSRSPhaseReview),
+		learnDueCard("rev-2", now.Add(-5*time.Hour), domain.FSRSPhaseReview),
+		learnDueCard("rev-3", now.Add(-4*time.Hour), domain.FSRSPhaseReview),
 	}
 }
 
@@ -643,9 +643,9 @@ func TestLearnUsecasePracticeTodaysCards_PreservesRepoOrderAndPointers(t *testin
 	c2 := &domain.Card{ID: "p-2"}
 	c3 := &domain.Card{ID: "p-3"}
 	rows := []domain.DueCard{
-		{Card: c1, State: domain.FSRSStateReview, Due: now.Add(-time.Hour)},
-		{Card: c2, State: domain.FSRSStateNew, Due: now.Add(-2 * time.Hour)},
-		{Card: c3, State: domain.FSRSStateReview, Due: now.Add(-3 * time.Hour)},
+		{Card: c1, Phase: domain.FSRSPhaseReview, Due: now.Add(-time.Hour)},
+		{Card: c2, Phase: domain.FSRSPhaseNew, Due: now.Add(-2 * time.Hour)},
+		{Card: c3, Phase: domain.FSRSPhaseReview, Due: now.Add(-3 * time.Hour)},
 	}
 	cardRepo := &mockLearnCardRepo{practiceRows: rows}
 	uc := newPracticeUsecase(
@@ -662,12 +662,12 @@ func TestLearnUsecasePracticeTodaysCards_PreservesRepoOrderAndPointers(t *testin
 }
 
 // learnDueCard constructs a DueCard for use in learn tests.
-// state controls the partition (FSRSStateNew vs review).
+// state controls the partition (FSRSPhaseNew vs review).
 // due sets the DueCard.Due timestamp.
-func learnDueCard(id string, due time.Time, state domain.FSRSCardState) domain.DueCard {
+func learnDueCard(id string, due time.Time, state domain.FSRSPhase) domain.DueCard {
 	return domain.DueCard{
 		Card:  &domain.Card{ID: id},
-		State: state,
+		Phase: state,
 		Due:   due,
 	}
 }

@@ -65,10 +65,10 @@ system-column trick — no second query needed. Empty input returns a zero-value
 with no error. Pre-fills blank IDs via `uuid.NewV7()` (no v4 fallback — see
 [`go-library-gotchas.md` § "`uuid.NewV7` failure must propagate"](../../../.claude/rules/go-library-gotchas.md)).
 
-### `listFrontsByCardgroupTx`
+### `listFrontsByGroupTx`
 
 ```go
-func listFrontsByCardgroupTx(
+func listFrontsByGroupTx(
     ctx context.Context,
     tx *gorm.DB,
     groupID, tableName, fkColumn string,
@@ -77,10 +77,10 @@ func listFrontsByCardgroupTx(
 
 Returns sorted `front` values for the group via `WHERE fkColumn = ? ORDER BY front ASC`.
 
-### `deleteByCardgroupAndFrontsTx`
+### `deleteByGroupAndFrontsTx`
 
 ```go
-func deleteByCardgroupAndFrontsTx(
+func deleteByGroupAndFrontsTx(
     ctx context.Context,
     tx *gorm.DB,
     groupID string,
@@ -169,7 +169,7 @@ No changes to the shared helpers or to `card.go` / `master_card.go`.
 ## Reference
 
 - `backend/internal/repository/card.go` — `upsertCardRow`, `upsertManyTx`,
-  `listFrontsByCardgroupTx`, `deleteByCardgroupAndFrontsTx`.
+  `listFrontsByGroupTx`, `deleteByGroupAndFrontsTx`.
 - `backend/internal/repository/master_card.go` — `masterCardRepo.UpsertManyTx`,
   `ListFrontsByMasterCardgroupTx`, `DeleteByMasterCardgroupAndFrontsTx`.
 - [`repo-tx-and-nontx-share-private-helper.md`](repo-tx-and-nontx-share-private-helper.md)

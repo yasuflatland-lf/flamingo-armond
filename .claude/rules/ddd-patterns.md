@@ -164,7 +164,7 @@ separate query the client triggers on its own lifecycle.
 
 A default 20-card learn session is 16 uniformly-sampled never-seen cards (80%)
 interleaved with 4 prior-day review slots (20%). Review slots prioritise
-learning-phase cards (`FSRSStateLearning` / `FSRSStateRelearning` — latest
+learning-phase cards (`FSRSPhaseLearning` / `FSRSPhaseRelearning` — latest
 rating Again/Hard) over long-interval Review-state filler, and exclude cards
 swiped today via a JST start-of-day cutoff. SQL `random()` decides *which* rows
 enter each window (selection); the injected `*rand.Rand` in

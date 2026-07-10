@@ -21,7 +21,7 @@ type UpdateNewCardRatioUsecase interface {
 // user-preferences persistence step. Satisfied by
 // repository.UserPreferenceRepository.
 type updateNewCardRatioPrefsRepo interface {
-	UpdateNewCardRatio(ctx context.Context, userID string, num, den int) error
+	UpsertNewCardRatio(ctx context.Context, userID string, num, den int) error
 }
 
 // updateNewCardRatioUsersRepo is the narrow consumer interface for the
@@ -76,7 +76,7 @@ func (u *updateNewCardRatioUsecase) Set(ctx context.Context, ratio domain.NewCar
 		return nil, err
 	}
 
-	if err := u.prefs.UpdateNewCardRatio(ctx, caller.Sub, ratio.Numerator(), ratio.Denominator()); err != nil {
+	if err := u.prefs.UpsertNewCardRatio(ctx, caller.Sub, ratio.Numerator(), ratio.Denominator()); err != nil {
 		if isContextDone(err) {
 			return nil, err
 		}

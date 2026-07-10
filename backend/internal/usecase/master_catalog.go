@@ -32,7 +32,7 @@ type MasterCatalogRepository interface {
 
 	// --- admin (new) ---
 	FindByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
-	FindAdminPage(
+	FindPageAnyStatus(
 		ctx context.Context,
 		after, before *repository.MasterCatalogCursor,
 		first, last int,
@@ -201,7 +201,7 @@ func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsec
 }
 
 // masterCatalogPageFetch is the repository page-fetch closure shape shared by
-// MasterCatalogRepository.FindPublishedPage and FindAdminPage. listMasterCatalogCore
+// MasterCatalogRepository.FindPublishedPage and FindPageAnyStatus. listMasterCatalogCore
 // takes one as an argument so the shared page-assembly body stays agnostic to the
 // status filter (published-only vs. all statuses).
 type masterCatalogPageFetch func(
@@ -244,7 +244,7 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 // hydration scope (true = published catalog, a DRAFT or unknown id is rejected as
 // cursor-not-found so drafts never leak; false = admin, DRAFT decks are valid
 // cursors), and fetch is the repository page method (FindPublishedPage /
-// FindAdminPage). opPrefix is the caller's eris wrap message, supplied so the shared
+// FindPageAnyStatus). opPrefix is the caller's eris wrap message, supplied so the shared
 // find-page wrap carries the correct attribution (error-wrapping rule: shared helpers
 // take the caller prefix as an argument, never hardcode it).
 func (u *masterCatalogUsecase) listMasterCatalogCore(
@@ -647,7 +647,7 @@ func (u *masterCatalogUsecase) DeleteMaster(ctx context.Context, id string) erro
 
 // ListAdminConnection paginates ALL master cardgroups (DRAFT + PUBLISHED) for the
 // admin UI. Admin-only. Mirrors ListPublishedConnection but gates on adminGate and
-// calls the status-unfiltered FindAdminPage repository method (whose returned
+// calls the status-unfiltered FindPageAnyStatus repository method (whose returned
 // total counts decks of any status). The body from page assembly onward is shared
 // with ListPublishedConnection via listMasterCatalogCore; only the gate,
 // publishedOnly scope (false = admin, DRAFT cursors valid), the repository page
@@ -660,7 +660,7 @@ func (u *masterCatalogUsecase) ListAdminConnection(
 			_, err := u.adminGate.Require(ctx, "usecase: master catalog: list admin")
 			return err
 		},
-		u.repo.FindAdminPage,
+		u.repo.FindPageAnyStatus,
 	)
 }
 

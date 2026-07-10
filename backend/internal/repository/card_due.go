@@ -69,7 +69,7 @@ func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now, reviewedBefore
 
 	reviewOrder := fmt.Sprintf(
 		"CASE WHEN ucs.state IN (%d, %d) THEN 0 ELSE 1 END, random()",
-		domain.FSRSStateLearning, domain.FSRSStateRelearning,
+		domain.FSRSPhaseLearning, domain.FSRSPhaseRelearning,
 	)
 	reviewRows, err := dueRowsOn(db, userID,
 		"cards.cardgroup_id = ? AND ucs.due IS NOT NULL AND ucs.due <= ? AND ucs.last_review < ?",
@@ -152,7 +152,7 @@ func dueRowsOn(db *gorm.DB, userID, where string, whereArgs []any, order string,
 }
 
 // dueCardsFromRows maps raw dueCardRow scan results into domain.DueCard values,
-// defaulting State to FSRSStateNew and Due to created_at when the LEFT JOIN
+// defaulting Phase to FSRSPhaseNew and Due to created_at when the LEFT JOIN
 // produced NULL FSRS columns (a new card). Shared by both fetches in
 // findDueCardsOn.
 func dueCardsFromRows(rows []dueCardRow) ([]domain.DueCard, error) {
@@ -167,13 +167,13 @@ func dueCardsFromRows(rows []dueCardRow) ([]domain.DueCard, error) {
 			UpdatedAt:   r.UpdatedAt,
 			Position:    r.Position,
 		}
-		dc := domain.DueCard{Card: c, State: domain.FSRSStateNew, Due: r.CreatedAt}
+		dc := domain.DueCard{Card: c, Phase: domain.FSRSPhaseNew, Due: r.CreatedAt}
 		if r.State != nil {
-			s := domain.FSRSCardState(*r.State)
+			s := domain.FSRSPhase(*r.State)
 			if !s.IsValid() {
-				return nil, eris.Errorf("repository: card: invalid FSRSCardState %d", *r.State)
+				return nil, eris.Errorf("repository: card: invalid FSRSPhase %d", *r.State)
 			}
-			dc.State = s
+			dc.Phase = s
 		}
 		if r.Due != nil {
 			dc.Due = *r.Due

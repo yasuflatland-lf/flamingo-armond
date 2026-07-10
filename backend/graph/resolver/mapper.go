@@ -122,7 +122,7 @@ func toMasterCardModel(card *domain.MasterCard) *model.MasterCard {
 	}
 }
 
-func toModelUserCardState(ucs *domain.UserCardFSRS) *model.UserCardState {
+func toUserCardStateModel(ucs *domain.UserCardFSRS) *model.UserCardState {
 	if ucs == nil {
 		return nil
 	}
@@ -130,7 +130,7 @@ func toModelUserCardState(ucs *domain.UserCardFSRS) *model.UserCardState {
 		Due:           ucs.State.Due,
 		Stability:     ucs.State.Stability,
 		Difficulty:    ucs.State.Difficulty,
-		State:         int(ucs.State.State),
+		State:         int(ucs.State.Phase),
 		Reps:          ucs.State.Reps,
 		Lapses:        ucs.State.Lapses,
 		LastReview:    ucs.State.LastReview,

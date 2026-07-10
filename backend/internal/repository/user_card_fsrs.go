@@ -45,7 +45,7 @@ func (r *userCardFSRSRepo) UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.
 	if err := tx.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "user_id"}, {Name: "card_id"}},
 		DoUpdates: clause.Assignments(map[string]any{
-			"state":          int(u.State.State),
+			"state":          int(u.State.Phase),
 			"due":            u.State.Due,
 			"stability":      u.State.Stability,
 			"difficulty":     u.State.Difficulty,
@@ -113,7 +113,7 @@ func userCardFSRSToRow(u *domain.UserCardFSRS) *gormUserCardFSRS {
 	return &gormUserCardFSRS{
 		UserID:        string(u.UserID),
 		CardID:        u.CardID,
-		State:         int(u.State.State),
+		State:         int(u.State.Phase),
 		Due:           u.State.Due,
 		Stability:     u.State.Stability,
 		Difficulty:    u.State.Difficulty,
@@ -128,9 +128,9 @@ func userCardFSRSToRow(u *domain.UserCardFSRS) *gormUserCardFSRS {
 }
 
 func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
-	state := domain.FSRSCardState(row.State)
+	state := domain.FSRSPhase(row.State)
 	if !state.IsValid() {
-		return nil, eris.Errorf("repository: invalid FSRSCardState value %d for card %s", row.State, row.CardID)
+		return nil, eris.Errorf("repository: invalid FSRSPhase value %d for card %s", row.State, row.CardID)
 	}
 	return &domain.UserCardFSRS{
 		UserID: domain.UserID(row.UserID),
@@ -143,7 +143,7 @@ func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
 			ScheduledDays: row.ScheduledDays,
 			Reps:          row.Reps,
 			Lapses:        row.Lapses,
-			State:         state,
+			Phase:         state,
 			LastReview:    row.LastReview,
 		},
 		CreatedAt: row.CreatedAt,

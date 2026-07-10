@@ -30,19 +30,19 @@ type mockMasterCatalogRepository struct {
 	findByIDFn          func(id string) (*domain.MasterCardgroup, error)
 	findPublishedByIDFn func(id string) (*domain.MasterCardgroup, error)
 
-	// admin methods (FindAdminPage carries the status-unfiltered, search-aware total)
-	findAdminPage  []*repository.MasterCatalogItem
-	findAdminTotal int64
-	findAdminErr   error
-	findAdminCalls []findPublishedPageCall
-	countCardsRes  int64
-	countCardsErr  error
-	createCalls    []*domain.MasterCardgroup
-	createErr      error
-	updateFn       func(id string, patch repository.MasterCardgroupUpdate) (*domain.MasterCardgroup, error)
-	deleteErr      error
-	publishFn      func(id string) (*domain.MasterCardgroup, error)
-	unpublishFn    func(id string) (*domain.MasterCardgroup, error)
+	// admin methods (FindPageAnyStatus carries the status-unfiltered, search-aware total)
+	findPageAnyStatus      []*repository.MasterCatalogItem
+	findPageAnyStatusTotal int64
+	findAdminErr           error
+	findAdminCalls         []findPublishedPageCall
+	countCardsRes          int64
+	countCardsErr          error
+	createCalls            []*domain.MasterCardgroup
+	createErr              error
+	updateFn               func(id string, patch repository.MasterCardgroupUpdate) (*domain.MasterCardgroup, error)
+	deleteErr              error
+	publishFn              func(id string) (*domain.MasterCardgroup, error)
+	unpublishFn            func(id string) (*domain.MasterCardgroup, error)
 }
 
 type findPublishedPageCall struct {
@@ -90,7 +90,7 @@ func (m *mockMasterCatalogRepository) FindByID(_ context.Context, id string) (*d
 	return nil, repository.ErrNotFound
 }
 
-func (m *mockMasterCatalogRepository) FindAdminPage(
+func (m *mockMasterCatalogRepository) FindPageAnyStatus(
 	_ context.Context,
 	after, before *repository.MasterCatalogCursor,
 	first, last int,
@@ -105,7 +105,7 @@ func (m *mockMasterCatalogRepository) FindAdminPage(
 	if m.findAdminErr != nil {
 		return nil, 0, m.findAdminErr
 	}
-	return m.findAdminPage, m.findAdminTotal, nil
+	return m.findPageAnyStatus, m.findPageAnyStatusTotal, nil
 }
 
 func (m *mockMasterCatalogRepository) CountCards(_ context.Context, _ string) (int64, error) {
@@ -581,8 +581,8 @@ func TestListAdminConnection_CursorAcceptsDraftViaFindByID(t *testing.T) {
 	t.Parallel()
 	cur := cursor.Encode("draft-id")
 	repo := &mockMasterCatalogRepository{
-		findAdminTotal: 1,
-		findAdminPage:  []*repository.MasterCatalogItem{catalogItem("x", 1)},
+		findPageAnyStatusTotal: 1,
+		findPageAnyStatus:      []*repository.MasterCatalogItem{catalogItem("x", 1)},
 		// FindByID resolves the draft — the admin list includes DRAFT decks.
 		findByIDFn: func(id string) (*domain.MasterCardgroup, error) {
 			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Draft"), Status: domain.MasterStatusDraft}, nil
