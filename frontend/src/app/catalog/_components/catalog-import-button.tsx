@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 
 export type CatalogImportButtonProps = {
   /** The deck to import — only `id` is read (the click-handler arg and the `data-testid` suffix). */
-  card: { id: string };
+  deck: { id: string };
   /** True while this cardgroup's import mutation is in flight. */
   importing: boolean;
   /** True once this cardgroup has been imported in the current session. */
@@ -41,7 +41,7 @@ export type CatalogImportButtonProps = {
  * imported (done) state wins and the in-flight label is not shown.
  */
 export function CatalogImportButton({
-  card,
+  deck,
   importing,
   imported,
   onImport,
@@ -60,9 +60,9 @@ export function CatalogImportButton({
     <Button
       type="button"
       variant={imported ? "outline" : "brand"}
-      onClick={() => onImport(card.id)}
+      onClick={() => onImport(deck.id)}
       disabled={importing || imported}
-      data-testid={`${idPrefix}-${card.id}`}
+      data-testid={`${idPrefix}-${deck.id}`}
       className={className}
     >
       {imported ? (
