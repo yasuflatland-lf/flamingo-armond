@@ -122,7 +122,7 @@ func toMasterCardModel(card *domain.MasterCard) *model.MasterCard {
 	}
 }
 
-func toModelUserCardState(ucs *domain.UserCardFSRS) *model.UserCardState {
+func toUserCardStateModel(ucs *domain.UserCardFSRS) *model.UserCardState {
 	if ucs == nil {
 		return nil
 	}

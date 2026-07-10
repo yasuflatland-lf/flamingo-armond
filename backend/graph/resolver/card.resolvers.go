@@ -50,7 +50,7 @@ func (r *cardResolver) UserCardState(ctx context.Context, obj *model.Card) (*mod
 	// constructing the domain entity here. The DataLoader batch above stays in
 	// the resolver to preserve N+1 batching.
 	ucs = r.LearnUC.DefaultIfNew(ucs, domain.UserID(user.Sub), obj.ID, obj.CreatedAt)
-	return toModelUserCardState(ucs), nil
+	return toUserCardStateModel(ucs), nil
 }
 
 // CefrLevel is the resolver for the cefrLevel field. It classifies the card's
