@@ -3,7 +3,7 @@
 import { useMutation } from "@apollo/client/react";
 import { useCallback } from "react";
 import { prependMyCardgroupEdge } from "@/app/cardgroups/cache";
-import { classifyToAuthOutcome } from "@/lib/apollo/errors";
+import { classifyAndLogAuthOutcome } from "@/lib/apollo/errors";
 import { ImportMasterCardgroupMutation } from "./queries";
 
 /**
@@ -84,8 +84,8 @@ export function useImportMaster() {
         // structured warn (omitting err.message, which may echo user input) and
         // a rejected outcome. The resolved-but-unparseable success-path case
         // above also collapses into `rejected` — no catalog caller distinguishes
-        // the two. See lib/apollo/errors classifyToAuthOutcome.
-        return classifyToAuthOutcome(err, "useImportMaster", "importMasterCardgroup");
+        // the two. See lib/apollo/errors classifyAndLogAuthOutcome.
+        return classifyAndLogAuthOutcome(err, "useImportMaster", "importMasterCardgroup");
       }
     },
     [importMaster],

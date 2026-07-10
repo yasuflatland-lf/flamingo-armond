@@ -1,8 +1,8 @@
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  classifyAndLogAuthOutcome,
   classifyMutationAuthError,
-  classifyToAuthOutcome,
   getBackendErrorBanner,
   getBackendFieldErrors,
   mutationAuthBanner,
@@ -242,7 +242,7 @@ describe("mutationAuthBanner", () => {
   });
 });
 
-describe("classifyToAuthOutcome", () => {
+describe("classifyAndLogAuthOutcome", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -250,7 +250,7 @@ describe("classifyToAuthOutcome", () => {
   it("returns an auth outcome with kind forbidden for a FORBIDDEN error without warning", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const err = makeCombinedError([{ message: "Forbidden", extensions: { code: "FORBIDDEN" } }]);
-    expect(classifyToAuthOutcome(err, "useScope", "doThing")).toEqual({
+    expect(classifyAndLogAuthOutcome(err, "useScope", "doThing")).toEqual({
       status: "auth",
       kind: "forbidden",
     });
@@ -262,7 +262,7 @@ describe("classifyToAuthOutcome", () => {
     const err = makeCombinedError([
       { message: "Not authenticated", extensions: { code: "UNAUTHENTICATED" } },
     ]);
-    expect(classifyToAuthOutcome(err, "useScope", "doThing")).toEqual({
+    expect(classifyAndLogAuthOutcome(err, "useScope", "doThing")).toEqual({
       status: "auth",
       kind: "unauthenticated",
     });
@@ -274,7 +274,7 @@ describe("classifyToAuthOutcome", () => {
     const err = makeCombinedError([
       { message: "Invalid input", extensions: { code: "BAD_USER_INPUT" } },
     ]);
-    expect(classifyToAuthOutcome(err, "useScope", "doThing")).toEqual({ status: "rejected" });
+    expect(classifyAndLogAuthOutcome(err, "useScope", "doThing")).toEqual({ status: "rejected" });
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith("[useScope] doThing rejected", {
       name: "CombinedGraphQLErrors",
@@ -284,7 +284,9 @@ describe("classifyToAuthOutcome", () => {
 
   it("returns a rejected outcome and warns with name unknown for a non-Error throw", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    expect(classifyToAuthOutcome("boom", "useScope", "doThing")).toEqual({ status: "rejected" });
+    expect(classifyAndLogAuthOutcome("boom", "useScope", "doThing")).toEqual({
+      status: "rejected",
+    });
     expect(warn).toHaveBeenCalledWith("[useScope] doThing rejected", {
       name: "unknown",
       codes: [],
@@ -295,7 +297,7 @@ describe("classifyToAuthOutcome", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const err = new Error("Network request failed");
     expect(
-      classifyToAuthOutcome(err, "useMasterMutations", "deleteMaster", { masterId: "m-1" }),
+      classifyAndLogAuthOutcome(err, "useMasterMutations", "deleteMaster", { masterId: "m-1" }),
     ).toEqual({ status: "rejected" });
     expect(warn).toHaveBeenCalledWith("[useMasterMutations] deleteMaster rejected", {
       masterId: "m-1",

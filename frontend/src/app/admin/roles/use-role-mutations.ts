@@ -2,7 +2,7 @@
 
 import { useLazyQuery, useMutation } from "@apollo/client/react";
 import { useCallback } from "react";
-import { classifyToAuthOutcome } from "@/lib/apollo/errors";
+import { classifyAndLogAuthOutcome } from "@/lib/apollo/errors";
 import {
   AdminCreateRoleMutation,
   AdminDeleteRoleMutation,
@@ -39,7 +39,7 @@ function normalizeName(name: string): string {
  * Mirrors the thin-outcome-hook shape of `useMasterMutations`.
  *
  * `createRole` / `updateRole` narrow `payload.__typename` to a discriminated
- * outcome and fold any caught error through `classifyToAuthOutcome`. `deleteRole`
+ * outcome and fold any caught error through `classifyAndLogAuthOutcome`. `deleteRole`
  * exposes only the raw mutation call: roles delete keeps its local `setRoles` +
  * `scheduleDelete` undo orchestration (and its FORBIDDEN-passthrough /
  * UNAUTHENTICATED-collapse handling) in the client, so the hook must return the
@@ -82,7 +82,7 @@ export function useRoleMutations() {
         console.warn("[useRoleMutations] unexpected createRole payload", { typename });
         return { status: "unexpected" };
       } catch (err) {
-        return classifyToAuthOutcome<AuthKind>(err, "useRoleMutations", "createRole");
+        return classifyAndLogAuthOutcome<AuthKind>(err, "useRoleMutations", "createRole");
       }
     },
     [runCreate],
@@ -103,7 +103,7 @@ export function useRoleMutations() {
         console.warn("[useRoleMutations] unexpected updateRole payload", { typename });
         return { status: "unexpected" };
       } catch (err) {
-        return classifyToAuthOutcome<AuthKind>(err, "useRoleMutations", "updateRole", {
+        return classifyAndLogAuthOutcome<AuthKind>(err, "useRoleMutations", "updateRole", {
           roleId: id,
         });
       }

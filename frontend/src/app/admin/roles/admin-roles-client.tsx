@@ -285,7 +285,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
       onCommitFailed: (err) => {
         const codes = liftGraphQLCodes(err);
         // This branch deliberately does NOT route through the shared
-        // classifyToAuthOutcome helper (used by useRoleMutations for the
+        // classifyAndLogAuthOutcome helper (used by useRoleMutations for the
         // create/update branches): that is kind-only and would discard the
         // server's FORBIDDEN message. UNAUTHENTICATED collapses to a generic
         // sign-in prompt — the user has no actionable detail to recover from.
@@ -329,7 +329,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
         setCreateError({ kind: "unexpected" });
         return;
       default:
-        // "rejected" — classifyToAuthOutcome already emitted a scoped warn.
+        // "rejected" — classifyAndLogAuthOutcome already emitted a scoped warn.
         return;
     }
   }
@@ -355,7 +355,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
         setEditError({ kind: "unexpected" });
         return;
       default:
-        // "rejected" — classifyToAuthOutcome already emitted a scoped warn.
+        // "rejected" — classifyAndLogAuthOutcome already emitted a scoped warn.
         return;
     }
   }

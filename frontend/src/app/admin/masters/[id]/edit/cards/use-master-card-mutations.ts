@@ -5,7 +5,7 @@ import {
   type AdminMasterCardsConnectionQueryVariables,
 } from "@/generated/graphql";
 import {
-  createEntityCardMutationsConfig,
+  defineEntityCardMutationsConfig,
   useEntityCardMutations,
 } from "@/lib/cards/use-entity-card-mutations";
 import {
@@ -16,7 +16,7 @@ import {
   masterCardsDefaultVars,
 } from "./queries";
 
-const MASTER_CARD_MUTATIONS_CONFIG = createEntityCardMutationsConfig({
+const MASTER_CARD_MUTATIONS_CONFIG = defineEntityCardMutationsConfig({
   scope: "[useMasterCardMutations]",
   ownerLogKey: "masterId",
   createOpName: "adminCreateMasterCard",

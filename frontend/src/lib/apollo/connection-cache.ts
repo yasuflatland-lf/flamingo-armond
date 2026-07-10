@@ -4,7 +4,7 @@ import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 /**
  * Generic Relay-Connection cache helpers.
  *
- * The "append edge + bump totalCount" and "filter edge by node.id + clamp
+ * The "prepend edge + bump totalCount" and "filter edge by node.id + clamp
  * totalCount at 0 + evict + gc" blocks were copy-pasted across every paginated
  * mutation hook. The cache invariants they enforce — resolve an edge by
  * `node.id` (never `edge.cursor`), clamp `totalCount` at `Math.max(0, …)`, use
@@ -27,7 +27,7 @@ interface ConnectionEdge<TTypename extends string, TNode extends { id: string }>
 }
 
 /** The minimal `<Type>Connection` shape these helpers read and write. */
-interface ConnectionShape<TEdge> {
+interface CacheConnectionShape<TEdge> {
   __typename: string;
   edges: TEdge[];
   pageInfo: {
@@ -40,7 +40,7 @@ interface ConnectionShape<TEdge> {
   totalCount: number;
 }
 
-interface AppendConnectionEdgeInput<
+interface PrependConnectionEdgeInput<
   TData,
   TVariables extends OperationVariables,
   K extends keyof TData,
@@ -104,16 +104,16 @@ interface RemoveConnectionEdgesInput<
  *   cases that must surface the new edge on a route the user may land on directly).
  *
  * The dedup guard skips the write if an edge with the same `node.id` already
- * exists. No `cache.writeFragment` is needed: the appended node carries its full
+ * exists. No `cache.writeFragment` is needed: the prepended node carries its full
  * projection, so `writeQuery` normalizes it into the standalone `<Type>:<id>`
  * entry on its own.
  */
-export function appendConnectionEdge<
+export function prependConnectionEdge<
   TData,
   TVariables extends OperationVariables,
   K extends keyof TData,
   TNode extends { id: string },
->(cache: ApolloCache, input: AppendConnectionEdgeInput<TData, TVariables, K, TNode>): void {
+>(cache: ApolloCache, input: PrependConnectionEdgeInput<TData, TVariables, K, TNode>): void {
   const { document, variables, connectionField, edgeTypename, node, buildColdConnection } = input;
 
   const existing = cache.readQuery({ query: document, variables });
@@ -134,7 +134,7 @@ export function appendConnectionEdge<
     return;
   }
 
-  const current = existing[connectionField] as ConnectionShape<
+  const current = existing[connectionField] as CacheConnectionShape<
     ConnectionEdge<string, { id: string }>
   >;
   if (current.edges.some((edge) => edge.node.id === node.id)) return;
@@ -169,7 +169,7 @@ export function removeConnectionEdges<
 
   const existing = cache.readQuery({ query: document, variables });
   if (existing) {
-    const current = existing[connectionField] as ConnectionShape<
+    const current = existing[connectionField] as CacheConnectionShape<
       ConnectionEdge<string, { id: string }>
     >;
     const nextConnection = {
