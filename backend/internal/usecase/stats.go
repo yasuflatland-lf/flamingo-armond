@@ -92,7 +92,7 @@ func (u *statsUsecase) MyLearningStats(ctx context.Context) (*LearningStatsResul
 			mastery.Mature++
 			acc.mature++
 		default:
-			panic("usecase: stats: unhandled MasteryTier")
+			return nil, eris.Errorf("usecase: stats: unhandled MasteryTier %d", tier)
 		}
 	}
 
