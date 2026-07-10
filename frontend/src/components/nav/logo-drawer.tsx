@@ -18,7 +18,7 @@ import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from "@/comp
 import { dispatchFlamingo, FLAMINGO_EVENT, subscribeFlamingo } from "@/lib/events/flamingo-events";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { type DeckAddMenu, resolveHeaderCreateAction } from "./header-create-action";
-import { resolveHeaderSearchAction } from "./header-search-action";
+import { shouldShowHeaderSearch } from "./header-search-action";
 import { HeaderSignInLink } from "./header-sign-in-link";
 import { ADMIN_NAV_ITEMS, CORE_NAV_ITEMS, FOOTER_NAV_ITEMS } from "./nav-items";
 
@@ -44,7 +44,7 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
   // Anonymous users get no '+'; the resolver returns null for unknown routes too.
   const createAction = user ? resolveHeaderCreateAction(pathname) : null;
 
-  const showSearch = user ? resolveHeaderSearchAction(pathname) : false;
+  const showSearch = user ? shouldShowHeaderSearch(pathname) : false;
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const prevVisibleRef = useRef(false);
   const [searchActive, setSearchActive] = useState(false);

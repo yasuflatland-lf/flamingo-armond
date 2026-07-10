@@ -61,7 +61,7 @@ function mergeUsersConnection(
   };
 }
 
-function UserRow({ edge, onEdit }: { edge: Edge; onEdit: (id: string) => void }) {
+function UserRowFromEdge({ edge, onEdit }: { edge: Edge; onEdit: (id: string) => void }) {
   const user = useFragment(AdminUserFieldsFragment, edge.node);
   const roles = useFragment(AdminRoleFieldsFragment, edge.node.roles);
   const rowUser: AdminUserListItem = {
@@ -254,7 +254,7 @@ export function AdminUsersClient() {
         retryLabel: tCommon("retry"),
         loadingMoreLabel: t("loadingMore"),
       }}
-      loading={initialLoading}
+      initialLoading={initialLoading}
       skeleton={<AdminUsersSkeleton />}
       testIdPrefix="admin-users"
     >
@@ -268,7 +268,7 @@ export function AdminUsersClient() {
       {edges.length > 0 && (
         <ul className="space-y-3" data-testid="admin-users-list">
           {edges.map((edge) => (
-            <UserRow
+            <UserRowFromEdge
               key={edge.cursor}
               edge={edge}
               onEdit={(id) => sheet.open({ mode: "edit", id })}

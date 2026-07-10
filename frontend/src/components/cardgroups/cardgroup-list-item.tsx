@@ -26,7 +26,7 @@ export function CardgroupListItem({
   const deleteLabel = t("deleteAriaLabel", { name });
   const requestDelete = () => onDelete(id, name);
   return (
-    <SwipeableRow onDelete={requestDelete} disabled={busy} ariaLabel={deleteLabel}>
+    <SwipeableRow onDelete={requestDelete} disabled={busy}>
       <li className="group flex items-center gap-2 rounded-lg border border-border pr-2 hover:bg-accent active:bg-accent transition-colors bg-background">
         <Link href={`/cardgroups/${id}/edit`} className="flex min-w-0 flex-1 flex-col gap-1 p-4">
           <span className="truncate font-medium text-foreground">{name}</span>

@@ -62,7 +62,7 @@ export function CatalogDeckHeader({
       )}
       <div className="mt-2">
         <CatalogImportButton
-          card={{ id: deck.id }}
+          deck={{ id: deck.id }}
           importing={importing}
           imported={imported}
           onImport={onImport}

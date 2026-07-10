@@ -25,14 +25,6 @@ export interface SwipeableRowProps {
    * checkboxes receive touch events without interference.
    */
   disabled?: boolean;
-  /**
-   * Accessible label retained in the public API for future a11y fallback work.
-   * Required (`string | null`) — pass `null` to accept the default "Delete"
-   * label, or a contextual string (e.g. "Delete card") to override it.
-   * See `docs/frontend/typescript-conventions.md` § "Required
-   * `string | null` over optional `?: string | null`".
-   */
-  ariaLabel: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -63,7 +55,7 @@ const COMMIT_THRESHOLD = 0.4;
  * list can snap back any in-progress row when needed.
  */
 export const SwipeableRow = forwardRef<SwipeableRowHandle, SwipeableRowProps>(function SwipeableRow(
-  { children, onDelete, disabled = false, ariaLabel },
+  { children, onDelete, disabled = false },
   ref,
 ) {
   const reducedMotion = useReducedMotion();
@@ -73,7 +65,7 @@ export const SwipeableRow = forwardRef<SwipeableRowHandle, SwipeableRowProps>(fu
   }
 
   return (
-    <SwipeableRowInner ref={ref} onDelete={onDelete} disabled={disabled} ariaLabel={ariaLabel}>
+    <SwipeableRowInner ref={ref} onDelete={onDelete} disabled={disabled}>
       {children}
     </SwipeableRowInner>
   );
@@ -84,7 +76,7 @@ export const SwipeableRow = forwardRef<SwipeableRowHandle, SwipeableRowProps>(fu
 // ---------------------------------------------------------------------------
 
 const SwipeableRowInner = forwardRef<SwipeableRowHandle, SwipeableRowProps>(
-  function SwipeableRowInner({ children, onDelete, disabled, ariaLabel: _ariaLabel }, ref) {
+  function SwipeableRowInner({ children, onDelete, disabled }, ref) {
     const rowRef = useRef<HTMLDivElement>(null);
 
     const [{ x }, api] = useSpring(() => ({

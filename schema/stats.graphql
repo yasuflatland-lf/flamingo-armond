@@ -8,6 +8,8 @@ type LearningStats {
   performance: PerformanceMetrics!
   """Cards the learner struggles with most, ranked by lapses (desc) then stability (asc), filtered to at least one lapse, capped at 10."""
   strugglingCards: [StrugglingCard!]!
+  """True iff the caller owns at least one deck (cardgroup), regardless of card count. Distinguishes a brand-new user (owns nothing) from one who created a deck but has not added any cards yet — `decks` omits zero-card decks, so it alone cannot make that distinction."""
+  ownsAnyDeck: Boolean!
 }
 
 """A card the learner struggles with (high lapses / low stability)."""

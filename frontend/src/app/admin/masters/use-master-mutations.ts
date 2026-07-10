@@ -3,10 +3,10 @@
 import { useApolloClient, useMutation } from "@apollo/client/react";
 import { useCallback } from "react";
 import {
-  appendConnectionEdge,
+  prependConnectionEdge,
   removeConnectionEdgeAcrossVariants,
 } from "@/lib/apollo/connection-cache";
-import { classifyToAuthOutcome } from "@/lib/apollo/errors";
+import { classifyAndLogAuthOutcome } from "@/lib/apollo/errors";
 import type { MasterFormValues } from "./admin-master-form";
 import {
   ADMIN_MASTERS_BASE_VARS,
@@ -78,7 +78,7 @@ export function useMasterMutations() {
         // in sync with the client useConnectionPagination query. The shared helper
         // handles the warm-prepend / cold-seed branches and adds a node.id dedup
         // guard. See .claude/rules/pagination.md.
-        appendConnectionEdge(cache, {
+        prependConnectionEdge(cache, {
           document: AdminMastersQuery,
           variables: { ...ADMIN_MASTERS_BASE_VARS, search: null },
           connectionField: "adminMasters",
@@ -123,7 +123,7 @@ export function useMasterMutations() {
         console.warn("[useMasterMutations] unexpected createMaster payload", { typename });
         return { status: "unexpected" };
       } catch (err) {
-        return classifyToAuthOutcome<AuthKind>(err, "useMasterMutations", "createMaster");
+        return classifyAndLogAuthOutcome<AuthKind>(err, "useMasterMutations", "createMaster");
       }
     },
     [runCreate],
@@ -144,7 +144,7 @@ export function useMasterMutations() {
         console.warn("[useMasterMutations] unexpected updateMaster payload", { typename });
         return { status: "unexpected" };
       } catch (err) {
-        return classifyToAuthOutcome<AuthKind>(err, "useMasterMutations", "updateMaster", {
+        return classifyAndLogAuthOutcome<AuthKind>(err, "useMasterMutations", "updateMaster", {
           masterId: id,
         });
       }
@@ -166,7 +166,7 @@ export function useMasterMutations() {
         });
         return { status: "success" };
       } catch (err) {
-        return classifyToAuthOutcome<AuthKind>(err, "useMasterMutations", "deleteMaster", {
+        return classifyAndLogAuthOutcome<AuthKind>(err, "useMasterMutations", "deleteMaster", {
           masterId: id,
         });
       }
@@ -192,7 +192,7 @@ export function useMasterMutations() {
         });
         return { status: "unexpected" };
       } catch (err) {
-        return classifyToAuthOutcome<AuthKind>(err, "useMasterMutations", "publishMaster", {
+        return classifyAndLogAuthOutcome<AuthKind>(err, "useMasterMutations", "publishMaster", {
           masterId: id,
         });
       }
@@ -212,7 +212,7 @@ export function useMasterMutations() {
         }
         return { status: "success" };
       } catch (err) {
-        return classifyToAuthOutcome<AuthKind>(err, "useMasterMutations", "unpublishMaster", {
+        return classifyAndLogAuthOutcome<AuthKind>(err, "useMasterMutations", "unpublishMaster", {
           masterId: id,
         });
       }

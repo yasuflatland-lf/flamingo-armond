@@ -2,7 +2,7 @@
 
 import { useMutation } from "@apollo/client/react";
 import { useCallback } from "react";
-import { classifyToAuthOutcome } from "@/lib/apollo/errors";
+import { classifyAndLogAuthOutcome } from "@/lib/apollo/errors";
 import { prependMyCardgroupEdge } from "./cache";
 import { CreateCardgroupMutation } from "./queries";
 
@@ -69,8 +69,8 @@ export function useCreateCardgroup() {
       } catch (err) {
         // FORBIDDEN / UNAUTHENTICATED → typed auth outcome; otherwise a scoped
         // structured warn (omitting err.message, which may echo user input) and
-        // a rejected outcome. See lib/apollo/errors classifyToAuthOutcome.
-        return classifyToAuthOutcome(err, "useCreateCardgroup", "createCardgroup");
+        // a rejected outcome. See lib/apollo/errors classifyAndLogAuthOutcome.
+        return classifyAndLogAuthOutcome(err, "useCreateCardgroup", "createCardgroup");
       }
     },
     [createCardgroup],

@@ -148,7 +148,7 @@ export type MutationAuthKind = Exclude<MutationAuthErrorKind, "other">;
  * `"forbidden" | "unauthenticated"` pair. `classifyMutationAuthError` returns
  * the literal `"forbidden"` / `"unauthenticated"` strings, which structurally
  * satisfy any `Kind` that contains them, so the narrowing in
- * `classifyToAuthOutcome` is sound.
+ * `classifyAndLogAuthOutcome` is sound.
  */
 export type MutationCatchOutcome<Kind extends MutationAuthKind = MutationAuthKind> =
   | { status: "auth"; kind: Kind }
@@ -174,7 +174,7 @@ export type MutationCatchOutcome<Kind extends MutationAuthKind = MutationAuthKin
  * be narrowed by the caller's auth-kind union (some hooks surface both, some
  * only expect `unauthenticated`).
  */
-export function classifyToAuthOutcome<Kind extends MutationAuthKind = MutationAuthKind>(
+export function classifyAndLogAuthOutcome<Kind extends MutationAuthKind = MutationAuthKind>(
   err: unknown,
   scope: string,
   op: string,

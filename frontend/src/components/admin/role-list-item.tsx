@@ -45,7 +45,7 @@ export function RoleListItem({ id, name, isSystem, busy, onEdit, onDelete }: Rol
   }
 
   return (
-    <SwipeableRow onDelete={() => onDelete(id)} disabled={busy} ariaLabel={`Delete role ${name}`}>
+    <SwipeableRow onDelete={() => onDelete(id)} disabled={busy}>
       <li
         className="group flex items-center gap-2 rounded-lg border border-border pr-2 hover:bg-accent active:bg-accent transition-colors"
         data-testid={`admin-role-row-${id}`}

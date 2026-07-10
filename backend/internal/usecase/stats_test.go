@@ -59,6 +59,20 @@ func (f *fakeStatsSwipeRepo) ListByUserSince(_ context.Context, userID string, s
 	return f.swipes, nil
 }
 
+// fakeStatsCardgroupRepo returns a configurable owned-deck count (and optional
+// error) for CountByOwner so tests can pin the OwnsAnyDeck signal without a DB.
+type fakeStatsCardgroupRepo struct {
+	count int64
+	err   error
+}
+
+func (f *fakeStatsCardgroupRepo) CountByOwner(_ context.Context, _ string, _ *string) (int64, error) {
+	if f.err != nil {
+		return 0, f.err
+	}
+	return f.count, nil
+}
+
 func authedStatsCtx(sub string) context.Context {
 	return auth.ContextWithUser(context.Background(), &auth.AuthUser{Sub: sub})
 }
@@ -96,7 +110,7 @@ func TestStatsUsecase_MyLearningStats_BucketsGlobalAndPerDeck(t *testing.T) {
 		},
 		totals: map[string]int{"cg1": 5, "cg2": 3, "cg3": 2},
 	}
-	uc := NewStats(repo, &fakeStatsSwipeRepo{}, nil)
+	uc := NewStats(repo, &fakeStatsSwipeRepo{}, &fakeStatsCardgroupRepo{}, nil)
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.NoError(t, err)
@@ -137,7 +151,7 @@ func TestStatsUsecase_MyLearningStats_BucketsGlobalAndPerDeck(t *testing.T) {
 func TestStatsUsecase_MyLearningStats_EmptyHistory(t *testing.T) {
 	t.Parallel()
 	repo := &fakeStatsFSRSRepo{states: nil, totals: map[string]int{}}
-	uc := NewStats(repo, &fakeStatsSwipeRepo{}, nil)
+	uc := NewStats(repo, &fakeStatsSwipeRepo{}, &fakeStatsCardgroupRepo{}, nil)
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.NoError(t, err)
@@ -147,7 +161,7 @@ func TestStatsUsecase_MyLearningStats_EmptyHistory(t *testing.T) {
 
 func TestStatsUsecase_MyLearningStats_Unauthenticated(t *testing.T) {
 	t.Parallel()
-	uc := NewStats(&fakeStatsFSRSRepo{}, &fakeStatsSwipeRepo{}, nil)
+	uc := NewStats(&fakeStatsFSRSRepo{}, &fakeStatsSwipeRepo{}, &fakeStatsCardgroupRepo{}, nil)
 
 	res, err := uc.MyLearningStats(context.Background())
 	require.Error(t, err)
@@ -158,7 +172,7 @@ func TestStatsUsecase_MyLearningStats_Unauthenticated(t *testing.T) {
 
 func TestStatsUsecase_MyLearningStats_EmptySubUnauthenticated(t *testing.T) {
 	t.Parallel()
-	uc := NewStats(&fakeStatsFSRSRepo{}, &fakeStatsSwipeRepo{}, nil)
+	uc := NewStats(&fakeStatsFSRSRepo{}, &fakeStatsSwipeRepo{}, &fakeStatsCardgroupRepo{}, nil)
 
 	res, err := uc.MyLearningStats(authedStatsCtx(""))
 	require.Error(t, err)
@@ -169,7 +183,7 @@ func TestStatsUsecase_MyLearningStats_EmptySubUnauthenticated(t *testing.T) {
 func TestStatsUsecase_MyLearningStats_ListStatesError(t *testing.T) {
 	t.Parallel()
 	sentinel := eris.New("boom")
-	uc := NewStats(&fakeStatsFSRSRepo{statesErr: sentinel}, &fakeStatsSwipeRepo{}, nil)
+	uc := NewStats(&fakeStatsFSRSRepo{statesErr: sentinel}, &fakeStatsSwipeRepo{}, &fakeStatsCardgroupRepo{}, nil)
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.Error(t, err)
@@ -181,7 +195,7 @@ func TestStatsUsecase_MyLearningStats_ListStatesError(t *testing.T) {
 func TestStatsUsecase_MyLearningStats_CountError(t *testing.T) {
 	t.Parallel()
 	sentinel := eris.New("boom")
-	uc := NewStats(&fakeStatsFSRSRepo{totalsErr: sentinel}, &fakeStatsSwipeRepo{}, nil)
+	uc := NewStats(&fakeStatsFSRSRepo{totalsErr: sentinel}, &fakeStatsSwipeRepo{}, &fakeStatsCardgroupRepo{}, nil)
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.Error(t, err)
@@ -234,7 +248,7 @@ func TestStatsUsecase_MyLearningStats_WindowsSwipesByStatsWindowDays(t *testing.
 	t.Parallel()
 	fixedNow := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
 	swipeRepo := &fakeStatsSwipeRepo{}
-	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, swipeRepo, fixedClock{now: fixedNow})
+	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, swipeRepo, &fakeStatsCardgroupRepo{}, fixedClock{now: fixedNow})
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.NoError(t, err)
@@ -257,7 +271,7 @@ func TestStatsUsecase_MyLearningStats_PerformanceReflectsComputeMetrics(t *testi
 		{ID: "s2", UserID: "user-1", CardID: "c2", CardgroupID: "cg1", Rating: domain.RatingAgain, ReviewedAt: fixedNow.AddDate(0, 0, -1), StateAfter: state},
 	}
 	swipeRepo := &fakeStatsSwipeRepo{swipes: swipes}
-	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, swipeRepo, fixedClock{now: fixedNow})
+	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, swipeRepo, &fakeStatsCardgroupRepo{}, fixedClock{now: fixedNow})
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.NoError(t, err)
@@ -280,7 +294,7 @@ func TestStatsUsecase_MyLearningStats_StrugglingCardsFromFSRSRows(t *testing.T) 
 		},
 		totals: map[string]int{},
 	}
-	uc := NewStats(repo, &fakeStatsSwipeRepo{}, fixedClock{now: fixedNow})
+	uc := NewStats(repo, &fakeStatsSwipeRepo{}, &fakeStatsCardgroupRepo{}, fixedClock{now: fixedNow})
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.NoError(t, err)
@@ -293,11 +307,74 @@ func TestStatsUsecase_MyLearningStats_StrugglingCardsFromFSRSRows(t *testing.T) 
 func TestStatsUsecase_MyLearningStats_ListSwipesError(t *testing.T) {
 	t.Parallel()
 	sentinel := eris.New("boom")
-	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, &fakeStatsSwipeRepo{err: sentinel}, nil)
+	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, &fakeStatsSwipeRepo{err: sentinel}, &fakeStatsCardgroupRepo{}, nil)
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.Error(t, err)
 	assert.Nil(t, res)
 	assert.True(t, errors.Is(err, sentinel))
 	assert.Contains(t, err.Error(), "usecase: stats: list swipes since")
+}
+
+// TestStatsUsecase_MyLearningStats_OwnsAnyDeck_TrulyNew covers a brand-new user
+// who owns no cardgroup: CountByOwner returns 0, so OwnsAnyDeck is false and
+// Decks is empty.
+func TestStatsUsecase_MyLearningStats_OwnsAnyDeck_TrulyNew(t *testing.T) {
+	t.Parallel()
+	repo := &fakeStatsFSRSRepo{states: nil, totals: map[string]int{}}
+	uc := NewStats(repo, &fakeStatsSwipeRepo{}, &fakeStatsCardgroupRepo{count: 0}, nil)
+
+	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.False(t, res.OwnsAnyDeck, "a user owning no cardgroup is not OwnsAnyDeck")
+	assert.Empty(t, res.Decks)
+}
+
+// TestStatsUsecase_MyLearningStats_OwnsAnyDeck_EmptyDeck covers a user who owns
+// a cardgroup with zero cards and has studied nothing: CountByOwner returns 1,
+// so OwnsAnyDeck is true even though Decks (built from card totals) is empty.
+func TestStatsUsecase_MyLearningStats_OwnsAnyDeck_EmptyDeck(t *testing.T) {
+	t.Parallel()
+	repo := &fakeStatsFSRSRepo{states: nil, totals: map[string]int{}}
+	uc := NewStats(repo, &fakeStatsSwipeRepo{}, &fakeStatsCardgroupRepo{count: 1}, nil)
+
+	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.True(t, res.OwnsAnyDeck, "owning an empty deck still counts as OwnsAnyDeck")
+	assert.Empty(t, res.Decks, "an empty deck is omitted from Decks (no card totals)")
+}
+
+// TestStatsUsecase_MyLearningStats_OwnsAnyDeck_DeckWithCards covers a user who
+// owns a non-empty deck and has studied cards: CountByOwner returns 1, Decks is
+// non-empty, and OwnsAnyDeck is true.
+func TestStatsUsecase_MyLearningStats_OwnsAnyDeck_DeckWithCards(t *testing.T) {
+	t.Parallel()
+	repo := &fakeStatsFSRSRepo{
+		states: []repository.FSRSStatRow{reviewRow("a", "cg1", 30)},
+		totals: map[string]int{"cg1": 1},
+	}
+	uc := NewStats(repo, &fakeStatsSwipeRepo{}, &fakeStatsCardgroupRepo{count: 1}, nil)
+
+	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.True(t, res.OwnsAnyDeck)
+	require.Len(t, res.Decks, 1)
+	assert.Equal(t, "cg1", res.Decks[0].CardgroupID)
+}
+
+// TestStatsUsecase_MyLearningStats_CountByOwnerError covers a CountByOwner
+// failure: MyLearningStats returns the eris-wrapped error.
+func TestStatsUsecase_MyLearningStats_CountByOwnerError(t *testing.T) {
+	t.Parallel()
+	sentinel := eris.New("boom")
+	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, &fakeStatsSwipeRepo{}, &fakeStatsCardgroupRepo{err: sentinel}, nil)
+
+	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
+	require.Error(t, err)
+	assert.Nil(t, res)
+	assert.True(t, errors.Is(err, sentinel))
+	assert.Contains(t, err.Error(), "usecase: stats: count cardgroups by owner")
 }

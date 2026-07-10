@@ -10,7 +10,7 @@ const CARD = { id: "m-1" };
 describe("<CatalogImportButton>", () => {
   it("renders the idle action label and stays enabled", () => {
     renderWithIntl(
-      <CatalogImportButton card={CARD} importing={false} imported={false} onImport={vi.fn()} />,
+      <CatalogImportButton deck={CARD} importing={false} imported={false} onImport={vi.fn()} />,
     );
 
     const btn = screen.getByTestId("catalog-import-m-1");
@@ -20,7 +20,7 @@ describe("<CatalogImportButton>", () => {
 
   it("shows the in-flight label and disables the button while importing", () => {
     renderWithIntl(
-      <CatalogImportButton card={CARD} importing={true} imported={false} onImport={vi.fn()} />,
+      <CatalogImportButton deck={CARD} importing={true} imported={false} onImport={vi.fn()} />,
     );
 
     const btn = screen.getByTestId("catalog-import-m-1");
@@ -30,7 +30,7 @@ describe("<CatalogImportButton>", () => {
 
   it("shows the imported label and disables the button once imported", () => {
     renderWithIntl(
-      <CatalogImportButton card={CARD} importing={false} imported={true} onImport={vi.fn()} />,
+      <CatalogImportButton deck={CARD} importing={false} imported={true} onImport={vi.fn()} />,
     );
 
     const btn = screen.getByTestId("catalog-import-m-1");
@@ -42,7 +42,7 @@ describe("<CatalogImportButton>", () => {
     const user = userEvent.setup();
     const onImport = vi.fn();
     renderWithIntl(
-      <CatalogImportButton card={CARD} importing={false} imported={false} onImport={onImport} />,
+      <CatalogImportButton deck={CARD} importing={false} imported={false} onImport={onImport} />,
     );
 
     await user.click(screen.getByTestId("catalog-import-m-1"));
@@ -53,7 +53,7 @@ describe("<CatalogImportButton>", () => {
   it("uses custom labels and a custom testId prefix when provided", () => {
     renderWithIntl(
       <CatalogImportButton
-        card={CARD}
+        deck={CARD}
         importing={false}
         imported={false}
         onImport={vi.fn()}
@@ -71,7 +71,7 @@ describe("<CatalogImportButton>", () => {
   it("merges the passthrough className onto the rendered button", () => {
     renderWithIntl(
       <CatalogImportButton
-        card={CARD}
+        deck={CARD}
         importing={false}
         imported={false}
         onImport={vi.fn()}

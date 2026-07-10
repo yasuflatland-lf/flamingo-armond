@@ -11,7 +11,7 @@ import {
   type CardsByCardgroupConnectionQueryVariables,
 } from "@/generated/graphql";
 import {
-  createEntityCardMutationsConfig,
+  defineEntityCardMutationsConfig,
   useEntityCardMutations,
 } from "@/lib/cards/use-entity-card-mutations";
 import { cardsDefaultVars } from "./queries";
@@ -19,7 +19,7 @@ import { cardsDefaultVars } from "./queries";
 // Static config: documents, typenames, and the typed classifier/builder
 // callbacks. A module constant so the generic hook's useCallback memoization
 // stays stable across renders.
-const CARD_MUTATIONS_CONFIG = createEntityCardMutationsConfig({
+const CARD_MUTATIONS_CONFIG = defineEntityCardMutationsConfig({
   scope: "[useCardMutations]",
   ownerLogKey: "cardgroupId",
   createOpName: "createCard",

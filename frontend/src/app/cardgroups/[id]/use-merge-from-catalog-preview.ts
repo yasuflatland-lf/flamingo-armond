@@ -3,7 +3,7 @@
 import { useLazyQuery } from "@apollo/client/react";
 import { useCallback } from "react";
 import { MergeMasterCardgroupPreviewQuery } from "@/app/catalog/queries";
-import { classifyToAuthOutcome } from "@/lib/apollo/errors";
+import { classifyAndLogAuthOutcome } from "@/lib/apollo/errors";
 
 export type MergeFromCatalogPreviewOutcome =
   | { status: "success"; addedCount: number; updatedCount: number }
@@ -44,7 +44,7 @@ export function useMergeFromCatalogPreview(targetCardgroupId: string) {
           };
         }
         if (result.error) {
-          return classifyToAuthOutcome(
+          return classifyAndLogAuthOutcome(
             result.error,
             "useMergeFromCatalogPreview",
             "mergeMasterCardgroupPreview",
@@ -58,7 +58,7 @@ export function useMergeFromCatalogPreview(targetCardgroupId: string) {
         });
         return { status: "rejected" };
       } catch (err) {
-        return classifyToAuthOutcome(
+        return classifyAndLogAuthOutcome(
           err,
           "useMergeFromCatalogPreview",
           "mergeMasterCardgroupPreview",

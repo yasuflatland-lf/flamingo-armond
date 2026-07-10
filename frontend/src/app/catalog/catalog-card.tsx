@@ -46,7 +46,7 @@ export function CatalogCard({
   style,
 }: CatalogCardProps) {
   const t = useTranslations("Catalog");
-  const card = useFragment(CatalogCardFieldsFragment, node);
+  const deck = useFragment(CatalogCardFieldsFragment, node);
 
   return (
     <li
@@ -58,23 +58,23 @@ export function CatalogCard({
     >
       <div className="flex flex-col gap-1">
         <h3 className="truncate font-semibold leading-[1.3] tracking-[-0.011em] text-foreground">
-          {card.name}
+          {deck.name}
         </h3>
-        {card.description && (
+        {deck.description && (
           <p className="line-clamp-2 text-sm leading-[1.55] text-muted-foreground">
-            {card.description}
+            {deck.description}
           </p>
         )}
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-[13px] tabular-nums text-muted-foreground">
-          {t("cardCount", { count: card.cardCount })}
+          {t("cardCount", { count: deck.cardCount })}
         </span>
       </div>
 
       <CatalogImportButton
-        card={card}
+        deck={deck}
         importing={importing}
         imported={imported}
         onImport={onImport}

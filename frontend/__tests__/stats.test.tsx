@@ -40,6 +40,7 @@ import { renderWithIntl } from "@/test/render-with-intl";
 // flow-detail assertions live in the co-located stats-client.test.tsx.
 const populatedStats: MyLearningStatsQuery["myLearningStats"] = {
   __typename: "LearningStats",
+  ownsAnyDeck: true,
   mastery: {
     __typename: "MasteryBreakdown",
     inProgress: 420,

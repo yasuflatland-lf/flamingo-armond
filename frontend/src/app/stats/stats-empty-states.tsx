@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleCheck, Sprout, TrendingUp } from "lucide-react";
+import { CircleCheck, FilePlus2, Sprout, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { buttonVariants } from "@/components/ui/button";
@@ -14,8 +14,9 @@ import { buttonVariants } from "@/components/ui/button";
  */
 
 /**
- * Brand-new user (no decks, nothing studied). Two CTAs: browse the catalog
- * (primary) or create a deck (secondary).
+ * Truly-new user who owns no cardgroup at all, and nothing studied. Two CTAs:
+ * browse the catalog (primary) or create a deck (secondary). Distinct from
+ * `EmptyDeckEmpty`, which is the "owns a deck but it has no cards yet" case.
  */
 export function WelcomeEmpty() {
   const t = useTranslations("Stats");
@@ -30,6 +31,26 @@ export function WelcomeEmpty() {
         </Link>
         <Link href="/cardgroups/new" className={buttonVariants({ variant: "outline" })}>
           {t("emptyCreateDeck")}
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Owns at least one cardgroup but every deck is empty (the backend omits
+ * zero-card decks from `decks`), and nothing studied. One CTA: go add cards.
+ */
+export function EmptyDeckEmpty() {
+  const t = useTranslations("Stats");
+  return (
+    <div className="flex flex-col items-center rounded-lg border border-dashed border-border p-8 text-center">
+      <FilePlus2 aria-hidden="true" className="h-8 w-8 text-muted-foreground" />
+      <h2 className="mt-2 text-xl font-semibold">{t("emptyDeck")}</h2>
+      <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{t("emptyDeckBody")}</p>
+      <div className="mt-6 flex justify-center">
+        <Link href="/cardgroups" className={buttonVariants({ variant: "brand" })}>
+          {t("emptyDeckCta")}
         </Link>
       </div>
     </div>
