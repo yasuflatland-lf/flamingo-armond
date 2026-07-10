@@ -46,9 +46,11 @@ func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 }
 
 // toLearningStatsModel maps the usecase learning-stats result to the generated
-// GraphQL model, hydrating each deck's Cardgroup from its id via the existing
-// per-request DataLoader. A missing loader registry or a Load failure is
-// surfaced as an INTERNAL/CANCELLED wire error.
+// GraphQL model, hydrating each deck's Cardgroup and each struggling card's
+// Card from their ids via the existing per-request DataLoader (loaders.Cardgroup
+// and loaders.Card respectively), each via its own two-phase Load-then-resolve
+// pass. A missing loader registry or a Load failure is surfaced as an
+// INTERNAL/CANCELLED wire error.
 func toLearningStatsModel(ctx context.Context, res *usecase.LearningStatsResult) (*model.LearningStats, error) {
 	loaders, gqlErr := loadersOrInternal(ctx)
 	if gqlErr != nil {

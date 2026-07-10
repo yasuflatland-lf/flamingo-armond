@@ -37,10 +37,11 @@ func newStatsSrv(uc usecase.StatsUsecase) *handler.Server {
 	return srv
 }
 
-// ctxWithCardgroupLoader installs an in-memory Cardgroup loader for
-// MyLearningStats resolver tests. A missing cardgroup_id returns
-// loader.ErrNotFound, matching production behaviour. Other Loaders fields stay
-// nil because toLearningStatsModel only reads loaders.Cardgroup.
+// ctxWithCardgroupLoader installs ONLY an in-memory Cardgroup loader for
+// MyLearningStats resolver tests with no struggling cards. A missing
+// cardgroup_id returns loader.ErrNotFound, matching production behaviour.
+// toLearningStatsModel also reads loaders.Card when StrugglingCards is
+// non-empty; use ctxWithCardLoader (below) for those cases.
 func ctxWithCardgroupLoader(base context.Context, cgs map[string]*domain.Cardgroup) context.Context {
 	loaders := &loader.Loaders{
 		Cardgroup: dataloader.NewBatchedLoader(
