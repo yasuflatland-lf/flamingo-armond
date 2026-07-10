@@ -39,7 +39,7 @@ func (f *fakeMasterCGRepo) FindByID(_ context.Context, id string) (*domain.Maste
 	return m, nil
 }
 
-func (f *fakeMasterCGRepo) ListDefaultStarters(_ context.Context) ([]*domain.MasterCardgroup, error) {
+func (f *fakeMasterCGRepo) ListPublishedDefaultStarters(_ context.Context) ([]*domain.MasterCardgroup, error) {
 	f.startersCall++
 	return f.starters, f.startersErr
 }
@@ -554,7 +554,7 @@ func TestSeedForNewUser_ListStartersError_PropagatesChain(t *testing.T) {
 	_, err := uc.SeedForNewUser(context.Background(), "starter-err-user")
 	require.Error(t, err)
 	assertInternalChain(t, err, "usecase: master deck: seed for new user")
-	assert.Equal(t, 1, cg.startersCall, "ListDefaultStarters was attempted")
+	assert.Equal(t, 1, cg.startersCall, "ListPublishedDefaultStarters was attempted")
 	assert.Empty(t, user.captured, "no cards persisted when listing starters fails")
 }
 

@@ -276,10 +276,10 @@ func TestMasterCardgroupRepository_Delete_NotFound(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// ListDefaultStarters filter + ordering
+// ListPublishedDefaultStarters filter + ordering
 // ---------------------------------------------------------------------------
 
-func TestMasterCardgroupRepository_ListDefaultStarters_FilterAndOrder(t *testing.T) {
+func TestMasterCardgroupRepository_ListPublishedDefaultStarters_FilterAndOrder(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repo := repository.NewMasterCardgroupRepository(testDB.GORM)
@@ -310,7 +310,7 @@ func TestMasterCardgroupRepository_ListDefaultStarters_FilterAndOrder(t *testing
 	mD.IsDefaultStarter = true
 	require.NoError(t, repo.Create(ctx, mD))
 
-	all, err := repo.ListDefaultStarters(ctx)
+	all, err := repo.ListPublishedDefaultStarters(ctx)
 	require.NoError(t, err)
 
 	// Filter down to only the rows we created in this test.

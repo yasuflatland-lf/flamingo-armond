@@ -157,7 +157,7 @@ func (panicMasterCardgroupRepo) Delete(_ context.Context, _ string) error {
 	panic("not used in this test")
 }
 
-func (panicMasterCardgroupRepo) ListDefaultStarters(_ context.Context) ([]*domain.MasterCardgroup, error) {
+func (panicMasterCardgroupRepo) ListPublishedDefaultStarters(_ context.Context) ([]*domain.MasterCardgroup, error) {
 	panic("not used in this test")
 }
 

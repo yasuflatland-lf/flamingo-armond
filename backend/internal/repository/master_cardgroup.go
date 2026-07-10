@@ -79,7 +79,7 @@ type MasterCardgroupRepository interface {
 	Create(ctx context.Context, m *domain.MasterCardgroup) error
 	Update(ctx context.Context, id string, patch MasterCardgroupUpdate) (*domain.MasterCardgroup, error)
 	Delete(ctx context.Context, id string) error
-	ListDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error)
+	ListPublishedDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error)
 	// FindPublishedPage returns a window of PUBLISHED master cardgroups ordered
 	// by (orderBy, id), each bundled with its card count, plus the search-aware
 	// total of all matching PUBLISHED rows. The published filter is enforced in
@@ -249,10 +249,10 @@ func (r *masterCardgroupRepo) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// ListDefaultStarters returns all published master cardgroups flagged as
+// ListPublishedDefaultStarters returns all published master cardgroups flagged as
 // default starters, ordered by (sort_order, id) so the starter set is
 // deterministic. Returns an empty slice when none are found.
-func (r *masterCardgroupRepo) ListDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error) {
+func (r *masterCardgroupRepo) ListPublishedDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error) {
 	var rows []gormMasterCardgroup
 	if err := r.db.WithContext(ctx).
 		Where("status = ? AND is_default_starter", string(domain.MasterStatusPublished)).
