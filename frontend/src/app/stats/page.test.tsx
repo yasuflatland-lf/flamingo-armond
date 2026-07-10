@@ -41,6 +41,7 @@ import { gqlFetch } from "@/lib/apollo/server";
 function makeStatsData() {
   return {
     myLearningStats: {
+      ownsAnyDeck: true,
       mastery: { inProgress: 1, learned: 2, mature: 3, totalStudied: 6 },
       decks: [],
       performance: {

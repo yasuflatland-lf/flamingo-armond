@@ -446,6 +446,9 @@
     "emptyNotStudied": "まだ表示できる記録がありません",
     "emptyNotStudiedBody": "カードをいくつか学習すると、習得状況の内訳と診断指標がここに表示されます。",
     "emptyStartStudying": "学習を始める",
+    "emptyDeck": "デッキにまだカードがありません",
+    "emptyDeckBody": "デッキを作成しましたが、カードがありません。カードをいくつか追加して学習すると、習得状況と進捗がここに表示されます。",
+    "emptyDeckCta": "カードを追加",
     "diagnosticsHeading": "診断",
     "diagnosticsWindow": "過去365日間",
     "diagnosticsNoActivity": "過去365日間の学習履歴が不足しています。"

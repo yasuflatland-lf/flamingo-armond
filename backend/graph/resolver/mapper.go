@@ -107,6 +107,7 @@ func toLearningStatsModel(ctx context.Context, res *usecase.LearningStatsResult)
 			TotalStudied: res.Mastery.TotalStudied,
 		},
 		Decks:           decks,
+		OwnsAnyDeck:     res.OwnsAnyDeck,
 		Performance:     toPerformanceMetricsModel(res.Performance),
 		StrugglingCards: struggling,
 	}, nil
