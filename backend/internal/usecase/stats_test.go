@@ -59,8 +59,6 @@ func (f *fakeStatsSwipeRepo) ListByUserSince(_ context.Context, userID string, s
 	return f.swipes, nil
 }
 
-func fixedStatsClock(t time.Time) func() time.Time { return func() time.Time { return t } }
-
 func authedStatsCtx(sub string) context.Context {
 	return auth.ContextWithUser(context.Background(), &auth.AuthUser{Sub: sub})
 }
@@ -98,7 +96,7 @@ func TestStatsUsecase_MyLearningStats_BucketsGlobalAndPerDeck(t *testing.T) {
 		},
 		totals: map[string]int{"cg1": 5, "cg2": 3, "cg3": 2},
 	}
-	uc := NewStats(repo, &fakeStatsSwipeRepo{}, time.Now)
+	uc := NewStats(repo, &fakeStatsSwipeRepo{}, nil)
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.NoError(t, err)
@@ -139,7 +137,7 @@ func TestStatsUsecase_MyLearningStats_BucketsGlobalAndPerDeck(t *testing.T) {
 func TestStatsUsecase_MyLearningStats_EmptyHistory(t *testing.T) {
 	t.Parallel()
 	repo := &fakeStatsFSRSRepo{states: nil, totals: map[string]int{}}
-	uc := NewStats(repo, &fakeStatsSwipeRepo{}, time.Now)
+	uc := NewStats(repo, &fakeStatsSwipeRepo{}, nil)
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.NoError(t, err)
@@ -149,7 +147,7 @@ func TestStatsUsecase_MyLearningStats_EmptyHistory(t *testing.T) {
 
 func TestStatsUsecase_MyLearningStats_Unauthenticated(t *testing.T) {
 	t.Parallel()
-	uc := NewStats(&fakeStatsFSRSRepo{}, &fakeStatsSwipeRepo{}, time.Now)
+	uc := NewStats(&fakeStatsFSRSRepo{}, &fakeStatsSwipeRepo{}, nil)
 
 	res, err := uc.MyLearningStats(context.Background())
 	require.Error(t, err)
@@ -160,7 +158,7 @@ func TestStatsUsecase_MyLearningStats_Unauthenticated(t *testing.T) {
 
 func TestStatsUsecase_MyLearningStats_EmptySubUnauthenticated(t *testing.T) {
 	t.Parallel()
-	uc := NewStats(&fakeStatsFSRSRepo{}, &fakeStatsSwipeRepo{}, time.Now)
+	uc := NewStats(&fakeStatsFSRSRepo{}, &fakeStatsSwipeRepo{}, nil)
 
 	res, err := uc.MyLearningStats(authedStatsCtx(""))
 	require.Error(t, err)
@@ -171,7 +169,7 @@ func TestStatsUsecase_MyLearningStats_EmptySubUnauthenticated(t *testing.T) {
 func TestStatsUsecase_MyLearningStats_ListStatesError(t *testing.T) {
 	t.Parallel()
 	sentinel := eris.New("boom")
-	uc := NewStats(&fakeStatsFSRSRepo{statesErr: sentinel}, &fakeStatsSwipeRepo{}, time.Now)
+	uc := NewStats(&fakeStatsFSRSRepo{statesErr: sentinel}, &fakeStatsSwipeRepo{}, nil)
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.Error(t, err)
@@ -183,7 +181,7 @@ func TestStatsUsecase_MyLearningStats_ListStatesError(t *testing.T) {
 func TestStatsUsecase_MyLearningStats_CountError(t *testing.T) {
 	t.Parallel()
 	sentinel := eris.New("boom")
-	uc := NewStats(&fakeStatsFSRSRepo{totalsErr: sentinel}, &fakeStatsSwipeRepo{}, time.Now)
+	uc := NewStats(&fakeStatsFSRSRepo{totalsErr: sentinel}, &fakeStatsSwipeRepo{}, nil)
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.Error(t, err)
@@ -236,7 +234,7 @@ func TestStatsUsecase_MyLearningStats_WindowsSwipesByStatsWindowDays(t *testing.
 	t.Parallel()
 	fixedNow := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
 	swipeRepo := &fakeStatsSwipeRepo{}
-	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, swipeRepo, fixedStatsClock(fixedNow))
+	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, swipeRepo, fixedClock{now: fixedNow})
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.NoError(t, err)
@@ -259,7 +257,7 @@ func TestStatsUsecase_MyLearningStats_PerformanceReflectsComputeMetrics(t *testi
 		{ID: "s2", UserID: "user-1", CardID: "c2", CardgroupID: "cg1", Rating: domain.RatingAgain, ReviewedAt: fixedNow.AddDate(0, 0, -1), StateAfter: state},
 	}
 	swipeRepo := &fakeStatsSwipeRepo{swipes: swipes}
-	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, swipeRepo, fixedStatsClock(fixedNow))
+	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, swipeRepo, fixedClock{now: fixedNow})
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.NoError(t, err)
@@ -282,7 +280,7 @@ func TestStatsUsecase_MyLearningStats_StrugglingCardsFromFSRSRows(t *testing.T) 
 		},
 		totals: map[string]int{},
 	}
-	uc := NewStats(repo, &fakeStatsSwipeRepo{}, fixedStatsClock(fixedNow))
+	uc := NewStats(repo, &fakeStatsSwipeRepo{}, fixedClock{now: fixedNow})
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.NoError(t, err)
@@ -295,7 +293,7 @@ func TestStatsUsecase_MyLearningStats_StrugglingCardsFromFSRSRows(t *testing.T) 
 func TestStatsUsecase_MyLearningStats_ListSwipesError(t *testing.T) {
 	t.Parallel()
 	sentinel := eris.New("boom")
-	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, &fakeStatsSwipeRepo{err: sentinel}, time.Now)
+	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, &fakeStatsSwipeRepo{err: sentinel}, nil)
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.Error(t, err)

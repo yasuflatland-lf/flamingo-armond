@@ -45,17 +45,18 @@ type statsSwipeRepo interface {
 type statsUsecase struct {
 	fsrsRepo  statsFSRSRepo
 	swipeRepo statsSwipeRepo
-	now       func() time.Time
+	clock     Clock
 }
 
 // NewStats wires the stats usecase from its narrow FSRS + swipe-record
-// repository dependencies and an injectable clock (pass time.Now in production,
-// a fixed clock in tests so the window/now are deterministic).
-func NewStats(fsrsRepo statsFSRSRepo, swipeRepo statsSwipeRepo, now func() time.Time) StatsUsecase {
-	if now == nil {
-		now = time.Now
+// repository dependencies and an injectable Clock (nil defaults to
+// systemClock{} in production; tests inject a fixed Clock so the window/now
+// are deterministic). Clock is the same interface NewLearnUsecase uses.
+func NewStats(fsrsRepo statsFSRSRepo, swipeRepo statsSwipeRepo, clock Clock) StatsUsecase {
+	if clock == nil {
+		clock = systemClock{}
 	}
-	return &statsUsecase{fsrsRepo: fsrsRepo, swipeRepo: swipeRepo, now: now}
+	return &statsUsecase{fsrsRepo: fsrsRepo, swipeRepo: swipeRepo, clock: clock}
 }
 
 // LearningStatsResult is the usecase-layer result VO. It carries cardgroup ids
@@ -160,7 +161,7 @@ func (u *statsUsecase) MyLearningStats(ctx context.Context) (*LearningStatsResul
 	// Diagnostic half: a performance snapshot over the trailing statsWindowDays
 	// calendar window (so studyStreak reflects real days, not a swipe count) plus
 	// the struggling-card ranking derived from the FSRS rows already loaded above.
-	now := u.now()
+	now := u.clock.Now()
 	swipes, err := u.swipeRepo.ListByUserSince(ctx, caller.Sub, now.AddDate(0, 0, -statsWindowDays))
 	if err != nil {
 		return nil, eris.Wrap(err, "usecase: stats: list swipes since")
