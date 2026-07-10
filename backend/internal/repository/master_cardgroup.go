@@ -106,13 +106,13 @@ type MasterCardgroupRepository interface {
 	// id, or ErrNotFound. Draft rows return ErrNotFound — they are not part of
 	// the public catalog. Used by the usecase to hydrate a pagination cursor.
 	FindPublishedByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
-	// FindAdminPage returns a window of master cardgroups of ANY status (draft
+	// FindPageAnyStatus returns a window of master cardgroups of ANY status (draft
 	// or published), each bundled with its card count, plus the search-aware
 	// total of all matching rows regardless of status. Unlike FindPublishedPage
 	// it does not filter by status, so admin users see draft decks. All other
 	// pagination, ordering, search, and totalCount semantics are identical to
 	// FindPublishedPage.
-	FindAdminPage(
+	FindPageAnyStatus(
 		ctx context.Context,
 		after, before *MasterCatalogCursor,
 		first, last int,

@@ -10,7 +10,7 @@ import (
 )
 
 // gormMasterCatalogRow is the flat scan target used by findCatalogPage (and
-// therefore by both FindPublishedPage and FindAdminPage). It holds
+// therefore by both FindPublishedPage and FindPageAnyStatus). It holds
 // every master_cardgroups column as a flat field plus the derived card_count
 // produced by the correlated COUNT. Embedding gormMasterCardgroup is
 // intentionally avoided: gormMasterCardgroup carries a TableName() method that
@@ -92,7 +92,7 @@ func masterCatalogCursorWhere(orderBy MasterCatalogOrderBy, dir SortOrder, c *Ma
 
 // masterCatalogCursorFieldValue returns the cursor value for the active orderBy
 // field. The usecase layer hydrates the relevant column before calling
-// FindPublishedPage or FindAdminPage, so a missing column is a caller bug.
+// FindPublishedPage or FindPageAnyStatus, so a missing column is a caller bug.
 func masterCatalogCursorFieldValue(orderBy MasterCatalogOrderBy, c *MasterCatalogCursor) (any, error) {
 	switch orderBy {
 	case MasterCatalogOrderBySortOrder:
@@ -113,7 +113,7 @@ func masterCatalogCursorFieldValue(orderBy MasterCatalogOrderBy, c *MasterCatalo
 
 // findCatalogPage is the shared cursor-paginated catalog engine. publishedOnly
 // adds the status filter; everything else is identical for the published and
-// admin lists. FindPublishedPage and FindAdminPage are thin wrappers over it
+// admin lists. FindPublishedPage and FindPageAnyStatus are thin wrappers over it
 // (mirrors card_pagination.go's FindPageByCardgroup -> FindPageByCardgroupForUser).
 func (r *masterCardgroupRepo) findCatalogPage(
 	ctx context.Context,
@@ -207,9 +207,9 @@ func (r *masterCardgroupRepo) FindPublishedPage(
 	return r.findCatalogPage(ctx, after, before, first, last, orderBy, dir, search, true)
 }
 
-// FindAdminPage returns the cursor-paginated admin catalog list (drafts
+// FindPageAnyStatus returns the cursor-paginated admin catalog list (drafts
 // included). Identical to FindPublishedPage but without the status filter.
-func (r *masterCardgroupRepo) FindAdminPage(
+func (r *masterCardgroupRepo) FindPageAnyStatus(
 	ctx context.Context,
 	after, before *MasterCatalogCursor,
 	first, last int,

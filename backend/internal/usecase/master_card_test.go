@@ -176,7 +176,7 @@ func (panicMasterCardgroupRepo) FindPublishedByID(_ context.Context, _ string) (
 	panic("not used in this test")
 }
 
-func (panicMasterCardgroupRepo) FindAdminPage(
+func (panicMasterCardgroupRepo) FindPageAnyStatus(
 	_ context.Context, _, _ *repository.MasterCatalogCursor, _, _ int,
 	_ repository.MasterCatalogOrderBy, _ repository.SortOrder, _ *string,
 ) ([]*repository.MasterCatalogItem, int64, error) {
