@@ -20,10 +20,24 @@ describe("StatTile", () => {
   });
 
   it("renders no caption element when caption is omitted", () => {
-    render(<StatTile label="Due" value="42" />);
+    const { container } = render(<StatTile label="Due" value="42" />);
     expect(screen.queryByText("last 30 days")).toBeNull();
-    // Only the label and value paragraphs exist; no third muted caption line.
-    const muted = document.querySelectorAll("p.text-muted-foreground");
-    expect(muted.length).toBe(0);
+    // Behaviour, not markup shape: only the value paragraph exists; the caption
+    // <p> is not emitted (label is a <span>, so paragraph count === 1).
+    expect(container.querySelectorAll("p").length).toBe(1);
+  });
+
+  it("marks the value with tabular-nums so columns of tiles align", () => {
+    render(<StatTile label="Reviews" value="1,430" />);
+    expect(screen.getByText("1,430").className).toContain("tabular-nums");
+  });
+
+  it("forwards the muted icon sizing classes to the icon", () => {
+    const Star = (props: { className?: string }) => <svg data-testid="ico" {...props} />;
+    render(<StatTile label="Streak" value="12" icon={Star} />);
+    const cls = screen.getByTestId("ico").getAttribute("class") ?? "";
+    expect(cls).toContain("h-4");
+    expect(cls).toContain("w-4");
+    expect(cls).toContain("text-muted-foreground");
   });
 });

@@ -8,17 +8,23 @@ export type ProgressMeterProps = {
 };
 
 /**
- * Presentation-only horizontal progress meter used by the learning-stats
- * per-deck acquisition rows. A coral fill (`bg-brand-primary`) advances over a
- * muted track (`bg-muted`); the width is derived once from `value / max` and
- * clamped to `[0, 100]` so a zero or negative `max` renders an empty bar rather
- * than dividing by zero or emitting `NaN`. The outer track carries the
- * `progressbar` a11y roles (`aria-label` / `aria-valuenow` / `aria-valuemin` /
- * `aria-valuemax`). It is a pure stateless component (no hooks), so it
- * intentionally omits `"use client"`.
+ * Presentation-only horizontal progress meter for the planned learning-stats
+ * per-deck acquisition display (see `schema/stats.graphql`'s `DeckMastery`); it
+ * has no frontend consumer yet. A coral fill (`bg-brand-primary`) advances over
+ * a muted track (`bg-muted`). The rendered percentage is derived once from
+ * `value / max` and defensively clamped to `[0, 100]`: a non-positive `max`
+ * (division by zero) and a non-finite or negative `value` all collapse to an
+ * empty bar, so `aria-valuenow` and the fill width are always a valid
+ * percentage — never `NaN`, which the CSSOM would silently drop and leave the
+ * block-level fill at full container width (a misleading "100%" bar). The outer
+ * track carries the `progressbar` a11y roles (`aria-label` / `aria-valuenow` /
+ * `aria-valuemin` / `aria-valuemax`); the optional `className` merges onto that
+ * track so callers can adjust height or spacing. It is a pure stateless
+ * component (no hooks), so it intentionally omits `"use client"`.
  */
 export function ProgressMeter({ value, max, label, className }: ProgressMeterProps) {
-  const pct = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
+  const safeValue = Number.isFinite(value) ? value : 0;
+  const pct = max > 0 ? Math.min(100, Math.max(0, (safeValue / max) * 100)) : 0;
 
   return (
     <div
