@@ -4,6 +4,10 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { StatTile } from "./stat-tile";
 
+function Star(props: { className?: string }) {
+  return <svg data-testid="ico" {...props} />;
+}
+
 describe("StatTile", () => {
   it("renders the label, the value string verbatim, and the caption when provided", () => {
     render(<StatTile label="Retention" value="87.5%" caption="last 30 days" />);
@@ -13,7 +17,6 @@ describe("StatTile", () => {
   });
 
   it("renders an svg when an icon component is passed", () => {
-    const Star = (props: { className?: string }) => <svg data-testid="ico" {...props} />;
     const { container } = render(<StatTile label="Streak" value="12" icon={Star} />);
     expect(container.querySelector("svg")).not.toBeNull();
     expect(screen.getByTestId("ico")).toBeDefined();
@@ -33,7 +36,6 @@ describe("StatTile", () => {
   });
 
   it("forwards the muted icon sizing classes to the icon", () => {
-    const Star = (props: { className?: string }) => <svg data-testid="ico" {...props} />;
     render(<StatTile label="Streak" value="12" icon={Star} />);
     const cls = screen.getByTestId("ico").getAttribute("class") ?? "";
     expect(cls).toContain("h-4");
