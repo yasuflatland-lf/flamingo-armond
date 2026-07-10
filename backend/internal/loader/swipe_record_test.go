@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -31,6 +32,10 @@ func (r *countingSwipeRecordRepo) FindByUserAndCardgroup(context.Context, string
 
 func (r *countingSwipeRecordRepo) ListRecentByUser(context.Context, string, int) ([]*domain.SwipeRecord, error) {
 	panic("countingSwipeRecordRepo.ListRecentByUser not configured")
+}
+
+func (r *countingSwipeRecordRepo) ListByUserSince(context.Context, string, time.Time) ([]*domain.SwipeRecord, error) {
+	panic("countingSwipeRecordRepo.ListByUserSince not configured")
 }
 
 func (r *countingSwipeRecordRepo) CreateTx(context.Context, *gorm.DB, *domain.SwipeRecord) error {

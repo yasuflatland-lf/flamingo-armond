@@ -12,6 +12,7 @@ import (
 	"backend/graph/generated"
 	"backend/graph/resolver"
 	"backend/internal/domain"
+	"backend/internal/domain/service"
 	"backend/internal/gqlerr"
 	"backend/internal/loader"
 	"backend/internal/usecase"
@@ -233,5 +234,175 @@ func TestMyLearningStats_Unauthenticated(t *testing.T) {
 	code := errCode(t, resp)
 	if code != string(gqlerr.CodeUnauthenticated) {
 		t.Fatalf("expected UNAUTHENTICATED, got %q", code)
+	}
+}
+
+// ctxWithCardLoader installs an in-memory Card loader (in addition to a
+// Cardgroup loader) for the diagnostic-half myLearningStats tests. A missing
+// card_id returns loader.ErrNotFound, matching production behaviour.
+func ctxWithCardLoader(base context.Context, cards map[string]*domain.Card) context.Context {
+	loaders := &loader.Loaders{
+		Card: dataloader.NewBatchedLoader(
+			func(_ context.Context, keys []string) []*dataloader.Result[*domain.Card] {
+				out := make([]*dataloader.Result[*domain.Card], len(keys))
+				for i, k := range keys {
+					if card, ok := cards[k]; ok {
+						out[i] = &dataloader.Result[*domain.Card]{Data: card}
+					} else {
+						out[i] = &dataloader.Result[*domain.Card]{Error: loader.ErrNotFound}
+					}
+				}
+				return out
+			},
+		),
+	}
+	return loader.WithContext(base, loaders)
+}
+
+// ctxWithCardLoaderError installs a Card loader whose batch function fails every
+// key with loadErr.
+func ctxWithCardLoaderError(base context.Context, loadErr error) context.Context {
+	loaders := &loader.Loaders{
+		Card: dataloader.NewBatchedLoader(
+			func(_ context.Context, keys []string) []*dataloader.Result[*domain.Card] {
+				out := make([]*dataloader.Result[*domain.Card], len(keys))
+				for i := range keys {
+					out[i] = &dataloader.Result[*domain.Card]{Error: loadErr}
+				}
+				return out
+			},
+		),
+	}
+	return loader.WithContext(base, loaders)
+}
+
+const myLearningStatsDiagnosticQuery = `{"query":"{ myLearningStats { mastery { totalStudied } performance { retentionRate successRate lapseRate studyStreak reviewCount avgDifficulty } strugglingCards { card { id front } lapses stability } } }"}`
+
+// TestMyLearningStats_PerformanceAndStrugglingCards verifies the diagnostic half
+// of the response: the performance snapshot maps every metric field, and the
+// struggling-card list preserves the usecase order while hydrating each Card
+// from its id via the in-memory Card DataLoader.
+func TestMyLearningStats_PerformanceAndStrugglingCards(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockStatsUsecase{
+		result: &usecase.LearningStatsResult{
+			Mastery: usecase.MasteryBreakdown{TotalStudied: 3},
+			Performance: service.PerformanceMetrics{
+				SuccessRate:   0.8,
+				AvgDifficulty: 0.4,
+				RetentionRate: 0.9,
+				StudyStreak:   5,
+				LapseRate:     0.1,
+				ReviewCount:   42,
+			},
+			StrugglingCards: []usecase.StrugglingCardResult{
+				{CardID: "card-1", Lapses: 5, Stability: 2.5},
+				{CardID: "card-2", Lapses: 3, Stability: 8},
+			},
+		},
+	}
+	srv := newStatsSrv(mock)
+
+	cards := map[string]*domain.Card{
+		"card-1": {ID: "card-1", Front: "alpha", CardgroupID: domain.CardgroupID("cg-1")},
+		"card-2": {ID: "card-2", Front: "beta", CardgroupID: domain.CardgroupID("cg-1")},
+	}
+	ctx := ctxWithCardLoader(authedCtx("u-1"), cards)
+	resp := gqlRequest(t, srv, ctx, myLearningStatsDiagnosticQuery)
+
+	if errs, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	data, _ := resp["data"].(map[string]any)
+	stats, _ := data["myLearningStats"].(map[string]any)
+	if stats == nil {
+		t.Fatalf("expected data.myLearningStats, got nil; response: %v", resp)
+	}
+
+	perf, _ := stats["performance"].(map[string]any)
+	if perf == nil {
+		t.Fatalf("expected performance, got nil; response: %v", resp)
+	}
+	if perf["retentionRate"] != float64(0.9) || perf["successRate"] != float64(0.8) ||
+		perf["lapseRate"] != float64(0.1) || perf["avgDifficulty"] != float64(0.4) ||
+		perf["studyStreak"] != float64(5) || perf["reviewCount"] != float64(42) {
+		t.Fatalf("performance metrics mismatch: %v", perf)
+	}
+
+	struggling, _ := stats["strugglingCards"].([]any)
+	if len(struggling) != 2 {
+		t.Fatalf("expected 2 struggling cards, got %d; response: %v", len(struggling), resp)
+	}
+
+	sc0, _ := struggling[0].(map[string]any)
+	if sc0["lapses"] != float64(5) || sc0["stability"] != float64(2.5) {
+		t.Fatalf("struggling card 0 mismatch: %v", sc0)
+	}
+	card0, _ := sc0["card"].(map[string]any)
+	if card0 == nil || card0["id"] != "card-1" || card0["front"] != "alpha" {
+		t.Fatalf("expected struggling card 0 hydrated {id: card-1, front: alpha}, got %v", card0)
+	}
+
+	sc1, _ := struggling[1].(map[string]any)
+	if sc1["lapses"] != float64(3) || sc1["stability"] != float64(8) {
+		t.Fatalf("struggling card 1 mismatch: %v", sc1)
+	}
+	card1, _ := sc1["card"].(map[string]any)
+	if card1 == nil || card1["id"] != "card-2" || card1["front"] != "beta" {
+		t.Fatalf("expected struggling card 1 hydrated {id: card-2, front: beta}, got %v", card1)
+	}
+}
+
+// TestMyLearningStats_NoLapses_ReturnsEmptyStrugglingCards verifies that a
+// learner with no struggling cards serializes strugglingCards as an empty array
+// (not null), with no Card DataLoader invoked.
+func TestMyLearningStats_NoLapses_ReturnsEmptyStrugglingCards(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockStatsUsecase{
+		result: &usecase.LearningStatsResult{
+			Mastery:         usecase.MasteryBreakdown{TotalStudied: 2},
+			StrugglingCards: []usecase.StrugglingCardResult{},
+		},
+	}
+	srv := newStatsSrv(mock)
+
+	ctx := ctxWithCardLoader(authedCtx("u-1"), map[string]*domain.Card{})
+	resp := gqlRequest(t, srv, ctx, myLearningStatsDiagnosticQuery)
+
+	if errs, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	data, _ := resp["data"].(map[string]any)
+	stats, _ := data["myLearningStats"].(map[string]any)
+	struggling, ok := stats["strugglingCards"].([]any)
+	if !ok {
+		t.Fatalf("expected strugglingCards array, got %v", stats["strugglingCards"])
+	}
+	if len(struggling) != 0 {
+		t.Fatalf("expected empty strugglingCards, got %d entries", len(struggling))
+	}
+}
+
+// TestMyLearningStats_StrugglingCardLoadError_ReturnsInternal drives the
+// struggling-card Card hydration through a Card DataLoader that fails with a
+// generic error; classifyLoaderErr must surface INTERNAL.
+func TestMyLearningStats_StrugglingCardLoadError_ReturnsInternal(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockStatsUsecase{
+		result: &usecase.LearningStatsResult{
+			StrugglingCards: []usecase.StrugglingCardResult{{CardID: "card-1", Lapses: 2, Stability: 1}},
+		},
+	}
+	srv := newStatsSrv(mock)
+
+	ctx := ctxWithCardLoaderError(authedCtx("u-1"), errors.New("db down"))
+	resp := gqlRequest(t, srv, ctx, myLearningStatsDiagnosticQuery)
+
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeInternal) {
+		t.Fatalf("expected INTERNAL for a generic Card loader error, got %q", code)
 	}
 }

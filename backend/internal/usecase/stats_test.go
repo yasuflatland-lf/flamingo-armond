@@ -3,7 +3,9 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/rotisserie/eris"
 	"github.com/stretchr/testify/assert"
@@ -11,6 +13,7 @@ import (
 
 	"backend/internal/auth"
 	"backend/internal/domain"
+	"backend/internal/domain/service"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
 )
@@ -36,8 +39,42 @@ func (f *fakeStatsFSRSRepo) CountCardsByCardgroupForUser(_ context.Context, _ st
 	return f.totals, nil
 }
 
+// fakeStatsSwipeRepo captures the ListByUserSince arguments so tests can pin the
+// windowing (since) and tenant scoping, and returns a canned swipe slice.
+type fakeStatsSwipeRepo struct {
+	swipes    []*domain.SwipeRecord
+	err       error
+	called    bool
+	userIDArg string
+	sinceArg  time.Time
+}
+
+func (f *fakeStatsSwipeRepo) ListByUserSince(_ context.Context, userID string, since time.Time) ([]*domain.SwipeRecord, error) {
+	f.called = true
+	f.userIDArg = userID
+	f.sinceArg = since
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.swipes, nil
+}
+
+func fixedStatsClock(t time.Time) func() time.Time { return func() time.Time { return t } }
+
 func authedStatsCtx(sub string) context.Context {
 	return auth.ContextWithUser(context.Background(), &auth.AuthUser{Sub: sub})
+}
+
+func strugglingRow(card string, lapses int, stability float64) repository.FSRSStatRow {
+	return repository.FSRSStatRow{CardID: card, CardgroupID: "cg1", Phase: domain.FSRSPhaseReview, Stability: stability, Lapses: lapses}
+}
+
+func strugglingCardIDs(cards []StrugglingCardResult) []string {
+	out := make([]string, 0, len(cards))
+	for _, c := range cards {
+		out = append(out, c.CardID)
+	}
+	return out
 }
 
 func reviewRow(card, cg string, stability float64) repository.FSRSStatRow {
@@ -61,7 +98,7 @@ func TestStatsUsecase_MyLearningStats_BucketsGlobalAndPerDeck(t *testing.T) {
 		},
 		totals: map[string]int{"cg1": 5, "cg2": 3, "cg3": 2},
 	}
-	uc := NewStats(repo)
+	uc := NewStats(repo, &fakeStatsSwipeRepo{}, time.Now)
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.NoError(t, err)
@@ -102,7 +139,7 @@ func TestStatsUsecase_MyLearningStats_BucketsGlobalAndPerDeck(t *testing.T) {
 func TestStatsUsecase_MyLearningStats_EmptyHistory(t *testing.T) {
 	t.Parallel()
 	repo := &fakeStatsFSRSRepo{states: nil, totals: map[string]int{}}
-	uc := NewStats(repo)
+	uc := NewStats(repo, &fakeStatsSwipeRepo{}, time.Now)
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.NoError(t, err)
@@ -112,7 +149,7 @@ func TestStatsUsecase_MyLearningStats_EmptyHistory(t *testing.T) {
 
 func TestStatsUsecase_MyLearningStats_Unauthenticated(t *testing.T) {
 	t.Parallel()
-	uc := NewStats(&fakeStatsFSRSRepo{})
+	uc := NewStats(&fakeStatsFSRSRepo{}, &fakeStatsSwipeRepo{}, time.Now)
 
 	res, err := uc.MyLearningStats(context.Background())
 	require.Error(t, err)
@@ -123,7 +160,7 @@ func TestStatsUsecase_MyLearningStats_Unauthenticated(t *testing.T) {
 
 func TestStatsUsecase_MyLearningStats_EmptySubUnauthenticated(t *testing.T) {
 	t.Parallel()
-	uc := NewStats(&fakeStatsFSRSRepo{})
+	uc := NewStats(&fakeStatsFSRSRepo{}, &fakeStatsSwipeRepo{}, time.Now)
 
 	res, err := uc.MyLearningStats(authedStatsCtx(""))
 	require.Error(t, err)
@@ -134,7 +171,7 @@ func TestStatsUsecase_MyLearningStats_EmptySubUnauthenticated(t *testing.T) {
 func TestStatsUsecase_MyLearningStats_ListStatesError(t *testing.T) {
 	t.Parallel()
 	sentinel := eris.New("boom")
-	uc := NewStats(&fakeStatsFSRSRepo{statesErr: sentinel})
+	uc := NewStats(&fakeStatsFSRSRepo{statesErr: sentinel}, &fakeStatsSwipeRepo{}, time.Now)
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.Error(t, err)
@@ -146,11 +183,123 @@ func TestStatsUsecase_MyLearningStats_ListStatesError(t *testing.T) {
 func TestStatsUsecase_MyLearningStats_CountError(t *testing.T) {
 	t.Parallel()
 	sentinel := eris.New("boom")
-	uc := NewStats(&fakeStatsFSRSRepo{totalsErr: sentinel})
+	uc := NewStats(&fakeStatsFSRSRepo{totalsErr: sentinel}, &fakeStatsSwipeRepo{}, time.Now)
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.Error(t, err)
 	assert.Nil(t, res)
 	assert.True(t, errors.Is(err, sentinel))
 	assert.Contains(t, err.Error(), "usecase: stats: count cards by cardgroup")
+}
+
+func TestTopStruggling_FiltersExcludesZeroAndOrders(t *testing.T) {
+	t.Parallel()
+	states := []repository.FSRSStatRow{
+		strugglingRow("no-lapse", 0, 1), // filtered out (Lapses == 0)
+		strugglingRow("one-lapse", 1, 50),
+		strugglingRow("five-a", 5, 8),
+		strugglingRow("five-b", 5, 3), // same lapses, lower stability -> ranks before five-a
+	}
+
+	got := topStruggling(states, 10)
+
+	require.Len(t, got, 3, "the Lapses==0 row is excluded")
+	assert.Equal(t, []string{"five-b", "five-a", "one-lapse"}, strugglingCardIDs(got),
+		"ordered by (Lapses desc, Stability asc)")
+	for _, c := range got {
+		assert.GreaterOrEqual(t, c.Lapses, 1)
+	}
+}
+
+func TestTopStruggling_CapsAtLimit(t *testing.T) {
+	t.Parallel()
+	states := make([]repository.FSRSStatRow, 0, 15)
+	for i := 0; i < 15; i++ {
+		states = append(states, strugglingRow(fmt.Sprintf("card-%02d", i), i+1, 1))
+	}
+
+	got := topStruggling(states, strugglingCardsLimit)
+
+	require.Len(t, got, strugglingCardsLimit, "capped at strugglingCardsLimit")
+	assert.Equal(t, 15, got[0].Lapses, "highest lapses first")
+	assert.Equal(t, 6, got[strugglingCardsLimit-1].Lapses, "lowest surviving lapses at the cap boundary")
+}
+
+func TestTopStruggling_EmptyReturnsNonNilSlice(t *testing.T) {
+	t.Parallel()
+	got := topStruggling([]repository.FSRSStatRow{strugglingRow("no-lapse", 0, 1)}, 10)
+	assert.NotNil(t, got, "empty struggling set is a non-nil slice")
+	assert.Empty(t, got)
+}
+
+func TestStatsUsecase_MyLearningStats_WindowsSwipesByStatsWindowDays(t *testing.T) {
+	t.Parallel()
+	fixedNow := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	swipeRepo := &fakeStatsSwipeRepo{}
+	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, swipeRepo, fixedStatsClock(fixedNow))
+
+	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.True(t, swipeRepo.called, "MyLearningStats reads the windowed swipe history")
+	assert.Equal(t, "user-1", swipeRepo.userIDArg, "scoped to the caller")
+	assert.Equal(t, fixedNow.AddDate(0, 0, -365), swipeRepo.sinceArg,
+		"since == now minus statsWindowDays (365) using the injected clock")
+	assert.NotNil(t, res.StrugglingCards, "struggling cards is always a non-nil slice")
+	assert.Empty(t, res.StrugglingCards)
+}
+
+func TestStatsUsecase_MyLearningStats_PerformanceReflectsComputeMetrics(t *testing.T) {
+	t.Parallel()
+	fixedNow := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	state := domain.NewFSRSStateForNewCard(fixedNow)
+	state.Phase = domain.FSRSPhaseReview
+	swipes := []*domain.SwipeRecord{
+		{ID: "s1", UserID: "user-1", CardID: "c1", CardgroupID: "cg1", Rating: domain.RatingEasy, ReviewedAt: fixedNow, StateAfter: state},
+		{ID: "s2", UserID: "user-1", CardID: "c2", CardgroupID: "cg1", Rating: domain.RatingAgain, ReviewedAt: fixedNow.AddDate(0, 0, -1), StateAfter: state},
+	}
+	swipeRepo := &fakeStatsSwipeRepo{swipes: swipes}
+	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, swipeRepo, fixedStatsClock(fixedNow))
+
+	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
+	require.NoError(t, err)
+	require.NotNil(t, res)
+
+	want := service.ComputeMetrics(swipeRecordsByValue(swipes), fixedNow)
+	assert.Equal(t, want, res.Performance,
+		"Performance is ComputeMetrics over the windowed swipes at the injected now")
+}
+
+func TestStatsUsecase_MyLearningStats_StrugglingCardsFromFSRSRows(t *testing.T) {
+	t.Parallel()
+	fixedNow := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	repo := &fakeStatsFSRSRepo{
+		states: []repository.FSRSStatRow{
+			strugglingRow("clean", 0, 20), // excluded (no lapses)
+			strugglingRow("worst", 4, 2),  // most lapses
+			strugglingRow("mid", 2, 15),
+			strugglingRow("mid-fragile", 2, 3), // ties on lapses with "mid"; lower stability ranks first
+		},
+		totals: map[string]int{},
+	}
+	uc := NewStats(repo, &fakeStatsSwipeRepo{}, fixedStatsClock(fixedNow))
+
+	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
+	require.NoError(t, err)
+	require.NotNil(t, res)
+
+	require.Equal(t, []string{"worst", "mid-fragile", "mid"}, strugglingCardIDs(res.StrugglingCards))
+	assert.Equal(t, StrugglingCardResult{CardID: "worst", Lapses: 4, Stability: 2}, res.StrugglingCards[0])
+}
+
+func TestStatsUsecase_MyLearningStats_ListSwipesError(t *testing.T) {
+	t.Parallel()
+	sentinel := eris.New("boom")
+	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, &fakeStatsSwipeRepo{err: sentinel}, time.Now)
+
+	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
+	require.Error(t, err)
+	assert.Nil(t, res)
+	assert.True(t, errors.Is(err, sentinel))
+	assert.Contains(t, err.Error(), "usecase: stats: list swipes since")
 }

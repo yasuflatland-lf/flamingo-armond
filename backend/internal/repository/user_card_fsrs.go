@@ -30,13 +30,15 @@ type gormUserCardFSRS struct {
 func (gormUserCardFSRS) TableName() string { return "user_card_fsrs" }
 
 // FSRSStatRow is a lightweight projection for the stats aggregate: no front
-// text — just CardID (row identity), CardgroupID (per-deck bucketing), and
-// Phase/Stability (the columns ClassifyMastery needs).
+// text — just CardID (row identity), CardgroupID (per-deck bucketing),
+// Phase/Stability (the columns ClassifyMastery needs), and Lapses (the
+// struggling-card ranking key).
 type FSRSStatRow struct {
 	CardID      string
 	CardgroupID string
 	Phase       domain.FSRSPhase
 	Stability   float64
+	Lapses      int
 }
 
 type UserCardFSRSRepository interface {
@@ -88,7 +90,7 @@ func (r *userCardFSRSRepo) ListFSRSStatesByUser(ctx context.Context, userID stri
 	var rows []FSRSStatRow
 	err := r.db.WithContext(ctx).
 		Table("user_card_fsrs AS f").
-		Select("f.card_id AS card_id, c.cardgroup_id AS cardgroup_id, f.state AS phase, f.stability AS stability").
+		Select("f.card_id AS card_id, c.cardgroup_id AS cardgroup_id, f.state AS phase, f.stability AS stability, f.lapses AS lapses").
 		Joins("JOIN cards c ON c.id = f.card_id").
 		Where("f.user_id = ?", userID).
 		Scan(&rows).Error

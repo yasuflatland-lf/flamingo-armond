@@ -81,6 +81,7 @@ deps:
       - auth
       - cursor
       - domain
+      - domain_service
       - gqlerr
       - loader
       - textdic

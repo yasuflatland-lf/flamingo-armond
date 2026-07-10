@@ -183,6 +183,7 @@ func TestUserCardFSRSRepository_ListFSRSStatesByUser_ScopesByViewer(t *testing.T
 	ownerLearned := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), learned.ID, now)
 	ownerLearned.State.Phase = domain.FSRSPhaseReview
 	ownerLearned.State.Stability = 5
+	ownerLearned.State.Lapses = 3
 
 	// Other user studies their own card AND the owner's mature card, with a
 	// distinct stability so a leak would be detectable.
@@ -222,6 +223,7 @@ func TestUserCardFSRSRepository_ListFSRSStatesByUser_ScopesByViewer(t *testing.T
 	gotLearned, ok := byCard[learned.ID]
 	require.True(t, ok)
 	require.Equal(t, cgA, gotLearned.CardgroupID)
+	require.Equal(t, 3, gotLearned.Lapses)
 	require.InDelta(t, 5.0, gotLearned.Stability, 1e-9)
 
 	// The other user sees their own two rows, keyed correctly.
