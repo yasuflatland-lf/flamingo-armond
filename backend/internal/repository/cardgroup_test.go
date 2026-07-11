@@ -387,7 +387,7 @@ func TestCardgroupRepo_FindPageByOwner_EmptyResult(t *testing.T) {
 	ownerID := insertAuthUser(t, ctx)
 	repo := repository.NewCardgroupRepository(testDB.GORM)
 
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 10, 0,
 		repository.CardgroupOrderByCreatedAt, repository.SortAsc, nil,
 	)
@@ -411,7 +411,7 @@ func TestCardgroupRepo_FindPageByOwner_ExactMatch(t *testing.T) {
 	insertNamedCardgroups(t, ctx, ownerID, []string{"Exact Match", "Other Group"})
 
 	search := "Exact Match"
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 10, 0,
 		repository.CardgroupOrderByCreatedAt, repository.SortAsc, &search,
 	)
@@ -435,7 +435,7 @@ func TestCardgroupRepo_FindPageByOwner_PartialMatch(t *testing.T) {
 	insertNamedCardgroups(t, ctx, ownerID, []string{"green apple", "apple pie", "banana"})
 
 	search := "apple"
-	got, err := repo.FindPageByOwner(
+	got, total, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 10, 0,
 		repository.CardgroupOrderByCreatedAt, repository.SortAsc, &search,
 	)
@@ -446,9 +446,16 @@ func TestCardgroupRepo_FindPageByOwner_PartialMatch(t *testing.T) {
 	require.NotContains(t, names, "banana", "banana must not appear in apple search results")
 	require.Len(t, got, 2)
 
-	total, err := repo.CountByOwner(ctx, ownerID, &search)
+	// The folded totalCount must reflect the active search filter (2 of the 3
+	// seeded rows match "apple"), not the unfiltered owner total.
+	require.Equal(t, int64(2), total,
+		"totalCount from FindPageByOwner must honour the search filter, not the unfiltered total")
+
+	unfiltered, err := repo.CountByOwner(ctx, ownerID, nil)
 	require.NoError(t, err)
-	require.Equal(t, int64(2), total)
+	require.Equal(t, int64(3), unfiltered, "sanity: the owner really has 3 cardgroups")
+	require.NotEqual(t, unfiltered, total,
+		"filtered total must differ from the unfiltered total to prove the filter is applied")
 }
 
 // TestCardgroupRepo_FindPageByOwner_LIKEEscape verifies that a percent sign in
@@ -464,7 +471,7 @@ func TestCardgroupRepo_FindPageByOwner_LIKEEscape(t *testing.T) {
 	insertNamedCardgroups(t, ctx, ownerID, []string{"100%", "1000"})
 
 	search := "100%"
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 10, 0,
 		repository.CardgroupOrderByCreatedAt, repository.SortAsc, &search,
 	)
@@ -495,7 +502,7 @@ func TestCardgroupRepo_FindPageByOwner_LIKEUnderscoreEscape(t *testing.T) {
 	insertNamedCardgroups(t, ctx, ownerID, []string{"a_b", "acb"})
 
 	search := "a_b"
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 10, 0,
 		repository.CardgroupOrderByCreatedAt, repository.SortAsc, &search,
 	)
@@ -522,7 +529,7 @@ func TestCardgroupRepo_FindPageByOwner_LIKEBackslashEscape(t *testing.T) {
 
 	// Search for the literal backslash-containing name.
 	search := `back\slash`
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 10, 0,
 		repository.CardgroupOrderByCreatedAt, repository.SortAsc, &search,
 	)
@@ -548,7 +555,7 @@ func TestCardgroupRepo_FindPageByOwner_CrossTenant(t *testing.T) {
 	insertNamedCardgroups(t, ctx, ownerB, []string{"shared name", "only B"})
 
 	// Query scoped to ownerB.
-	gotB, err := repo.FindPageByOwner(
+	gotB, _, err := repo.FindPageByOwner(
 		ctx, ownerB, nil, nil, 20, 0,
 		repository.CardgroupOrderByCreatedAt, repository.SortAsc, nil,
 	)
@@ -556,7 +563,7 @@ func TestCardgroupRepo_FindPageByOwner_CrossTenant(t *testing.T) {
 	idsB := cardgroupIDSetFromSlice(gotB)
 
 	// Fetch ownerA's IDs to assert they do not bleed into ownerB's results.
-	gotA, err := repo.FindPageByOwner(
+	gotA, _, err := repo.FindPageByOwner(
 		ctx, ownerA, nil, nil, 20, 0,
 		repository.CardgroupOrderByCreatedAt, repository.SortAsc, nil,
 	)
@@ -591,7 +598,7 @@ func TestCardgroupRepo_FindPageByOwner_PlusOneFetch(t *testing.T) {
 
 	// Request first=3 (which represents the usecase sending first+1=3 when
 	// the user asked for first=2). The repo must return exactly 3 rows.
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 3, 0,
 		repository.CardgroupOrderByCreatedAt, repository.SortAsc, nil,
 	)
@@ -641,7 +648,7 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_Name_Asc(t *testing.T) {
 		string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {},
 	}
 
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 100, 0,
 		repository.CardgroupOrderByName, repository.SortAsc, nil,
 	)
@@ -666,7 +673,7 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_Name_Desc(t *testing.T) {
 		string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {},
 	}
 
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 100, 0,
 		repository.CardgroupOrderByName, repository.SortDesc, nil,
 	)
@@ -695,7 +702,7 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_UpdatedAt_Desc(t *testing.T) {
 	require.NoError(t, err)
 
 	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 100, 0,
 		repository.CardgroupOrderByUpdatedAt, repository.SortDesc, nil,
 	)
@@ -721,7 +728,7 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_UpdatedAt_Asc(t *testing.T) {
 	require.NoError(t, err)
 
 	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 100, 0,
 		repository.CardgroupOrderByUpdatedAt, repository.SortAsc, nil,
 	)
@@ -745,7 +752,7 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_CreatedAt_Desc(t *testing.T) {
 	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"a", "b", "c"})
 	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
 
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 100, 0,
 		repository.CardgroupOrderByCreatedAt, repository.SortDesc, nil,
 	)
@@ -768,7 +775,7 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_ID_Desc(t *testing.T) {
 	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"a", "b", "c"})
 	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
 
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 100, 0,
 		repository.CardgroupOrderByID, repository.SortDesc, nil,
 	)
@@ -803,7 +810,7 @@ func TestCardgroupRepo_FindPageByOwner_Cursor_AfterByName(t *testing.T) {
 		ID:   string(cgs[1].ID),
 		Name: &bananaName,
 	}
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, cursor, nil, 100, 0,
 		repository.CardgroupOrderByName, repository.SortAsc, nil,
 	)
@@ -833,7 +840,7 @@ func TestCardgroupRepo_FindPageByOwner_Cursor_BackwardByCreatedAt(t *testing.T) 
 		ID:        string(cgs[3].ID),
 		CreatedAt: &cgs[3].CreatedAt,
 	}
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, cursor, 0, 2,
 		repository.CardgroupOrderByCreatedAt, repository.SortAsc, nil,
 	)
@@ -861,7 +868,7 @@ func TestCardgroupRepo_FindPageByOwner_Cursor_AfterByID(t *testing.T) {
 	sort.Strings(sortedIDs)
 
 	cursor := &repository.CardgroupCursor{ID: sortedIDs[0]}
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, cursor, nil, 100, 0,
 		repository.CardgroupOrderByID, repository.SortAsc, nil,
 	)
@@ -886,7 +893,7 @@ func TestCardgroupRepo_FindPageByOwner_Cursor_NameTie_TupleComparison(t *testing
 	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
 
 	// Page 1: first=1 under name ASC — must be one of the two Ties.
-	page1, err := repo.FindPageByOwner(
+	page1, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 1, 0,
 		repository.CardgroupOrderByName, repository.SortAsc, nil,
 	)
@@ -900,7 +907,7 @@ func TestCardgroupRepo_FindPageByOwner_Cursor_NameTie_TupleComparison(t *testing
 	_ = mine1
 
 	// Refetch with a high limit and pick our three deterministic rows.
-	all, err := repo.FindPageByOwner(
+	all, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 100, 0,
 		repository.CardgroupOrderByName, repository.SortAsc, nil,
 	)
@@ -917,7 +924,7 @@ func TestCardgroupRepo_FindPageByOwner_Cursor_NameTie_TupleComparison(t *testing
 	// the second tie reachable; without it, `name > 'Tie'` would skip past it.
 	tieName := mine[0].Name.String()
 	cursor := &repository.CardgroupCursor{ID: string(mine[0].ID), Name: &tieName}
-	pageAfter, err := repo.FindPageByOwner(
+	pageAfter, _, err := repo.FindPageByOwner(
 		ctx, ownerID, cursor, nil, 100, 0,
 		repository.CardgroupOrderByName, repository.SortAsc, nil,
 	)
@@ -978,7 +985,7 @@ func TestCardgroupRepo_FindPageByOwner_EmptySearchTreatedAsNil(t *testing.T) {
 	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}}
 
 	whitespace := "   "
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 100, 0,
 		repository.CardgroupOrderByCreatedAt, repository.SortAsc, &whitespace,
 	)
@@ -999,7 +1006,7 @@ func TestCardgroupRepo_FindPageByOwner_BothFirstAndLastZero(t *testing.T) {
 
 	insertNamedCardgroups(t, ctx, ownerID, []string{"x", "y"})
 
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, 0, 0,
 		repository.CardgroupOrderByCreatedAt, repository.SortAsc, nil,
 	)
@@ -1019,7 +1026,7 @@ func TestCardgroupRepo_FindPageByOwner_NegativeFirstClampedToZero(t *testing.T) 
 
 	insertNamedCardgroups(t, ctx, ownerID, []string{"x"})
 
-	got, err := repo.FindPageByOwner(
+	got, _, err := repo.FindPageByOwner(
 		ctx, ownerID, nil, nil, -10, 0,
 		repository.CardgroupOrderByCreatedAt, repository.SortAsc, nil,
 	)

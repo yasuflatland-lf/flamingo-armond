@@ -27,7 +27,7 @@ type CardgroupRepository interface {
 		orderBy repository.CardgroupOrderBy,
 		dir repository.SortOrder,
 		search *string,
-	) ([]*domain.Cardgroup, error)
+	) ([]*domain.Cardgroup, int64, error)
 	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
 	Create(ctx context.Context, cg *domain.Cardgroup) error
 	Update(ctx context.Context, id string, patch repository.CardgroupUpdate) (*domain.Cardgroup, error)
@@ -333,22 +333,20 @@ func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 		return nil, err
 	}
 
-	// totalCount comes from a separate COUNT(*) scoped to the caller and the
-	// optional search predicate. Computed before the page fetch so callers
-	// asking only for totalCount still see a real value.
-	total, err := u.repo.CountByOwner(ctx, user.Sub, in.Search)
-	if err != nil {
-		return nil, eris.Wrap(err, "usecase: cardgroup: count by owner")
-	}
-
+	// totalCount comes from FindPageByOwner's COUNT(*) over the same filtered
+	// base query, captured inside the fetch closure so it honours the active
+	// search rather than an unfiltered owner total. assemblePage always invokes
+	// fetch (even for a totalCount-only request), so total is set on every path.
+	var total int64
 	cgs, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
 		func(wantFirst, wantLast int) ([]*domain.Cardgroup, error) {
-			rows, e := u.repo.FindPageByOwner(
+			rows, t, e := u.repo.FindPageByOwner(
 				ctx, user.Sub, after, before, wantFirst, wantLast, orderBy, dir, in.Search,
 			)
 			if e != nil {
 				return nil, eris.Wrap(e, "usecase: cardgroup: find page by owner")
 			}
+			total = t
 			return rows, nil
 		},
 	)
