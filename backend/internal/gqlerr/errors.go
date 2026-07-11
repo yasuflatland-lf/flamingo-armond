@@ -39,35 +39,6 @@ func BadUserInput(field, message string) *gqlerror.Error {
 	}
 }
 
-// BadUserInputWithExtensions returns a BAD_USER_INPUT error with additional
-// extensions merged into the standard {code, field} envelope. Reserved keys
-// (code, field) in extra are ignored to keep the envelope stable.
-//
-// The design places variant-specific data under an extensions.reason
-// sub-discriminator rather than a separate top-level code so that
-// IsCode(err, CodeBadUserInput) and existing field-error UI keep working without
-// modification. Reach for this helper — rather than BadUserInput — when the
-// payload needs to be structurally parsed by the frontend (e.g. to surface an
-// existing duplicate entity). For plain field validation messages, BadUserInput
-// is sufficient.
-//
-// Current callers: none. Retained as a primitive for future structured
-// BAD_USER_INPUT shapes; the previous caller BadUserInputCardDuplicateFront
-// was removed when CardDuplicateFrontError moved to the CreateCardResult union.
-func BadUserInputWithExtensions(field, message string, extra map[string]any) *gqlerror.Error {
-	ext := map[string]any{
-		"code":  string(CodeBadUserInput),
-		"field": field,
-	}
-	for k, v := range extra {
-		if k == "code" || k == "field" {
-			continue
-		}
-		ext[k] = v
-	}
-	return &gqlerror.Error{Message: message, Extensions: ext}
-}
-
 // Internal logs err at ERROR level and returns a generic INTERNAL gqlerror. The
 // optional attrs are attached to the log line only — the wire response is always
 // the same {code: INTERNAL, message: "internal server error"} shape. Use attrs

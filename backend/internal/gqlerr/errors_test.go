@@ -50,56 +50,6 @@ func TestBadUserInput(t *testing.T) {
 	}
 }
 
-func TestBadUserInputWithExtensions(t *testing.T) {
-	t.Parallel()
-
-	t.Run("merges extra keys", func(t *testing.T) {
-		t.Parallel()
-		got := gqlerr.BadUserInputWithExtensions("front", "duplicate card", map[string]any{
-			"reason":         "CARD_DUPLICATE_FRONT",
-			"existingCardId": "abc-123",
-		})
-
-		if got.Message != "duplicate card" {
-			t.Errorf("Message = %q, want %q", got.Message, "duplicate card")
-		}
-		if code := extString(t, got, "code"); code != "BAD_USER_INPUT" {
-			t.Errorf("Extensions[code] = %q, want %q", code, "BAD_USER_INPUT")
-		}
-		if field := extString(t, got, "field"); field != "front" {
-			t.Errorf("Extensions[field] = %q, want %q", field, "front")
-		}
-		if reason := extString(t, got, "reason"); reason != "CARD_DUPLICATE_FRONT" {
-			t.Errorf("Extensions[reason] = %q, want %q", reason, "CARD_DUPLICATE_FRONT")
-		}
-		if id := extString(t, got, "existingCardId"); id != "abc-123" {
-			t.Errorf("Extensions[existingCardId] = %q, want %q", id, "abc-123")
-		}
-	})
-
-	t.Run("ignores reserved code override", func(t *testing.T) {
-		t.Parallel()
-		got := gqlerr.BadUserInputWithExtensions("front", "duplicate card", map[string]any{
-			"code": "OVERRIDE",
-		})
-
-		if code := extString(t, got, "code"); code != "BAD_USER_INPUT" {
-			t.Errorf("Extensions[code] = %q, want %q (override must be ignored)", code, "BAD_USER_INPUT")
-		}
-	})
-
-	t.Run("ignores reserved field override", func(t *testing.T) {
-		t.Parallel()
-		got := gqlerr.BadUserInputWithExtensions("front", "duplicate card", map[string]any{
-			"field": "hijacked",
-		})
-
-		if field := extString(t, got, "field"); field != "front" {
-			t.Errorf("Extensions[field] = %q, want %q (override must be ignored)", field, "front")
-		}
-	})
-}
-
 func TestInternal_message(t *testing.T) {
 	t.Parallel()
 
