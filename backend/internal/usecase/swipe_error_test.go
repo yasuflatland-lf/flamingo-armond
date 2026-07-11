@@ -42,7 +42,7 @@ func TestSwipeUsecase_HandleSwipe_FindCardByIDError_PinsChain(t *testing.T) {
 	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	assertInternalChain(t, err, "usecase: swipe: find card by id")
@@ -83,7 +83,7 @@ func TestSwipeUsecase_HandleSwipe_FindUserCardFSRSError_PinsChain(t *testing.T) 
 	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	assertInternalChain(t, err, "usecase: swipe: find user-card fsrs")
@@ -126,7 +126,7 @@ func TestSwipeUsecase_HandleSwipe_ApplyRatingError_PinsChain(t *testing.T) {
 	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	assertInternalChain(t, err, "usecase: swipe: apply rating")
@@ -169,7 +169,7 @@ func TestSwipeUsecase_HandleSwipe_NewSwipeRecordError_PinsChain(t *testing.T) {
 	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	assertInternalChain(t, err, "usecase: swipe: new swipe record")
@@ -212,7 +212,7 @@ func TestSwipeUsecase_HandleSwipe_InsertSwipeRecordError_PinsChain(t *testing.T)
 	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	assertInternalChain(t, err, "usecase: swipe: insert swipe record")
@@ -243,7 +243,7 @@ func TestSwipeUsecase_HandleSwipe_FindCardByID_PropagatesCancelled(t *testing.T)
 	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	assertCancelled(t, err)
@@ -283,7 +283,7 @@ func TestSwipeUsecase_HandleSwipe_FindUserCardFSRS_PropagatesCancelled(t *testin
 	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	assertCancelled(t, err)
@@ -322,7 +322,7 @@ func TestSwipeUsecase_HandleSwipe_UpsertUserCardFSRS_PropagatesCancelled(t *test
 	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	assertCancelled(t, err)
@@ -363,7 +363,7 @@ func TestSwipeUsecase_HandleSwipe_InsertSwipeRecord_PropagatesCancelled(t *testi
 	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	assertCancelled(t, err)
@@ -406,7 +406,7 @@ func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PinsChain(t *testing.T) {
 	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	assertInternalChain(t, err, "usecase: swipe: list recent swipes")
@@ -448,7 +448,7 @@ func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesCancelled(t *testin
 	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	assertCancelled(t, err)
@@ -490,7 +490,7 @@ func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesDeadlineExceeded(t 
 	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	assertCancelled(t, err)

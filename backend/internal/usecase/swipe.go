@@ -59,7 +59,7 @@ type swipeUsecase struct {
 type HandleSwipeInput struct {
 	CardID      string
 	CardgroupID domain.CardgroupID
-	Mode        int
+	Rating      int
 }
 
 type SwipeOutput struct {
@@ -129,11 +129,11 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 	if err := requireCallerSub(user); err != nil {
 		return HandleSwipeOutcome{}, err
 	}
-	rating, err := domain.RatingFromSwipeMode(in.Mode)
+	rating, err := domain.RatingFromSwipe(in.Rating)
 	if err != nil {
 		// Use a plain user-facing message; err.Error() carries an internal layer
-		// prefix ("rating: unknown swipe mode N") that is not appropriate on the wire.
-		return HandleSwipeOutcome{Validation: NewInputValidationInfo("mode", "unknown swipe mode")}, nil
+		// prefix ("rating: unknown swipe rating N") that is not appropriate on the wire.
+		return HandleSwipeOutcome{Validation: NewInputValidationInfo("rating", "unknown swipe rating")}, nil
 	}
 	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, in.CardgroupID, domain.UserID(user.Sub)); err != nil {
 		// authorizeCardgroupOrBadInput returns ucerr.NewValidationError("cardgroupId", ...) for

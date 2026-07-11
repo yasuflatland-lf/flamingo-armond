@@ -19,15 +19,15 @@ func (r Rating) IsValid() bool {
 }
 
 // IsSuccess reports whether the rating counts as a successful review (Good or
-// Easy). The 3-step swipe UI never emits RatingGood (RatingFromSwipeMode yields
+// Easy). The 3-step swipe UI never emits RatingGood (RatingFromSwipe yields
 // only 1/2/4), so "success" is effectively Easy today; the predicate stays
 // >= RatingGood to remain correct if Good is ever wired.
 func (r Rating) IsSuccess() bool { return r >= RatingGood }
 
-// RatingFromSwipeMode maps the legacy 3-step swipe UI to FSRS ratings. The UI
-// emits 1=Again, 2=Hard, and 4=Easy; it intentionally does not emit 3=Good.
-func RatingFromSwipeMode(mode int) (Rating, error) {
-	switch mode {
+// RatingFromSwipe maps the 3-step swipe UI's raw rating to an FSRS rating. The
+// UI emits 1=Again, 2=Hard, and 4=Easy; it intentionally does not emit 3=Good.
+func RatingFromSwipe(rating int) (Rating, error) {
+	switch rating {
 	case 1:
 		return RatingAgain, nil
 	case 2:
@@ -35,6 +35,6 @@ func RatingFromSwipeMode(mode int) (Rating, error) {
 	case 4:
 		return RatingEasy, nil
 	default:
-		return 0, eris.Errorf("rating: unknown swipe mode %d", mode)
+		return 0, eris.Errorf("rating: unknown swipe rating %d", rating)
 	}
 }

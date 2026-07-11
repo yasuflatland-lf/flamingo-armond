@@ -3,13 +3,22 @@ input HandleSwipeInput {
   cardId: ID!
   cardgroupId: ID!
   """1=Again, 2=Hard, 4=Easy. The 3-step UI does not emit 3=Good."""
-  mode: Int!
+  rating: Int!
+}
+
+"""Performance mode inferred from the viewer's recent swipe performance, spanning DIFFICULT (weakest) to MASTERED (strongest)."""
+enum SwipePerformanceMode {
+  DIFFICULT
+  DEFAULT
+  GOOD
+  EASY
+  MASTERED
 }
 
 """Response returned by `handleSwipe` — the latest performance snapshot for the swipe flow."""
 type SwipeResponse {
-  """Performance mode for the swipe flow, expressed as an Int in the 0..4 range."""
-  performanceMode: Int!
+  """Performance mode for the swipe flow, inferred from the viewer's recent performance."""
+  performanceMode: SwipePerformanceMode!
   metrics: PerformanceMetrics!
 }
 

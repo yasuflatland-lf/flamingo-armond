@@ -100,7 +100,7 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 			outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 				CardID:      "card-1",
 				CardgroupID: "cg-1",
-				Mode:        int(domain.RatingEasy),
+				Rating:      int(domain.RatingEasy),
 			})
 
 			if err != nil {
@@ -159,7 +159,7 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 	outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	if err != nil {
@@ -210,7 +210,7 @@ func TestSwipeUsecase_HandleSwipe_NonOwner_Unauthenticated(t *testing.T) {
 	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	assertUnauthenticated(t, err)
@@ -275,7 +275,7 @@ func TestSwipeUsecase_HandleSwipe_PropagatesUpsertError(t *testing.T) {
 	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	if err == nil {
@@ -284,11 +284,11 @@ func TestSwipeUsecase_HandleSwipe_PropagatesUpsertError(t *testing.T) {
 	assertInternalChain(t, err, "storage: simulated upsert failure")
 }
 
-// TestSwipeUsecase_HandleSwipe_InvalidMode_ValidationVariant verifies that an
-// invalid swipe mode surfaces as the outcome's Validation variant (not an
+// TestSwipeUsecase_HandleSwipe_InvalidRating_ValidationVariant verifies that an
+// invalid swipe rating surfaces as the outcome's Validation variant (not an
 // error channel error) so the resolver maps it to the InputValidationError
 // union member.
-func TestSwipeUsecase_HandleSwipe_InvalidMode_ValidationVariant(t *testing.T) {
+func TestSwipeUsecase_HandleSwipe_InvalidRating_ValidationVariant(t *testing.T) {
 	t.Parallel()
 
 	cardgroupRepo := &mockCardgroupRepoForCard{
@@ -308,7 +308,7 @@ func TestSwipeUsecase_HandleSwipe_InvalidMode_ValidationVariant(t *testing.T) {
 	outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Mode:        9999, // invalid
+		Rating:      9999, // invalid
 	})
 
 	if err != nil {
@@ -318,10 +318,10 @@ func TestSwipeUsecase_HandleSwipe_InvalidMode_ValidationVariant(t *testing.T) {
 		t.Fatal("expected nil Swipe on validation failure")
 	}
 	if outcome.Validation == nil {
-		t.Fatal("expected non-nil Validation on invalid mode")
+		t.Fatal("expected non-nil Validation on invalid rating")
 	}
-	if outcome.Validation.Field != "mode" {
-		t.Fatalf("expected Validation.Field=%q, got %q", "mode", outcome.Validation.Field)
+	if outcome.Validation.Field != "rating" {
+		t.Fatalf("expected Validation.Field=%q, got %q", "rating", outcome.Validation.Field)
 	}
 }
 
@@ -354,7 +354,7 @@ func TestSwipeUsecase_HandleSwipe_CardNotFound_ValidationVariant(t *testing.T) {
 	outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-missing",
 		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	if err != nil {
@@ -397,7 +397,7 @@ func TestSwipeUsecase_HandleSwipe_CardgroupNotFound_ValidationVariant(t *testing
 	outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-missing",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	if err != nil {
@@ -449,7 +449,7 @@ func TestSwipeUsecase_HandleSwipe_CardCrossCardgroup_ValidationVariant(t *testin
 	outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
+		Rating:      int(domain.RatingEasy),
 	})
 
 	if err != nil {

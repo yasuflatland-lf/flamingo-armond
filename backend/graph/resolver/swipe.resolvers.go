@@ -16,14 +16,14 @@ import (
 // HandleSwipe is the resolver for the handleSwipe field.
 //
 // Returns a union: `model.HandleSwipeSuccess` on the happy path, or
-// `model.InputValidationError` when the mode, cardId, or cardgroupId fails
+// `model.InputValidationError` when the rating, cardId, or cardgroupId fails
 // validation. Validation failures are "errors as data" — the error return is
 // reserved for auth and infrastructure failures.
 func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.HandleSwipeInput) (model.HandleSwipeResult, error) {
 	outcome, err := r.SwipeUC.HandleSwipe(ctx, usecase.HandleSwipeInput{
 		CardID:      input.CardID,
 		CardgroupID: domain.CardgroupID(input.CardgroupID),
-		Mode:        input.Mode,
+		Rating:      input.Rating,
 	})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)

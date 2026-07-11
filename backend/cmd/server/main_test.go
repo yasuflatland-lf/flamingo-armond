@@ -2082,7 +2082,7 @@ func TestGraphQL_HandleSwipe_HappyPath(t *testing.T) {
 	firstID := createTestCard(t, ts.URL, tok, cgID, "front 1", "back 1")
 
 	gqlQuery := fmt.Sprintf(`mutation {
-		handleSwipe(input: {cardId: %s, cardgroupId: %s, mode: 4}) {
+		handleSwipe(input: {cardId: %s, cardgroupId: %s, rating: 4}) {
 			__typename
 			... on HandleSwipeSuccess {
 				response {
@@ -2112,8 +2112,8 @@ func TestGraphQL_HandleSwipe_HappyPath(t *testing.T) {
 	if swipeResp == nil {
 		t.Fatalf("expected handleSwipe.response; resp=%v", resp)
 	}
-	if swipeResp["performanceMode"] != float64(1) {
-		t.Fatalf("performanceMode=%v, want 1", swipeResp["performanceMode"])
+	if swipeResp["performanceMode"] != "DEFAULT" {
+		t.Fatalf("performanceMode=%v, want DEFAULT", swipeResp["performanceMode"])
 	}
 	metrics, _ := swipeResp["metrics"].(map[string]any)
 	if metrics["reviewCount"] != float64(1) {
@@ -2140,30 +2140,30 @@ func TestGraphQL_HandleSwipe_HappyPath(t *testing.T) {
 	}
 }
 
-func TestGraphQL_HandleSwipe_InvalidModes(t *testing.T) {
+func TestGraphQL_HandleSwipe_InvalidRatings(t *testing.T) {
 	f := newJWTFixture(t)
 	ts, _ := newGraphQLTestServer(t, f)
 	ctx := context.Background()
 	sub := insertAuthUser(t, ctx)
 	tok := f.sign(t, sub)
-	cgID := createTestCardgroup(t, ts.URL, tok, "Invalid Modes")
+	cgID := createTestCardgroup(t, ts.URL, tok, "Invalid Ratings")
 	cardID := createTestCard(t, ts.URL, tok, cgID, "front", "back")
 
-	for _, mode := range []int{0, 3, 5} {
-		body := fmt.Sprintf(`{"query":"mutation { handleSwipe(input: {cardId: \"%s\", cardgroupId: \"%s\", mode: %d}) { __typename ... on InputValidationError { field message } } }"}`, cardID, cgID, mode)
+	for _, rating := range []int{0, 3, 5} {
+		body := fmt.Sprintf(`{"query":"mutation { handleSwipe(input: {cardId: \"%s\", cardgroupId: \"%s\", rating: %d}) { __typename ... on InputValidationError { field message } } }"}`, cardID, cgID, rating)
 		resp := postGraphQL(t, ts.URL+"/query", body, tok)
 		if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
-			t.Fatalf("mode=%d: unexpected GraphQL errors: %v", mode, errs)
+			t.Fatalf("rating=%d: unexpected GraphQL errors: %v", rating, errs)
 		}
 		payload, _ := resp["data"].(map[string]any)["handleSwipe"].(map[string]any)
 		if payload == nil {
-			t.Fatalf("mode=%d: expected data.handleSwipe, got nil; resp=%v", mode, resp)
+			t.Fatalf("rating=%d: expected data.handleSwipe, got nil; resp=%v", rating, resp)
 		}
 		if payload["__typename"] != "InputValidationError" {
-			t.Fatalf("mode=%d: expected InputValidationError, got %v; resp=%v", mode, payload["__typename"], resp)
+			t.Fatalf("rating=%d: expected InputValidationError, got %v; resp=%v", rating, payload["__typename"], resp)
 		}
-		if payload["field"] != "mode" {
-			t.Fatalf("mode=%d: expected field=mode, got %q; resp=%v", mode, payload["field"], resp)
+		if payload["field"] != "rating" {
+			t.Fatalf("rating=%d: expected field=rating, got %q; resp=%v", rating, payload["field"], resp)
 		}
 	}
 }
@@ -2179,7 +2179,7 @@ func TestGraphQL_HandleSwipe_NonOwnerUnauthenticated(t *testing.T) {
 
 	subB := insertAuthUser(t, ctx)
 	tokB := f.sign(t, subB)
-	body := fmt.Sprintf(`{"query":"mutation { handleSwipe(input: {cardId: \"%s\", cardgroupId: \"%s\", mode: 4}) { __typename } }"}`, cardID, cgID)
+	body := fmt.Sprintf(`{"query":"mutation { handleSwipe(input: {cardId: \"%s\", cardgroupId: \"%s\", rating: 4}) { __typename } }"}`, cardID, cgID)
 	resp := postGraphQL(t, ts.URL+"/query", body, tokB)
 
 	if code := gqlErrCode(resp); code != "UNAUTHENTICATED" {
@@ -2200,7 +2200,7 @@ func TestGraphQL_HandleSwipe_CrossCardgroupMatchesMissingCardError(t *testing.T)
 	missingCardID := uuid.NewString()
 
 	bodyForCard := func(cardID string) string {
-		return fmt.Sprintf(`{"query":"mutation { handleSwipe(input: {cardId: \"%s\", cardgroupId: \"%s\", mode: 4}) { __typename ... on InputValidationError { field message } } }"}`, cardID, ownedCgID)
+		return fmt.Sprintf(`{"query":"mutation { handleSwipe(input: {cardId: \"%s\", cardgroupId: \"%s\", rating: 4}) { __typename ... on InputValidationError { field message } } }"}`, cardID, ownedCgID)
 	}
 	mismatchResp := postGraphQL(t, ts.URL+"/query", bodyForCard(otherCardID), tok)
 	missingResp := postGraphQL(t, ts.URL+"/query", bodyForCard(missingCardID), tok)
@@ -2265,7 +2265,7 @@ func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
 	_, err := uc.HandleSwipe(auth.ContextWithUser(ctx, &auth.AuthUser{Sub: sub}), usecase.HandleSwipeInput{
 		CardID:      cardID,
 		CardgroupID: domain.CardgroupID(cgID),
-		Mode:        4,
+		Rating:      4,
 	})
 	if err == nil {
 		t.Fatal("expected forced error, got nil")
