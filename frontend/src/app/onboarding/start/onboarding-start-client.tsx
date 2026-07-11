@@ -3,8 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type CSSProperties, useCallback, useState } from "react";
-import { CatalogCard } from "@/app/catalog/catalog-card";
-import type { CatalogCardFieldsFragment } from "@/app/catalog/queries";
+import { CatalogDeckTile } from "@/app/catalog/catalog-card";
+import type { CatalogDeckFieldsFragment } from "@/app/catalog/queries";
 import { useImportMaster } from "@/app/catalog/use-import-master";
 import { OnboardingShell } from "@/components/onboarding/onboarding-shell";
 import { BrandSplash } from "@/components/pwa/brand-splash";
@@ -15,9 +15,9 @@ import type { FragmentType } from "@/generated/fragment-masking";
 import { useSeedDefaultStarters } from "./use-seed-default-starters";
 
 // `id` is read at this level (React keys, per-cardgroup `importing` state); the
-// rest of the fields travel as a masked `CatalogCardFields` ref that `CatalogCard`
+// rest of the fields travel as a masked `CatalogDeckFields` ref that `CatalogDeckTile`
 // unmasks — the same fragment the /catalog gallery feeds it.
-type MasterCardgroupNode = { id: string } & FragmentType<typeof CatalogCardFieldsFragment>;
+type MasterCardgroupNode = { id: string } & FragmentType<typeof CatalogDeckFieldsFragment>;
 
 interface OnboardingStartClientProps {
   cardgroups: MasterCardgroupNode[];
@@ -152,7 +152,7 @@ export function OnboardingStartClient({ cardgroups }: OnboardingStartClientProps
               data-testid="onboarding-deck-list"
             >
               {cardgroups.map((node, index) => (
-                <CatalogCard
+                <CatalogDeckTile
                   key={node.id}
                   node={node}
                   importing={importingId === node.id}

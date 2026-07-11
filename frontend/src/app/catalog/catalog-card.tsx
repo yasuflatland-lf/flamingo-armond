@@ -3,13 +3,13 @@
 import { useTranslations } from "next-intl";
 import type { CSSProperties } from "react";
 import { CatalogImportButton } from "@/app/catalog/_components/catalog-import-button";
-import { CatalogCardFieldsFragment } from "@/app/catalog/queries";
+import { CatalogDeckFieldsFragment } from "@/app/catalog/queries";
 import { type FragmentType, useFragment } from "@/generated/fragment-masking";
 import { cn } from "@/lib/utils";
 
-export type CatalogCardProps = {
-  /** A masked `CatalogCardFields` ref — unmasked once via `useFragment` below. */
-  node: FragmentType<typeof CatalogCardFieldsFragment>;
+export type CatalogDeckTileProps = {
+  /** A masked `CatalogDeckFields` ref — unmasked once via `useFragment` below. */
+  node: FragmentType<typeof CatalogDeckFieldsFragment>;
   /** True while this cardgroup's import mutation is in flight. */
   importing: boolean;
   /** True once this cardgroup has been imported in the current session. */
@@ -35,7 +35,7 @@ export type CatalogCardProps = {
  * locale-independent `data-testid` (`catalog-import-{id}`) so e2e — which runs in
  * the ja-JP locale — can target it without depending on translated copy.
  */
-export function CatalogCard({
+export function CatalogDeckTile({
   node,
   importing,
   imported,
@@ -44,9 +44,9 @@ export function CatalogCard({
   testIdPrefix,
   className,
   style,
-}: CatalogCardProps) {
+}: CatalogDeckTileProps) {
   const t = useTranslations("Catalog");
-  const deck = useFragment(CatalogCardFieldsFragment, node);
+  const deck = useFragment(CatalogDeckFieldsFragment, node);
 
   return (
     <li

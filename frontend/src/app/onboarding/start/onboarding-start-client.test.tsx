@@ -2,7 +2,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CatalogCardFieldsFragment } from "@/app/catalog/queries";
+import { CatalogDeckFieldsFragment } from "@/app/catalog/queries";
 import type { ImportMasterOutcome } from "@/app/catalog/use-import-master";
 import { makeFragmentData } from "@/generated/fragment-masking";
 import { renderWithIntl } from "@/test/render-with-intl";
@@ -39,7 +39,7 @@ vi.mock("./use-seed-default-starters", () => ({
 }));
 
 // Each cardgroup carries a top-level `id` (read for React keys + per-cardgroup `importing`
-// state) plus a masked `CatalogCardFields` ref the chooser hands to `CatalogCard`
+// state) plus a masked `CatalogDeckFields` ref the chooser hands to `CatalogDeckTile`
 // — mirroring the `OnboardingStartQuery` node shape. `makeFragmentData` is
 // identity at runtime, so the card's `useFragment` still sees every field.
 const M1_FIELDS = {
@@ -59,8 +59,8 @@ const M2_FIELDS = {
 };
 
 const CARDGROUPS = [
-  { id: M1_FIELDS.id, ...makeFragmentData(M1_FIELDS, CatalogCardFieldsFragment) },
-  { id: M2_FIELDS.id, ...makeFragmentData(M2_FIELDS, CatalogCardFieldsFragment) },
+  { id: M1_FIELDS.id, ...makeFragmentData(M1_FIELDS, CatalogDeckFieldsFragment) },
+  { id: M2_FIELDS.id, ...makeFragmentData(M2_FIELDS, CatalogDeckFieldsFragment) },
 ];
 
 beforeEach(() => {

@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMergeFromCatalog } from "@/app/cardgroups/[id]/use-merge-from-catalog";
 import { useMergeFromCatalogPreview } from "@/app/cardgroups/[id]/use-merge-from-catalog-preview";
-import { CATALOG_DEFAULT_VARS, CatalogCardFieldsFragment } from "@/app/catalog/queries";
+import { CATALOG_DEFAULT_VARS, CatalogDeckFieldsFragment } from "@/app/catalog/queries";
 import { MergeReviewPanel } from "@/components/cardgroups/merge-review-panel";
 import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -143,8 +143,8 @@ export function MergeFromCatalogSheet({
   });
 
   const initialLoading = loading && edges.length === 0 && networkStatus !== NetworkStatus.fetchMore;
-  const catalogCards = useFragment(
-    CatalogCardFieldsFragment,
+  const decks = useFragment(
+    CatalogDeckFieldsFragment,
     edges.map((edge) => edge.node),
   );
   const queryBannerError = getBackendErrorBanner(queryError);
@@ -274,20 +274,20 @@ export function MergeFromCatalogSheet({
 
           {edges.length > 0 ? (
             <ul className="divide-y divide-border" data-testid="merge-from-catalog-list">
-              {catalogCards.map((card) => (
-                <li key={card.id}>
+              {decks.map((deck) => (
+                <li key={deck.id}>
                   <button
                     type="button"
-                    onClick={() => void handleSelect(card.id, card.name)}
+                    onClick={() => void handleSelect(deck.id, deck.name)}
                     className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-muted/40"
-                    data-testid={`merge-from-catalog-row-${card.id}`}
+                    data-testid={`merge-from-catalog-row-${deck.id}`}
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium text-foreground">
-                        {card.name}
+                        {deck.name}
                       </span>
                       <span className="block text-xs text-muted-foreground">
-                        {tCatalog("cardCount", { count: card.cardCount })}
+                        {tCatalog("cardCount", { count: deck.cardCount })}
                       </span>
                     </span>
                     <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />

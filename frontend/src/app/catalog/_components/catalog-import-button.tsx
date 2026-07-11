@@ -30,7 +30,7 @@ export type CatalogImportButtonProps = {
 };
 
 /**
- * The Import CTA shared by `CatalogCard` (full-width tile button) and
+ * The Import CTA shared by `CatalogDeckTile` (full-width tile button) and
  * `CatalogListItem` (right-aligned inline button). Owns the three-state label
  * derivation and the imported / in-flight / idle rendering so the two layouts
  * cannot drift. The locale-independent `data-testid` (`catalog-import-{id}`) lets

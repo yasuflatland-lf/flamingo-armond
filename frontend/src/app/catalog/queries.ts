@@ -22,7 +22,7 @@ export const CATALOG_DEFAULT_VARS: MasterCatalogQueryVariables = {
 
 /**
  * The `MasterCardgroup` field set shared by the catalog list row
- * ({@link CatalogListItem}), the onboarding chooser tile ({@link CatalogCard}),
+ * ({@link CatalogListItem}), the onboarding chooser tile ({@link CatalogDeckTile}),
  * and the merge-from-catalog sheet ({@link MergeFromCatalogSheet}).
  * `MasterCatalogQuery` (the /catalog list), `OnboardingStartQuery` (the
  * /onboarding/start chooser), and the merge sheet's inline `MasterCatalog` query
@@ -30,8 +30,8 @@ export const CATALOG_DEFAULT_VARS: MasterCatalogQueryVariables = {
  * instead of hand-mirrored node selections that can silently drift. Each consumer
  * unmasks it via `useFragment`.
  */
-export const CatalogCardFieldsFragment = graphql(`
-  fragment CatalogCardFields on MasterCardgroup {
+export const CatalogDeckFieldsFragment = graphql(`
+  fragment CatalogDeckFields on MasterCardgroup {
     id
     name
     description
@@ -62,7 +62,7 @@ export const MasterCatalogQuery = graphql(`
         cursor
         node {
           id
-          ...CatalogCardFields
+          ...CatalogDeckFields
         }
       }
       pageInfo {

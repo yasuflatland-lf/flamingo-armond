@@ -16,7 +16,7 @@ export const OnboardingStartQuery = graphql(`
         cursor
         node {
           id
-          ...CatalogCardFields
+          ...CatalogDeckFields
         }
       }
       totalCount

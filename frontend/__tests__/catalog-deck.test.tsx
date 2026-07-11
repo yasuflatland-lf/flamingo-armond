@@ -60,7 +60,7 @@ import { notFound, redirect } from "next/navigation";
 import { NextIntlClientProvider } from "next-intl";
 import CatalogDeckPage, { CatalogDeckContent } from "@/app/catalog/[id]/page";
 import { CatalogListItem } from "@/app/catalog/catalog-list-item";
-import { CatalogCardFieldsFragment } from "@/app/catalog/queries";
+import { CatalogDeckFieldsFragment } from "@/app/catalog/queries";
 import { makeFragmentData } from "@/generated/fragment-masking";
 import { gqlFetch } from "@/lib/apollo/server";
 import enMessages from "../messages/en.json";
@@ -266,7 +266,7 @@ describe("catalog list → deck-detail entry point", () => {
         description: null,
         cardCount: 42,
       },
-      CatalogCardFieldsFragment,
+      CatalogDeckFieldsFragment,
     );
 
     render(
