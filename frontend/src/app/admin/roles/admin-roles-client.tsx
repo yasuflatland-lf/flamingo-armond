@@ -12,13 +12,11 @@ import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
+import type { ValidationError } from "@/lib/forms/use-sheet-form";
 import { useUndoDelete } from "@/lib/undo-delete";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { SYSTEM_ROLE_NAMES } from "./queries";
-import { useRoleMutations } from "./use-role-mutations";
-
-/** Auth banner discriminant carried by the collapsed create/edit error state. */
-type AuthKind = "unauthenticated" | "forbidden";
+import { type AuthKind, useRoleMutations } from "./use-role-mutations";
 
 /** Collapsed create-sheet banner state — one of the typed outcomes the hook returns. */
 type CreateError =
@@ -35,8 +33,6 @@ type EditError =
 export type RoleItem = { id: string; name: string };
 
 type Props = { initialRoles: RoleItem[] };
-
-type ValidationError = { field: string; message: string };
 
 function CreateRoleSheetBody({
   submitting,

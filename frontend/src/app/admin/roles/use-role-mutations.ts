@@ -2,7 +2,7 @@
 
 import { useLazyQuery, useMutation } from "@apollo/client/react";
 import { useCallback } from "react";
-import { classifyAndLogAuthOutcome } from "@/lib/apollo/errors";
+import { classifyAndLogAuthOutcome, type MutationAuthKind } from "@/lib/apollo/errors";
 import {
   AdminCreateRoleMutation,
   AdminDeleteRoleMutation,
@@ -11,7 +11,7 @@ import {
 } from "./queries";
 
 /** Auth-relevant failure kind surfaced to the caller for banner copy selection. */
-export type AuthKind = "forbidden" | "unauthenticated";
+export type AuthKind = MutationAuthKind;
 
 export type CreateRoleOutcome =
   | { status: "success" }
