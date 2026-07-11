@@ -447,17 +447,14 @@ func (u *adminUserUsecase) DeleteUser(ctx context.Context, id string) error {
 		}
 		return eris.Wrap(err, "usecase: admin user: delete: check admin role")
 	}
-	if isAdmin {
-		n, err := u.userRoles.CountAdmins(ctx)
-		if err != nil {
-			if isContextDone(err) {
-				return err
-			}
-			return eris.Wrap(err, "usecase: admin user: delete: count admins")
-		}
-		if domain.IsLastAdmin(n) {
-			return ucerr.NewForbiddenError("cannot delete the last admin account")
-		}
+	if err := guardNotLastAdmin(
+		ctx,
+		isAdmin,
+		u.userRoles,
+		"usecase: admin user: delete: count admins",
+		"cannot delete the last admin account",
+	); err != nil {
+		return err
 	}
 
 	if err := u.users.DeleteAuthUser(ctx, id); err != nil {
