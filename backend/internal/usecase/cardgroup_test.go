@@ -49,7 +49,12 @@ type mockCardgroupRepository struct {
 	deleteCalled bool
 
 	// FindPageByOwner / CountByOwner — used by pagination tests.
+	// findPageTotal is the filtered totalCount FindPageByOwner now returns
+	// alongside the page rows (the connection path reads its total from here,
+	// not from CountByOwner). countResult/countErr remain for the filter-less
+	// CountByOwner callers (the cardgroup-limit check on Create).
 	findPageResult []*domain.Cardgroup
+	findPageTotal  int64
 	findPageErr    error
 	countResult    int64
 	countErr       error
@@ -110,9 +115,10 @@ func (m *mockCardgroupRepository) Delete(_ context.Context, _ string) error {
 	return m.deleteErr
 }
 
-// FindPageByOwner returns findPageResult/findPageErr when set; otherwise nil.
-// Each call is captured in findPageCalls so tests can assert on the arguments
-// the usecase forwarded (e.g. first+1, orderBy translation, cursor hydration).
+// FindPageByOwner returns findPageResult/findPageTotal/findPageErr when set;
+// otherwise nil/0/nil. Each call is captured in findPageCalls so tests can
+// assert on the arguments the usecase forwarded (e.g. first+1, orderBy
+// translation, cursor hydration).
 func (m *mockCardgroupRepository) FindPageByOwner(
 	_ context.Context,
 	ownerID string,
@@ -121,7 +127,7 @@ func (m *mockCardgroupRepository) FindPageByOwner(
 	orderBy repository.CardgroupOrderBy,
 	dir repository.SortOrder,
 	search *string,
-) ([]*domain.Cardgroup, error) {
+) ([]*domain.Cardgroup, int64, error) {
 	m.findPageCalls = append(m.findPageCalls, findPageByOwnerCall{
 		OwnerID: ownerID,
 		After:   after,
@@ -132,7 +138,7 @@ func (m *mockCardgroupRepository) FindPageByOwner(
 		Dir:     dir,
 		Search:  search,
 	})
-	return m.findPageResult, m.findPageErr
+	return m.findPageResult, m.findPageTotal, m.findPageErr
 }
 
 // CountByOwner returns countResult/countErr when set; otherwise 0, nil.
@@ -910,10 +916,11 @@ func TestCardgroupUC_Connection_FirstPage(t *testing.T) {
 		// The third row is the "+1" the usecase requests to detect hasNextPage.
 		{ID: "cg3", OwnerID: "user-1", Name: "Gamma"},
 	}
-	// The mock returns all 3 rows (simulating repo returning first+1=3 rows).
+	// The mock returns all 3 rows (simulating repo returning first+1=3 rows)
+	// plus the filtered total FindPageByOwner now carries.
 	repo := &mockCardgroupRepository{
 		findPageResult: cgs,
-		countResult:    3,
+		findPageTotal:  3,
 	}
 	uc := NewCardgroupUsecase(repo, cgDefaultAdmin(), newTestLogger())
 
@@ -951,12 +958,14 @@ func TestCardgroupUC_Connection_Search(t *testing.T) {
 	t.Parallel()
 
 	// Only "apple" matches the search; "banana" is absent from the page result.
+	// findPageTotal is the filtered count FindPageByOwner returns, so the
+	// connection's totalCount reflects the search rather than the owner total.
 	matched := []*domain.Cardgroup{
 		{ID: "cg1", OwnerID: "user-1", Name: "apple"},
 	}
 	repo := &mockCardgroupRepository{
 		findPageResult: matched,
-		countResult:    1,
+		findPageTotal:  1,
 	}
 	uc := NewCardgroupUsecase(repo, cgDefaultAdmin(), newTestLogger())
 
@@ -1536,7 +1545,6 @@ func TestCardgroupUC_Connection_FindPageRepoError_Internal(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockCardgroupRepository{
-		countResult: 5,
 		findPageErr: errors.New("db dead"),
 	}
 	uc := NewCardgroupUsecase(repo, cgDefaultAdmin(), newTestLogger())
@@ -1546,25 +1554,6 @@ func TestCardgroupUC_Connection_FindPageRepoError_Internal(t *testing.T) {
 		First: &first,
 	})
 	assertInternalChain(t, err, "usecase: cardgroup: find page by owner")
-}
-
-// TestCardgroupUC_Connection_CountError_Internal verifies that a CountByOwner
-// repository error surfaces INTERNAL before FindPageByOwner is called.
-func TestCardgroupUC_Connection_CountError_Internal(t *testing.T) {
-	t.Parallel()
-
-	repo := &mockCardgroupRepository{countErr: errors.New("count dead")}
-	uc := NewCardgroupUsecase(repo, cgDefaultAdmin(), newTestLogger())
-
-	first := 5
-	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("u1"), CardgroupConnectionInput{
-		First: &first,
-	})
-	assertInternalChain(t, err, "usecase: cardgroup: count by owner")
-	if len(repo.findPageCalls) != 0 {
-		t.Fatalf("expected no FindPageByOwner call when CountByOwner fails, got %d",
-			len(repo.findPageCalls))
-	}
 }
 
 // ---------------------------------------------------------------------------

@@ -29,9 +29,11 @@ type mockCardgroupRepoForResolver struct {
 	findByIDResult *domain.Cardgroup
 	findByIDErr    error
 
-	// FindPageByOwner / CountByOwner — the two methods MyCardgroupsConnection
-	// hits on the happy path.
+	// FindPageByOwner returns the page rows plus the filtered totalCount the
+	// connection reads. countResult/countErr remain for the filter-less
+	// CountByOwner caller (the cardgroup-limit check).
 	findPageResult []*domain.Cardgroup
+	findPageTotal  int64
 	findPageErr    error
 	countResult    int64
 	countErr       error
@@ -54,8 +56,8 @@ func (m *mockCardgroupRepoForResolver) FindPageByOwner(
 	_ repository.CardgroupOrderBy,
 	_ repository.SortOrder,
 	_ *string,
-) ([]*domain.Cardgroup, error) {
-	return m.findPageResult, m.findPageErr
+) ([]*domain.Cardgroup, int64, error) {
+	return m.findPageResult, m.findPageTotal, m.findPageErr
 }
 
 func (m *mockCardgroupRepoForResolver) CountByOwner(_ context.Context, _ string, _ *string) (int64, error) {
@@ -125,7 +127,7 @@ func TestResolver_MyCardgroupsConnection_Authenticated_DelegatesToUsecase(t *tes
 	}
 	repo := &mockCardgroupRepoForResolver{
 		findPageResult: cgs,
-		countResult:    3,
+		findPageTotal:  3,
 	}
 	srv := newCardgroupSrv(repo)
 	resp := gqlRequest(t, srv, authedCtx("u1"), myCardgroupsConnectionQuery)
@@ -210,13 +212,14 @@ func TestResolver_MyCardgroupsConnection_UsecaseError_PropagatesBadUserInput(t *
 	}
 }
 
-// TestResolver_MyCardgroupsConnection_RepoCountError_BecomesInternal
-// verifies that an unexpected repository error from CountByOwner is mapped
-// to extensions.code == INTERNAL.
-func TestResolver_MyCardgroupsConnection_RepoCountError_BecomesInternal(t *testing.T) {
+// TestResolver_MyCardgroupsConnection_RepoPageError_BecomesInternal
+// verifies that an unexpected repository error from FindPageByOwner (which
+// now also performs the totalCount COUNT) is mapped to
+// extensions.code == INTERNAL.
+func TestResolver_MyCardgroupsConnection_RepoPageError_BecomesInternal(t *testing.T) {
 	t.Parallel()
 
-	repo := &mockCardgroupRepoForResolver{countErr: errors.New("db died")}
+	repo := &mockCardgroupRepoForResolver{findPageErr: errors.New("db died")}
 	srv := newCardgroupSrv(repo)
 	resp := gqlRequest(t, srv, authedCtx("u1"), myCardgroupsConnectionQuery)
 
@@ -249,7 +252,7 @@ func TestResolver_MyCardgroupsConnection_Empty_ReturnsEmptyEdges(t *testing.T) {
 
 	repo := &mockCardgroupRepoForResolver{
 		findPageResult: []*domain.Cardgroup{},
-		countResult:    0,
+		findPageTotal:  0,
 	}
 	srv := newCardgroupSrv(repo)
 	resp := gqlRequest(t, srv, authedCtx("u1"), myCardgroupsConnectionQuery)
@@ -332,14 +335,14 @@ func (c *capturingCardgroupRepo) FindPageByOwner(
 	orderBy repository.CardgroupOrderBy,
 	dir repository.SortOrder,
 	_ *string,
-) ([]*domain.Cardgroup, error) {
+) ([]*domain.Cardgroup, int64, error) {
 	c.findPageOrderBy = orderBy
 	c.findPageDir = dir
 	c.findPageFirst = first
 	c.findPageLast = last
 	c.findPageAfter = after
 	c.findPageBefore = before
-	return c.findPageResult, c.findPageErr
+	return c.findPageResult, c.findPageTotal, c.findPageErr
 }
 
 // ---------------------------------------------------------------------------

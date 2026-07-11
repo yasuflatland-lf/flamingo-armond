@@ -58,12 +58,16 @@ type CardgroupRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
 	FindByName(ctx context.Context, ownerID, name string) (*domain.Cardgroup, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Cardgroup, error)
-	// FindPageByOwner returns a window of cardgroups owned by ownerID
-	// ordered by (orderBy, id). Forward paging uses (after, first); backward
-	// paging uses (before, last) and the slice is reversed in memory so the
-	// caller observes the same display order regardless of direction. An
-	// optional case-insensitive substring search filters by name (ILIKE
-	// metacharacters in the search are escaped so they match literally).
+	// FindPageByOwner returns a window of cardgroups owned by ownerID ordered
+	// by (orderBy, id) together with the total number of rows matching the same
+	// owner + search filter. Forward paging uses (after, first); backward paging
+	// uses (before, last) and the slice is reversed in memory so the caller
+	// observes the same display order regardless of direction. An optional
+	// case-insensitive substring search filters by name (ILIKE metacharacters in
+	// the search are escaped so they match literally); the returned total honours
+	// that same filter, so it never lies under an active search. The COUNT runs
+	// before the zero-page short-circuit so a caller requesting only the total
+	// still sees a real value.
 	FindPageByOwner(
 		ctx context.Context,
 		ownerID string,
@@ -72,10 +76,11 @@ type CardgroupRepository interface {
 		orderBy CardgroupOrderBy,
 		dir SortOrder,
 		search *string,
-	) ([]*domain.Cardgroup, error)
+	) ([]*domain.Cardgroup, int64, error)
 	// CountByOwner returns the total number of cardgroups owned by ownerID
-	// matching the optional search predicate. Returned independently of
-	// FindPageByOwner so the totalCount survives a zero-page request.
+	// matching the optional search predicate. Used by the filter-less callers
+	// that pass a nil search (seed and cardgroup-limit checks); the paginated
+	// connection reads its filtered total from FindPageByOwner instead.
 	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
 	Create(ctx context.Context, cg *domain.Cardgroup) error
 	// CreateTx inserts a new cardgroup row using the supplied transaction
@@ -131,6 +136,8 @@ func (r *cardgroupRepo) FindByName(ctx context.Context, ownerID, name string) (*
 // sees the same display order as forward paging. The search argument, when
 // non-empty after trimming, filters by `name ILIKE %escaped%` with LIKE
 // metacharacters escaped so user-supplied `%` and `_` match literally.
+// totalCount is a COUNT(*) over the SAME filtered base query, so it honours
+// the active search rather than reporting the unfiltered owner total.
 func (r *cardgroupRepo) FindPageByOwner(
 	ctx context.Context,
 	ownerID string,
@@ -139,26 +146,39 @@ func (r *cardgroupRepo) FindPageByOwner(
 	orderBy CardgroupOrderBy,
 	dir SortOrder,
 	search *string,
-) ([]*domain.Cardgroup, error) {
+) ([]*domain.Cardgroup, int64, error) {
 	first = ClampPageSize(first)
 	last = ClampPageSize(last)
 
+	// Base query scoped to the owner (and search filter, if active). Both the
+	// COUNT and the page window derive from it so totalCount applies the same
+	// predicate as the page.
+	base := r.db.WithContext(ctx).Model(&gormCardgroup{}).Where("owner_id = ?", ownerID)
+	if pattern, ok := searchLikePattern(search); ok {
+		base = base.Where("name ILIKE ?", pattern)
+	}
+
+	// totalCount comes from a COUNT(*) over the same filtered base query.
+	// Computed before the no-rows short-circuit so a caller passing first=0
+	// still observes the real count.
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, eris.Wrap(err, "repository: cardgroup: count by owner")
+	}
+
 	if first == 0 && last == 0 {
-		return []*domain.Cardgroup{}, nil
+		return []*domain.Cardgroup{}, total, nil
 	}
 
 	// Backward paging executes the query with the inverted direction and
 	// reverses the slice afterwards.
 	effectiveDir, limit, cursor, reverse := paginateSetup(dir, first, last, after, before)
 
-	q := r.db.WithContext(ctx).Model(&gormCardgroup{}).Where("owner_id = ?", ownerID)
-	if pattern, ok := searchLikePattern(search); ok {
-		q = q.Where("name ILIKE ?", pattern)
-	}
+	q := base
 	if cursor != nil {
 		clauseSQL, args, err := cardgroupCursorWhere(orderBy, effectiveDir, cursor)
 		if err != nil {
-			return nil, eris.Wrap(err, "repository: cardgroup: build cursor where")
+			return nil, 0, eris.Wrap(err, "repository: cardgroup: build cursor where")
 		}
 		q = q.Where(clauseSQL, args...)
 	}
@@ -166,7 +186,7 @@ func (r *cardgroupRepo) FindPageByOwner(
 
 	var rows []gormCardgroup
 	if err := q.Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: cardgroup: find page by owner")
+		return nil, 0, eris.Wrap(err, "repository: cardgroup: find page by owner")
 	}
 
 	if reverse {
@@ -177,7 +197,7 @@ func (r *cardgroupRepo) FindPageByOwner(
 	for i := range rows {
 		out[i] = cardgroupToDomain(rows[i])
 	}
-	return out, nil
+	return out, total, nil
 }
 
 // CountByOwner returns the total number of cardgroups owned by ownerID
