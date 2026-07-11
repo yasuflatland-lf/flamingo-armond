@@ -120,6 +120,7 @@ describe("<ConditionalShell>", () => {
       "/catalog",
       "/learn/123",
       "/profile",
+      "/stats",
       "/admin/users",
     ])("mounts the navigation shell and install hint on %s", (pathname) => {
       mockUsePathname.mockReturnValue(pathname);

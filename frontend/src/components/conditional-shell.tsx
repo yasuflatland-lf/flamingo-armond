@@ -43,6 +43,7 @@ const SHELL_ROUTE_PREFIXES = [
   "/catalog",
   "/learn",
   "/profile",
+  "/stats",
 ] as const;
 
 /**
