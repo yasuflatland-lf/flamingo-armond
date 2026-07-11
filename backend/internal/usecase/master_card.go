@@ -94,9 +94,42 @@ type MasterCardConnectionOutput struct {
 	EndCur     string
 }
 
+// masterCardRepoForMasterCard is the narrow consumer interface for master-card
+// persistence used by masterCardUsecase — only the methods this usecase calls,
+// not the full repository.MasterCardRepository surface. Satisfied implicitly by
+// repository.MasterCardRepository.
+type masterCardRepoForMasterCard interface {
+	Create(ctx context.Context, c *domain.MasterCard) error
+	FindByMasterCardgroupAndFront(ctx context.Context, masterCardgroupID, front string) (*domain.MasterCard, error)
+	Update(ctx context.Context, id string, patch repository.MasterCardUpdate) (*domain.MasterCard, error)
+	Delete(ctx context.Context, id string) error
+	DeleteMany(ctx context.Context, ids []string) (int64, error)
+	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.MasterCard) (repository.UpsertManyTxResult, error)
+	FindPageByMasterCardgroup(
+		ctx context.Context,
+		masterCardgroupID string,
+		after, before *repository.MasterCardCursor,
+		first, last int,
+		orderBy repository.MasterCardOrderBy,
+		dir repository.SortOrder,
+		search *string,
+	) (cards []*domain.MasterCard, totalCount int64, err error)
+	FindByID(ctx context.Context, id string) (*domain.MasterCard, error)
+}
+
+// masterCardgroupRepoForMasterCard is the narrow consumer interface for master-
+// cardgroup reads used by masterCardUsecase: the admin deck lookup (incl. DRAFT),
+// its card count, and the published-only visibility gate. Satisfied implicitly by
+// repository.MasterCardgroupRepository.
+type masterCardgroupRepoForMasterCard interface {
+	FindByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
+	CountCards(ctx context.Context, masterCardgroupID string) (int64, error)
+	FindPublishedByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
+}
+
 type masterCardUsecase struct {
-	masterCardRepo      repository.MasterCardRepository
-	masterCardgroupRepo repository.MasterCardgroupRepository
+	masterCardRepo      masterCardRepoForMasterCard
+	masterCardgroupRepo masterCardgroupRepoForMasterCard
 	adminGate           *AdminGate
 	tx                  txRunner
 	processCardImport   func(string) ([]textdic.ParsedWord, []textdic.ValidationError, error)
@@ -111,8 +144,8 @@ type masterCardUsecase struct {
 // fail at startup, not at first use.
 func NewMasterCardUsecase(
 	db *gorm.DB,
-	masterCard repository.MasterCardRepository,
-	masterCardgroup repository.MasterCardgroupRepository,
+	masterCard masterCardRepoForMasterCard,
+	masterCardgroup masterCardgroupRepoForMasterCard,
 	adminGate *AdminGate,
 	logger *slog.Logger,
 ) MasterCardUsecase {
@@ -143,8 +176,8 @@ func NewMasterCardUsecase(
 // transaction runner. Intended for unit tests that exercise ImportMasterCards
 // without a real database. Production code must use NewMasterCardUsecase.
 func NewMasterCardUsecaseWithTx(
-	masterCard repository.MasterCardRepository,
-	masterCardgroup repository.MasterCardgroupRepository,
+	masterCard masterCardRepoForMasterCard,
+	masterCardgroup masterCardgroupRepoForMasterCard,
 	tx txRunner,
 	adminGate *AdminGate,
 	logger *slog.Logger,
