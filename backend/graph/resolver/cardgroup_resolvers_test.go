@@ -230,6 +230,54 @@ func TestResolver_MyCardgroupsConnection_RepoPageError_BecomesInternal(t *testin
 }
 
 // ---------------------------------------------------------------------------
+// cardgroup(id:) non-disclosure — a foreign-owned read is byte-indistinguishable
+// from a non-existent id for an authenticated caller (existence is not leaked).
+// ---------------------------------------------------------------------------
+
+const cardgroupByIDQuery = `{"query":"{ cardgroup(id: \"cg1\") { id name } }"}`
+
+// TestResolver_Cardgroup_ForeignOwned_IdenticalToNotFound proves the existence
+// oracle is closed: querying a real cardgroup owned by another user and querying
+// a non-existent id both resolve to data.cardgroup = null with no top-level
+// error, and the two wire responses are byte-identical.
+func TestResolver_Cardgroup_ForeignOwned_IdenticalToNotFound(t *testing.T) {
+	t.Parallel()
+
+	// Foreign-owned: FindByID returns a real row owned by someone other than
+	// the caller (u1).
+	foreignRepo := &mockCardgroupRepoForResolver{
+		findByIDResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u-other", Name: "Not yours"},
+	}
+	foreignResp := gqlRequest(t, newCardgroupSrv(foreignRepo), authedCtx("u1"), cardgroupByIDQuery)
+
+	// Non-existent: FindByID reports ErrNotFound.
+	missingRepo := &mockCardgroupRepoForResolver{findByIDErr: repository.ErrNotFound}
+	missingResp := gqlRequest(t, newCardgroupSrv(missingRepo), authedCtx("u1"), cardgroupByIDQuery)
+
+	for name, resp := range map[string]map[string]any{"foreign-owned": foreignResp, "non-existent": missingResp} {
+		if errs, hasErrs := resp["errors"]; hasErrs {
+			t.Fatalf("%s: expected no top-level error, got: %v", name, errs)
+		}
+		data, _ := resp["data"].(map[string]any)
+		cgVal, exists := data["cardgroup"]
+		if !exists {
+			t.Fatalf("%s: expected data.cardgroup key present (as null), resp=%v", name, resp)
+		}
+		if cgVal != nil {
+			t.Fatalf("%s: expected data.cardgroup == null, got %v", name, cgVal)
+		}
+	}
+
+	// json.Marshal sorts map keys, so equal marshaled bytes prove the two wire
+	// responses are byte-indistinguishable.
+	foreignJSON, _ := json.Marshal(foreignResp)
+	missingJSON, _ := json.Marshal(missingResp)
+	if string(foreignJSON) != string(missingJSON) {
+		t.Fatalf("existence oracle: foreign-owned %s differs from non-existent %s", foreignJSON, missingJSON)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // helpers.go — toCardgroupConnectionModel / toUsecaseOrderBy
 // ---------------------------------------------------------------------------
 //

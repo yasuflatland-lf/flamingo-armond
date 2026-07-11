@@ -95,9 +95,13 @@ func NewCardgroupUsecase(repo CardgroupRepository, admin AdminChecker, logger *s
 	return &cardgroupUsecase{repo: repo, admin: admin, logger: logger}
 }
 
-// Cardgroup returns a single cardgroup by id. Non-owners receive UNAUTHENTICATED
-// rather than NOT_FOUND so the caller cannot probe existence via ID enumeration.
-// A missing row returns (nil, nil) so the nullable GraphQL field resolves to null.
+// Cardgroup returns a single cardgroup by id. A missing row and a row owned by
+// another user both return (nil, nil) so the nullable GraphQL field resolves to
+// null with no error in either case. Collapsing the two into a byte-identical
+// response stops an authenticated caller from using the query as an existence
+// oracle over other users' cardgroup ids — the same non-disclosure collapse the
+// write paths make via authorizeCardgroupOrUnauthenticated and that
+// setLastViewedCardgroup makes for "not found or not owned".
 func (u *cardgroupUsecase) Cardgroup(ctx context.Context, id string) (*domain.Cardgroup, error) {
 	user := auth.UserFrom(ctx)
 	if err := requireCallerSub(user); err != nil {
@@ -111,7 +115,9 @@ func (u *cardgroupUsecase) Cardgroup(ctx context.Context, id string) (*domain.Ca
 		return nil, eris.Wrap(err, "usecase: cardgroup: find by id")
 	}
 	if !cg.IsOwnedBy(domain.UserID(user.Sub)) {
-		return nil, ucerr.ErrUnauthenticated
+		// Foreign-owned reads collapse to the same (nil, nil) not-found shape as
+		// a missing row so existence is not leaked.
+		return nil, nil
 	}
 	return cg, nil
 }
