@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -138,7 +138,7 @@ export function CardgroupHeader({ cardgroup, totalCount }: Props) {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>{tCommon("cancel")}</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground"
+              className={buttonVariants({ variant: "destructive" })}
               disabled={deleting}
               onClick={(e) => {
                 e.preventDefault();
