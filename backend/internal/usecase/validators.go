@@ -37,16 +37,27 @@ func validateRelayArgs(first, last *int, after, before *string) error {
 	return nil
 }
 
-// translateBioErr maps domain Bio sentinels into usecase-layer typed errors.
-// Unexpected errors are wrapped with eris. Returns nil when err is nil.
-func translateBioErr(err error) error {
+// translateTrinaryTextErr maps a domain trinary-text sentinel (Bio / Description
+// too-long) into a usecase-layer typed error. It is the shared body of
+// translateBioErr and translateDescriptionErr: err == nil returns nil; a match on
+// tooLong returns a field-scoped ValidationError whose message references max; any
+// other error is wrapped with the caller-supplied prefix (the prefix travels from
+// the caller so the error_chain names the calling field's module, per the shared-
+// helper wrap convention).
+func translateTrinaryTextErr(err error, field string, max int, tooLong error, wrap string) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, domain.ErrBioTooLong) {
-		return ucerr.NewValidationError("bio", fmt.Sprintf("bio must be at most %d characters", domain.BioMax))
+	if errors.Is(err, tooLong) {
+		return ucerr.NewValidationError(field, fmt.Sprintf("%s must be at most %d characters", field, max))
 	}
-	return eris.Wrap(err, "usecase: translate bio error")
+	return eris.Wrap(err, wrap)
+}
+
+// translateBioErr maps domain Bio sentinels into usecase-layer typed errors.
+// Unexpected errors are wrapped with eris. Returns nil when err is nil.
+func translateBioErr(err error) error {
+	return translateTrinaryTextErr(err, "bio", domain.BioMax, domain.ErrBioTooLong, "usecase: translate bio error")
 }
 
 // translateCardErr maps domain Card sentinels into usecase-layer typed errors.
@@ -87,13 +98,7 @@ func translateCardgroupNameErr(err error) error {
 // typed errors. Unexpected errors are wrapped with eris. Returns nil when err
 // is nil.
 func translateDescriptionErr(err error) error {
-	if err == nil {
-		return nil
-	}
-	if errors.Is(err, domain.ErrDescriptionTooLong) {
-		return ucerr.NewValidationError("description", fmt.Sprintf("description must be at most %d characters", domain.DescriptionMax))
-	}
-	return eris.Wrap(err, "usecase: translate description error")
+	return translateTrinaryTextErr(err, "description", domain.DescriptionMax, domain.ErrDescriptionTooLong, "usecase: translate description error")
 }
 
 // translateDisplayNameErr maps domain DisplayName sentinels into usecase-layer
