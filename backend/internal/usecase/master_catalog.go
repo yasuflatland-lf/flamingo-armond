@@ -668,8 +668,12 @@ func (u *masterCatalogUsecase) ListAdminConnection(
 // fresh cardgroup owned by the authenticated caller. The master is gated through
 // FindPublishedByID, which returns ErrNotFound for both unknown ids and draft decks,
 // so draft existence is never disclosed — both collapse to ImportMasterOutcome{NotFound:true}.
-// Unauthenticated callers receive ucerr.ErrUnauthenticated. The copy is a one-time
-// snapshot delegated to CopyMasterToUserUsecase; FSRS/swipe state starts empty.
+// The delegated copy re-reads the master through the same published-scoped method
+// inside its transaction, so a master unpublished between this gate and the write
+// also collapses to NotFound (the ErrNotFound the copy surfaces is mapped below)
+// rather than silently importing a now-draft deck. Unauthenticated callers receive
+// ucerr.ErrUnauthenticated. The copy is a one-time snapshot delegated to
+// CopyMasterToUserUsecase; FSRS/swipe state starts empty.
 func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string) (ImportMasterOutcome, error) {
 	caller := auth.UserFrom(ctx)
 	if err := requireCallerSub(caller); err != nil {
@@ -691,6 +695,12 @@ func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string
 		if isContextDone(err) {
 			return ImportMasterOutcome{}, err
 		}
+		if errors.Is(err, repository.ErrNotFound) {
+			// The master was unpublished between the FindPublishedByID gate and the
+			// copy's own published-scoped re-read (TOCTOU). Collapse into the same
+			// non-disclosure not-found outcome as a pre-gate unknown/draft master.
+			return ImportMasterOutcome{NotFound: true}, nil
+		}
 		return ImportMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: import: copy master to user")
 	}
 	return ImportMasterOutcome{Cardgroup: cg}, nil
@@ -699,10 +709,14 @@ func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string
 // MergeMaster merges the published master cardgroup identified by masterID into
 // the caller-owned cardgroup cardgroupID. The master is gated through
 // FindPublishedByID, collapsing unknown and draft into MergeMasterOutcome{NotFound:true}
-// so draft existence is never disclosed. Destination ownership is enforced by the
-// delegated usecase (BAD_USER_INPUT for unknown, UNAUTHENTICATED for foreign),
-// surfaced as an error rather than via the outcome. Unauthenticated callers
-// receive ucerr.ErrUnauthenticated. The merge is a one-time snapshot.
+// so draft existence is never disclosed. The delegated merge re-reads the master
+// through the same published-scoped method inside its transaction, so a master
+// unpublished between this gate and the write also collapses to NotFound (the
+// ErrNotFound the merge surfaces is mapped below) rather than snapshotting a
+// now-draft deck. Destination ownership is enforced by the delegated usecase
+// (BAD_USER_INPUT for unknown, UNAUTHENTICATED for foreign), surfaced as an error
+// rather than via the outcome. Unauthenticated callers receive
+// ucerr.ErrUnauthenticated. The merge is a one-time snapshot.
 func (u *masterCatalogUsecase) MergeMaster(ctx context.Context, masterID, cardgroupID string) (MergeMasterOutcome, error) {
 	caller := auth.UserFrom(ctx)
 	if err := requireCallerSub(caller); err != nil {
@@ -723,6 +737,14 @@ func (u *masterCatalogUsecase) MergeMaster(ctx context.Context, masterID, cardgr
 	if err != nil {
 		if isContextDone(err) {
 			return MergeMasterOutcome{}, err
+		}
+		if errors.Is(err, repository.ErrNotFound) {
+			// The master was unpublished between the FindPublishedByID gate and the
+			// merge tx's own published-scoped re-read (TOCTOU). Collapse into the same
+			// non-disclosure not-found outcome as a pre-gate unknown/draft master. The
+			// destination ownership gate never yields ErrNotFound (it maps a missing
+			// cardgroup to a ucerr.ValidationError), so this branch is master-scoped.
+			return MergeMasterOutcome{NotFound: true}, nil
 		}
 		// Wrap unconditionally, exactly like ImportMaster wraps CopyMasterToUser.
 		// A ucerr.ValidationError / ucerr.ErrUnauthenticated from the delegated

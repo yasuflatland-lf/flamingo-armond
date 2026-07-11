@@ -37,6 +37,20 @@ read, not reconstructed in the usecase from a richer result:
 The docstrings at each layer name the invariant ("draft existence is never leaked")
 so a future maintainer does not "helpfully" split the two cases back apart.
 
+### Write paths re-read through the same gate (TOCTOU)
+
+The gate-then-write shape has a time-of-check/time-of-use window: the caller passes
+`FindPublishedByID` at the mutation boundary, then a copy/merge transaction snapshots
+the deck. An unpublish landing in that window would import a now-draft deck if the
+transaction re-read the master through the any-status `FindByID`. The write paths
+therefore re-read through the **same** published-scoped `FindPublishedByID` inside the
+transaction (`copyMasterToUserTx`, and a fetch added before `ListByMasterCardgroup` in
+`MergeMasterIntoCardgroup`); the resulting `ErrNotFound` is mapped by `ImportMaster` /
+`MergeMaster` to the same `NotFound` outcome as a pre-gate unknown/draft. `SeedForNewUser`
+is unaffected — it already sources ids from `ListPublishedDefaultStarters`, which returns
+only published decks. This closes the TOCTOU without reversing the collapse: an unpublished
+master is indistinguishable from an unknown one on every path.
+
 ## The boundary — this is for unauthorized observers only
 
 The collapse applies when the caller has no right to know the resource exists. For
@@ -55,6 +69,12 @@ Pin the collapse where it happens, not only end-to-end:
 - Usecase: a test that both an unknown id and a draft (both surfaced as `ErrNotFound`
   by the repo mock) yield the not-found outcome with the copy/side-effect **not run**
   (`TestImportMaster_UnknownOrDraft_ReturnsNotFoundOutcome`).
+- Usecase (write-path TOCTOU): a test that a master present at the gate but unpublished
+  by the time the write transaction re-reads it yields the not-found outcome with no
+  cards written — proving the in-transaction re-read closes the window
+  (`TestMasterDeckUsecase_MergeMasterIntoCardgroup_MasterUnpublishedMidFlight_NoImport`,
+  `TestImportMaster_MasterUnpublishedMidFlight_ReturnsNotFoundOutcome`,
+  `TestMasterCatalogUsecase_MergeMaster_MasterUnpublishedMidFlight_ReturnsNotFoundOutcome`).
 - Resolver: a test that the not-found outcome maps to the typed error variant with a
   generic message (`TestMutationResolver_ImportMasterCardgroup_NotFound_ReturnsTypedError`).
 
