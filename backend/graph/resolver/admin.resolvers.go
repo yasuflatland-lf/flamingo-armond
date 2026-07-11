@@ -8,6 +8,7 @@ package resolver
 import (
 	"backend/graph/model"
 	"backend/internal/auth"
+	"backend/internal/domain"
 	"backend/internal/gqlerr"
 	"backend/internal/usecase"
 	"context"
@@ -169,7 +170,16 @@ func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Rol
 		if err != nil {
 			return nil, classifyLoaderErr(ctx, err, "resolver: user roles: admin check")
 		}
-		if !rolesContainAdmin(callerRoles) {
+		// Reuse the domain admin-membership predicate rather than a resolver-local
+		// role loop, mirroring the adapter in usecase/admin_user.go. Nil entries
+		// from the batch loader are skipped defensively before dereferencing.
+		callerSet := make(domain.RoleSet, 0, len(callerRoles))
+		for _, role := range callerRoles {
+			if role != nil {
+				callerSet = append(callerSet, *role)
+			}
+		}
+		if !callerSet.ContainsAdmin() {
 			return nil, gqlerr.NewForbidden("admin only")
 		}
 	}
