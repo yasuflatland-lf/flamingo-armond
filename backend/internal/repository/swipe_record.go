@@ -54,7 +54,10 @@ func (r *swipeRecordRepo) FindByIDs(ctx context.Context, ids []string) (map[stri
 	}
 	out := make(map[string]*domain.SwipeRecord, len(rows))
 	for i := range rows {
-		sr := swipeRecordToDomain(rows[i])
+		sr, err := swipeRecordToDomain(rows[i])
+		if err != nil {
+			return nil, err
+		}
 		out[sr.ID] = sr
 	}
 	return out, nil
@@ -70,7 +73,11 @@ func (r *swipeRecordRepo) FindByUserAndCardgroup(ctx context.Context, userID, ca
 	}
 	out := make([]*domain.SwipeRecord, len(rows))
 	for i := range rows {
-		out[i] = swipeRecordToDomain(rows[i])
+		sr, err := swipeRecordToDomain(rows[i])
+		if err != nil {
+			return nil, err
+		}
+		out[i] = sr
 	}
 	return out, nil
 }
@@ -91,7 +98,11 @@ func (r *swipeRecordRepo) ListRecentByUser(ctx context.Context, userID string, l
 
 	out := make([]*domain.SwipeRecord, len(rows))
 	for i := range rows {
-		out[i] = swipeRecordToDomain(rows[i])
+		sr, err := swipeRecordToDomain(rows[i])
+		if err != nil {
+			return nil, err
+		}
+		out[i] = sr
 	}
 	return out, nil
 }
@@ -109,7 +120,11 @@ func (r *swipeRecordRepo) ListByUserSince(ctx context.Context, userID string, si
 	}
 	out := make([]*domain.SwipeRecord, 0, len(rows))
 	for i := range rows {
-		out = append(out, swipeRecordToDomain(rows[i]))
+		sr, err := swipeRecordToDomain(rows[i])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, sr)
 	}
 	return out, nil
 }
@@ -141,13 +156,21 @@ func swipeRecordToRow(sr *domain.SwipeRecord) *gormSwipeRecord {
 	}
 }
 
-func swipeRecordToDomain(row gormSwipeRecord) *domain.SwipeRecord {
+func swipeRecordToDomain(row gormSwipeRecord) (*domain.SwipeRecord, error) {
+	rating := domain.Rating(row.Rating)
+	if !rating.IsValid() {
+		return nil, eris.Errorf("repository: invalid Rating value %d for swipe record %s", row.Rating, row.ID)
+	}
+	phase := domain.FSRSPhase(row.State)
+	if !phase.IsValid() {
+		return nil, eris.Errorf("repository: invalid FSRSPhase value %d for swipe record %s", row.State, row.ID)
+	}
 	return &domain.SwipeRecord{
 		ID:          row.ID,
 		UserID:      domain.UserID(row.UserID),
 		CardID:      row.CardID,
 		CardgroupID: domain.CardgroupID(row.CardgroupID),
-		Rating:      domain.Rating(row.Rating),
+		Rating:      rating,
 		ReviewedAt:  row.ReviewedAt,
 		StateAfter: domain.FSRSState{
 			Due:           row.Due,
@@ -157,8 +180,8 @@ func swipeRecordToDomain(row gormSwipeRecord) *domain.SwipeRecord {
 			ScheduledDays: row.ScheduledDays,
 			Reps:          row.Reps,
 			Lapses:        row.Lapses,
-			Phase:         domain.FSRSPhase(row.State),
+			Phase:         phase,
 			LastReview:    row.LastReview,
 		},
-	}
+	}, nil
 }
