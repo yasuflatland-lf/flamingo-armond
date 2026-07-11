@@ -17,8 +17,38 @@ whenever the keys it scopes to are dense.
 
 ## Policy
 
-A default 20-card session is **16 uniformly-sampled never-seen cards (80%)**
-interleaved with **4 prior-day review cards (20%)**:
+**80/20 is a full-pool target, not an invariant.** When both due windows are
+full — the deck has at least 16 never-seen cards *and* at least 4 eligible
+prior-day reviews — a default 20-card session composes as **16 uniformly-sampled
+never-seen cards (80%)** interleaved with **4 prior-day review cards (20%)**
+(16/4 at `n = 20` under `domain.DefaultNewCardRatio` = 4/5). That 16/4 split is
+the composition *only under full pools*; the mechanics below degrade it toward
+review whenever either pool runs short. The skew is deliberate, not a bug:
+review cards are due and time-critical (skipping them decays memory and FSRS
+scheduling), while new cards are discretionary (deferrable at no cost), so
+favoring review under a shallow pool is correct spaced-repetition behavior.
+
+Three mechanisms shape the actual mix, each biased toward review:
+
+- **Review-first per-cycle emission.** `interleave` emits `ratio.ReviewShare()`
+  review cards *before* `ratio.NewShare()` new cards on every cycle. At the 4/5
+  default that is 1 review then 4 new per cycle (`OrderingPolicy.Apply` →
+  `interleave` in `due_card_ordering.go`).
+- **Review-favoring rounding on non-divisible sizes.** When the session limit is
+  not a multiple of the ratio denominator, the trailing partial cycle emits its
+  review portion first, so the review count rounds *up* by at most one
+  `ReviewShare` rather than down. A full-pool request for 22 cards under 4/5
+  yields 5 review + 17 new (not 4 review + 18 new).
+- **Drain back-fill toward review.** The review and new windows are two
+  independent `LIMIT` selections that together return up to `2*limit` rows; the
+  caller then truncates the interleaved result to the session limit (`ordered[:n]`
+  in `LearnUsecase.NextDueCards`). As the unseen pool empties, the new bucket
+  runs out after its early contributions and `interleave` appends the remaining
+  review cards, so the session skews toward review. Near deck completion, with a
+  single never-seen card left, a 20-card session becomes 1 new + 19 review — the
+  session is review-heavy because there is almost nothing left to discover.
+
+Within those mechanisms:
 
 - **Review slots** take learning-phase cards first — those in
   `FSRSPhaseLearning` or `FSRSPhaseRelearning`, i.e. whose latest rating was
@@ -41,7 +71,7 @@ deterministic while the database does the sampling:
 |---|---|---|
 | Selection (which rows enter each window) | `repository.FindDueCardsForUser` | Two independent `LIMIT` windows: a review window (`due <= now AND last_review < reviewedBefore`, ordered learning-phase-first via a `CASE` then `random()`) concatenated with a new window (no FSRS row, ordered by `random()`). |
 | Arrangement (order within the batch) | `service.OrderingPolicy.Apply` | Injected `*rand.Rand` shuffles the new partition fully and the review partition within same-phase runs; then interleaves at the caller-supplied ratio (`domain.DefaultNewCardRatio` = 4:1 absent a stored preference) with review-first emission. |
-| Truncation | `usecase.LearnUsecase.NextDueCards` | Caps the interleaved result to the session limit (`ordered[:n]`), yielding the 16/4 split for a 20-card request. |
+| Truncation | `usecase.LearnUsecase.NextDueCards` | Caps the interleaved result to the session limit (`ordered[:n]`). Because the two windows return up to `2*limit` rows, this truncate is load-bearing: it yields the 16/4 split for a 20-card request only when both windows are full, and skews toward review when the unseen pool is short (see Policy). |
 
 `random()` runs in Postgres and cannot be seeded from Go, so it decides only
 *which* rows are eligible; the deterministic arrangement is the injected
