@@ -376,6 +376,23 @@ describe("<CardsNewClient> — navigate-on-success", () => {
         expect.objectContaining({ cardgroupId: CG_ID }),
       );
     });
+
+    // PII redaction contract — docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
+    // The payload must carry only narrowed fields (cardgroupId, err class name, and
+    // the safe extensions.code list from liftGraphQLCodes) — never the raw error
+    // object or its user-echoing message.
+    const warnCall = consoleWarnSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "[cards-new] setLastViewedCardgroup failed",
+    );
+    expect(warnCall).toBeDefined();
+    const payload = warnCall?.[1];
+    expect(payload).toMatchObject({
+      cardgroupId: CG_ID,
+      name: expect.any(String),
+      codes: expect.arrayContaining(["BAD_USER_INPUT"]),
+    });
+    expect(payload).not.toHaveProperty("err");
+    expect(payload).not.toHaveProperty("message");
   });
 
   it("does NOT call router.push when createCard rejects; surfaces error banner", async () => {
