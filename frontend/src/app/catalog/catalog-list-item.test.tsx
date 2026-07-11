@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { CatalogCardFieldsFragment } from "@/app/catalog/queries";
+import { CatalogDeckFieldsFragment } from "@/app/catalog/queries";
 import { makeFragmentData } from "@/generated/fragment-masking";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { CatalogListItem } from "./catalog-list-item";
@@ -17,7 +17,7 @@ const FULL_NODE = makeFragmentData(
     description: "Professional vocabulary",
     cardCount: 1245,
   },
-  CatalogCardFieldsFragment,
+  CatalogDeckFieldsFragment,
 );
 
 const BARE_NODE = makeFragmentData(
@@ -28,7 +28,7 @@ const BARE_NODE = makeFragmentData(
     description: null,
     cardCount: 100,
   },
-  CatalogCardFieldsFragment,
+  CatalogDeckFieldsFragment,
 );
 
 function renderItem(node: typeof FULL_NODE) {
@@ -62,7 +62,7 @@ describe("<CatalogListItem>", () => {
         description: null,
         cardCount: 1,
       },
-      CatalogCardFieldsFragment,
+      CatalogDeckFieldsFragment,
     );
     renderWithIntl(
       <ul>

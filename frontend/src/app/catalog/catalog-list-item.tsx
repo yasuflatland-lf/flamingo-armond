@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { CatalogCardFieldsFragment } from "@/app/catalog/queries";
+import { CatalogDeckFieldsFragment } from "@/app/catalog/queries";
 import { type FragmentType, useFragment } from "@/generated/fragment-masking";
 
 /**
@@ -11,8 +11,8 @@ import { type FragmentType, useFragment } from "@/generated/fragment-masking";
  * interactive element; all actions (e.g. Import) belong on the detail page.
  */
 export type CatalogListItemProps = {
-  /** A masked `CatalogCardFields` ref — unmasked once via `useFragment` below. */
-  node: FragmentType<typeof CatalogCardFieldsFragment>;
+  /** A masked `CatalogDeckFields` ref — unmasked once via `useFragment` below. */
+  node: FragmentType<typeof CatalogDeckFieldsFragment>;
 };
 
 /**
@@ -28,7 +28,7 @@ export type CatalogListItemProps = {
  */
 export function CatalogListItem({ node }: CatalogListItemProps) {
   const t = useTranslations("Catalog");
-  const deck = useFragment(CatalogCardFieldsFragment, node);
+  const deck = useFragment(CatalogDeckFieldsFragment, node);
 
   return (
     <li>

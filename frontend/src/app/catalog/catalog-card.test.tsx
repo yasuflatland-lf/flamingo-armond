@@ -2,10 +2,10 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { CatalogCardFieldsFragment } from "@/app/catalog/queries";
+import { CatalogDeckFieldsFragment } from "@/app/catalog/queries";
 import { makeFragmentData } from "@/generated/fragment-masking";
 import { renderWithIntl } from "@/test/render-with-intl";
-import { CatalogCard } from "./catalog-card";
+import { CatalogDeckTile } from "./catalog-card";
 
 // `makeFragmentData` is identity at runtime, so the wrapped object still carries
 // every field the component reads via `useFragment`; the wrap only supplies the
@@ -18,7 +18,7 @@ const FULL_NODE = makeFragmentData(
     description: "Professional vocabulary",
     cardCount: 42,
   },
-  CatalogCardFieldsFragment,
+  CatalogDeckFieldsFragment,
 );
 
 const BARE_NODE = makeFragmentData(
@@ -29,13 +29,13 @@ const BARE_NODE = makeFragmentData(
     description: null,
     cardCount: 100,
   },
-  CatalogCardFieldsFragment,
+  CatalogDeckFieldsFragment,
 );
 
-describe("<CatalogCard>", () => {
+describe("<CatalogDeckTile>", () => {
   it("renders name, description, and card count", () => {
     renderWithIntl(
-      <CatalogCard node={FULL_NODE} importing={false} imported={false} onImport={vi.fn()} />,
+      <CatalogDeckTile node={FULL_NODE} importing={false} imported={false} onImport={vi.fn()} />,
     );
 
     expect(screen.getByText("Business English")).toBeInTheDocument();
@@ -45,7 +45,7 @@ describe("<CatalogCard>", () => {
 
   it("omits the description when it is null", () => {
     renderWithIntl(
-      <CatalogCard node={BARE_NODE} importing={false} imported={false} onImport={vi.fn()} />,
+      <CatalogDeckTile node={BARE_NODE} importing={false} imported={false} onImport={vi.fn()} />,
     );
 
     expect(screen.getByText("JLPT N3 Kanji")).toBeInTheDocument();
@@ -54,7 +54,7 @@ describe("<CatalogCard>", () => {
 
   it("disables the button and shows the in-flight label while importing", () => {
     renderWithIntl(
-      <CatalogCard node={FULL_NODE} importing={true} imported={false} onImport={vi.fn()} />,
+      <CatalogDeckTile node={FULL_NODE} importing={true} imported={false} onImport={vi.fn()} />,
     );
 
     const btn = screen.getByTestId("catalog-import-m-1");
@@ -64,7 +64,7 @@ describe("<CatalogCard>", () => {
 
   it("disables the button and shows the imported label once imported", () => {
     renderWithIntl(
-      <CatalogCard node={FULL_NODE} importing={false} imported={true} onImport={vi.fn()} />,
+      <CatalogDeckTile node={FULL_NODE} importing={false} imported={true} onImport={vi.fn()} />,
     );
 
     const btn = screen.getByTestId("catalog-import-m-1");
@@ -76,7 +76,7 @@ describe("<CatalogCard>", () => {
     const user = userEvent.setup();
     const onImport = vi.fn();
     renderWithIntl(
-      <CatalogCard node={FULL_NODE} importing={false} imported={false} onImport={onImport} />,
+      <CatalogDeckTile node={FULL_NODE} importing={false} imported={false} onImport={onImport} />,
     );
 
     await user.click(screen.getByTestId("catalog-import-m-1"));
@@ -86,7 +86,7 @@ describe("<CatalogCard>", () => {
 
   it("uses custom labels and a custom testId prefix when provided", () => {
     renderWithIntl(
-      <CatalogCard
+      <CatalogDeckTile
         node={FULL_NODE}
         importing={false}
         imported={false}

@@ -59,12 +59,12 @@ on the right axes:
 ## Worked example
 
 `CatalogListItem` (`frontend/src/app/catalog/catalog-list-item.tsx`) is a sibling
-of `CatalogCard` (`frontend/src/app/catalog/catalog-card.tsx`). Both unmask the
-`CatalogCardFields` fragment (`frontend/src/app/catalog/queries.ts`) and accept
+of `CatalogDeckTile` (`frontend/src/app/catalog/catalog-card.tsx`). Both unmask the
+`CatalogDeckFields` fragment (`frontend/src/app/catalog/queries.ts`) and accept
 `{ node, importing, imported, onImport, labels?, testIdPrefix? }`.
 `CatalogListItem` renders the `/catalog` list row (mirroring `AdminMasterRow`);
-`CatalogCard` keeps its fixed-width tile layout for the `/onboarding/start`
+`CatalogDeckTile` keeps its fixed-width tile layout for the `/onboarding/start`
 deck chooser. The `/catalog` migration from a card grid to a list changed only
-the catalog call site and the new sibling — `CatalogCard` and `/onboarding/start`
+the catalog call site and the new sibling — `CatalogDeckTile` and `/onboarding/start`
 were never touched. The Import `<Button>` block is duplicated between the two on
 purpose; a reviewer accepted that as the cost of leaving the shared tile intact.
