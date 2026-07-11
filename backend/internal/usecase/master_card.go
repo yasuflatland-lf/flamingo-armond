@@ -445,8 +445,14 @@ func (u *masterCardUsecase) ImportMasterCards(ctx context.Context, in ImportMast
 		return ImportMasterCardsOutput{}, eris.Wrap(perr, "usecase: master card: import: parse")
 	}
 
-	if len(words) > cardImportParsedRowCap {
-		return ImportMasterCardsOutput{}, ucerr.NewValidationError("payload", fmt.Sprintf("payload exceeds %d row cap", cardImportParsedRowCap))
+	// Enforce the same caps the user path (card_import.go) reports, via the shared
+	// checker, so the master import cannot diverge from the batch-import preview.
+	// Checked on the raw parsed words (before dedup) so both the parsed-row cap and
+	// the per-side grapheme cap reject identically. The first violation aborts the
+	// whole batch (all-or-nothing). The build loop below keeps domain.NewMasterCard,
+	// so validateImportRows' returned VOs are discarded here.
+	if _, caps := validateImportRows(words); len(caps) > 0 {
+		return ImportMasterCardsOutput{}, ucerr.NewValidationError(caps[0].Field, caps[0].Message)
 	}
 
 	mappedErrs := cardImportErrorsFromTextdic(parseErrs)
