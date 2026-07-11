@@ -14,7 +14,6 @@ import (
 	"backend/internal/domain"
 	"backend/internal/domain/service"
 	"backend/internal/repository"
-	"backend/internal/usecase/ucerr"
 )
 
 const (
@@ -143,18 +142,8 @@ func (u *learnUsecase) authorizeCardgroupForLearn(ctx context.Context, cardgroup
 	if err := requireCallerSub(user); err != nil {
 		return nil, err
 	}
-	cg, err := u.cardgroupRepo.FindByID(ctx, cardgroupID)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ucerr.NewValidationError("cardgroupId", "cardgroup not found")
-		}
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: find cardgroup by id")
-	}
-	if !cg.IsOwnedBy(domain.UserID(user.Sub)) {
-		return nil, ucerr.ErrUnauthenticated
+	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, domain.CardgroupID(cardgroupID), domain.UserID(user.Sub)); err != nil {
+		return nil, err
 	}
 	return user, nil
 }

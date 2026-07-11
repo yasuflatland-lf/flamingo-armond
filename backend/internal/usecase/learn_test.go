@@ -262,7 +262,7 @@ func TestLearnUsecaseNextDueCardsCardgroupRepoInternalError(t *testing.T) {
 
 	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
 
-	assertInternalChain(t, err, "usecase: find cardgroup by id")
+	assertInternalChain(t, err, "usecase: authorize cardgroup: find by id")
 }
 
 func TestNewLearnUsecase_PanicsOnInvalidDeps(t *testing.T) {
@@ -524,7 +524,7 @@ func TestLearnUsecasePracticeTodaysCardsAuthAndCardgroupErrors(t *testing.T) {
 			now,
 		)
 		_, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
-		assertInternalChain(t, err, "usecase: find cardgroup by id")
+		assertInternalChain(t, err, "usecase: authorize cardgroup: find by id")
 	})
 }
 
