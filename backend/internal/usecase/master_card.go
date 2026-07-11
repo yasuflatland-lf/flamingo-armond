@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -279,21 +278,17 @@ func (u *masterCardUsecase) CreateMasterCard(ctx context.Context, in CreateMaste
 	}
 	if err := u.masterCardRepo.Create(ctx, card); err != nil {
 		if errors.Is(err, repository.ErrCardDuplicateFront) {
-			existing, lookupErr := u.masterCardRepo.FindByMasterCardgroupAndFront(ctx, in.MasterCardgroupID, string(card.Front))
-			if lookupErr != nil {
-				if isContextDone(lookupErr) {
-					return CreateMasterCardOutcome{}, lookupErr
+			dup, recoverErr := recoverDuplicateFront(func() (string, string, error) {
+				existing, lookupErr := u.masterCardRepo.FindByMasterCardgroupAndFront(ctx, in.MasterCardgroupID, string(card.Front))
+				if lookupErr != nil {
+					return "", "", lookupErr
 				}
-				// The lookup may race with a concurrent delete (the duplicate row
-				// vanished between the failed INSERT and this SELECT) or fail for an
-				// unrelated DB reason. Either way, surface as Internal so the client
-				// can retry.
-				return CreateMasterCardOutcome{}, eris.Wrap(lookupErr, "usecase: master card: lookup duplicate after 23505")
+				return existing.ID, string(existing.Back), nil
+			}, "usecase: master card: lookup duplicate after 23505")
+			if recoverErr != nil {
+				return CreateMasterCardOutcome{}, recoverErr
 			}
-			return CreateMasterCardOutcome{Duplicate: &DuplicateCardInfo{
-				ExistingID:   existing.ID,
-				ExistingBack: string(existing.Back),
-			}}, nil
+			return CreateMasterCardOutcome{Duplicate: dup}, nil
 		}
 		if errors.Is(err, repository.ErrMasterCardgroupNotFound) {
 			return CreateMasterCardOutcome{}, ucerr.NewValidationError("masterCardgroupId", "master cardgroup not found")
@@ -314,47 +309,51 @@ func (u *masterCardUsecase) UpdateMasterCard(ctx context.Context, id string, in 
 		return UpdateMasterCardOutcome{}, err
 	}
 
-	// Validate and stage each requested field through the aggregate mutation
-	// methods rather than writing the patch DTO inline (mirrors cardUsecase.Update).
-	// The patch-build path is preserved — no FindByID read round-trip: a transient
-	// MasterCard carries the parsed value into UpdateFront/UpdateBack and the
-	// resulting field is copied into the repository patch. UpdateFront/UpdateBack
-	// errors below route through eris.Wrap, not translateCardErr: ParseCardText
-	// (called immediately above each guard) already returns the sentinel for
+	// Validate and stage each requested field through the shared stageCardText helper
+	// rather than writing the patch DTO inline (mirrors cardUsecase.Update). The
+	// patch-build path is preserved — no FindByID read round-trip: a transient
+	// MasterCard carries the parsed value into UpdateFront/UpdateBack and the resulting
+	// field is copied into the repository patch. UpdateFront/UpdateBack errors are
+	// routed through eris.Wrap inside each apply closure, not translateCardErr:
+	// ParseCardText (run inside stageCardText) already returns the sentinel for
 	// empty/zero input on the validation channel. If UpdateFront/UpdateBack still
 	// rejects the parsed VO, the invariant has been violated by a programmer error,
 	// not bad user input — INTERNAL is the honest classification.
 	patch := repository.MasterCardUpdate{}
 	staged := &domain.MasterCard{}
-	if in.Front != nil {
-		front, err := domain.ParseCardText(*in.Front, domain.ErrCardFrontRequired, domain.ErrCardFrontTooLong)
-		if err != nil {
-			info, perr := liftValidationErr(translateCardErr(err))
-			if perr != nil {
-				return UpdateMasterCardOutcome{}, perr
+	frontStaged, frontInfo, err := stageCardText(in.Front,
+		domain.ErrCardFrontRequired, domain.ErrCardFrontTooLong,
+		func(text domain.CardText) (string, error) {
+			if err := staged.UpdateFront(text); err != nil {
+				return "", eris.Wrap(err, "usecase: master card: update front")
 			}
-			return UpdateMasterCardOutcome{Validation: info}, nil
-		}
-		if err := staged.UpdateFront(front); err != nil {
-			return UpdateMasterCardOutcome{}, eris.Wrap(err, "usecase: master card: update front")
-		}
-		s := staged.Front.String()
-		patch.Front = &s
+			return staged.Front.String(), nil
+		})
+	if err != nil {
+		return UpdateMasterCardOutcome{}, err
 	}
-	if in.Back != nil {
-		back, err := domain.ParseCardText(*in.Back, domain.ErrCardBackRequired, domain.ErrCardBackTooLong)
-		if err != nil {
-			info, perr := liftValidationErr(translateCardErr(err))
-			if perr != nil {
-				return UpdateMasterCardOutcome{}, perr
+	if frontInfo != nil {
+		return UpdateMasterCardOutcome{Validation: frontInfo}, nil
+	}
+	if frontStaged != nil {
+		patch.Front = frontStaged
+	}
+	backStaged, backInfo, err := stageCardText(in.Back,
+		domain.ErrCardBackRequired, domain.ErrCardBackTooLong,
+		func(text domain.CardText) (string, error) {
+			if err := staged.UpdateBack(text); err != nil {
+				return "", eris.Wrap(err, "usecase: master card: update back")
 			}
-			return UpdateMasterCardOutcome{Validation: info}, nil
-		}
-		if err := staged.UpdateBack(back); err != nil {
-			return UpdateMasterCardOutcome{}, eris.Wrap(err, "usecase: master card: update back")
-		}
-		s := staged.Back.String()
-		patch.Back = &s
+			return staged.Back.String(), nil
+		})
+	if err != nil {
+		return UpdateMasterCardOutcome{}, err
+	}
+	if backInfo != nil {
+		return UpdateMasterCardOutcome{Validation: backInfo}, nil
+	}
+	if backStaged != nil {
+		patch.Back = backStaged
 	}
 
 	updated, err := u.masterCardRepo.Update(ctx, id, patch)
@@ -395,8 +394,8 @@ func (u *masterCardUsecase) DeleteMasterCards(ctx context.Context, ids []string)
 	if _, err := u.adminGate.Require(ctx, "usecase: master card: bulk delete"); err != nil {
 		return 0, err
 	}
-	if len(ids) > maxBulkDelete {
-		return 0, ucerr.NewValidationError("ids", fmt.Sprintf("at most %d ids per call", maxBulkDelete))
+	if err := checkBulkDeleteCap(ids); err != nil {
+		return 0, err
 	}
 	if len(ids) == 0 {
 		return 0, nil
