@@ -221,3 +221,69 @@ func TestSwipeRecordRepository_ListByUserSince_InclusiveBoundaryAndScopes(t *tes
 	require.NotContains(t, ids, idBeforeSince, "reviewed_at strictly before since is excluded")
 	require.NotContains(t, ids, idOtherAtSince, "another user's swipe is excluded")
 }
+
+// TestSwipeRecordRepository_OutOfRangeState_ReturnsError proves the reconstitution
+// guard in swipeRecordToDomain rejects a corrupt enum value instead of silently
+// miscounting it in the performance metrics, per
+// docs/backend/library-gotchas/gorm-enum-cast-isvalid.md. A row whose `state`
+// column holds an out-of-range FSRSPhase (99) must surface a non-nil error from
+// every read path, not reconstitute a SwipeRecord carrying an invalid Phase.
+//
+// The `rating` column is not exercised here because a persisted out-of-range
+// rating is impossible: the swipe_records schema enforces
+// `CHECK (rating BETWEEN 1 AND 4)`, so the rating-side IsValid() guard is
+// defense-in-depth against future schema drift or a manual SQL edit, not a
+// condition a persisted row can reach today.
+func TestSwipeRecordRepository_OutOfRangeState_ReturnsError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	cardRepo := repository.NewCardRepository(testDB.GORM)
+	swipeRepo := repository.NewSwipeRecordRepository(testDB.GORM)
+
+	card := newCard(cg.ID, "out of range state", "back")
+	require.NoError(t, cardRepo.Create(ctx, card))
+
+	reviewedAt := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	state := domain.NewFSRSStateForNewCard(reviewedAt)
+	state.Phase = domain.FSRSPhase(99) // out of range; no DB CHECK on the state column
+	corrupt := &domain.SwipeRecord{
+		ID:          "00000000-0000-0000-0000-0000000000c1",
+		UserID:      domain.UserID(ownerID),
+		CardID:      card.ID,
+		CardgroupID: cg.ID,
+		Rating:      domain.RatingEasy,
+		ReviewedAt:  reviewedAt,
+		StateAfter:  state,
+	}
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return swipeRepo.CreateTx(ctx, tx, corrupt)
+	}))
+
+	reads := map[string]func() error{
+		"FindByIDs": func() error {
+			_, err := swipeRepo.FindByIDs(ctx, []string{corrupt.ID})
+			return err
+		},
+		"FindByUserAndCardgroup": func() error {
+			_, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cg.ID))
+			return err
+		},
+		"ListRecentByUser": func() error {
+			_, err := swipeRepo.ListRecentByUser(ctx, ownerID, 10)
+			return err
+		},
+		"ListByUserSince": func() error {
+			_, err := swipeRepo.ListByUserSince(ctx, ownerID, reviewedAt.Add(-time.Hour))
+			return err
+		},
+	}
+	for name, read := range reads {
+		t.Run(name, func(t *testing.T) {
+			err := read()
+			require.Error(t, err, "an out-of-range FSRSPhase must propagate as an error, not a silent success")
+			require.Contains(t, err.Error(), "invalid FSRSPhase value 99")
+		})
+	}
+}
