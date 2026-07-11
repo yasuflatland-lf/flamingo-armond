@@ -242,15 +242,13 @@ func (u *cardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 		return UpdateCardgroupOutcome{}, err
 	}
 
-	existing, err := u.repo.FindByID(ctx, id)
+	// Ownership classification (not-found / not-owned / context-done) is routed
+	// through the shared ownership.go seam. findOwnedCardgroup returns the loaded
+	// row so the patch below can operate on it without a second lookup; a missing
+	// row surfaces as UNAUTHENTICATED to prevent ID enumeration.
+	existing, err := findOwnedCardgroup(ctx, u.repo, domain.CardgroupID(id), domain.UserID(user.Sub), ucerr.ErrUnauthenticated)
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return UpdateCardgroupOutcome{}, ucerr.ErrUnauthenticated
-		}
-		return UpdateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: find for update")
-	}
-	if !existing.IsOwnedBy(domain.UserID(user.Sub)) {
-		return UpdateCardgroupOutcome{}, ucerr.ErrUnauthenticated
+		return UpdateCardgroupOutcome{}, err
 	}
 
 	// Empty patch: no DB write, return current row.
@@ -287,15 +285,11 @@ func (u *cardgroupUsecase) Delete(ctx context.Context, id string) error {
 		return err
 	}
 
-	existing, err := u.repo.FindByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return ucerr.ErrUnauthenticated
-		}
-		return eris.Wrap(err, "usecase: cardgroup: find for delete")
-	}
-	if !existing.IsOwnedBy(domain.UserID(user.Sub)) {
-		return ucerr.ErrUnauthenticated
+	// Ownership classification (not-found / not-owned / context-done) is routed
+	// through the shared ownership.go seam; a missing or foreign row surfaces as
+	// UNAUTHENTICATED to prevent ID enumeration.
+	if err := authorizeCardgroupOrUnauthenticated(ctx, u.repo, domain.CardgroupID(id), domain.UserID(user.Sub)); err != nil {
+		return err
 	}
 
 	if err := u.repo.Delete(ctx, id); err != nil {

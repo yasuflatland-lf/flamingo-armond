@@ -736,6 +736,28 @@ func TestCardgroupUsecase_Update_RepoError_InfraChannel(t *testing.T) {
 	assertInternalChain(t, err, "usecase: cardgroup: update")
 }
 
+// TestCardgroupUsecase_Update_FindByIDCancelled_IdentityPreserved pins the
+// context-cancellation contract for the Update ownership lookup now that it
+// routes through the shared findOwnedCardgroup seam. assertCancelled proves the
+// chain still matches; the bare-identity check (err == context.Canceled) proves
+// the seam does not eris.Wrap the sentinel, so the resolver's Cancelled routing
+// and any == comparison downstream keep working.
+func TestCardgroupUsecase_Update_FindByIDCancelled_IdentityPreserved(t *testing.T) {
+	t.Parallel()
+	repo := &mockCardgroupRepository{findErr: context.Canceled}
+	uc := NewCardgroupUsecase(repo, cgDefaultAdmin(), newTestLogger())
+
+	_, err := uc.Update(cgAuthedCtx("user-1"), "cg1", UpdateCardgroupInput{Name: ptr("New")})
+
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %T: %v", err, err)
+	}
+	if repo.updateCalled {
+		t.Fatal("expected repo.Update NOT to be called when FindByID is cancelled")
+	}
+}
+
 // --- Delete tests ---
 
 func TestCardgroupUsecase_Delete_Anonymous(t *testing.T) {
@@ -794,6 +816,28 @@ func TestCardgroupUsecase_Delete_Success(t *testing.T) {
 	}
 	if !repo.deleteCalled {
 		t.Fatal("expected repo.Delete to be called")
+	}
+}
+
+// TestCardgroupUsecase_Delete_FindByIDCancelled_IdentityPreserved pins the
+// context-cancellation contract for the Delete ownership lookup now that it
+// routes through authorizeCardgroupOrUnauthenticated (ownership.go). The inline
+// gate this replaced eris.Wrapped a cancelled FindByID; the shared helper passes
+// it through unwrapped, so assertCancelled plus the bare-identity check keep the
+// resolver's Cancelled routing intact.
+func TestCardgroupUsecase_Delete_FindByIDCancelled_IdentityPreserved(t *testing.T) {
+	t.Parallel()
+	repo := &mockCardgroupRepository{findErr: context.Canceled}
+	uc := NewCardgroupUsecase(repo, cgDefaultAdmin(), newTestLogger())
+
+	err := uc.Delete(cgAuthedCtx("user-1"), "cg1")
+
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %T: %v", err, err)
+	}
+	if repo.deleteCalled {
+		t.Fatal("expected repo.Delete NOT to be called when FindByID is cancelled")
 	}
 }
 
