@@ -90,8 +90,8 @@ func TestMyLearningStats_HappyPath(t *testing.T) {
 
 	mock := &mockStatsUsecase{
 		result: &usecase.LearningStatsResult{
-			Mastery: usecase.MasteryBreakdown{InProgress: 4, Learned: 6, Mature: 10, TotalStudied: 20},
-			Decks: []usecase.DeckMasteryResult{
+			Mastery: service.MasteryBreakdown{InProgress: 4, Learned: 6, Mature: 10, TotalStudied: 20},
+			Decks: []service.DeckMastery{
 				{CardgroupID: "cg-1", TotalCards: 10, LearnedCards: 3, MatureCards: 7},
 				{CardgroupID: "cg-2", TotalCards: 5, LearnedCards: 1, MatureCards: 2},
 			},
@@ -163,7 +163,7 @@ func TestMyLearningStats_MissingLoaderMiddleware_ReturnsInternal(t *testing.T) {
 
 	mock := &mockStatsUsecase{
 		result: &usecase.LearningStatsResult{
-			Mastery: usecase.MasteryBreakdown{TotalStudied: 0},
+			Mastery: service.MasteryBreakdown{TotalStudied: 0},
 		},
 	}
 	srv := newStatsSrv(mock)
@@ -184,7 +184,7 @@ func TestMyLearningStats_CardgroupLoadError_ContextCancelledReturnsCancelled(t *
 
 	mock := &mockStatsUsecase{
 		result: &usecase.LearningStatsResult{
-			Decks: []usecase.DeckMasteryResult{{CardgroupID: "cg-1", TotalCards: 1}},
+			Decks: []service.DeckMastery{{CardgroupID: "cg-1", TotalCards: 1}},
 		},
 	}
 	srv := newStatsSrv(mock)
@@ -206,7 +206,7 @@ func TestMyLearningStats_CardgroupLoadError_GenericReturnsInternal(t *testing.T)
 
 	mock := &mockStatsUsecase{
 		result: &usecase.LearningStatsResult{
-			Decks: []usecase.DeckMasteryResult{{CardgroupID: "cg-1", TotalCards: 1}},
+			Decks: []service.DeckMastery{{CardgroupID: "cg-1", TotalCards: 1}},
 		},
 	}
 	srv := newStatsSrv(mock)
@@ -288,7 +288,7 @@ func TestMyLearningStats_PerformanceAndStrugglingCards(t *testing.T) {
 
 	mock := &mockStatsUsecase{
 		result: &usecase.LearningStatsResult{
-			Mastery: usecase.MasteryBreakdown{TotalStudied: 3},
+			Mastery: service.MasteryBreakdown{TotalStudied: 3},
 			Performance: service.PerformanceMetrics{
 				SuccessRate:   0.8,
 				AvgDifficulty: 0.4,
@@ -297,7 +297,7 @@ func TestMyLearningStats_PerformanceAndStrugglingCards(t *testing.T) {
 				LapseRate:     0.1,
 				ReviewCount:   42,
 			},
-			StrugglingCards: []usecase.StrugglingCardResult{
+			StrugglingCards: []service.StrugglingCard{
 				{CardID: "card-1", Lapses: 5, Stability: 2.5},
 				{CardID: "card-2", Lapses: 3, Stability: 8},
 			},
@@ -363,8 +363,8 @@ func TestMyLearningStats_NoLapses_ReturnsEmptyStrugglingCards(t *testing.T) {
 
 	mock := &mockStatsUsecase{
 		result: &usecase.LearningStatsResult{
-			Mastery:         usecase.MasteryBreakdown{TotalStudied: 2},
-			StrugglingCards: []usecase.StrugglingCardResult{},
+			Mastery:         service.MasteryBreakdown{TotalStudied: 2},
+			StrugglingCards: []service.StrugglingCard{},
 		},
 	}
 	srv := newStatsSrv(mock)
@@ -394,7 +394,7 @@ func TestMyLearningStats_StrugglingCardLoadError_ReturnsInternal(t *testing.T) {
 
 	mock := &mockStatsUsecase{
 		result: &usecase.LearningStatsResult{
-			StrugglingCards: []usecase.StrugglingCardResult{{CardID: "card-1", Lapses: 2, Stability: 1}},
+			StrugglingCards: []service.StrugglingCard{{CardID: "card-1", Lapses: 2, Stability: 1}},
 		},
 	}
 	srv := newStatsSrv(mock)

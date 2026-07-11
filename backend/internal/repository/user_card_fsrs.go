@@ -29,25 +29,13 @@ type gormUserCardFSRS struct {
 
 func (gormUserCardFSRS) TableName() string { return "user_card_fsrs" }
 
-// FSRSStatRow is a lightweight projection for the stats aggregate: no front
-// text — just CardID (row identity), CardgroupID (per-deck bucketing),
-// Phase/Stability (the columns ClassifyMastery needs), and Lapses (the
-// struggling-card ranking key).
-type FSRSStatRow struct {
-	CardID      string
-	CardgroupID string
-	Phase       domain.FSRSPhase
-	Stability   float64
-	Lapses      int
-}
-
 type UserCardFSRSRepository interface {
 	UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.UserCardFSRS) error
 	FindByUserAndCardIDs(ctx context.Context, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
 	FindByUserAndCardIDsTx(ctx context.Context, tx *gorm.DB, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
-	// ListFSRSStatesByUser returns one lightweight row per studied card for
-	// userID, joined to cards for the owning cardgroup.
-	ListFSRSStatesByUser(ctx context.Context, userID string) ([]FSRSStatRow, error)
+	// ListFSRSStatesByUser returns one lightweight domain.FSRSStat per studied
+	// card for userID, joined to cards for the owning cardgroup.
+	ListFSRSStatesByUser(ctx context.Context, userID string) ([]domain.FSRSStat, error)
 	// CountCardsByCardgroupForUser returns the total card count per cardgroup the
 	// user owns, for every owned deck that has at least one card (the per-deck
 	// denominators + the deck list for the acquisition rate). Decks with cards
@@ -86,8 +74,8 @@ func (r *userCardFSRSRepo) UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.
 // ListFSRSStatesByUser returns one row per studied card for userID, joined to
 // cards for the owning cardgroup. WHERE user_card_fsrs.user_id = ? is backed by
 // the (user_id, card_id) PK.
-func (r *userCardFSRSRepo) ListFSRSStatesByUser(ctx context.Context, userID string) ([]FSRSStatRow, error) {
-	var rows []FSRSStatRow
+func (r *userCardFSRSRepo) ListFSRSStatesByUser(ctx context.Context, userID string) ([]domain.FSRSStat, error) {
+	var rows []domain.FSRSStat
 	err := r.db.WithContext(ctx).
 		Table("user_card_fsrs AS f").
 		Select("f.card_id AS card_id, c.cardgroup_id AS cardgroup_id, f.state AS phase, f.stability AS stability, f.lapses AS lapses").

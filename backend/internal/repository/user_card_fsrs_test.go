@@ -207,7 +207,7 @@ func TestUserCardFSRSRepository_ListFSRSStatesByUser_ScopesByViewer(t *testing.T
 	require.NoError(t, err)
 	require.Len(t, rows, 2, "owner has exactly two studied cards")
 
-	byCard := make(map[string]repository.FSRSStatRow, len(rows))
+	byCard := make(map[string]domain.FSRSStat, len(rows))
 	for _, r := range rows {
 		byCard[r.CardID] = r
 	}

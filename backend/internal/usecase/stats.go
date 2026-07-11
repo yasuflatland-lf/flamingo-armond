@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"sort"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -10,7 +9,6 @@ import (
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/domain/service"
-	"backend/internal/repository"
 )
 
 const (
@@ -32,7 +30,7 @@ type StatsUsecase interface {
 // stats aggregate needs. Declaring it here keeps the dependency arrow correct
 // and lets a fake satisfy it in tests.
 type statsFSRSRepo interface {
-	ListFSRSStatesByUser(ctx context.Context, userID string) ([]repository.FSRSStatRow, error)
+	ListFSRSStatesByUser(ctx context.Context, userID string) ([]domain.FSRSStat, error)
 	CountCardsByCardgroupForUser(ctx context.Context, userID string) (map[string]int, error)
 }
 
@@ -69,38 +67,19 @@ func NewStats(fsrsRepo statsFSRSRepo, swipeRepo statsSwipeRepo, cardgroupRepo st
 
 // LearningStatsResult is the usecase-layer result VO. It carries cardgroup ids
 // and struggling-card ids only; the resolver hydrates the Cardgroup / Card
-// objects via the DataLoader.
+// objects via the DataLoader. The mastery/struggle policy that fills these
+// fields lives in the domain services (service.AggregateMastery /
+// service.TopStruggling); the usecase only orchestrates the repo reads.
 type LearningStatsResult struct {
-	Mastery MasteryBreakdown
-	Decks   []DeckMasteryResult
+	Mastery service.MasteryBreakdown
+	Decks   []service.DeckMastery
 	// OwnsAnyDeck is true iff the caller owns at least one cardgroup, regardless
 	// of card count. It lets the client tell a brand-new user (owns nothing) apart
 	// from a user who created a deck but has not added cards yet — Decks omits
 	// empty decks, so Decks alone cannot make that distinction.
 	OwnsAnyDeck     bool
 	Performance     service.PerformanceMetrics
-	StrugglingCards []StrugglingCardResult
-}
-
-// StrugglingCardResult identifies a card the learner struggles with (high
-// lapses / low stability). CardID is hydrated to a Card by the resolver.
-type StrugglingCardResult struct {
-	CardID    string
-	Lapses    int
-	Stability float64
-}
-
-// MasteryBreakdown is the disjoint three-tier count across all studied cards.
-// InProgress + Learned + Mature == TotalStudied by construction.
-type MasteryBreakdown struct{ InProgress, Learned, Mature, TotalStudied int }
-
-// DeckMasteryResult is a per-deck acquisition summary. LearnedCards and
-// MatureCards are disjoint; acquired == LearnedCards + MatureCards.
-type DeckMasteryResult struct {
-	CardgroupID  string
-	TotalCards   int
-	LearnedCards int // disjoint: Review & stability < MatureStabilityDays
-	MatureCards  int // disjoint: Review & stability >= MatureStabilityDays
+	StrugglingCards []service.StrugglingCard
 }
 
 func (u *statsUsecase) MyLearningStats(ctx context.Context) (*LearningStatsResult, error) {
@@ -118,57 +97,12 @@ func (u *statsUsecase) MyLearningStats(ctx context.Context) (*LearningStatsResul
 		return nil, eris.Wrap(err, "usecase: stats: count cards by cardgroup")
 	}
 
-	// perDeck accumulates the disjoint learned/mature split per cardgroup while
-	// the global breakdown accrues across every studied card.
-	type deckAcc struct{ learned, mature int }
-	perDeck := make(map[string]*deckAcc, len(totals))
-	mastery := MasteryBreakdown{TotalStudied: len(states)}
-	for _, s := range states {
-		tier := domain.ClassifyMastery(
-			domain.FSRSState{Phase: s.Phase, Stability: s.Stability},
-			domain.MatureStabilityDays,
-		)
-		acc := perDeck[s.CardgroupID]
-		if acc == nil {
-			acc = &deckAcc{}
-			perDeck[s.CardgroupID] = acc
-		}
-		switch tier {
-		case domain.TierInProgress:
-			mastery.InProgress++
-		case domain.TierLearned:
-			mastery.Learned++
-			acc.learned++
-		case domain.TierMature:
-			mastery.Mature++
-			acc.mature++
-		default:
-			return nil, eris.Errorf("usecase: stats: unhandled MasteryTier %d", tier)
-		}
-	}
-
-	// Emit one DeckMasteryResult for every owned deck (from totals), so a deck
-	// with zero studied cards still appears with learned=mature=0. Sort by
-	// CardgroupID for a deterministic wire order.
-	deckIDs := make([]string, 0, len(totals))
-	for id := range totals {
-		deckIDs = append(deckIDs, id)
-	}
-	sort.Strings(deckIDs)
-
-	decks := make([]DeckMasteryResult, 0, len(deckIDs))
-	for _, id := range deckIDs {
-		acc := perDeck[id]
-		var learned, mature int
-		if acc != nil {
-			learned, mature = acc.learned, acc.mature
-		}
-		decks = append(decks, DeckMasteryResult{
-			CardgroupID:  id,
-			TotalCards:   totals[id],
-			LearnedCards: learned,
-			MatureCards:  mature,
-		})
+	// Mastery half: the global three-tier breakdown plus the per-deck acquisition
+	// split — the "mastered" policy — is owned by the domain service; the usecase
+	// only forwards the loaded rows.
+	mastery, decks, err := service.AggregateMastery(states, totals)
+	if err != nil {
+		return nil, eris.Wrap(err, "usecase: stats: aggregate mastery")
 	}
 
 	// Diagnostic half: a performance snapshot over the trailing statsWindowDays
@@ -192,28 +126,6 @@ func (u *statsUsecase) MyLearningStats(ctx context.Context) (*LearningStatsResul
 		Decks:           decks,
 		OwnsAnyDeck:     count > 0,
 		Performance:     service.ComputeMetrics(swipeRecordsByValue(swipes), now),
-		StrugglingCards: topStruggling(states, strugglingCardsLimit),
+		StrugglingCards: service.TopStruggling(states, strugglingCardsLimit),
 	}, nil
-}
-
-// topStruggling ranks the studied FSRS rows by struggle: filter to cards with at
-// least one lapse, sort by (Lapses desc, Stability asc), and cap at limit. The
-// result is always non-nil (an empty, non-nil slice when no card has lapsed).
-func topStruggling(states []repository.FSRSStatRow, limit int) []StrugglingCardResult {
-	out := make([]StrugglingCardResult, 0, len(states))
-	for _, s := range states {
-		if s.Lapses >= 1 {
-			out = append(out, StrugglingCardResult{CardID: s.CardID, Lapses: s.Lapses, Stability: s.Stability})
-		}
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Lapses != out[j].Lapses {
-			return out[i].Lapses > out[j].Lapses // more lapses first
-		}
-		return out[i].Stability < out[j].Stability // ties: lower stability first
-	})
-	if len(out) > limit {
-		out = out[:limit]
-	}
-	return out
 }

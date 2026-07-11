@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -14,18 +13,17 @@ import (
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/domain/service"
-	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
 )
 
 type fakeStatsFSRSRepo struct {
-	states    []repository.FSRSStatRow
+	states    []domain.FSRSStat
 	totals    map[string]int
 	statesErr error
 	totalsErr error
 }
 
-func (f *fakeStatsFSRSRepo) ListFSRSStatesByUser(_ context.Context, _ string) ([]repository.FSRSStatRow, error) {
+func (f *fakeStatsFSRSRepo) ListFSRSStatesByUser(_ context.Context, _ string) ([]domain.FSRSStat, error) {
 	if f.statesErr != nil {
 		return nil, f.statesErr
 	}
@@ -77,11 +75,11 @@ func authedStatsCtx(sub string) context.Context {
 	return auth.ContextWithUser(context.Background(), &auth.AuthUser{Sub: sub})
 }
 
-func strugglingRow(card string, lapses int, stability float64) repository.FSRSStatRow {
-	return repository.FSRSStatRow{CardID: card, CardgroupID: "cg1", Phase: domain.FSRSPhaseReview, Stability: stability, Lapses: lapses}
+func strugglingRow(card string, lapses int, stability float64) domain.FSRSStat {
+	return domain.FSRSStat{CardID: card, CardgroupID: "cg1", Phase: domain.FSRSPhaseReview, Stability: stability, Lapses: lapses}
 }
 
-func strugglingCardIDs(cards []StrugglingCardResult) []string {
+func strugglingCardIDs(cards []service.StrugglingCard) []string {
 	out := make([]string, 0, len(cards))
 	for _, c := range cards {
 		out = append(out, c.CardID)
@@ -89,19 +87,19 @@ func strugglingCardIDs(cards []StrugglingCardResult) []string {
 	return out
 }
 
-func reviewRow(card, cg string, stability float64) repository.FSRSStatRow {
-	return repository.FSRSStatRow{CardID: card, CardgroupID: cg, Phase: domain.FSRSPhaseReview, Stability: stability}
+func reviewRow(card, cg string, stability float64) domain.FSRSStat {
+	return domain.FSRSStat{CardID: card, CardgroupID: cg, Phase: domain.FSRSPhaseReview, Stability: stability}
 }
 
-func phaseRow(card, cg string, phase domain.FSRSPhase) repository.FSRSStatRow {
-	return repository.FSRSStatRow{CardID: card, CardgroupID: cg, Phase: phase}
+func phaseRow(card, cg string, phase domain.FSRSPhase) domain.FSRSStat {
+	return domain.FSRSStat{CardID: card, CardgroupID: cg, Phase: phase}
 }
 
 func TestStatsUsecase_MyLearningStats_BucketsGlobalAndPerDeck(t *testing.T) {
 	t.Parallel()
 
 	repo := &fakeStatsFSRSRepo{
-		states: []repository.FSRSStatRow{
+		states: []domain.FSRSStat{
 			reviewRow("a", "cg1", 30),                         // mature
 			reviewRow("b", "cg1", 10),                         // learned
 			phaseRow("c", "cg1", domain.FSRSPhaseNew),         // in progress
@@ -127,9 +125,9 @@ func TestStatsUsecase_MyLearningStats_BucketsGlobalAndPerDeck(t *testing.T) {
 		res.Mastery.InProgress+res.Mastery.Learned+res.Mastery.Mature,
 		"tiers are disjoint and cover every studied card")
 
-	// A DeckMasteryResult is emitted for every deck in totals, in deterministic
+	// A DeckMastery is emitted for every deck in totals, in deterministic
 	// (CardgroupID-sorted) order — including cg3 with zero studied cards.
-	byDeck := make(map[string]DeckMasteryResult, len(res.Decks))
+	byDeck := make(map[string]service.DeckMastery, len(res.Decks))
 	order := make([]string, 0, len(res.Decks))
 	for _, d := range res.Decks {
 		byDeck[d.CardgroupID] = d
@@ -138,9 +136,9 @@ func TestStatsUsecase_MyLearningStats_BucketsGlobalAndPerDeck(t *testing.T) {
 	require.Len(t, res.Decks, 3)
 	assert.Equal(t, []string{"cg1", "cg2", "cg3"}, order)
 
-	assert.Equal(t, DeckMasteryResult{CardgroupID: "cg1", TotalCards: 5, LearnedCards: 1, MatureCards: 1}, byDeck["cg1"])
-	assert.Equal(t, DeckMasteryResult{CardgroupID: "cg2", TotalCards: 3, LearnedCards: 0, MatureCards: 1}, byDeck["cg2"])
-	assert.Equal(t, DeckMasteryResult{CardgroupID: "cg3", TotalCards: 2, LearnedCards: 0, MatureCards: 0}, byDeck["cg3"],
+	assert.Equal(t, service.DeckMastery{CardgroupID: "cg1", TotalCards: 5, LearnedCards: 1, MatureCards: 1}, byDeck["cg1"])
+	assert.Equal(t, service.DeckMastery{CardgroupID: "cg2", TotalCards: 3, LearnedCards: 0, MatureCards: 1}, byDeck["cg2"])
+	assert.Equal(t, service.DeckMastery{CardgroupID: "cg3", TotalCards: 2, LearnedCards: 0, MatureCards: 0}, byDeck["cg3"],
 		"a deck with zero studied cards is still emitted with learned=mature=0")
 	for _, d := range res.Decks {
 		assert.LessOrEqual(t, d.LearnedCards+d.MatureCards, d.TotalCards,
@@ -155,7 +153,7 @@ func TestStatsUsecase_MyLearningStats_EmptyHistory(t *testing.T) {
 
 	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
 	require.NoError(t, err)
-	assert.Equal(t, MasteryBreakdown{}, res.Mastery)
+	assert.Equal(t, service.MasteryBreakdown{}, res.Mastery)
 	assert.Empty(t, res.Decks)
 }
 
@@ -204,46 +202,6 @@ func TestStatsUsecase_MyLearningStats_CountError(t *testing.T) {
 	assert.Contains(t, err.Error(), "usecase: stats: count cards by cardgroup")
 }
 
-func TestTopStruggling_FiltersExcludesZeroAndOrders(t *testing.T) {
-	t.Parallel()
-	states := []repository.FSRSStatRow{
-		strugglingRow("no-lapse", 0, 1), // filtered out (Lapses == 0)
-		strugglingRow("one-lapse", 1, 50),
-		strugglingRow("five-a", 5, 8),
-		strugglingRow("five-b", 5, 3), // same lapses, lower stability -> ranks before five-a
-	}
-
-	got := topStruggling(states, 10)
-
-	require.Len(t, got, 3, "the Lapses==0 row is excluded")
-	assert.Equal(t, []string{"five-b", "five-a", "one-lapse"}, strugglingCardIDs(got),
-		"ordered by (Lapses desc, Stability asc)")
-	for _, c := range got {
-		assert.GreaterOrEqual(t, c.Lapses, 1)
-	}
-}
-
-func TestTopStruggling_CapsAtLimit(t *testing.T) {
-	t.Parallel()
-	states := make([]repository.FSRSStatRow, 0, 15)
-	for i := 0; i < 15; i++ {
-		states = append(states, strugglingRow(fmt.Sprintf("card-%02d", i), i+1, 1))
-	}
-
-	got := topStruggling(states, strugglingCardsLimit)
-
-	require.Len(t, got, strugglingCardsLimit, "capped at strugglingCardsLimit")
-	assert.Equal(t, 15, got[0].Lapses, "highest lapses first")
-	assert.Equal(t, 6, got[strugglingCardsLimit-1].Lapses, "lowest surviving lapses at the cap boundary")
-}
-
-func TestTopStruggling_EmptyReturnsNonNilSlice(t *testing.T) {
-	t.Parallel()
-	got := topStruggling([]repository.FSRSStatRow{strugglingRow("no-lapse", 0, 1)}, 10)
-	assert.NotNil(t, got, "empty struggling set is a non-nil slice")
-	assert.Empty(t, got)
-}
-
 func TestStatsUsecase_MyLearningStats_WindowsSwipesByStatsWindowDays(t *testing.T) {
 	t.Parallel()
 	fixedNow := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
@@ -286,7 +244,7 @@ func TestStatsUsecase_MyLearningStats_StrugglingCardsFromFSRSRows(t *testing.T) 
 	t.Parallel()
 	fixedNow := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
 	repo := &fakeStatsFSRSRepo{
-		states: []repository.FSRSStatRow{
+		states: []domain.FSRSStat{
 			strugglingRow("clean", 0, 20), // excluded (no lapses)
 			strugglingRow("worst", 4, 2),  // most lapses
 			strugglingRow("mid", 2, 15),
@@ -301,7 +259,7 @@ func TestStatsUsecase_MyLearningStats_StrugglingCardsFromFSRSRows(t *testing.T) 
 	require.NotNil(t, res)
 
 	require.Equal(t, []string{"worst", "mid-fragile", "mid"}, strugglingCardIDs(res.StrugglingCards))
-	assert.Equal(t, StrugglingCardResult{CardID: "worst", Lapses: 4, Stability: 2}, res.StrugglingCards[0])
+	assert.Equal(t, service.StrugglingCard{CardID: "worst", Lapses: 4, Stability: 2}, res.StrugglingCards[0])
 }
 
 func TestStatsUsecase_MyLearningStats_ListSwipesError(t *testing.T) {
@@ -352,7 +310,7 @@ func TestStatsUsecase_MyLearningStats_OwnsAnyDeck_EmptyDeck(t *testing.T) {
 func TestStatsUsecase_MyLearningStats_OwnsAnyDeck_DeckWithCards(t *testing.T) {
 	t.Parallel()
 	repo := &fakeStatsFSRSRepo{
-		states: []repository.FSRSStatRow{reviewRow("a", "cg1", 30)},
+		states: []domain.FSRSStat{reviewRow("a", "cg1", 30)},
 		totals: map[string]int{"cg1": 1},
 	}
 	uc := NewStats(repo, &fakeStatsSwipeRepo{}, &fakeStatsCardgroupRepo{count: 1}, nil)
