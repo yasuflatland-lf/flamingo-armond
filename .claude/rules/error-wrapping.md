@@ -62,7 +62,7 @@ detection is grep-based today and pinned at single-file
 - [Sentinel layering: when to join with `errors.Join` and when to keep standalone](../../docs/backend/error-wrapping/sentinel-layering.md)
 - [Postgres FK violation classification (`23503`)](../../docs/backend/error-wrapping/postgres-fk-violation-23503.md)
 - [Postgres unique-violation classification (`23505`)](../../docs/backend/error-wrapping/postgres-unique-violation-23505.md)
-- [Two-tier API pattern: open primitive + strict/typed wrapper (`gqlerr`, env-config)](../../docs/backend/error-wrapping/two-tier-api-pattern.md)
+- [Two-tier API pattern: open primitive + strict/typed wrapper (env-config reader)](../../docs/backend/error-wrapping/two-tier-api-pattern.md)
 
 ## Logging — detailed cases (on-demand)
 
@@ -75,7 +75,7 @@ detection is grep-based today and pinned at single-file
 
 ## Errors as data — detailed cases (on-demand)
 
-- [Result Union: "errors as data" pattern — when to use `CreateCardResult`-style unions over `BadUserInputWithExtensions`](../../docs/backend/error-wrapping/result-union-errors-as-data.md)
+- [Result Union: "errors as data" pattern — when to use `CreateCardResult`-style unions for structured business failures](../../docs/backend/error-wrapping/result-union-errors-as-data.md)
 - [Outcome-union enforcement: schema-lint gate forbidding new bare-object mutations that emit typed `ucerr.*` variants](../../docs/backend/error-wrapping/outcome-union-enforcement.md)
 - [`NewInputValidationInfo` panics on empty `Field` — mirror the `ucerr.NewValidationError` invariant](../../docs/backend/error-wrapping/input-validation-info-empty-field-panic.md)
 - [Inverse `lower*` helper when a shared error classifier serves both promoted and unpromoted callers](../../docs/backend/error-wrapping/inverse-helper-for-partial-promotion.md)

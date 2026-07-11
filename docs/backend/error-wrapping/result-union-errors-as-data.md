@@ -7,12 +7,12 @@ frontend must branch on and render actionable UI for — as named members of a
 GraphQL union rather than as top-level `gqlerror` entries. The live example is
 `createCard`, which returns `CreateCardResult = CreateCardSuccess | CardDuplicateFrontError`.
 
-## When to use Result Union vs. `BadUserInputWithExtensions`
+## When to use Result Union vs. a plain `BadUserInput` error
 
 | Situation | Preferred approach |
 |---|---|
 | Frontend needs typed, structured data to drive UX (e.g. "overwrite existing card?" dialog showing `existingBack`) | Result Union (`CreateCardResult`) |
-| Plain field-validation failure where the frontend treats all cases uniformly (e.g. "front is required") | `BadUserInputWithExtensions` (see [`two-tier-api-pattern.md`](./two-tier-api-pattern.md)) |
+| Plain field-validation failure where the frontend treats all cases uniformly (e.g. "front is required") | A plain `gqlerr.BadUserInput(field, message)` error (`ucerr.NewValidationError` from the usecase layer) |
 
 The discriminator question: does the client need the variant's payload to make
 a meaningful UX decision? If yes, encode the outcome in the schema — the codegen
@@ -133,8 +133,7 @@ if (payload?.__typename === "CardDuplicateFrontError") {
 // happy path: payload.__typename === "CreateCardSuccess"
 ```
 
-The `extensions.code` / `extensions.reason` approach (described in
-[`two-tier-api-pattern.md`](./two-tier-api-pattern.md)) is not needed when the
+The `extensions.code` / `extensions.reason` approach is not needed when the
 discriminator comes directly from the schema. Do not add extension-code parsing
 helpers for cases already expressed as union variants — codegen provides the
 type safety those helpers tried to recover by hand.
@@ -149,8 +148,8 @@ type safety those helpers tried to recover by hand.
 | Client coupling | Switches on `__typename` — no shared constant needed | Client and server must agree on the exact `reason` string |
 
 Prefer Result Union when the variant set is small and schema-driven. Fall back
-to `BadUserInputWithExtensions` when a full union type would be disproportionate
-(e.g. a single optional extra field on an otherwise uniform validation error).
+to a plain `gqlerr.BadUserInput` error when a full union type would be
+disproportionate (e.g. an otherwise uniform validation error).
 
 ## Enforcement
 
