@@ -112,6 +112,20 @@ describe("<StatsClient>", () => {
       expect(tile("Avg difficulty").getByText("6.2")).toBeInTheDocument();
     });
 
+    it("wires a help-hint trigger onto each of the six diagnostic tiles", () => {
+      renderStats(populatedStats);
+      for (const metric of [
+        "Retention",
+        "Success",
+        "Lapse",
+        "Streak",
+        "Reviews",
+        "Avg difficulty",
+      ]) {
+        expect(screen.getByRole("button", { name: `About ${metric}` })).toBeInTheDocument();
+      }
+    });
+
     it("renders per-deck rows with the acquired/total count and a filled progressbar", () => {
       renderStats(populatedStats);
 
