@@ -22,6 +22,7 @@ import {
 import { buttonVariants } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
+import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { sanitizeReturnTo } from "@/lib/sanitize-return-to";
 
 type Cardgroup = {
@@ -174,7 +175,13 @@ export default function CardsNewClient({
   function finishCreationAndNavigate() {
     if (!currentId) return;
     void setLastViewed({ variables: { cardgroupId: currentId } }).catch((err) => {
-      console.warn("[cards-new] setLastViewedCardgroup failed", { cardgroupId: currentId, err });
+      // err.message is omitted — backend messages may echo user-authored content.
+      // See docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
+      console.warn("[cards-new] setLastViewedCardgroup failed", {
+        cardgroupId: currentId,
+        name: err instanceof Error ? err.name : "unknown",
+        codes: liftGraphQLCodes(err),
+      });
     });
     router.push(returnTo ?? `/cardgroups/${currentId}/cards`);
   }
