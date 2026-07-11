@@ -220,6 +220,82 @@ func TestModeFromMetricsDifficultyAdjustments(t *testing.T) {
 	}
 }
 
+// TestNormalizedDifficulty pins the difficulty/10 mapping at its boundary
+// values. The FSRS floor of exactly 1.0 must normalize to 0.1 (the
+// low-difficulty band), not 1.0 — the bug that inverted the mode for mastered
+// cards left a strict `> 1` guard that skipped the division at the floor.
+func TestNormalizedDifficulty(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name       string
+		difficulty float64
+		want       float64
+	}{
+		{"fsrs floor maps to low band", 1.0, 0.1},
+		{"just above floor", 1.5, 0.15},
+		{"midscale", 5.0, 0.5},
+		{"fsrs ceiling maps to one", 10.0, 1.0},
+		{"zero maps to zero", 0.0, 0.0},
+		{"negative clamps to zero", -3.0, 0.0},
+		{"above ceiling clamps to one", 12.0, 1.0},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.InDelta(t, tc.want, normalizedDifficulty(tc.difficulty), 0.000000001)
+		})
+	}
+}
+
+// TestNormalizedDifficultyMonotonic proves the normalization is non-decreasing
+// as the stored difficulty rises across the full 1..10 FSRS scale, so a harder
+// card never normalizes lower than an easier one.
+func TestNormalizedDifficultyMonotonic(t *testing.T) {
+	t.Parallel()
+
+	prev := normalizedDifficulty(1.0)
+	for d := 1.0; d <= 10.0; d += 0.5 {
+		got := normalizedDifficulty(d)
+		require.GreaterOrEqualf(t, got, prev,
+			"normalizedDifficulty must be non-decreasing: difficulty %.1f gave %.4f after %.4f", d, got, prev)
+		prev = got
+	}
+}
+
+// TestModeFromMetricsFSRSFloorNotDecremented drives a 20-swipe history whose
+// cards all sit at the FSRS difficulty floor of 1.0. The mastered cards must
+// normalize into the low-difficulty band (0.1) and raise the mode, never trip
+// the high-difficulty threshold and decrement it below the success-rate band.
+func TestModeFromMetricsFSRSFloorNotDecremented(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 30, 3, 0, 0, 0, time.UTC)
+
+	swipes := make([]domain.SwipeRecord, 0, MinReviewsForModeCalculation)
+	for i := 0; i < 16; i++ {
+		swipes = append(swipes, swipe(domain.RatingGood, now, state(1.0, 1, 1, domain.FSRSPhaseReview)))
+	}
+	for i := 0; i < 4; i++ {
+		swipes = append(swipes, swipe(domain.RatingAgain, now, state(1.0, 1, 1, domain.FSRSPhaseReview)))
+	}
+
+	metrics := ComputeMetrics(swipes, now)
+	// 16/20 successes selects the Good success-rate band (0.75 <= rate < 0.85).
+	require.InDelta(t, 0.80, metrics.SuccessRate, 0.000000001)
+	// All cards at the floor normalize to 0.1, the low-difficulty band.
+	require.InDelta(t, 0.10, metrics.AvgDifficulty, 0.000000001)
+
+	got := ModeFromMetrics(metrics)
+	// The floor difficulty is <= 0.3, so the mode is raised to ModeEasy; it must
+	// not be decremented below the Good band the success rate selected.
+	require.GreaterOrEqual(t, int(got), int(ModeGood))
+	require.Equal(t, ModeEasy, got)
+}
+
 func TestPerformanceModeIsValid(t *testing.T) {
 	t.Parallel()
 

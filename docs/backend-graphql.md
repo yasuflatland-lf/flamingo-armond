@@ -280,7 +280,7 @@ The response exposes both `performanceMode` and `metrics`. `performanceMode` is 
 | `3` | Easy | `0.85 <= rate < 0.95` |
 | `4` | In While | `>= 0.95` |
 
-The legacy guard is preserved: fewer than 20 reviews always returns `ModeDefault`. Average difficulty then shifts the mode by one step: `>= 0.7` lowers it, `<= 0.3` raises it, and the final value is clamped to `0..4`. Current FSRS difficulty values are stored on the `1..10` scale, so the calculator normalizes them into `0..1` before applying those boundaries.
+The legacy guard is preserved: fewer than 20 reviews always returns `ModeDefault`. Average difficulty then shifts the mode by one step: `>= 0.7` lowers it, `<= 0.3` raises it, and the final value is clamped to `0..4`. Current FSRS difficulty values are stored on the `1..10` scale, so the calculator normalizes each one as `normalized = difficulty / 10`, clamped to `[0, 1]`, before applying those boundaries. The division is unconditional: a mastered card whose FSRS difficulty is pinned at the floor of exactly `1.0` maps to `0.1` (the low-difficulty band), not `1.0`. A strict `> 1` guard would leave the floor at `1.0` and trip the high-difficulty threshold, inverting the mode downward for the easiest cards.
 
 `StudyStreak` uses the server's UTC `now` supplied by the usecase. It counts consecutive calendar days with at least one swipe, starting from today. This is intentionally not locale-aware; user-local streaks require a profile time-zone field and should be introduced as a separate feature.
 
