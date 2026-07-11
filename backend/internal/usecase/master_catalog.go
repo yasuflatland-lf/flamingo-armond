@@ -357,6 +357,9 @@ func (u *masterCatalogUsecase) resolveMasterCatalogCursor(
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ucerr.NewValidationError(field, "cursor not found")
 		}
+		if isContextDone(err) {
+			return nil, err
+		}
 		return nil, eris.Wrap(err, "usecase: master catalog: hydrate cursor")
 	}
 

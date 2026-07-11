@@ -457,6 +457,9 @@ func (u *cardUsecase) resolveCardCursor(
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ucerr.NewValidationError(field, "cursor not found")
 		}
+		if isContextDone(err) {
+			return nil, err
+		}
 		return nil, eris.Wrap(err, "usecase: card: resolve cursor: find by id")
 	}
 	if !card.BelongsToCardgroup(domain.CardgroupID(cardgroupID)) {
@@ -470,6 +473,9 @@ func (u *cardUsecase) resolveCardCursor(
 		} else if user := auth.UserFrom(ctx); user != nil {
 			byCardID, err := u.userFSRSRepo.FindByUserAndCardIDs(ctx, user.Sub, []string{id})
 			if err != nil {
+				if isContextDone(err) {
+					return nil, err
+				}
 				return nil, eris.Wrap(err, "usecase: card: resolve cursor: find user fsrs")
 			}
 			if ucs := byCardID[id]; ucs != nil {

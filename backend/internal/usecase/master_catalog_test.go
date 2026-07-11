@@ -1288,3 +1288,30 @@ func TestPreviewMergeMaster_HappyPathDelegatesToDeckUC(t *testing.T) {
 		t.Fatalf("expected Added=3 Updated=1, got Added=%d Updated=%d", out.Added, out.Updated)
 	}
 }
+
+// TestListPublishedConnection_CursorFindByIDCancelled pins the cursor-hydration
+// fetchByID wrap site (resolveMasterCatalogCursor): a context.Canceled surfaced
+// while hydrating the cursor must reach the caller unwrapped so the resolver
+// routes it to Cancelled via errors.Is. assertCancelled alone is too weak —
+// errors.Is walks the eris chain, so it passes even for
+// eris.Wrap(context.Canceled, ...); the bare err == context.Canceled check pins
+// that no wrap snuck in. See
+// docs/backend/error-wrapping/pin-unwrapped-context-error-with-identity-check.md.
+func TestListPublishedConnection_CursorFindByIDCancelled(t *testing.T) {
+	t.Parallel()
+	cur := cursor.Encode("cur-1")
+	repo := &mockMasterCatalogRepository{
+		findByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, context.Canceled },
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
+		First: intPtr(5),
+		After: &cur,
+	})
+
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %v", err)
+	}
+}
