@@ -226,10 +226,7 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 ) (*MasterCatalogConnectionOutput, error) {
 	return u.listMasterCatalogCore(ctx, in, true, "usecase: master catalog: find published page",
 		func(ctx context.Context) error {
-			if auth.UserFrom(ctx) == nil {
-				return ucerr.ErrUnauthenticated
-			}
-			return nil
+			return requireCallerSub(auth.UserFrom(ctx))
 		},
 		u.repo.FindPublishedPage,
 	)
@@ -672,8 +669,8 @@ func (u *masterCatalogUsecase) ListAdminConnection(
 // snapshot delegated to CopyMasterToUserUsecase; FSRS/swipe state starts empty.
 func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string) (ImportMasterOutcome, error) {
 	caller := auth.UserFrom(ctx)
-	if caller == nil {
-		return ImportMasterOutcome{}, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(caller); err != nil {
+		return ImportMasterOutcome{}, err
 	}
 
 	if _, err := u.repo.FindPublishedByID(ctx, masterID); err != nil {
@@ -705,8 +702,8 @@ func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string
 // receive ucerr.ErrUnauthenticated. The merge is a one-time snapshot.
 func (u *masterCatalogUsecase) MergeMaster(ctx context.Context, masterID, cardgroupID string) (MergeMasterOutcome, error) {
 	caller := auth.UserFrom(ctx)
-	if caller == nil {
-		return MergeMasterOutcome{}, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(caller); err != nil {
+		return MergeMasterOutcome{}, err
 	}
 
 	if _, err := u.repo.FindPublishedByID(ctx, masterID); err != nil {
@@ -739,8 +736,8 @@ func (u *masterCatalogUsecase) MergeMaster(ctx context.Context, masterID, cardgr
 // a (nil, nil) result that the resolver maps to GraphQL null (non-disclosure
 // gate). Unauthenticated callers receive ucerr.ErrUnauthenticated.
 func (u *masterCatalogUsecase) FindPublishedMaster(ctx context.Context, id string) (*domain.MasterCardgroup, error) {
-	if auth.UserFrom(ctx) == nil {
-		return nil, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(auth.UserFrom(ctx)); err != nil {
+		return nil, err
 	}
 	deck, err := u.repo.FindPublishedByID(ctx, id)
 	if err != nil {
@@ -761,8 +758,8 @@ func (u *masterCatalogUsecase) FindPublishedMaster(ctx context.Context, id strin
 // travel as errors from the delegated usecase.
 func (u *masterCatalogUsecase) PreviewMergeMaster(ctx context.Context, masterID, cardgroupID string) (PreviewMergeOutcome, error) {
 	caller := auth.UserFrom(ctx)
-	if caller == nil {
-		return PreviewMergeOutcome{}, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(caller); err != nil {
+		return PreviewMergeOutcome{}, err
 	}
 
 	if _, err := u.repo.FindPublishedByID(ctx, masterID); err != nil {

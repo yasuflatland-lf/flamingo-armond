@@ -8,6 +8,7 @@ import (
 
 	"github.com/rotisserie/eris"
 
+	"backend/internal/auth"
 	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/repository"
@@ -1212,6 +1213,38 @@ func TestPreviewMergeMaster_UnauthenticatedCaller(t *testing.T) {
 	if !errors.Is(err, ucerr.ErrUnauthenticated) {
 		t.Fatalf("expected ErrUnauthenticated, got %v", err)
 	}
+}
+
+// TestMasterCatalog_EmptySubCaller_RejectedAsUnauthenticated pins the requireCallerSub
+// gate on the import/merge paths. A NON-NIL *auth.AuthUser whose Sub is empty must be
+// rejected as unauthenticated rather than treated as an authenticated owner with id "".
+// The prior `caller == nil` guard let this case through (the pointer is non-nil), which
+// would have carried an empty ownership identity into the copy/merge delegates.
+func TestMasterCatalog_EmptySubCaller_RejectedAsUnauthenticated(t *testing.T) {
+	t.Parallel()
+	// A non-nil authenticated user carrying an empty Sub — the exact case
+	// requireCallerSub guards and the old nil-only check missed.
+	ctx := auth.ContextWithUser(context.Background(), &auth.AuthUser{Sub: ""})
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	t.Run("ImportMaster", func(t *testing.T) {
+		t.Parallel()
+		if _, err := uc.ImportMaster(ctx, "m1"); !errors.Is(err, ucerr.ErrUnauthenticated) {
+			t.Fatalf("expected ErrUnauthenticated, got %v", err)
+		}
+	})
+	t.Run("MergeMaster", func(t *testing.T) {
+		t.Parallel()
+		if _, err := uc.MergeMaster(ctx, "m1", "cg-1"); !errors.Is(err, ucerr.ErrUnauthenticated) {
+			t.Fatalf("expected ErrUnauthenticated, got %v", err)
+		}
+	})
+	t.Run("PreviewMergeMaster", func(t *testing.T) {
+		t.Parallel()
+		if _, err := uc.PreviewMergeMaster(ctx, "m1", "cg-1"); !errors.Is(err, ucerr.ErrUnauthenticated) {
+			t.Fatalf("expected ErrUnauthenticated, got %v", err)
+		}
+	})
 }
 
 func TestPreviewMergeMaster_NotFoundWhenMasterUnpublished(t *testing.T) {
