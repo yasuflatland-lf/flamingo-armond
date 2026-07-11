@@ -300,13 +300,13 @@ function renderLearnClient(
   );
 }
 
-function makeSwipeMock(mode: 1 | 2 | 4) {
+function makeSwipeMock(rating: 1 | 2 | 4) {
   let called = false;
   return {
     mock: {
       request: {
         query: HandleSwipeDocument,
-        variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, mode } },
+        variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, rating } },
       },
       result: () => {
         called = true;
@@ -316,7 +316,7 @@ function makeSwipeMock(mode: 1 | 2 | 4) {
               __typename: "HandleSwipeSuccess" as const,
               response: {
                 __typename: "SwipeResponse" as const,
-                performanceMode: 0,
+                performanceMode: "DIFFICULT",
                 metrics: DEFAULT_METRICS,
               },
             },
@@ -343,7 +343,7 @@ describe("<LearnClient>", () => {
     expect(screen.queryByText("Hola")).not.toBeInTheDocument();
   });
 
-  it("keeps down rating mapped to Hard mode 2", async () => {
+  it("keeps down rating mapped to Hard rating 2", async () => {
     const user = userEvent.setup();
     const swipe = makeSwipeMock(2);
     renderLearnClient([swipe.mock]);
@@ -363,9 +363,9 @@ describe("<LearnClient>", () => {
     ["Rate as Again", 1],
     ["Rate as Hard", 2],
     ["Rate as Easy", 4],
-  ] as const)("maps %s to mode %d", async (label, mode) => {
+  ] as const)("maps %s to rating %d", async (label, rating) => {
     const user = userEvent.setup();
-    const swipe = makeSwipeMock(mode);
+    const swipe = makeSwipeMock(rating);
     renderLearnClient([swipe.mock]);
 
     await user.click(screen.getByRole("button", { name: label }));
@@ -460,7 +460,7 @@ describe("<LearnClient>", () => {
     const mock = {
       request: {
         query: HandleSwipeDocument,
-        variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, mode: 1 } },
+        variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, rating: 1 } },
       },
       result: {
         errors: [new GraphQLError("bad swipe", { extensions: { code: "BAD_USER_INPUT" } })],
@@ -519,7 +519,7 @@ describe("<LearnClient>", () => {
       const mock = {
         request: {
           query: HandleSwipeDocument,
-          variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, mode: 4 } },
+          variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, rating: 4 } },
         },
         result: {
           data: {
@@ -536,7 +536,7 @@ describe("<LearnClient>", () => {
       // without immediately hitting the empty-queue caught-up screen.
       renderLearnClient([mock], [CARD_1, CARD_2]);
 
-      // Swipe CARD_1 right (mode 4 = Easy).
+      // Swipe CARD_1 right (rating 4 = Easy).
       await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
 
       // console.warn must be emitted with the structured payload for operator triage.
@@ -577,7 +577,7 @@ describe("<LearnClient>", () => {
       const mock = {
         request: {
           query: HandleSwipeDocument,
-          variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, mode: 4 } },
+          variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, rating: 4 } },
         },
         result: {
           data: {
@@ -1029,7 +1029,7 @@ describe("<LearnClient> onSwipe identity stability", () => {
     const swipeMock = {
       request: {
         query: HandleSwipeDocument,
-        variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, mode: 4 } },
+        variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, rating: 4 } },
       },
       result: {
         data: {
@@ -1037,7 +1037,7 @@ describe("<LearnClient> onSwipe identity stability", () => {
             __typename: "HandleSwipeSuccess" as const,
             response: {
               __typename: "SwipeResponse" as const,
-              performanceMode: 0,
+              performanceMode: "DIFFICULT",
               metrics: DEFAULT_METRICS,
             },
           },
@@ -1173,7 +1173,7 @@ describe("<LearnClient> queue prefetch", () => {
     const swipe = {
       request: {
         query: HandleSwipeDocument,
-        variables: { input: { cardId: "q-1", cardgroupId: CG_ID, mode: 4 } },
+        variables: { input: { cardId: "q-1", cardgroupId: CG_ID, rating: 4 } },
       },
       result: {
         data: {
@@ -1181,7 +1181,7 @@ describe("<LearnClient> queue prefetch", () => {
             __typename: "HandleSwipeSuccess" as const,
             response: {
               __typename: "SwipeResponse" as const,
-              performanceMode: 0,
+              performanceMode: "DIFFICULT",
               metrics: DEFAULT_METRICS,
             },
           },
@@ -1299,7 +1299,7 @@ describe("<LearnClient> queue prefetch", () => {
     const swipe = {
       request: {
         query: HandleSwipeDocument,
-        variables: { input: { cardId: "q-1", cardgroupId: CG_ID, mode: 4 } },
+        variables: { input: { cardId: "q-1", cardgroupId: CG_ID, rating: 4 } },
       },
       result: {
         data: {
@@ -1307,7 +1307,7 @@ describe("<LearnClient> queue prefetch", () => {
             __typename: "HandleSwipeSuccess" as const,
             response: {
               __typename: "SwipeResponse" as const,
-              performanceMode: 0,
+              performanceMode: "DIFFICULT",
               metrics: DEFAULT_METRICS,
             },
           },
@@ -1390,7 +1390,7 @@ describe("<LearnClient> queue prefetch", () => {
     const swipe = {
       request: {
         query: HandleSwipeDocument,
-        variables: { input: { cardId: "q-1", cardgroupId: CG_ID, mode: 4 } },
+        variables: { input: { cardId: "q-1", cardgroupId: CG_ID, rating: 4 } },
       },
       delay: 80,
       result: {
@@ -1399,7 +1399,7 @@ describe("<LearnClient> queue prefetch", () => {
             __typename: "HandleSwipeSuccess" as const,
             response: {
               __typename: "SwipeResponse" as const,
-              performanceMode: 0,
+              performanceMode: "DIFFICULT",
               metrics: DEFAULT_METRICS,
             },
           },
@@ -1449,7 +1449,7 @@ describe("<LearnClient> queue prefetch", () => {
     const swipe = {
       request: {
         query: HandleSwipeDocument,
-        variables: { input: { cardId: "q-1", cardgroupId: CG_ID, mode: 4 } },
+        variables: { input: { cardId: "q-1", cardgroupId: CG_ID, rating: 4 } },
       },
       result: {
         data: {
@@ -1457,7 +1457,7 @@ describe("<LearnClient> queue prefetch", () => {
             __typename: "HandleSwipeSuccess" as const,
             response: {
               __typename: "SwipeResponse" as const,
-              performanceMode: 0,
+              performanceMode: "DIFFICULT",
               metrics: DEFAULT_METRICS,
             },
           },
@@ -1541,7 +1541,7 @@ describe("<LearnClient> queue prefetch", () => {
         mock: {
           request: {
             query: HandleSwipeDocument,
-            variables: { input: { cardId, cardgroupId: CG_ID, mode: 4 } },
+            variables: { input: { cardId, cardgroupId: CG_ID, rating: 4 } },
           },
           result: () => {
             called = true;
@@ -1551,7 +1551,7 @@ describe("<LearnClient> queue prefetch", () => {
                   __typename: "HandleSwipeSuccess" as const,
                   response: {
                     __typename: "SwipeResponse" as const,
-                    performanceMode: 0,
+                    performanceMode: "DIFFICULT",
                     metrics: DEFAULT_METRICS,
                   },
                 },

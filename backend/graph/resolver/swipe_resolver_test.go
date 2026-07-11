@@ -113,7 +113,7 @@ func newSwipeSrv(
 
 // handleSwipeMutation returns a JSON-encoded GraphQL mutation body for
 // handleSwipe, selecting across both union variants.
-func handleSwipeMutation(cardID, cardgroupID string, mode int) string {
+func handleSwipeMutation(cardID, cardgroupID string, rating int) string {
 	b, _ := json.Marshal(map[string]any{
 		"query": `mutation($input: HandleSwipeInput!) {
 			handleSwipe(input: $input) {
@@ -131,7 +131,7 @@ func handleSwipeMutation(cardID, cardgroupID string, mode int) string {
 			"input": map[string]any{
 				"cardId":      cardID,
 				"cardgroupId": cardgroupID,
-				"mode":        mode,
+				"rating":      rating,
 			},
 		},
 	})
@@ -164,7 +164,7 @@ func TestResolver_HandleSwipe_HappyPath(t *testing.T) {
 
 	srv := newSwipeSrv(cardRepo, cgRepo, swipeRepo, fsrsRepo)
 
-	// Mode 1 = Again — a valid swipe mode.
+	// Rating 1 = Again — a valid swipe rating.
 	resp := gqlRequest(t, srv, authedCtx("u-1"), handleSwipeMutation("c-1", "cg-1", 1))
 
 	if _, hasErrs := resp["errors"]; hasErrs {
@@ -184,13 +184,13 @@ func TestResolver_HandleSwipe_HappyPath(t *testing.T) {
 	}
 }
 
-// TestResolver_HandleSwipe_InputValidation verifies that an invalid swipe mode
+// TestResolver_HandleSwipe_InputValidation verifies that an invalid swipe rating
 // is surfaced as the InputValidationError union variant (errors as data), not
-// as a GraphQL protocol error. The mode validation fires before any repo calls.
+// as a GraphQL protocol error. The rating validation fires before any repo calls.
 func TestResolver_HandleSwipe_InputValidation(t *testing.T) {
 	t.Parallel()
 
-	// Repos can be minimal stubs — mode validation fires before any repo access.
+	// Repos can be minimal stubs — rating validation fires before any repo access.
 	cardRepo := &swipeCardRepo{}
 	cgRepo := &swipeCGRepo{
 		findByIDResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"},
@@ -200,7 +200,7 @@ func TestResolver_HandleSwipe_InputValidation(t *testing.T) {
 
 	srv := newSwipeSrv(cardRepo, cgRepo, swipeRepo, fsrsRepo)
 
-	// Mode 999 is not a valid swipe mode → InputValidationError{field:"mode"}.
+	// Rating 999 is not a valid swipe rating → InputValidationError{field:"rating"}.
 	resp := gqlRequest(t, srv, authedCtx("u-1"), handleSwipeMutation("c-1", "cg-1", 999))
 
 	if _, hasErrs := resp["errors"]; hasErrs {
@@ -214,8 +214,8 @@ func TestResolver_HandleSwipe_InputValidation(t *testing.T) {
 	if payload["__typename"] != "InputValidationError" {
 		t.Fatalf("expected __typename=InputValidationError, got %v; response: %v", payload["__typename"], resp)
 	}
-	if payload["field"] != "mode" {
-		t.Fatalf("expected field=mode, got %v", payload["field"])
+	if payload["field"] != "rating" {
+		t.Fatalf("expected field=rating, got %v", payload["field"])
 	}
 	if payload["message"] == nil || payload["message"] == "" {
 		t.Fatalf("expected non-empty message in InputValidationError, got %v", payload["message"])
@@ -269,7 +269,7 @@ func TestResolver_HandleSwipe_InfrastructureError_ReturnsInternal(t *testing.T) 
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 
-	// Mode 1 is valid — passes mode validation, reaches tx-runner check.
+	// Rating 1 is valid — passes rating validation, reaches tx-runner check.
 	resp := gqlRequest(t, srv, authedCtx("u-1"), handleSwipeMutation("c-1", "cg-1", 1))
 
 	code := errCode(t, resp)
@@ -324,7 +324,7 @@ func TestResolver_HandleSwipe_CardNotFound_InputValidation(t *testing.T) {
 
 	srv := newSwipeSrv(cardRepo, cgRepo, swipeRepo, fsrsRepo)
 
-	// Mode 1 = Again — passes mode validation, reaches the card lookup.
+	// Rating 1 = Again — passes rating validation, reaches the card lookup.
 	resp := gqlRequest(t, srv, authedCtx("u-1"), handleSwipeMutation("c-missing", "cg-1", 1))
 
 	if _, hasErrs := resp["errors"]; hasErrs {

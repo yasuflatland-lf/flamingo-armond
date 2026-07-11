@@ -12,6 +12,7 @@ import {
 import { AllCaughtUp } from "@/components/learn/all-caught-up";
 import { SwipeSession } from "@/components/learn/swipe-session";
 import type { LearnDisplayMode, SwipeDirection } from "@/components/learn/types";
+import { RATING_META, SWIPE_RATING } from "@/components/learn/types";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import type { LearnNextDueCardsQuery } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
@@ -26,15 +27,8 @@ type LearnCard = LearnNextDueCardsQuery["learnNextDueCards"][number];
  */
 export const PREFETCH_THRESHOLD = 5;
 
-function modeFromDirection(direction: SwipeDirection): 1 | 2 | 4 {
-  switch (direction) {
-    case "left":
-      return 1;
-    case "down":
-      return 2;
-    case "right":
-      return 4;
-  }
+function ratingFromDirection(direction: SwipeDirection): 1 | 2 | 4 {
+  return SWIPE_RATING[RATING_META[direction].tone];
 }
 
 type Props = {
@@ -238,7 +232,7 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
 
   const onSwipe = useCallback(
     async (card: LearnCard, direction: SwipeDirection) => {
-      const mode = modeFromDirection(direction);
+      const rating = ratingFromDirection(direction);
       setLocalError(null);
       // Mark this card's swipe as in flight BEFORE the optimistic removal so the
       // prefetch effect (which the removal can re-fire) filters it out of any
@@ -249,7 +243,7 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
       setCompletedCount((current) => current + 1);
 
       const result = await handleSwipe({
-        variables: { input: { cardId: card.id, cardgroupId, mode } },
+        variables: { input: { cardId: card.id, cardgroupId, rating } },
         // optimisticResponse intentionally omitted — handleSwipe can return InputValidationError
         // and Apollo v3 does not reliably roll back optimistic writes on typed GraphQL errors.
         // See .claude/rules/pagination.md § "Drop `optimisticResponse` for mutations that can
@@ -290,7 +284,7 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
       }
 
       if (payload?.__typename === "InputValidationError") {
-        // Server rejected the swipe (stale card, cardgroup mismatch, invalid mode).
+        // Server rejected the swipe (stale card, cardgroup mismatch, invalid rating).
         // The optimistic queue advanced so learning continues, but we surface to
         // operator telemetry — repeated firing indicates a stale prefetch.
         // payload.message is omitted — it may echo user-authored card content.

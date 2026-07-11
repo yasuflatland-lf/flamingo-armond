@@ -34,6 +34,19 @@ export const RATING_META: Record<SwipeDirection, { labelKey: RatingTone; tone: R
 };
 
 /**
+ * FSRS swipe rating emitted for each rating tone. The 3-step UI emits
+ * 1=Again, 2=Hard, 4=Easy and intentionally never 3=Good. Keyed by `RatingTone`
+ * so the direction→rating mapping derives from `RATING_META`
+ * (`SWIPE_RATING[RATING_META[direction].tone]`) rather than a second, parallel
+ * direction switch with bare integer literals.
+ */
+export const SWIPE_RATING: Record<RatingTone, 1 | 2 | 4> = {
+  again: 1,
+  hard: 2,
+  easy: 4,
+};
+
+/**
  * Re-export of the generated GraphQL `LearnDisplayMode` enum so the schema is
  * the single source of truth and the component layer can never drift from it.
  */

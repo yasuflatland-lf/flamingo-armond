@@ -311,8 +311,30 @@ func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
 		return nil
 	}
 	return &model.SwipeResponse{
-		PerformanceMode: out.PerformanceMode,
+		PerformanceMode: toSwipePerformanceModeModel(out.PerformanceMode),
 		Metrics:         toPerformanceMetricsModel(out.Metrics),
+	}
+}
+
+// toSwipePerformanceModeModel maps the usecase's int-encoded performance mode
+// (service.PerformanceMode, 0..4) to the generated wire enum. The int always
+// comes from service.ModeFromMetrics, which returns a clamped in-range value,
+// so the default arm is unreachable; it maps to DEFAULT as a fail-safe to keep
+// the non-null field serializable.
+func toSwipePerformanceModeModel(mode int) model.SwipePerformanceMode {
+	switch service.PerformanceMode(mode) {
+	case service.ModeDifficult:
+		return model.SwipePerformanceModeDifficult
+	case service.ModeDefault:
+		return model.SwipePerformanceModeDefault
+	case service.ModeGood:
+		return model.SwipePerformanceModeGood
+	case service.ModeEasy:
+		return model.SwipePerformanceModeEasy
+	case service.ModeMastered:
+		return model.SwipePerformanceModeMastered
+	default:
+		return model.SwipePerformanceModeDefault
 	}
 }
 

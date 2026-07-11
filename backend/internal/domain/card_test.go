@@ -229,25 +229,25 @@ func TestNewFSRSStateForNewCard(t *testing.T) {
 	require.Equal(t, now, got.LastReview)
 }
 
-func TestRatingFromSwipeMode(t *testing.T) {
+func TestRatingFromSwipe(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		mode    int
+		rating  int
 		want    Rating
 		wantErr bool
 	}{
-		{mode: 1, want: RatingAgain},
-		{mode: 2, want: RatingHard},
-		{mode: 4, want: RatingEasy},
-		{mode: 0, wantErr: true},
-		{mode: 3, wantErr: true},
-		{mode: 5, wantErr: true},
+		{rating: 1, want: RatingAgain},
+		{rating: 2, want: RatingHard},
+		{rating: 4, want: RatingEasy},
+		{rating: 0, wantErr: true},
+		{rating: 3, wantErr: true},
+		{rating: 5, wantErr: true},
 	}
 	for _, tc := range cases {
-		t.Run(fmt.Sprintf("mode_%d", tc.mode), func(t *testing.T) {
+		t.Run(fmt.Sprintf("rating_%d", tc.rating), func(t *testing.T) {
 			t.Parallel()
-			got, err := RatingFromSwipeMode(tc.mode)
+			got, err := RatingFromSwipe(tc.rating)
 			if tc.wantErr {
 				require.Error(t, err)
 				return
