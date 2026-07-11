@@ -1704,7 +1704,11 @@ func TestGraphQL_DeleteCardgroup_NonOwner_Unauthenticated(t *testing.T) {
 	}
 }
 
-func TestGraphQL_Cardgroup_NonOwner_Unauthenticated(t *testing.T) {
+// TestGraphQL_Cardgroup_NonOwner_ReturnsNullNoError verifies the non-disclosure
+// collapse: for an authenticated non-owner, a foreign-owned cardgroup returns the
+// byte-identical wire response as a non-existent id — both data.cardgroup = null
+// with no top-level error — so the query cannot be used as an existence oracle.
+func TestGraphQL_Cardgroup_NonOwner_ReturnsNullNoError(t *testing.T) {
 	f := newJWTFixture(t)
 	ts, _ := newGraphQLTestServer(t, f)
 	ctx := context.Background()
@@ -1715,11 +1719,36 @@ func TestGraphQL_Cardgroup_NonOwner_Unauthenticated(t *testing.T) {
 
 	subB := insertAuthUser(t, ctx)
 	tokB := f.sign(t, subB)
-	body := fmt.Sprintf(`{"query":"{ cardgroup(id: \"%s\") { id } }"}`, cgID)
-	resp := postGraphQL(t, ts.URL+"/query", body, tokB)
 
-	if code := gqlErrCode(resp); code != "UNAUTHENTICATED" {
-		t.Fatalf("expected UNAUTHENTICATED, got %q; resp=%v", code, resp)
+	// Read a real, foreign-owned cardgroup as user B.
+	foreignBody := fmt.Sprintf(`{"query":"{ cardgroup(id: \"%s\") { id name } }"}`, cgID)
+	foreignResp := postGraphQL(t, ts.URL+"/query", foreignBody, tokB)
+
+	// Read a non-existent id as the same caller.
+	missingBody := fmt.Sprintf(`{"query":"{ cardgroup(id: \"%s\") { id name } }"}`, uuid.NewString())
+	missingResp := postGraphQL(t, ts.URL+"/query", missingBody, tokB)
+
+	// Both must be data.cardgroup = null with no top-level error, and identical.
+	for name, resp := range map[string]map[string]any{"foreign-owned": foreignResp, "non-existent": missingResp} {
+		if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+			t.Fatalf("%s: expected no top-level error, got: %v", name, errs)
+		}
+		data, _ := resp["data"].(map[string]any)
+		cgVal, exists := data["cardgroup"]
+		if !exists {
+			t.Fatalf("%s: expected data.cardgroup key present (as null), resp=%v", name, resp)
+		}
+		if cgVal != nil {
+			t.Fatalf("%s: expected data.cardgroup == null, got %v", name, cgVal)
+		}
+	}
+
+	// json.Marshal sorts map keys, so equal marshaled bytes prove the two wire
+	// responses are indistinguishable.
+	foreignJSON, _ := json.Marshal(foreignResp)
+	missingJSON, _ := json.Marshal(missingResp)
+	if string(foreignJSON) != string(missingJSON) {
+		t.Fatalf("existence oracle: foreign-owned response %s differs from non-existent response %s", foreignJSON, missingJSON)
 	}
 }
 

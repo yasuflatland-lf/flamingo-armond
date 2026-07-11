@@ -181,10 +181,10 @@ The usecase layer defines its own narrow repository interface — a strict subse
 
 ### Authorization at the usecase layer
 
-Owner checks live in the usecase, not in Postgres RLS. The asymmetry for read vs. write is intentional per the security model:
+Owner checks live in the usecase, not in Postgres RLS. Both read and write collapse a foreign-owned id into the same outcome as a missing id so existence is never leaked; the outcome *value* differs by read vs. write:
 
-- Non-owner `cardgroup(id:)` read → return `null` (the field is nullable by spec; ID enumeration on a nullable field is acceptable).
-- Non-owner write (`updateCardgroup`, `deleteCardgroup`) → return `UNAUTHENTICATED`.
+- Non-owner `cardgroup(id:)` read → return `null`, byte-identical to a missing id (both `data.cardgroup = null`, no top-level error), so the query cannot be used as an existence oracle over other users' cardgroups.
+- Non-owner write (`updateCardgroup`, `deleteCardgroup`) → return `UNAUTHENTICATED`, byte-identical to a missing id.
 
 Although authorization itself is not delegated to Postgres, every application table in the `public` schema has Row Level Security enabled. Core user data tables now have concrete policies for direct Supabase callers:
 

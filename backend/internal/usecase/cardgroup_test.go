@@ -212,18 +212,25 @@ func TestCardgroupUsecase_Cardgroup_OwnerSeesOwn(t *testing.T) {
 	}
 }
 
-func TestCardgroupUsecase_Cardgroup_NonOwnerGetsUnauthenticated(t *testing.T) {
+// TestCardgroupUsecase_Cardgroup_NonOwner_ReturnsNilNoError pins the
+// non-disclosure collapse: a foreign-owned cardgroup returns the same (nil, nil)
+// shape as a missing row (TestCardgroupUsecase_Cardgroup_NotFound_ReturnsNilNoError),
+// so an authenticated caller cannot tell "exists but owned by someone else" from
+// "does not exist" and the query is not an existence oracle.
+func TestCardgroupUsecase_Cardgroup_NonOwner_ReturnsNilNoError(t *testing.T) {
 	t.Parallel()
 	cg := &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "user-1", Name: "Mine"}
 	repo := &mockCardgroupRepository{findResult: cg}
 	uc := NewCardgroupUsecase(repo, cgDefaultAdmin(), newTestLogger())
 
-	_, err := uc.Cardgroup(cgAuthedCtx("user-2"), "cg1")
+	got, err := uc.Cardgroup(cgAuthedCtx("user-2"), "cg1")
 
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	if err != nil {
+		t.Fatalf("expected no error (non-disclosure), got: %v", err)
 	}
-	assertUnauthenticated(t, err)
+	if got != nil {
+		t.Fatalf("expected nil cardgroup for a non-owner, got: %+v", got)
+	}
 }
 
 // --- Create tests ---

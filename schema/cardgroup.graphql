@@ -77,7 +77,7 @@ type CardgroupConnection {
 }
 
 extend type Query {
-  """Single cardgroup by ID. Returns UNAUTHENTICATED for non-owners (existence is not leaked)."""
+  """Single cardgroup by ID. Returns null for a non-owner or a missing id alike, so existence is not leaked."""
   cardgroup(id: ID!): Cardgroup
   """
   Paginated cardgroups owned by the authenticated caller. Forward pagination uses
