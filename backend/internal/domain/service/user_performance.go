@@ -15,15 +15,15 @@ const (
 	ModeDefault   PerformanceMode = 1
 	ModeGood      PerformanceMode = 2
 	ModeEasy      PerformanceMode = 3
-	ModeMastered   PerformanceMode = 4
+	ModeMastered  PerformanceMode = 4
 
 	MinReviewsForModeCalculation = 20
 
 	// Success-rate band thresholds for ModeFromMetrics. A success rate at or
 	// above each threshold selects the named mode (or higher).
-	defaultModeThreshold = 0.60
-	goodModeThreshold    = 0.75
-	easyModeThreshold    = 0.85
+	defaultModeThreshold  = 0.60
+	goodModeThreshold     = 0.75
+	easyModeThreshold     = 0.85
 	masteredModeThreshold = 0.95
 
 	// Average-difficulty nudges shift the band-selected mode by one step:
@@ -116,10 +116,13 @@ func ModeFromMetrics(m PerformanceMetrics) PerformanceMode {
 	return clampMode(mode)
 }
 
+// normalizedDifficulty maps a stored FSRS difficulty on the 1..10 scale into
+// 0..1 as difficulty/10, clamped to [0,1]. The division is unconditional so a
+// mastered card pinned at the FSRS floor of exactly 1.0 normalizes to 0.1 (the
+// low-difficulty band) rather than 1.0; a strict `> 1` guard would leave the
+// floor at 1.0 and trip the high-difficulty threshold, inverting the mode down.
 func normalizedDifficulty(difficulty float64) float64 {
-	if difficulty > 1 {
-		difficulty = difficulty / 10
-	}
+	difficulty = difficulty / 10
 	if difficulty < 0 {
 		return 0
 	}
