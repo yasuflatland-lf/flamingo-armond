@@ -12,7 +12,6 @@ import (
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
-	"backend/internal/usecase/ucerr"
 )
 
 // UserRepository is the consumer-driven interface used by UserUsecase.
@@ -164,17 +163,14 @@ func (u *userUsecase) DeleteMyAccount(ctx context.Context) error {
 		}
 		return eris.Wrap(err, "usecase: user: delete my account: check admin")
 	}
-	if isAdmin {
-		n, err := u.roles.CountAdmins(ctx)
-		if err != nil {
-			if isContextDone(err) {
-				return err
-			}
-			return eris.Wrap(err, "usecase: user: delete my account: count admins")
-		}
-		if domain.IsLastAdmin(n) {
-			return ucerr.NewForbiddenError("cannot delete the last admin account; promote another admin first")
-		}
+	if err := guardNotLastAdmin(
+		ctx,
+		isAdmin,
+		u.roles,
+		"usecase: user: delete my account: count admins",
+		"cannot delete the last admin account; promote another admin first",
+	); err != nil {
+		return err
 	}
 
 	if err := u.repo.DeleteAuthUser(ctx, caller.Sub); err != nil {
