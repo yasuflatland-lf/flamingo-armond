@@ -72,7 +72,7 @@ func (u *userUsecase) Me(ctx context.Context) (*domain.User, error) {
 			"user_id", user.Sub)
 		return &domain.User{ID: domain.UserID(user.Sub)}, nil
 	}
-	return nil, eris.Wrap(err, "usecase: Me: find user by ID")
+	return nil, eris.Wrap(err, "usecase: user: me: find user by ID")
 }
 
 type UpdateUserInput struct {
@@ -127,7 +127,7 @@ func (u *userUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (Updat
 	}
 	appUser, err := u.repo.Update(ctx, user.Sub, patch)
 	if err != nil {
-		return UpdateProfileOutcome{}, eris.Wrap(err, "usecase: UpdateUser: update user")
+		return UpdateProfileOutcome{}, eris.Wrap(err, "usecase: user: update: update user")
 	}
 
 	return UpdateProfileOutcome{User: appUser}, nil

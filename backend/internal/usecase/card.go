@@ -257,14 +257,14 @@ func (u *cardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 				// between the failed INSERT and this SELECT) or fail for an unrelated DB
 				// reason. Either way, surface as Internal so the client can retry; the
 				// duplicate is recoverable input, but a failed re-lookup is not.
-				return CreateCardOutcome{}, eris.Wrap(lookupErr, "usecase: lookup duplicate card after 23505")
+				return CreateCardOutcome{}, eris.Wrap(lookupErr, "usecase: card: lookup duplicate after 23505")
 			}
 			return CreateCardOutcome{Duplicate: &DuplicateCardInfo{
 				ExistingID:   existing.ID,
 				ExistingBack: string(existing.Back),
 			}}, nil
 		}
-		return CreateCardOutcome{}, eris.Wrap(err, "usecase: create card: repo create")
+		return CreateCardOutcome{}, eris.Wrap(err, "usecase: card: create: repo create")
 	}
 	u.observer.OnCardCreated(ctx, card)
 	return CreateCardOutcome{Card: card}, nil
@@ -280,7 +280,7 @@ func (u *cardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 		if errors.Is(err, repository.ErrNotFound) {
 			return UpdateCardOutcome{}, ucerr.ErrUnauthenticated
 		}
-		return UpdateCardOutcome{}, eris.Wrap(err, "usecase: update card: find by id")
+		return UpdateCardOutcome{}, eris.Wrap(err, "usecase: card: update: find by id")
 	}
 	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, existing.CardgroupID, domain.UserID(user.Sub)); err != nil {
 		return UpdateCardOutcome{}, err
@@ -327,7 +327,7 @@ func (u *cardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 
 	updated, err := u.cardRepo.Update(ctx, id, patch)
 	if err != nil {
-		return UpdateCardOutcome{}, eris.Wrap(err, "usecase: update card: repo update")
+		return UpdateCardOutcome{}, eris.Wrap(err, "usecase: card: update: repo update")
 	}
 	u.observer.OnCardUpdated(ctx, updated)
 	return UpdateCardOutcome{Card: updated}, nil
@@ -343,13 +343,13 @@ func (u *cardUsecase) Delete(ctx context.Context, id string) error {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ucerr.ErrUnauthenticated
 		}
-		return eris.Wrap(err, "usecase: delete card: find by id")
+		return eris.Wrap(err, "usecase: card: delete: find by id")
 	}
 	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, card.CardgroupID, domain.UserID(user.Sub)); err != nil {
 		return err
 	}
 	if err := u.cardRepo.Delete(ctx, id); err != nil {
-		return eris.Wrap(err, "usecase: delete card: repo delete")
+		return eris.Wrap(err, "usecase: card: delete: repo delete")
 	}
 	return nil
 }
@@ -398,7 +398,7 @@ func (u *cardUsecase) ListCardsByCardgroupConnection(
 				ctx, user.Sub, in.CardgroupID, after, before, wantFirst, wantLast, orderBy, dir, search,
 			)
 			if e != nil {
-				return nil, eris.Wrap(e, "usecase: list cards by cardgroup: find page")
+				return nil, eris.Wrap(e, "usecase: card: list by cardgroup: find page")
 			}
 			total = t
 			return rows, nil
@@ -457,7 +457,7 @@ func (u *cardUsecase) resolveCardCursor(
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ucerr.NewValidationError(field, "cursor not found")
 		}
-		return nil, eris.Wrap(err, "usecase: resolve cursor: find by id")
+		return nil, eris.Wrap(err, "usecase: card: resolve cursor: find by id")
 	}
 	if !card.BelongsToCardgroup(domain.CardgroupID(cardgroupID)) {
 		return nil, ucerr.NewValidationError(field, "cursor not found")
@@ -470,7 +470,7 @@ func (u *cardUsecase) resolveCardCursor(
 		} else if user := auth.UserFrom(ctx); user != nil {
 			byCardID, err := u.userFSRSRepo.FindByUserAndCardIDs(ctx, user.Sub, []string{id})
 			if err != nil {
-				return nil, eris.Wrap(err, "usecase: resolve cursor: find user fsrs")
+				return nil, eris.Wrap(err, "usecase: card: resolve cursor: find user fsrs")
 			}
 			if ucs := byCardID[id]; ucs != nil {
 				due = ucs.State.Due
@@ -506,7 +506,7 @@ func (u *cardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, erro
 	}
 
 	if u.tx == nil {
-		return 0, eris.New("usecase: tx runner not configured")
+		return 0, eris.New("usecase: card: tx runner not configured")
 	}
 	var deleted int64
 	err := u.tx(ctx, func(tx *gorm.DB) error {
@@ -518,7 +518,7 @@ func (u *cardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, erro
 		return nil
 	})
 	if err != nil {
-		return 0, eris.Wrap(err, "usecase: bulk delete: transaction")
+		return 0, eris.Wrap(err, "usecase: card: bulk delete: transaction")
 	}
 	if deleted < int64(len(ids)) {
 		u.logger.LogAttrs(ctx, slog.LevelInfo, "bulk delete: partial match",

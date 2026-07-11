@@ -494,7 +494,7 @@ func TestCardUsecase_Update_RepoError_InfraChannel(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from repo, got nil")
 	}
-	assertInternalChain(t, err, "usecase: update card: repo update")
+	assertInternalChain(t, err, "usecase: card: update: repo update")
 }
 
 func TestCardUsecase_Delete_NotFoundMasksExistence(t *testing.T) {
@@ -965,7 +965,7 @@ func TestCardUsecase_Create_DuplicateLookupRace(t *testing.T) {
 
 	_, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: wantCardgroupID, Front: "hello", Back: "world"})
 	// Load-bearing: eris.Wrap at the call site must produce a rich chain even for external errors.
-	assertInternalChain(t, err, "usecase: lookup duplicate card after 23505")
+	assertInternalChain(t, err, "usecase: card: lookup duplicate after 23505")
 }
 
 // TestCardUsecase_Create_DuplicateLookupRace_RowVanished exercises the documented
@@ -988,7 +988,7 @@ func TestCardUsecase_Create_DuplicateLookupRace_RowVanished(t *testing.T) {
 	_, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: wantCardgroupID, Front: "hello", Back: "world"})
 	// Load-bearing: eris.Wrap in production must produce a rich chain even when
 	// the wrapped error is a stdlib sentinel (no stack of its own).
-	assertInternalChain(t, err, "usecase: lookup duplicate card after 23505")
+	assertInternalChain(t, err, "usecase: card: lookup duplicate after 23505")
 }
 
 // strPtr returns a pointer to s. Helper used by search passthrough tests.
