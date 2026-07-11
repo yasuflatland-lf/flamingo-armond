@@ -55,8 +55,8 @@ func (r *userResolver) NewCardRatio(ctx context.Context, obj *model.User) (*mode
 		return nil, classifyLoaderErr(ctx, err, "resolver: user preference")
 	}
 	ratio := domain.DefaultNewCardRatio
-	if pref != nil && !pref.NewCardRatio.IsZero() {
-		ratio = pref.NewCardRatio
+	if pref != nil {
+		ratio = pref.EffectiveNewCardRatio()
 	}
 	return toNewCardRatioModel(ratio), nil
 }

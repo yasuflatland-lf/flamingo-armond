@@ -171,11 +171,12 @@ func (u *learnUsecase) NextDueCards(ctx context.Context, cardgroupID string, lim
 	// Load the caller's per-user new-vs-review ratio. A missing preference row
 	// (ErrNotFound), a nil pref, or a zero-value ratio all fall back to the
 	// default; a real infrastructure error propagates (context-done unwrapped).
+	// EffectiveNewCardRatio owns the zero-to-default resolution.
 	ratio := domain.DefaultNewCardRatio
 	pref, err := u.userPrefs.FindByUserID(ctx, user.Sub)
 	switch {
-	case err == nil && pref != nil && !pref.NewCardRatio.IsZero():
-		ratio = pref.NewCardRatio
+	case err == nil && pref != nil:
+		ratio = pref.EffectiveNewCardRatio()
 	case err != nil && !errors.Is(err, repository.ErrNotFound):
 		if isContextDone(err) {
 			return nil, err

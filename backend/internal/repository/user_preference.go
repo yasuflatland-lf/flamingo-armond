@@ -178,7 +178,12 @@ SET new_card_ratio_num = EXCLUDED.new_card_ratio_num,
 //
 // new_card_ratio_num / new_card_ratio_den follow the same non-fatal posture:
 // an out-of-bounds or legacy zero value falls back to domain.DefaultNewCardRatio
-// rather than failing the read.
+// rather than failing the read. This is a DB-read normalization, not the owner
+// of the "zero means default" business rule — that rule lives in
+// domain.UserPreference.EffectiveNewCardRatio, which read paths call. Keeping
+// the normalization here means a corrupt or legacy stored value never leaves
+// the repository as an invalid zero; the domain method is the backstop for any
+// UserPreference not constructed through this mapper.
 func toDomainUserPreference(g gormUserPreference) *domain.UserPreference {
 	mode := domain.DefaultLearnDisplayMode
 	if parsed, err := domain.ParseLearnDisplayMode(g.LearnDisplayMode); err == nil {
