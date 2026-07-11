@@ -1972,3 +1972,28 @@ func TestCheckCardgroupLimit_CountDeadlineExceeded_IdentityPreserved(t *testing.
 		t.Fatalf("expected nil LimitInfo on deadline exceeded, got %+v", info)
 	}
 }
+
+// TestCardgroupUC_Connection_CursorFindByIDCancelled pins the cursor-hydration
+// FindByID wrap site (resolveCardgroupCursor): a context.Canceled surfaced while
+// hydrating the cursor must reach the caller unwrapped so the resolver routes it
+// to Cancelled via errors.Is. assertCancelled alone is too weak — errors.Is walks
+// the eris chain, so it passes even for eris.Wrap(context.Canceled, ...); the bare
+// err == context.Canceled check pins that no wrap snuck in. See
+// docs/backend/error-wrapping/pin-unwrapped-context-error-with-identity-check.md.
+func TestCardgroupUC_Connection_CursorFindByIDCancelled(t *testing.T) {
+	t.Parallel()
+	repo := &mockCardgroupRepository{findErr: context.Canceled}
+	uc := NewCardgroupUsecase(repo, cgDefaultAdmin(), newTestLogger())
+
+	first := 5
+	after := "cur-1"
+	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("user-1"), CardgroupConnectionInput{
+		First: &first,
+		After: &after,
+	})
+
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %v", err)
+	}
+}

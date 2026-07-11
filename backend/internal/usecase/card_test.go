@@ -1230,3 +1230,63 @@ func TestCardUsecase_ListCardsByCardgroupConnection_SearchPassthrough(t *testing
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Cursor-hydration context-cancellation pass-through (resolveCardCursor)
+//
+// A context.Canceled surfaced during cursor hydration must reach the caller
+// unwrapped so the resolver's gqlerr.FromUsecaseError routes it to Cancelled
+// via errors.Is. assertCancelled alone is too weak — errors.Is walks the eris
+// chain, so it passes even for eris.Wrap(context.Canceled, ...); the bare
+// err == context.Canceled check pins that no wrap snuck in. See
+// docs/backend/error-wrapping/pin-unwrapped-context-error-with-identity-check.md.
+// ---------------------------------------------------------------------------
+
+// TestCardUsecase_ListCardsByCardgroupConnection_CursorFindByIDCancelled pins the
+// FindByID wrap site: a non-ID orderBy reaches cardRepo.FindByID during cursor
+// hydration; a context.Canceled from it must pass through unwrapped.
+func TestCardUsecase_ListCardsByCardgroupConnection_CursorFindByIDCancelled(t *testing.T) {
+	t.Parallel()
+	cardRepo := &mockCardRepository{findErr: context.Canceled}
+	uc := NewCardUsecase(nil, cardRepo,
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
+		nil, nil, newTestLogger(),
+	)
+	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
+		CardgroupID: "cg1",
+		First:       intPtr(10),
+		After:       ptr("cur-1"),
+		OrderBy:     orderByPtr(CardOrderByDue), // non-ID ordering triggers FindByID
+	})
+
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %v", err)
+	}
+}
+
+// TestCardUsecase_ListCardsByCardgroupConnection_CursorFSRSCancelled pins the FSRS
+// wrap site: OrderByDue reaches the userFSRSRepo.FindByUserAndCardIDs lookup during
+// cursor hydration; a context.Canceled from it must pass through unwrapped.
+func TestCardUsecase_ListCardsByCardgroupConnection_CursorFSRSCancelled(t *testing.T) {
+	t.Parallel()
+	cardRepo := &mockCardRepository{
+		findResult: &domain.Card{ID: "cur-1", CardgroupID: domain.CardgroupID("cg1")},
+	}
+	fsrsRepo := &mockUserCardFSRSRepository{findErr: context.Canceled}
+	uc := NewCardUsecase(nil, cardRepo,
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
+		fsrsRepo, nil, newTestLogger(),
+	)
+	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
+		CardgroupID: "cg1",
+		First:       intPtr(10),
+		After:       ptr("cur-1"),
+		OrderBy:     orderByPtr(CardOrderByDue), // OrderByDue reaches the FSRS lookup
+	})
+
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %v", err)
+	}
+}
