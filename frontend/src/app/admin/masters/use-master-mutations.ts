@@ -6,7 +6,7 @@ import {
   prependConnectionEdge,
   removeConnectionEdgeAcrossVariants,
 } from "@/lib/apollo/connection-cache";
-import { classifyAndLogAuthOutcome } from "@/lib/apollo/errors";
+import { classifyAndLogAuthOutcome, type MutationAuthKind } from "@/lib/apollo/errors";
 import type { MasterFormValues } from "./admin-master-form";
 import {
   ADMIN_MASTERS_BASE_VARS,
@@ -19,7 +19,7 @@ import {
 } from "./queries";
 
 /** Auth-relevant failure kind surfaced to the caller for toast copy selection. */
-export type AuthKind = "forbidden" | "unauthenticated";
+export type AuthKind = MutationAuthKind;
 
 export type CreateMasterOutcome =
   | { status: "success"; id: string }
