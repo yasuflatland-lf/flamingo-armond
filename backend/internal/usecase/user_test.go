@@ -132,7 +132,7 @@ func TestUserUsecase_Me(t *testing.T) {
 				case "UNAUTHENTICATED":
 					assertUnauthenticated(t, err)
 				case "INTERNAL":
-					assertInternalChain(t, err, "usecase: Me: find user by ID")
+					assertInternalChain(t, err, "usecase: user: me: find user by ID")
 				default:
 					t.Fatalf("unhandled wantErr code %q in test", tc.wantErr)
 				}
@@ -325,7 +325,7 @@ func TestUserUsecase_UpdateUser(t *testing.T) {
 					if err == nil {
 						t.Fatal("expected error, got nil")
 					}
-					assertInternalChain(t, err, "usecase: UpdateUser: update user")
+					assertInternalChain(t, err, "usecase: user: update: update user")
 				default:
 					t.Fatalf("unhandled wantErrCode %q in test", tc.wantErrCode)
 				}
@@ -452,7 +452,7 @@ func TestUserUsecase_UpdateUser_RepoError_InfraChannel(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from repo, got nil")
 	}
-	assertInternalChain(t, err, "usecase: UpdateUser: update user")
+	assertInternalChain(t, err, "usecase: user: update: update user")
 }
 
 // TestUserUsecase_DeleteMyAccount exercises the self-service account-deletion
