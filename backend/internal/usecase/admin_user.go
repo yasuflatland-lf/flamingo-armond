@@ -303,29 +303,12 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 		return AdminEditUserOutcome{}, err
 	}
 
-	patch := repository.UserUpdate{}
-	if input.DisplayName != nil {
-		dn, err := domain.ParseDisplayName(*input.DisplayName)
-		if err != nil {
-			info, perr := liftValidationErr(translateDisplayNameErr(err))
-			if perr != nil {
-				return AdminEditUserOutcome{}, perr
-			}
-			return AdminEditUserOutcome{Validation: info}, nil
-		}
-		s := string(dn)
-		patch.DisplayName = &s
+	patch, info, err := buildUserProfilePatch(input.DisplayName, input.Bio)
+	if err != nil {
+		return AdminEditUserOutcome{}, err
 	}
-	if input.Bio != nil {
-		bio, err := domain.ParseBio(input.Bio)
-		if err != nil {
-			info, perr := liftValidationErr(translateBioErr(err))
-			if perr != nil {
-				return AdminEditUserOutcome{}, perr
-			}
-			return AdminEditUserOutcome{Validation: info}, nil
-		}
-		patch.Bio = bio.Ptr()
+	if info != nil {
+		return AdminEditUserOutcome{Validation: info}, nil
 	}
 
 	roleIDs, validation := normalizeAdminEditRoleIDs(input.RoleIDs)

@@ -100,36 +100,65 @@ func (u *userUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (Updat
 		return UpdateProfileOutcome{}, err
 	}
 
-	dn, err := domain.ParseDisplayName(in.DisplayName)
+	patch, info, err := buildUserProfilePatch(&in.DisplayName, in.Bio)
 	if err != nil {
-		info, perr := liftValidationErr(translateDisplayNameErr(err))
-		if perr != nil {
-			return UpdateProfileOutcome{}, perr
-		}
+		return UpdateProfileOutcome{}, err
+	}
+	if info != nil {
 		return UpdateProfileOutcome{Validation: info}, nil
 	}
 
-	name := string(dn)
-	patch := repository.UserUpdate{
-		DisplayName: &name,
-	}
-	if in.Bio != nil {
-		bio, err := domain.ParseBio(in.Bio)
-		if err != nil {
-			info, perr := liftValidationErr(translateBioErr(err))
-			if perr != nil {
-				return UpdateProfileOutcome{}, perr
-			}
-			return UpdateProfileOutcome{Validation: info}, nil
-		}
-		patch.Bio = bio.Ptr()
-	}
 	appUser, err := u.repo.Update(ctx, user.Sub, patch)
 	if err != nil {
 		return UpdateProfileOutcome{}, eris.Wrap(err, "usecase: user: update: update user")
 	}
 
 	return UpdateProfileOutcome{User: appUser}, nil
+}
+
+// buildUserProfilePatch assembles a repository.UserUpdate from a profile-patch
+// input, shared by userUsecase.UpdateUser (self-service) and
+// adminUserUsecase.EditUser (admin). displayName is a *string so the one helper
+// serves both surfaces: the self-service caller passes &in.DisplayName because
+// its display name is required, while the admin caller passes the optional
+// input.DisplayName pointer. When displayName is nil the field is left
+// unchanged; when non-nil it is validated via domain.ParseDisplayName (which
+// rejects empty), so the pointer absorbs the required/optional difference
+// without changing behaviour. bio follows the trinary patch contract
+// (nil = unchanged, "" = explicit clear) via domain.ParseBio.
+//
+// The return contract mirrors liftValidationErr's routing: a *ucerr.ValidationError
+// surfaces in the second slot (*InputValidationInfo) with a nil error, so the
+// caller can populate its outcome's Validation field; any other error surfaces
+// in the third slot for the error channel. On success both are nil and the
+// assembled patch is returned. Keeping the DTO primitive (repository.UserUpdate,
+// not a VO) preserves the patch-DTO-primitive contract.
+func buildUserProfilePatch(displayName *string, bio *string) (repository.UserUpdate, *InputValidationInfo, error) {
+	patch := repository.UserUpdate{}
+	if displayName != nil {
+		dn, err := domain.ParseDisplayName(*displayName)
+		if err != nil {
+			info, perr := liftValidationErr(translateDisplayNameErr(err))
+			if perr != nil {
+				return repository.UserUpdate{}, nil, perr
+			}
+			return repository.UserUpdate{}, info, nil
+		}
+		name := string(dn)
+		patch.DisplayName = &name
+	}
+	if bio != nil {
+		b, err := domain.ParseBio(bio)
+		if err != nil {
+			info, perr := liftValidationErr(translateBioErr(err))
+			if perr != nil {
+				return repository.UserUpdate{}, nil, perr
+			}
+			return repository.UserUpdate{}, info, nil
+		}
+		patch.Bio = b.Ptr()
+	}
+	return patch, nil, nil
 }
 
 // DeleteMyAccount permanently deletes the authenticated caller's own account.
