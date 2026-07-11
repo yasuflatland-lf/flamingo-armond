@@ -534,8 +534,8 @@ func (u *masterCardUsecase) ListPublicMasterCards(
 	ctx context.Context, in MasterCardConnectionInput,
 ) (*MasterCardConnectionOutput, error) {
 	return u.listMasterCardsCore(ctx, in, "usecase: master card: public list", func(ctx context.Context) error {
-		if auth.UserFrom(ctx) == nil {
-			return ucerr.ErrUnauthenticated
+		if err := requireCallerSub(auth.UserFrom(ctx)); err != nil {
+			return err
 		}
 		// Published-only visibility gate. FindPublishedByID returns ErrNotFound for
 		// BOTH unknown and DRAFT ids, collapsing them into one not-found so the
