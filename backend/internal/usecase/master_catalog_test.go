@@ -733,6 +733,33 @@ func TestImportMaster_UnknownOrDraft_ReturnsNotFoundOutcome(t *testing.T) {
 	}
 }
 
+func TestImportMaster_MasterUnpublishedMidFlight_ReturnsNotFoundOutcome(t *testing.T) {
+	// TOCTOU: the master is published when the FindPublishedByID gate runs, but the
+	// delegated copy's own in-tx published-scoped re-read surfaces repository.ErrNotFound
+	// (an unpublish landed in between). ImportMaster must collapse that into the same
+	// NotFound outcome as a pre-gate unknown/draft — not a silent import, not an error.
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Deck"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	copyUC := &mockCopyMasterToUserUC{fn: func(context.Context, string, string) (*domain.Cardgroup, error) {
+		return nil, repository.ErrNotFound
+	}}
+	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true), newTestLogger())
+
+	out, err := uc.ImportMaster(authedCtx("u1"), "m1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !out.NotFound {
+		t.Fatal("expected NotFound outcome for a master unpublished mid-flight")
+	}
+	if out.Cardgroup != nil {
+		t.Fatal("expected nil cardgroup on NotFound")
+	}
+}
+
 func TestImportMaster_Published_CopiesAndReturnsCardgroup(t *testing.T) {
 	repo := &mockMasterCatalogRepository{
 		findByIDFn: func(id string) (*domain.MasterCardgroup, error) {
@@ -1164,6 +1191,33 @@ func TestMasterCatalogUsecase_MergeMaster_DelegateError_Wrapped(t *testing.T) {
 
 	_, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
 	assertInternalChain(t, err, "usecase: master catalog: merge: merge master into cardgroup")
+}
+
+func TestMasterCatalogUsecase_MergeMaster_MasterUnpublishedMidFlight_ReturnsNotFoundOutcome(t *testing.T) {
+	// TOCTOU: the master is published at the FindPublishedByID gate, but the merge
+	// delegate's in-tx published-scoped re-read surfaces repository.ErrNotFound. MergeMaster
+	// must collapse that into MergeMasterOutcome{NotFound:true}, matching a pre-gate
+	// unknown/draft — not a silent merge, not an error. A ucerr.ValidationError from the
+	// destination ownership gate is unaffected (it is not repository.ErrNotFound).
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Master"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	deck := &mockCopyMasterToUserUC{mergeErr: repository.ErrNotFound}
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+
+	out, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !out.NotFound {
+		t.Fatal("expected NotFound outcome for a master unpublished mid-flight")
+	}
+	if out.Cardgroup != nil {
+		t.Fatal("expected nil cardgroup on NotFound")
+	}
 }
 
 func TestMasterCatalogUsecase_MergeMaster_VerifyPublished_ContextCancelled_PassesThrough(t *testing.T) {
