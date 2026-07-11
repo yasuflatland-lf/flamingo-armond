@@ -101,16 +101,14 @@ func (u *lastViewedCardgroupUsecase) Set(ctx context.Context, cardgroupID string
 		}
 	}
 
-	user, err := u.users.FindByID(ctx, caller.Sub)
+	// ErrNotFound from the refetch means the user row vanished between the
+	// UPDATE and the read — only possible if the auth.users row was deleted
+	// concurrently. refetchUser treats it as INTERNAL (wrapping the sentinel as
+	// "... : user disappeared") like any other refetch failure, and passes
+	// context cancellation through unchanged.
+	user, err := refetchUser(ctx, u.users, caller.Sub, "usecase: last viewed cardgroup: refetch own user row")
 	if err != nil {
-		// ErrNotFound here means the user row vanished between the UPDATE and
-		// the refetch — only possible if the auth.users row was deleted
-		// concurrently. Treated as INTERNAL like any other refetch failure,
-		// with the wrapped sentinel preserved for log correlation.
-		if isContextDone(err) {
-			return SetLastViewedCardgroupOutcome{}, err
-		}
-		return SetLastViewedCardgroupOutcome{}, eris.Wrap(err, "usecase: last viewed cardgroup: refetch own user row")
+		return SetLastViewedCardgroupOutcome{}, err
 	}
 	return SetLastViewedCardgroupOutcome{User: user}, nil
 }

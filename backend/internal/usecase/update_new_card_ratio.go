@@ -4,8 +4,6 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/rotisserie/eris"
-
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
@@ -78,8 +76,12 @@ func NewUpdateNewCardRatioWithDeps(
 // value-object validation and field attribution live in the application layer,
 // like every sibling mutation.
 func (u *updateNewCardRatioUsecase) Set(ctx context.Context, numerator, denominator int) (*domain.User, error) {
-	caller := auth.UserFrom(ctx)
-	if err := requireCallerSub(caller); err != nil {
+	// Auth runs before validation so an invalid ratio never short-circuits the
+	// unauthenticated path (an anonymous caller gets UNAUTHENTICATED, never a
+	// hint that the ratio was malformed). setUserPreference re-checks auth, but
+	// this guard is what fixes the auth->validate ordering the shared core,
+	// which authenticates internally, cannot express on its own.
+	if err := requireCallerSub(auth.UserFrom(ctx)); err != nil {
 		return nil, err
 	}
 
@@ -99,19 +101,7 @@ func (u *updateNewCardRatioUsecase) Set(ctx context.Context, numerator, denomina
 		return nil, ucerr.NewValidationError(field, "invalid new-card ratio")
 	}
 
-	if err := u.prefs.UpsertNewCardRatio(ctx, caller.Sub, ratio.Numerator(), ratio.Denominator()); err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: update new card ratio")
-	}
-
-	user, err := u.users.FindByID(ctx, caller.Sub)
-	if err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: update new card ratio: refetch own user row")
-	}
-	return user, nil
+	return setUserPreference(ctx, func(ctx context.Context, sub string) error {
+		return u.prefs.UpsertNewCardRatio(ctx, sub, ratio.Numerator(), ratio.Denominator())
+	}, u.users, "usecase: update new card ratio")
 }

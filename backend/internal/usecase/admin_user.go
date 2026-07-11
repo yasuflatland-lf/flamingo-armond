@@ -391,7 +391,7 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 		return AdminEditUserOutcome{Validation: info}, nil
 	}
 
-	user, err := u.refetchUser(ctx, id, "usecase: admin user edit: refetch")
+	user, err := refetchUser(ctx, u.users, id, "usecase: admin user edit: refetch")
 	if err != nil {
 		return AdminEditUserOutcome{}, err
 	}
@@ -500,27 +500,6 @@ func liftValidationErr(err error) (*InputValidationInfo, error) {
 		return NewInputValidationInfo(ve.Field, ve.Message), nil
 	}
 	return nil, err
-}
-
-// refetchUser loads the user after a mutation so callers see a fresh row
-// (e.g. with the trigger-refreshed updated_at). A missing row after a
-// successful mutation is unusual; surface it as INTERNAL with the supplied
-// context. The original ErrNotFound is wrapped (not replaced) so the chain
-// stays intact for errors.Is checks downstream and so the eris error_chain
-// log entry preserves the originating sentinel.
-func (u *adminUserUsecase) refetchUser(ctx context.Context, id, wrap string) (*domain.User, error) {
-	user, err := u.users.FindByID(ctx, id)
-	if err != nil {
-		switch {
-		case errors.Is(err, repository.ErrNotFound):
-			return nil, eris.Wrapf(err, "%s: user disappeared", wrap)
-		case isContextDone(err):
-			return nil, err
-		default:
-			return nil, eris.Wrap(err, wrap)
-		}
-	}
-	return user, nil
 }
 
 // resolveAdminPageSize enforces the (first XOR last) constraint and clamps

@@ -4,9 +4,6 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/rotisserie/eris"
-
-	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
 )
@@ -67,24 +64,7 @@ func NewUpdateLearnDisplayModeWithDeps(
 //   - Anonymous (no auth context) → UNAUTHENTICATED.
 //   - Authenticated caller → updated preference + refreshed user row.
 func (u *updateLearnDisplayModeUsecase) Set(ctx context.Context, mode domain.LearnDisplayMode) (*domain.User, error) {
-	caller := auth.UserFrom(ctx)
-	if err := requireCallerSub(caller); err != nil {
-		return nil, err
-	}
-
-	if err := u.prefs.UpsertLearnDisplayMode(ctx, caller.Sub, mode.String()); err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: update learn display mode")
-	}
-
-	user, err := u.users.FindByID(ctx, caller.Sub)
-	if err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: update learn display mode: refetch own user row")
-	}
-	return user, nil
+	return setUserPreference(ctx, func(ctx context.Context, sub string) error {
+		return u.prefs.UpsertLearnDisplayMode(ctx, sub, mode.String())
+	}, u.users, "usecase: update learn display mode")
 }
