@@ -18,35 +18,62 @@ independently — the flag can say "set" while the pointer says `nil`, or vice v
 
 ## What
 
-`Bio` encodes the trinary as a struct with a private `*string`:
+The trinary is single-sourced in one field-agnostic value object, `trinaryText`,
+that carries a private `*string`. Its parser mirrors `ParseCardText`: the caller
+supplies the grapheme cap and the too-long sentinel, so the VO stays field-agnostic
+(see [`caller-supplied-sentinels-in-parser.md`](caller-supplied-sentinels-in-parser.md)).
+
+```go
+// domain/trinary_text.go
+
+type trinaryText struct {
+    value *string
+}
+
+func parseTrinaryText(s *string, max int, tooLongErr error) (trinaryText, error) {
+    if tooLongErr == nil {
+        panic("domain: parseTrinaryText requires a non-nil tooLongErr sentinel")
+    }
+    if s == nil {
+        return trinaryText{}, nil        // no change
+    }
+    trimmed := strings.TrimSpace(*s)
+    if uniseg.GraphemeClusterCount(trimmed) > max {
+        return trinaryText{}, tooLongErr
+    }
+    return trinaryText{value: &trimmed}, nil
+}
+
+func (t trinaryText) IsSet() bool { return t.value != nil }
+
+func (t trinaryText) Ptr() *string {
+    if t.value == nil {
+        return nil
+    }
+    s := *t.value
+    return &s    // copy to prevent aliasing mutation
+}
+```
+
+`Bio` and `Description` are distinct exported types that embed `trinaryText`, so
+`IsSet()`/`Ptr()` and the trim + grapheme-cap + trinary rule are shared. Each field
+keeps its own cap constant and too-long sentinel; the `Parse*` and `*FromPtr` entry
+points stay stable so consumers do not churn:
 
 ```go
 // domain/bio.go
 
-type Bio struct {
-    value *string
-}
+type Bio struct{ trinaryText }
 
 func ParseBio(s *string) (Bio, error) {
-    if s == nil {
-        return Bio{}, nil        // no change
-    }
-    trimmed := strings.TrimSpace(*s)
-    if uniseg.GraphemeClusterCount(trimmed) > BioMax {
-        return Bio{}, ErrBioTooLong
-    }
-    return Bio{value: &trimmed}, nil
+    t, err := parseTrinaryText(s, BioMax, ErrBioTooLong)
+    return Bio{t}, err
 }
 
-func (b Bio) IsSet() bool   { return b.value != nil }
+func BioFromPtr(p *string) Bio { return Bio{trinaryTextFromPtr(p)} }
 
-func (b Bio) Ptr() *string {
-    if b.value == nil {
-        return nil
-    }
-    s := *b.value
-    return &s    // copy to prevent aliasing mutation
-}
+// domain/description.go — Description embeds the same trinaryText, passing
+// DescriptionMax / ErrDescriptionTooLong to the same parseTrinaryText body.
 ```
 
 - `ParseBio(nil)` → `Bio{}` (no change): `IsSet()` returns `false`.
@@ -57,7 +84,7 @@ func (b Bio) Ptr() *string {
   to `"hello"`.
 
 `Ptr()` returns a copy of the pointer's target so external mutation of the
-returned pointer does not alter the `Bio`'s internal state.
+returned pointer does not alter the value object's internal state.
 
 ## Usecase guard
 

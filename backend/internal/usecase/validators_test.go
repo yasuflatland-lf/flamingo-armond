@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -105,6 +106,102 @@ func TestValidateRelayArgs(t *testing.T) {
 			if tc.wantField == "" {
 				require.NoError(t, err)
 			} else {
+				require.Error(t, err)
+				assertValidationError(t, err, tc.wantField, tc.wantMsg)
+			}
+		})
+	}
+}
+
+// TestTranslateBioErr and TestTranslateDescriptionErr pin the thin wrappers over
+// the shared translateTrinaryTextErr body: nil passes through, the too-long
+// sentinel maps to a field-scoped ValidationError with the exact message, and any
+// other error wraps into the field-specific internal chain.
+func TestTranslateBioErr(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		input     error
+		wantField string
+		wantMsg   string
+		wantChain string
+	}{
+		{
+			name:  "nil passes through",
+			input: nil,
+		},
+		{
+			name:      "too-long sentinel",
+			input:     domain.ErrBioTooLong,
+			wantField: "bio",
+			wantMsg:   fmt.Sprintf("bio must be at most %d characters", domain.BioMax),
+		},
+		{
+			name:      "unexpected error wraps as internal",
+			input:     errors.New("surprise"),
+			wantChain: "usecase: translate bio error",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := translateBioErr(tc.input)
+
+			switch {
+			case tc.input == nil:
+				require.NoError(t, err)
+			case tc.wantChain != "":
+				assertInternalChain(t, err, tc.wantChain)
+			default:
+				require.Error(t, err)
+				assertValidationError(t, err, tc.wantField, tc.wantMsg)
+			}
+		})
+	}
+}
+
+func TestTranslateDescriptionErr(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		input     error
+		wantField string
+		wantMsg   string
+		wantChain string
+	}{
+		{
+			name:  "nil passes through",
+			input: nil,
+		},
+		{
+			name:      "too-long sentinel",
+			input:     domain.ErrDescriptionTooLong,
+			wantField: "description",
+			wantMsg:   fmt.Sprintf("description must be at most %d characters", domain.DescriptionMax),
+		},
+		{
+			name:      "unexpected error wraps as internal",
+			input:     errors.New("surprise"),
+			wantChain: "usecase: translate description error",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := translateDescriptionErr(tc.input)
+
+			switch {
+			case tc.input == nil:
+				require.NoError(t, err)
+			case tc.wantChain != "":
+				assertInternalChain(t, err, tc.wantChain)
+			default:
 				require.Error(t, err)
 				assertValidationError(t, err, tc.wantField, tc.wantMsg)
 			}
