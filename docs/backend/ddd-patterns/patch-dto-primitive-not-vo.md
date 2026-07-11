@@ -36,24 +36,31 @@ out (write request to the repository).
 
 `repository.UserUpdate.Bio` is `*string`, even though the domain field
 `User.Bio` is the struct VO `Bio`. The usecase translates the validated `Bio`
-back to `*string` at the patch construction site:
+back to `*string` at the patch construction site. That construction site is the
+shared `buildUserProfilePatch` helper in `backend/internal/usecase/user.go`,
+used by both `userUsecase.UpdateUser` (self-service) and
+`adminUserUsecase.EditUser` (admin):
 
 ```go
-// backend/internal/usecase/user.go — UpdateUser
-patch := repository.UserUpdate{
-    DisplayName: &name,
-}
-if in.Bio != nil {
-    bio, err := domain.ParseBio(in.Bio)
-    if err != nil {
-        // ... liftValidationErr / translateBioErr branch
-        return UpdateProfileOutcome{Validation: info}, nil
+// backend/internal/usecase/user.go — buildUserProfilePatch
+func buildUserProfilePatch(displayName *string, bio *string) (repository.UserUpdate, *InputValidationInfo, error) {
+    patch := repository.UserUpdate{}
+    if displayName != nil {
+        // ... liftValidationErr / translateDisplayNameErr branch
+        patch.DisplayName = &name
     }
-    patch.Bio = bio.Ptr()   // <- VO → primitive at the DTO boundary
+    if bio != nil {
+        b, err := domain.ParseBio(bio)
+        if err != nil {
+            // ... liftValidationErr / translateBioErr branch
+        }
+        patch.Bio = b.Ptr()   // <- VO → primitive at the DTO boundary
+    }
+    return patch, nil, nil
 }
 ```
 
-The `if in.Bio != nil` guard is the patch contract's "field absent" branch:
+The `if bio != nil` guard is the patch contract's "field absent" branch:
 the input field is a `*string` because the input itself is a patch (the GraphQL
 mutation `UpdateProfileInput.Bio` is `*string`). Keeping the same shape on the
 DTO side keeps the translation trivial.
@@ -137,7 +144,7 @@ enforce at the storage layer. (`MasterCardgroupUpdate.Status` is deliberately
 
 - `backend/internal/repository/user.go` — `UserUpdate` (`*string` for `DisplayName`/`Bio`/`AvatarURL`).
 - `backend/internal/repository/card.go` — `CardUpdate` (`*string` for `Front`/`Back`).
-- `backend/internal/usecase/user.go` — `UpdateUser` translates `Bio.Ptr()` to `patch.Bio *string`.
+- `backend/internal/usecase/user.go` — `buildUserProfilePatch` translates `Bio.Ptr()` to `patch.Bio *string` for both `UpdateUser` and `adminUserUsecase.EditUser`.
 - `backend/internal/usecase/card.go` — `CardUsecase.Update` translates `CardText.String()` to `patch.Front/Back *string`.
 - [`docs/backend/ddd-patterns/trinary-value-object.md`](trinary-value-object.md) — the `Bio` VO's own contract.
 - [`docs/backend/ddd-patterns/context-neutral-vo-docstrings.md`](context-neutral-vo-docstrings.md) — the patch-vs-read context split for shared VOs.

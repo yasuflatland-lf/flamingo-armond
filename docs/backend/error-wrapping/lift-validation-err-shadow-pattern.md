@@ -71,8 +71,9 @@ if err := u.authorizeCardgroup(ctx, in.CardgroupID, user.Sub); err != nil {
 ```
 
 The same two-branch shape appears in `card.go` (`Update`), `cardgroup.go`
-(`Create`, `Update`), `user.go` (`UpdateUser`), and `admin_user.go`
-(`UpdateUser`) — count grep:
+(`Create`, `Update`), and `user.go` (`buildUserProfilePatch`, the shared
+profile-patch assembler used by both `userUsecase.UpdateUser` and
+`adminUserUsecase.EditUser`) — count grep:
 
 ```bash
 grep -n 'liftValidationErr' backend/internal/usecase/*.go | grep -v _test.go
@@ -92,5 +93,7 @@ When promoting a usecase method that calls a validator returning `error`:
   shape.
 - If a method needs both a `liftValidationErr` step and a follow-up
   validator that also returns `error`, run them in sequence and overwrite
-  `info` and `err` on each step — see `backend/internal/usecase/user.go`
-  for the two-step (`displayName` then `bio`) pattern.
+  `info` and `err` on each step — see `buildUserProfilePatch` in
+  `backend/internal/usecase/user.go` for the two-step (`displayName` then
+  `bio`) pattern, which returns the residual `(*InputValidationInfo, error)`
+  pair so its callers keep the same two-branch routing.
