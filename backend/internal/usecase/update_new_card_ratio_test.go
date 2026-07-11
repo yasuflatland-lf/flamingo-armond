@@ -50,7 +50,7 @@ func TestUpdateNewCardRatio_Unauthenticated(t *testing.T) {
 	users := &mockNewCardRatioUserRepo{}
 	uc := NewUpdateNewCardRatioWithDeps(prefs, users, newTestLogger())
 
-	_, err := uc.Set(anonCtx(), domain.DefaultNewCardRatio)
+	_, err := uc.Set(anonCtx(), 4, 5)
 	assertUnauthenticated(t, err)
 	if prefs.called != 0 {
 		t.Fatalf("repository must not be called when caller is anonymous; got %d calls", prefs.called)
@@ -60,17 +60,14 @@ func TestUpdateNewCardRatio_Unauthenticated(t *testing.T) {
 func TestUpdateNewCardRatio_Success(t *testing.T) {
 	t.Parallel()
 
-	// 6/10 reduces to 3/5; the usecase must persist the reduced fraction.
-	ratio, err := domain.ParseNewCardRatio(6, 10)
-	if err != nil {
-		t.Fatalf("ParseNewCardRatio: unexpected error: %v", err)
-	}
+	// 6/10 reduces to 3/5; the usecase parses the raw ints and persists the
+	// reduced fraction.
 	want := &domain.User{ID: "u1"}
 	prefs := &mockNewCardRatioPrefRepo{}
 	users := &mockNewCardRatioUserRepo{user: want}
 	uc := NewUpdateNewCardRatioWithDeps(prefs, users, newTestLogger())
 
-	got, err := uc.Set(authedCtx("u1"), ratio)
+	got, err := uc.Set(authedCtx("u1"), 6, 10)
 	if err != nil {
 		t.Fatalf("Set: unexpected error: %v", err)
 	}
@@ -102,7 +99,7 @@ func TestUpdateNewCardRatio_PrefsWriteError(t *testing.T) {
 	users := &mockNewCardRatioUserRepo{}
 	uc := NewUpdateNewCardRatioWithDeps(prefs, users, newTestLogger())
 
-	_, err := uc.Set(authedCtx("u1"), domain.DefaultNewCardRatio)
+	_, err := uc.Set(authedCtx("u1"), 4, 5)
 	if err == nil {
 		t.Fatal("Set: expected error, got nil")
 	}
@@ -124,7 +121,7 @@ func TestUpdateNewCardRatio_PrefsWriteCancelled(t *testing.T) {
 	users := &mockNewCardRatioUserRepo{}
 	uc := NewUpdateNewCardRatioWithDeps(prefs, users, newTestLogger())
 
-	_, err := uc.Set(authedCtx("u1"), domain.DefaultNewCardRatio)
+	_, err := uc.Set(authedCtx("u1"), 4, 5)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Set: expected errors.Is(err, context.Canceled)=true, got %v (%T)", err, err)
 	}
@@ -140,7 +137,7 @@ func TestUpdateNewCardRatio_RefetchError(t *testing.T) {
 	users := &mockNewCardRatioUserRepo{err: boom}
 	uc := NewUpdateNewCardRatioWithDeps(prefs, users, newTestLogger())
 
-	_, err := uc.Set(authedCtx("u1"), domain.DefaultNewCardRatio)
+	_, err := uc.Set(authedCtx("u1"), 4, 5)
 	if err == nil {
 		t.Fatal("Set: expected error on refetch failure, got nil")
 	}
@@ -158,8 +155,50 @@ func TestUpdateNewCardRatio_RefetchCancelled(t *testing.T) {
 	users := &mockNewCardRatioUserRepo{err: context.DeadlineExceeded}
 	uc := NewUpdateNewCardRatioWithDeps(prefs, users, newTestLogger())
 
-	_, err := uc.Set(authedCtx("u1"), domain.DefaultNewCardRatio)
+	_, err := uc.Set(authedCtx("u1"), 4, 5)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Set: expected errors.Is(err, context.DeadlineExceeded)=true, got %v (%T)", err, err)
+	}
+}
+
+// TestUpdateNewCardRatio_InvalidRatio_FieldAttribution pins the wire field a bad
+// ratio faults on to the reduced fraction domain.ParseNewCardRatio actually
+// checks: a new-card share outside (0, denominator) faults the numerator; a
+// non-positive or over-cap (reduced) denominator faults the denominator. The
+// "3/303" case reduces to 1/101, so its over-cap denominator is only visible on
+// the reduced fraction. No write runs for any invalid ratio.
+func TestUpdateNewCardRatio_InvalidRatio_FieldAttribution(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		num, den  int
+		wantField string
+	}{
+		{"numerator equals denominator", 5, 5, "numerator"},
+		{"numerator exceeds denominator", 7, 5, "numerator"},
+		{"zero numerator", 0, 5, "numerator"},
+		{"negative numerator", -1, 5, "numerator"},
+		{"non-positive denominator", 1, 0, "denominator"},
+		{"reduced denominator over cap", 1, 101, "denominator"},
+		{"reduced denominator over cap after reduction", 3, 303, "denominator"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			prefs := &mockNewCardRatioPrefRepo{}
+			users := &mockNewCardRatioUserRepo{}
+			uc := NewUpdateNewCardRatioWithDeps(prefs, users, newTestLogger())
+
+			_, err := uc.Set(authedCtx("u1"), tc.num, tc.den)
+			assertValidationError(t, err, tc.wantField, "invalid new-card ratio")
+			if prefs.called != 0 {
+				t.Fatalf("UpsertNewCardRatio must not run for an invalid ratio; got %d calls", prefs.called)
+			}
+			if users.calls != 0 {
+				t.Fatalf("FindByID must not run for an invalid ratio; got %d calls", users.calls)
+			}
+		})
 	}
 }

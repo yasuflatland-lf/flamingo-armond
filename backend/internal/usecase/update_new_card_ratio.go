@@ -9,12 +9,13 @@ import (
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
+	"backend/internal/usecase/ucerr"
 )
 
 // UpdateNewCardRatioUsecase persists the authenticated caller's preferred
 // new-card ratio and returns the refreshed user row.
 type UpdateNewCardRatioUsecase interface {
-	Set(ctx context.Context, ratio domain.NewCardRatio) (*domain.User, error)
+	Set(ctx context.Context, numerator, denominator int) (*domain.User, error)
 }
 
 // updateNewCardRatioPrefsRepo is the narrow consumer interface for the
@@ -61,19 +62,41 @@ func NewUpdateNewCardRatioWithDeps(
 	return &updateNewCardRatioUsecase{prefs: prefs, users: users, logger: logger}
 }
 
-// Set persists ratio as the caller's new-card preference and returns the
-// refreshed user row. Authorization rules:
+// Set validates numerator/denominator, persists the reduced ratio as the
+// caller's new-card preference, and returns the refreshed user row.
+// Authorization and validation rules:
 //
-//   - Anonymous (no auth context) → UNAUTHENTICATED.
-//   - Authenticated caller → updated preference + refreshed user row.
+//   - Anonymous (no auth context) → UNAUTHENTICATED. The auth check runs before
+//     validation so an invalid ratio never reveals the bounds to an
+//     unauthenticated caller.
+//   - A ratio outside 1 <= numerator < denominator <= 100 (after reduction) → a
+//     field-scoped ValidationError the resolver maps to BAD_USER_INPUT.
+//   - Authenticated caller with a valid ratio → updated preference + refreshed
+//     user row.
 //
-// ratio is an already-reduced, already-validated domain.NewCardRatio; the
-// caller (the resolver) constructs it via domain.ParseNewCardRatio, so a bad
-// wire value never reaches this method.
-func (u *updateNewCardRatioUsecase) Set(ctx context.Context, ratio domain.NewCardRatio) (*domain.User, error) {
+// The usecase owns domain.ParseNewCardRatio (previously the resolver's job) so
+// value-object validation and field attribution live in the application layer,
+// like every sibling mutation.
+func (u *updateNewCardRatioUsecase) Set(ctx context.Context, numerator, denominator int) (*domain.User, error) {
 	caller := auth.UserFrom(ctx)
 	if err := requireCallerSub(caller); err != nil {
 		return nil, err
+	}
+
+	ratio, err := domain.ParseNewCardRatio(numerator, denominator)
+	if err != nil {
+		// Attribute the fault the way domain.ParseNewCardRatio does on the
+		// reduced fraction: a non-positive denominator, or a reduced denominator
+		// above NewCardRatioDenMax, is a denominator problem; a new-card share
+		// outside the open interval (0, denominator) is a numerator problem. The
+		// share bound is ratio-invariant (num/den < 1 iff rnum/rden < 1), so this
+		// verdict matches the reduced fraction the VO actually checks. The wire
+		// message stays generic to avoid leaking internal bounds phrasing.
+		field := "denominator"
+		if denominator > 0 && (numerator <= 0 || numerator >= denominator) {
+			field = "numerator"
+		}
+		return nil, ucerr.NewValidationError(field, "invalid new-card ratio")
 	}
 
 	if err := u.prefs.UpsertNewCardRatio(ctx, caller.Sub, ratio.Numerator(), ratio.Denominator()); err != nil {

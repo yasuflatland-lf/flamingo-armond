@@ -14,29 +14,7 @@ import (
 
 // UpdateNewCardRatio is the resolver for the updateNewCardRatio field.
 func (r *mutationResolver) UpdateNewCardRatio(ctx context.Context, numerator int, denominator int) (*model.User, error) {
-	ratio, err := domain.ParseNewCardRatio(numerator, denominator)
-	if err != nil {
-		// A ratio outside 1 <= numerator < denominator <= 100 (after reduction) is
-		// a correctable client mistake, so surface it as BAD_USER_INPUT rather than
-		// INTERNAL. The VO's error carries the precise reason; the wire message stays
-		// generic to avoid leaking internal bounds phrasing.
-		//
-		// Attribute extensions.field to the argument ParseNewCardRatio faulted on,
-		// mirroring its check order: a non-positive denominator (and a reduced
-		// denominator above NewCardRatioDenMax) map to "denominator"; a numerator
-		// outside (0, denominator) maps to "numerator".
-		field := "denominator"
-		switch {
-		case denominator <= 0:
-			field = "denominator"
-		case numerator <= 0 || numerator >= denominator:
-			field = "numerator"
-		default: // reduced denominator exceeds NewCardRatioDenMax
-			field = "denominator"
-		}
-		return nil, gqlerr.BadUserInput(field, "invalid new-card ratio")
-	}
-	user, err := r.UpdateNewCardRatioUC.Set(ctx, ratio)
+	user, err := r.UpdateNewCardRatioUC.Set(ctx, numerator, denominator)
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
