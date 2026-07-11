@@ -991,6 +991,36 @@ func TestCardUsecase_Create_DuplicateLookupRace_RowVanished(t *testing.T) {
 	assertInternalChain(t, err, "usecase: card: lookup duplicate after 23505")
 }
 
+// TestCardUsecase_Create_DuplicateLookupCancelled pins the context-cancellation
+// identity of the duplicate-front re-lookup. When FindByCardgroupAndFront is
+// cancelled, the shared recoverDuplicateFront helper must return the bare
+// context.Canceled unwrapped — not an eris.Wrap of it — so the identity survives to
+// the caller. errors.Is is too weak on its own (it holds even through an eris chain),
+// so the load-bearing check is the bare err == context.Canceled equality. This
+// regression-guards the recovery drift that previously wrapped the lookup error at
+// this call site (unlike the master-card path, which already pinned the identity).
+func TestCardUsecase_Create_DuplicateLookupCancelled(t *testing.T) {
+	t.Parallel()
+	const wantCardgroupID = "cg-cancelled-id"
+
+	cardRepo := &mockCardRepository{
+		createErr:                  repository.ErrCardDuplicateFront,
+		findByCardgroupAndFrontErr: context.Canceled,
+	}
+	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID(wantCardgroupID), OwnerID: "u1"}}
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil, nil, newTestLogger())
+
+	_, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: wantCardgroupID, Front: "hello", Back: "world"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected errors.Is(err, context.Canceled), got %v", err)
+	}
+	// Load-bearing: the identity must be preserved unwrapped, not buried in an eris
+	// chain, so a caller relying on == context.Canceled still matches.
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled (identity pinned), got %v", err)
+	}
+}
+
 // strPtr returns a pointer to s. Helper used by search passthrough tests.
 func strPtr(s string) *string { return &s }
 

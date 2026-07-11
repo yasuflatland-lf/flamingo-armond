@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 
 	"github.com/rotisserie/eris"
@@ -251,18 +250,17 @@ func (u *cardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 	}
 	if err := u.cardRepo.Create(ctx, card); err != nil {
 		if errors.Is(err, repository.ErrCardDuplicateFront) {
-			existing, lookupErr := u.cardRepo.FindByCardgroupAndFront(ctx, in.CardgroupID, string(card.Front))
-			if lookupErr != nil {
-				// The lookup may race with a concurrent delete (the duplicate row vanished
-				// between the failed INSERT and this SELECT) or fail for an unrelated DB
-				// reason. Either way, surface as Internal so the client can retry; the
-				// duplicate is recoverable input, but a failed re-lookup is not.
-				return CreateCardOutcome{}, eris.Wrap(lookupErr, "usecase: card: lookup duplicate after 23505")
+			dup, recoverErr := recoverDuplicateFront(func() (string, string, error) {
+				existing, lookupErr := u.cardRepo.FindByCardgroupAndFront(ctx, in.CardgroupID, string(card.Front))
+				if lookupErr != nil {
+					return "", "", lookupErr
+				}
+				return existing.ID, string(existing.Back), nil
+			}, "usecase: card: lookup duplicate after 23505")
+			if recoverErr != nil {
+				return CreateCardOutcome{}, recoverErr
 			}
-			return CreateCardOutcome{Duplicate: &DuplicateCardInfo{
-				ExistingID:   existing.ID,
-				ExistingBack: string(existing.Back),
-			}}, nil
+			return CreateCardOutcome{Duplicate: dup}, nil
 		}
 		return CreateCardOutcome{}, eris.Wrap(err, "usecase: card: create: repo create")
 	}
@@ -286,43 +284,47 @@ func (u *cardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 		return UpdateCardOutcome{}, err
 	}
 
+	// Validate and stage each requested field through the shared stageCardText helper.
+	// UpdateFront/UpdateBack errors are routed through eris.Wrap inside each apply
+	// closure, not translateCardErr: ParseCardText (run inside stageCardText) already
+	// returns the sentinel for empty/zero input on the validation channel. If
+	// UpdateFront/UpdateBack still rejects the parsed VO, the invariant has been
+	// violated by a programmer error, not bad user input. INTERNAL is the honest
+	// classification — surfacing as BAD_USER_INPUT would mislead the client.
 	patch := repository.CardUpdate{}
-	// UpdateFront/UpdateBack errors below are routed through eris.Wrap, not
-	// translateCardErr: ParseCardText (called immediately inside each guard)
-	// already returns the sentinel for empty/zero input on the validation
-	// channel. If UpdateFront/UpdateBack still rejects the parsed VO, the
-	// invariant has been violated by a programmer error, not bad user input.
-	// INTERNAL is the honest classification — surfacing as BAD_USER_INPUT
-	// would mislead the client.
-	if in.Front != nil {
-		front, err := domain.ParseCardText(*in.Front, domain.ErrCardFrontRequired, domain.ErrCardFrontTooLong)
-		if err != nil {
-			info, perr := liftValidationErr(translateCardErr(err))
-			if perr != nil {
-				return UpdateCardOutcome{}, perr
+	frontStaged, frontInfo, err := stageCardText(in.Front,
+		domain.ErrCardFrontRequired, domain.ErrCardFrontTooLong,
+		func(text domain.CardText) (string, error) {
+			if err := existing.UpdateFront(text); err != nil {
+				return "", eris.Wrap(err, "usecase: card: update front")
 			}
-			return UpdateCardOutcome{Validation: info}, nil
-		}
-		if err := existing.UpdateFront(front); err != nil {
-			return UpdateCardOutcome{}, eris.Wrap(err, "usecase: card: update front")
-		}
-		s := existing.Front.String()
-		patch.Front = &s
+			return existing.Front.String(), nil
+		})
+	if err != nil {
+		return UpdateCardOutcome{}, err
 	}
-	if in.Back != nil {
-		back, err := domain.ParseCardText(*in.Back, domain.ErrCardBackRequired, domain.ErrCardBackTooLong)
-		if err != nil {
-			info, perr := liftValidationErr(translateCardErr(err))
-			if perr != nil {
-				return UpdateCardOutcome{}, perr
+	if frontInfo != nil {
+		return UpdateCardOutcome{Validation: frontInfo}, nil
+	}
+	if frontStaged != nil {
+		patch.Front = frontStaged
+	}
+	backStaged, backInfo, err := stageCardText(in.Back,
+		domain.ErrCardBackRequired, domain.ErrCardBackTooLong,
+		func(text domain.CardText) (string, error) {
+			if err := existing.UpdateBack(text); err != nil {
+				return "", eris.Wrap(err, "usecase: card: update back")
 			}
-			return UpdateCardOutcome{Validation: info}, nil
-		}
-		if err := existing.UpdateBack(back); err != nil {
-			return UpdateCardOutcome{}, eris.Wrap(err, "usecase: card: update back")
-		}
-		s := existing.Back.String()
-		patch.Back = &s
+			return existing.Back.String(), nil
+		})
+	if err != nil {
+		return UpdateCardOutcome{}, err
+	}
+	if backInfo != nil {
+		return UpdateCardOutcome{Validation: backInfo}, nil
+	}
+	if backStaged != nil {
+		patch.Back = backStaged
 	}
 
 	updated, err := u.cardRepo.Update(ctx, id, patch)
@@ -504,8 +506,8 @@ func (u *cardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, erro
 	if err := requireCallerSub(user); err != nil {
 		return 0, err
 	}
-	if len(ids) > maxBulkDelete {
-		return 0, ucerr.NewValidationError("ids", fmt.Sprintf("at most %d ids per call", maxBulkDelete))
+	if err := checkBulkDeleteCap(ids); err != nil {
+		return 0, err
 	}
 	if len(ids) == 0 {
 		return 0, nil
