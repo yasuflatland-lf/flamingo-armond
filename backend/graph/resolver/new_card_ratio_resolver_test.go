@@ -12,21 +12,24 @@ import (
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
 	"backend/internal/usecase"
+	"backend/internal/usecase/ucerr"
 )
 
 type mockUpdateNewCardRatioUsecase struct {
-	user      *domain.User
-	err       error
-	calls     int
-	lastRatio domain.NewCardRatio
-	onSet     func(ratio domain.NewCardRatio)
+	user    *domain.User
+	err     error
+	calls   int
+	lastNum int
+	lastDen int
+	onSet   func(num, den int)
 }
 
-func (m *mockUpdateNewCardRatioUsecase) Set(_ context.Context, ratio domain.NewCardRatio) (*domain.User, error) {
+func (m *mockUpdateNewCardRatioUsecase) Set(_ context.Context, numerator, denominator int) (*domain.User, error) {
 	m.calls++
-	m.lastRatio = ratio
+	m.lastNum = numerator
+	m.lastDen = denominator
 	if m.onSet != nil {
-		m.onSet(ratio)
+		m.onSet(numerator, denominator)
 	}
 	if m.err != nil {
 		return nil, m.err
@@ -109,7 +112,9 @@ func TestUpdateNewCardRatio_ReturnsUpdatedRatio(t *testing.T) {
 	prefs := map[string]*domain.UserPreference{}
 	mock := &mockUpdateNewCardRatioUsecase{
 		user: &domain.User{ID: "u-1"},
-		onSet: func(ratio domain.NewCardRatio) {
+		onSet: func(num, den int) {
+			// 3/7 is already reduced, so ParseNewCardRatio round-trips it.
+			ratio := mustNewCardRatio(t, num, den)
 			prefs["u-1"] = &domain.UserPreference{UserID: "u-1", NewCardRatio: ratio}
 		},
 	}
@@ -128,8 +133,8 @@ func TestUpdateNewCardRatio_ReturnsUpdatedRatio(t *testing.T) {
 	if mock.calls != 1 {
 		t.Fatalf("expected 1 Set call, got %d", mock.calls)
 	}
-	if mock.lastRatio.Numerator() != 3 || mock.lastRatio.Denominator() != 7 {
-		t.Fatalf("Set called with %d/%d, want 3/7", mock.lastRatio.Numerator(), mock.lastRatio.Denominator())
+	if mock.lastNum != 3 || mock.lastDen != 7 {
+		t.Fatalf("Set called with %d/%d, want 3/7", mock.lastNum, mock.lastDen)
 	}
 	data, _ := resp["data"].(map[string]any)
 	payload, _ := data["updateNewCardRatio"].(map[string]any)
@@ -145,13 +150,17 @@ func TestUpdateNewCardRatio_ReturnsUpdatedRatio(t *testing.T) {
 	}
 }
 
-// TestUpdateNewCardRatio_EqualNumeratorDenominatorIsBadUserInput verifies that a
-// non-fraction (numerator == denominator) is rejected at the resolver before the
-// usecase runs.
-func TestUpdateNewCardRatio_EqualNumeratorDenominatorIsBadUserInput(t *testing.T) {
+// TestUpdateNewCardRatio_UsecaseValidationErrorMapsToBadUserInput verifies the
+// resolver forwards a usecase ValidationError to the wire as BAD_USER_INPUT,
+// propagating the usecase-attributed extensions.field. The resolver no longer
+// parses the ratio or derives the field itself — that moved into the usecase,
+// which is exercised directly in update_new_card_ratio_test.go.
+func TestUpdateNewCardRatio_UsecaseValidationErrorMapsToBadUserInput(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockUpdateNewCardRatioUsecase{user: &domain.User{ID: "u-1"}}
+	mock := &mockUpdateNewCardRatioUsecase{
+		err: ucerr.NewValidationError("numerator", "invalid new-card ratio"),
+	}
 	userMock := &mockUserRepository{}
 	srv := newNewCardRatioSrv(userMock, mock)
 	body := `{"query":"mutation { updateNewCardRatio(numerator: 5, denominator: 5) { id } }"}`
@@ -162,40 +171,8 @@ func TestUpdateNewCardRatio_EqualNumeratorDenominatorIsBadUserInput(t *testing.T
 	if code != string(gqlerr.CodeBadUserInput) {
 		t.Fatalf("expected BAD_USER_INPUT, got %q; response: %v", code, resp)
 	}
-	// numerator == denominator faults the numerator bound (0 < num < den), so the
-	// wire field points the client at the numerator.
 	if field, _ := errExtensions(t, resp)["field"].(string); field != "numerator" {
 		t.Fatalf("expected extensions.field = numerator, got %q; response: %v", field, resp)
-	}
-	if mock.calls != 0 {
-		t.Fatalf("usecase Set must not be called for an invalid ratio; got %d calls", mock.calls)
-	}
-}
-
-// TestUpdateNewCardRatio_ReducedDenominatorTooLargeIsBadUserInput verifies that a
-// reduced denominator above NewCardRatioDenMax (100) is rejected with
-// BAD_USER_INPUT. 1/101 is already reduced, so its denominator exceeds the cap.
-func TestUpdateNewCardRatio_ReducedDenominatorTooLargeIsBadUserInput(t *testing.T) {
-	t.Parallel()
-
-	mock := &mockUpdateNewCardRatioUsecase{user: &domain.User{ID: "u-1"}}
-	userMock := &mockUserRepository{}
-	srv := newNewCardRatioSrv(userMock, mock)
-	body := `{"query":"mutation { updateNewCardRatio(numerator: 1, denominator: 101) { id } }"}`
-
-	resp := gqlRequest(t, srv, authedCtx("u-1"), body)
-
-	code := errCode(t, resp)
-	if code != string(gqlerr.CodeBadUserInput) {
-		t.Fatalf("expected BAD_USER_INPUT, got %q; response: %v", code, resp)
-	}
-	// The reduced denominator (101) exceeds NewCardRatioDenMax, so the fault is
-	// attributed to the denominator.
-	if field, _ := errExtensions(t, resp)["field"].(string); field != "denominator" {
-		t.Fatalf("expected extensions.field = denominator, got %q; response: %v", field, resp)
-	}
-	if mock.calls != 0 {
-		t.Fatalf("usecase Set must not be called for an out-of-range ratio; got %d calls", mock.calls)
 	}
 }
 
