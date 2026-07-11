@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -710,10 +711,63 @@ func TestMasterCard_ImportMasterCards_OverCap(t *testing.T) {
 		}
 		return words, nil, nil
 	}
-	tx, _ := dictTxRunner()
-	uc := newMasterCardImportUC(t, &mockMasterCardWriteRepo{}, tx, true, process)
+	tx, calls := dictTxRunner()
+	mc := &mockMasterCardWriteRepo{}
+	uc := newMasterCardImportUC(t, mc, tx, true, process)
 	_, err := uc.ImportMasterCards(authedCtx("admin1"), ImportMasterCardsInput{MasterCardgroupID: "m1", Payload: b64("ignored")})
-	assertValidationError(t, err, "payload", "")
+	// Same message as the user path (card_import.go): both route the row cap
+	// through the shared validateImportRows checker.
+	assertValidationError(t, err, "payload", fmt.Sprintf("payload exceeds %d row cap", cardImportParsedRowCap))
+	// All-or-nothing: an over-cap payload never opens a tx or reaches the repo.
+	if *calls != 0 || mc.upsertCalls != 0 {
+		t.Fatalf("over-cap payload must not persist, got tx=%d upserts=%d", *calls, mc.upsertCalls)
+	}
+}
+
+// A row whose front exceeds the per-side grapheme cap parses cleanly through
+// textdic but is rejected pre-dedup by the shared validateImportRows checker,
+// with the SAME typed validation error (field "front", identical message) as the
+// user path in card_import.go. Before this parity fix the master path only
+// enforced the grapheme cap at construction time (post-dedup), diverging from
+// the user path and the batch-import preview.
+func TestMasterCard_ImportMasterCards_OverLengthFront(t *testing.T) {
+	t.Parallel()
+	long := strings.Repeat("a", domain.CardTextMax+1)
+	process := func(string) ([]textdic.ParsedWord, []textdic.ValidationError, error) {
+		return []textdic.ParsedWord{
+			{Front: "Apple", Back: "back-a", Line: 1},
+			{Front: long, Back: "back-b", Line: 2},
+		}, nil, nil
+	}
+	tx, calls := dictTxRunner()
+	mc := &mockMasterCardWriteRepo{}
+	uc := newMasterCardImportUC(t, mc, tx, true, process)
+	_, err := uc.ImportMasterCards(authedCtx("admin1"), ImportMasterCardsInput{MasterCardgroupID: "m1", Payload: b64("ignored")})
+	assertValidationError(t, err, "front", fmt.Sprintf("front must be at most %d characters", domain.CardTextMax))
+	if *calls != 0 || mc.upsertCalls != 0 {
+		t.Fatalf("over-length front must not persist, got tx=%d upserts=%d", *calls, mc.upsertCalls)
+	}
+}
+
+// Mirror of the front test for the back side: an over-length back is rejected
+// pre-dedup with the same typed validation error (field "back") as the user path.
+func TestMasterCard_ImportMasterCards_OverLengthBack(t *testing.T) {
+	t.Parallel()
+	long := strings.Repeat("b", domain.CardTextMax+1)
+	process := func(string) ([]textdic.ParsedWord, []textdic.ValidationError, error) {
+		return []textdic.ParsedWord{
+			{Front: "Apple", Back: "back-a", Line: 1},
+			{Front: "Banana", Back: long, Line: 2},
+		}, nil, nil
+	}
+	tx, calls := dictTxRunner()
+	mc := &mockMasterCardWriteRepo{}
+	uc := newMasterCardImportUC(t, mc, tx, true, process)
+	_, err := uc.ImportMasterCards(authedCtx("admin1"), ImportMasterCardsInput{MasterCardgroupID: "m1", Payload: b64("ignored")})
+	assertValidationError(t, err, "back", fmt.Sprintf("back must be at most %d characters", domain.CardTextMax))
+	if *calls != 0 || mc.upsertCalls != 0 {
+		t.Fatalf("over-length back must not persist, got tx=%d upserts=%d", *calls, mc.upsertCalls)
+	}
 }
 
 func TestMasterCard_ImportMasterCards_EmptyParseNoPersist(t *testing.T) {
