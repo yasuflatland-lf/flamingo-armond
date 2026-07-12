@@ -72,6 +72,7 @@
     "practiceEmptyMessage": "Review some cards in a learning session first, then come back to practice them.",
     "practiceCompleteHeading": "Practice complete",
     "practiceCompleteMessage": "You finished this practice round. Study again for another pass — your progress is never affected.",
+    "practiceLoadFailed": "Could not load today's practice cards. Please try again.",
     "sessionComplete": "Session complete",
     "sessionCompleteMessage": "There are no due cards left in this batch.",
     "reviewedCount": "{count, plural, one {You reviewed # card in this batch.} other {You reviewed # cards in this batch.}}",
