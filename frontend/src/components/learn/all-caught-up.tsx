@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 
 type Props = {
   /** Heading copy. Falls back to the `Learn.completeHeading` message when omitted. */
@@ -21,20 +22,24 @@ export function AllCaughtUp({ heading, message, onStudyAgain }: Props) {
   const t = useTranslations("Learn");
   return (
     <section className="flex flex-1 items-center justify-center">
-      <div className="w-full max-w-md rounded-lg border border-dashed border-border p-8 text-center">
-        <h1 className="mb-2 text-xl font-semibold">{heading ?? t("completeHeading")}</h1>
-        <p className="mb-6 text-sm text-muted-foreground">{message ?? t("completeMessage")}</p>
-        <div className="flex flex-col items-center gap-3">
-          {onStudyAgain ? (
-            <Button type="button" variant="brand" onClick={onStudyAgain}>
-              {t("studyAgain")}
+      <EmptyState
+        className="w-full max-w-md"
+        headingLevel={1}
+        heading={heading ?? t("completeHeading")}
+        body={message ?? t("completeMessage")}
+        actions={
+          <div className="flex flex-col items-center gap-3">
+            {onStudyAgain ? (
+              <Button type="button" variant="brand" onClick={onStudyAgain}>
+                {t("studyAgain")}
+              </Button>
+            ) : null}
+            <Button asChild variant={onStudyAgain ? "outline" : "brand"}>
+              <Link href="/cardgroups">{t("backToCardgroups")}</Link>
             </Button>
-          ) : null}
-          <Button asChild variant={onStudyAgain ? "outline" : "brand"}>
-            <Link href="/cardgroups">{t("backToCardgroups")}</Link>
-          </Button>
-        </div>
-      </div>
+          </div>
+        }
+      />
     </section>
   );
 }
