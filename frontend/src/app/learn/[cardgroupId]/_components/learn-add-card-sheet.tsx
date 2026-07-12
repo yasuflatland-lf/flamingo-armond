@@ -4,41 +4,10 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { cardsDefaultVars } from "@/app/cardgroups/[id]/cards/queries";
 import { useCardMutations } from "@/app/cardgroups/[id]/cards/use-card-mutations";
-import { CardForm } from "@/components/cardgroups/card-form";
-import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
+import { AddCardSheetContent } from "@/components/cards/add-card-sheet-content";
+import { FormSheet } from "@/components/ui/form-sheet";
 import { FLAMINGO_EVENT, subscribeFlamingo } from "@/lib/events/flamingo-events";
 import { useSheetForm } from "@/lib/forms/use-sheet-form";
-
-function AddCardSheetContent({
-  submit,
-  submitting,
-  error,
-  validationError,
-  onDirty,
-}: {
-  submit: (values: { front: string; back: string }) => Promise<void>;
-  submitting: boolean;
-  error: unknown;
-  validationError: { field: string; message: string } | null;
-  onDirty: () => void;
-}) {
-  const close = useFormSheetClose();
-
-  return (
-    <div onInput={onDirty}>
-      <CardForm
-        mode="create"
-        idPrefix="learn-add-card-"
-        defaultValues={{ front: "", back: "" }}
-        submit={submit}
-        submitting={submitting}
-        error={error}
-        validationError={validationError}
-        onCancel={close}
-      />
-    </div>
-  );
-}
 
 /**
  * In-context "add card" drawer for the Learn screen. Mounted independently of
@@ -112,11 +81,12 @@ export function LearnAddCardSheet({ cardgroupId }: { cardgroupId: string }) {
       confirmOnDismiss
     >
       <AddCardSheetContent
+        idPrefix="learn-add-card-"
         submit={handleCreate}
         submitting={creating}
         error={createError}
         validationError={validationError}
-        onDirty={() => setDirty(true)}
+        onDirtyChange={setDirty}
       />
     </FormSheet>
   );

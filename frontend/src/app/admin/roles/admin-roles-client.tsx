@@ -15,6 +15,7 @@ import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import type { ValidationError } from "@/lib/forms/use-sheet-form";
 import { useUndoDelete } from "@/lib/undo-delete";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
+import { useSheetTargetLoading } from "@/lib/url/use-sheet-target-loading";
 import { SYSTEM_ROLE_NAMES } from "./queries";
 import { type AuthKind, useRoleMutations } from "./use-role-mutations";
 
@@ -39,7 +40,7 @@ function CreateRoleSheetBody({
   validationError,
   authError,
   unexpectedPayloadError,
-  onDirty,
+  onEdit,
   onDirtyChange,
   submit,
 }: {
@@ -47,7 +48,7 @@ function CreateRoleSheetBody({
   validationError: ValidationError | null;
   authError: "unauthenticated" | "forbidden" | null;
   unexpectedPayloadError: string | null;
-  onDirty: () => void;
+  onEdit: () => void;
   onDirtyChange: (dirty: boolean) => void;
   submit: (values: { name: string }) => Promise<void>;
 }) {
@@ -55,7 +56,7 @@ function CreateRoleSheetBody({
   const close = useFormSheetClose();
 
   return (
-    <div onInput={onDirty}>
+    <div>
       {authError ? (
         <AuthErrorBanner
           testId="admin-role-new-auth-error"
@@ -81,6 +82,7 @@ function CreateRoleSheetBody({
         submitting={submitting}
         onCancel={close}
         onDirtyChange={onDirtyChange}
+        onEdit={onEdit}
       />
     </div>
   );
@@ -253,14 +255,15 @@ export function AdminRolesClient({ initialRoles }: Props) {
   const loadedEditRole = editRoleData?.role as unknown as RoleItem | undefined;
   const editRole = state.mode === "edit" && loadedEditRole?.id === state.id ? loadedEditRole : null;
   const editQueryErrorBanner = getBackendErrorBanner(editRoleQueryError);
-  // The lazy query is fired inside a `useEffect`, so on the first render
-  // after `?edit=<id>` lands, `loadingEditRole` is still false. Treat the
-  // "called for the current id" gap as loading so the body does not flash
-  // its `Role not found` branch before the query is in flight.
-  // Mirror of admin-users-client.tsx's `editUserCalled` / `editUserResultMatchesSheet` gate.
-  const loadRoleMatchesSheet = editId !== null && loadRoleVariables?.id === editId;
-  const editRoleLoading =
-    loadingEditRole || (editId !== null && (!loadRoleCalled || !loadRoleMatchesSheet));
+  // The lazy query is fired inside a `useEffect`, so on the first render after
+  // `?edit=<id>` lands, `loadingEditRole` is still false. `useSheetTargetLoading`
+  // treats that "called for the current id" gap as loading so the body does not
+  // flash its `Role not found` branch before the query is in flight.
+  const { loading: editRoleLoading } = useSheetTargetLoading(editId, {
+    called: loadRoleCalled,
+    variables: loadRoleVariables,
+    loading: loadingEditRole,
+  });
 
   function handleDelete(id: string) {
     const index = roles.findIndex((r) => r.id === id);
@@ -433,7 +436,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
             unexpectedPayloadError={
               createError?.kind === "unexpected" ? tCommon("somethingWentWrong") : null
             }
-            onDirty={() => setCreateError((prev) => (prev?.kind === "auth" ? prev : null))}
+            onEdit={() => setCreateError((prev) => (prev?.kind === "auth" ? prev : null))}
             onDirtyChange={setCreateDirty}
             submit={handleCreateSubmit}
           />

@@ -59,6 +59,15 @@ enforcement. A migrated screen moves from `ioOwningSites` (asserts
 `useEffectEvent` are absent). After all five screens migrate, the hook itself is
 the only remaining `ioOwningSites` entry.
 
+Register the file that actually carries the `useConnectionPagination` literal,
+not a caller one level up. The three cards screens (cardgroup cards, admin
+master cards, catalog deck cards) reach the hook through the shared
+`useEntityCardsConnection` factory (`src/lib/pagination/use-entity-cards-connection.ts`),
+so that factory — not the per-entity `use-*-cards-connection.ts` wrappers or
+their clients — is the `migratedSites` entry. See
+[`.claude/rules/pagination.md`](../../.claude/rules/pagination.md) § "Frontend
+pagination UX".
+
 ## How to apply
 
 1. Replace the inline IO — `fetchingRef`, `fetchNextPage`,

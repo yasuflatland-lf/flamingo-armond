@@ -25,6 +25,7 @@ import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useSeedConnectionCache } from "@/lib/pagination/use-seed-connection-cache";
 import { useUndoDelete } from "@/lib/undo-delete";
+import { removeMyCardgroupEdge, restoreMyCardgroupSnapshot } from "./cache";
 import { CARDGROUPS_DEFAULT_VARS, DeleteCardgroupMutation } from "./queries";
 import { useCreateCardgroupForm } from "./use-create-cardgroup-form";
 
@@ -65,7 +66,7 @@ function CreateCardgroupSheetContent({
   authError,
   unexpectedError,
   limitError,
-  onDirty,
+  onDirtyChange,
 }: {
   submit: (values: { name: string }) => Promise<void>;
   submitting: boolean;
@@ -73,14 +74,14 @@ function CreateCardgroupSheetContent({
   authError: "unauthenticated" | "forbidden" | null;
   unexpectedError: string | null;
   limitError: string | null;
-  onDirty: () => void;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
   const close = useFormSheetClose();
   const t = useTranslations("Cardgroups");
   const tCommon = useTranslations("Common");
 
   return (
-    <div onInput={onDirty} className="space-y-4">
+    <div className="space-y-4">
       {authError ? (
         <AuthErrorBanner
           testId="cardgroup-create-auth-error"
@@ -103,6 +104,7 @@ function CreateCardgroupSheetContent({
         submit={submit}
         submitting={submitting}
         validationError={validationError}
+        onDirtyChange={onDirtyChange}
         secondarySlot={
           <Button type="button" variant="outline" onClick={close}>
             {tCommon("cancel")}
@@ -251,37 +253,18 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
     // the currently rendered query. Using CARDGROUPS_DEFAULT_VARS here would
     // silently read/write the wrong cache entry when a search is active.
     const activeVars = queryVariables;
-    const snapshot = apollo.cache.readQuery({
-      query: MyCardgroupsConnectionDocument,
-      variables: activeVars,
-    });
+    const snapshot = removeMyCardgroupEdge(apollo.cache, id, activeVars);
     if (!snapshot) {
       console.warn("[cardgroups] handleDelete: cache miss on snapshot read", { id });
       setDeleteCommitError(t("deleteReloadError"));
       return;
     }
 
-    apollo.cache.writeQuery({
-      query: MyCardgroupsConnectionDocument,
-      variables: activeVars,
-      data: {
-        myCardgroupsConnection: {
-          ...snapshot.myCardgroupsConnection,
-          edges: snapshot.myCardgroupsConnection.edges.filter((e) => e.node.id !== id),
-          totalCount: Math.max(0, snapshot.myCardgroupsConnection.totalCount - 1),
-        },
-      },
-    });
-
     scheduleDelete({
       id,
       label: `Cardgroup "${name}" deleted`,
       optimisticRollback: () => {
-        apollo.cache.writeQuery({
-          query: MyCardgroupsConnectionDocument,
-          variables: activeVars,
-          data: snapshot,
-        });
+        restoreMyCardgroupSnapshot(apollo.cache, snapshot, activeVars);
       },
       commitDelete: async () => {
         await deleteCardgroup({ variables: { id } });
@@ -403,7 +386,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
           authError={addAuthError}
           unexpectedError={addUnexpectedError}
           limitError={addLimitError}
-          onDirty={() => setAddDirty(true)}
+          onDirtyChange={setAddDirty}
         />
       </FormSheet>
     </PaginatedPublicListScreen>

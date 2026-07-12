@@ -85,17 +85,19 @@ describe("useCardSheetForm", () => {
 
   it("openAddSheet opens the sheet and resets create state", () => {
     const { result, resetCreateCard } = setup();
-    act(() => result.current.markAddDirty());
+    act(() => result.current.onAddDirtyChange(true));
     act(() => result.current.openAddSheet());
     expect(result.current.addOpen).toBe(true);
     expect(result.current.addDirty).toBe(false);
     expect(resetCreateCard).toHaveBeenCalled();
   });
 
-  it("markAddDirty flips the add-sheet dirty flag", () => {
+  it("onAddDirtyChange mirrors the form's isDirty state onto the add-sheet dirty flag", () => {
     const { result } = setup();
-    act(() => result.current.markAddDirty());
+    act(() => result.current.onAddDirtyChange(true));
     expect(result.current.addDirty).toBe(true);
+    act(() => result.current.onAddDirtyChange(false));
+    expect(result.current.addDirty).toBe(false);
   });
 
   it("handleCreate success keeps the sheet open and clears dirty", async () => {

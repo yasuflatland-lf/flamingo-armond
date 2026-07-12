@@ -3,14 +3,12 @@
 import { useForm } from "@tanstack/react-form";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
-import { useUpdateProfile } from "@/app/profile/use-update-profile";
+import { useCallback, useState } from "react";
+import { useUpdateProfileSubmit } from "@/app/profile/use-update-profile-submit";
 import { OnboardingShell } from "@/components/onboarding/onboarding-shell";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { FieldError } from "@/lib/forms/field-error";
+import { FormField } from "@/lib/forms/form-field";
 import { submitFormHandler } from "@/lib/forms/submit-handler";
 import { updateProfileSchema } from "@/schemas/profile";
 
@@ -18,16 +16,6 @@ export function OnboardingForm() {
   const router = useRouter();
   const t = useTranslations("Onboarding");
   const tCommon = useTranslations("Common");
-
-  // Typed InputValidationError variant — field-level validation failure
-  // surfaced by the server via the outcome union. Cleared on each new submission.
-  const [validationError, setValidationError] = useState<{
-    field: string;
-    message: string;
-  } | null>(null);
-
-  // Mid-session auth failures or unexpected payloads. Cleared on each submission.
-  const [bannerMessage, setBannerMessage] = useState<string | null>(null);
 
   // Held true from a successful save until this component unmounts on the
   // `router.push("/onboarding/start")` navigation. Apollo's `loading` flips back
@@ -39,7 +27,19 @@ export function OnboardingForm() {
   // success path; every failure branch leaves it false so the user can resubmit.
   const [navigating, setNavigating] = useState(false);
 
-  const { submit, loading } = useUpdateProfile();
+  const onSuccess = useCallback(() => {
+    // Keep the button in its "Saving…"/disabled state through the navigation that
+    // unmounts this component, so it does not flicker back to "Continue" once
+    // Apollo's `loading` clears.
+    setNavigating(true);
+    router.push("/onboarding/start");
+  }, [router]);
+
+  const { submit, bannerMessage, fieldErrors, loading } = useUpdateProfileSubmit({
+    onSuccess,
+    sessionExpiredMessage: t("sessionExpired"),
+    rejectionLabel: "[OnboardingForm] update profile rejected",
+  });
 
   const displayNameSchema = updateProfileSchema.shape.displayName;
 
@@ -48,43 +48,11 @@ export function OnboardingForm() {
       displayName: "",
     },
     onSubmit: async ({ value }) => {
-      setValidationError(null);
-      setBannerMessage(null);
-
-      const outcome = await submit({
+      await submit({
         displayName: value.displayName,
       });
-
-      switch (outcome.status) {
-        case "success":
-          // Keep the button in its "Saving…"/disabled state through the
-          // navigation that unmounts this component, so it does not flicker back
-          // to "Continue" once Apollo's `loading` clears.
-          setNavigating(true);
-          router.push("/onboarding/start");
-          return;
-        case "validation":
-          setValidationError({ field: outcome.field, message: outcome.message });
-          return;
-        case "unauthenticated":
-          setBannerMessage(t("sessionExpired"));
-          return;
-        case "unexpected":
-          setBannerMessage(tCommon("somethingWentWrong"));
-          return;
-        case "rejected":
-          setBannerMessage(outcome.banner ?? tCommon("somethingWentWrong"));
-          // Re-throw so TanStack Form keeps formState.isSubmitSuccessful=false;
-          // submitFormHandler (the outer onSubmit) swallows the re-thrown rejection.
-          throw new Error("[OnboardingForm] update profile rejected");
-      }
     },
   });
-
-  // Derive per-field backend errors from the validationError state (outcome union path).
-  const fieldErrors: Record<string, string | undefined> = validationError
-    ? { [validationError.field]: validationError.message }
-    : {};
 
   return (
     <OnboardingShell heading={t("welcome")} subline={t("subtitle")}>
@@ -101,21 +69,12 @@ export function OnboardingForm() {
           validators={{ onChange: displayNameSchema, onBlur: displayNameSchema }}
         >
           {(field) => (
-            <div className="space-y-2">
-              <Label htmlFor={field.name}>{t("displayName")}</Label>
-              <Input
-                id={field.name}
-                name={field.name}
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
-              />
-              <p className="text-sm text-muted-foreground">{t("displayNameHint")}</p>
-              <FieldError
-                zodErrors={field.state.meta.errors}
-                backendError={fieldErrors.displayName}
-              />
-            </div>
+            <FormField
+              field={field}
+              label={t("displayName")}
+              backendError={fieldErrors.displayName}
+              hint={<p className="text-sm text-muted-foreground">{t("displayNameHint")}</p>}
+            />
           )}
         </form.Field>
 

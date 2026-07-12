@@ -8,6 +8,7 @@ import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
+import { DirtyStateBridge } from "@/lib/forms/dirty-state-bridge";
 import { FormField } from "@/lib/forms/form-field";
 import { submitFormHandler, wrapSubmit } from "@/lib/forms/submit-handler";
 import { newCardSchema, updateCardSchema } from "@/schemas/card";
@@ -31,6 +32,8 @@ export type CardFormProps = {
    */
   validationError?: { field: string; message: string } | null;
   onCancel?: () => void;
+  /** Notifies the parent sheet of the form's TanStack `isDirty` state (drives the discard guard). */
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 export function CardForm({
@@ -43,6 +46,7 @@ export function CardForm({
   error,
   validationError,
   onCancel,
+  onDirtyChange,
 }: CardFormProps) {
   const t = useTranslations("Cards");
   const tCommon = useTranslations("Common");
@@ -104,6 +108,9 @@ export function CardForm({
           </Button>
         )}
       </div>
+      <form.Subscribe selector={(state) => state.isDirty}>
+        {(dirty) => <DirtyStateBridge dirty={dirty} onDirtyChange={onDirtyChange} />}
+      </form.Subscribe>
     </form>
   );
 }

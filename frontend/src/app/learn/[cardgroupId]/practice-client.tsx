@@ -43,6 +43,7 @@ type PracticeCard = PracticeTodaysCardsQuery["practiceTodaysCards"][number];
  */
 export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
   const t = useTranslations("Learn");
+  const tCommon = useTranslations("Common");
   const { data, loading, error, refetch } = useQuery(PracticeTodaysCardsDocument, {
     variables: { cardgroupId },
     fetchPolicy: "network-only",
@@ -128,13 +129,10 @@ export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
     return (
       <section className="flex flex-1 items-center justify-center">
         <ErrorBanner className="w-full max-w-xl">
-          <p>
-            {getBackendErrorBanner(error) ??
-              "Could not load today's practice cards. Please try again."}
-          </p>
+          <p>{getBackendErrorBanner(error) ?? t("practiceLoadFailed")}</p>
           <div className="mt-3">
             <Button type="button" variant="outline" onClick={retry}>
-              Retry
+              {tCommon("retry")}
             </Button>
           </div>
         </ErrorBanner>
