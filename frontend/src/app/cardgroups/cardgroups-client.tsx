@@ -8,9 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
 import { CardgroupListItem } from "@/components/cardgroups/cardgroup-list-item";
 import { CardgroupsToolbar } from "@/components/cardgroups/cardgroups-toolbar";
-import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
-import { ListingPageShell } from "@/components/layout/listing-page-shell";
-import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
+import { PaginatedPublicListScreen } from "@/components/layout/paginated-public-list-screen";
 import { AuthErrorBanner } from "@/components/ui/auth-error-banner";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -283,123 +281,114 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   const hasSearch = searchQuery !== null && searchQuery !== "";
 
   return (
-    <>
-      <SearchTakeoverBar
-        open={search.searchOpen}
-        value={search.input}
-        onChange={search.setInput}
-        onClear={search.clear}
-        onClose={search.closeSearch}
-        placeholder={t("filterPlaceholder")}
-        ariaLabel={t("filterAriaLabel")}
-      />
-      <ListingPageShell
-        title={t("myCardgroups")}
-        count={totalCount}
-        countLabel={tCommon("totalCount", { count: totalCount })}
-        primaryActions={
+    <PaginatedPublicListScreen
+      search={{
+        search,
+        placeholder: t("filterPlaceholder"),
+        ariaLabel: t("filterAriaLabel"),
+      }}
+      desktopSearch={
+        <CardgroupsToolbar searchInput={search.input} onSearchInputChange={search.setInput} />
+      }
+      title={t("myCardgroups")}
+      count={totalCount}
+      countLabel={tCommon("totalCount", { count: totalCount })}
+      primaryActions={
+        <Button
+          type="button"
+          variant="brand"
+          className="hidden md:inline-flex"
+          onClick={openAddSheet}
+          data-testid="cardgroups-header-new-btn"
+        >
+          <span>{t("newCardgroup")}</span>
+          <Plus aria-hidden="true" />
+        </Button>
+      }
+      initialLoading={initialLoading}
+      loadingLabel={tCommon("loading")}
+      isEmpty={edges.length === 0}
+      hasSearch={hasSearch}
+      emptyState={
+        <div
+          className="flex flex-col items-center gap-3 py-8 text-center"
+          data-testid="cardgroups-empty"
+        >
+          <p className="text-sm text-muted-foreground">{t("noCardgroupsYet")}</p>
           <Button
             type="button"
             variant="brand"
-            className="hidden md:inline-flex"
             onClick={openAddSheet}
-            data-testid="cardgroups-header-new-btn"
+            data-testid="cardgroups-empty-cta"
           >
             <span>{t("newCardgroup")}</span>
             <Plus aria-hidden="true" />
           </Button>
-        }
-        toolbar={
-          <CardgroupsToolbar searchInput={search.input} onSearchInputChange={search.setInput} />
-        }
-      >
-        {initialLoading && (
-          <p className="text-sm text-muted-foreground" data-testid="cardgroups-loading">
-            {tCommon("loading")}
-          </p>
-        )}
-
-        {!initialLoading && edges.length === 0 && !hasSearch && (
-          <div
-            className="flex flex-col items-center gap-3 py-8 text-center"
-            data-testid="cardgroups-empty"
-          >
-            <p className="text-sm text-muted-foreground">{t("noCardgroupsYet")}</p>
-            <Button
-              type="button"
-              variant="brand"
-              onClick={openAddSheet}
-              data-testid="cardgroups-empty-cta"
-            >
-              <span>{t("newCardgroup")}</span>
-              <Plus aria-hidden="true" />
-            </Button>
-          </div>
-        )}
-
-        {!initialLoading && edges.length === 0 && hasSearch && (
+        </div>
+      }
+      emptySearchState={
+        hasSearch ? (
           <p className="text-sm text-muted-foreground" data-testid="cardgroups-empty-search">
             {t("noMatch", { query: searchQuery })}
           </p>
-        )}
+        ) : null
+      }
+      footer={{
+        sentinelRef,
+        fetchMoreError,
+        onRetry: retryFetchMore,
+        fetchingMore,
+        hasNextPage,
+        retryLabel: tCommon("retry"),
+        loadingMoreLabel: t("loadingMore"),
+      }}
+      testIdPrefix="cardgroups"
+    >
+      {edges.length > 0 && (
+        <ul className="space-y-3" data-testid="cardgroups-list">
+          {edges.map((edge) => (
+            <CardgroupListItem
+              key={edge.node.id}
+              id={edge.node.id}
+              name={edge.node.name}
+              updatedAt={edge.node.updatedAt as string}
+              onDelete={handleDelete}
+            />
+          ))}
+        </ul>
+      )}
 
-        {edges.length > 0 && (
-          <ul className="space-y-3" data-testid="cardgroups-list">
-            {edges.map((edge) => (
-              <CardgroupListItem
-                key={edge.node.id}
-                id={edge.node.id}
-                name={edge.node.name}
-                updatedAt={edge.node.updatedAt as string}
-                onDelete={handleDelete}
-              />
-            ))}
-          </ul>
-        )}
+      {deleteCommitError && (
+        <ErrorBanner className="mt-3" data-testid="cardgroups-delete-error">
+          {deleteCommitError}
+        </ErrorBanner>
+      )}
 
-        {deleteCommitError && (
-          <ErrorBanner className="mt-3" data-testid="cardgroups-delete-error">
-            {deleteCommitError}
-          </ErrorBanner>
-        )}
-
-        <ConnectionListFooter
-          sentinelRef={sentinelRef}
-          fetchMoreError={fetchMoreError}
-          onRetry={retryFetchMore}
-          fetchingMore={fetchingMore}
-          hasNextPage={hasNextPage}
-          retryLabel={tCommon("retry")}
-          loadingMoreLabel={t("loadingMore")}
-          testIdPrefix="cardgroups"
-        />
-
-        <FormSheet
-          title={t("newCardgroup")}
-          open={addOpen}
-          onOpenChange={(nextOpen) => {
-            setAddOpen(nextOpen);
-            if (!nextOpen) {
-              setAddDirty(false);
-              resetCreateForm();
-            }
-          }}
+      <FormSheet
+        title={t("newCardgroup")}
+        open={addOpen}
+        onOpenChange={(nextOpen) => {
+          setAddOpen(nextOpen);
+          if (!nextOpen) {
+            setAddDirty(false);
+            resetCreateForm();
+          }
+        }}
+        submitting={creating}
+        dirty={addDirty}
+        confirmOnDismiss
+        size="sm"
+      >
+        <CreateCardgroupSheetContent
+          submit={handleCreateCardgroup}
           submitting={creating}
-          dirty={addDirty}
-          confirmOnDismiss
-          size="sm"
-        >
-          <CreateCardgroupSheetContent
-            submit={handleCreateCardgroup}
-            submitting={creating}
-            validationError={addValidationError}
-            authError={addAuthError}
-            unexpectedError={addUnexpectedError}
-            limitError={addLimitError}
-            onDirtyChange={setAddDirty}
-          />
-        </FormSheet>
-      </ListingPageShell>
-    </>
+          validationError={addValidationError}
+          authError={addAuthError}
+          unexpectedError={addUnexpectedError}
+          limitError={addLimitError}
+          onDirtyChange={setAddDirty}
+        />
+      </FormSheet>
+    </PaginatedPublicListScreen>
   );
 }

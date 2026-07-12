@@ -3,10 +3,8 @@
 import { NetworkStatus } from "@apollo/client";
 import { useTranslations } from "next-intl";
 import { useMemo } from "react";
-import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
-import { ListingPageShell } from "@/components/layout/listing-page-shell";
+import { PaginatedPublicListScreen } from "@/components/layout/paginated-public-list-screen";
 import { SearchInput } from "@/components/search/search-input";
-import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
 import {
   MasterCatalogDocument,
   type MasterCatalogQuery,
@@ -109,69 +107,60 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
   const hasSearch = searchQuery !== null && searchQuery !== "";
 
   return (
-    <>
-      <SearchTakeoverBar
-        open={search.searchOpen}
-        value={search.input}
-        onChange={search.setInput}
-        onClear={search.clear}
-        onClose={search.closeSearch}
-        placeholder={t("searchPlaceholder")}
-        ariaLabel={t("searchAriaLabel")}
-      />
-      <ListingPageShell
-        title={t("title")}
-        count={totalCount}
-        countLabel={tCommon("totalCount", { count: totalCount })}
-        toolbar={
-          <div className="mb-2 hidden md:block">
-            <SearchInput
-              placeholder={t("searchPlaceholder")}
-              value={search.input}
-              onChange={(e) => search.setInput(e.target.value)}
-              aria-label={t("searchAriaLabel")}
-              data-testid="catalog-search"
-            />
-          </div>
-        }
-      >
-        {initialLoading && (
-          <p className="text-sm text-muted-foreground" data-testid="catalog-loading">
-            {tCommon("loading")}
-          </p>
-        )}
-
-        {!initialLoading && edges.length === 0 && !hasSearch && (
-          <p className="text-sm text-muted-foreground" data-testid="catalog-empty">
-            {t("noDecks")}
-          </p>
-        )}
-
-        {!initialLoading && edges.length === 0 && hasSearch && (
+    <PaginatedPublicListScreen
+      search={{
+        search,
+        placeholder: t("searchPlaceholder"),
+        ariaLabel: t("searchAriaLabel"),
+      }}
+      desktopSearch={
+        <div className="mb-2 hidden md:block">
+          <SearchInput
+            placeholder={t("searchPlaceholder")}
+            value={search.input}
+            onChange={(e) => search.setInput(e.target.value)}
+            aria-label={t("searchAriaLabel")}
+            data-testid="catalog-search"
+          />
+        </div>
+      }
+      title={t("title")}
+      count={totalCount}
+      countLabel={tCommon("totalCount", { count: totalCount })}
+      initialLoading={initialLoading}
+      loadingLabel={tCommon("loading")}
+      isEmpty={edges.length === 0}
+      hasSearch={hasSearch}
+      emptyState={
+        <p className="text-sm text-muted-foreground" data-testid="catalog-empty">
+          {t("noDecks")}
+        </p>
+      }
+      emptySearchState={
+        hasSearch ? (
           <p className="text-sm text-muted-foreground" data-testid="catalog-empty-search">
             {t("noMatch", { query: searchQuery })}
           </p>
-        )}
-
-        {edges.length > 0 && (
-          <ul className="space-y-2" data-testid="catalog-list">
-            {edges.map((edge) => (
-              <CatalogListItem key={edge.cursor} node={edge.node} />
-            ))}
-          </ul>
-        )}
-
-        <ConnectionListFooter
-          sentinelRef={sentinelRef}
-          fetchMoreError={fetchMoreError}
-          onRetry={retryFetchMore}
-          fetchingMore={fetchingMore}
-          hasNextPage={hasNextPage}
-          retryLabel={tCommon("retry")}
-          loadingMoreLabel={t("loadingMore")}
-          testIdPrefix="catalog"
-        />
-      </ListingPageShell>
-    </>
+        ) : null
+      }
+      footer={{
+        sentinelRef,
+        fetchMoreError,
+        onRetry: retryFetchMore,
+        fetchingMore,
+        hasNextPage,
+        retryLabel: tCommon("retry"),
+        loadingMoreLabel: t("loadingMore"),
+      }}
+      testIdPrefix="catalog"
+    >
+      {edges.length > 0 && (
+        <ul className="space-y-2" data-testid="catalog-list">
+          {edges.map((edge) => (
+            <CatalogListItem key={edge.cursor} node={edge.node} />
+          ))}
+        </ul>
+      )}
+    </PaginatedPublicListScreen>
   );
 }
