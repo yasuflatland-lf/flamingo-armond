@@ -15,6 +15,16 @@ describe("EmptyState", () => {
     expect(screen.getByRole("heading", { name: "All caught up" })).toBeInTheDocument();
   });
 
+  it("defaults the heading to level 2", () => {
+    render(<EmptyState heading="Nested" body="Body" />);
+    expect(screen.getByRole("heading", { level: 2, name: "Nested" })).toBeInTheDocument();
+  });
+
+  it("renders the heading as h1 when headingLevel is 1", () => {
+    render(<EmptyState headingLevel={1} heading="Full screen" body="Body" />);
+    expect(screen.getByRole("heading", { level: 1, name: "Full screen" })).toBeInTheDocument();
+  });
+
   it("renders no heading element when heading is omitted", () => {
     render(<EmptyState body="Body only" />);
     expect(screen.queryByRole("heading")).toBeNull();

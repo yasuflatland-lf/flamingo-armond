@@ -224,6 +224,7 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
     return (
       <EmptyState
         className="w-full max-w-xl"
+        headingLevel={1}
         heading={t("sessionComplete")}
         body={
           <>

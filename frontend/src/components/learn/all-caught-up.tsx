@@ -24,6 +24,7 @@ export function AllCaughtUp({ heading, message, onStudyAgain }: Props) {
     <section className="flex flex-1 items-center justify-center">
       <EmptyState
         className="w-full max-w-md"
+        headingLevel={1}
         heading={heading ?? t("completeHeading")}
         body={message ?? t("completeMessage")}
         actions={

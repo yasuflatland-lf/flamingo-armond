@@ -6,6 +6,12 @@ export type EmptyStateProps = {
   icon?: ReactNode;
   /** Optional heading; omitted for body-only empty blocks. */
   heading?: ReactNode;
+  /**
+   * Heading element level. Defaults to `2` (dashed empty blocks nest under a
+   * page heading). Full-screen completion states that are the page's only
+   * heading pass `1` to keep the document outline intact.
+   */
+  headingLevel?: 1 | 2;
   /** Body copy — every empty state explains itself, so this is required. */
   body: ReactNode;
   /**
@@ -41,6 +47,7 @@ export type EmptyStateProps = {
 export function EmptyState({
   icon,
   heading,
+  headingLevel = 2,
   body,
   actions,
   testId,
@@ -49,6 +56,7 @@ export function EmptyState({
   bodyClassName,
 }: EmptyStateProps) {
   const hasAbove = icon != null || heading != null;
+  const HeadingTag = headingLevel === 1 ? "h1" : "h2";
   return (
     <div
       data-testid={testId}
@@ -59,7 +67,9 @@ export function EmptyState({
     >
       {icon}
       {heading != null ? (
-        <h2 className={cn("mt-2 text-xl font-semibold", headingClassName)}>{heading}</h2>
+        <HeadingTag className={cn("mt-2 text-xl font-semibold", headingClassName)}>
+          {heading}
+        </HeadingTag>
       ) : null}
       <div className={cn(hasAbove && "mt-2", "text-sm text-muted-foreground", bodyClassName)}>
         {body}
