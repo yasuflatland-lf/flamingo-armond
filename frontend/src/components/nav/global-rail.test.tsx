@@ -20,14 +20,11 @@ vi.mock("next/navigation", () => ({
   usePathname: () => mockUsePathname(),
 }));
 
-// Mock LogoutButton — it reaches into Supabase/router which are not needed
-// here. Mirrors the pattern used in `logo-drawer.test.tsx`.
-vi.mock("@/app/_components/logout-button", () => ({
-  LogoutButton: () => (
-    <button type="button" data-testid="logout-button">
-      Sign out
-    </button>
-  ),
+// The rail's footer Logout row calls useLogout() for its onClick. Mock the hook
+// so the click can be asserted without reaching into Supabase/router.
+const mockLogout = vi.fn();
+vi.mock("@/app/_components/use-logout", () => ({
+  useLogout: () => mockLogout,
 }));
 
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -52,6 +49,7 @@ beforeEach(() => {
     })),
   });
   mockUsePathname.mockReturnValue("/");
+  mockLogout.mockReset();
 });
 
 afterEach(() => {
@@ -266,8 +264,8 @@ describe("<GlobalRail>", () => {
       expect(screen.queryByRole("link", { name: /users/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /roles/i })).toBeNull();
 
-      // Negative: anonymous users get neither the LogoutButton nor an email line.
-      expect(screen.queryByTestId("logout-button")).toBeNull();
+      // Negative: anonymous users get neither the Logout row nor an email line.
+      expect(screen.queryByRole("button", { name: /logout/i })).toBeNull();
 
       // The logo link still renders so anonymous viewers can navigate home.
       expect(screen.getByRole("link", { name: /flamingo home/i })).toBeInTheDocument();
@@ -295,27 +293,49 @@ describe("<GlobalRail>", () => {
       expect(profileLink).toHaveAttribute("href", "/profile");
     });
 
-    it("renders the Logout button (mocked) in the footer", () => {
+    it("renders a Logout row in the footer as a SidebarMenuButton peer of Profile", () => {
       mockUsePathname.mockReturnValue("/");
       const { container } = renderRail({
         user: { email: "alice@example.com" },
         isAdmin: false,
       });
 
-      expect(within(getFooter(container)).getByTestId("logout-button")).toBeInTheDocument();
+      // Rendered as a native rail menu button (same markup as the Profile row
+      // above), not a bespoke ghost <Button> — this is what makes the left edge,
+      // gap, and height align with Profile.
+      const logoutBtn = within(getFooter(container)).getByRole("button", { name: /logout/i });
+      expect(logoutBtn).toHaveAttribute("data-sidebar", "menu-button");
     });
 
-    it("the Logout button's wrapping div carries the group-data-[collapsible=icon]:hidden class so the labelled button hides in the icon-only state", () => {
+    it("clicking the footer Logout row triggers sign-out", () => {
       mockUsePathname.mockReturnValue("/");
       const { container } = renderRail({
         user: { email: "alice@example.com" },
         isAdmin: false,
       });
 
-      const logoutBtn = within(getFooter(container)).getByTestId("logout-button");
-      const wrapper = logoutBtn.parentElement;
-      if (!wrapper) throw new Error("LogoutButton has no parent element");
-      expect(wrapper.className.includes("group-data-[collapsible=icon]:hidden")).toBe(true);
+      const logoutBtn = within(getFooter(container)).getByRole("button", { name: /logout/i });
+      act(() => {
+        fireEvent.click(logoutBtn);
+      });
+
+      expect(mockLogout).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the Logout row mounted when the rail is collapsed (it collapses to an icon, not hidden)", () => {
+      mockUsePathname.mockReturnValue("/");
+      const { container } = renderRail(
+        { user: { email: "alice@example.com" }, isAdmin: false },
+        { defaultOpen: false },
+      );
+
+      // Unlike the old bespoke button (which lived in a
+      // group-data-[collapsible=icon]:hidden wrapper), the SidebarMenuButton
+      // stays in the DOM when collapsed and shows the icon + tooltip like every
+      // other rail item.
+      expect(
+        within(getFooter(container)).getByRole("button", { name: /logout/i }),
+      ).toBeInTheDocument();
     });
   });
 
