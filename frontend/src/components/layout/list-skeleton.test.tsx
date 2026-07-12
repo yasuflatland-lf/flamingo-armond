@@ -1,7 +1,71 @@
 // @vitest-environment happy-dom
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { ListSkeleton } from "./list-skeleton";
+import { ListSkeleton, SkeletonRows } from "./list-skeleton";
+
+describe("<SkeletonRows>", () => {
+  it("renders a busy list with the provided aria-label and testId", () => {
+    render(
+      <SkeletonRows
+        rowCount={4}
+        ariaLabel="Loading cardgroups"
+        testId="cardgroups-skeleton"
+        renderRow={() => <div data-testid="row-body" />}
+      />,
+    );
+
+    const list = screen.getByTestId("cardgroups-skeleton");
+    expect(list.tagName).toBe("UL");
+    expect(list).toHaveAttribute("aria-busy", "true");
+    expect(list).toHaveAccessibleName("Loading cardgroups");
+    expect(screen.getAllByTestId("row-body")).toHaveLength(4);
+  });
+
+  it("applies the default space-y-3 list spacing when no className is passed", () => {
+    render(
+      <SkeletonRows
+        rowCount={1}
+        ariaLabel="Loading cardgroups"
+        testId="cardgroups-skeleton"
+        renderRow={() => <div />}
+      />,
+    );
+
+    expect(screen.getByTestId("cardgroups-skeleton")).toHaveClass("space-y-3");
+  });
+
+  it("merges className onto the outer <ul> over the default spacing", () => {
+    render(
+      <SkeletonRows
+        rowCount={1}
+        ariaLabel="Loading catalog"
+        testId="catalog-skeleton"
+        className="space-y-2"
+        renderRow={() => <div />}
+      />,
+    );
+
+    expect(screen.getByTestId("catalog-skeleton")).toHaveClass("space-y-2");
+  });
+
+  it("applies rowClassName to each placeholder <li> verbatim", () => {
+    render(
+      <SkeletonRows
+        rowCount={3}
+        ariaLabel="Loading cardgroups"
+        testId="cardgroups-skeleton"
+        rowClassName="rounded-lg border border-border p-4"
+        renderRow={() => <div />}
+      />,
+    );
+
+    const items = screen.getByTestId("cardgroups-skeleton").querySelectorAll("li");
+    expect(items).toHaveLength(3);
+    for (const item of items) {
+      expect(item).toHaveClass("rounded-lg", "border", "border-border", "p-4");
+    }
+  });
+});
 
 describe("<ListSkeleton>", () => {
   it("renders a busy list with the provided aria-label and testId", () => {
