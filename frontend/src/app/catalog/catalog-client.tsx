@@ -12,11 +12,10 @@ import {
   type MasterCatalogQueryVariables,
 } from "@/generated/graphql";
 import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
-import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useSeedConnectionCache } from "@/lib/pagination/use-seed-connection-cache";
 import { CatalogListItem } from "./catalog-list-item";
-import { CATALOG_DEFAULT_VARS } from "./queries";
+import { CATALOG_DEFAULT_VARS, CATALOG_INITIAL, mergeCatalogConnection } from "./queries";
 
 type Connection = MasterCatalogQuery["masterCatalog"];
 type CatalogEdge = Connection["edges"][number];
@@ -24,28 +23,6 @@ type CatalogPageInfo = Connection["pageInfo"];
 
 interface CatalogClientProps {
   initialConnection: Connection | null;
-}
-
-// Render fallback for useConnectionPagination. The client seeds the cache
-// synchronously before useQuery runs, so this is never read on the happy path;
-// it keeps the empty-edges shape the inline implementation used (`?? []`).
-const CATALOG_INITIAL = {
-  edges: [] as CatalogEdge[],
-  pageInfo: EMPTY_PAGE_INFO,
-  totalCount: 0,
-};
-
-// Concatenate the next page's edges onto the cached catalog connection.
-function mergeCatalogConnection(
-  prev: MasterCatalogQuery,
-  more: MasterCatalogQuery,
-): MasterCatalogQuery {
-  return {
-    masterCatalog: {
-      ...more.masterCatalog,
-      edges: [...prev.masterCatalog.edges, ...more.masterCatalog.edges],
-    },
-  };
 }
 
 /**
