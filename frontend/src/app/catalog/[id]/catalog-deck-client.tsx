@@ -9,6 +9,7 @@ import { ReadOnlyCardRow } from "@/components/cardgroups/read-only-card-row";
 import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
 import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
 import { AuthErrorBanner } from "@/components/ui/auth-error-banner";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import {
   CatalogMasterCardsConnectionDocument,
@@ -173,23 +174,19 @@ export default function CatalogDeckClient({
           <CardSearchInput value={search.input} onChange={search.setInput} />
 
           {edges.length === 0 && search.query && (
-            <div
-              className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border p-6"
-              data-testid="catalog-deck-empty-search"
-            >
-              <p className="text-sm text-muted-foreground">
-                {t("deckEmptySearch", { query: search.query })}
-              </p>
-            </div>
+            <EmptyState
+              className="rounded-md p-6"
+              testId="catalog-deck-empty-search"
+              body={t("deckEmptySearch", { query: search.query })}
+            />
           )}
 
           {edges.length === 0 && !search.query && (
-            <div
-              className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border p-6"
-              data-testid="catalog-deck-empty"
-            >
-              <p className="text-sm text-muted-foreground">{t("deckEmpty")}</p>
-            </div>
+            <EmptyState
+              className="rounded-md p-6"
+              testId="catalog-deck-empty"
+              body={t("deckEmpty")}
+            />
           )}
 
           {edges.length > 0 && (

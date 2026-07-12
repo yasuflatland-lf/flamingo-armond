@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
 import { type AnimatedCardHandle, SwipeCard, type SwipeCardData } from "./swipe-card";
 import { SwipeDirectionOverlay } from "./swipe-direction-overlay";
@@ -221,18 +222,23 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
 
   if (!activeCard) {
     return (
-      <div className="flex w-full max-w-xl flex-col items-center rounded-lg border border-dashed border-border p-8 text-center">
-        <h1 className="mb-2 text-xl font-semibold">{t("sessionComplete")}</h1>
-        <p className="mb-6 text-sm text-muted-foreground">{t("sessionCompleteMessage")}</p>
-        {completedCount != null && completedCount > 0 && (
-          <p className="mb-6 text-sm text-muted-foreground">
-            {t("reviewedCount", { count: completedCount })}
-          </p>
-        )}
-        <Button type="button" variant="outline" onClick={() => window.location.reload()}>
-          {t("refreshCards")}
-        </Button>
-      </div>
+      <EmptyState
+        className="w-full max-w-xl"
+        heading={t("sessionComplete")}
+        body={
+          <>
+            <p>{t("sessionCompleteMessage")}</p>
+            {completedCount != null && completedCount > 0 && (
+              <p className="mt-2">{t("reviewedCount", { count: completedCount })}</p>
+            )}
+          </>
+        }
+        actions={
+          <Button type="button" variant="outline" onClick={() => window.location.reload()}>
+            {t("refreshCards")}
+          </Button>
+        }
+      />
     );
   }
 
