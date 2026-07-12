@@ -5,10 +5,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { FieldError } from "@/lib/forms/field-error";
 import { cn } from "@/lib/utils";
 
-/** Minimal structural view of a TanStack field whose value is a string. */
+/**
+ * Minimal structural view of a TanStack field whose value is a string. The
+ * value is `string | undefined` so optional fields (e.g. a `bio` whose
+ * `undefined` means "unchanged") can be threaded through unchanged; the control
+ * coalesces `undefined` to `""` so the input stays controlled.
+ */
 type StringFieldApi = {
   name: string;
-  state: { value: string; meta: { errors: unknown[] } };
+  state: { value: string | undefined; meta: { errors: unknown[] } };
   handleBlur: () => void;
   handleChange: (value: string) => void;
 };
@@ -40,6 +45,16 @@ type CommonProps = {
   className?: string;
   /** Autofocus this control on mount (e.g. the create-form's first field). */
   autoFocus?: boolean;
+  /**
+   * Optional helper content (e.g. a muted hint paragraph) rendered between the
+   * control and the {@link FieldError} row. Not shown for the `checkbox` kind.
+   */
+  hint?: ReactNode;
+  /**
+   * Optional trailing content (e.g. an inline "Clear" button) rendered between
+   * the control and the {@link FieldError} row. Not shown for the `checkbox` kind.
+   */
+  trailing?: ReactNode;
 };
 
 type FormFieldProps =
@@ -56,10 +71,25 @@ type FormFieldProps =
  * `kind` selects the control: `"text"` (default) / `"number"` render an
  * {@link Input}, `"textarea"` renders a {@link Textarea}, and `"checkbox"`
  * renders an inline checkbox + label with no `FieldError` row.
+ *
+ * Optional `hint` and `trailing` nodes render between the control and the
+ * {@link FieldError} row (for every kind except `checkbox`) — use `hint` for a
+ * muted helper paragraph and `trailing` for an inline action such as a Clear
+ * button.
  */
 export function FormField(props: FormFieldProps) {
-  const { label, backendError, idOverride, disabled, placeholder, testId, className, autoFocus } =
-    props;
+  const {
+    label,
+    backendError,
+    idOverride,
+    disabled,
+    placeholder,
+    testId,
+    className,
+    autoFocus,
+    hint,
+    trailing,
+  } = props;
   const id = idOverride ?? props.field.name;
 
   if (props.kind === "checkbox") {
@@ -89,7 +119,7 @@ export function FormField(props: FormFieldProps) {
         id={id}
         name={field.name}
         data-testid={testId}
-        value={field.state.value}
+        value={field.state.value ?? ""}
         onBlur={field.handleBlur}
         onChange={(e) => field.handleChange(e.target.value)}
         disabled={disabled}
@@ -102,7 +132,7 @@ export function FormField(props: FormFieldProps) {
         name={field.name}
         type={kind === "number" ? "number" : undefined}
         data-testid={testId}
-        value={field.state.value}
+        value={field.state.value ?? ""}
         onBlur={field.handleBlur}
         onChange={(e) => field.handleChange(e.target.value)}
         disabled={disabled}
@@ -115,6 +145,8 @@ export function FormField(props: FormFieldProps) {
     <div className={cn("space-y-2", className)}>
       <Label htmlFor={id}>{label}</Label>
       {control}
+      {hint}
+      {trailing}
       <FieldError zodErrors={field.state.meta.errors} backendError={backendError} />
     </div>
   );

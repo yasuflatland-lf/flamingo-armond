@@ -6,11 +6,9 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { DirtyStateBridge } from "@/lib/forms/dirty-state-bridge";
-import { FieldError } from "@/lib/forms/field-error";
+import { FormField } from "@/lib/forms/form-field";
 import { submitFormHandler } from "@/lib/forms/submit-handler";
 import { updateProfileSchema } from "@/schemas/profile";
 import { useUpdateProfileSubmit } from "./use-update-profile-submit";
@@ -97,46 +95,34 @@ export function ProfileForm({
         validators={{ onChange: displayNameSchema, onBlur: displayNameSchema }}
       >
         {(field) => (
-          <div className="space-y-2">
-            <Label htmlFor={field.name}>{t("displayName")}</Label>
-            <Input
-              id={field.name}
-              name={field.name}
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(e.target.value)}
-            />
-            <FieldError
-              zodErrors={field.state.meta.errors}
-              backendError={fieldErrors.displayName}
-            />
-          </div>
+          <FormField
+            field={field}
+            label={t("displayName")}
+            backendError={fieldErrors.displayName}
+          />
         )}
       </form.Field>
 
       <form.Field name="bio" validators={{ onChange: bioSchema, onBlur: bioSchema }}>
         {(field) => (
-          <div className="space-y-2">
-            <Label htmlFor={field.name}>{t("bio")}</Label>
-            <Textarea
-              id={field.name}
-              name={field.name}
-              value={field.state.value ?? ""}
-              onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(e.target.value)}
-            />
-            {field.state.value !== "" ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => field.handleChange("")}
-              >
-                {t("clearBio")}
-              </Button>
-            ) : null}
-            <FieldError zodErrors={field.state.meta.errors} backendError={fieldErrors.bio} />
-          </div>
+          <FormField
+            field={field}
+            kind="textarea"
+            label={t("bio")}
+            backendError={fieldErrors.bio}
+            trailing={
+              field.state.value !== "" ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => field.handleChange("")}
+                >
+                  {t("clearBio")}
+                </Button>
+              ) : null
+            }
+          />
         )}
       </form.Field>
 
