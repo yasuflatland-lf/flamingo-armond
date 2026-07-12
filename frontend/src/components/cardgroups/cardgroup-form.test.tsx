@@ -57,6 +57,7 @@ function renderForm(props: Partial<Parameters<typeof CardgroupForm>[0]> = {}) {
         error={props.error}
         validationError={props.validationError}
         secondarySlot={props.secondarySlot}
+        onDirtyChange={props.onDirtyChange}
       />
     </MockedProvider>,
   );
@@ -242,5 +243,19 @@ describe("<CardgroupForm>", () => {
       expect(submit).toHaveBeenCalledOnce();
     });
     expect(screen.getByTestId("is-submit-successful")).toHaveTextContent("false");
+  });
+
+  it("reports isDirty via onDirtyChange when the name field is edited", async () => {
+    const user = userEvent.setup();
+    const onDirtyChange = vi.fn();
+    renderForm({ defaultValues: { name: "" }, onDirtyChange });
+
+    // Mounts clean.
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+
+    await user.type(screen.getByLabelText(/name/i), "New group");
+    await waitFor(() => {
+      expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    });
   });
 });

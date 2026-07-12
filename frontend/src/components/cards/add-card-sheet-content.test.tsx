@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { FormSheet } from "@/components/ui/form-sheet";
@@ -16,7 +16,7 @@ function renderContent(props: Partial<Props> = {}) {
     submitting: false,
     error: null,
     validationError: null,
-    onDirty: vi.fn(),
+    onDirtyChange: vi.fn(),
     ...props,
   };
   const result = renderWithIntl(
@@ -65,13 +65,18 @@ describe("<AddCardSheetContent>", () => {
     expect(screen.queryByTestId("add-card-added-count")).toBeNull();
   });
 
-  it("calls onDirty when the user types into a field", async () => {
+  it("reports isDirty via onDirtyChange when the user types into a field", async () => {
     const user = userEvent.setup();
     const { props } = renderContent();
 
+    // Mounts clean.
+    expect(props.onDirtyChange).toHaveBeenLastCalledWith(false);
+
     await user.type(screen.getByRole("textbox", { name: /front/i }), "Hello");
 
-    expect(props.onDirty).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(props.onDirtyChange).toHaveBeenLastCalledWith(true);
+    });
   });
 
   it("requests the sheet to close when Cancel is clicked", async () => {

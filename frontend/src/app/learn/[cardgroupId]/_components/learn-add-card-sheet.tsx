@@ -86,7 +86,7 @@ export function LearnAddCardSheet({ cardgroupId }: { cardgroupId: string }) {
         submitting={creating}
         error={createError}
         validationError={validationError}
-        onDirty={() => setDirty(true)}
+        onDirtyChange={setDirty}
       />
     </FormSheet>
   );

@@ -375,7 +375,7 @@ export function CardListScreen({
               submitting={creating}
               error={createError}
               validationError={sheet.createValidationError}
-              onDirty={sheet.markAddDirty}
+              onDirtyChange={sheet.onAddDirtyChange}
               addedCount={sheet.addedCount}
             />
           </FormSheet>

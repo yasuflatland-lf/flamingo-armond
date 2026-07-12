@@ -40,7 +40,7 @@ function CreateRoleSheetBody({
   validationError,
   authError,
   unexpectedPayloadError,
-  onDirty,
+  onEdit,
   onDirtyChange,
   submit,
 }: {
@@ -48,7 +48,7 @@ function CreateRoleSheetBody({
   validationError: ValidationError | null;
   authError: "unauthenticated" | "forbidden" | null;
   unexpectedPayloadError: string | null;
-  onDirty: () => void;
+  onEdit: () => void;
   onDirtyChange: (dirty: boolean) => void;
   submit: (values: { name: string }) => Promise<void>;
 }) {
@@ -56,7 +56,7 @@ function CreateRoleSheetBody({
   const close = useFormSheetClose();
 
   return (
-    <div onInput={onDirty}>
+    <div>
       {authError ? (
         <AuthErrorBanner
           testId="admin-role-new-auth-error"
@@ -82,6 +82,7 @@ function CreateRoleSheetBody({
         submitting={submitting}
         onCancel={close}
         onDirtyChange={onDirtyChange}
+        onEdit={onEdit}
       />
     </div>
   );
@@ -435,7 +436,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
             unexpectedPayloadError={
               createError?.kind === "unexpected" ? tCommon("somethingWentWrong") : null
             }
-            onDirty={() => setCreateError((prev) => (prev?.kind === "auth" ? prev : null))}
+            onEdit={() => setCreateError((prev) => (prev?.kind === "auth" ? prev : null))}
             onDirtyChange={setCreateDirty}
             submit={handleCreateSubmit}
           />
