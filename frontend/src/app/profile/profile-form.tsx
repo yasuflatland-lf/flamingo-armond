@@ -3,7 +3,7 @@
 import { useForm } from "@tanstack/react-form";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,7 @@ import { DirtyStateBridge } from "@/lib/forms/dirty-state-bridge";
 import { FieldError } from "@/lib/forms/field-error";
 import { submitFormHandler } from "@/lib/forms/submit-handler";
 import { updateProfileSchema } from "@/schemas/profile";
-import { useUpdateProfile } from "./use-update-profile";
+import { useUpdateProfileSubmit } from "./use-update-profile-submit";
 
 type Props = {
   /** The user's email address. Required — callers must pass the value or explicit null; never collapse to "". */
@@ -40,27 +40,17 @@ export function ProfileForm({
   const t = useTranslations("Profile");
   const tCommon = useTranslations("Common");
 
-  // Typed InputValidationError variant — field-level validation failure
-  // surfaced by the server via the outcome union. Cleared on each new submission.
-  const [validationError, setValidationError] = useState<{
-    field: string;
-    message: string;
-  } | null>(null);
+  const onSuccess = useCallback(() => onSaved?.(), [onSaved]);
 
-  // Mid-session auth failures or unexpected payloads. Cleared on each submission.
-  const [bannerMessage, setBannerMessage] = useState<string | null>(null);
-
-  const { submit, loading, reset } = useUpdateProfile();
-
-  const resetLocalState = useCallback(() => {
-    setValidationError(null);
-    setBannerMessage(null);
-    reset();
-  }, [reset]);
+  const { submit, bannerMessage, fieldErrors, loading, reset } = useUpdateProfileSubmit({
+    onSuccess,
+    sessionExpiredMessage: t("sessionExpired"),
+    rejectionLabel: "[ProfileForm] update profile rejected",
+  });
 
   useEffect(() => {
-    onRegisterReset?.(resetLocalState);
-  }, [onRegisterReset, resetLocalState]);
+    onRegisterReset?.(reset);
+  }, [onRegisterReset, reset]);
 
   useEffect(() => {
     onSubmittingChange?.(loading);
@@ -75,40 +65,12 @@ export function ProfileForm({
       bio: initial.bio as string | undefined,
     },
     onSubmit: async ({ value }) => {
-      setValidationError(null);
-      setBannerMessage(null);
-
-      const outcome = await submit({
+      await submit({
         displayName: value.displayName,
         bio: value.bio,
       });
-
-      switch (outcome.status) {
-        case "success":
-          onSaved?.();
-          return;
-        case "validation":
-          setValidationError({ field: outcome.field, message: outcome.message });
-          return;
-        case "unauthenticated":
-          setBannerMessage(t("sessionExpired"));
-          return;
-        case "unexpected":
-          setBannerMessage(tCommon("somethingWentWrong"));
-          return;
-        case "rejected":
-          setBannerMessage(outcome.banner ?? tCommon("somethingWentWrong"));
-          // Re-throw so TanStack Form keeps formState.isSubmitSuccessful=false;
-          // submitFormHandler (the outer onSubmit) swallows the re-thrown rejection.
-          throw new Error("[ProfileForm] update profile rejected");
-      }
     },
   });
-
-  // Derive per-field backend errors from the validationError state (outcome union path).
-  const fieldErrors: Record<string, string | undefined> = validationError
-    ? { [validationError.field]: validationError.message }
-    : {};
 
   return (
     <form onSubmit={submitFormHandler(form)} className="space-y-4">
