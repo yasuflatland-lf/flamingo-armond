@@ -396,6 +396,8 @@
     "newRole": "New role",
     "noRolesYet": "No roles yet",
     "editRoleTitle": "Edit role",
+    "editRoleAriaLabel": "Edit role {name}",
+    "deleteRoleAriaLabel": "Delete {name}",
     "createRole": "Create",
     "deleteAuthFailed": "Your session has expired. Please sign in again.",
     "systemRole": "System role",
