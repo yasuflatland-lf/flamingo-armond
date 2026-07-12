@@ -67,7 +67,7 @@ function CreateCardgroupSheetContent({
   authError,
   unexpectedError,
   limitError,
-  onDirty,
+  onDirtyChange,
 }: {
   submit: (values: { name: string }) => Promise<void>;
   submitting: boolean;
@@ -75,14 +75,14 @@ function CreateCardgroupSheetContent({
   authError: "unauthenticated" | "forbidden" | null;
   unexpectedError: string | null;
   limitError: string | null;
-  onDirty: () => void;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
   const close = useFormSheetClose();
   const t = useTranslations("Cardgroups");
   const tCommon = useTranslations("Common");
 
   return (
-    <div onInput={onDirty} className="space-y-4">
+    <div className="space-y-4">
       {authError ? (
         <AuthErrorBanner
           testId="cardgroup-create-auth-error"
@@ -105,6 +105,7 @@ function CreateCardgroupSheetContent({
         submit={submit}
         submitting={submitting}
         validationError={validationError}
+        onDirtyChange={onDirtyChange}
         secondarySlot={
           <Button type="button" variant="outline" onClick={close}>
             {tCommon("cancel")}
@@ -413,7 +414,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
             authError={addAuthError}
             unexpectedError={addUnexpectedError}
             limitError={addLimitError}
-            onDirty={() => setAddDirty(true)}
+            onDirtyChange={setAddDirty}
           />
         </FormSheet>
       </ListingPageShell>

@@ -20,6 +20,7 @@ function renderForm(props: Partial<Parameters<typeof CardForm>[0]> = {}) {
         submitting={props.submitting}
         error={props.error}
         onCancel={props.onCancel}
+        onDirtyChange={props.onDirtyChange}
       />
     </MockedProvider>,
   );
@@ -119,5 +120,19 @@ describe("<CardForm>", () => {
     renderForm({ submitting: true });
     const btn = screen.getByRole("button", { name: /saving/i });
     expect(btn).toBeDisabled();
+  });
+
+  it("reports isDirty via onDirtyChange when a field is edited", async () => {
+    const user = userEvent.setup();
+    const onDirtyChange = vi.fn();
+    renderForm({ onDirtyChange });
+
+    // Mounts clean.
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+
+    await user.type(screen.getByLabelText(/front/i), "Dog");
+    await waitFor(() => {
+      expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    });
   });
 });

@@ -65,21 +65,21 @@ function AddCardSheetContent({
   submitting,
   error,
   validationError,
-  onDirty,
+  onDirtyChange,
   addedCount,
 }: {
   submit: (values: { front: string; back: string }) => Promise<void>;
   submitting: boolean;
   error: unknown;
   validationError: { field: string; message: string } | null;
-  onDirty: () => void;
+  onDirtyChange: (dirty: boolean) => void;
   addedCount: number;
 }) {
   const close = useFormSheetClose();
   const t = useTranslations("Cards");
 
   return (
-    <div onInput={onDirty} className="space-y-3">
+    <div className="space-y-3">
       {addedCount > 0 ? (
         <p
           className="flex items-center gap-1.5 text-sm text-success"
@@ -98,6 +98,7 @@ function AddCardSheetContent({
         error={error}
         validationError={validationError}
         onCancel={close}
+        onDirtyChange={onDirtyChange}
       />
     </div>
   );
@@ -420,7 +421,7 @@ export function CardListScreen({
               submitting={creating}
               error={createError}
               validationError={sheet.createValidationError}
-              onDirty={sheet.markAddDirty}
+              onDirtyChange={sheet.onAddDirtyChange}
               addedCount={sheet.addedCount}
             />
           </FormSheet>

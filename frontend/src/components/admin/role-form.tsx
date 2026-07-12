@@ -25,6 +25,12 @@ type RoleFormProps = {
   /** Optional cancel action rendered next to the submit button. */
   onCancel?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * Fires on each field value change (the create sheet uses it to clear a stale
+   * validation banner as the user edits — the explicit replacement for the
+   * former `<div onInput>` wrapper).
+   */
+  onEdit?: () => void;
 };
 
 export function RoleForm({
@@ -36,6 +42,7 @@ export function RoleForm({
   readOnly = false,
   onCancel,
   onDirtyChange,
+  onEdit,
 }: RoleFormProps) {
   const t = useTranslations("Admin");
   const tCommon = useTranslations("Common");
@@ -47,6 +54,9 @@ export function RoleForm({
   const form = useForm({
     defaultValues: {
       name: defaultValues.name,
+    },
+    listeners: {
+      onChange: () => onEdit?.(),
     },
     onSubmit: async ({ value }) => {
       await wrapSubmit("role-form", submit)(value);

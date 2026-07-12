@@ -14,29 +14,28 @@ function AddCardSheetContent({
   submitting,
   error,
   validationError,
-  onDirty,
+  onDirtyChange,
 }: {
   submit: (values: { front: string; back: string }) => Promise<void>;
   submitting: boolean;
   error: unknown;
   validationError: { field: string; message: string } | null;
-  onDirty: () => void;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
   const close = useFormSheetClose();
 
   return (
-    <div onInput={onDirty}>
-      <CardForm
-        mode="create"
-        idPrefix="learn-add-card-"
-        defaultValues={{ front: "", back: "" }}
-        submit={submit}
-        submitting={submitting}
-        error={error}
-        validationError={validationError}
-        onCancel={close}
-      />
-    </div>
+    <CardForm
+      mode="create"
+      idPrefix="learn-add-card-"
+      defaultValues={{ front: "", back: "" }}
+      submit={submit}
+      submitting={submitting}
+      error={error}
+      validationError={validationError}
+      onCancel={close}
+      onDirtyChange={onDirtyChange}
+    />
   );
 }
 
@@ -116,7 +115,7 @@ export function LearnAddCardSheet({ cardgroupId }: { cardgroupId: string }) {
         submitting={creating}
         error={createError}
         validationError={validationError}
-        onDirty={() => setDirty(true)}
+        onDirtyChange={setDirty}
       />
     </FormSheet>
   );

@@ -7,6 +7,7 @@ import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
+import { DirtyStateBridge } from "@/lib/forms/dirty-state-bridge";
 import { FormField } from "@/lib/forms/form-field";
 import { submitFormHandler, wrapSubmit } from "@/lib/forms/submit-handler";
 import { newCardgroupSchema, updateCardgroupSchema } from "@/schemas/cardgroup";
@@ -32,6 +33,8 @@ type CardgroupFormProps = {
   validationError?: { field: string; message: string } | null;
   /** Extra controls rendered next to the submit button (e.g. Delete button on Edit page). */
   secondarySlot?: React.ReactNode;
+  /** Notifies the parent sheet of the form's TanStack `isDirty` state (drives the discard guard). */
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 export function CardgroupForm({
@@ -43,6 +46,7 @@ export function CardgroupForm({
   error,
   validationError,
   secondarySlot,
+  onDirtyChange,
 }: CardgroupFormProps) {
   const t = useTranslations("Cardgroups");
   const tCommon = useTranslations("Common");
@@ -90,6 +94,9 @@ export function CardgroupForm({
         </Button>
         {secondarySlot}
       </div>
+      <form.Subscribe selector={(state) => state.isDirty}>
+        {(dirty) => <DirtyStateBridge dirty={dirty} onDirtyChange={onDirtyChange} />}
+      </form.Subscribe>
     </form>
   );
 }

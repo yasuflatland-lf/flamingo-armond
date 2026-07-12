@@ -110,7 +110,7 @@ export function useCardSheetForm({
     setAddOpen(true);
   }, [resetCreateCard, clearCreateError]);
 
-  const markAddDirty = useCallback(() => setAddDirty(true), []);
+  const onAddDirtyChange = useCallback((dirty: boolean) => setAddDirty(dirty), []);
 
   const onAddOpenChange = useCallback(
     (nextOpen: boolean) => {
@@ -169,7 +169,7 @@ export function useCardSheetForm({
     addDirty,
     addedCount,
     createNonce,
-    markAddDirty,
+    onAddDirtyChange,
     editingId,
     createValidationError: createForm.validationError,
     rowValidationError: updateForm.validationError,

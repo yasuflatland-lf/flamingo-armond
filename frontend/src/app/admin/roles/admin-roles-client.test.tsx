@@ -300,6 +300,41 @@ describe("AdminRolesClient — create role sheet", () => {
     expect(mockRefresh).not.toHaveBeenCalled();
   });
 
+  it("clears the validation banner as the user edits the field (onEdit wiring)", async () => {
+    const user = userEvent.setup();
+    mockSearchParamsValue = "new=true";
+
+    const mocks = [
+      {
+        request: { query: AdminCreateRoleDocument, variables: { name: "admin" } },
+        result: () => ({
+          data: {
+            createRole: {
+              __typename: "InputValidationError" as const,
+              field: "name",
+              message: "role name already exists",
+            },
+          },
+        }),
+      },
+    ];
+
+    renderRoles([], mocks);
+
+    await user.type(screen.getByRole("textbox"), "admin");
+    await user.click(screen.getByRole("button", { name: /create/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-role-new-validation-error")).toBeInTheDocument();
+    });
+
+    // Editing the field re-homes the former onInput clear via RoleForm's onEdit.
+    await user.type(screen.getByRole("textbox"), "x");
+    await waitFor(() => {
+      expect(screen.queryByTestId("admin-role-new-validation-error")).not.toBeInTheDocument();
+    });
+  });
+
   it.each([
     ["UNAUTHENTICATED", "session has expired", "admin-role-new-auth-error"],
     ["FORBIDDEN", "do not have permission", "admin-role-new-auth-error"],
