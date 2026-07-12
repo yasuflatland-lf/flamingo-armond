@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
+import { SearchInput } from "@/components/search/search-input";
 import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
 import {
   MasterCatalogDocument,
@@ -124,12 +125,10 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
         countLabel={tCommon("totalCount", { count: totalCount })}
         toolbar={
           <div className="mb-2 hidden md:block">
-            <input
-              type="search"
+            <SearchInput
               placeholder={t("searchPlaceholder")}
               value={search.input}
               onChange={(e) => search.setInput(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               aria-label={t("searchAriaLabel")}
               data-testid="catalog-search"
             />
