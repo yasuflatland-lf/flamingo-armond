@@ -21,6 +21,7 @@ import {
 import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
+import { useSheetTargetLoading } from "@/lib/url/use-sheet-target-loading";
 import { AdminUserProfileSheet } from "./admin-user-profile-sheet";
 import { type AdminUserListItem, AdminUserRow } from "./admin-user-row";
 import { AdminUsersSkeleton } from "./admin-users-skeleton";
@@ -186,7 +187,11 @@ export function AdminUsersClient() {
       }
     : null;
   const sheetUser = editUser?.id === editUserId ? editUser : null;
-  const editUserResultMatchesSheet = editUserId !== null && editUserVariables?.id === editUserId;
+  const { loading: editUserSheetLoading } = useSheetTargetLoading(editUserId, {
+    called: editUserCalled,
+    variables: editUserVariables,
+    loading: editUserLoading,
+  });
   const editUserErrorKind = classifyQueryError(editUserError);
   const editUserBannerError = formatEditUserBannerError(
     editUserErrorKind,
@@ -280,10 +285,7 @@ export function AdminUsersClient() {
       <AdminUserProfileSheet
         open={editUserId !== null}
         user={sheetUser}
-        loading={
-          editUserLoading ||
-          (editUserId !== null && (!editUserCalled || !editUserResultMatchesSheet))
-        }
+        loading={editUserSheetLoading}
         allRoles={roleOptions}
         queryError={editUserBannerError}
         onDismiss={() => sheet.close()}
