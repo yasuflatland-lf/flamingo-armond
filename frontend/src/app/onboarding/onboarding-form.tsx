@@ -8,9 +8,7 @@ import { useUpdateProfile } from "@/app/profile/use-update-profile";
 import { OnboardingShell } from "@/components/onboarding/onboarding-shell";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { FieldError } from "@/lib/forms/field-error";
+import { FormField } from "@/lib/forms/form-field";
 import { submitFormHandler } from "@/lib/forms/submit-handler";
 import { updateProfileSchema } from "@/schemas/profile";
 
@@ -101,21 +99,12 @@ export function OnboardingForm() {
           validators={{ onChange: displayNameSchema, onBlur: displayNameSchema }}
         >
           {(field) => (
-            <div className="space-y-2">
-              <Label htmlFor={field.name}>{t("displayName")}</Label>
-              <Input
-                id={field.name}
-                name={field.name}
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
-              />
-              <p className="text-sm text-muted-foreground">{t("displayNameHint")}</p>
-              <FieldError
-                zodErrors={field.state.meta.errors}
-                backendError={fieldErrors.displayName}
-              />
-            </div>
+            <FormField
+              field={field}
+              label={t("displayName")}
+              backendError={fieldErrors.displayName}
+              hint={<p className="text-sm text-muted-foreground">{t("displayNameHint")}</p>}
+            />
           )}
         </form.Field>
 
