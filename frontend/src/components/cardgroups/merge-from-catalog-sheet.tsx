@@ -14,6 +14,7 @@ import {
 } from "@/app/catalog/queries";
 import { MergeReviewPanel } from "@/components/cardgroups/merge-review-panel";
 import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
+import { SearchInput } from "@/components/search/search-input";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet } from "@/components/ui/form-sheet";
 import { useFragment } from "@/generated/fragment-masking";
@@ -230,14 +231,12 @@ export function MergeFromCatalogSheet({
         ) : null
       ) : (
         <div className="flex flex-col gap-4">
-          <input
-            type="search"
+          <SearchInput
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
             placeholder={tCatalog("searchPlaceholder")}
             aria-label={tCatalog("searchAriaLabel")}
             data-testid="merge-from-catalog-search"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           />
 
           {queryBannerError ? (
