@@ -107,7 +107,22 @@ When the sheet body lazily fetches its data via `useLazyQuery`, the first render
 - `data === undefined`
 - `error === undefined`
 
-A naive sheet body branches on `data ? <Form /> : <NotFound />` and shows the "not found" banner for one frame before the effect commits and the query starts. Pass the `called` flag (and ideally a `variables.id` equality check for race safety) up into the body's `loading` decision:
+A naive sheet body branches on `data ? <Form /> : <NotFound />` and shows the "not found" banner for one frame before the effect commits and the query starts. The gate combines the `called` flag with a `variables.id` equality check (for race safety) into the body's `loading` decision. Both `/admin/users` and `/admin/roles` had identical copies of this logic, so it lives in one shared helper — `frontend/src/lib/url/use-sheet-target-loading.ts`:
+
+```ts
+type SheetTargetQueryState = {
+  called: boolean;
+  variables: { id: string | number } | undefined;
+  loading: boolean;
+};
+
+function useSheetTargetLoading(
+  id: string | null,
+  query: SheetTargetQueryState,
+): { matchesSheet: boolean; loading: boolean };
+```
+
+Consumers pass the currently-open sheet id (or `null`) and the lazy query's `called` / `variables` / `loading` fields:
 
 ```ts
 const [
@@ -121,14 +136,16 @@ const [
   },
 ] = useLazyQuery(AdminRoleQuery, { fetchPolicy: "no-cache" });
 
-const loadRoleMatchesSheet = editId !== null && loadRoleVariables?.id === editId;
-const editRoleLoading =
-  loadingEditRole || (editId !== null && (!loadRoleCalled || !loadRoleMatchesSheet));
+const { loading: editRoleLoading } = useSheetTargetLoading(editId, {
+  called: loadRoleCalled,
+  variables: loadRoleVariables,
+  loading: loadingEditRole,
+});
 
 <EditRoleSheetBody loading={editRoleLoading} role={editRole} ... />
 ```
 
-The body then renders "Loading..." until the effect fires the query, the query settles, *and* the result's variables match the currently-open sheet. Only after all three does the body branch on `role ? <Form /> : <NotFound />`.
+The helper reports `loading` until the effect fires the query, the query settles, *and* the result's variables match the currently-open sheet (`matchesSheet`). Only after all three does the body branch on `role ? <Form /> : <NotFound />`. It has its own isolated test (`use-sheet-target-loading.test.ts`) covering the closed / first-render / stale-id / matched / in-flight states.
 
 ## Race-guard: variable equality drops stale lazy-query results
 
