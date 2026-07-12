@@ -1,3 +1,4 @@
+import { SkeletonRows } from "@/components/layout/list-skeleton";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -12,20 +13,18 @@ export function CardgroupsSkeleton() {
       primaryActions={<Skeleton className="hidden h-10 w-40 md:inline-flex" />}
       toolbar={<Skeleton className="h-10 w-full max-w-sm" />}
     >
-      <ul
-        className="space-y-3"
-        aria-busy="true"
-        aria-label="Loading cardgroups"
-        data-testid="cardgroups-skeleton"
-      >
-        {Array.from({ length: 5 }).map((_, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: static placeholder rows have no stable id.
-          <li key={i} className="rounded-lg border border-border p-4">
+      <SkeletonRows
+        rowCount={5}
+        ariaLabel="Loading cardgroups"
+        testId="cardgroups-skeleton"
+        rowClassName="rounded-lg border border-border p-4"
+        renderRow={() => (
+          <>
             <Skeleton className="h-5 w-2/3" />
             <Skeleton className="mt-2 h-4 w-1/3" />
-          </li>
-        ))}
-      </ul>
+          </>
+        )}
+      />
     </ListingPageShell>
   );
 }
