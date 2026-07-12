@@ -1,5 +1,9 @@
 import { graphql } from "@/generated";
-import type { MasterCatalogQueryVariables } from "@/generated/graphql";
+import type {
+  MasterCatalogQuery as MasterCatalogQueryData,
+  MasterCatalogQueryVariables,
+} from "@/generated/graphql";
+import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 
 // Master catalog queries
 
@@ -19,6 +23,36 @@ export const CATALOG_DEFAULT_VARS: MasterCatalogQueryVariables = {
   first: CATALOG_PAGE_SIZE,
   search: null,
 };
+
+type CatalogConnection = MasterCatalogQueryData["masterCatalog"];
+type CatalogEdge = CatalogConnection["edges"][number];
+
+/**
+ * Render fallback for the catalog list's {@link useConnectionPagination}. Both
+ * the /catalog page ({@link CatalogClient}) and the merge-from-catalog sheet
+ * ({@link MergeFromCatalogSheet}) seed the SAME Apollo cache entry
+ * ({@link CATALOG_DEFAULT_VARS}); sharing this empty-edges shape keeps the two
+ * consumers from diverging on the same cache key. The client seeds the cache
+ * synchronously before `useQuery` runs, so this is never read on the happy path.
+ */
+export const CATALOG_INITIAL = {
+  edges: [] as CatalogEdge[],
+  pageInfo: EMPTY_PAGE_INFO,
+  totalCount: 0,
+};
+
+/** Concatenate the next page's edges onto the cached catalog connection. */
+export function mergeCatalogConnection(
+  prev: MasterCatalogQueryData,
+  more: MasterCatalogQueryData,
+): MasterCatalogQueryData {
+  return {
+    masterCatalog: {
+      ...more.masterCatalog,
+      edges: [...prev.masterCatalog.edges, ...more.masterCatalog.edges],
+    },
+  };
+}
 
 /**
  * The `MasterCardgroup` field set shared by the catalog list row

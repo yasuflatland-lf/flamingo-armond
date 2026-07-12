@@ -6,7 +6,12 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMergeFromCatalog } from "@/app/cardgroups/[id]/use-merge-from-catalog";
 import { useMergeFromCatalogPreview } from "@/app/cardgroups/[id]/use-merge-from-catalog-preview";
-import { CATALOG_DEFAULT_VARS, CatalogDeckFieldsFragment } from "@/app/catalog/queries";
+import {
+  CATALOG_DEFAULT_VARS,
+  CATALOG_INITIAL,
+  CatalogDeckFieldsFragment,
+  mergeCatalogConnection,
+} from "@/app/catalog/queries";
 import { MergeReviewPanel } from "@/components/cardgroups/merge-review-panel";
 import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
 import { ErrorBanner } from "@/components/ui/error-banner";
@@ -19,7 +24,6 @@ import {
 } from "@/generated/graphql";
 import { useDebouncedSearch } from "@/hooks/use-debounced-search";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
-import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 
 type Connection = MasterCatalogQuery["masterCatalog"];
@@ -39,24 +43,6 @@ export type MergeFromCatalogSheetProps = {
   targetCardgroupName: string;
   onMerged: (result: { addedCount: number; updatedCount: number }) => void;
 };
-
-const CATALOG_INITIAL = {
-  edges: [] as CatalogEdge[],
-  pageInfo: EMPTY_PAGE_INFO,
-  totalCount: 0,
-};
-
-function mergeCatalogConnection(
-  prev: MasterCatalogQuery,
-  more: MasterCatalogQuery,
-): MasterCatalogQuery {
-  return {
-    masterCatalog: {
-      ...more.masterCatalog,
-      edges: [...prev.masterCatalog.edges, ...more.masterCatalog.edges],
-    },
-  };
-}
 
 export function MergeFromCatalogSheet({
   open,
