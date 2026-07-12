@@ -37,6 +37,24 @@ type ReviewState =
   | { phase: "ready"; addedCount: number; updatedCount: number }
   | { phase: "error"; message: string };
 
+/** Outcome shape shared by `previewMerge` and `mergeFromCatalog`'s non-success variants. */
+type MergeFailureOutcome =
+  | { status: "not_found" }
+  | { status: "auth"; kind: "unauthenticated" | "forbidden" }
+  | { status: "rejected" };
+
+/** Maps a non-success merge outcome to its localized review-error message. */
+function mergeOutcomeMessage(
+  outcome: MergeFailureOutcome,
+  t: ReturnType<typeof useTranslations<"Cardgroups">>,
+): string {
+  if (outcome.status === "not_found") return t("mergeNotFound");
+  if (outcome.status === "auth") {
+    return outcome.kind === "forbidden" ? t("noPermission") : t("sessionExpiredSignIn");
+  }
+  return t("mergeError");
+}
+
 export type MergeFromCatalogSheetProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -149,15 +167,7 @@ export function MergeFromCatalogSheet({
         });
         return;
       }
-      const message =
-        outcome.status === "not_found"
-          ? t("mergeNotFound")
-          : outcome.status === "auth"
-            ? outcome.kind === "forbidden"
-              ? t("noPermission")
-              : t("sessionExpiredSignIn")
-            : t("mergeError");
-      setReview({ phase: "error", message });
+      setReview({ phase: "error", message: mergeOutcomeMessage(outcome, t) });
     },
     [previewMerge, t],
   );
@@ -177,15 +187,7 @@ export function MergeFromCatalogSheet({
       onOpenChange(false);
       return;
     }
-    const message =
-      outcome.status === "not_found"
-        ? t("mergeNotFound")
-        : outcome.status === "auth"
-          ? outcome.kind === "forbidden"
-            ? t("noPermission")
-            : t("sessionExpiredSignIn")
-          : t("mergeError");
-    setReview({ phase: "error", message });
+    setReview({ phase: "error", message: mergeOutcomeMessage(outcome, t) });
     setMerging(false);
   }, [mergeFromCatalog, merging, onMerged, onOpenChange, resetTransientState, selectedDeck, t]);
 
