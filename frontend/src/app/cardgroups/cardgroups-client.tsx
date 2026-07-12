@@ -27,6 +27,7 @@ import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useSeedConnectionCache } from "@/lib/pagination/use-seed-connection-cache";
 import { useUndoDelete } from "@/lib/undo-delete";
+import { removeMyCardgroupEdge, restoreMyCardgroupSnapshot } from "./cache";
 import { CARDGROUPS_DEFAULT_VARS, DeleteCardgroupMutation } from "./queries";
 import { useCreateCardgroupForm } from "./use-create-cardgroup-form";
 
@@ -254,37 +255,18 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
     // the currently rendered query. Using CARDGROUPS_DEFAULT_VARS here would
     // silently read/write the wrong cache entry when a search is active.
     const activeVars = queryVariables;
-    const snapshot = apollo.cache.readQuery({
-      query: MyCardgroupsConnectionDocument,
-      variables: activeVars,
-    });
+    const snapshot = removeMyCardgroupEdge(apollo.cache, id, activeVars);
     if (!snapshot) {
       console.warn("[cardgroups] handleDelete: cache miss on snapshot read", { id });
       setDeleteCommitError(t("deleteReloadError"));
       return;
     }
 
-    apollo.cache.writeQuery({
-      query: MyCardgroupsConnectionDocument,
-      variables: activeVars,
-      data: {
-        myCardgroupsConnection: {
-          ...snapshot.myCardgroupsConnection,
-          edges: snapshot.myCardgroupsConnection.edges.filter((e) => e.node.id !== id),
-          totalCount: Math.max(0, snapshot.myCardgroupsConnection.totalCount - 1),
-        },
-      },
-    });
-
     scheduleDelete({
       id,
       label: `Cardgroup "${name}" deleted`,
       optimisticRollback: () => {
-        apollo.cache.writeQuery({
-          query: MyCardgroupsConnectionDocument,
-          variables: activeVars,
-          data: snapshot,
-        });
+        restoreMyCardgroupSnapshot(apollo.cache, snapshot, activeVars);
       },
       commitDelete: async () => {
         await deleteCardgroup({ variables: { id } });

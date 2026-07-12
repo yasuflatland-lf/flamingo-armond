@@ -2,6 +2,53 @@ import type { ReactNode } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
+interface SkeletonRowsProps {
+  /** Number of placeholder rows to render. */
+  rowCount: number;
+  /** Accessible name for the busy list (e.g. "Loading users"). */
+  ariaLabel: string;
+  /** `data-testid` for the busy list (e.g. "admin-users-skeleton"). */
+  testId: string;
+  /** Renders the per-row body. Called once per placeholder row. */
+  renderRow: () => ReactNode;
+  /** Optional class merge for the outer `<ul>` (e.g. list spacing). Defaults to `space-y-3`. */
+  className?: string;
+  /** Optional class merge for each placeholder `<li>`. */
+  rowClassName?: string;
+}
+
+/**
+ * The canonical busy-list row loop for listing skeletons: a `<ul aria-busy>`
+ * plus an `Array.from` placeholder-row loop. Single-sources the
+ * `noArrayIndexKey` biome-ignore for static placeholder rows so individual
+ * skeletons no longer repeat it. Consumed by `ListSkeleton` and by the public
+ * `/cardgroups` and `/catalog` skeletons.
+ */
+export function SkeletonRows({
+  rowCount,
+  ariaLabel,
+  testId,
+  renderRow,
+  className,
+  rowClassName,
+}: SkeletonRowsProps) {
+  return (
+    <ul
+      className={cn("space-y-3", className)}
+      aria-busy="true"
+      aria-label={ariaLabel}
+      data-testid={testId}
+    >
+      {Array.from({ length: rowCount }).map((_, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: static placeholder rows have no stable id.
+        <li key={i} className={rowClassName}>
+          {renderRow()}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 interface ListSkeletonProps {
   /** Number of placeholder rows to render. Defaults to 5. */
   rowCount?: number;
@@ -57,14 +104,13 @@ export function ListSkeleton({
         </>
       )}
 
-      <ul className="space-y-3" aria-busy="true" aria-label={ariaLabel} data-testid={testId}>
-        {Array.from({ length: rowCount }).map((_, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: static placeholder rows have no stable id.
-          <li key={i} className={cn("rounded-md border border-border", rowClassName)}>
-            {renderRow()}
-          </li>
-        ))}
-      </ul>
+      <SkeletonRows
+        rowCount={rowCount}
+        ariaLabel={ariaLabel}
+        testId={testId}
+        renderRow={renderRow}
+        rowClassName={cn("rounded-md border border-border", rowClassName)}
+      />
     </main>
   );
 }

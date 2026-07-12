@@ -1,6 +1,7 @@
 "use client";
 
 import { useFormatter, useTranslations } from "next-intl";
+import { EmptyState } from "@/components/ui/empty-state";
 import { StatTile } from "@/components/ui/stat-tile";
 import type { MyLearningStatsQuery } from "@/generated/graphql";
 import { StatHint } from "./stat-hint";
@@ -85,9 +86,7 @@ export function DiagnosticsPanel({ performance }: { performance: PerformanceMetr
         // Dormant learner: no reviews in the window. The backend returns
         // placeholder rate values for an empty window, so show an empty state
         // rather than render fabricated data as if it were real.
-        <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-          {t("diagnosticsNoActivity")}
-        </p>
+        <EmptyState className="p-6" body={t("diagnosticsNoActivity")} />
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {tiles.map((tile) => (

@@ -1,14 +1,14 @@
-import { useCallback, useMemo } from "react";
 import {
   AdminMasterCardsConnectionDocument,
   type AdminMasterCardsConnectionQuery,
   type AdminMasterCardsConnectionQueryVariables,
 } from "@/generated/graphql";
-import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import type { UseConnectionPaginationResult } from "@/lib/pagination/use-connection-pagination";
 import {
-  type UseConnectionPaginationResult,
-  useConnectionPagination,
-} from "@/lib/pagination/use-connection-pagination";
+  defineEntityCardsConnectionConfig,
+  type UseEntityCardsConnectionInput,
+  useEntityCardsConnection,
+} from "@/lib/pagination/use-entity-cards-connection";
 import { masterCardsDefaultVars } from "./queries";
 
 type MasterCardEdge =
@@ -25,7 +25,7 @@ export interface UseMasterCardsConnectionInput {
   /**
    * Localized banner copy shown when a load-more page fails with no backend
    * banner of its own. The hook has no `useTranslations`, so the caller passes
-   * the resolved `t("fetchMoreFailed")` string in (mirrors admin-masters-client).
+   * the resolved `t("fetchMoreFailed")` string in.
    */
   fetchMoreErrorMessage: string;
 }
@@ -37,64 +37,28 @@ export type UseMasterCardsConnectionResult = UseConnectionPaginationResult<
   AdminMasterCardsConnectionQueryVariables
 >;
 
-function mergeMasterCardsConnection(
-  prev: AdminMasterCardsConnectionQuery,
-  more: AdminMasterCardsConnectionQuery,
-): AdminMasterCardsConnectionQuery {
-  return {
-    adminMasterCardsConnection: {
-      ...more.adminMasterCardsConnection,
-      edges: [...prev.adminMasterCardsConnection.edges, ...more.adminMasterCardsConnection.edges],
-    },
-  };
-}
+const MASTER_CARDS_CONNECTION_CONFIG = defineEntityCardsConnectionConfig({
+  document: AdminMasterCardsConnectionDocument,
+  connectionField: "adminMasterCardsConnection",
+  defaultVars: masterCardsDefaultVars,
+  logScope: "[master-cards-client]",
+});
 
+// Admin master-cards pagination — a thin wrapper over the shared
+// useEntityCardsConnection factory. Binds the master-cards config and
+// translates the route's master deck id to the factory's `ownerId`.
 export function useMasterCardsConnection(
   input: UseMasterCardsConnectionInput,
 ): UseMasterCardsConnectionResult {
-  const {
-    masterId,
-    searchQuery,
-    initialEdges,
-    initialPageInfo,
-    initialTotalCount,
-    fetchMoreErrorMessage,
-  } = input;
-
-  const variables = useMemo<AdminMasterCardsConnectionQueryVariables>(
-    () =>
-      searchQuery === null
-        ? masterCardsDefaultVars(masterId)
-        : { ...masterCardsDefaultVars(masterId), search: searchQuery },
-    [masterId, searchQuery],
-  );
-
-  const buildFetchMoreVariables = useCallback(
-    (
-      endCursor: string | null,
-      search: string | null,
-    ): AdminMasterCardsConnectionQueryVariables => ({
-      ...masterCardsDefaultVars(masterId),
-      after: endCursor,
-      search,
-    }),
-    [masterId],
-  );
-
-  return useConnectionPagination<
+  const { masterId, ...rest } = input;
+  const factoryInput: UseEntityCardsConnectionInput<MasterCardEdge, MasterCardConnectionPageInfo> =
+    {
+      ownerId: masterId,
+      ...rest,
+    };
+  return useEntityCardsConnection<
     AdminMasterCardsConnectionQuery,
     AdminMasterCardsConnectionQueryVariables,
-    MasterCardEdge,
-    MasterCardConnectionPageInfo
-  >({
-    document: AdminMasterCardsConnectionDocument,
-    variables,
-    searchQuery,
-    selectConnection: (data) => data?.adminMasterCardsConnection,
-    buildFetchMoreVariables,
-    mergeConnection: mergeMasterCardsConnection,
-    initial: { edges: initialEdges, pageInfo: initialPageInfo, totalCount: initialTotalCount },
-    resolveFetchMoreError: (err) => getBackendErrorBanner(err) ?? fetchMoreErrorMessage,
-    logScope: "[master-cards-client]",
-  });
+    "adminMasterCardsConnection"
+  >(MASTER_CARDS_CONNECTION_CONFIG, factoryInput);
 }

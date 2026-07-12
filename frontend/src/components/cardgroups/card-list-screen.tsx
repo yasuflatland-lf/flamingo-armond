@@ -1,6 +1,5 @@
 "use client";
 
-import { Check } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { ReactNode, RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -9,9 +8,11 @@ import { CardForm } from "@/components/cardgroups/card-form";
 import { CardRow } from "@/components/cardgroups/card-row";
 import { CardSearchInput } from "@/components/cardgroups/card-search-input";
 import type { SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
+import { AddCardSheetContent } from "@/components/cards/add-card-sheet-content";
 import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
 import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import { useBulkSelection } from "@/hooks/use-bulk-selection";
@@ -60,75 +61,27 @@ function EditCardSheetContent({
   );
 }
 
-function AddCardSheetContent({
-  submit,
-  submitting,
-  error,
-  validationError,
-  onDirtyChange,
-  addedCount,
-}: {
-  submit: (values: { front: string; back: string }) => Promise<void>;
-  submitting: boolean;
-  error: unknown;
-  validationError: { field: string; message: string } | null;
-  onDirtyChange: (dirty: boolean) => void;
-  addedCount: number;
-}) {
-  const close = useFormSheetClose();
-  const t = useTranslations("Cards");
-
-  return (
-    <div className="space-y-3">
-      {addedCount > 0 ? (
-        <p
-          className="flex items-center gap-1.5 text-sm text-success"
-          data-testid="add-card-added-count"
-        >
-          <Check aria-hidden="true" className="h-4 w-4" />
-          {t("addedCount", { count: addedCount })}
-        </p>
-      ) : null}
-      <CardForm
-        mode="create"
-        idPrefix="add-card-"
-        defaultValues={{ front: "", back: "" }}
-        submit={submit}
-        submitting={submitting}
-        error={error}
-        validationError={validationError}
-        onCancel={close}
-        onDirtyChange={onDirtyChange}
-      />
-    </div>
-  );
-}
-
-const EmptyState = ({ search, onClear }: { search: string | null; onClear: () => void }) => {
+const CardsEmptyState = ({ search, onClear }: { search: string | null; onClear: () => void }) => {
   const t = useTranslations("Cards");
   return search !== null ? (
-    <div
-      className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border p-6"
-      data-testid="cards-empty-search"
-    >
-      <p className="text-sm text-muted-foreground">{t("noMatch", { search })}</p>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={onClear}
-        data-testid="cards-clear-search"
-      >
-        {t("clearSearch")}
-      </Button>
-    </div>
+    <EmptyState
+      className="rounded-md p-6"
+      testId="cards-empty-search"
+      body={t("noMatch", { search })}
+      actions={
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onClear}
+          data-testid="cards-clear-search"
+        >
+          {t("clearSearch")}
+        </Button>
+      }
+    />
   ) : (
-    <div
-      className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border p-6"
-      data-testid="cards-empty"
-    >
-      <p className="text-sm text-muted-foreground">{t("addSomeCards")}</p>
-    </div>
+    <EmptyState className="rounded-md p-6" testId="cards-empty" body={t("addSomeCards")} />
   );
 };
 
@@ -385,7 +338,7 @@ export function CardListScreen({
           )}
 
           {edges.length === 0 ? (
-            <EmptyState search={search.query} onClear={search.clear} />
+            <CardsEmptyState search={search.query} onClear={search.clear} />
           ) : (
             <ul className="space-y-3">
               {edges.map((edge) => {
@@ -417,6 +370,7 @@ export function CardListScreen({
           >
             <AddCardSheetContent
               key={`add-card-${sheet.createNonce}`}
+              idPrefix="add-card-"
               submit={sheet.handleCreate}
               submitting={creating}
               error={createError}

@@ -1,14 +1,14 @@
-import { useCallback, useMemo } from "react";
 import {
   CardsByCardgroupConnectionDocument,
   type CardsByCardgroupConnectionQuery,
   type CardsByCardgroupConnectionQueryVariables,
 } from "@/generated/graphql";
-import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import type { UseConnectionPaginationResult } from "@/lib/pagination/use-connection-pagination";
 import {
-  type UseConnectionPaginationResult,
-  useConnectionPagination,
-} from "@/lib/pagination/use-connection-pagination";
+  defineEntityCardsConnectionConfig,
+  type UseEntityCardsConnectionInput,
+  useEntityCardsConnection,
+} from "@/lib/pagination/use-entity-cards-connection";
 import { cardsDefaultVars } from "./queries";
 
 type CardEdge = CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"]["edges"][number];
@@ -24,7 +24,7 @@ export interface UseCardsConnectionInput {
   /**
    * Localized fallback banner for a fetchMore failure with no backend-mapped
    * message. The hook is not a component and cannot call `useTranslations`, so
-   * the client passes the localized string in (mirrors `useMasterCardsConnection`).
+   * the client passes the localized string in.
    */
   fetchMoreErrorMessage: string;
 }
@@ -36,72 +36,25 @@ export type UseCardsConnectionResult = UseConnectionPaginationResult<
   CardsByCardgroupConnectionQueryVariables
 >;
 
-// Concatenate the next page's edges onto the cached cards connection.
-function mergeCardsConnection(
-  prev: CardsByCardgroupConnectionQuery,
-  more: CardsByCardgroupConnectionQuery,
-): CardsByCardgroupConnectionQuery {
-  return {
-    cardsByCardgroupConnection: {
-      ...more.cardsByCardgroupConnection,
-      edges: [...prev.cardsByCardgroupConnection.edges, ...more.cardsByCardgroupConnection.edges],
-    },
-  };
-}
+const CARDS_CONNECTION_CONFIG = defineEntityCardsConnectionConfig({
+  document: CardsByCardgroupConnectionDocument,
+  connectionField: "cardsByCardgroupConnection",
+  defaultVars: cardsDefaultVars,
+  logScope: "[cards-client]",
+});
 
-// Cards-by-cardgroup pagination — a thin wrapper over the generic
-// useConnectionPagination hook. Supplies the three cards-specific bits: the
-// document, the cardsDefaultVars-based variables, and the
-// data?.cardsByCardgroupConnection accessor + edges concat. The three
-// pagination-rule invariants (in-flight guard, Effect Event observer advance,
-// split debounce-vs-immediate-reset) live in the generic hook.
+// Cards-by-cardgroup pagination — a thin wrapper over the shared
+// useEntityCardsConnection factory. Binds the cards config and translates the
+// route's `cardgroupId` to the factory's `ownerId`.
 export function useCardsConnection(input: UseCardsConnectionInput): UseCardsConnectionResult {
-  const {
-    cardgroupId,
-    searchQuery,
-    initialEdges,
-    initialPageInfo,
-    initialTotalCount,
-    fetchMoreErrorMessage,
-  } = input;
-
-  // When searchQuery is null we use cardsDefaultVars verbatim so the cache key
-  // matches the SSR seed exactly. For non-null searches we spread and override
-  // `search`, keeping `cardgroupId`/`first` in sync with the default.
-  const variables = useMemo<CardsByCardgroupConnectionQueryVariables>(
-    () =>
-      searchQuery === null
-        ? cardsDefaultVars(cardgroupId)
-        : { ...cardsDefaultVars(cardgroupId), search: searchQuery },
-    [cardgroupId, searchQuery],
-  );
-
-  const buildFetchMoreVariables = useCallback(
-    (
-      endCursor: string | null,
-      search: string | null,
-    ): CardsByCardgroupConnectionQueryVariables => ({
-      ...cardsDefaultVars(cardgroupId),
-      after: endCursor,
-      search,
-    }),
-    [cardgroupId],
-  );
-
-  return useConnectionPagination<
+  const { cardgroupId, ...rest } = input;
+  const factoryInput: UseEntityCardsConnectionInput<CardEdge, CardConnectionPageInfo> = {
+    ownerId: cardgroupId,
+    ...rest,
+  };
+  return useEntityCardsConnection<
     CardsByCardgroupConnectionQuery,
     CardsByCardgroupConnectionQueryVariables,
-    CardEdge,
-    CardConnectionPageInfo
-  >({
-    document: CardsByCardgroupConnectionDocument,
-    variables,
-    searchQuery,
-    selectConnection: (data) => data?.cardsByCardgroupConnection,
-    buildFetchMoreVariables,
-    mergeConnection: mergeCardsConnection,
-    initial: { edges: initialEdges, pageInfo: initialPageInfo, totalCount: initialTotalCount },
-    resolveFetchMoreError: (err) => getBackendErrorBanner(err) ?? fetchMoreErrorMessage,
-    logScope: "[cards-client]",
-  });
+    "cardsByCardgroupConnection"
+  >(CARDS_CONNECTION_CONFIG, factoryInput);
 }
