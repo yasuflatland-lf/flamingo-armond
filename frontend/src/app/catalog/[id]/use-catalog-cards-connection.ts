@@ -1,14 +1,14 @@
-import { useCallback, useMemo } from "react";
 import {
   CatalogMasterCardsConnectionDocument,
   type CatalogMasterCardsConnectionQuery,
   type CatalogMasterCardsConnectionQueryVariables,
 } from "@/generated/graphql";
-import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import type { UseConnectionPaginationResult } from "@/lib/pagination/use-connection-pagination";
 import {
-  type UseConnectionPaginationResult,
-  useConnectionPagination,
-} from "@/lib/pagination/use-connection-pagination";
+  defineEntityCardsConnectionConfig,
+  type UseEntityCardsConnectionInput,
+  useEntityCardsConnection,
+} from "@/lib/pagination/use-entity-cards-connection";
 import { catalogCardsDefaultVars } from "./queries";
 
 type CatalogCardEdge = CatalogMasterCardsConnectionQuery["masterCardsConnection"]["edges"][number];
@@ -23,7 +23,7 @@ export interface UseCatalogCardsConnectionInput {
   /**
    * Localized fallback banner for a fetchMore failure with no backend-mapped
    * message. The hook is not a component and cannot call `useTranslations`, so
-   * the client passes the localized string in (mirrors `useMasterCardsConnection`).
+   * the client passes the localized string in.
    */
   fetchMoreErrorMessage: string;
 }
@@ -35,74 +35,28 @@ export type UseCatalogCardsConnectionResult = UseConnectionPaginationResult<
   CatalogMasterCardsConnectionQueryVariables
 >;
 
-// Concatenate the next page's edges onto the cached master-cards connection.
-function mergeCatalogCardsConnection(
-  prev: CatalogMasterCardsConnectionQuery,
-  more: CatalogMasterCardsConnectionQuery,
-): CatalogMasterCardsConnectionQuery {
-  return {
-    masterCardsConnection: {
-      ...more.masterCardsConnection,
-      edges: [...prev.masterCardsConnection.edges, ...more.masterCardsConnection.edges],
-    },
-  };
-}
+const CATALOG_CARDS_CONNECTION_CONFIG = defineEntityCardsConnectionConfig({
+  document: CatalogMasterCardsConnectionDocument,
+  connectionField: "masterCardsConnection",
+  defaultVars: catalogCardsDefaultVars,
+  logScope: "[catalog-deck]",
+});
 
-// Catalog deck-detail card pagination — a thin wrapper over the generic
-// useConnectionPagination hook, mirroring `useCardsConnection`. Supplies the
-// catalog-specific bits: the document, the catalogCardsDefaultVars-based
-// variables, and the data?.masterCardsConnection accessor + edges concat. The
-// three pagination-rule invariants (in-flight guard, Effect Event observer
-// advance, split debounce-vs-immediate-reset) live in the generic hook.
+// Catalog deck-detail card pagination — a thin wrapper over the shared
+// useEntityCardsConnection factory, mirroring `useCardsConnection`. The list is
+// CARDS (not the /catalog cardgroups gallery), so the client passes a cards
+// fetchMore fallback message; see `.claude/rules/pagination.md`.
 export function useCatalogCardsConnection(
   input: UseCatalogCardsConnectionInput,
 ): UseCatalogCardsConnectionResult {
-  const {
-    masterCardgroupId,
-    searchQuery,
-    initialEdges,
-    initialPageInfo,
-    initialTotalCount,
-    fetchMoreErrorMessage,
-  } = input;
-
-  // When searchQuery is null we use catalogCardsDefaultVars verbatim so the
-  // cache key matches the SSR seed exactly. For non-null searches we spread and
-  // override `search`, keeping `masterCardgroupId`/`first` in sync with the default.
-  const variables = useMemo<CatalogMasterCardsConnectionQueryVariables>(
-    () =>
-      searchQuery === null
-        ? catalogCardsDefaultVars(masterCardgroupId)
-        : { ...catalogCardsDefaultVars(masterCardgroupId), search: searchQuery },
-    [masterCardgroupId, searchQuery],
-  );
-
-  const buildFetchMoreVariables = useCallback(
-    (
-      endCursor: string | null,
-      search: string | null,
-    ): CatalogMasterCardsConnectionQueryVariables => ({
-      ...catalogCardsDefaultVars(masterCardgroupId),
-      after: endCursor,
-      search,
-    }),
-    [masterCardgroupId],
-  );
-
-  return useConnectionPagination<
+  const { masterCardgroupId, ...rest } = input;
+  const factoryInput: UseEntityCardsConnectionInput<CatalogCardEdge, CatalogCardPageInfo> = {
+    ownerId: masterCardgroupId,
+    ...rest,
+  };
+  return useEntityCardsConnection<
     CatalogMasterCardsConnectionQuery,
     CatalogMasterCardsConnectionQueryVariables,
-    CatalogCardEdge,
-    CatalogCardPageInfo
-  >({
-    document: CatalogMasterCardsConnectionDocument,
-    variables,
-    searchQuery,
-    selectConnection: (data) => data?.masterCardsConnection,
-    buildFetchMoreVariables,
-    mergeConnection: mergeCatalogCardsConnection,
-    initial: { edges: initialEdges, pageInfo: initialPageInfo, totalCount: initialTotalCount },
-    resolveFetchMoreError: (err) => getBackendErrorBanner(err) ?? fetchMoreErrorMessage,
-    logScope: "[catalog-deck]",
-  });
+    "masterCardsConnection"
+  >(CATALOG_CARDS_CONNECTION_CONFIG, factoryInput);
 }

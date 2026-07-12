@@ -53,7 +53,7 @@ export function RoleListItem({ id, name, isSystem, busy, onEdit, onDelete }: Rol
         <button
           type="button"
           onClick={() => onEdit(id)}
-          aria-label={`Edit role ${name}`}
+          aria-label={t("editRoleAriaLabel", { name })}
           className="flex min-w-0 flex-1 flex-col gap-1 p-4 text-left"
         >
           <span className="truncate font-medium text-foreground" data-testid="admin-role-name">
@@ -63,7 +63,7 @@ export function RoleListItem({ id, name, isSystem, busy, onEdit, onDelete }: Rol
         <HoverRevealDeleteButton
           onDelete={() => onDelete(id)}
           disabled={busy}
-          ariaLabel={`Delete ${name}`}
+          ariaLabel={t("deleteRoleAriaLabel", { name })}
           data-testid={`admin-role-delete-btn-${id}`}
         />
       </li>

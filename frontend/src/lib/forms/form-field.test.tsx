@@ -120,6 +120,71 @@ describe("FormField (textarea / number)", () => {
   });
 });
 
+describe("FormField (hint / trailing)", () => {
+  it("renders hint content between the control and the field error", () => {
+    render(
+      <FormField
+        field={stringField({ name: "displayName" })}
+        label="Display name"
+        hint={<p>pick something memorable</p>}
+      />,
+    );
+    expect(screen.getByText("pick something memorable")).toBeInTheDocument();
+  });
+
+  it("renders trailing content (e.g. a clear button)", () => {
+    render(
+      <FormField
+        field={stringField({ name: "bio", value: "hi" })}
+        label="Bio"
+        kind="textarea"
+        trailing={
+          <button type="button" tabIndex={-1}>
+            Clear bio
+          </button>
+        }
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Clear bio" })).toBeInTheDocument();
+  });
+
+  it("orders control, then hint, then trailing, then the field error", () => {
+    const { container } = render(
+      <FormField
+        field={stringField({ name: "displayName", value: "x", errors: [{ message: "required" }] })}
+        label="Display name"
+        hint={<span data-testid="hint-node">hint text</span>}
+        trailing={<span data-testid="trailing-node">trailing node</span>}
+      />,
+    );
+    const wrapper = container.firstElementChild as HTMLElement;
+    const children = Array.from(wrapper.children) as HTMLElement[];
+    const idxControl = children.findIndex((el) => el.tagName === "INPUT");
+    const idxHint = children.findIndex((el) => el.dataset.testid === "hint-node");
+    const idxTrailing = children.findIndex((el) => el.dataset.testid === "trailing-node");
+    const idxError = children.findIndex((el) => el.textContent === "required");
+
+    expect(idxControl).toBeGreaterThanOrEqual(0);
+    expect(idxControl).toBeLessThan(idxHint);
+    expect(idxHint).toBeLessThan(idxTrailing);
+    expect(idxTrailing).toBeLessThan(idxError);
+  });
+
+  it("does not render hint or trailing for the checkbox kind", () => {
+    render(
+      <FormField
+        field={booleanField()}
+        label="Default starter"
+        kind="checkbox"
+        hint={<span>should-not-appear-hint</span>}
+        trailing={<span>should-not-appear-trailing</span>}
+      />,
+    );
+    expect(screen.queryByText("should-not-appear-hint")).toBeNull();
+    expect(screen.queryByText("should-not-appear-trailing")).toBeNull();
+  });
+});
+
 describe("FormField (checkbox)", () => {
   it("renders a checkbox reflecting the boolean value, with the label after it and no FieldError row", () => {
     render(
