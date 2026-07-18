@@ -13,6 +13,15 @@ import { StatsClient } from "./stats-client";
 
 export const metadata: Metadata = { title: "Progress" };
 
+// Detect an old backend that predates the `performanceWindows` field by
+// matching the GraphQL validation error text. This is a DELIBERATE, SCOPED
+// exception to this repo's convention of parsing `extensions.code` rather than
+// substring-matching a GraphQL error message: validation-phase errors
+// ("Cannot query field ...") carry only the generic `GRAPHQL_VALIDATION_FAILED`
+// code with no field identity, so — unlike the `UNAUTHENTICATED` / `FORBIDDEN`
+// codes parsed structurally elsewhere in this file — the offending field name
+// is recoverable only from the message text. This is a temporary rollout shim,
+// removable once every backend exposes `performanceWindows`.
 function isPerformanceWindowsUnavailable(err: unknown): boolean {
   return (
     err instanceof Error &&
@@ -23,7 +32,18 @@ function isPerformanceWindowsUnavailable(err: unknown): boolean {
 }
 
 function adaptLegacyStats(data: LegacyMyLearningStatsQueryType): MyLearningStatsQueryType {
+  // Mirror the primary-path null-guard (see StatsPage below): a partial GraphQL
+  // response can carry `myLearningStats: null` alongside a non-auth error, in
+  // which case gqlFetch returns the data instead of throwing. Surface that as a
+  // clear invariant error rather than letting the destructure throw a raw
+  // TypeError that the fetch catch would then mislabel as a "gqlFetch failed".
+  if (!data.myLearningStats) {
+    throw new Error("/stats: legacy myLearningStats returned null with no error");
+  }
   const { performance, ...stats } = data.myLearningStats;
+  if (!performance) {
+    throw new Error("/stats: legacy performance returned null with no error");
+  }
   return {
     myLearningStats: {
       ...stats,
@@ -51,10 +71,9 @@ export default async function StatsPage() {
   } catch (err) {
     if (isUnauthenticatedGraphQLError(err)) redirect("/login");
     if (isPerformanceWindowsUnavailable(err)) {
+      let legacyData: LegacyMyLearningStatsQueryType;
       try {
-        const legacyData = await gqlFetch(LegacyMyLearningStatsQuery, { revalidate: 0 });
-        data = adaptLegacyStats(legacyData);
-        performanceWindowsAvailable = false;
+        legacyData = await gqlFetch(LegacyMyLearningStatsQuery, { revalidate: 0 });
       } catch (legacyErr) {
         if (isUnauthenticatedGraphQLError(legacyErr)) redirect("/login");
         console.error("[stats] legacy gqlFetch failed:", {
@@ -62,6 +81,11 @@ export default async function StatsPage() {
         });
         throw legacyErr;
       }
+      // adaptLegacyStats guards the response shape and throws a clear invariant
+      // error on null data. Keep it outside the fetch try/catch so a shape
+      // failure surfaces on its own, not mislabeled as a "gqlFetch failed".
+      data = adaptLegacyStats(legacyData);
+      performanceWindowsAvailable = false;
     } else {
       console.error("[stats] gqlFetch failed:", {
         name: err instanceof Error ? err.name : "unknown",
