@@ -20,6 +20,12 @@ type mockSwipeRecordRepoForSwipe struct {
 	listUserID string
 	listLimit  int
 	created    *domain.SwipeRecord
+	// phaseBeforeAtCreate is a value snapshot of created.PhaseBefore taken at
+	// CreateTx call time, so an "X before Y" ordering assertion sees the
+	// pre-rating phase rather than a post-hoc read of a possibly-mutated state
+	// (docs/backend/library-gotchas/mock-snapshot-for-ordering-assertion.md).
+	phaseBeforeAtCreate *domain.FSRSPhase
+	phaseAfterAtCreate  *domain.FSRSPhase
 }
 
 func (m *mockSwipeRecordRepoForSwipe) CreateTx(_ context.Context, _ *gorm.DB, sr *domain.SwipeRecord) error {
@@ -27,6 +33,14 @@ func (m *mockSwipeRecordRepoForSwipe) CreateTx(_ context.Context, _ *gorm.DB, sr
 		return m.createErr
 	}
 	m.created = sr
+	if sr != nil {
+		if sr.PhaseBefore != nil {
+			p := *sr.PhaseBefore
+			m.phaseBeforeAtCreate = &p
+		}
+		after := sr.StateAfter.Phase
+		m.phaseAfterAtCreate = &after
+	}
 	m.recent = append([]*domain.SwipeRecord{sr}, m.recent...)
 	return nil
 }
@@ -182,6 +196,63 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 	}
 	if swipeRepo.created.CardgroupID != "cg-1" {
 		t.Fatalf("created swipe cardgroup=%q, want cg-1", swipeRepo.created.CardgroupID)
+	}
+}
+
+// TestSwipeUsecase_HandleSwipe_RecordsPreRatingPhase proves the swipe record
+// handed to CreateTx carries the phase the card was in BEFORE applyRating
+// mutated it, not the post-rating phase. For a brand-new card the pre-swipe
+// phase is FSRSPhaseNew; a RatingEasy graduation advances StateAfter.Phase past
+// New, so asserting PhaseBefore == New AND StateAfter.Phase != New pins that the
+// snapshot was captured before the mutation. The mock snapshots PhaseBefore at
+// CreateTx call time (docs/backend/library-gotchas/mock-snapshot-for-ordering-assertion.md).
+func TestSwipeUsecase_HandleSwipe_RecordsPreRatingPhase(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &mockCardRepository{
+		findResult: &domain.Card{
+			ID:          "card-1",
+			CardgroupID: domain.CardgroupID("cg-1"),
+		},
+	}
+	cardgroupRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
+	}
+	swipeRepo := &mockSwipeRecordRepoForSwipe{}
+	userFSRSRepo := &mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}}
+	tx, _ := fakeTxRunner()
+	uc := NewSwipeUsecaseWithTx(
+		cardRepo,
+		cardgroupRepo,
+		swipeRepo,
+		service.NewFSRSScheduler(),
+		tx,
+		userFSRSRepo,
+		newTestLogger(),
+	)
+
+	outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+		CardID:      "card-1",
+		CardgroupID: "cg-1",
+		Rating:      int(domain.RatingEasy),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if outcome.Swipe == nil {
+		t.Fatal("expected non-nil Swipe on success")
+	}
+	if swipeRepo.phaseBeforeAtCreate == nil {
+		t.Fatal("expected a pre-swipe phase snapshot to be captured at CreateTx call time")
+	}
+	if *swipeRepo.phaseBeforeAtCreate != domain.FSRSPhaseNew {
+		t.Fatalf("PhaseBefore=%d, want FSRSPhaseNew (%d)", *swipeRepo.phaseBeforeAtCreate, domain.FSRSPhaseNew)
+	}
+	if swipeRepo.phaseAfterAtCreate == nil || *swipeRepo.phaseAfterAtCreate == domain.FSRSPhaseNew {
+		t.Fatalf("StateAfter.Phase must have advanced past FSRSPhaseNew, got %v", swipeRepo.phaseAfterAtCreate)
+	}
+	if swipeRepo.created.ScheduledDaysBefore == nil {
+		t.Fatal("expected a non-nil ScheduledDaysBefore snapshot for a swipe recorded through the constructor")
 	}
 }
 

@@ -54,15 +54,16 @@ func TestLearnDisplayModeDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back six migrations newest-first: add_new_card_ratio_to_user_preferences
-	// (now the newest), index_hygiene_users_swipe_records,
+	// Step back seven migrations newest-first: add_pre_swipe_snapshot_to_swipe_records
+	// (now the newest), add_new_card_ratio_to_user_preferences,
+	// index_hygiene_users_swipe_records,
 	// drop_master_cardgroup_metadata_columns, master_cards_front_citext,
 	// add_user_card_fsrs_card_id_index,
 	// then add_learn_display_mode_to_user_preferences (the target). The Steps(1)
 	// below re-applies add_learn_display_mode, and the t.Cleanup restores the
 	// rest. Bump this count when adding migrations after
 	// add_learn_display_mode_to_user_preferences.
-	if err := m.Steps(-6); err != nil {
+	if err := m.Steps(-7); err != nil {
 		t.Fatalf("migrate down to before add_learn_display_mode_to_user_preferences: %v", err)
 	}
 

@@ -26,6 +26,10 @@ type gormSwipeRecord struct {
 	Lapses        int       `gorm:"column:lapses"`
 	State         int       `gorm:"column:state"`
 	LastReview    time.Time `gorm:"column:last_review"`
+	// Pre-swipe snapshot columns. Nullable: a NULL marks a legacy row recorded
+	// before the columns existed.
+	PhaseBefore         *int16 `gorm:"column:phase_before"`
+	ScheduledDaysBefore *int   `gorm:"column:scheduled_days_before"`
 }
 
 func (gormSwipeRecord) TableName() string { return "swipe_records" }
@@ -137,33 +141,61 @@ func (r *swipeRecordRepo) CreateTx(ctx context.Context, tx *gorm.DB, sr *domain.
 }
 
 func swipeRecordToRow(sr *domain.SwipeRecord) *gormSwipeRecord {
+	var phaseBefore *int16
+	if sr.PhaseBefore != nil {
+		v := int16(*sr.PhaseBefore)
+		phaseBefore = &v
+	}
+	var scheduledDaysBefore *int
+	if sr.ScheduledDaysBefore != nil {
+		v := *sr.ScheduledDaysBefore
+		scheduledDaysBefore = &v
+	}
 	return &gormSwipeRecord{
-		ID:            sr.ID,
-		UserID:        string(sr.UserID),
-		CardID:        sr.CardID,
-		CardgroupID:   string(sr.CardgroupID),
-		Rating:        int(sr.Rating),
-		ReviewedAt:    sr.ReviewedAt,
-		Due:           sr.StateAfter.Due,
-		Stability:     sr.StateAfter.Stability,
-		Difficulty:    sr.StateAfter.Difficulty,
-		ElapsedDays:   sr.StateAfter.ElapsedDays,
-		ScheduledDays: sr.StateAfter.ScheduledDays,
-		Reps:          sr.StateAfter.Reps,
-		Lapses:        sr.StateAfter.Lapses,
-		State:         int(sr.StateAfter.Phase),
-		LastReview:    sr.StateAfter.LastReview,
+		ID:                  sr.ID,
+		UserID:              string(sr.UserID),
+		CardID:              sr.CardID,
+		CardgroupID:         string(sr.CardgroupID),
+		Rating:              int(sr.Rating),
+		ReviewedAt:          sr.ReviewedAt,
+		Due:                 sr.StateAfter.Due,
+		Stability:           sr.StateAfter.Stability,
+		Difficulty:          sr.StateAfter.Difficulty,
+		ElapsedDays:         sr.StateAfter.ElapsedDays,
+		ScheduledDays:       sr.StateAfter.ScheduledDays,
+		Reps:                sr.StateAfter.Reps,
+		Lapses:              sr.StateAfter.Lapses,
+		State:               int(sr.StateAfter.Phase),
+		LastReview:          sr.StateAfter.LastReview,
+		PhaseBefore:         phaseBefore,
+		ScheduledDaysBefore: scheduledDaysBefore,
 	}
 }
 
 func swipeRecordToDomain(row gormSwipeRecord) (*domain.SwipeRecord, error) {
 	rating := domain.Rating(row.Rating)
 	if !rating.IsValid() {
-		return nil, eris.Errorf("repository: invalid Rating value %d for swipe record %s", row.Rating, row.ID)
+		return nil, eris.Errorf("repository: swipe record: invalid Rating value %d for swipe record %s", row.Rating, row.ID)
 	}
 	phase := domain.FSRSPhase(row.State)
 	if !phase.IsValid() {
-		return nil, eris.Errorf("repository: invalid FSRSPhase value %d for swipe record %s", row.State, row.ID)
+		return nil, eris.Errorf("repository: swipe record: invalid FSRSPhase value %d for swipe record %s", row.State, row.ID)
+	}
+	// Pre-swipe snapshot columns are nullable (NULL = legacy row). A non-nil
+	// phase_before that is out of range is a corrupt persisted value; reject it
+	// rather than reconstitute a SwipeRecord carrying an invalid phase.
+	var phaseBefore *domain.FSRSPhase
+	if row.PhaseBefore != nil {
+		p := domain.FSRSPhase(*row.PhaseBefore)
+		if !p.IsValid() {
+			return nil, eris.Errorf("repository: swipe record: invalid phase_before value %d for swipe record %s", *row.PhaseBefore, row.ID)
+		}
+		phaseBefore = &p
+	}
+	var scheduledDaysBefore *int
+	if row.ScheduledDaysBefore != nil {
+		v := *row.ScheduledDaysBefore
+		scheduledDaysBefore = &v
 	}
 	return &domain.SwipeRecord{
 		ID:          row.ID,
@@ -183,5 +215,7 @@ func swipeRecordToDomain(row gormSwipeRecord) (*domain.SwipeRecord, error) {
 			Phase:         phase,
 			LastReview:    row.LastReview,
 		},
+		PhaseBefore:         phaseBefore,
+		ScheduledDaysBefore: scheduledDaysBefore,
 	}, nil
 }

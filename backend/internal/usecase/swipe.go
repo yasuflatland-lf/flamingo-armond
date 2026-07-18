@@ -51,7 +51,7 @@ type swipeUsecase struct {
 	userFSRSRepo   UserCardFSRSRepoForSwipe
 	scheduler      *service.FSRSScheduler
 	applyRating    func(current *domain.UserCardFSRS, scheduler domain.FSRSScheduler, rating domain.Rating, now time.Time) error
-	newSwipeRecord func(userID domain.UserID, cardID string, cardgroupID domain.CardgroupID, rating domain.Rating, reviewedAt time.Time, stateAfter domain.FSRSState) (*domain.SwipeRecord, error)
+	newSwipeRecord func(userID domain.UserID, cardID string, cardgroupID domain.CardgroupID, rating domain.Rating, reviewedAt time.Time, stateBefore, stateAfter domain.FSRSState) (*domain.SwipeRecord, error)
 	tx             txRunner
 	logger         *slog.Logger
 }
@@ -182,6 +182,10 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		if current == nil {
 			current = domain.NewUserCardFSRSForNewCard(domain.UserID(user.Sub), card.ID, now)
 		}
+		// Snapshot the pre-swipe state before applyRating mutates current.State
+		// in place. For a brand-new card current came from
+		// NewUserCardFSRSForNewCard, so before.Phase == FSRSPhaseNew.
+		before := current.State
 		if err := u.applyRating(current, u.scheduler, rating, now); err != nil {
 			return eris.Wrap(err, "usecase: swipe: apply rating")
 		}
@@ -191,7 +195,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			}
 			return eris.Wrap(err, "usecase: swipe: upsert user-card fsrs")
 		}
-		sr, err := u.newSwipeRecord(domain.UserID(user.Sub), card.ID, card.CardgroupID, rating, now, current.State)
+		sr, err := u.newSwipeRecord(domain.UserID(user.Sub), card.ID, card.CardgroupID, rating, now, before, current.State)
 		if err != nil {
 			return eris.Wrap(err, "usecase: swipe: new swipe record")
 		}
