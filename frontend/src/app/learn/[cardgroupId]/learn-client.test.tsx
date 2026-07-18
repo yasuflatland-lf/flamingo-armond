@@ -195,16 +195,6 @@ const CARD_2 = {
   cardgroupId: CG_ID,
 };
 
-const DEFAULT_METRICS = {
-  __typename: "PerformanceMetrics" as const,
-  successRate: 0.5,
-  avgDifficulty: 0.5,
-  retentionRate: 0.5,
-  studyStreak: 0,
-  lapseRate: 0,
-  reviewCount: 1,
-};
-
 /**
  * Default `LearnNextDueCards` mocks returning `[]`.
  *
@@ -317,7 +307,6 @@ function makeSwipeMock(rating: 1 | 2 | 4) {
               response: {
                 __typename: "SwipeResponse" as const,
                 performanceMode: "DIFFICULT",
-                metrics: DEFAULT_METRICS,
               },
             },
           },
@@ -1038,7 +1027,6 @@ describe("<LearnClient> onSwipe identity stability", () => {
             response: {
               __typename: "SwipeResponse" as const,
               performanceMode: "DIFFICULT",
-              metrics: DEFAULT_METRICS,
             },
           },
         },
@@ -1182,7 +1170,6 @@ describe("<LearnClient> queue prefetch", () => {
             response: {
               __typename: "SwipeResponse" as const,
               performanceMode: "DIFFICULT",
-              metrics: DEFAULT_METRICS,
             },
           },
         },
@@ -1308,7 +1295,6 @@ describe("<LearnClient> queue prefetch", () => {
             response: {
               __typename: "SwipeResponse" as const,
               performanceMode: "DIFFICULT",
-              metrics: DEFAULT_METRICS,
             },
           },
         },
@@ -1400,7 +1386,6 @@ describe("<LearnClient> queue prefetch", () => {
             response: {
               __typename: "SwipeResponse" as const,
               performanceMode: "DIFFICULT",
-              metrics: DEFAULT_METRICS,
             },
           },
         },
@@ -1458,7 +1443,6 @@ describe("<LearnClient> queue prefetch", () => {
             response: {
               __typename: "SwipeResponse" as const,
               performanceMode: "DIFFICULT",
-              metrics: DEFAULT_METRICS,
             },
           },
         },
@@ -1552,7 +1536,6 @@ describe("<LearnClient> queue prefetch", () => {
                   response: {
                     __typename: "SwipeResponse" as const,
                     performanceMode: "DIFFICULT",
-                    metrics: DEFAULT_METRICS,
                   },
                 },
               },
