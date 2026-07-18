@@ -75,9 +75,6 @@ func toLearningStatsModel(ctx context.Context, res *usecase.LearningStatsResult)
 		},
 		Decks:       decks,
 		OwnsAnyDeck: res.OwnsAnyDeck,
-		// Keep the legacy field populated until every independently deployed
-		// frontend has switched to performanceWindows.
-		Performance: performance365,
 		PerformanceWindows: &model.PerformanceWindows{
 			Days365: performance365,
 			Days30:  toPerformanceMetricsModel(res.Windows.Days30),

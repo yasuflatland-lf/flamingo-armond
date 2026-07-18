@@ -277,13 +277,12 @@ func ctxWithCardLoaderError(base context.Context, loadErr error) context.Context
 	return loader.WithContext(base, loaders)
 }
 
-const myLearningStatsDiagnosticQuery = `{"query":"{ myLearningStats { mastery { totalStudied } performance { retentionRate successRate lapseRate studyStreak reviewCount avgDifficulty } performanceWindows { days365 { retentionRate successRate lapseRate studyStreak reviewCount avgDifficulty } days30 { retentionRate successRate lapseRate studyStreak reviewCount avgDifficulty } days7 { retentionRate successRate lapseRate studyStreak reviewCount avgDifficulty } } strugglingCards { card { id front } lapses stability } } }"}`
+const myLearningStatsDiagnosticQuery = `{"query":"{ myLearningStats { mastery { totalStudied } performanceWindows { days365 { retentionRate successRate lapseRate studyStreak reviewCount avgDifficulty } days30 { retentionRate successRate lapseRate studyStreak reviewCount avgDifficulty } days7 { retentionRate successRate lapseRate studyStreak reviewCount avgDifficulty } } strugglingCards { card { id front } lapses stability } } }"}`
 
 // TestMyLearningStats_PerformanceAndStrugglingCards verifies the diagnostic half
-// of the response: all three performance snapshots map every metric field, the
-// legacy performance field remains an alias for days365 during the staged
-// rollout, and the struggling-card list preserves the usecase order while
-// hydrating each Card from its id via the in-memory Card DataLoader.
+// of the response: all three performance snapshots map every metric field, and
+// the struggling-card list preserves the usecase order while hydrating each Card
+// from its id via the in-memory Card DataLoader.
 func TestMyLearningStats_PerformanceAndStrugglingCards(t *testing.T) {
 	t.Parallel()
 
@@ -337,15 +336,6 @@ func TestMyLearningStats_PerformanceAndStrugglingCards(t *testing.T) {
 			if perf[field] != value {
 				t.Fatalf("%s.%s = %v, want %v; metrics: %v", name, field, perf[field], value, perf)
 			}
-		}
-	}
-	legacy, _ := stats["performance"].(map[string]any)
-	if legacy == nil {
-		t.Fatalf("expected legacy performance field, got nil; response: %v", resp)
-	}
-	for field, value := range wants["days365"] {
-		if legacy[field] != value {
-			t.Fatalf("performance.%s = %v, want %v; metrics: %v", field, legacy[field], value, legacy)
 		}
 	}
 
