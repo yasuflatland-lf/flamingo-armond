@@ -4,8 +4,6 @@ type LearningStats {
   mastery: MasteryBreakdown!
   """Per-deck acquisition, one entry per owned deck that has at least one card (decks with cards but no studied cards are included; empty decks are omitted)."""
   decks: [DeckMastery!]!
-  """Legacy diagnostic snapshot over the trailing 365-day window. Use performanceWindows for selectable rolling windows."""
-  performance: PerformanceMetrics! @deprecated(reason: "Use performanceWindows.days365.")
   """Diagnostic performance snapshots over trailing rolling windows."""
   performanceWindows: PerformanceWindows!
   """Cards the learner struggles with most, ranked by lapses (desc) then stability (asc), filtered to at least one lapse, capped at 10."""

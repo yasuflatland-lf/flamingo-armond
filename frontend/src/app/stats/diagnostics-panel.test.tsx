@@ -97,13 +97,4 @@ describe("<DiagnosticsPanel>", () => {
     await user.click(screen.getByRole("button", { name: "Last 7 days" }));
     expect(tile("Streak").getByText("9 days")).toBeInTheDocument();
   });
-
-  it("hides unavailable short-window controls during a legacy-backend rollout", () => {
-    renderWithIntl(
-      <DiagnosticsPanel performanceWindows={performanceWindows} showWindowSelector={false} />,
-    );
-
-    expect(screen.queryByRole("group", { name: "Diagnostics period" })).not.toBeInTheDocument();
-    expect(tile("Reviews").getByText("1,430")).toBeInTheDocument();
-  });
 });

@@ -22,13 +22,7 @@ import { StrugglingList } from "./struggling-list";
  * content sections. All copy flows through `useTranslations("Stats")`;
  * number/percent formatting lives in the section components via `useFormatter()`.
  */
-export function StatsClient({
-  stats,
-  performanceWindowsAvailable = true,
-}: {
-  stats: MyLearningStatsQuery["myLearningStats"];
-  performanceWindowsAvailable?: boolean;
-}) {
+export function StatsClient({ stats }: { stats: MyLearningStatsQuery["myLearningStats"] }) {
   const t = useTranslations("Stats");
   const studiedCount = stats.mastery.totalStudied;
   const hasDecks = stats.decks.length > 0;
@@ -65,10 +59,7 @@ export function StatsClient({
     content = (
       <div className="flex flex-col gap-4 sm:gap-6">
         <MasterySummary mastery={stats.mastery} />
-        <DiagnosticsPanel
-          performanceWindows={stats.performanceWindows}
-          showWindowSelector={performanceWindowsAvailable}
-        />
+        <DiagnosticsPanel performanceWindows={stats.performanceWindows} />
         <div className="grid gap-4 lg:grid-cols-[4fr_3fr]">
           <PerDeckList decks={stats.decks} />
           <StrugglingList cards={stats.strugglingCards} />

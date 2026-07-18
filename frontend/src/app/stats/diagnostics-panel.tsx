@@ -35,10 +35,8 @@ const PERCENT_FORMAT = { style: "percent", maximumFractionDigits: 0 } as const;
  */
 export function DiagnosticsPanel({
   performanceWindows,
-  showWindowSelector = true,
 }: {
   performanceWindows: PerformanceWindows;
-  showWindowSelector?: boolean;
 }) {
   const t = useTranslations("Stats");
   const format = useFormatter();
@@ -96,33 +94,31 @@ export function DiagnosticsPanel({
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">{t("diagnosticsHeading")}</h2>
-        {showWindowSelector ? (
-          <fieldset
-            aria-label={t("diagnosticsWindowGroupAria")}
-            className="inline-flex min-w-0 shrink-0 rounded-lg border-0 bg-muted p-0.5"
-          >
-            {WINDOW_OPTIONS.map(({ key, days }) => {
-              const selected = key === selectedWindow;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  aria-label={t("diagnosticsWindowOptionAria", { days })}
-                  aria-pressed={selected}
-                  onClick={() => setSelectedWindow(key)}
-                  className={cn(
-                    "min-h-11 min-w-11 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                    selected
-                      ? "bg-brand-primary text-brand-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {t("diagnosticsWindowOption", { days })}
-                </button>
-              );
-            })}
-          </fieldset>
-        ) : null}
+        <fieldset
+          aria-label={t("diagnosticsWindowGroupAria")}
+          className="inline-flex min-w-0 shrink-0 rounded-lg border-0 bg-muted p-0.5"
+        >
+          {WINDOW_OPTIONS.map(({ key, days }) => {
+            const selected = key === selectedWindow;
+            return (
+              <button
+                key={key}
+                type="button"
+                aria-label={t("diagnosticsWindowOptionAria", { days })}
+                aria-pressed={selected}
+                onClick={() => setSelectedWindow(key)}
+                className={cn(
+                  "min-h-11 min-w-11 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  selected
+                    ? "bg-brand-primary text-brand-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {t("diagnosticsWindowOption", { days })}
+              </button>
+            );
+          })}
+        </fieldset>
       </div>
       {performance.reviewCount === 0 ? (
         // Dormant learner: no reviews in the window. The backend returns
