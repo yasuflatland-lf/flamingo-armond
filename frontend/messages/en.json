@@ -430,7 +430,7 @@
     "diagnosticsLapse": "Lapse",
     "diagnosticsLapseCaption": "forgotten again",
     "diagnosticsStreak": "Streak",
-    "diagnosticsStreakCaption": "consecutive days",
+    "diagnosticsStreakCaption": "365-day streak",
     "diagnosticsStreakValue": "{days, plural, one {# day} other {# days}}",
     "diagnosticsReviews": "Reviews",
     "diagnosticsReviewsCaption": "total swipes",
@@ -439,8 +439,8 @@
     "diagnosticsRetentionHint": "Share of reviews you recalled correctly by their due date. Higher means memory is holding as planned.",
     "diagnosticsSuccessHint": "Share of swipes you rated a success. A rough gauge of how confident your answers felt.",
     "diagnosticsLapseHint": "Among already-learned cards, the share you forgot on review. Lower means they're sticking.",
-    "diagnosticsStreakHint": "Days you've studied without a gap, up to today. Missing a day resets it.",
-    "diagnosticsReviewsHint": "Your total swipes over the last 365 days.",
+    "diagnosticsStreakHint": "Days you've studied without a gap, up to today, calculated from the last 365 days regardless of the selected period. Missing a day resets it.",
+    "diagnosticsReviewsHint": "Your total swipes over the last {days} days.",
     "diagnosticsAvgDifficultyHint": "Average \"hardness\" FSRS assigns your cards (0–10; higher is harder).",
     "diagnosticsHintAriaLabel": "About {metric}",
     "perDeckHeading": "Per-deck acquisition",
@@ -460,7 +460,9 @@
     "emptyDeckBody": "You created a deck but it has no cards. Add a few cards, then study them — your mastery and progress will appear here.",
     "emptyDeckCta": "Add cards",
     "diagnosticsHeading": "Diagnostics",
-    "diagnosticsWindow": "Last 365 days",
-    "diagnosticsNoActivity": "Not enough recent activity in the last 365 days."
+    "diagnosticsWindowOption": "{days}d",
+    "diagnosticsWindowOptionAria": "Last {days} days",
+    "diagnosticsWindowGroupAria": "Diagnostics period",
+    "diagnosticsNoActivityInWindow": "No reviews in the last {days} days."
   }
 }

@@ -4,12 +4,24 @@ type LearningStats {
   mastery: MasteryBreakdown!
   """Per-deck acquisition, one entry per owned deck that has at least one card (decks with cards but no studied cards are included; empty decks are omitted)."""
   decks: [DeckMastery!]!
-  """Diagnostic performance snapshot over the trailing 365-day window (retention, success, lapse rates, study streak, review count, average difficulty)."""
-  performance: PerformanceMetrics!
+  """Legacy diagnostic snapshot over the trailing 365-day window. Use performanceWindows for selectable rolling windows."""
+  performance: PerformanceMetrics! @deprecated(reason: "Use performanceWindows.days365.")
+  """Diagnostic performance snapshots over trailing rolling windows."""
+  performanceWindows: PerformanceWindows!
   """Cards the learner struggles with most, ranked by lapses (desc) then stability (asc), filtered to at least one lapse, capped at 10."""
   strugglingCards: [StrugglingCard!]!
   """True iff the caller owns at least one deck (cardgroup), regardless of card count. Distinguishes a brand-new user (owns nothing) from one who created a deck but has not added any cards yet — `decks` omits zero-card decks, so it alone cannot make that distinction."""
   ownsAnyDeck: Boolean!
+}
+
+"""Trailing rolling-window diagnostic snapshots. days30/days7 are computed from the swipes inside each window; studyStreak is always computed from the full 365-day set so long streaks are never under-reported."""
+type PerformanceWindows {
+  """Snapshot over the trailing 365-day window."""
+  days365: PerformanceMetrics!
+  """Snapshot over the trailing 30-day window."""
+  days30: PerformanceMetrics!
+  """Snapshot over the trailing 7-day window."""
+  days7: PerformanceMetrics!
 }
 
 """A card the learner struggles with (high lapses / low stability)."""

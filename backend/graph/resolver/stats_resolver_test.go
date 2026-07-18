@@ -277,25 +277,23 @@ func ctxWithCardLoaderError(base context.Context, loadErr error) context.Context
 	return loader.WithContext(base, loaders)
 }
 
-const myLearningStatsDiagnosticQuery = `{"query":"{ myLearningStats { mastery { totalStudied } performance { retentionRate successRate lapseRate studyStreak reviewCount avgDifficulty } strugglingCards { card { id front } lapses stability } } }"}`
+const myLearningStatsDiagnosticQuery = `{"query":"{ myLearningStats { mastery { totalStudied } performance { retentionRate successRate lapseRate studyStreak reviewCount avgDifficulty } performanceWindows { days365 { retentionRate successRate lapseRate studyStreak reviewCount avgDifficulty } days30 { retentionRate successRate lapseRate studyStreak reviewCount avgDifficulty } days7 { retentionRate successRate lapseRate studyStreak reviewCount avgDifficulty } } strugglingCards { card { id front } lapses stability } } }"}`
 
 // TestMyLearningStats_PerformanceAndStrugglingCards verifies the diagnostic half
-// of the response: the performance snapshot maps every metric field, and the
-// struggling-card list preserves the usecase order while hydrating each Card
-// from its id via the in-memory Card DataLoader.
+// of the response: all three performance snapshots map every metric field, the
+// legacy performance field remains an alias for days365 during the staged
+// rollout, and the struggling-card list preserves the usecase order while
+// hydrating each Card from its id via the in-memory Card DataLoader.
 func TestMyLearningStats_PerformanceAndStrugglingCards(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockStatsUsecase{
 		result: &usecase.LearningStatsResult{
 			Mastery: service.MasteryBreakdown{TotalStudied: 3},
-			Performance: service.PerformanceMetrics{
-				SuccessRate:   0.8,
-				AvgDifficulty: 0.4,
-				RetentionRate: 0.9,
-				StudyStreak:   5,
-				LapseRate:     0.1,
-				ReviewCount:   42,
+			Windows: service.WindowedMetrics{
+				Days365: service.PerformanceMetrics{SuccessRate: 0.81, AvgDifficulty: 0.41, RetentionRate: 0.91, StudyStreak: 5, LapseRate: 0.11, ReviewCount: 365},
+				Days30:  service.PerformanceMetrics{SuccessRate: 0.82, AvgDifficulty: 0.42, RetentionRate: 0.92, StudyStreak: 5, LapseRate: 0.12, ReviewCount: 30},
+				Days7:   service.PerformanceMetrics{SuccessRate: 0.83, AvgDifficulty: 0.43, RetentionRate: 0.93, StudyStreak: 5, LapseRate: 0.13, ReviewCount: 7},
 			},
 			StrugglingCards: []service.StrugglingCard{
 				{CardID: "card-1", Lapses: 5, Stability: 2.5},
@@ -321,14 +319,34 @@ func TestMyLearningStats_PerformanceAndStrugglingCards(t *testing.T) {
 		t.Fatalf("expected data.myLearningStats, got nil; response: %v", resp)
 	}
 
-	perf, _ := stats["performance"].(map[string]any)
-	if perf == nil {
-		t.Fatalf("expected performance, got nil; response: %v", resp)
+	windows, _ := stats["performanceWindows"].(map[string]any)
+	if windows == nil {
+		t.Fatalf("expected performanceWindows, got nil; response: %v", resp)
 	}
-	if perf["retentionRate"] != float64(0.9) || perf["successRate"] != float64(0.8) ||
-		perf["lapseRate"] != float64(0.1) || perf["avgDifficulty"] != float64(0.4) ||
-		perf["studyStreak"] != float64(5) || perf["reviewCount"] != float64(42) {
-		t.Fatalf("performance metrics mismatch: %v", perf)
+	wants := map[string]map[string]float64{
+		"days365": {"retentionRate": 0.91, "successRate": 0.81, "lapseRate": 0.11, "avgDifficulty": 0.41, "studyStreak": 5, "reviewCount": 365},
+		"days30":  {"retentionRate": 0.92, "successRate": 0.82, "lapseRate": 0.12, "avgDifficulty": 0.42, "studyStreak": 5, "reviewCount": 30},
+		"days7":   {"retentionRate": 0.93, "successRate": 0.83, "lapseRate": 0.13, "avgDifficulty": 0.43, "studyStreak": 5, "reviewCount": 7},
+	}
+	for name, want := range wants {
+		perf, _ := windows[name].(map[string]any)
+		if perf == nil {
+			t.Fatalf("expected %s performance metrics, got nil; response: %v", name, resp)
+		}
+		for field, value := range want {
+			if perf[field] != value {
+				t.Fatalf("%s.%s = %v, want %v; metrics: %v", name, field, perf[field], value, perf)
+			}
+		}
+	}
+	legacy, _ := stats["performance"].(map[string]any)
+	if legacy == nil {
+		t.Fatalf("expected legacy performance field, got nil; response: %v", resp)
+	}
+	for field, value := range wants["days365"] {
+		if legacy[field] != value {
+			t.Fatalf("performance.%s = %v, want %v; metrics: %v", field, legacy[field], value, legacy)
+		}
 	}
 
 	struggling, _ := stats["strugglingCards"].([]any)

@@ -33,15 +33,36 @@ const populatedStats: Stats = {
       matureCards: 20,
     },
   ],
-  performance: {
-    __typename: "PerformanceMetrics",
-    retentionRate: 0.78,
-    successRate: 0.84,
-    lapseRate: 0.12,
-    studyStreak: 9,
-    reviewCount: 1430,
-    // Served normalized to 0..1 by the backend; the panel rescales ×10 → "6.2".
-    avgDifficulty: 0.62,
+  performanceWindows: {
+    __typename: "PerformanceWindows",
+    days365: {
+      __typename: "PerformanceMetrics",
+      retentionRate: 0.78,
+      successRate: 0.84,
+      lapseRate: 0.12,
+      studyStreak: 9,
+      reviewCount: 1430,
+      // Served normalized to 0..1 by the backend; the panel rescales ×10 → "6.2".
+      avgDifficulty: 0.62,
+    },
+    days30: {
+      __typename: "PerformanceMetrics",
+      retentionRate: 0.75,
+      successRate: 0.8,
+      lapseRate: 0.15,
+      studyStreak: 9,
+      reviewCount: 300,
+      avgDifficulty: 0.6,
+    },
+    days7: {
+      __typename: "PerformanceMetrics",
+      retentionRate: 0.7,
+      successRate: 0.76,
+      lapseRate: 0.2,
+      studyStreak: 9,
+      reviewCount: 70,
+      avgDifficulty: 0.58,
+    },
   },
   strugglingCards: [
     {
@@ -150,7 +171,10 @@ describe("<StatsClient>", () => {
     it("renders '1 day' for a single-day streak", () => {
       renderStats({
         ...populatedStats,
-        performance: { ...populatedStats.performance, studyStreak: 1 },
+        performanceWindows: {
+          ...populatedStats.performanceWindows,
+          days365: { ...populatedStats.performanceWindows.days365, studyStreak: 1 },
+        },
       });
       expect(screen.getByText("1 day")).toBeInTheDocument();
     });
@@ -179,12 +203,13 @@ describe("<StatsClient>", () => {
     it("replaces the diagnostic tiles with an empty state (no fabricated rates)", () => {
       renderStats({
         ...populatedStats,
-        performance: { ...populatedStats.performance, reviewCount: 0 },
+        performanceWindows: {
+          ...populatedStats.performanceWindows,
+          days365: { ...populatedStats.performanceWindows.days365, reviewCount: 0 },
+        },
       });
 
-      expect(
-        screen.getByText("Not enough recent activity in the last 365 days."),
-      ).toBeInTheDocument();
+      expect(screen.getByText("No reviews in the last 365 days.")).toBeInTheDocument();
       // The (placeholder) rate values are not shown as if they were real data.
       expect(screen.queryByText("78%")).not.toBeInTheDocument();
       // The diagnostics heading still renders above the empty state.

@@ -219,7 +219,7 @@ func TestStatsUsecase_MyLearningStats_WindowsSwipesByStatsWindowDays(t *testing.
 	assert.Empty(t, res.StrugglingCards)
 }
 
-func TestStatsUsecase_MyLearningStats_PerformanceReflectsComputeMetrics(t *testing.T) {
+func TestStatsUsecase_MyLearningStats_WindowsReflectComputeWindowedMetrics(t *testing.T) {
 	t.Parallel()
 	fixedNow := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
 	state := domain.NewFSRSStateForNewCard(fixedNow)
@@ -235,9 +235,9 @@ func TestStatsUsecase_MyLearningStats_PerformanceReflectsComputeMetrics(t *testi
 	require.NoError(t, err)
 	require.NotNil(t, res)
 
-	want := service.ComputeMetrics(swipeRecordsByValue(swipes), fixedNow)
-	assert.Equal(t, want, res.Performance,
-		"Performance is ComputeMetrics over the windowed swipes at the injected now")
+	want := service.ComputeWindowedMetrics(swipeRecordsByValue(swipes), fixedNow)
+	assert.Equal(t, want, res.Windows,
+		"Windows is ComputeWindowedMetrics over the loaded swipes at the injected now")
 }
 
 func TestStatsUsecase_MyLearningStats_StrugglingCardsFromFSRSRows(t *testing.T) {
