@@ -439,7 +439,7 @@
     "diagnosticsRetentionHint": "Among reviews of cards you had already learned, the share you recalled correctly by their scheduled date. Higher means memory is holding as planned.",
     "diagnosticsSuccessHint": "Share of swipes you rated a success. A rough gauge of how confident your answers felt.",
     "diagnosticsLapseHint": "Among already-learned cards, the share you forgot on review. Lower means they're sticking.",
-    "diagnosticsStreakHint": "Days you've studied without a gap, up to today, calculated from the last 365 days regardless of the selected period. Missing a day resets it.",
+    "diagnosticsStreakHint": "Days you've studied without a gap, up to today, calculated from the last 365 days regardless of the selected period — so the count maxes out at 365. Missing a day resets it.",
     "diagnosticsReviewsHint": "Your total swipes over the last {days} days.",
     "diagnosticsAvgDifficultyHint": "Average \"hardness\" FSRS assigns your cards (0–10; higher is harder).",
     "diagnosticsHintAriaLabel": "About {metric}",

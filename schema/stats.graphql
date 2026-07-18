@@ -14,7 +14,7 @@ type LearningStats {
   ownsAnyDeck: Boolean!
 }
 
-"""Trailing rolling-window diagnostic snapshots. days30/days7 are computed from the swipes inside each window; studyStreak is always computed from the full 365-day set so long streaks are never under-reported."""
+"""Trailing rolling-window diagnostic snapshots. days30/days7 are computed from the swipes inside each window; studyStreak is always computed from the full 365-day set, so every window reports the same value. Because the source window is 365 days, the reported streak is capped at 365 days."""
 type PerformanceWindows {
   """Snapshot over the trailing 365-day window."""
   days365: PerformanceMetrics!
