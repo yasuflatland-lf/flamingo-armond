@@ -12,7 +12,12 @@ import (
 type FSRSScheduler struct{ algo *fsrs.FSRS }
 
 func NewFSRSScheduler() *FSRSScheduler {
-	return &FSRSScheduler{algo: fsrs.NewFSRS(fsrs.DefaultParam())}
+	params := fsrs.DefaultParam()
+	// Long-term scheduling mode: skip the sub-day (minutes) learning steps so every
+	// review is scheduled in whole-day intervals and cards never sit in the
+	// Learning/Relearning phases. See go-fsrs Parameters.EnableShortTerm.
+	params.EnableShortTerm = false
+	return &FSRSScheduler{algo: fsrs.NewFSRS(params)}
 }
 
 // Apply returns a fresh state and does not mutate the input state.
