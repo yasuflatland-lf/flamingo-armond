@@ -129,6 +129,65 @@ func TestComputeMetrics(t *testing.T) {
 	}
 }
 
+func TestComputeWindowedMetrics(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 18, 3, 0, 0, 0, time.UTC)
+	reviewState := state(5, 1, 1, domain.FSRSPhaseReview)
+
+	t.Run("includes exact cutoff boundaries", func(t *testing.T) {
+		t.Parallel()
+
+		swipes := []domain.SwipeRecord{
+			swipe(domain.RatingGood, now, reviewState),
+			swipe(domain.RatingGood, now.AddDate(0, 0, -7), reviewState),
+			swipe(domain.RatingGood, now.AddDate(0, 0, -7).Add(-time.Nanosecond), reviewState),
+			swipe(domain.RatingGood, now.AddDate(0, 0, -30), reviewState),
+			swipe(domain.RatingGood, now.AddDate(0, 0, -30).Add(-time.Nanosecond), reviewState),
+		}
+
+		got := ComputeWindowedMetrics(swipes, now)
+
+		require.Equal(t, 5, got.Days365.ReviewCount)
+		require.Equal(t, 4, got.Days30.ReviewCount)
+		require.Equal(t, 2, got.Days7.ReviewCount)
+	})
+
+	t.Run("pins shorter-window streaks to the 365-day streak", func(t *testing.T) {
+		t.Parallel()
+
+		swipes := make([]domain.SwipeRecord, 0, 40)
+		for daysAgo := 0; daysAgo < 40; daysAgo++ {
+			swipes = append(swipes, swipe(domain.RatingGood, now.AddDate(0, 0, -daysAgo), reviewState))
+		}
+
+		got := ComputeWindowedMetrics(swipes, now)
+
+		require.Equal(t, 40, got.Days365.StudyStreak)
+		require.Equal(t, got.Days365.StudyStreak, got.Days30.StudyStreak)
+		require.Equal(t, got.Days365.StudyStreak, got.Days7.StudyStreak)
+	})
+
+	t.Run("keeps empty shorter windows neutral with a non-empty 365-day set", func(t *testing.T) {
+		t.Parallel()
+
+		got := ComputeWindowedMetrics([]domain.SwipeRecord{
+			swipe(domain.RatingEasy, now.AddDate(0, 0, -31), reviewState),
+		}, now)
+
+		require.Equal(t, 1, got.Days365.ReviewCount)
+		require.Equal(t, PerformanceMetrics{SuccessRate: 0.5, AvgDifficulty: 0.5, RetentionRate: 0.5}, got.Days30)
+		require.Equal(t, PerformanceMetrics{SuccessRate: 0.5, AvgDifficulty: 0.5, RetentionRate: 0.5}, got.Days7)
+	})
+
+	t.Run("returns neutral snapshots for fully empty input", func(t *testing.T) {
+		t.Parallel()
+
+		neutral := PerformanceMetrics{SuccessRate: 0.5, AvgDifficulty: 0.5, RetentionRate: 0.5}
+		require.Equal(t, WindowedMetrics{Days365: neutral, Days30: neutral, Days7: neutral}, ComputeWindowedMetrics(nil, now))
+	})
+}
+
 // TestComputeMetrics_JSTLearnDayBoundary proves the study streak and distinct-day
 // counting bucket on the canonical JST learn-day, not on UTC. A swipe at 00:30 JST
 // (= the previous day 15:30 UTC) must count on its JST calendar day, and a streak

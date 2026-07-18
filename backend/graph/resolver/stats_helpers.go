@@ -64,6 +64,8 @@ func toLearningStatsModel(ctx context.Context, res *usecase.LearningStatsResult)
 		})
 	}
 
+	performance365 := toPerformanceMetricsModel(res.Windows.Days365)
+
 	return &model.LearningStats{
 		Mastery: &model.MasteryBreakdown{
 			InProgress:   res.Mastery.InProgress,
@@ -71,9 +73,16 @@ func toLearningStatsModel(ctx context.Context, res *usecase.LearningStatsResult)
 			Mature:       res.Mastery.Mature,
 			TotalStudied: res.Mastery.TotalStudied,
 		},
-		Decks:           decks,
-		OwnsAnyDeck:     res.OwnsAnyDeck,
-		Performance:     toPerformanceMetricsModel(res.Performance),
+		Decks:       decks,
+		OwnsAnyDeck: res.OwnsAnyDeck,
+		// Keep the legacy field populated until every independently deployed
+		// frontend has switched to performanceWindows.
+		Performance: performance365,
+		PerformanceWindows: &model.PerformanceWindows{
+			Days365: performance365,
+			Days30:  toPerformanceMetricsModel(res.Windows.Days30),
+			Days7:   toPerformanceMetricsModel(res.Windows.Days7),
+		},
 		StrugglingCards: struggling,
 	}, nil
 }

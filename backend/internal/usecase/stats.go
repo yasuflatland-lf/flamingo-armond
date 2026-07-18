@@ -35,7 +35,7 @@ type statsFSRSRepo interface {
 }
 
 // statsSwipeRepo is the narrow slice of the swipe-record repository the stats
-// aggregate needs to compute the diagnostic performance snapshot over a window.
+// aggregate needs to compute the diagnostic performance snapshots.
 type statsSwipeRepo interface {
 	ListByUserSince(ctx context.Context, userID string, since time.Time) ([]*domain.SwipeRecord, error)
 }
@@ -78,7 +78,7 @@ type LearningStatsResult struct {
 	// from a user who created a deck but has not added cards yet — Decks omits
 	// empty decks, so Decks alone cannot make that distinction.
 	OwnsAnyDeck     bool
-	Performance     service.PerformanceMetrics
+	Windows         service.WindowedMetrics
 	StrugglingCards []service.StrugglingCard
 }
 
@@ -105,9 +105,9 @@ func (u *statsUsecase) MyLearningStats(ctx context.Context) (*LearningStatsResul
 		return nil, eris.Wrap(err, "usecase: stats: aggregate mastery")
 	}
 
-	// Diagnostic half: a performance snapshot over the trailing statsWindowDays
-	// calendar window (so studyStreak reflects real days, not a swipe count) plus
-	// the struggling-card ranking derived from the FSRS rows already loaded above.
+	// Diagnostic half: performance snapshots derived from one trailing
+	// statsWindowDays calendar read (so studyStreak reflects real days, not a
+	// swipe count) plus the struggling-card ranking from the loaded FSRS rows.
 	now := u.clock.Now()
 	swipes, err := u.swipeRepo.ListByUserSince(ctx, caller.Sub, now.AddDate(0, 0, -statsWindowDays))
 	if err != nil {
@@ -125,7 +125,7 @@ func (u *statsUsecase) MyLearningStats(ctx context.Context) (*LearningStatsResul
 		Mastery:         mastery,
 		Decks:           decks,
 		OwnsAnyDeck:     count > 0,
-		Performance:     service.ComputeMetrics(swipeRecordsByValue(swipes), now),
+		Windows:         service.ComputeWindowedMetrics(swipeRecordsByValue(swipes), now),
 		StrugglingCards: service.TopStruggling(states, strugglingCardsLimit),
 	}, nil
 }

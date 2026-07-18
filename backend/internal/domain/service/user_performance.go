@@ -166,6 +166,47 @@ type PerformanceMetrics struct {
 	ReviewCount   int
 }
 
+const (
+	performanceWindowDays30 = 30
+	performanceWindowDays7  = 7
+)
+
+// WindowedMetrics contains diagnostic snapshots for the trailing 365, 30, and
+// 7-day windows. The caller supplies the already-loaded 365-day swipe set.
+type WindowedMetrics struct {
+	Days365 PerformanceMetrics
+	Days30  PerformanceMetrics
+	Days7   PerformanceMetrics
+}
+
+// ComputeWindowedMetrics computes all diagnostic windows from one already-loaded
+// 365-day swipe set. Shorter windows include swipes exactly at their cutoff.
+// StudyStreak is calendar truth rather than a window-scoped metric, so the 30-
+// and 7-day snapshots always reuse the streak computed from the full set.
+func ComputeWindowedMetrics(swipes []domain.SwipeRecord, now time.Time) WindowedMetrics {
+	days30 := filterSwipesSince(swipes, now.AddDate(0, 0, -performanceWindowDays30))
+	days7 := filterSwipesSince(swipes, now.AddDate(0, 0, -performanceWindowDays7))
+
+	windows := WindowedMetrics{
+		Days365: ComputeMetrics(swipes, now),
+		Days30:  ComputeMetrics(days30, now),
+		Days7:   ComputeMetrics(days7, now),
+	}
+	windows.Days30.StudyStreak = windows.Days365.StudyStreak
+	windows.Days7.StudyStreak = windows.Days365.StudyStreak
+	return windows
+}
+
+func filterSwipesSince(swipes []domain.SwipeRecord, cutoff time.Time) []domain.SwipeRecord {
+	filtered := make([]domain.SwipeRecord, 0, len(swipes))
+	for _, swipe := range swipes {
+		if !swipe.ReviewedAt.Before(cutoff) {
+			filtered = append(filtered, swipe)
+		}
+	}
+	return filtered
+}
+
 func ComputeMetrics(swipes []domain.SwipeRecord, now time.Time) PerformanceMetrics {
 	if len(swipes) == 0 {
 		return PerformanceMetrics{
