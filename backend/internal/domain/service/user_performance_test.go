@@ -30,27 +30,94 @@ func TestComputeMetrics(t *testing.T) {
 			},
 		},
 		{
-			name: "success rate counts good and easy",
+			// A Learning->Easy graduation lands in StateAfter.Phase == Review, but
+			// its pre-swipe phase was Learning, so it is not a review of an
+			// already-learned card: reviews stays 0 and both scoped rates are 0.
+			name: "new-format graduation swipe is excluded from reviews",
 			swipes: []domain.SwipeRecord{
-				swipe(domain.RatingAgain, now, state(5, 1, 1, domain.FSRSPhaseLearning)),
-				swipe(domain.RatingHard, now, state(5, 1, 1, domain.FSRSPhaseLearning)),
-				swipe(domain.RatingGood, now, state(5, 1, 1, domain.FSRSPhaseReview)),
-				swipe(domain.RatingEasy, now, state(5, 1, 1, domain.FSRSPhaseReview)),
+				swipeBefore(domain.RatingEasy, now, state(5, 1, 3, domain.FSRSPhaseReview), domain.FSRSPhaseLearning, 0),
 			},
 			want: PerformanceMetrics{
-				SuccessRate:   0.5,
+				SuccessRate:   1,
+				AvgDifficulty: 0.5,
+				RetentionRate: 0,
+				StudyStreak:   1,
+				LapseRate:     0,
+				ReviewCount:   1,
+			},
+		},
+		{
+			// A repeated Again while already Relearning is neither a lapse (FSRS
+			// increments Lapses only on Review->Again) nor a review, because the
+			// pre-swipe phase was Relearning, not Review.
+			name: "new-format relearning re-fail is excluded from reviews and lapses",
+			swipes: []domain.SwipeRecord{
+				swipeBefore(domain.RatingAgain, now, stateWithLapses(5, 2, 0, domain.FSRSPhaseRelearning, 2), domain.FSRSPhaseRelearning, 0),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   0,
+				AvgDifficulty: 0.5,
+				RetentionRate: 0,
+				StudyStreak:   1,
+				LapseRate:     0,
+				ReviewCount:   1,
+			},
+		},
+		{
+			// Review->Again is the one FSRS lapse transition: it counts as a lapse
+			// and, being an Again, is never an on-time recall.
+			name: "new-format review again is a lapse and not a retention",
+			swipes: []domain.SwipeRecord{
+				swipeBefore(domain.RatingAgain, now, stateWithLapses(5, 3, 0, domain.FSRSPhaseRelearning, 1), domain.FSRSPhaseReview, 5),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   0,
+				AvgDifficulty: 0.5,
+				RetentionRate: 0,
+				StudyStreak:   1,
+				LapseRate:     1,
+				ReviewCount:   1,
+			},
+		},
+		{
+			// Hard is not a SuccessRate success (IsSuccess is >= Good) but it IS a
+			// recall: a Review+Hard within the pre-swipe interval is a retention,
+			// so SuccessRate (0) and RetentionRate (1) diverge deliberately.
+			name: "new-format review hard on time is a retention but not a success",
+			swipes: []domain.SwipeRecord{
+				swipeBefore(domain.RatingHard, now, state(5, 4, 6, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   0,
 				AvgDifficulty: 0.5,
 				RetentionRate: 1,
 				StudyStreak:   1,
 				LapseRate:     0,
-				ReviewCount:   4,
+				ReviewCount:   1,
 			},
 		},
 		{
-			name: "average difficulty normalizes fsrs scale",
+			// A successful review answered later than the interval it was due
+			// within is a review, but not an on-time recall.
+			name: "new-format review easy later than scheduled is a review but not a retention",
 			swipes: []domain.SwipeRecord{
-				swipe(domain.RatingGood, now, state(3, 1, 1, domain.FSRSPhaseReview)),
-				swipe(domain.RatingGood, now, state(7, 1, 1, domain.FSRSPhaseReview)),
+				swipeBefore(domain.RatingEasy, now, state(5, 5, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 2),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   1,
+				AvgDifficulty: 0.5,
+				RetentionRate: 0,
+				StudyStreak:   1,
+				LapseRate:     0,
+				ReviewCount:   1,
+			},
+		},
+		{
+			// ElapsedDays == ScheduledDaysBefore exactly is on time (inclusive
+			// boundary).
+			name: "new-format review at the exact scheduled boundary is on time",
+			swipes: []domain.SwipeRecord{
+				swipeBefore(domain.RatingGood, now, state(5, 5, 9, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
 			},
 			want: PerformanceMetrics{
 				SuccessRate:   1,
@@ -58,11 +125,72 @@ func TestComputeMetrics(t *testing.T) {
 				RetentionRate: 1,
 				StudyStreak:   1,
 				LapseRate:     0,
+				ReviewCount:   1,
+			},
+		},
+		{
+			// New-card swipes (pre-swipe phase New) — including a New->Easy
+			// graduation whose StateAfter.Phase is Review — are never reviews, so
+			// they move only SuccessRate and ReviewCount.
+			name: "new-format new-card swipes affect only success rate and review count",
+			swipes: []domain.SwipeRecord{
+				swipeBefore(domain.RatingAgain, now, state(5, 0, 0, domain.FSRSPhaseLearning), domain.FSRSPhaseNew, 0),
+				swipeBefore(domain.RatingEasy, now, state(5, 0, 1, domain.FSRSPhaseReview), domain.FSRSPhaseNew, 0),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   0.5,
+				AvgDifficulty: 0.5,
+				RetentionRate: 0,
+				StudyStreak:   1,
+				LapseRate:     0,
 				ReviewCount:   2,
 			},
 		},
 		{
-			name: "retention rate counts reviews completed on time",
+			// Several new-format reviews plus one graduation: reviews is 3 (the
+			// graduation is excluded from the denominator); one Again is the lapse
+			// numerator; one on-time Hard is the retention numerator.
+			name: "new-format mixed reviews scope both rates to the review denominator",
+			swipes: []domain.SwipeRecord{
+				swipeBefore(domain.RatingAgain, now, stateWithLapses(5, 3, 0, domain.FSRSPhaseRelearning, 1), domain.FSRSPhaseReview, 5),
+				swipeBefore(domain.RatingHard, now, state(5, 4, 6, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
+				swipeBefore(domain.RatingEasy, now, state(5, 9, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
+				swipeBefore(domain.RatingEasy, now, state(5, 0, 1, domain.FSRSPhaseReview), domain.FSRSPhaseLearning, 0),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   0.5,
+				AvgDifficulty: 0.5,
+				RetentionRate: 1.0 / 3.0,
+				StudyStreak:   1,
+				LapseRate:     1.0 / 3.0,
+				ReviewCount:   4,
+			},
+		},
+		{
+			// Legacy rows (PhaseBefore == nil) fall back to the post-swipe
+			// heuristics: a Review-phase row and a Review->Again Relearning lapse
+			// are reviews, an Again on a Learning card is not. Pins the same
+			// review/lapse split the pre-snapshot code produced.
+			name: "legacy rows fall back to post-swipe review and lapse heuristics",
+			swipes: []domain.SwipeRecord{
+				swipe(domain.RatingGood, now, state(5, 2, 5, domain.FSRSPhaseReview)),
+				swipe(domain.RatingAgain, now, stateWithLapses(5, 1, 0, domain.FSRSPhaseRelearning, 1)),
+				swipe(domain.RatingAgain, now, state(5, 1, 0, domain.FSRSPhaseLearning)),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   1.0 / 3.0,
+				AvgDifficulty: 0.5,
+				RetentionRate: 0.5,
+				StudyStreak:   1,
+				LapseRate:     0.5,
+				ReviewCount:   3,
+			},
+		},
+		{
+			// Legacy on-time recall compares ElapsedDays against the post-swipe
+			// StateAfter.ScheduledDays: two of three Review rows are within their
+			// interval.
+			name: "legacy on-time recall uses post-swipe scheduled days",
 			swipes: []domain.SwipeRecord{
 				swipe(domain.RatingGood, now, state(5, 2, 2, domain.FSRSPhaseReview)),
 				swipe(domain.RatingGood, now, state(5, 3, 2, domain.FSRSPhaseReview)),
@@ -78,12 +206,37 @@ func TestComputeMetrics(t *testing.T) {
 			},
 		},
 		{
+			// A window that mixes legacy and new-format rows: reviews = new Hard +
+			// new Again + legacy Good = 3; lapses = new Again = 1; on-time recalls
+			// = new Hard = 1 (legacy Good is late, new graduation and legacy
+			// Again-on-Learning are not reviews).
+			name: "mixed legacy and new-format window scopes rates across both branches",
+			swipes: []domain.SwipeRecord{
+				swipeBefore(domain.RatingHard, now, state(5, 4, 9, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
+				swipeBefore(domain.RatingAgain, now, stateWithLapses(5, 2, 0, domain.FSRSPhaseRelearning, 1), domain.FSRSPhaseReview, 5),
+				swipeBefore(domain.RatingEasy, now, state(5, 0, 1, domain.FSRSPhaseReview), domain.FSRSPhaseLearning, 0),
+				swipe(domain.RatingGood, now, state(5, 10, 3, domain.FSRSPhaseReview)),
+				swipe(domain.RatingAgain, now, state(5, 1, 0, domain.FSRSPhaseLearning)),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   0.4,
+				AvgDifficulty: 0.5,
+				RetentionRate: 1.0 / 3.0,
+				StudyStreak:   1,
+				LapseRate:     1.0 / 3.0,
+				ReviewCount:   5,
+			},
+		},
+		{
+			// Study streak counts consecutive JST learn-days back from now; the
+			// gap at day -3 caps it at 3. All four rows are on-time new-format
+			// reviews, so the scoped rates stay at 1 / 0.
 			name: "study streak counts consecutive days from provided now",
 			swipes: []domain.SwipeRecord{
-				swipe(domain.RatingGood, now.Add(-2*time.Hour), state(5, 1, 1, domain.FSRSPhaseReview)),
-				swipe(domain.RatingGood, now.AddDate(0, 0, -1), state(5, 1, 1, domain.FSRSPhaseReview)),
-				swipe(domain.RatingGood, now.AddDate(0, 0, -2), state(5, 1, 1, domain.FSRSPhaseReview)),
-				swipe(domain.RatingGood, now.AddDate(0, 0, -4), state(5, 1, 1, domain.FSRSPhaseReview)),
+				swipeBefore(domain.RatingGood, now.Add(-2*time.Hour), state(5, 1, 5, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
+				swipeBefore(domain.RatingGood, now.AddDate(0, 0, -1), state(5, 1, 5, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
+				swipeBefore(domain.RatingGood, now.AddDate(0, 0, -2), state(5, 1, 5, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
+				swipeBefore(domain.RatingGood, now.AddDate(0, 0, -4), state(5, 1, 5, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
 			},
 			want: PerformanceMetrics{
 				SuccessRate:   1,
@@ -92,22 +245,6 @@ func TestComputeMetrics(t *testing.T) {
 				StudyStreak:   3,
 				LapseRate:     0,
 				ReviewCount:   4,
-			},
-		},
-		{
-			name: "lapse rate counts again ratings on known cards",
-			swipes: []domain.SwipeRecord{
-				swipe(domain.RatingAgain, now, stateWithLapses(5, 1, 1, domain.FSRSPhaseRelearning, 1)),
-				swipe(domain.RatingGood, now, state(5, 1, 1, domain.FSRSPhaseReview)),
-				swipe(domain.RatingAgain, now, state(5, 1, 1, domain.FSRSPhaseLearning)),
-			},
-			want: PerformanceMetrics{
-				SuccessRate:   1.0 / 3.0,
-				AvgDifficulty: 0.5,
-				RetentionRate: 1,
-				StudyStreak:   1,
-				LapseRate:     0.5,
-				ReviewCount:   3,
 			},
 		},
 	}
@@ -379,11 +516,34 @@ func TestPerformanceModeIsValid(t *testing.T) {
 	}
 }
 
+// swipe builds a legacy-format swipe record: PhaseBefore and ScheduledDaysBefore
+// are nil, so the metrics layer falls back to the post-swipe heuristics.
 func swipe(rating domain.Rating, reviewedAt time.Time, stateAfter domain.FSRSState) domain.SwipeRecord {
 	return domain.SwipeRecord{
 		Rating:     rating,
 		ReviewedAt: reviewedAt,
 		StateAfter: stateAfter,
+	}
+}
+
+// swipeBefore builds a new-format swipe record carrying the pre-swipe snapshot
+// (phaseBefore, scheduledDaysBefore) that the metrics layer reads to decide
+// review-ness and on-time recall independently of StateAfter.
+func swipeBefore(
+	rating domain.Rating,
+	reviewedAt time.Time,
+	stateAfter domain.FSRSState,
+	phaseBefore domain.FSRSPhase,
+	scheduledDaysBefore int,
+) domain.SwipeRecord {
+	pb := phaseBefore
+	sdb := scheduledDaysBefore
+	return domain.SwipeRecord{
+		Rating:              rating,
+		ReviewedAt:          reviewedAt,
+		StateAfter:          stateAfter,
+		PhaseBefore:         &pb,
+		ScheduledDaysBefore: &sdb,
 	}
 }
 

@@ -217,7 +217,7 @@ func ComputeMetrics(swipes []domain.SwipeRecord, now time.Time) PerformanceMetri
 	}
 
 	successes := 0
-	onTime := 0
+	onTimeRecalls := 0
 	lapses := 0
 	reviews := 0
 	difficultySum := 0.0
@@ -227,13 +227,15 @@ func ComputeMetrics(swipes []domain.SwipeRecord, now time.Time) PerformanceMetri
 		if swipe.Rating.IsSuccess() {
 			successes++
 		}
-		if swipe.StateAfter.ElapsedDays <= swipe.StateAfter.ScheduledDays {
-			onTime++
-		}
+		// LapseRate and RetentionRate are scoped to reviews of already-learned
+		// cards (pre-swipe phase Review); a graduation or a Relearning re-fail
+		// contributes to neither numerator nor denominator.
 		if isKnownCardReview(swipe) {
 			reviews++
 			if swipe.Rating == domain.RatingAgain {
 				lapses++
+			} else if isOnTimeRecall(swipe) {
+				onTimeRecalls++
 			}
 		}
 
@@ -244,7 +246,7 @@ func ComputeMetrics(swipes []domain.SwipeRecord, now time.Time) PerformanceMetri
 	return PerformanceMetrics{
 		SuccessRate:   float64(successes) / float64(len(swipes)),
 		AvgDifficulty: difficultySum / float64(len(swipes)),
-		RetentionRate: float64(onTime) / float64(len(swipes)),
+		RetentionRate: ratio(onTimeRecalls, reviews),
 		StudyStreak:   studyStreak(daysSeen, now),
 		LapseRate:     ratio(lapses, reviews),
 		ReviewCount:   len(swipes),
@@ -293,7 +295,24 @@ func normalizedDifficulty(difficulty float64) float64 {
 	return difficulty
 }
 
+// isKnownCardReview reports whether a swipe is a review of an already-learned
+// card — the card's pre-swipe FSRS phase was Review.
+//
+// New-format rows (PhaseBefore != nil, recorded once the phase_before column
+// existed) read the pre-swipe snapshot directly: a review iff *PhaseBefore ==
+// FSRSPhaseReview. This correctly excludes a Learning->Easy graduation (whose
+// StateAfter.Phase is Review but whose pre-swipe phase was Learning) and a
+// Relearning re-fail (whose pre-swipe phase was Relearning).
+//
+// Legacy rows (PhaseBefore == nil, recorded before the column existed and aging
+// out of the 365-day window) fall back to the historical post-swipe heuristic:
+// StateAfter.Phase == Review, or a Review->Again lapse that landed the card in
+// Relearning with a non-zero lapse count. The fallback keeps history continuous
+// rather than jumping when the new snapshot became available.
 func isKnownCardReview(swipe domain.SwipeRecord) bool {
+	if swipe.PhaseBefore != nil {
+		return *swipe.PhaseBefore == domain.FSRSPhaseReview
+	}
 	if swipe.StateAfter.Phase == domain.FSRSPhaseReview {
 		return true
 	}
@@ -302,9 +321,35 @@ func isKnownCardReview(swipe domain.SwipeRecord) bool {
 		swipe.StateAfter.Lapses > 0
 }
 
+// isOnTimeRecall reports whether a swipe is an on-time recall: the card was
+// recalled (Rating != Again) within the interval that was scheduled for it
+// before the swipe. It is only meaningful for reviews of already-learned cards;
+// ComputeMetrics consults it only inside the isKnownCardReview branch.
+//
+// New-format rows (PhaseBefore != nil) compare StateAfter.ElapsedDays against
+// the pre-swipe scheduled interval *ScheduledDaysBefore — the interval the card
+// was actually due within, so a long-overdue but successful review is not
+// counted as on time. A new-format row whose ScheduledDaysBefore is nil is
+// treated as not on time (defensive). Legacy rows (PhaseBefore == nil) fall back
+// to comparing against the post-swipe StateAfter.ScheduledDays, preserving the
+// historical heuristic for rows recorded before the snapshot existed. The
+// boundary is inclusive: ElapsedDays == the scheduled interval is on time.
+func isOnTimeRecall(swipe domain.SwipeRecord) bool {
+	if swipe.Rating == domain.RatingAgain {
+		return false
+	}
+	if swipe.PhaseBefore != nil {
+		return swipe.ScheduledDaysBefore != nil &&
+			swipe.StateAfter.ElapsedDays <= *swipe.ScheduledDaysBefore
+	}
+	return swipe.StateAfter.ElapsedDays <= swipe.StateAfter.ScheduledDays
+}
+
 // studyStreak counts consecutive JST learn-days ending at the current learn-day,
 // breaking on the first day with no swipe. If the current learn-day has no
-// swipe, the streak is 0.
+// swipe, the streak is 0. The count is bounded by the caller-supplied swipe
+// window (the stats usecase loads a trailing 365-day window), so a streak longer
+// than the window reads as at most the window length.
 func studyStreak(daysSeen map[string]struct{}, now time.Time) int {
 	streak := 0
 	for day := domain.StartOfLearnDay(now); ; day = day.AddDate(0, 0, -1) {
