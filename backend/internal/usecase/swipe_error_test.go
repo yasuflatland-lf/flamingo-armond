@@ -162,7 +162,7 @@ func TestSwipeUsecase_HandleSwipe_NewSwipeRecordError_PinsChain(t *testing.T) {
 		userFSRSRepo,
 		newTestLogger(),
 	)
-	uc.(*swipeUsecase).newSwipeRecord = func(_ domain.UserID, _ string, _ domain.CardgroupID, _ domain.Rating, _ time.Time, _ domain.FSRSState) (*domain.SwipeRecord, error) {
+	uc.(*swipeUsecase).newSwipeRecord = func(_ domain.UserID, _ string, _ domain.CardgroupID, _ domain.Rating, _ time.Time, _, _ domain.FSRSState) (*domain.SwipeRecord, error) {
 		return nil, infraErr
 	}
 
