@@ -436,7 +436,7 @@
     "diagnosticsReviewsCaption": "total swipes",
     "diagnosticsAvgDifficulty": "Avg difficulty",
     "diagnosticsAvgDifficultyCaption": "FSRS difficulty",
-    "diagnosticsRetentionHint": "Share of reviews you recalled correctly by their due date. Higher means memory is holding as planned.",
+    "diagnosticsRetentionHint": "Among reviews of cards you had already learned, the share you recalled correctly by their scheduled date. Higher means memory is holding as planned.",
     "diagnosticsSuccessHint": "Share of swipes you rated a success. A rough gauge of how confident your answers felt.",
     "diagnosticsLapseHint": "Among already-learned cards, the share you forgot on review. Lower means they're sticking.",
     "diagnosticsStreakHint": "Days you've studied without a gap, up to today, calculated from the last 365 days regardless of the selected period. Missing a day resets it.",
