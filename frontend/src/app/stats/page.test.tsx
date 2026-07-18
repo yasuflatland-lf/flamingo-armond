@@ -22,8 +22,18 @@ vi.mock("@/lib/apollo/server", () => ({
 // file. The RSC page test only needs to verify the auth/error routing and that
 // the fetched stats are forwarded.
 vi.mock("./stats-client", () => ({
-  StatsClient: ({ stats }: { stats: unknown }) => (
-    <div data-testid="stats-client" data-has-stats={stats != null ? "true" : "false"}>
+  StatsClient: ({
+    stats,
+    performanceWindowsAvailable,
+  }: {
+    stats: unknown;
+    performanceWindowsAvailable?: boolean;
+  }) => (
+    <div
+      data-testid="stats-client"
+      data-has-stats={stats != null ? "true" : "false"}
+      data-performance-windows-available={String(performanceWindowsAvailable)}
+    >
       StatsClient
     </div>
   ),
@@ -44,15 +54,51 @@ function makeStatsData() {
       ownsAnyDeck: true,
       mastery: { inProgress: 1, learned: 2, mature: 3, totalStudied: 6 },
       decks: [],
-      performance: {
-        retentionRate: 0.5,
-        successRate: 0.5,
-        lapseRate: 0.1,
-        studyStreak: 0,
-        reviewCount: 0,
-        avgDifficulty: 0.5,
+      performanceWindows: {
+        days365: {
+          retentionRate: 0.5,
+          successRate: 0.5,
+          lapseRate: 0.1,
+          studyStreak: 0,
+          reviewCount: 0,
+          avgDifficulty: 0.5,
+        },
+        days30: {
+          retentionRate: 0.5,
+          successRate: 0.5,
+          lapseRate: 0.1,
+          studyStreak: 0,
+          reviewCount: 0,
+          avgDifficulty: 0.5,
+        },
+        days7: {
+          retentionRate: 0.5,
+          successRate: 0.5,
+          lapseRate: 0.1,
+          studyStreak: 0,
+          reviewCount: 0,
+          avgDifficulty: 0.5,
+        },
       },
       strugglingCards: [],
+    },
+  };
+}
+
+function makeLegacyStatsData() {
+  const { performanceWindows: _performanceWindows, ...stats } = makeStatsData().myLearningStats;
+  return {
+    myLearningStats: {
+      ...stats,
+      performance: {
+        __typename: "PerformanceMetrics",
+        retentionRate: 0.72,
+        successRate: 0.8,
+        lapseRate: 0.2,
+        studyStreak: 4,
+        reviewCount: 123,
+        avgDifficulty: 0.6,
+      },
     },
   };
 }
@@ -67,6 +113,7 @@ let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(gqlFetch).mockReset();
   setAuthStatus("authenticated");
   consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -134,6 +181,50 @@ describe("StatsPage — gqlFetch error branches", () => {
       name: "Error",
     });
   });
+
+  test("old backend without performanceWindows → retries the legacy query", async () => {
+    vi.mocked(gqlFetch)
+      .mockRejectedValueOnce(
+        new Error(
+          `GraphQL errors: ${JSON.stringify([
+            {
+              message:
+                'Cannot query field "performanceWindows" on type "LearningStats". Did you mean "performance"?',
+            },
+          ])}`,
+        ),
+      )
+      .mockResolvedValueOnce(makeLegacyStatsData() as never);
+
+    const result = await StatsPage();
+
+    expect(gqlFetch).toHaveBeenCalledTimes(2);
+    expect(redirect).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    const el = findStatsClientElement(result);
+    const stats = el?.props.stats as ReturnType<typeof makeStatsData>["myLearningStats"];
+    expect(stats.performanceWindows.days365.reviewCount).toBe(123);
+    expect(stats.performanceWindows.days30.reviewCount).toBe(123);
+    expect(stats.performanceWindows.days7.reviewCount).toBe(123);
+    expect(el?.props.performanceWindowsAvailable).toBe(false);
+  });
+
+  test("legacy fallback failure → logs and rethrows the fallback error", async () => {
+    const fallbackErr = new Error("GraphQL HTTP 500");
+    vi.mocked(gqlFetch)
+      .mockRejectedValueOnce(
+        new Error(
+          'GraphQL errors: [{"message":"Cannot query field \\"performanceWindows\\" on type \\"LearningStats\\"."}]',
+        ),
+      )
+      .mockRejectedValueOnce(fallbackErr);
+
+    await expect(StatsPage()).rejects.toBe(fallbackErr);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[stats] legacy gqlFetch failed"),
+      { name: "Error" },
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -163,7 +254,7 @@ describe("StatsPage — data guard + happy path", () => {
 // JSX tree helper
 // ---------------------------------------------------------------------------
 
-type StatsClientProps = { stats: unknown };
+type StatsClientProps = { stats: unknown; performanceWindowsAvailable?: boolean };
 
 /**
  * Recursively search a React element tree for the StatsClient stub element so

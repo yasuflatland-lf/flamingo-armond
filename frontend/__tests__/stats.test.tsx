@@ -57,15 +57,36 @@ const populatedStats: MyLearningStatsQuery["myLearningStats"] = {
       matureCards: 20,
     },
   ],
-  performance: {
-    __typename: "PerformanceMetrics",
-    retentionRate: 0.78,
-    successRate: 0.84,
-    lapseRate: 0.12,
-    studyStreak: 9,
-    reviewCount: 1430,
-    // Served normalized to 0..1 by the backend (rescaled ×10 for display).
-    avgDifficulty: 0.62,
+  performanceWindows: {
+    __typename: "PerformanceWindows",
+    days365: {
+      __typename: "PerformanceMetrics",
+      retentionRate: 0.78,
+      successRate: 0.84,
+      lapseRate: 0.12,
+      studyStreak: 9,
+      reviewCount: 1430,
+      // Served normalized to 0..1 by the backend (rescaled ×10 for display).
+      avgDifficulty: 0.62,
+    },
+    days30: {
+      __typename: "PerformanceMetrics",
+      retentionRate: 0.75,
+      successRate: 0.8,
+      lapseRate: 0.15,
+      studyStreak: 9,
+      reviewCount: 300,
+      avgDifficulty: 0.6,
+    },
+    days7: {
+      __typename: "PerformanceMetrics",
+      retentionRate: 0.7,
+      successRate: 0.76,
+      lapseRate: 0.2,
+      studyStreak: 9,
+      reviewCount: 70,
+      avgDifficulty: 0.58,
+    },
   },
   strugglingCards: [
     {

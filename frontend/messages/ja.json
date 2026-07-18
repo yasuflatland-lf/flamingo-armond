@@ -430,7 +430,7 @@
     "diagnosticsLapse": "忘却率",
     "diagnosticsLapseCaption": "再び忘れた割合",
     "diagnosticsStreak": "連続学習",
-    "diagnosticsStreakCaption": "連続した日数",
+    "diagnosticsStreakCaption": "365日基準の連続日数",
     "diagnosticsStreakValue": "{days}日",
     "diagnosticsReviews": "復習回数",
     "diagnosticsReviewsCaption": "スワイプの合計",
@@ -439,8 +439,8 @@
     "diagnosticsRetentionHint": "復習の予定日までに正しく思い出せたカードの割合です。高いほど記憶が計画どおり保持できています。",
     "diagnosticsSuccessHint": "スワイプ評価が「できた」だった割合です。学習の手ごたえの目安になります。",
     "diagnosticsLapseHint": "一度覚えたカードの復習で「忘れた」を出した割合です。低いほどしっかり定着しています。",
-    "diagnosticsStreakHint": "今日まで途切れずに学習を続けた日数です。1日でも空くと途切れます。",
-    "diagnosticsReviewsHint": "過去365日間にスワイプした合計回数です。",
+    "diagnosticsStreakHint": "選択した期間にかかわらず、直近365日を基準に今日まで途切れずに学習を続けた日数です。1日でも空くと途切れます。",
+    "diagnosticsReviewsHint": "直近{days}日間にスワイプした合計回数です。",
     "diagnosticsAvgDifficultyHint": "FSRSがカードごとに算出する「覚えにくさ」の平均です（0〜10、高いほど難しい）。",
     "diagnosticsHintAriaLabel": "{metric}の説明",
     "perDeckHeading": "デッキ別の習得状況",
@@ -460,7 +460,9 @@
     "emptyDeckBody": "デッキを作成しましたが、カードがありません。カードをいくつか追加して学習すると、習得状況と進捗がここに表示されます。",
     "emptyDeckCta": "カードを追加",
     "diagnosticsHeading": "診断",
-    "diagnosticsWindow": "過去365日間",
-    "diagnosticsNoActivity": "過去365日間の学習履歴が不足しています。"
+    "diagnosticsWindowOption": "{days}日",
+    "diagnosticsWindowOptionAria": "直近{days}日",
+    "diagnosticsWindowGroupAria": "診断期間",
+    "diagnosticsNoActivityInWindow": "直近{days}日のレビューはありません。"
   }
 }
