@@ -9,10 +9,16 @@ type Decks = MyLearningStatsQuery["myLearningStats"]["decks"];
 /**
  * Per-deck acquisition list for `/stats`. One row per owned deck (with at least
  * one card): the deck name, a `ProgressMeter` filled to `acquired / totalCards`,
- * the raw `acquired/total` count, and the whole-percent share. `acquired` counts
+ * the `acquired/total` count, and the whole-percent share. `acquired` counts
  * Learned + Mature cards (the two are disjoint on the backend). `totalCards === 0`
  * guards to 0% and the share is clamped to `<= 100%` (mirroring `ProgressMeter`'s
  * own defensive clamp) so the percent text can never disagree with the bar.
+ *
+ * The count text and the meter render `displayAcquired = min(acquired, totalCards)`
+ * rather than the raw `acquired`: the backend derives the two inputs from two
+ * separate, non-transactional reads (FSRS states, then deck totals), so a
+ * concurrent card deletion can transiently make `acquired` exceed `totalCards`.
+ * Clamping keeps the row from rendering a nonsensical "5/2".
  *
  * Callers must render this only for a non-empty `decks` list (`StatsClient` gates
  * on `hasDecks`); an empty list would render a headed-but-empty section.
@@ -28,6 +34,7 @@ export function PerDeckList({ decks }: { decks: Decks }) {
         {decks.map((deck) => {
           const acquired = deck.learnedCards + deck.matureCards;
           const share = deck.totalCards > 0 ? Math.min(1, acquired / deck.totalCards) : 0;
+          const displayAcquired = Math.min(acquired, deck.totalCards);
           return (
             <li key={deck.cardgroup.id} className="flex flex-col gap-1.5">
               <div className="flex items-baseline justify-between gap-2">
@@ -36,9 +43,13 @@ export function PerDeckList({ decks }: { decks: Decks }) {
                   {format.number(share, { style: "percent", maximumFractionDigits: 0 })}
                 </span>
               </div>
-              <ProgressMeter value={acquired} max={deck.totalCards} label={deck.cardgroup.name} />
+              <ProgressMeter
+                value={displayAcquired}
+                max={deck.totalCards}
+                label={deck.cardgroup.name}
+              />
               <span className="text-xs text-muted-foreground tabular-nums">
-                {t("perDeckAcquiredOfTotal", { acquired, total: deck.totalCards })}
+                {t("perDeckAcquiredOfTotal", { acquired: displayAcquired, total: deck.totalCards })}
               </span>
             </li>
           );

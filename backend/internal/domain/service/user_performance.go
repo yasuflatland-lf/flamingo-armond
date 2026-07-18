@@ -14,8 +14,10 @@ import (
 type MasteryBreakdown struct{ InProgress, Learned, Mature, TotalStudied int }
 
 // DeckMastery is a per-deck acquisition summary. LearnedCards and MatureCards
-// are disjoint; acquired == LearnedCards + MatureCards, and acquired never
-// exceeds TotalCards.
+// are disjoint; acquired == LearnedCards + MatureCards. Because the stats
+// usecase reads FSRS states and deck totals in two separate, non-transactional
+// queries, a concurrent card deletion can transiently make acquired exceed
+// TotalCards; consumers must clamp acquired to TotalCards at display time.
 type DeckMastery struct {
 	CardgroupID  string
 	TotalCards   int
