@@ -53,14 +53,6 @@ export const HandleSwipeMutation = graphql(`
       ... on HandleSwipeSuccess {
         response {
           performanceMode
-          metrics {
-            successRate
-            avgDifficulty
-            retentionRate
-            studyStreak
-            lapseRate
-            reviewCount
-          }
         }
       }
       ... on InputValidationError {
