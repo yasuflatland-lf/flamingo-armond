@@ -439,7 +439,7 @@
     "diagnosticsRetentionHint": "復習の予定日までに正しく思い出せたカードの割合です。高いほど記憶が計画どおり保持できています。",
     "diagnosticsSuccessHint": "スワイプ評価が「できた」だった割合です。学習の手ごたえの目安になります。",
     "diagnosticsLapseHint": "一度覚えたカードの復習で「忘れた」を出した割合です。低いほどしっかり定着しています。",
-    "diagnosticsStreakHint": "選択した期間にかかわらず、直近365日を基準に今日まで途切れずに学習を続けた日数です。1日でも空くと途切れます。",
+    "diagnosticsStreakHint": "選択した期間にかかわらず、直近365日を基準に今日まで途切れずに学習を続けた日数です（最大365日）。1日でも空くと途切れます。",
     "diagnosticsReviewsHint": "直近{days}日間にスワイプした合計回数です。",
     "diagnosticsAvgDifficultyHint": "FSRSがカードごとに算出する「覚えにくさ」の平均です（0〜10、高いほど難しい）。",
     "diagnosticsHintAriaLabel": "{metric}の説明",
