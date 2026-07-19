@@ -157,21 +157,38 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
   }, []);
 
   const prefetchInFlightRef = useRef(false);
-  // Ids of cards whose `handleSwipe` mutation is currently in flight. The
-  // optimistic queue removal in `onSwipe` shrinks the queue and can re-fire the
-  // prefetch below WHILE the swipe mutation has not yet committed its FSRS
-  // write; a network-only read that beats that write still sees the card as
-  // "due" and returns it in the batch. The merge filters `incoming` against this
-  // set so the just-swiped card is not re-appended (which would cause a
-  // duplicate FSRS review). ONLY in-flight ids are filtered — once a swipe
-  // settles its id is removed, so a genuinely re-due "again" card may
-  // legitimately re-enter the queue on a later prefetch.
-  const inFlightSwipeIdsRef = useRef<Set<string>>(new Set());
+  // Ids of every card swiped in this session. The optimistic queue removal in
+  // `onSwipe` shrinks the queue and can re-fire the prefetch below WHILE the
+  // swipe mutation has not yet committed its FSRS write; a network-only read
+  // that beats that write still sees the card as "due" and returns it in the
+  // batch. The merge filters `incoming` against this set so a swiped card is
+  // never re-appended, which would let the learner rate it twice and record a
+  // duplicate same-day FSRS review.
+  //
+  // Ids are never pruned mid-session. Both server-side REVIEW windows require
+  // `last_review < StartOfLearnDay(now)` (see the contract on `StartOfLearnDay`
+  // in `backend/internal/domain/learn_day.go`), and the new-card window carries
+  // no `last_review` predicate at all — it matches only cards with no FSRS row,
+  // which the swipe itself creates. So once a swipe commits, no window can
+  // return that card again today: any prefetched batch carrying one of these
+  // ids is a stale read that predates the commit. Reset when the active
+  // cardgroup changes.
+  //
+  // A transport failure keeps its id here too, which is harmless: the catch
+  // handler puts the card back at the queue head, so `seen` covers it for as
+  // long as it is queued and the learner can re-swipe it.
+  const swipedThisSessionRef = useRef<Set<string>>(new Set());
   // Set once a prefetch resolves and the dedup merge adds zero new cards: the
   // due pool is exhausted, so every subsequent tail swipe would otherwise fire a
-  // redundant network-only query that returns nothing new. The effect
-  // short-circuits while this is set. Cleared after a swipe mutation succeeds (a
-  // rated card may become due again) and on cardgroup change.
+  // redundant network-only query that returns nothing new. A stale batch whose
+  // ids were all swiped this session lands here too, and that verdict is correct
+  // for the same-day queue. The effect short-circuits while this is set.
+  //
+  // Cleared after a swipe mutation succeeds and on cardgroup change. The reset is
+  // not about the just-swiped card — that one can never come back today — but
+  // about the verdict's age: it is a point-in-time snapshot, and the filler
+  // review window admits a card once `due <= now`, so the pool can refill with
+  // newly-due cards while the session runs.
   const exhaustedRef = useRef(false);
   // Tracks the cardgroup the exhaustion verdict belongs to. When the active
   // cardgroup changes, the prefetch effect below clears `exhaustedRef` before
@@ -183,6 +200,7 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
     if (exhaustedForCardgroupRef.current !== cardgroupId) {
       exhaustedForCardgroupRef.current = cardgroupId;
       exhaustedRef.current = false;
+      swipedThisSessionRef.current = new Set();
     }
     if (queue.length === 0 || queue.length > PREFETCH_THRESHOLD) return;
     if (prefetchInFlightRef.current) return;
@@ -203,11 +221,11 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
         }
         setQueue((current) => {
           const seen = new Set(current.map((c) => c.id));
-          const inFlight = inFlightSwipeIdsRef.current;
-          // Drop cards already queued (`seen`) and cards whose swipe mutation is
-          // still in flight (`inFlight`) — the latter may read as "due" if the
-          // prefetch beat the FSRS write commit.
-          const additions = incoming.filter((card) => !seen.has(card.id) && !inFlight.has(card.id));
+          const swiped = swipedThisSessionRef.current;
+          // Drop cards already queued (`seen`) and cards already swiped this
+          // session (`swiped`) — the latter can only reach us from a read that
+          // predates the swipe's FSRS commit.
+          const additions = incoming.filter((card) => !seen.has(card.id) && !swiped.has(card.id));
           if (additions.length === 0) {
             // Nothing new survived the merge — mark the pool exhausted so tail
             // swipes stop re-firing this query until a swipe succeeds.
@@ -234,11 +252,13 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
     async (card: LearnCard, direction: SwipeDirection) => {
       const rating = ratingFromDirection(direction);
       setLocalError(null);
-      // Mark this card's swipe as in flight BEFORE the optimistic removal so the
-      // prefetch effect (which the removal can re-fire) filters it out of any
-      // racing LearnNextDueCards batch until the FSRS write commits. The marker
-      // is cleared in the mutation's `finally` below.
-      inFlightSwipeIdsRef.current.add(card.id);
+      // Record the card as swiped BEFORE the optimistic removal so the prefetch
+      // effect (which the removal can re-fire) filters it out of any racing
+      // LearnNextDueCards batch. Recording at swipe time rather than on success
+      // also closes the gap between the mutation settling and its continuation
+      // running. The id stays in the set for the rest of the session — see the
+      // ref's declaration above.
+      swipedThisSessionRef.current.add(card.id);
       setQueue((current) => current.filter((candidate) => candidate.id !== card.id));
       setCompletedCount((current) => current + 1);
 
@@ -249,26 +269,19 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
         // See .claude/rules/pagination.md § "Drop `optimisticResponse` for mutations that can
         // fail with typed GraphQL errors". The optimistic queue advance above (via setQueue)
         // is React state and is unaffected.
-      })
-        .catch((err) => {
-          // err.message is omitted — backend messages may echo user-authored content.
-          // See docs/frontend/rsc-error-handling/substring-matching-sdk-error-strings.md.
-          console.error("[LearnClient] handleSwipe rejected", {
-            cardId: card.id,
-            cardgroupId,
-            name: err instanceof Error ? err.name : "unknown",
-          });
-          setQueue((current) => [card, ...current.filter((candidate) => candidate.id !== card.id)]);
-          setCompletedCount((current) => Math.max(0, current - 1));
-          setLocalError("Could not save that swipe. Please try again.");
-          return null;
-        })
-        .finally(() => {
-          // The mutation settled (success or error): the FSRS write has committed
-          // (or failed), so a later prefetch that reads this card as "due" is no
-          // longer racing an uncommitted write and may re-enter it legitimately.
-          inFlightSwipeIdsRef.current.delete(card.id);
+      }).catch((err) => {
+        // err.message is omitted — backend messages may echo user-authored content.
+        // See docs/frontend/rsc-error-handling/substring-matching-sdk-error-strings.md.
+        console.error("[LearnClient] handleSwipe rejected", {
+          cardId: card.id,
+          cardgroupId,
+          name: err instanceof Error ? err.name : "unknown",
         });
+        setQueue((current) => [card, ...current.filter((candidate) => candidate.id !== card.id)]);
+        setCompletedCount((current) => Math.max(0, current - 1));
+        setLocalError("Could not save that swipe. Please try again.");
+        return null;
+      });
 
       if (!result) return;
 
@@ -277,8 +290,10 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
       // UI consumer reads today. Only the non-success branches need handling.
       const payload = result.data?.handleSwipe;
       if (payload?.__typename === "HandleSwipeSuccess") {
-        // A rated card can become due again (e.g. an "again" rating), so re-open
-        // prefetching in case the pool was previously marked exhausted.
+        // Re-open prefetching in case the pool was previously marked exhausted.
+        // That verdict may predate cards that have since become due (the filler
+        // review window admits a card once its `due` has arrived); the
+        // just-swiped card itself never returns today.
         exhaustedRef.current = false;
         return;
       }
