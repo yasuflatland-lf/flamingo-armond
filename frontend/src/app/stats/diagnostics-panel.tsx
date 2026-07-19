@@ -108,7 +108,7 @@ export function DiagnosticsPanel({
                 aria-pressed={selected}
                 onClick={() => setSelectedWindow(key)}
                 className={cn(
-                  "min-h-11 min-w-11 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  "min-h-9 min-w-11 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   selected
                     ? "bg-brand-primary text-brand-primary-foreground"
                     : "text-muted-foreground hover:text-foreground",
