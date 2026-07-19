@@ -57,6 +57,29 @@ func TestUserCardFSRSRepository_UpsertTxAndFindByUserAndCardIDs(t *testing.T) {
 	require.Equal(t, domain.RatingEasy, got[card.ID].State.LastRating)
 }
 
+func TestUserCardFSRSRepository_FindByUserAndCardIDs_InvalidLastRating(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	cardRepo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+
+	card := newCard(cg.ID, "invalid-last-rating", "back")
+	require.NoError(t, cardRepo.Create(ctx, card))
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	_, err := sqlDBHandle(t).ExecContext(ctx,
+		`INSERT INTO public.user_card_fsrs
+			(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, last_rating, elapsed_days, scheduled_days)
+		 VALUES ($1, $2, $3, $4, 6.9, 5.0, 1, 0, $4, 9, 1, 1)`,
+		ownerID, card.ID, int(domain.FSRSPhaseReview), now)
+	require.NoError(t, err, "seed a row with an invalid last_rating value via raw SQL")
+
+	_, err = ucsRepo.FindByUserAndCardIDs(ctx, ownerID, []string{card.ID})
+	require.ErrorContains(t, err, "repository: invalid last_rating value 9 for card "+card.ID)
+}
+
 // TestUserCardFSRSRepository_OnCardDelete_CascadesFSRSRow proves the
 // user_card_fsrs.card_id -> cards(id) FK is ON DELETE CASCADE: deleting a card
 // removes every user's FSRS row for it. This is the runtime behaviour that

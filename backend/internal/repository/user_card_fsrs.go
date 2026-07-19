@@ -206,6 +206,9 @@ func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
 	lastRating := domain.Rating(0)
 	if row.LastRating != nil {
 		lastRating = domain.Rating(*row.LastRating)
+		if !lastRating.IsValid() {
+			return nil, eris.Errorf("repository: invalid last_rating value %d for card %s", *row.LastRating, row.CardID)
+		}
 	}
 	return &domain.UserCardFSRS{
 		UserID: domain.UserID(row.UserID),

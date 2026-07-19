@@ -1104,17 +1104,26 @@ func TestCardRepository_FindDueCards_StabilityBoundary(t *testing.T) {
 	start := domain.StartOfLearnDay(now)
 
 	below := newCard(cg.ID, "stability-6.9", "back")
+	nullBelow := newCard(cg.ID, "null-last-rating-stability-6.9", "back")
 	at := newCard(cg.ID, "stability-7.0", "back")
 	require.NoError(t, repo.Create(ctx, below))
+	require.NoError(t, repo.Create(ctx, nullBelow))
 	require.NoError(t, repo.Create(ctx, at))
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, below, now, now.Add(-time.Hour), start.Add(-time.Hour), 6.9, domain.RatingGood)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, nullBelow, now, now.Add(-time.Hour), start.Add(-time.Hour), 6.9, 0)
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, at, now, now.Add(-time.Hour), start.Add(-time.Hour), 7.0, domain.RatingGood)
 
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), now, start, domain.EndOfLearnDay(now), 10)
 	require.NoError(t, err)
-	require.Equal(t, []string{below.ID, at.ID}, repoCardIDs(got))
-	require.True(t, got[0].Rescue)
-	require.False(t, got[1].Rescue)
+	require.ElementsMatch(t, []string{below.ID, nullBelow.ID, at.ID}, repoCardIDs(got))
+	byID := make(map[string]domain.DueCard, len(got))
+	for _, dueCard := range got {
+		byID[dueCard.Card.ID] = dueCard
+	}
+	require.True(t, byID[below.ID].Rescue)
+	require.True(t, byID[nullBelow.ID].Rescue,
+		"NULL last_rating with stability below the learned threshold belongs to rescue")
+	require.False(t, byID[at.ID].Rescue)
 }
 
 func TestCardRepository_FindDueCards_RescueUsesJSTDayEnd(t *testing.T) {

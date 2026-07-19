@@ -142,6 +142,36 @@ func TestOrderingPolicy_Apply_MixedCompositionSlots(t *testing.T) {
 	}
 }
 
+func TestOrderingPolicy_Apply_MixedNewRescueAndFillerPreservesReviewBandPriority(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
+	in := []domain.DueCard{
+		rescueDueCard("rescue-1", domain.FSRSPhaseReview, base),
+		rescueDueCard("rescue-2", domain.FSRSPhaseReview, base.Add(time.Minute)),
+		dueCard("filler-1", domain.FSRSPhaseReview, base.Add(2*time.Minute)),
+		dueCard("filler-2", domain.FSRSPhaseReview, base.Add(3*time.Minute)),
+	}
+	for i := 0; i < 12; i++ {
+		in = append(in, dueCard(fmt.Sprintf("new-%d", i), domain.FSRSPhaseNew, base.Add(time.Duration(100+i)*time.Minute)))
+	}
+
+	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)), domain.DefaultNewCardRatio)
+	require.Len(t, got, len(in))
+
+	rescueIDs := map[string]bool{"rescue-1": true, "rescue-2": true}
+	fillerIDs := map[string]bool{"filler-1": true, "filler-2": true}
+	seenFiller := false
+	for _, card := range got {
+		if fillerIDs[card.ID] {
+			seenFiller = true
+		}
+		if rescueIDs[card.ID] {
+			require.False(t, seenFiller, "rescue card %q appeared after a filler card", card.ID)
+		}
+	}
+}
+
 func TestOrderingPolicy_Apply_NonDefaultRatioInterleavesOneToOne(t *testing.T) {
 	t.Parallel()
 
