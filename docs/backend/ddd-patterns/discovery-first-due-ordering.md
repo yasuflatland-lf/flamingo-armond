@@ -110,13 +110,27 @@ deterministic while the database does the sampling:
 - **Persisted FSRS rows are complete, and the rating is applied before the row is
   written.** The `user_card_fsrs` schema declares `state`, `due`, and
   `last_review` `NOT NULL`, and `SwipeUsecase.HandleSwipe` calls `ApplyRating`
-  before `UpsertTx` persists the aggregate. Every stored row therefore carries a
-  scheduled state produced by the long-term scheduler, which never emits a New
-  phase. The rescue and filler windows consequently cannot admit a phase-New row,
-  they stay disjoint from the new-card window (`ucs.due IS NULL`), and the
-  repository's window-derived `Rescue` flag is well-defined. Relaxing either NOT
-  NULL, or writing the row before applying the rating, would let a card satisfy
-  none of the three windows and vanish from every queue with no error surfaced.
+  before `UpsertTx` persists the aggregate. Each column carries a different part
+  of the partition, and each fails differently if its NOT NULL is relaxed:
+  - **`last_review`** is the one whose NULL hides a card completely. Rescue and
+    filler test `ucs.last_review < ?` and practice tests `ucs.last_review >= ?`,
+    all unknown for NULL, while the new-card window is closed to the row because
+    its `due` is not NULL. The card then satisfies no window and vanishes from
+    every queue with no error surfaced.
+  - **`due`** does not hide the row; it moves it. Rescue and filler guard on
+    `ucs.due IS NOT NULL` while the new-card window is exactly `ucs.due IS NULL`,
+    so an already-reviewed card would be re-served as unseen and the new/review
+    disjointness the interleave relies on would break.
+  - **`state`** appears in no window predicate at all; it decides how a fetched
+    row is mapped. `dueCardsFromRows` leaves `Phase` at its `FSRSPhaseNew`
+    default when the column scans NULL, so a rescue or filler row would reach
+    `OrderingPolicy` claiming to be a new card and be interleaved as one.
+
+  The write order carries the rest: applying the rating first means every stored
+  row holds a state produced by the long-term scheduler, which never emits a New
+  phase, so no review-window row can be phase-New and the repository's
+  window-derived `Rescue` flag stays well-defined. Writing the row before applying
+  the rating would break that.
 
 ## Trade-off
 

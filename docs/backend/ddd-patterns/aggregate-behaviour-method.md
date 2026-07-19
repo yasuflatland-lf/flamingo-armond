@@ -100,13 +100,18 @@ non-negative, at the cost of treating a backward-skewed review as if it happened
 at the instant of the previous one. Any reimplementation of the `ApplyRating`
 path must reproduce it.
 
-**A clamped apply leaves `State.LastReview > UpdatedAt`.** `ApplyRating` stamps
-`u.UpdatedAt = now` with the *unclamped* argument while the state it stores back
-carries the *clamped* `LastReview`. The aggregate therefore holds
-`State.LastReview > UpdatedAt` until the next non-skewed swipe. Nothing
-user-visible reads that ordering — the queue predicates compare `last_review` and
-`due` against learn-day boundaries, never against `updated_at` — so the inversion
-is tolerated rather than normalised.
+**A clamped apply leaves `State.LastReview > UpdatedAt` in the in-memory
+aggregate.** `ApplyRating` stamps `u.UpdatedAt = now` with the *unclamped*
+argument while the state it stores back carries the *clamped* `LastReview`, so
+the loaded aggregate holds the inversion for the rest of the request. It does not
+travel to the row: a clamp can only fire against an existing FSRS row (a brand-new
+one is created with `LastReview = now`), so the upsert always takes the conflict
+branch, whose `DoUpdates` assigns `updated_at = now()` — and the
+`trg_user_card_fsrs_set_updated_at` BEFORE UPDATE trigger assigns `now()` again.
+The persisted `updated_at` is therefore the database clock, never the skewed
+aggregate value. The inversion is tolerated rather than normalised because
+nothing reads that ordering: the queue predicates compare `last_review` and `due`
+against learn-day boundaries, never against `updated_at`.
 
 ### Single-field aggregate mutation (`Cardgroup.Rename`, `Card.UpdateFront`/`UpdateBack`) (issues #212, #213)
 
