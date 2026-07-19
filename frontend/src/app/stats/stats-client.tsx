@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import type { MyLearningStatsQuery } from "@/generated/graphql";
+import { cn } from "@/lib/utils";
 import { DiagnosticsPanel } from "./diagnostics-panel";
 import { MasterySummary } from "./mastery-summary";
 import { PerDeckList } from "./per-deck-list";
@@ -60,8 +61,14 @@ export function StatsClient({ stats }: { stats: MyLearningStatsQuery["myLearning
       <div className="flex flex-col gap-4 sm:gap-6">
         <MasterySummary mastery={stats.mastery} />
         <DiagnosticsPanel performanceWindows={stats.performanceWindows} />
-        <div className="grid gap-4 lg:grid-cols-[4fr_3fr]">
-          <PerDeckList decks={stats.decks} />
+        {/* The mastery totals and the per-deck totals come from separate,
+            non-transactional backend reads, so a deck deletion landing between
+            them yields studied > 0 with an empty deck list. Gate on `hasDecks`
+            so the section never renders headed-but-empty, and drop the explicit
+            two-track template with it — otherwise the surviving struggling list
+            would sit in the 4fr track with a dead 3fr gutter beside it. */}
+        <div className={cn("grid gap-4", hasDecks && "lg:grid-cols-[4fr_3fr]")}>
+          {hasDecks ? <PerDeckList decks={stats.decks} /> : null}
           <StrugglingList cards={stats.strugglingCards} />
         </div>
       </div>
