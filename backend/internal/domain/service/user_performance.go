@@ -167,6 +167,13 @@ type PerformanceMetrics struct {
 	StudyStreak   int
 	LapseRate     float64
 	ReviewCount   int
+	// KnownReviewCount is the denominator behind RetentionRate and LapseRate:
+	// the number of swipes in the window that passed the known-card gate. When
+	// the window has swipes but none of them pass the gate, both rates are 0;
+	// when the window holds no swipes at all, RetentionRate instead carries the
+	// neutral 0.5 placeholder. Either way, consumers must treat a 0 count as "no
+	// eligible reviews" rather than as a measured rate.
+	KnownReviewCount int
 }
 
 const (
@@ -246,12 +253,13 @@ func ComputeMetrics(swipes []domain.SwipeRecord, now time.Time) PerformanceMetri
 	}
 
 	return PerformanceMetrics{
-		SuccessRate:   float64(successes) / float64(len(swipes)),
-		AvgDifficulty: difficultySum / float64(len(swipes)),
-		RetentionRate: ratio(onTimeRecalls, reviews),
-		StudyStreak:   studyStreak(daysSeen, now),
-		LapseRate:     ratio(lapses, reviews),
-		ReviewCount:   len(swipes),
+		SuccessRate:      float64(successes) / float64(len(swipes)),
+		AvgDifficulty:    difficultySum / float64(len(swipes)),
+		RetentionRate:    ratio(onTimeRecalls, reviews),
+		StudyStreak:      studyStreak(daysSeen, now),
+		LapseRate:        ratio(lapses, reviews),
+		ReviewCount:      len(swipes),
+		KnownReviewCount: reviews,
 	}
 }
 

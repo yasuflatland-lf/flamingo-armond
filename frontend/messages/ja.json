@@ -463,6 +463,7 @@
     "diagnosticsWindowOption": "{days}日",
     "diagnosticsWindowOptionAria": "直近{days}日",
     "diagnosticsWindowGroupAria": "診断期間",
-    "diagnosticsNoActivityInWindow": "直近{days}日のレビューはありません。"
+    "diagnosticsNoActivityInWindow": "直近{days}日のレビューはありません。",
+    "diagnosticsNoKnownReviews": "対象となる復習がまだありません"
   }
 }

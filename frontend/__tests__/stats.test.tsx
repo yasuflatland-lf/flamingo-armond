@@ -66,6 +66,7 @@ const populatedStats: MyLearningStatsQuery["myLearningStats"] = {
       lapseRate: 0.12,
       studyStreak: 9,
       reviewCount: 1430,
+      knownReviewCount: 1200,
       // Served normalized to 0..1 by the backend (rescaled ×10 for display).
       avgDifficulty: 0.62,
     },
@@ -76,6 +77,7 @@ const populatedStats: MyLearningStatsQuery["myLearningStats"] = {
       lapseRate: 0.15,
       studyStreak: 9,
       reviewCount: 300,
+      knownReviewCount: 250,
       avgDifficulty: 0.6,
     },
     days7: {
@@ -85,6 +87,7 @@ const populatedStats: MyLearningStatsQuery["myLearningStats"] = {
       lapseRate: 0.2,
       studyStreak: 9,
       reviewCount: 70,
+      knownReviewCount: 60,
       avgDifficulty: 0.58,
     },
   },

@@ -275,11 +275,12 @@ func toSwipePerformanceModeModel(mode int) model.SwipePerformanceMode {
 // diagnostic snapshot.
 func toPerformanceMetricsModel(m service.PerformanceMetrics) *model.PerformanceMetrics {
 	return &model.PerformanceMetrics{
-		SuccessRate:   m.SuccessRate,
-		AvgDifficulty: m.AvgDifficulty,
-		RetentionRate: m.RetentionRate,
-		StudyStreak:   m.StudyStreak,
-		LapseRate:     m.LapseRate,
-		ReviewCount:   m.ReviewCount,
+		SuccessRate:      m.SuccessRate,
+		AvgDifficulty:    m.AvgDifficulty,
+		RetentionRate:    m.RetentionRate,
+		StudyStreak:      m.StudyStreak,
+		LapseRate:        m.LapseRate,
+		ReviewCount:      m.ReviewCount,
+		KnownReviewCount: m.KnownReviewCount,
 	}
 }

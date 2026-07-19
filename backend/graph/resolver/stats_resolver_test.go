@@ -277,7 +277,7 @@ func ctxWithCardLoaderError(base context.Context, loadErr error) context.Context
 	return loader.WithContext(base, loaders)
 }
 
-const myLearningStatsDiagnosticQuery = `{"query":"{ myLearningStats { mastery { totalStudied } performanceWindows { days365 { retentionRate successRate lapseRate studyStreak reviewCount avgDifficulty } days30 { retentionRate successRate lapseRate studyStreak reviewCount avgDifficulty } days7 { retentionRate successRate lapseRate studyStreak reviewCount avgDifficulty } } strugglingCards { card { id front } lapses stability } } }"}`
+const myLearningStatsDiagnosticQuery = `{"query":"{ myLearningStats { mastery { totalStudied } performanceWindows { days365 { retentionRate successRate lapseRate studyStreak reviewCount knownReviewCount avgDifficulty } days30 { retentionRate successRate lapseRate studyStreak reviewCount knownReviewCount avgDifficulty } days7 { retentionRate successRate lapseRate studyStreak reviewCount knownReviewCount avgDifficulty } } strugglingCards { card { id front } lapses stability } } }"}`
 
 // TestMyLearningStats_PerformanceAndStrugglingCards verifies the diagnostic half
 // of the response: all three performance snapshots map every metric field, and
@@ -290,9 +290,9 @@ func TestMyLearningStats_PerformanceAndStrugglingCards(t *testing.T) {
 		result: &usecase.LearningStatsResult{
 			Mastery: service.MasteryBreakdown{TotalStudied: 3},
 			Windows: service.WindowedMetrics{
-				Days365: service.PerformanceMetrics{SuccessRate: 0.81, AvgDifficulty: 0.41, RetentionRate: 0.91, StudyStreak: 5, LapseRate: 0.11, ReviewCount: 365},
-				Days30:  service.PerformanceMetrics{SuccessRate: 0.82, AvgDifficulty: 0.42, RetentionRate: 0.92, StudyStreak: 5, LapseRate: 0.12, ReviewCount: 30},
-				Days7:   service.PerformanceMetrics{SuccessRate: 0.83, AvgDifficulty: 0.43, RetentionRate: 0.93, StudyStreak: 5, LapseRate: 0.13, ReviewCount: 7},
+				Days365: service.PerformanceMetrics{SuccessRate: 0.81, AvgDifficulty: 0.41, RetentionRate: 0.91, StudyStreak: 5, LapseRate: 0.11, ReviewCount: 365, KnownReviewCount: 300},
+				Days30:  service.PerformanceMetrics{SuccessRate: 0.82, AvgDifficulty: 0.42, RetentionRate: 0.92, StudyStreak: 5, LapseRate: 0.12, ReviewCount: 30, KnownReviewCount: 25},
+				Days7:   service.PerformanceMetrics{SuccessRate: 0.83, AvgDifficulty: 0.43, RetentionRate: 0.93, StudyStreak: 5, LapseRate: 0.13, ReviewCount: 7, KnownReviewCount: 0},
 			},
 			StrugglingCards: []service.StrugglingCard{
 				{CardID: "card-1", Lapses: 5, Stability: 2.5},
@@ -323,9 +323,9 @@ func TestMyLearningStats_PerformanceAndStrugglingCards(t *testing.T) {
 		t.Fatalf("expected performanceWindows, got nil; response: %v", resp)
 	}
 	wants := map[string]map[string]float64{
-		"days365": {"retentionRate": 0.91, "successRate": 0.81, "lapseRate": 0.11, "avgDifficulty": 0.41, "studyStreak": 5, "reviewCount": 365},
-		"days30":  {"retentionRate": 0.92, "successRate": 0.82, "lapseRate": 0.12, "avgDifficulty": 0.42, "studyStreak": 5, "reviewCount": 30},
-		"days7":   {"retentionRate": 0.93, "successRate": 0.83, "lapseRate": 0.13, "avgDifficulty": 0.43, "studyStreak": 5, "reviewCount": 7},
+		"days365": {"retentionRate": 0.91, "successRate": 0.81, "lapseRate": 0.11, "avgDifficulty": 0.41, "studyStreak": 5, "reviewCount": 365, "knownReviewCount": 300},
+		"days30":  {"retentionRate": 0.92, "successRate": 0.82, "lapseRate": 0.12, "avgDifficulty": 0.42, "studyStreak": 5, "reviewCount": 30, "knownReviewCount": 25},
+		"days7":   {"retentionRate": 0.93, "successRate": 0.83, "lapseRate": 0.13, "avgDifficulty": 0.43, "studyStreak": 5, "reviewCount": 7, "knownReviewCount": 0},
 	}
 	for name, want := range wants {
 		perf, _ := windows[name].(map[string]any)
