@@ -268,7 +268,7 @@ The sentinel `repository.ErrCardgroupNotFound` lives in `repository/user_prefere
 
 `backend/internal/domain/service/user_performance.go` is a stateless calculator. `SwipeUsecase.HandleSwipe` records the swipe and commits the FSRS update first, then loads the latest 100 swipe records for the user through `SwipeRecordRepository.ListRecentByUser`. This post-commit read keeps transactional rollback behavior simple and lets the just-created swipe participate in the next response's metrics.
 
-The response exposes both `performanceMode` and `metrics`. `performanceMode` is an integer in the range `0..4`:
+The response exposes both `performanceMode` and `metrics`. On the wire `performanceMode` is the `SwipePerformanceMode` enum — `DIFFICULT`, `DEFAULT`, `GOOD`, `EASY`, `MASTERED` — which corresponds in that order to the calculator's internal modes `0..4`; `toSwipePerformanceModeModel` in `backend/graph/resolver/mapper.go` performs the order-preserving conversion. The internal modes and their bands:
 
 | Mode | Label | Success-rate band before difficulty adjustment |
 |---|---|---|
@@ -276,7 +276,7 @@ The response exposes both `performanceMode` and `metrics`. `performanceMode` is 
 | `1` | Default | `0.60 <= rate < 0.75` |
 | `2` | Good | `0.75 <= rate < 0.85` |
 | `3` | Easy | `0.85 <= rate < 0.95` |
-| `4` | In While | `>= 0.95` |
+| `4` | Mastered | `>= 0.95` |
 
 The legacy guard is preserved: fewer than 20 reviews always returns `ModeDefault`. Average difficulty then shifts the mode by one step: `>= 0.7` lowers it, `<= 0.3` raises it, and the final value is clamped to `0..4`. Current FSRS difficulty values are stored on the `1..10` scale, so the calculator normalizes each one as `normalized = difficulty / 10`, clamped to `[0, 1]`, before applying those boundaries. The division is unconditional: a mastered card whose FSRS difficulty is pinned at the floor of exactly `1.0` maps to `0.1` (the low-difficulty band), not `1.0`. A strict `> 1` guard would leave the floor at `1.0` and trip the high-difficulty threshold, inverting the mode downward for the easiest cards.
 
@@ -332,19 +332,33 @@ The resolver layer for these operations lives in `backend/graph/resolver/card_im
 
 ```graphql
 """
-Next batch of cards for a learning session: randomly sampled never-seen cards interleaved 4:1 with review cards rated Again/Hard on a previous day (JST). Returns an empty list when the cardgroup has no eligible cards. See [`docs/backend/ddd-patterns/discovery-first-due-ordering.md`](backend/ddd-patterns/discovery-first-due-ordering.md) for the composition design.
+Next batch of cards for a learning session: randomly sampled never-seen cards interleaved 4:1 with review cards due today (JST); among review cards, those you failed on their last review or whose memory stability is still below the learned threshold are served first, and other due cards fill the remaining slots. Returns an empty list when the cardgroup has no eligible cards.
 Limit defaults to 20 (clamped to 100). Returns UNAUTHENTICATED if the caller does not own
 the cardgroup; BAD_USER_INPUT if the cardgroup does not exist.
+A limit of zero, a negative limit, and an explicit null are all treated as omitted and fall back to the default.
 """
 learnNextDueCards(cardgroupId: ID!, limit: Int = 20): [Card!]!
 ```
 
 The description is the contract, not a comment. It covers: normal return shape
-(empty list for caught-up state), clamping behaviour, and the two error codes the
-caller must handle. Keep descriptions result-oriented (what the client observes)
-rather than implementation-oriented (what the resolver calls). Do not list error
-codes only in the resolver body — that surface is invisible to client code-generators
-and frontend teams reading the schema.
+(empty list for caught-up state), clamping behaviour, the degenerate-limit fallback,
+and the two error codes the caller must handle. Keep descriptions result-oriented
+(what the client observes) rather than implementation-oriented (what the resolver
+calls). Do not list error codes only in the resolver body — that surface is invisible
+to client code-generators and frontend teams reading the schema. The queue composition
+behind the description is documented in
+[`docs/backend/ddd-patterns/discovery-first-due-ordering.md`](backend/ddd-patterns/discovery-first-due-ordering.md).
+
+Guard order for `learnNextDueCards` and `practiceTodaysCards` (both run the shared
+`authorizeCardgroupForLearn` in `backend/internal/usecase/learn.go` before touching
+the card repository):
+
+1. `requireCallerSub(auth.UserFrom(ctx))` — nil caller or empty `Sub` ⇒ `UNAUTHENTICATED`.
+2. `authorizeCardgroupOrBadInput(...)` — missing cardgroup ⇒ `BAD_USER_INPUT` on `cardgroupId`; a cardgroup owned by another user ⇒ `UNAUTHENTICATED`.
+
+Authentication is checked first, so an unauthenticated caller receives `UNAUTHENTICATED`
+even when the requested cardgroup does not exist. That ordering keeps anonymous callers
+from using either query as an existence oracle over cardgroup ids.
 
 **Dedupe is asymmetric: `importCards` dedupes, `validateCardImport` does not.** `importCards` runs dedup and surfaces dropped rows as `CardImportError` entries with `Front`/`Back` populated. `validateCardImport` runs `textdic.Process` directly and surfaces only parser-level syntax errors — those entries never carry `Front`/`Back`. The resolver mapping site for `validateCardImport` (in `backend/graph/resolver/card_import.resolvers.go`) therefore deliberately omits `nilIfEmpty(e.Front)` calls; there is nothing to map. If a future change adds dedup to `validateCardImport`, the resolver mapping site must be updated symmetrically with `importCards`.
 
