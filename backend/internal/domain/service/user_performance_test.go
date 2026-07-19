@@ -421,6 +421,28 @@ func TestComputeMetrics_JSTLearnDayBoundary(t *testing.T) {
 	require.Equal(t, 2, got.StudyStreak)
 }
 
+// TestStudyStreak_ReturnsUnclampedRunLength pins the raw streak behaviour the
+// stats usecase's cap exists for: given 366 consecutive JST learn-day keys
+// ending at the current learn-day, the walk reports the full run length of 366.
+// studyStreak applies no cap of its own — it stops only at the first missing
+// day — so a run one longer than the reported 365-day maximum reaches the
+// caller intact. That the inclusive [now-365d, now] fetch window can actually
+// supply 366 learn-days is proven end to end by
+// TestStatsUsecase_MyLearningStats_StreakCappedAtStatsWindowDays in
+// backend/internal/usecase/stats_test.go, which seeds swipes across the
+// inclusive cutoff and asserts every reported window clamps back to 365.
+func TestStudyStreak_ReturnsUnclampedRunLength(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 18, 3, 0, 0, 0, time.UTC)
+	daysSeen := make(map[string]struct{}, 366)
+	for day := domain.StartOfLearnDay(now); len(daysSeen) < 366; day = day.AddDate(0, 0, -1) {
+		daysSeen[domain.LearnDayKey(day)] = struct{}{}
+	}
+
+	require.Equal(t, 366, studyStreak(daysSeen, now))
+}
+
 func TestModeFromMetricsThresholdBoundaries(t *testing.T) {
 	t.Parallel()
 

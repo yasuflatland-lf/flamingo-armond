@@ -356,9 +356,10 @@ func isOnTimeRecall(swipe domain.SwipeRecord) bool {
 
 // studyStreak counts consecutive JST learn-days ending at the current learn-day,
 // breaking on the first day with no swipe. If the current learn-day has no
-// swipe, the streak is 0. The count is bounded by the caller-supplied swipe
-// window (the stats usecase loads a trailing 365-day window), so a streak longer
-// than the window reads as at most the window length.
+// swipe, the streak is 0. The walk is bounded only by the learn-days present in
+// daysSeen, and an inclusive N-day fetch window can contribute N+1 distinct
+// learn-day keys — so the raw count can exceed the caller's window length by one.
+// Clamping to a reported cap is the caller's job; the stats usecase does it.
 func studyStreak(daysSeen map[string]struct{}, now time.Time) int {
 	streak := 0
 	for day := domain.StartOfLearnDay(now); ; day = day.AddDate(0, 0, -1) {

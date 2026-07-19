@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -259,6 +260,46 @@ func TestStatsUsecase_MyLearningStats_WindowsReflectComputeWindowedMetrics(t *te
 	want := service.ComputeWindowedMetrics(swipeRecordsByValue(swipes), fixedNow)
 	assert.Equal(t, want, res.Windows,
 		"Windows is ComputeWindowedMetrics over the loaded swipes at the injected now")
+}
+
+// TestStatsUsecase_MyLearningStats_StreakCappedAtStatsWindowDays pins the cap the
+// schema and the client copy promise: the inclusive [now-365d, now] read spans 366
+// JST learn-days, so a learner who studied every one of them computes a raw streak
+// of 366. Every reported window clamps that to statsWindowDays.
+func TestStatsUsecase_MyLearningStats_StreakCappedAtStatsWindowDays(t *testing.T) {
+	t.Parallel()
+	// 12:00 UTC == 21:00 JST, so every daily fixture sits inside its own JST
+	// learn-day and the earliest one lands exactly on the inclusive cutoff.
+	fixedNow := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	state := domain.NewFSRSStateForNewCard(fixedNow)
+	state.Phase = domain.FSRSPhaseReview
+	swipes := make([]*domain.SwipeRecord, 0, statsWindowDays+1)
+	for daysAgo := 0; daysAgo <= statsWindowDays; daysAgo++ {
+		swipes = append(swipes, &domain.SwipeRecord{
+			ID:          fmt.Sprintf("s%d", daysAgo),
+			UserID:      "user-1",
+			CardID:      "c1",
+			CardgroupID: "cg1",
+			Rating:      domain.RatingGood,
+			ReviewedAt:  fixedNow.AddDate(0, 0, -daysAgo),
+			StateAfter:  state,
+		})
+	}
+	swipeRepo := &fakeStatsSwipeRepo{swipes: swipes}
+	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, swipeRepo, &fakeStatsCardgroupRepo{}, fixedClock{now: fixedNow})
+
+	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
+	require.NoError(t, err)
+	require.NotNil(t, res)
+
+	require.Equal(t, fixedNow.AddDate(0, 0, -statsWindowDays), swipeRepo.sinceArg,
+		"the earliest fixture lands exactly on the inclusive cutoff")
+	raw := service.ComputeWindowedMetrics(swipeRecordsByValue(swipes), fixedNow)
+	require.Equal(t, statsWindowDays+1, raw.Days365.StudyStreak,
+		"the uncapped walk sees one learn-day more than the window length")
+	assert.Equal(t, statsWindowDays, res.Windows.Days365.StudyStreak)
+	assert.Equal(t, statsWindowDays, res.Windows.Days30.StudyStreak)
+	assert.Equal(t, statsWindowDays, res.Windows.Days7.StudyStreak)
 }
 
 func TestStatsUsecase_MyLearningStats_StrugglingCardsFromFSRSRows(t *testing.T) {
