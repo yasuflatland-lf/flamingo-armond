@@ -182,6 +182,7 @@
          <column autoUpdated="false" defaultValue="null" digits="0" id="10" name="scheduled_days" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
          <column autoUpdated="false" defaultValue="now()" digits="6" id="11" name="created_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
          <column autoUpdated="false" defaultValue="now()" digits="6" id="12" name="updated_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="13" name="last_rating" nullable="true" remarks="FSRS rating (1=Again, 2=Hard, 3=Good, 4=Easy) of the swipe that produced this row's state. NULL only when the backfill found no swipe history." size="5" type="int2" typeCode="5"/>
          <primaryKey column="user_id" sequenceNumberInPK="1"/>
          <primaryKey column="card_id" sequenceNumberInPK="2"/>
          <index name="user_card_fsrs_pkey" unique="true">
