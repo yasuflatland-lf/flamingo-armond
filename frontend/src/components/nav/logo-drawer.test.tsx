@@ -420,7 +420,9 @@ describe("<LogoDrawer>", () => {
       window.removeEventListener("flamingo:batch-import", onEvent as EventListener);
 
       expect(onEvent).toHaveBeenCalledTimes(1);
-      expect((onEvent.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({ ownerId: "m-1" });
+      expect((onEvent.mock.calls[0]?.[0] as CustomEvent | undefined)?.detail).toEqual({
+        ownerId: "m-1",
+      });
     });
 
     it("cardgroup edit: menu has Merge, and Add card falls back to /cards/new when uncancelled", async () => {
@@ -463,7 +465,9 @@ describe("<LogoDrawer>", () => {
       window.removeEventListener("flamingo:add-master-card", onEvent as EventListener);
 
       expect(onEvent).toHaveBeenCalledTimes(1);
-      expect((onEvent.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({ masterId: "m-1" });
+      expect((onEvent.mock.calls[0]?.[0] as CustomEvent | undefined)?.detail).toEqual({
+        masterId: "m-1",
+      });
     });
 
     it("cardgroup edit: Merge item dispatches flamingo:merge with ownerId", async () => {
@@ -478,7 +482,9 @@ describe("<LogoDrawer>", () => {
       window.removeEventListener("flamingo:merge", onEvent as EventListener);
 
       expect(onEvent).toHaveBeenCalledTimes(1);
-      expect((onEvent.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({ ownerId: "abc" });
+      expect((onEvent.mock.calls[0]?.[0] as CustomEvent | undefined)?.detail).toEqual({
+        ownerId: "abc",
+      });
     });
   });
 });
