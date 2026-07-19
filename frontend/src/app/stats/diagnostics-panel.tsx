@@ -21,6 +21,10 @@ const WINDOW_OPTIONS: ReadonlyArray<{ key: WindowKey; days: number }> = [
 // format a 0..1 fraction as a whole-percent string.
 const PERCENT_FORMAT = { style: "percent", maximumFractionDigits: 0 } as const;
 
+// Stands in for the retention / lapse percentage when the window carries no
+// reviews of already-learned cards.
+const NO_RATE_VALUE = "—";
+
 /**
  * Diagnostics KPI row for `/stats`: six `StatTile`s over a locally selected
  * trailing window, each carrying a `StatHint` help popover. Rate
@@ -31,7 +35,10 @@ const PERCENT_FORMAT = { style: "percent", maximumFractionDigits: 0 } as const;
  * `studyStreak` uses the pluralized `diagnosticsStreakValue` message; `reviewCount`
  * is a grouped integer. Switching windows is synchronous because all snapshots
  * arrive in one query. When the selected window has no reviews, only the tile
- * area becomes an empty state so the window control remains available.
+ * area becomes an empty state so the window control remains available. When it
+ * has reviews but none of already-learned cards (no `knownReviewCount`), the
+ * retention and lapse tiles alone fall back to an explanatory empty state,
+ * because the backend reports both rates as 0 for an absent population.
  */
 export function DiagnosticsPanel({
   performanceWindows,
@@ -43,13 +50,21 @@ export function DiagnosticsPanel({
   const [selectedWindow, setSelectedWindow] = useState<WindowKey>("days365");
   const performance = performanceWindows[selectedWindow];
   const selectedDays = WINDOW_OPTIONS.find(({ key }) => key === selectedWindow)?.days ?? 365;
+  // The window has activity, but nothing that qualifies for the two gated rates.
+  // Test `!(knownReviewCount > 0)` (not `=== 0`) so that an unexpectedly-undefined
+  // value (a query / codegen / mock desync tsc cannot catch, since the field is
+  // typed non-null) falls through to the empty state below rather than back into a
+  // literal "0%" — the exact misdirection this gate removes.
+  const noKnownReviews = !(performance.knownReviewCount > 0) && performance.reviewCount > 0;
 
   const tiles = [
     {
       key: "retention",
       label: t("diagnosticsRetention"),
-      value: format.number(performance.retentionRate, PERCENT_FORMAT),
-      caption: t("diagnosticsRetentionCaption"),
+      value: noKnownReviews
+        ? NO_RATE_VALUE
+        : format.number(performance.retentionRate, PERCENT_FORMAT),
+      caption: noKnownReviews ? t("diagnosticsNoKnownReviews") : t("diagnosticsRetentionCaption"),
       hint: t("diagnosticsRetentionHint"),
     },
     {
@@ -62,8 +77,8 @@ export function DiagnosticsPanel({
     {
       key: "lapse",
       label: t("diagnosticsLapse"),
-      value: format.number(performance.lapseRate, PERCENT_FORMAT),
-      caption: t("diagnosticsLapseCaption"),
+      value: noKnownReviews ? NO_RATE_VALUE : format.number(performance.lapseRate, PERCENT_FORMAT),
+      caption: noKnownReviews ? t("diagnosticsNoKnownReviews") : t("diagnosticsLapseCaption"),
       hint: t("diagnosticsLapseHint"),
     },
     {

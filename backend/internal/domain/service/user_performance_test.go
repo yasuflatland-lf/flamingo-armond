@@ -301,6 +301,49 @@ func TestComputeMetrics(t *testing.T) {
 	}
 }
 
+// TestComputeMetrics_KnownReviewCount pins the denominator behind RetentionRate
+// and LapseRate as a separate wire field. A window can carry swipes while no
+// swipe passes the known-card gate, and the two rates are then 0 for lack of a
+// population rather than for measured failure — consumers distinguish the two
+// cases by KnownReviewCount, not by ReviewCount.
+func TestComputeMetrics_KnownReviewCount(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 30, 3, 0, 0, 0, time.UTC)
+
+	t.Run("swipes without gated reviews leave the known-review count at zero", func(t *testing.T) {
+		t.Parallel()
+
+		got := ComputeMetrics([]domain.SwipeRecord{
+			// New-card swipe and a Learning->Easy graduation: neither is a review
+			// of an already-learned card.
+			swipeBefore(domain.RatingAgain, now, state(5, 0, 0, domain.FSRSPhaseLearning), domain.FSRSPhaseNew, 0),
+			swipeBefore(domain.RatingEasy, now, state(5, 0, 1, domain.FSRSPhaseReview), domain.FSRSPhaseLearning, 0),
+		}, now)
+
+		require.Equal(t, 2, got.ReviewCount)
+		require.Equal(t, 0, got.KnownReviewCount)
+		require.Zero(t, got.RetentionRate)
+		require.Zero(t, got.LapseRate)
+	})
+
+	t.Run("known-review count equals the gated denominator", func(t *testing.T) {
+		t.Parallel()
+
+		got := ComputeMetrics([]domain.SwipeRecord{
+			swipeBefore(domain.RatingAgain, now, stateWithLapses(5, 3, 0, domain.FSRSPhaseRelearning, 1), domain.FSRSPhaseReview, 7),
+			swipeBefore(domain.RatingHard, now, state(5, 4, 8, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 7),
+			swipeBefore(domain.RatingEasy, now, state(5, 9, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 7),
+			swipeBefore(domain.RatingEasy, now, state(5, 0, 1, domain.FSRSPhaseReview), domain.FSRSPhaseLearning, 0),
+		}, now)
+
+		require.Equal(t, 4, got.ReviewCount)
+		require.Equal(t, 3, got.KnownReviewCount)
+		require.InDelta(t, 1.0/3.0, got.RetentionRate, 0.000000001)
+		require.InDelta(t, 1.0/3.0, got.LapseRate, 0.000000001)
+	})
+}
+
 func TestIsKnownCardReview(t *testing.T) {
 	t.Parallel()
 

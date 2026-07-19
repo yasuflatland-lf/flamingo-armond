@@ -18,6 +18,7 @@ export const MyLearningStatsQuery = graphql(`
           lapseRate
           studyStreak
           reviewCount
+          knownReviewCount
           avgDifficulty
         }
         days30 {
@@ -26,6 +27,7 @@ export const MyLearningStatsQuery = graphql(`
           lapseRate
           studyStreak
           reviewCount
+          knownReviewCount
           avgDifficulty
         }
         days7 {
@@ -34,6 +36,7 @@ export const MyLearningStatsQuery = graphql(`
           lapseRate
           studyStreak
           reviewCount
+          knownReviewCount
           avgDifficulty
         }
       }

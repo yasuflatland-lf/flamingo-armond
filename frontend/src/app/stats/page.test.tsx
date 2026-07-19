@@ -51,6 +51,7 @@ function makeStatsData() {
           lapseRate: 0.1,
           studyStreak: 0,
           reviewCount: 0,
+          knownReviewCount: 0,
           avgDifficulty: 0.5,
         },
         days30: {
@@ -59,6 +60,7 @@ function makeStatsData() {
           lapseRate: 0.1,
           studyStreak: 0,
           reviewCount: 0,
+          knownReviewCount: 0,
           avgDifficulty: 0.5,
         },
         days7: {
@@ -67,6 +69,7 @@ function makeStatsData() {
           lapseRate: 0.1,
           studyStreak: 0,
           reviewCount: 0,
+          knownReviewCount: 0,
           avgDifficulty: 0.5,
         },
       },

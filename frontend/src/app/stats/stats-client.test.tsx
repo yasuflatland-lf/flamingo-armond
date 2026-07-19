@@ -42,6 +42,7 @@ const populatedStats: Stats = {
       lapseRate: 0.12,
       studyStreak: 9,
       reviewCount: 1430,
+      knownReviewCount: 1200,
       // Served normalized to 0..1 by the backend; the panel rescales ×10 → "6.2".
       avgDifficulty: 0.62,
     },
@@ -52,6 +53,7 @@ const populatedStats: Stats = {
       lapseRate: 0.15,
       studyStreak: 9,
       reviewCount: 300,
+      knownReviewCount: 250,
       avgDifficulty: 0.6,
     },
     days7: {
@@ -61,6 +63,7 @@ const populatedStats: Stats = {
       lapseRate: 0.2,
       studyStreak: 9,
       reviewCount: 70,
+      knownReviewCount: 60,
       avgDifficulty: 0.58,
     },
   },
@@ -205,7 +208,13 @@ describe("<StatsClient>", () => {
         ...populatedStats,
         performanceWindows: {
           ...populatedStats.performanceWindows,
-          days365: { ...populatedStats.performanceWindows.days365, reviewCount: 0 },
+          // A dormant window carries no gated reviews either — the gated count is
+          // a subset of the total, so it can never exceed it.
+          days365: {
+            ...populatedStats.performanceWindows.days365,
+            reviewCount: 0,
+            knownReviewCount: 0,
+          },
         },
       });
 

@@ -463,6 +463,7 @@
     "diagnosticsWindowOption": "{days}d",
     "diagnosticsWindowOptionAria": "Last {days} days",
     "diagnosticsWindowGroupAria": "Diagnostics period",
-    "diagnosticsNoActivityInWindow": "No reviews in the last {days} days."
+    "diagnosticsNoActivityInWindow": "No reviews in the last {days} days.",
+    "diagnosticsNoKnownReviews": "No reviews of learned cards yet"
   }
 }
