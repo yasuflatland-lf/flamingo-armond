@@ -9,8 +9,8 @@ import (
 	"backend/internal/database"
 )
 
-// TestLastRatingDownUpRoundtrip proves that the newest migration drops and
-// restores user_card_fsrs.last_rating without leaving the schema behind the
+// TestLastRatingDownUpRoundtrip proves that the add_last_rating migration drops
+// and restores user_card_fsrs.last_rating without leaving the schema behind the
 // latest migration version.
 //
 // t.Parallel() is intentionally absent: the test runs a global migration
@@ -38,12 +38,16 @@ func TestLastRatingDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	if err := m.Steps(-1); err != nil {
-		t.Fatalf("migrate down last_rating migration: %v", err)
+	// Step back two migrations newest-first:
+	// add_stability_before_to_swipe_records, then add_last_rating_to_user_card_fsrs
+	// (the target). Bump this count when adding migrations after
+	// add_last_rating_to_user_card_fsrs.
+	if err := m.Steps(-2); err != nil {
+		t.Fatalf("migrate down to before last_rating migration: %v", err)
 	}
 	requireColumnMissing(t, ctx, sqlDB, "user_card_fsrs", "last_rating")
 
-	if err := m.Steps(1); err != nil {
+	if err := m.Steps(2); err != nil {
 		t.Fatalf("migrate up last_rating migration: %v", err)
 	}
 	requireColumnExists(t, ctx, sqlDB, "user_card_fsrs", "last_rating")
@@ -74,8 +78,9 @@ func TestLastRatingUpMigrationBackfillsLatestSwipe(t *testing.T) {
 		}
 	}()
 
-	if err := m.Steps(-1); err != nil {
-		t.Fatalf("migrate down last_rating migration: %v", err)
+	// Two steps: add_stability_before_to_swipe_records sits above the target.
+	if err := m.Steps(-2); err != nil {
+		t.Fatalf("migrate down to before last_rating migration: %v", err)
 	}
 	requireColumnMissing(t, ctx, sqlDB, "user_card_fsrs", "last_rating")
 
@@ -113,7 +118,7 @@ func TestLastRatingUpMigrationBackfillsLatestSwipe(t *testing.T) {
 		t.Fatalf("seed swipe_records rows: %v", err)
 	}
 
-	if err := m.Steps(1); err != nil {
+	if err := m.Steps(2); err != nil {
 		t.Fatalf("migrate up last_rating migration: %v", err)
 	}
 	requireColumnExists(t, ctx, sqlDB, "user_card_fsrs", "last_rating")
