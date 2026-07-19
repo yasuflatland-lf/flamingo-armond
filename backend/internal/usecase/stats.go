@@ -16,7 +16,10 @@ const (
 	strugglingCardsLimit = 10
 	// statsWindowDays is the trailing calendar window (in days) over which the
 	// diagnostic performance snapshot is computed, so studyStreak reflects real
-	// calendar days rather than a swipe-count window.
+	// calendar days rather than a swipe-count window. Window cutoffs are computed
+	// on the UTC clock — mirroring the learn and swipe paths — so the AddDate
+	// arithmetic matches the UTC-recorded reviewed_at values regardless of the
+	// server's zone setting.
 	statsWindowDays = 365
 )
 
@@ -108,7 +111,7 @@ func (u *statsUsecase) MyLearningStats(ctx context.Context) (*LearningStatsResul
 	// Diagnostic half: performance snapshots derived from one trailing
 	// statsWindowDays calendar read (so studyStreak reflects real days, not a
 	// swipe count) plus the struggling-card ranking from the loaded FSRS rows.
-	now := u.clock.Now()
+	now := u.clock.Now().UTC()
 	swipes, err := u.swipeRepo.ListByUserSince(ctx, caller.Sub, now.AddDate(0, 0, -statsWindowDays))
 	if err != nil {
 		return nil, eris.Wrap(err, "usecase: stats: list swipes since")

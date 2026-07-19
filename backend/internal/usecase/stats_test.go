@@ -219,6 +219,27 @@ func TestStatsUsecase_MyLearningStats_WindowsSwipesByStatsWindowDays(t *testing.
 	assert.Empty(t, res.StrugglingCards)
 }
 
+// TestStatsUsecase_MyLearningStats_WindowCutoffUsesUTCClock pins the clock basis:
+// the cutoff is derived from the UTC instant, matching the learn and swipe paths,
+// so AddDate arithmetic lines up with the UTC-recorded reviewed_at values even
+// when the injected clock reports a non-UTC zone.
+func TestStatsUsecase_MyLearningStats_WindowCutoffUsesUTCClock(t *testing.T) {
+	t.Parallel()
+	zone := time.FixedZone("UTC+5", 5*60*60)
+	fixedNow := time.Date(2026, 7, 10, 12, 0, 0, 0, zone)
+	swipeRepo := &fakeStatsSwipeRepo{}
+	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, swipeRepo, &fakeStatsCardgroupRepo{}, fixedClock{now: fixedNow})
+
+	res, err := uc.MyLearningStats(authedStatsCtx("user-1"))
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.True(t, swipeRepo.called, "MyLearningStats reads the windowed swipe history")
+	assert.Equal(t, fixedNow.UTC().AddDate(0, 0, -365), swipeRepo.sinceArg,
+		"since == now.UTC() minus statsWindowDays (365), not the zoned instant")
+	assert.Equal(t, time.UTC, swipeRepo.sinceArg.Location(),
+		"the cutoff carries the UTC location, pinning the normalization rather than only the instant")
+}
+
 func TestStatsUsecase_MyLearningStats_WindowsReflectComputeWindowedMetrics(t *testing.T) {
 	t.Parallel()
 	fixedNow := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
