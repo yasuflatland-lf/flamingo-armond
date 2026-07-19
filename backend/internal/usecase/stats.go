@@ -124,11 +124,28 @@ func (u *statsUsecase) MyLearningStats(ctx context.Context) (*LearningStatsResul
 		return nil, eris.Wrap(err, "usecase: stats: count cardgroups by owner")
 	}
 
+	windows := service.ComputeWindowedMetrics(swipeRecordsByValue(swipes), now)
+	windows.Days365 = capStreak(windows.Days365)
+	windows.Days30 = capStreak(windows.Days30)
+	windows.Days7 = capStreak(windows.Days7)
+
 	return &LearningStatsResult{
 		Mastery:         mastery,
 		Decks:           decks,
 		OwnsAnyDeck:     count > 0,
-		Windows:         service.ComputeWindowedMetrics(swipeRecordsByValue(swipes), now),
+		Windows:         windows,
 		StrugglingCards: service.TopStruggling(states, strugglingCardsLimit),
 	}, nil
+}
+
+// capStreak clamps a computed streak to the fetch window's day count: the
+// inclusive [now-365d, now] read intersects 366 JST learn-days, one more than
+// the documented 365-day cap the schema and the client copy promise. Without the
+// clamp the reported streak also oscillates between 366 and 365 across a single
+// day, reading as a lost day to a learner who never missed one.
+func capStreak(m service.PerformanceMetrics) service.PerformanceMetrics {
+	if m.StudyStreak > statsWindowDays {
+		m.StudyStreak = statsWindowDays
+	}
+	return m
 }
