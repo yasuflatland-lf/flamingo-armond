@@ -82,6 +82,37 @@ The usecase passes the concrete scheduler; the aggregate updates its own fields.
 `UpdatedAt` is always stamped, and the aggregate's invariants are maintained in
 one place.
 
+#### The scheduler clamps a backward-reading clock
+
+`ApplyRating` hands `now` to the scheduler unchanged, and the scheduler clamps it:
+`service.FSRSScheduler.Apply` raises `now` to `state.LastReview` whenever the
+incoming timestamp reads earlier than the stored last review. The guard is the
+`if now.Before(state.LastReview)` block at the top of `Apply` in
+[`backend/internal/domain/service/fsrs_scheduler.go`](../../../backend/internal/domain/service/fsrs_scheduler.go).
+
+The clamp is a domain safety rule, not an implementation convenience. A backward
+clock step — an NTP correction, cross-instance skew — makes the scheduling
+library's elapsed-days float negative, and Go's conversion of a negative float to
+`uint64` is implementation-dependent (Go spec, Conversions). The corrupted count
+is written straight back into the persisted scheduling state, so one skewed
+request permanently damages that card's schedule. Clamping keeps elapsed time
+non-negative, at the cost of treating a backward-skewed review as if it happened
+at the instant of the previous one. Any reimplementation of the `ApplyRating`
+path must reproduce it.
+
+**A clamped apply leaves `State.LastReview > UpdatedAt` in the in-memory
+aggregate.** `ApplyRating` stamps `u.UpdatedAt = now` with the *unclamped*
+argument while the state it stores back carries the *clamped* `LastReview`, so
+the loaded aggregate holds the inversion for the rest of the request. It does not
+travel to the row: a clamp can only fire against an existing FSRS row (a brand-new
+one is created with `LastReview = now`), so the upsert always takes the conflict
+branch, whose `DoUpdates` assigns `updated_at = now()` — and the
+`trg_user_card_fsrs_set_updated_at` BEFORE UPDATE trigger assigns `now()` again.
+The persisted `updated_at` is therefore the database clock, never the skewed
+aggregate value. The inversion is tolerated rather than normalised because
+nothing reads that ordering: the queue predicates compare `last_review` and `due`
+against learn-day boundaries, never against `updated_at`.
+
 ### Single-field aggregate mutation (`Cardgroup.Rename`, `Card.UpdateFront`/`UpdateBack`) (issues #212, #213)
 
 **Before**: `CardgroupUsecase.Update` and `CardUsecase.Update` mutated the
