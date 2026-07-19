@@ -343,12 +343,12 @@
                                 </thead>
                                 <tbody>
                                 <tr>
-                                    <td>master_cardgroups_status_values</td>
-                                    <td>(status &#61; ANY (ARRAY[&#39;draft&#39;::text, &#39;published&#39;::text]))</td>
-                                </tr>
-                                <tr>
                                     <td>master_cardgroups_name_length</td>
                                     <td>((char_length(TRIM(BOTH FROM name)) &gt;&#61; 1) AND (char_length(TRIM(BOTH FROM name)) &lt;&#61; 100))</td>
+                                </tr>
+                                <tr>
+                                    <td>master_cardgroups_status_values</td>
+                                    <td>(status &#61; ANY (ARRAY[&#39;draft&#39;::text, &#39;published&#39;::text]))</td>
                                 </tr>
                                 </tbody>
                             </table>
