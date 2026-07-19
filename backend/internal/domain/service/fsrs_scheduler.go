@@ -22,6 +22,14 @@ func NewFSRSScheduler() *FSRSScheduler {
 
 // Apply returns a fresh state and does not mutate the input state.
 func (s *FSRSScheduler) Apply(state domain.FSRSState, rating domain.Rating, now time.Time) domain.FSRSState {
+	// A backward clock step (NTP, cross-instance skew) would make the library's
+	// elapsed-days float negative; the float->uint64 conversion of a negative
+	// value is implementation-dependent (Go spec, Conversions) and corrupts the
+	// persisted state on amd64. Clamp so elapsed time can never be negative.
+	if now.Before(state.LastReview) {
+		now = state.LastReview
+	}
+
 	info := s.algo.Next(fsrs.Card{
 		Due:           state.Due,
 		Stability:     state.Stability,
