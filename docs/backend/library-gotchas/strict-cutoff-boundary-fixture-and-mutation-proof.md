@@ -43,7 +43,7 @@ FAILS, then restore and confirm the diff is clean:
   `ucs.last_review <= ?`. The exact-boundary row now passes the predicate and
   enters the review window, so the `require.Equal` against the single expected
   ID fails. Restore the `<` and the test goes green again.
-- For a JST start-of-day cutoff: change `startOfDayJST(now)` to a raw `now`
+- For a JST start-of-day cutoff: change `domain.StartOfLearnDay(now)` to a raw `now`
   (`backend/internal/usecase/learn.go`). A card reviewed earlier today now sits
   before the looser cutoff and reappears in the queue, breaking the
   exclusion assertion.
