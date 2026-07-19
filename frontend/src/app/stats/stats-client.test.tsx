@@ -318,6 +318,29 @@ describe("<StatsClient>", () => {
     });
   });
 
+  describe("populated but no decks (studied > 0 && decks === [])", () => {
+    // Reachable transiently: the backend derives the mastery totals and the
+    // per-deck totals from separate, non-transactional reads, so a deck deletion
+    // landing between them yields studied > 0 alongside an empty deck list.
+    const noDecksStats: Stats = { ...populatedStats, decks: [] };
+
+    it("omits the per-deck section instead of rendering it headed-but-empty", () => {
+      renderStats(noDecksStats);
+
+      expect(screen.queryByText("Per-deck acquisition")).not.toBeInTheDocument();
+      expect(screen.queryByText("Spanish Vocab")).not.toBeInTheDocument();
+    });
+
+    it("still renders mastery, diagnostics, and the struggling list", () => {
+      renderStats(noDecksStats);
+
+      expect(screen.getByText("820")).toBeInTheDocument();
+      expect(screen.getByText("Diagnostics")).toBeInTheDocument();
+      expect(screen.getByText("Struggling cards")).toBeInTheDocument();
+      expect(screen.getByText("Ephemeral")).toBeInTheDocument();
+    });
+  });
+
   describe("populated but no struggling cards (strugglingCards === [])", () => {
     const noStrugglingStats: Stats = { ...populatedStats, strugglingCards: [] };
 

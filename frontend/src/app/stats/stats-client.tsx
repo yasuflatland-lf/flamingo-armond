@@ -61,7 +61,12 @@ export function StatsClient({ stats }: { stats: MyLearningStatsQuery["myLearning
         <MasterySummary mastery={stats.mastery} />
         <DiagnosticsPanel performanceWindows={stats.performanceWindows} />
         <div className="grid gap-4 lg:grid-cols-[4fr_3fr]">
-          <PerDeckList decks={stats.decks} />
+          {/* The mastery totals and the per-deck totals come from separate,
+              non-transactional backend reads, so a deck deletion landing between
+              them yields studied > 0 with an empty deck list. Gate on `hasDecks`
+              so the section never renders headed-but-empty; the grid lays out
+              correctly with a single child. */}
+          {hasDecks ? <PerDeckList decks={stats.decks} /> : null}
           <StrugglingList cards={stats.strugglingCards} />
         </div>
       </div>
