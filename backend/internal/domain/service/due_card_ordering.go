@@ -20,10 +20,10 @@ func NewOrderingPolicy() *OrderingPolicy { return &OrderingPolicy{} }
 //  1. The new partition is fully shuffled — the repository samples WHICH new
 //     cards enter the batch (uniformly, via SQL random()); this shuffle
 //     randomises their arrangement deterministically under an injected rng.
-//     The review partition is shuffled within same-phase runs: the repository
-//     pre-sorts learning-phase rows (Learning/Relearning) ahead of Review
-//     rows, and shuffling never crosses that boundary, so a Review-state
-//     filler can never displace a learning-phase card from the review slots.
+//     The review partition is shuffled within same-band runs: the repository
+//     concatenates rescue rows ahead of filler rows, and shuffling never crosses
+//     that boundary, so a filler can never displace a rescue card from the
+//     review slots.
 //  2. New and review cards are interleaved at the caller-supplied ratio
 //     (ratio.NewShare new per ratio.ReviewShare review) with review-first
 //     emission. When one bucket empties, the remaining cards from the other
@@ -50,14 +50,14 @@ func (p *OrderingPolicy) Apply(due []domain.DueCard, rng *rand.Rand, ratio domai
 	rng.Shuffle(len(newCards), func(a, b int) {
 		newCards[a], newCards[b] = newCards[b], newCards[a]
 	})
-	shuffleWithinPhase(reviewCards, rng)
+	shuffleWithinBand(reviewCards, rng)
 	return interleave(newCards, reviewCards, ratio.NewShare(), ratio.ReviewShare())
 }
 
 // partition splits due into new (FSRSPhaseNew) vs review (everything else),
-// preserving the input order. The repository pre-sorts review rows
-// learning-phase first, then random() within each phase; new rows arrive in
-// random() sample order.
+// preserving the input order. The repository concatenates rescue rows before
+// filler rows and randomizes each window; new rows arrive in random() sample
+// order.
 func partition(due []domain.DueCard) (newC, reviewC []domain.DueCard) {
 	for _, d := range due {
 		if d.Phase == domain.FSRSPhaseNew {
@@ -69,17 +69,16 @@ func partition(due []domain.DueCard) (newC, reviewC []domain.DueCard) {
 	return
 }
 
-// shuffleWithinPhase shuffles contiguous same-phase runs in place using rng.
-// The repository pre-sorts review cards learning-phase first (Learning and
-// Relearning before Review), so a single linear pass detects each phase run.
-// Scoping the shuffle to a run preserves the phase priority: a Review-state
-// filler card can never move ahead of a learning-phase card.
-func shuffleWithinPhase(cards []domain.DueCard, rng *rand.Rand) {
+// shuffleWithinBand shuffles contiguous same-band runs in place using rng.
+// The repository concatenates rescue cards before filler cards, so a single
+// linear pass detects each band run. Scoping the shuffle to a run preserves
+// the priority: a filler card can never move ahead of a rescue card.
+func shuffleWithinBand(cards []domain.DueCard, rng *rand.Rand) {
 	start := 0
 	// Loop runs through len(cards) inclusive so the trailing run is flushed
 	// without a tail handler.
 	for i := 1; i <= len(cards); i++ {
-		if i == len(cards) || cards[i].Phase.IsLearningPhase() != cards[start].Phase.IsLearningPhase() {
+		if i == len(cards) || cards[i].Rescue != cards[start].Rescue {
 			if i-start > 1 {
 				run := cards[start:i]
 				rng.Shuffle(len(run), func(a, b int) { run[a], run[b] = run[b], run[a] })

@@ -18,5 +18,11 @@ func StartOfLearnDay(now time.Time) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, learnDayZone)
 }
 
+// EndOfLearnDay returns the JST midnight strictly after now — the exclusive
+// upper bound of the current learn day. JST has no DST, so Add(24h) is exact.
+func EndOfLearnDay(now time.Time) time.Time {
+	return StartOfLearnDay(now).Add(24 * time.Hour)
+}
+
 // LearnDayKey returns the canonical JST learn-day key (YYYY-MM-DD) for t.
 func LearnDayKey(t time.Time) string { return StartOfLearnDay(t).Format(time.DateOnly) }

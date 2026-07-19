@@ -37,11 +37,13 @@ func TestUserCardFSRSRepository_UpsertTxAndFindByUserAndCardIDs(t *testing.T) {
 	require.Len(t, got, 1)
 	require.Equal(t, 1, got[card.ID].State.Reps)
 	require.True(t, got[card.ID].State.Due.Equal(first.State.Due))
+	require.Equal(t, domain.Rating(0), got[card.ID].State.LastRating)
 
 	second := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), card.ID, now.Add(time.Minute))
 	second.State.Reps = 2
 	second.State.Lapses = 1
 	second.State.Due = now.Add(24 * time.Hour)
+	second.State.LastRating = domain.RatingEasy
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return ucsRepo.UpsertTx(ctx, tx, second)
 	}))
@@ -52,6 +54,7 @@ func TestUserCardFSRSRepository_UpsertTxAndFindByUserAndCardIDs(t *testing.T) {
 	require.Equal(t, 2, got[card.ID].State.Reps)
 	require.Equal(t, 1, got[card.ID].State.Lapses)
 	require.True(t, got[card.ID].State.Due.Equal(second.State.Due))
+	require.Equal(t, domain.RatingEasy, got[card.ID].State.LastRating)
 }
 
 // TestUserCardFSRSRepository_OnCardDelete_CascadesFSRSRow proves the

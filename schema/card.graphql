@@ -125,7 +125,7 @@ extend type Query {
   """Single card by ID. Returns UNAUTHENTICATED for non-owners (existence is not leaked)."""
   card(id: ID!): Card
   """
-  Next batch of cards for a learning session: randomly sampled never-seen cards interleaved 4:1 with review cards rated Again/Hard on a previous day (JST). Returns an empty list when the cardgroup has no eligible cards.
+  Next batch of cards for a learning session: randomly sampled never-seen cards interleaved 4:1 with review cards due today (JST); among review cards, those you failed on their last review or whose memory stability is still below the learned threshold are served first, and other due cards fill the remaining slots. Returns an empty list when the cardgroup has no eligible cards.
   Limit defaults to 20 (clamped to 100). Returns UNAUTHENTICATED if the caller does not own
   the cardgroup; BAD_USER_INPUT if the cardgroup does not exist.
   """

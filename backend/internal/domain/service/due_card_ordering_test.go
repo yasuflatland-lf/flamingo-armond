@@ -21,6 +21,12 @@ func dueCard(id string, state domain.FSRSPhase, due time.Time) domain.DueCard {
 	}
 }
 
+func rescueDueCard(id string, state domain.FSRSPhase, due time.Time) domain.DueCard {
+	card := dueCard(id, state, due)
+	card.Rescue = true
+	return card
+}
+
 func cardIDs(cards []*domain.Card) []string {
 	out := make([]string, len(cards))
 	for i, card := range cards {
@@ -60,48 +66,48 @@ func TestOrderingPolicy_Apply_OnlyNew_AlwaysShuffled(t *testing.T) {
 		"deterministic full shuffle for seed 42")
 }
 
-func TestOrderingPolicy_Apply_OnlyReview_PhaseRunsShuffledIndependently(t *testing.T) {
+func TestOrderingPolicy_Apply_OnlyReview_BandRunsShuffledIndependently(t *testing.T) {
 	t.Parallel()
 
-	// Repository contract: learning-phase rows arrive BEFORE Review rows.
-	// Two learning-phase + two Review cards. Each phase run is shuffled
-	// independently and the phase boundary is never crossed. With seed 42
-	// (new partition is empty, so the first rng consumption is the learning
+	// Repository contract: rescue rows arrive before filler rows.
+	// Two rescue + two filler cards. Each band run is shuffled independently
+	// and the band boundary is never crossed. With seed 42
+	// (new partition is empty, so the first rng consumption is the rescue
 	// run) each 2-element run swaps.
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
 	in := []domain.DueCard{
-		dueCard("l1", domain.FSRSPhaseLearning, base),
-		dueCard("l2", domain.FSRSPhaseRelearning, base.Add(time.Minute)),
-		dueCard("r1", domain.FSRSPhaseReview, base.Add(2*time.Minute)),
-		dueCard("r2", domain.FSRSPhaseReview, base.Add(3*time.Minute)),
+		rescueDueCard("rescue-1", domain.FSRSPhaseReview, base),
+		rescueDueCard("rescue-2", domain.FSRSPhaseReview, base.Add(time.Minute)),
+		dueCard("filler-1", domain.FSRSPhaseReview, base.Add(2*time.Minute)),
+		dueCard("filler-2", domain.FSRSPhaseReview, base.Add(3*time.Minute)),
 	}
 
 	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)), domain.DefaultNewCardRatio)
 
-	require.Equal(t, []string{"l2", "l1", "r2", "r1"}, cardIDs(got),
-		"each phase run shuffles independently; learning phase stays first")
+	require.Equal(t, []string{"rescue-2", "rescue-1", "filler-2", "filler-1"}, cardIDs(got),
+		"each band run shuffles independently; rescue band stays first")
 }
 
-func TestOrderingPolicy_Apply_PhaseBoundaryHoldsAcrossSeeds(t *testing.T) {
+func TestOrderingPolicy_Apply_RescueBoundaryHoldsAcrossSeeds(t *testing.T) {
 	t.Parallel()
 
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
 	in := []domain.DueCard{
-		dueCard("l1", domain.FSRSPhaseLearning, base),
-		dueCard("l2", domain.FSRSPhaseLearning, base.Add(time.Minute)),
-		dueCard("l3", domain.FSRSPhaseRelearning, base.Add(2*time.Minute)),
-		dueCard("r1", domain.FSRSPhaseReview, base.Add(3*time.Minute)),
-		dueCard("r2", domain.FSRSPhaseReview, base.Add(4*time.Minute)),
+		rescueDueCard("rescue-1", domain.FSRSPhaseReview, base),
+		rescueDueCard("rescue-2", domain.FSRSPhaseReview, base.Add(time.Minute)),
+		rescueDueCard("rescue-3", domain.FSRSPhaseReview, base.Add(2*time.Minute)),
+		dueCard("filler-1", domain.FSRSPhaseReview, base.Add(3*time.Minute)),
+		dueCard("filler-2", domain.FSRSPhaseReview, base.Add(4*time.Minute)),
 	}
-	learning := map[string]bool{"l1": true, "l2": true, "l3": true}
+	rescue := map[string]bool{"rescue-1": true, "rescue-2": true, "rescue-3": true}
 
 	for _, seed := range []int64{1, 7, 42, 99} {
 		got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(seed)), domain.DefaultNewCardRatio)
 		ids := cardIDs(got)
 		require.Len(t, ids, 5)
 		for i, id := range ids[:3] {
-			require.True(t, learning[id],
-				"seed %d: slot %d must be learning-phase, got %q", seed, i, id)
+			require.True(t, rescue[id],
+				"seed %d: slot %d must be rescue, got %q", seed, i, id)
 		}
 	}
 }

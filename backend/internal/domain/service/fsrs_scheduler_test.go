@@ -21,6 +21,7 @@ func TestFSRSSchedulerApplyIsPure(t *testing.T) {
 	require.Equal(t, before, initial)
 	require.NotEqual(t, initial, got)
 	require.Equal(t, now, got.LastReview)
+	require.Equal(t, domain.RatingEasy, got.LastRating)
 }
 
 func TestFSRSSchedulerApplyGoldenTransitions(t *testing.T) {
@@ -92,6 +93,7 @@ func TestFSRSSchedulerApplyGoldenTransitions(t *testing.T) {
 			require.Equal(t, tc.reps, got.Reps)
 			require.Equal(t, tc.lapses, got.Lapses)
 			require.Equal(t, tc.outState, got.Phase)
+			require.Equal(t, tc.rating, got.LastRating)
 		})
 	}
 }

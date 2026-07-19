@@ -44,5 +44,6 @@ func (s *FSRSScheduler) Apply(state domain.FSRSState, rating domain.Rating, now 
 		Lapses:        int(info.Card.Lapses),
 		Phase:         domain.FSRSPhase(info.Card.State),
 		LastReview:    now,
+		LastRating:    rating,
 	}
 }
