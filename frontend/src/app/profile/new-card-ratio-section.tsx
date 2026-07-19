@@ -2,7 +2,7 @@
 
 import { useMutation } from "@apollo/client/react";
 import { useTranslations } from "next-intl";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { UpdateNewCardRatioMutation } from "@/app/learn/queries";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { Slider } from "@/components/ui/slider";
@@ -43,7 +43,9 @@ type Props = { initialRatio: { numerator: number; denominator: number } };
  *
  * The labels report the exact stored ratio, not the slider's grid position, so
  * an off-grid value set through the API stays visible; a note discloses that
- * moving the slider overwrites it with a 5% step.
+ * moving the slider overwrites it with a 5% step, and `aria-describedby` ties
+ * that note to the thumb so a screen reader reaches the stored value too —
+ * `aria-valuetext` stays faithful to where the control actually sits.
  *
  * This component assumes it is only mounted for admins — the parent gates on
  * `isAdmin`.
@@ -51,6 +53,7 @@ type Props = { initialRatio: { numerator: number; denominator: number } };
 export function NewCardRatioSection({ initialRatio }: Props) {
   const t = useTranslations("Profile");
   const tCommon = useTranslations("Common");
+  const noticeId = useId();
   // Slider position: always on the 5% grid.
   const [percent, setPercent] = useState(() =>
     snapPercent(exactPercent(initialRatio.numerator, initialRatio.denominator)),
@@ -100,17 +103,29 @@ export function NewCardRatioSection({ initialRatio }: Props) {
   }
 
   const displayPercent = trackingSlider ? percent : confirmedPercent;
-  const isOffGrid = confirmedPercent !== snapPercent(confirmedPercent);
+  const displayNewPercent = roundForDisplay(displayPercent);
+  // The review side is derived from the already-rounded new-card value instead
+  // of being rounded on its own: an exact percent landing on a .x5 boundary
+  // (1/16 = 6.25) rounds up on both sides and the pair reads 6.3% / 93.8%.
+  const displayReviewPercent = roundForDisplay(100 - displayNewPercent);
+  const noticePercent = roundForDisplay(confirmedPercent);
+  // Compare what the label prints, not the raw quotient. The backend reduces
+  // every stored fraction, so a value the slider itself wrote comes back as
+  // 11/20, and `(11 / 20) * 100` is 55.00000000000001 in IEEE-754 — exact
+  // equality against the grid would call it a custom ratio. Rounding first is
+  // safe: the closest an accepted off-grid fraction gets to the grid is 5/99
+  // (0.05 percentage points), which still rounds clear of it.
+  const isOffGrid = noticePercent !== snapPercent(noticePercent);
 
   return (
     <fieldset className="flex flex-col gap-2 border-0 p-0">
       <legend className="mb-2 text-sm font-medium leading-none">{t("newCardRatio")}</legend>
       <div className="flex max-w-xs items-baseline justify-between">
         <span className="text-sm font-semibold text-brand-link">
-          {t("newCardRatioNewLabel", { percent: roundForDisplay(displayPercent) })}
+          {t("newCardRatioNewLabel", { percent: displayNewPercent })}
         </span>
         <span className="text-sm text-muted-foreground">
-          {t("newCardRatioReviewLabel", { percent: roundForDisplay(100 - displayPercent) })}
+          {t("newCardRatioReviewLabel", { percent: displayReviewPercent })}
         </span>
       </div>
       <Slider
@@ -122,6 +137,7 @@ export function NewCardRatioSection({ initialRatio }: Props) {
         disabled={loading}
         aria-label={t("newCardRatio")}
         aria-valuetext={t("newCardRatioValueText", { newPct: percent, reviewPct: 100 - percent })}
+        aria-describedby={isOffGrid ? noticeId : undefined}
         onValueChange={([next = percent]) => {
           setTrackingSlider(true);
           setPercent(next);
@@ -135,10 +151,11 @@ export function NewCardRatioSection({ initialRatio }: Props) {
       </div>
       {isOffGrid ? (
         <p
+          id={noticeId}
           className="max-w-xs text-xs text-muted-foreground"
           data-testid="new-card-ratio-custom-notice"
         >
-          {t("newCardRatioCustomNotice", { percent: roundForDisplay(confirmedPercent) })}
+          {t("newCardRatioCustomNotice", { percent: noticePercent })}
         </p>
       ) : null}
       {saveError ? <ErrorBanner data-testid="new-card-ratio-error">{saveError}</ErrorBanner> : null}

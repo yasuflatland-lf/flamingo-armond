@@ -32,6 +32,26 @@ describe("<Slider>", () => {
     expect(slider).toHaveAttribute("aria-valuenow", "80");
   });
 
+  it("forwards aria-describedby onto the role=slider thumb, not the root", () => {
+    render(
+      <>
+        <Slider
+          min={5}
+          max={95}
+          step={5}
+          value={[35]}
+          aria-label="New card ratio"
+          aria-describedby="ratio-note"
+        />
+        <p id="ratio-note">A custom ratio is set via the API.</p>
+      </>,
+    );
+
+    // Radix spreads leftover props onto the root, which carries no ARIA role,
+    // so the description would never be announced from there.
+    expect(screen.getByRole("slider")).toHaveAttribute("aria-describedby", "ratio-note");
+  });
+
   it("moves the value by step on ArrowRight / ArrowLeft", async () => {
     const user = userEvent.setup();
     render(<ControlledSlider />);

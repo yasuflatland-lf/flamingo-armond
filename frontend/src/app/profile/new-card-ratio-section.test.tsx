@@ -20,13 +20,17 @@ vi.mock("@/components/ui/slider", () => ({
     onValueChange,
     onValueCommit,
     "aria-valuetext": ariaValueText,
+    "aria-describedby": ariaDescribedBy,
   }: {
     value: number[];
     onValueChange?: (value: number[]) => void;
     onValueCommit?: (value: number[]) => void;
     "aria-valuetext"?: string;
+    "aria-describedby"?: string;
   }) => (
-    <div>
+    // The real wrapper forwards both aria props onto the role=slider thumb, so
+    // the double carries them on one element the assertions can read.
+    <div data-testid="slider-root" aria-describedby={ariaDescribedBy}>
       <div data-testid="slider-value">{value[0]}</div>
       <div data-testid="slider-valuetext">{ariaValueText}</div>
       <button type="button" data-testid="change-90" onClick={() => onValueChange?.([90])}>
@@ -90,8 +94,39 @@ describe("<NewCardRatioSection>", () => {
     expect(screen.getByText("New 80%")).toBeInTheDocument();
     expect(screen.getByText("Review 20%")).toBeInTheDocument();
     expect(screen.getByTestId("slider-valuetext")).toHaveTextContent("New 80%, review 20%");
-    // On-grid stored value: nothing to disclose.
+    // On-grid stored value: nothing to disclose, so nothing to describe either.
     expect(screen.queryByTestId("new-card-ratio-custom-notice")).not.toBeInTheDocument();
+    expect(screen.getByTestId("slider-root")).not.toHaveAttribute("aria-describedby");
+  });
+
+  it("treats a reduced on-grid fraction ({11,20} -> 55) as on-grid despite float division", () => {
+    // The backend reduces every stored fraction, so committing the slider's own
+    // 55% position stores 11/20 — and (11 / 20) * 100 is 55.00000000000001.
+    // Exact float equality against the grid would report the slider's own last
+    // write as a custom ratio set through the API.
+    renderWithIntl(
+      <MockedProvider mocks={[]}>
+        <NewCardRatioSection initialRatio={{ numerator: 11, denominator: 20 }} />
+      </MockedProvider>,
+    );
+
+    expect(screen.getByText("New 55%")).toBeInTheDocument();
+    expect(screen.getByText("Review 45%")).toBeInTheDocument();
+    expect(screen.getByTestId("slider-value")).toHaveTextContent("55");
+    expect(screen.queryByTestId("new-card-ratio-custom-notice")).not.toBeInTheDocument();
+    expect(screen.getByTestId("slider-root")).not.toHaveAttribute("aria-describedby");
+  });
+
+  it("keeps the two labels summing to 100 on a .x5 exact percent ({1,16} -> 6.25)", () => {
+    // Rounding each side independently would print 6.3% / 93.8%.
+    renderWithIntl(
+      <MockedProvider mocks={[]}>
+        <NewCardRatioSection initialRatio={{ numerator: 1, denominator: 16 }} />
+      </MockedProvider>,
+    );
+
+    expect(screen.getByText("New 6.3%")).toBeInTheDocument();
+    expect(screen.getByText("Review 93.7%")).toBeInTheDocument();
   });
 
   it("derives the initial percent from a reduced fraction ({3,20} -> 15)", () => {
@@ -122,6 +157,12 @@ describe("<NewCardRatioSection>", () => {
 
     const notice = screen.getByTestId("new-card-ratio-custom-notice");
     expect(notice).toHaveTextContent("A custom ratio (33%) is set via the API.");
+
+    // aria-valuetext stays faithful to where the control sits; the exact stored
+    // value reaches assistive tech through the notice instead.
+    expect(screen.getByTestId("slider-valuetext")).toHaveTextContent("New 35%, review 65%");
+    expect(notice.id).not.toBe("");
+    expect(screen.getByTestId("slider-root")).toHaveAttribute("aria-describedby", notice.id);
   });
 
   it("rounds a repeating off-grid ratio ({1,3}) to one decimal", () => {
