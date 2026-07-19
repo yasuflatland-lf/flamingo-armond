@@ -107,6 +107,16 @@ deterministic while the database does the sampling:
   midnight does not reappear in today's queue. The `<` vs `<=` choice is part of
   the contract and is pinned by an exact-boundary fixture; see
   [exact-boundary fixture for strict time-cutoff predicates](../library-gotchas/strict-cutoff-boundary-fixture-and-mutation-proof.md).
+- **Persisted FSRS rows are complete, and the rating is applied before the row is
+  written.** The `user_card_fsrs` schema declares `state`, `due`, and
+  `last_review` `NOT NULL`, and `SwipeUsecase.HandleSwipe` calls `ApplyRating`
+  before `UpsertTx` persists the aggregate. Every stored row therefore carries a
+  scheduled state produced by the long-term scheduler, which never emits a New
+  phase. The rescue and filler windows consequently cannot admit a phase-New row,
+  they stay disjoint from the new-card window (`ucs.due IS NULL`), and the
+  repository's window-derived `Rescue` flag is well-defined. Relaxing either NOT
+  NULL, or writing the row before applying the rating, would let a card satisfy
+  none of the three windows and vanish from every queue with no error surfaced.
 
 ## Trade-off
 
@@ -131,3 +141,7 @@ learn ordering — new cards are sampled randomly, not walked in document order.
   `findDueCardsOn`, `dueRowsOn` (the three-window selection).
 - `backend/internal/usecase/learn.go` — `LearnUsecase.NextDueCards`
   (interleave invocation and per-session truncation).
+- `backend/internal/usecase/swipe.go` — `SwipeUsecase.HandleSwipe`
+  (`ApplyRating` before `UpsertTx`).
+- `backend/internal/database/migrations/20260430080000_initial_schema.up.sql` —
+  the `user_card_fsrs` NOT NULL column set.

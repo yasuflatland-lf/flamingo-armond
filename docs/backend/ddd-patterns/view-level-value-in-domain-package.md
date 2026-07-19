@@ -48,6 +48,24 @@ type DueCard struct {
 }
 ```
 
+### "Unseen" is "no FSRS row", not `Due == CreatedAt`
+
+A card is unseen for a viewer exactly when **no `user_card_fsrs` row exists for
+that (user, card) pair**. That is the definition consumers must test against; the
+repository expresses it as the LEFT JOIN miss — `ucs.due IS NULL` in the new-card
+window of `findDueCardsOn`, and a nil `State` column when mapping rows into
+`DueCard`.
+
+`Due = Card.CreatedAt` is what the repository *synthesizes* for such a row so the
+read-model always carries a stable, orderable timestamp. It is a display
+placeholder, not an identity, and the implication runs one way only: an unseen row
+always gets `Due == CreatedAt`, but a reviewed card whose scheduled `Due` happens
+to land on its `CreatedAt` satisfies the same equality while having an FSRS row.
+The `FSRSPhaseNew ↔ Due == Card.CreatedAt` shorthand in the docstring above holds
+in the forward direction only; treating the equality as an unseen test
+misclassifies that coincidence. Branch on `Phase == FSRSPhaseNew` (which the
+repository sets from the same join miss) or query the FSRS row directly.
+
 `OrderingPolicy.Apply` accepts `[]DueCard` and returns `[]*Card` — the
 read-model is the *input* type, the aggregate is the *output*. The
 repository builds `DueCard` values from a LEFT JOIN of `cards` and
@@ -60,7 +78,7 @@ construct them.
 |---|---|
 | Type is consumed by a domain service (`domain/service/*.go`) | Keep in `domain/` |
 | Type is consumed only by adapters (repository, GraphQL resolver) | Extract to `readmodel/` or keep in `repository/` |
-| Type carries domain-level invariants (e.g. `Phase ↔ Due` coupling) | Keep in `domain/` so the invariant comment is co-located |
+| Type carries domain-level invariants (e.g. the `Phase → Due` synthesis) | Keep in `domain/` so the invariant comment is co-located |
 | Type is a thin projection with no domain semantics | Adapter-side DTO is fine |
 
 The first row applies here: `OrderingPolicy.Apply` is the consumer and lives
@@ -76,7 +94,8 @@ admits both arrows.
 relationship is established by the repository's LEFT JOIN logic, not by a
 domain-side validator. The docstring is the load-bearing contract. New
 construction sites (typically test fixtures and any future migration paths)
-must read the docstring and reproduce the invariant. This is the same
+must read the docstring and reproduce the synthesis — a row with no FSRS state
+gets `Phase = FSRSPhaseNew` and `Due = Card.CreatedAt`. This is the same
 discipline as [zero-value docstring on string newtypes](zero-value-docstring-on-string-newtypes.md),
 applied to a struct value: a comment, not a compiler check, because no
 single trust-boundary parse exists for the read-model.
