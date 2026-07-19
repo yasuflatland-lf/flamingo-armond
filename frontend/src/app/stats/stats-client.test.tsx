@@ -99,6 +99,19 @@ function renderStats(stats: Stats, intl?: { locale: "en" | "ja"; messages: typeo
   return renderWithIntl(<StatsClient stats={stats} />, intl);
 }
 
+// The explicit two-track template of the per-deck / struggling grid. It must only
+// apply while both children render: with the per-deck section gated out, a 4fr
+// track would leave the struggling list beside a dead 3fr gutter.
+const TWO_TRACK_CLASS = "lg:grid-cols-[4fr_3fr]";
+
+// The grid wrapping that pair, anchored on the struggling section (present in
+// both states asserted below) rather than on the class under test.
+function contentGrid() {
+  const grid = screen.getByText("Struggling cards").closest("section")?.parentElement;
+  if (!grid) throw new Error("content grid not found");
+  return grid;
+}
+
 describe("<StatsClient>", () => {
   describe("populated (studied > 0)", () => {
     it("renders the acquired headline and the three funnel legend counts", () => {
@@ -164,6 +177,12 @@ describe("<StatsClient>", () => {
       expect(screen.getByText("Ephemeral")).toBeInTheDocument();
       expect(screen.getByText("Japanese Kanji")).toBeInTheDocument();
       expect(screen.getByText("7 lapses")).toBeInTheDocument();
+    });
+
+    it("lays the per-deck and struggling sections out on the two-track grid", () => {
+      renderStats(populatedStats);
+
+      expect(contentGrid()).toHaveClass(TWO_TRACK_CLASS);
     });
   });
 
@@ -338,6 +357,12 @@ describe("<StatsClient>", () => {
       expect(screen.getByText("Diagnostics")).toBeInTheDocument();
       expect(screen.getByText("Struggling cards")).toBeInTheDocument();
       expect(screen.getByText("Ephemeral")).toBeInTheDocument();
+    });
+
+    it("drops the two-track grid so the struggling list spans the full width", () => {
+      renderStats(noDecksStats);
+
+      expect(contentGrid()).not.toHaveClass(TWO_TRACK_CLASS);
     });
   });
 
