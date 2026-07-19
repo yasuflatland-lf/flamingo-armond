@@ -6,14 +6,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestClassifyMastery_Boundary pins the three-tier mastery classifier at the
-// stability boundary (21d, inclusive) across every FSRSPhase. The threshold is
-// passed explicitly so the boundary is exercised independently of the
-// MatureStabilityDays const.
+// TestClassifyMastery_Boundary pins both inclusive stability boundaries and
+// confirms that legacy phase values do not affect the tier.
 func TestClassifyMastery_Boundary(t *testing.T) {
 	t.Parallel()
 
-	const threshold = 21.0
+	const (
+		learnedThreshold = 7.0
+		matureThreshold  = 21.0
+	)
 
 	cases := []struct {
 		name      string
@@ -21,20 +22,11 @@ func TestClassifyMastery_Boundary(t *testing.T) {
 		stability float64
 		want      MasteryTier
 	}{
-		// Non-Review phases are always InProgress regardless of stability.
-		{"new below threshold", FSRSPhaseNew, 20.9, TierInProgress},
-		{"new at threshold", FSRSPhaseNew, 21.0, TierInProgress},
-		{"new above threshold", FSRSPhaseNew, 21.1, TierInProgress},
-		{"learning below threshold", FSRSPhaseLearning, 20.9, TierInProgress},
-		{"learning at threshold", FSRSPhaseLearning, 21.0, TierInProgress},
-		{"learning above threshold", FSRSPhaseLearning, 21.1, TierInProgress},
-		{"relearning below threshold", FSRSPhaseRelearning, 20.9, TierInProgress},
-		{"relearning at threshold", FSRSPhaseRelearning, 21.0, TierInProgress},
-		{"relearning above threshold", FSRSPhaseRelearning, 21.1, TierInProgress},
-		// Review phase splits on the inclusive 21d boundary.
-		{"review just below threshold", FSRSPhaseReview, 20.9, TierLearned},
-		{"review at threshold is mature", FSRSPhaseReview, 21.0, TierMature},
-		{"review just above threshold", FSRSPhaseReview, 21.1, TierMature},
+		{"just below learned threshold", FSRSPhaseReview, 6.999, TierInProgress},
+		{"at learned threshold", FSRSPhaseReview, 7.0, TierLearned},
+		{"legacy learning phase in learned band", FSRSPhaseLearning, 15.0, TierLearned},
+		{"just below mature threshold", FSRSPhaseReview, 20.999, TierLearned},
+		{"at mature threshold", FSRSPhaseReview, 21.0, TierMature},
 	}
 
 	for _, tc := range cases {
@@ -42,21 +34,21 @@ func TestClassifyMastery_Boundary(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			state := FSRSState{Phase: tc.phase, Stability: tc.stability}
-			require.Equal(t, tc.want, ClassifyMastery(state, threshold),
+			require.Equal(t, tc.want, ClassifyMastery(state, learnedThreshold, matureThreshold),
 				"phase=%d stability=%v", tc.phase, tc.stability)
 		})
 	}
 }
 
-// TestMatureStabilityDays_DefaultBoundary confirms the shipped default const
-// buckets a Review card of exactly 21d stability as Mature.
-func TestMatureStabilityDays_DefaultBoundary(t *testing.T) {
+// TestMasteryStabilityDays_DefaultBoundaries confirms the shipped thresholds.
+func TestMasteryStabilityDays_DefaultBoundaries(t *testing.T) {
 	t.Parallel()
+	require.Equal(t, 7.0, LearnedStabilityDays)
 	require.Equal(t, 21.0, MatureStabilityDays)
 
-	atThreshold := FSRSState{Phase: FSRSPhaseReview, Stability: MatureStabilityDays}
-	require.Equal(t, TierMature, ClassifyMastery(atThreshold, MatureStabilityDays))
+	atLearnedThreshold := FSRSState{Phase: FSRSPhaseReview, Stability: LearnedStabilityDays}
+	require.Equal(t, TierLearned, ClassifyMastery(atLearnedThreshold, LearnedStabilityDays, MatureStabilityDays))
 
-	belowThreshold := FSRSState{Phase: FSRSPhaseReview, Stability: MatureStabilityDays - 0.1}
-	require.Equal(t, TierLearned, ClassifyMastery(belowThreshold, MatureStabilityDays))
+	atMatureThreshold := FSRSState{Phase: FSRSPhaseReview, Stability: MatureStabilityDays}
+	require.Equal(t, TierMature, ClassifyMastery(atMatureThreshold, LearnedStabilityDays, MatureStabilityDays))
 }

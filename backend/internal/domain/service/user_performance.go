@@ -21,8 +21,8 @@ type MasteryBreakdown struct{ InProgress, Learned, Mature, TotalStudied int }
 type DeckMastery struct {
 	CardgroupID  string
 	TotalCards   int
-	LearnedCards int // disjoint: Review & stability < MatureStabilityDays
-	MatureCards  int // disjoint: Review & stability >= MatureStabilityDays
+	LearnedCards int // disjoint: learned threshold <= stability < mature threshold
+	MatureCards  int // disjoint: stability >= mature threshold
 }
 
 // StrugglingCard identifies a card the learner struggles with (high lapses /
@@ -57,6 +57,7 @@ func AggregateMastery(stats []domain.FSRSStat, deckCardTotals map[string]int) (M
 	for _, s := range stats {
 		tier := domain.ClassifyMastery(
 			domain.FSRSState{Phase: s.Phase, Stability: s.Stability},
+			domain.LearnedStabilityDays,
 			domain.MatureStabilityDays,
 		)
 		acc := perDeck[s.CardgroupID]
@@ -229,9 +230,8 @@ func ComputeMetrics(swipes []domain.SwipeRecord, now time.Time) PerformanceMetri
 		if swipe.Rating.IsSuccess() {
 			successes++
 		}
-		// LapseRate and RetentionRate are scoped to reviews of already-learned
-		// cards (pre-swipe phase Review); a graduation or a Relearning re-fail
-		// contributes to neither numerator nor denominator.
+		// LapseRate and RetentionRate are scoped to reviews whose pre-swipe
+		// stability snapshot is in the learned band.
 		if isKnownCardReview(swipe) {
 			reviews++
 			if swipe.Rating == domain.RatingAgain {
@@ -298,13 +298,18 @@ func normalizedDifficulty(difficulty float64) float64 {
 }
 
 // isKnownCardReview reports whether a swipe is a review of an already-learned
-// card — the card's pre-swipe FSRS phase was Review.
+// card according to its pre-swipe stability snapshot.
 //
 // New-format rows (PhaseBefore != nil, recorded once the phase_before column
-// existed) read the pre-swipe snapshot directly: a review iff *PhaseBefore ==
-// FSRSPhaseReview. This correctly excludes a Learning->Easy graduation (whose
-// StateAfter.Phase is Review but whose pre-swipe phase was Learning) and a
-// Relearning re-fail (whose pre-swipe phase was Relearning).
+// existed) require both a Review phase and ScheduledDaysBefore at or above the
+// learned boundary. Under the default RequestRetention=0.9, the scheduled
+// interval equals round(stability), so ScheduledDaysBefore is a faithful
+// pre-swipe stability snapshot. PhaseBefore == Review alone stopped being
+// sufficient when long-term scheduling began sending every rating from every
+// state to Review. A nil ScheduledDaysBefore is treated as not known
+// defensively, matching isOnTimeRecall. This excludes a first-Again card's
+// second review and a lapse-recovery review at interval 1, while including the
+// next review of a graduated card at an interval such as 16 days.
 //
 // Legacy rows (PhaseBefore == nil, recorded before the column existed and aging
 // out of the 365-day window) fall back to the historical post-swipe heuristic:
@@ -313,7 +318,9 @@ func normalizedDifficulty(difficulty float64) float64 {
 // rather than jumping when the new snapshot became available.
 func isKnownCardReview(swipe domain.SwipeRecord) bool {
 	if swipe.PhaseBefore != nil {
-		return *swipe.PhaseBefore == domain.FSRSPhaseReview
+		return *swipe.PhaseBefore == domain.FSRSPhaseReview &&
+			swipe.ScheduledDaysBefore != nil &&
+			float64(*swipe.ScheduledDaysBefore) >= domain.LearnedStabilityDays
 	}
 	if swipe.StateAfter.Phase == domain.FSRSPhaseReview {
 		return true

@@ -26,7 +26,7 @@ type PerformanceWindows {
 type StrugglingCard {
   """The struggling card."""
   card: Card!
-  """Number of times the card lapsed (rated Again from a known-review state)."""
+  """Number of times the card was rated Again on a repeat exposure (the FSRS lapse counter)."""
   lapses: Int!
   """The card's current FSRS memory stability, in days."""
   stability: Float!
@@ -34,11 +34,11 @@ type StrugglingCard {
 
 """Disjoint three-tier mastery counts across all studied cards. The three tiers sum to totalStudied."""
 type MasteryBreakdown {
-  """Cards not yet in the Review phase (New / Learning / Relearning)."""
+  """Studied cards whose memory stability is below the learned threshold (7 days) — still being acquired, or recently lapsed."""
   inProgress: Int!
-  """Review-phase cards below the maturity stability threshold."""
+  """Cards whose stability is between the learned threshold (7 days) and the maturity threshold (21 days)."""
   learned: Int!
-  """Review-phase cards at or above the maturity stability threshold (durably retained)."""
+  """Cards at or above the maturity stability threshold (21 days; durably retained)."""
   mature: Int!
   """Total number of studied cards; equals inProgress + learned + mature."""
   totalStudied: Int!
