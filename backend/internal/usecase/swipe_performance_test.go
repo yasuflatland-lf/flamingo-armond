@@ -26,6 +26,9 @@ type mockSwipeRecordRepoForSwipe struct {
 	// (docs/backend/library-gotchas/mock-snapshot-for-ordering-assertion.md).
 	phaseBeforeAtCreate *domain.FSRSPhase
 	phaseAfterAtCreate  *domain.FSRSPhase
+	// stabilityBeforeAtCreate is the same kind of value snapshot for
+	// created.StabilityBefore.
+	stabilityBeforeAtCreate *float64
 }
 
 func (m *mockSwipeRecordRepoForSwipe) CreateTx(_ context.Context, _ *gorm.DB, sr *domain.SwipeRecord) error {
@@ -37,6 +40,10 @@ func (m *mockSwipeRecordRepoForSwipe) CreateTx(_ context.Context, _ *gorm.DB, sr
 		if sr.PhaseBefore != nil {
 			p := *sr.PhaseBefore
 			m.phaseBeforeAtCreate = &p
+		}
+		if sr.StabilityBefore != nil {
+			s := *sr.StabilityBefore
+			m.stabilityBeforeAtCreate = &s
 		}
 		after := sr.StateAfter.Phase
 		m.phaseAfterAtCreate = &after
@@ -204,8 +211,10 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 // mutated it, not the post-rating phase. For a brand-new card the pre-swipe
 // phase is FSRSPhaseNew; a RatingEasy graduation advances StateAfter.Phase past
 // New, so asserting PhaseBefore == New AND StateAfter.Phase != New pins that the
-// snapshot was captured before the mutation. The mock snapshots PhaseBefore at
-// CreateTx call time (docs/backend/library-gotchas/mock-snapshot-for-ordering-assertion.md).
+// snapshot was captured before the mutation. The same argument pins
+// StabilityBefore against the new-card starting stability. The mock snapshots
+// both at CreateTx call time
+// (docs/backend/library-gotchas/mock-snapshot-for-ordering-assertion.md).
 func TestSwipeUsecase_HandleSwipe_RecordsPreRatingPhase(t *testing.T) {
 	t.Parallel()
 
@@ -253,6 +262,18 @@ func TestSwipeUsecase_HandleSwipe_RecordsPreRatingPhase(t *testing.T) {
 	}
 	if swipeRepo.created.ScheduledDaysBefore == nil {
 		t.Fatal("expected a non-nil ScheduledDaysBefore snapshot for a swipe recorded through the constructor")
+	}
+	// A brand-new card starts at the NewFSRSStateForNewCard stability, so the
+	// snapshot must read that value and not the post-rating stability.
+	wantStability := domain.NewFSRSStateForNewCard(time.Now().UTC()).Stability
+	if swipeRepo.stabilityBeforeAtCreate == nil {
+		t.Fatal("expected a pre-swipe stability snapshot to be captured at CreateTx call time")
+	}
+	if *swipeRepo.stabilityBeforeAtCreate != wantStability {
+		t.Fatalf("StabilityBefore=%v, want %v", *swipeRepo.stabilityBeforeAtCreate, wantStability)
+	}
+	if swipeRepo.created.StateAfter.Stability == wantStability {
+		t.Fatalf("StateAfter.Stability must have advanced past the new-card stability %v", wantStability)
 	}
 }
 

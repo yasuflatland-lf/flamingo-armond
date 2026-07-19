@@ -81,6 +81,40 @@ func TestComputeMetrics(t *testing.T) {
 			},
 		},
 		{
+			// The card's scheduled interval reached 7 while its stability was still
+			// 6.6, so the mastery tiles called it In progress. The stability
+			// snapshot keeps the Again out of the lapse numerator and out of the
+			// review denominator entirely.
+			name: "sub-learned stability keeps an interval-seven lapse out of the rates",
+			swipes: []domain.SwipeRecord{
+				swipeStability(domain.RatingAgain, now, stateWithLapses(5, 7, 0, domain.FSRSPhaseRelearning, 1), domain.FSRSPhaseReview, 7, 6.6),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   0,
+				AvgDifficulty: 0.5,
+				RetentionRate: 0,
+				StudyStreak:   1,
+				LapseRate:     0,
+				ReviewCount:   1,
+			},
+		},
+		{
+			// Exactly at the learned boundary the gate is inclusive, matching
+			// ClassifyMastery, so the review counts.
+			name: "stability at the learned boundary counts the review",
+			swipes: []domain.SwipeRecord{
+				swipeStability(domain.RatingGood, now, state(5, 7, 9, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 7, 7.0),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   1,
+				AvgDifficulty: 0.5,
+				RetentionRate: 1,
+				StudyStreak:   1,
+				LapseRate:     0,
+				ReviewCount:   1,
+			},
+		},
+		{
 			// Hard is not a SuccessRate success (IsSuccess is >= Good) but it IS a
 			// recall: a Review+Hard within the pre-swipe interval is a retention,
 			// so SuccessRate (0) and RetentionRate (1) diverge deliberately.
@@ -287,11 +321,37 @@ func TestIsKnownCardReview(t *testing.T) {
 			want:  false,
 		},
 		{
+			// The scheduled interval rounds up to the learned boundary while the
+			// stability snapshot says the card is still In progress. The snapshot
+			// wins, so the review is excluded.
+			name:  "stability below the learned boundary excludes an interval-seven review",
+			swipe: swipeStability(domain.RatingAgain, time.Time{}, stateWithLapses(5, 7, 0, domain.FSRSPhaseRelearning, 1), domain.FSRSPhaseReview, 7, 6.6),
+			want:  false,
+		},
+		{
+			name:  "stability at the learned boundary is included",
+			swipe: swipeStability(domain.RatingGood, time.Time{}, state(5, 7, 9, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 7, 7.0),
+			want:  true,
+		},
+		{
+			// The monotonicity clamps can push the recorded interval well past
+			// round(stability); the snapshot keeps such a row out.
+			name:  "stability snapshot overrides an interval inflated by the rating clamps",
+			swipe: swipeStability(domain.RatingGood, time.Time{}, state(5, 10, 12, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 10, 4.0),
+			want:  false,
+		},
+		{
+			name:  "stability snapshot on a non-review phase is excluded",
+			swipe: swipeStability(domain.RatingGood, time.Time{}, state(5, 16, 16, domain.FSRSPhaseReview), domain.FSRSPhaseLearning, 16, 20.0),
+			want:  false,
+		},
+		{
 			name:  "interval six is below the learned boundary",
 			swipe: swipeBefore(domain.RatingGood, time.Time{}, state(5, 6, 6, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 6),
 			want:  false,
 		},
 		{
+			// No stability snapshot: the transition-era interval heuristic decides.
 			name:  "interval seven is at the learned boundary",
 			swipe: swipeBefore(domain.RatingGood, time.Time{}, state(5, 7, 7, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 7),
 			want:  true,
@@ -597,6 +657,23 @@ func swipe(rating domain.Rating, reviewedAt time.Time, stateAfter domain.FSRSSta
 		ReviewedAt: reviewedAt,
 		StateAfter: stateAfter,
 	}
+}
+
+// swipeStability builds a swipe record carrying the full pre-swipe snapshot,
+// including the stability the card held before the rating was applied. This is
+// the shape the metrics layer prefers over the scheduled-interval heuristic.
+func swipeStability(
+	rating domain.Rating,
+	reviewedAt time.Time,
+	stateAfter domain.FSRSState,
+	phaseBefore domain.FSRSPhase,
+	scheduledDaysBefore int,
+	stabilityBefore float64,
+) domain.SwipeRecord {
+	sr := swipeBefore(rating, reviewedAt, stateAfter, phaseBefore, scheduledDaysBefore)
+	sb := stabilityBefore
+	sr.StabilityBefore = &sb
+	return sr
 }
 
 // swipeBefore builds a new-format swipe record carrying the pre-swipe snapshot

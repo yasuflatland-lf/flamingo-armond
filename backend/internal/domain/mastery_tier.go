@@ -8,9 +8,9 @@ const MatureStabilityDays = 21.0
 
 // LearnedStabilityDays is the FSRS stability (in days) at or above which a
 // card counts as learned/known: the model projects at least a week of
-// retention. Under the default RequestRetention=0.9 the scheduled interval
-// equals round(stability), so a swipe's ScheduledDaysBefore snapshot reads
-// the same boundary at swipe time.
+// retention. It is the single boundary both ClassifyMastery and the stats
+// known-review gate test a card's stability against, so the mastery tiles and
+// the retention/lapse population always describe the same set of cards.
 const LearnedStabilityDays = 7.0
 
 // MasteryTier is the disjoint learning tier a card sits in.

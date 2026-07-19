@@ -28,8 +28,9 @@ type gormSwipeRecord struct {
 	LastReview    time.Time `gorm:"column:last_review"`
 	// Pre-swipe snapshot columns. Nullable: a NULL marks a legacy row recorded
 	// before the columns existed.
-	PhaseBefore         *int16 `gorm:"column:phase_before"`
-	ScheduledDaysBefore *int   `gorm:"column:scheduled_days_before"`
+	PhaseBefore         *int16   `gorm:"column:phase_before"`
+	ScheduledDaysBefore *int     `gorm:"column:scheduled_days_before"`
+	StabilityBefore     *float64 `gorm:"column:stability_before"`
 }
 
 func (gormSwipeRecord) TableName() string { return "swipe_records" }
@@ -151,6 +152,11 @@ func swipeRecordToRow(sr *domain.SwipeRecord) *gormSwipeRecord {
 		v := *sr.ScheduledDaysBefore
 		scheduledDaysBefore = &v
 	}
+	var stabilityBefore *float64
+	if sr.StabilityBefore != nil {
+		v := *sr.StabilityBefore
+		stabilityBefore = &v
+	}
 	return &gormSwipeRecord{
 		ID:                  sr.ID,
 		UserID:              string(sr.UserID),
@@ -169,6 +175,7 @@ func swipeRecordToRow(sr *domain.SwipeRecord) *gormSwipeRecord {
 		LastReview:          sr.StateAfter.LastReview,
 		PhaseBefore:         phaseBefore,
 		ScheduledDaysBefore: scheduledDaysBefore,
+		StabilityBefore:     stabilityBefore,
 	}
 }
 
@@ -197,6 +204,11 @@ func swipeRecordToDomain(row gormSwipeRecord) (*domain.SwipeRecord, error) {
 		v := *row.ScheduledDaysBefore
 		scheduledDaysBefore = &v
 	}
+	var stabilityBefore *float64
+	if row.StabilityBefore != nil {
+		v := *row.StabilityBefore
+		stabilityBefore = &v
+	}
 	return &domain.SwipeRecord{
 		ID:          row.ID,
 		UserID:      domain.UserID(row.UserID),
@@ -217,5 +229,6 @@ func swipeRecordToDomain(row gormSwipeRecord) (*domain.SwipeRecord, error) {
 		},
 		PhaseBefore:         phaseBefore,
 		ScheduledDaysBefore: scheduledDaysBefore,
+		StabilityBefore:     stabilityBefore,
 	}, nil
 }

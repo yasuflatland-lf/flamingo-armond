@@ -298,25 +298,39 @@ func normalizedDifficulty(difficulty float64) float64 {
 }
 
 // isKnownCardReview reports whether a swipe is a review of an already-learned
-// card according to its pre-swipe stability snapshot.
+// card, i.e. one the mastery tiles would have shown as Learned or Mature when
+// the swipe was made. Three tiers of evidence are consulted, most faithful
+// first.
 //
-// New-format rows (PhaseBefore != nil, recorded once the phase_before column
-// existed) require both a Review phase and ScheduledDaysBefore at or above the
-// learned boundary. Under the default RequestRetention=0.9, the scheduled
-// interval equals round(stability), so ScheduledDaysBefore is a faithful
-// pre-swipe stability snapshot. PhaseBefore == Review alone stopped being
-// sufficient when long-term scheduling began sending every rating from every
-// state to Review. A nil ScheduledDaysBefore is treated as not known
-// defensively, matching isOnTimeRecall. This excludes a first-Again card's
-// second review and a lapse-recovery review at interval 1, while including the
-// next review of a graduated card at an interval such as 16 days.
+//  1. Stability snapshot (StabilityBefore != nil): known iff the pre-swipe phase
+//     was Review and the pre-swipe stability is at or above
+//     domain.LearnedStabilityDays. This is the same value and the same inclusive
+//     boundary ClassifyMastery tests, so the gate and the mastery tiles agree by
+//     construction.
+//  2. Interval heuristic (StabilityBefore == nil, PhaseBefore != nil): rows
+//     recorded after the phase snapshot but before the stability snapshot fall
+//     back to ScheduledDaysBefore at or above the learned boundary. The interval
+//     only approximates stability: go-fsrs clamps each rating's interval to
+//     exceed the previous rating's (hard >= again+1, good >= hard+1,
+//     easy >= good+1), so a recorded interval can outrun the card's stability by
+//     up to three days and admit a card the mastery tiles still call In
+//     progress. The heuristic is kept for these rows so history does not jump
+//     when the stability snapshot became available. A nil ScheduledDaysBefore is
+//     treated as not known defensively, matching isOnTimeRecall.
+//  3. Legacy fallback (PhaseBefore == nil, rows aging out of the 365-day
+//     window): the historical post-swipe heuristic — StateAfter.Phase == Review,
+//     or a Review->Again lapse that landed the card in Relearning with a
+//     non-zero lapse count.
 //
-// Legacy rows (PhaseBefore == nil, recorded before the column existed and aging
-// out of the 365-day window) fall back to the historical post-swipe heuristic:
-// StateAfter.Phase == Review, or a Review->Again lapse that landed the card in
-// Relearning with a non-zero lapse count. The fallback keeps history continuous
-// rather than jumping when the new snapshot became available.
+// PhaseBefore == Review alone stopped being sufficient when long-term
+// scheduling began sending every rating from every state to Review, which is why
+// tiers 1 and 2 both carry a magnitude test.
 func isKnownCardReview(swipe domain.SwipeRecord) bool {
+	if swipe.StabilityBefore != nil {
+		return swipe.PhaseBefore != nil &&
+			*swipe.PhaseBefore == domain.FSRSPhaseReview &&
+			*swipe.StabilityBefore >= domain.LearnedStabilityDays
+	}
 	if swipe.PhaseBefore != nil {
 		return *swipe.PhaseBefore == domain.FSRSPhaseReview &&
 			swipe.ScheduledDaysBefore != nil &&

@@ -26,6 +26,7 @@ func TestSwipeRecordRepository_CreateTxAndFind(t *testing.T) {
 	stateBefore := domain.NewFSRSStateForNewCard(reviewedAt)
 	stateBefore.Phase = domain.FSRSPhaseReview
 	stateBefore.ScheduledDays = 3
+	stateBefore.Stability = 6.6
 	state := domain.NewFSRSStateForNewCard(reviewedAt)
 	state.Reps = 1
 	sr, err := domain.NewSwipeRecord(domain.UserID(ownerID), card.ID, cg.ID, domain.RatingEasy, reviewedAt, stateBefore, state)
@@ -47,6 +48,8 @@ func TestSwipeRecordRepository_CreateTxAndFind(t *testing.T) {
 	require.Equal(t, domain.FSRSPhaseReview, *byID[sr.ID].PhaseBefore)
 	require.NotNil(t, byID[sr.ID].ScheduledDaysBefore)
 	require.Equal(t, 3, *byID[sr.ID].ScheduledDaysBefore)
+	require.NotNil(t, byID[sr.ID].StabilityBefore)
+	require.InDelta(t, 6.6, *byID[sr.ID].StabilityBefore, 0.000000001)
 
 	history, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cg.ID))
 	require.NoError(t, err)
@@ -297,9 +300,9 @@ func TestSwipeRecordRepository_OutOfRangeState_ReturnsError(t *testing.T) {
 }
 
 // TestSwipeRecordRepository_LegacyRowWithoutSnapshot_ReadsBackNil proves a row
-// inserted without the phase_before / scheduled_days_before columns (a legacy
-// row recorded before the migration) reads back with both snapshot pointers nil
-// — the sentinel the metrics layer branches on.
+// inserted without the phase_before / scheduled_days_before / stability_before
+// columns (a legacy row recorded before the migrations) reads back with every
+// snapshot pointer nil — the sentinel the metrics layer branches on.
 func TestSwipeRecordRepository_LegacyRowWithoutSnapshot_ReadsBackNil(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -313,7 +316,8 @@ func TestSwipeRecordRepository_LegacyRowWithoutSnapshot_ReadsBackNil(t *testing.
 
 	reviewedAt := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	const rowID = "00000000-0000-0000-0000-0000000000d1"
-	// Raw insert omitting phase_before / scheduled_days_before; both default to NULL.
+	// Raw insert omitting phase_before / scheduled_days_before / stability_before;
+	// all three default to NULL.
 	require.NoError(t, testDB.GORM.WithContext(ctx).Exec(
 		`INSERT INTO swipe_records
 		   (id, user_id, card_id, cardgroup_id, rating, reviewed_at,
@@ -329,6 +333,7 @@ func TestSwipeRecordRepository_LegacyRowWithoutSnapshot_ReadsBackNil(t *testing.
 	require.Len(t, byID, 1)
 	require.Nil(t, byID[rowID].PhaseBefore, "legacy row's phase_before reads back as nil")
 	require.Nil(t, byID[rowID].ScheduledDaysBefore, "legacy row's scheduled_days_before reads back as nil")
+	require.Nil(t, byID[rowID].StabilityBefore, "legacy row's stability_before reads back as nil")
 }
 
 // TestSwipeRecordRepository_OutOfRangePhaseBefore_ReturnsError proves a non-nil
