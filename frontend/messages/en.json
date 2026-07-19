@@ -261,6 +261,7 @@
     "newCardRatioNewLabel": "New {percent}%",
     "newCardRatioReviewLabel": "Review {percent}%",
     "newCardRatioValueText": "New {newPct}%, review {reviewPct}%",
+    "newCardRatioCustomNotice": "A custom ratio ({percent}%) is set via the API. Moving the slider replaces it with a 5% step.",
     "sessionExpired": "Your session expired. Please sign in again.",
     "couldntLoad": "Couldn't load your profile",
     "loadError": "Something went wrong while loading your profile. Please try again in a moment.",

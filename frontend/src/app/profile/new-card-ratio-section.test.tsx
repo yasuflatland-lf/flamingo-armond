@@ -38,6 +38,9 @@ vi.mock("@/components/ui/slider", () => ({
       <button type="button" data-testid="commit-90" onClick={() => onValueCommit?.([90])}>
         commit 90
       </button>
+      <button type="button" data-testid="commit-40" onClick={() => onValueCommit?.([40])}>
+        commit 40
+      </button>
     </div>
   ),
 }));
@@ -87,6 +90,8 @@ describe("<NewCardRatioSection>", () => {
     expect(screen.getByText("New 80%")).toBeInTheDocument();
     expect(screen.getByText("Review 20%")).toBeInTheDocument();
     expect(screen.getByTestId("slider-valuetext")).toHaveTextContent("New 80%, review 20%");
+    // On-grid stored value: nothing to disclose.
+    expect(screen.queryByTestId("new-card-ratio-custom-notice")).not.toBeInTheDocument();
   });
 
   it("derives the initial percent from a reduced fraction ({3,20} -> 15)", () => {
@@ -99,6 +104,73 @@ describe("<NewCardRatioSection>", () => {
     expect(screen.getByTestId("slider-value")).toHaveTextContent("15");
     expect(screen.getByText("New 15%")).toBeInTheDocument();
     expect(screen.getByText("Review 85%")).toBeInTheDocument();
+  });
+
+  it("shows an off-grid stored ratio ({33,100}) exactly and discloses the overwrite", () => {
+    // `updateNewCardRatio` accepts any reduced fraction, so 33/100 is a
+    // legitimate stored value the 5%-step slider cannot represent: the labels
+    // must read 33/67 even though the control sits at the 35 grid position.
+    renderWithIntl(
+      <MockedProvider mocks={[]}>
+        <NewCardRatioSection initialRatio={{ numerator: 33, denominator: 100 }} />
+      </MockedProvider>,
+    );
+
+    expect(screen.getByText("New 33%")).toBeInTheDocument();
+    expect(screen.getByText("Review 67%")).toBeInTheDocument();
+    expect(screen.getByTestId("slider-value")).toHaveTextContent("35");
+
+    const notice = screen.getByTestId("new-card-ratio-custom-notice");
+    expect(notice).toHaveTextContent("A custom ratio (33%) is set via the API.");
+  });
+
+  it("rounds a repeating off-grid ratio ({1,3}) to one decimal", () => {
+    renderWithIntl(
+      <MockedProvider mocks={[]}>
+        <NewCardRatioSection initialRatio={{ numerator: 1, denominator: 3 }} />
+      </MockedProvider>,
+    );
+
+    expect(screen.getByText("New 33.3%")).toBeInTheDocument();
+    expect(screen.getByText("Review 66.7%")).toBeInTheDocument();
+    expect(screen.getByTestId("new-card-ratio-custom-notice")).toHaveTextContent(
+      "A custom ratio (33.3%) is set via the API.",
+    );
+  });
+
+  it("shows the dragged grid value while the slider is moving, off-grid stored value or not", async () => {
+    const user = userEvent.setup();
+
+    renderWithIntl(
+      <MockedProvider mocks={[]}>
+        <NewCardRatioSection initialRatio={{ numerator: 33, denominator: 100 }} />
+      </MockedProvider>,
+    );
+
+    await user.click(screen.getByTestId("change-90"));
+
+    expect(screen.getByText("New 90%")).toBeInTheDocument();
+    expect(screen.getByText("Review 10%")).toBeInTheDocument();
+    // The stored value is still the off-grid one until a commit succeeds.
+    expect(screen.getByTestId("new-card-ratio-custom-notice")).toBeInTheDocument();
+  });
+
+  it("drops the off-grid notice once a commit replaces the stored ratio", async () => {
+    const user = userEvent.setup();
+    const onCalled = vi.fn();
+
+    renderWithIntl(
+      <MockedProvider mocks={[makeUpdateRatioMock(40, { onCalled })]}>
+        <NewCardRatioSection initialRatio={{ numerator: 33, denominator: 100 }} />
+      </MockedProvider>,
+    );
+
+    await user.click(screen.getByTestId("commit-40"));
+    await waitFor(() => expect(onCalled).toHaveBeenCalledTimes(1));
+
+    await waitFor(() => expect(screen.getByText("New 40%")).toBeInTheDocument());
+    expect(screen.getByText("Review 60%")).toBeInTheDocument();
+    expect(screen.queryByTestId("new-card-ratio-custom-notice")).not.toBeInTheDocument();
   });
 
   it("onValueChange updates the label but fires no mutation", async () => {
