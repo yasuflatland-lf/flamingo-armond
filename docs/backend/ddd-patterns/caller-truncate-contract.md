@@ -32,14 +32,14 @@ order:
 // The caller is responsible for truncating to a per-session limit. Apply
 // returns all cards from due without imposing a length cap; the input slice
 // is not modified, as partition produces fresh slices before shuffling.
-func (p *OrderingPolicy) Apply(due []domain.DueCard, rng *rand.Rand) []*domain.Card { ... }
+func (p *OrderingPolicy) Apply(due []domain.DueCard, rng *rand.Rand, ratio domain.NewCardRatio) []*domain.Card { ... }
 ```
 
 Every caller truncates with the same shape immediately after:
 
 ```go
 // backend/internal/usecase/learn.go
-ordered := u.ordering.Apply(due, u.randSource())
+ordered := u.ordering.Apply(due, u.randSource(), ratio)
 if len(ordered) > n {
     ordered = ordered[:n]
 }
@@ -54,22 +54,22 @@ keep that from drifting:
 1. **The docstring on `Apply` names the responsibility explicitly.** A
    reviewer reading the call site can grep the service signature and see
    "the caller is responsible for truncating".
-2. **The two due windows return up to `2*limit` rows, so the truncate is
-   load-bearing.** The repository fetches the review window and the new
-   window as two independent `LIMIT limit` selections and concatenates them,
-   so `OrderingPolicy.Apply` receives up to `2*limit` cards (`findDueCardsOn`
+2. **The three due windows return up to `3*limit` rows, so the truncate is
+   load-bearing.** The repository fetches rescue-review, filler-review, and new
+   windows as independent `LIMIT limit` selections and concatenates them,
+   so `OrderingPolicy.Apply` receives up to `3*limit` cards (`findDueCardsOn`
    in `backend/internal/repository/card_due.go` documents this explicitly).
    The `ordered[:n]` truncate is therefore not a redundant guard — it
    actively reshapes the session mix, keeping only the interleaved prefix so
    the review / new proportion at the cut is the one the session intends. A
-   caller that omits the truncate ships up to twice the requested session
+   caller that omits the truncate ships up to three times the requested session
    length.
 3. **Direct unit tests cover the post-truncate shape.** Each caller's
    tests assert the final slice length, so a missing truncate surfaces at
    review time, not in production.
 
-The truncate is already load-bearing today, because the two windows can
-hand `Apply` up to `2*limit` rows. A future ordering policy that also emits
+The truncate is already load-bearing today, because the three windows can
+hand `Apply` up to `3*limit` rows. A future ordering policy that also emits
 more cards than it received (e.g. interleaving a separate "boosted" bucket)
 only widens that gap; the contract is unchanged either way — the caller
 still owns the cap. If every call site grows to do the same truncate
@@ -84,5 +84,6 @@ contract a candidate to flip to service-truncates.
   `Apply`. A grep for `ordering.Apply` names every active call site; any
   new caller missing the truncate is a review-time defect.
 - `backend/internal/repository/card_due.go` — `findDueCardsOn` fetches the
-  review and new windows as two independent `LIMIT` selections, returning up
-  to `2*limit` rows and making the caller's truncate load-bearing.
+  rescue-review, filler-review, and new windows as independent `LIMIT`
+  selections, returning up to `3*limit` rows and making the caller's truncate
+  load-bearing.

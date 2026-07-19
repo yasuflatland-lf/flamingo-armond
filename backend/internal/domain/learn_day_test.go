@@ -47,3 +47,33 @@ func TestStartOfLearnDay(t *testing.T) {
 		})
 	}
 }
+
+// TestEndOfLearnDay pins the exclusive JST end-of-day boundary used by the
+// rescue window, including the exact local-midnight transition.
+func TestEndOfLearnDay(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		now  time.Time
+		want time.Time
+	}{
+		{
+			name: "23:59:59 JST ends at the next midnight",
+			now:  time.Date(2026, 6, 5, 14, 59, 59, 0, time.UTC),
+			want: time.Date(2026, 6, 5, 15, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "00:00:00 JST ends at the following midnight",
+			now:  time.Date(2026, 6, 5, 15, 0, 0, 0, time.UTC),
+			want: time.Date(2026, 6, 6, 15, 0, 0, 0, time.UTC),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := EndOfLearnDay(tc.now)
+			require.True(t, got.Equal(tc.want), "got %v, want instant %v", got, tc.want)
+		})
+	}
+}

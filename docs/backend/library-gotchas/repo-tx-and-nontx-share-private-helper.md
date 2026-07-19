@@ -66,8 +66,8 @@ is one source. If the practice window inlined its own copy of the SELECT, a
 later column addition to the learn window would silently skip practice.
 
 **A shared helper serving callers with different wrap prefixes takes the
-message as a parameter.** `dueRowsOn` is called by two windows whose
-`eris.Wrap` layer prefixes differ (`repository: card: find due cards` vs.
+message as a parameter.** `dueRowsOn` serves four window queries across two
+operations whose `eris.Wrap` layer prefixes differ (`repository: card: find due cards` vs.
 `repository: card: find practice cards`). A shared helper must not hardcode a
 fixed prefix — that would displace the caller-specific module attribution from
 the error chain. The prefix travels as a `wrapMsg` argument the caller supplies:

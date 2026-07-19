@@ -19,4 +19,7 @@ type DueCard struct {
 	Card  *Card
 	Phase FSRSPhase
 	Due   time.Time
+	// Rescue is set by the repository for rows fetched by the rescue window;
+	// OrderingPolicy must not move a non-rescue (filler) card ahead of a rescue card.
+	Rescue bool
 }

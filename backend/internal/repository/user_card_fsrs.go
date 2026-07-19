@@ -21,6 +21,7 @@ type gormUserCardFSRS struct {
 	Reps          int       `gorm:"column:reps"`
 	Lapses        int       `gorm:"column:lapses"`
 	LastReview    time.Time `gorm:"column:last_review"`
+	LastRating    *int      `gorm:"column:last_rating"`
 	ElapsedDays   int       `gorm:"column:elapsed_days"`
 	ScheduledDays int       `gorm:"column:scheduled_days"`
 	CreatedAt     time.Time `gorm:"column:created_at"`
@@ -61,6 +62,7 @@ func (r *userCardFSRSRepo) UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.
 			"reps":           u.State.Reps,
 			"lapses":         u.State.Lapses,
 			"last_review":    u.State.LastReview,
+			"last_rating":    userCardFSRSLastRating(u.State),
 			"elapsed_days":   u.State.ElapsedDays,
 			"scheduled_days": u.State.ScheduledDays,
 			"updated_at":     gorm.Expr("now()"),
@@ -180,6 +182,7 @@ func userCardFSRSToRow(u *domain.UserCardFSRS) *gormUserCardFSRS {
 		Reps:          u.State.Reps,
 		Lapses:        u.State.Lapses,
 		LastReview:    u.State.LastReview,
+		LastRating:    userCardFSRSLastRating(u.State),
 		ElapsedDays:   u.State.ElapsedDays,
 		ScheduledDays: u.State.ScheduledDays,
 		CreatedAt:     u.CreatedAt,
@@ -187,10 +190,25 @@ func userCardFSRSToRow(u *domain.UserCardFSRS) *gormUserCardFSRS {
 	}
 }
 
+func userCardFSRSLastRating(state domain.FSRSState) *int {
+	if !state.LastRating.IsValid() {
+		return nil
+	}
+	rating := int(state.LastRating)
+	return &rating
+}
+
 func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
 	state := domain.FSRSPhase(row.State)
 	if !state.IsValid() {
 		return nil, eris.Errorf("repository: invalid FSRSPhase value %d for card %s", row.State, row.CardID)
+	}
+	lastRating := domain.Rating(0)
+	if row.LastRating != nil {
+		lastRating = domain.Rating(*row.LastRating)
+		if !lastRating.IsValid() {
+			return nil, eris.Errorf("repository: invalid last_rating value %d for card %s", *row.LastRating, row.CardID)
+		}
 	}
 	return &domain.UserCardFSRS{
 		UserID: domain.UserID(row.UserID),
@@ -205,6 +223,7 @@ func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
 			Lapses:        row.Lapses,
 			Phase:         state,
 			LastReview:    row.LastReview,
+			LastRating:    lastRating,
 		},
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,

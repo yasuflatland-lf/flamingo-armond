@@ -17,7 +17,7 @@ whenever the keys it scopes to are dense.
 
 ## Policy
 
-**80/20 is a full-pool target, not an invariant.** When both due windows are
+**80/20 is a full-pool target, not an invariant.** When both candidate pools are
 full — the deck has at least 16 never-seen cards *and* at least 4 eligible
 prior-day reviews — a default 20-card session composes as **16 uniformly-sampled
 never-seen cards (80%)** interleaved with **4 prior-day review cards (20%)**
@@ -39,9 +39,9 @@ Three mechanisms shape the actual mix, each biased toward review:
   review portion first, so the review count rounds *up* by at most one
   `ReviewShare` rather than down. A full-pool request for 22 cards under 4/5
   yields 5 review + 17 new (not 4 review + 18 new).
-- **Drain back-fill toward review.** The review and new windows are two
-  independent `LIMIT` selections that together return up to `2*limit` rows; the
-  caller then truncates the interleaved result to the session limit (`ordered[:n]`
+- **Drain back-fill toward review.** The rescue-review, filler-review, and new
+  windows are independent `LIMIT` selections that together return up to
+  `3*limit` rows; the caller then truncates the interleaved result to the session limit (`ordered[:n]`
   in `LearnUsecase.NextDueCards`). As the unseen pool empties, the new bucket
   runs out after its early contributions and `interleave` appends the remaining
   review cards, so the session skews toward review. Near deck completion, with a
@@ -50,11 +50,12 @@ Three mechanisms shape the actual mix, each biased toward review:
 
 Within those mechanisms:
 
-- **Review slots** take learning-phase cards first — those in
-  `FSRSPhaseLearning` or `FSRSPhaseRelearning`, i.e. whose latest rating was
-  Again or Hard (`domain.FSRSPhase.IsLearningPhase()`). Long-interval
-  `FSRSPhaseReview` cards act as filler when fewer than four learning-phase
-  cards are due.
+- **Review slots** take rescue-band cards first — rows whose latest rating was
+  Again or whose FSRS stability is below `domain.LearnedStabilityDays`. The
+  rescue window admits those cards when their due timestamp falls before the
+  current JST learn day's exclusive end, so a rescue due later today can be
+  served early. Rows outside the rescue band act as filler only after their due
+  timestamp has arrived. A mature card last rated Hard is filler, not rescue.
 - A card whose `last_review` is at or after the learner's JST start-of-today is
   **excluded** from the review window, so a card swiped today never reappears
   in today's queue regardless of its FSRS re-due interval.
@@ -69,9 +70,9 @@ deterministic while the database does the sampling:
 
 | Stage | Owner | Behaviour |
 |---|---|---|
-| Selection (which rows enter each window) | `repository.FindDueCardsForUser` | Two independent `LIMIT` windows: a review window (`due <= now AND last_review < reviewedBefore`, ordered learning-phase-first via a `CASE` then `random()`) concatenated with a new window (no FSRS row, ordered by `random()`). |
-| Arrangement (order within the batch) | `service.OrderingPolicy.Apply` | Injected `*rand.Rand` shuffles the new partition fully and the review partition within same-phase runs; then interleaves at the caller-supplied ratio (`domain.DefaultNewCardRatio` = 4:1 absent a stored preference) with review-first emission. |
-| Truncation | `usecase.LearnUsecase.NextDueCards` | Caps the interleaved result to the session limit (`ordered[:n]`). Because the two windows return up to `2*limit` rows, this truncate is load-bearing: it yields the 16/4 split for a 20-card request only when both windows are full, and skews toward review when the unseen pool is short (see Policy). |
+| Selection (which rows enter each window) | `repository.FindDueCardsForUser` | Three independent `LIMIT` windows, each ordered by `random()`: rescue reviews (`due < rescueDueBefore AND last_review < reviewedBefore` plus `last_rating = Again OR stability < LearnedStabilityDays`), disjoint filler reviews (`due <= now` plus the inverse band predicate), then new cards with no FSRS row. |
+| Arrangement (order within the batch) | `service.OrderingPolicy.Apply` | Injected `*rand.Rand` shuffles the new partition fully and the review partition within same-band runs; then interleaves at the caller-supplied ratio (`domain.DefaultNewCardRatio` = 4:1 absent a stored preference) with review-first emission. |
+| Truncation | `usecase.LearnUsecase.NextDueCards` | Caps the interleaved result to the session limit (`ordered[:n]`). Because the three windows return up to `3*limit` rows, this truncate is load-bearing: it yields the 16/4 split for a 20-card request only when both the combined review pool and new-card pool are full, and skews toward review when the unseen pool is short (see Policy). |
 
 `random()` runs in Postgres and cannot be seeded from Go, so it decides only
 *which* rows are eligible; the deterministic arrangement is the injected
@@ -79,17 +80,27 @@ deterministic while the database does the sampling:
 
 ## Contracts
 
-- **Repository pre-sorts review rows learning-phase-first.** The review
-  window's `ORDER BY CASE WHEN ucs.state IN (Learning, Relearning) THEN 0 ELSE 1
-  END, random()` is a contract with `OrderingPolicy`'s `shuffleWithinPhase`,
-  which detects each phase run with a single linear pass and never shuffles
-  across the boundary. A Review-state filler card therefore cannot displace a
-  learning-phase card from the review slots.
-- **`startOfDayJST` is a fixed UTC+9 boundary.** `usecase.startOfDayJST(now)`
-  computes the learner's local midnight with `time.FixedZone("JST", 9*60*60)`.
-  JST observes no daylight saving, so a fixed offset is exact and avoids a
-  tzdata dependency. The product currently assumes a Japan-resident learner;
-  revisit with a per-user timezone preference if that assumption breaks.
+- **Repository concatenates rescue reviews before filler reviews.** The rescue
+  and filler predicates are disjoint, and each window uses its own `LIMIT` and
+  `ORDER BY random()`. This is a contract with `OrderingPolicy`'s
+  `shuffleWithinBand`, which detects each contiguous band with a single linear
+  pass and never shuffles across the boundary. A filler card therefore cannot
+  displace a rescue card from the review slots. The filler predicate uses
+  `last_rating IS DISTINCT FROM Again`, so a backfilled NULL rating with learned
+  stability cannot disappear through SQL three-valued logic.
+- **The learn-day boundaries are fixed UTC+9 instants.**
+  `domain.StartOfLearnDay(now)` computes the learner's JST midnight at or before
+  now, and `domain.EndOfLearnDay(now)` adds exactly 24 hours to obtain the
+  following midnight. JST observes no daylight saving, so the fixed offset and
+  addition are exact and avoid a tzdata dependency. The values are passed as
+  instants and compared directly with UTC-stored timestamps. The product
+  currently assumes a Japan-resident learner; revisit with a per-user timezone
+  preference if that assumption breaks.
+- **The rescue due cutoff is strictly before learn-day end.** The rescue
+  predicate uses `ucs.due < rescueDueBefore`, where `rescueDueBefore` is
+  `domain.EndOfLearnDay(now)`. A rescue due later today is eligible, while one
+  due exactly at the next JST midnight is not. Filler remains time-granular and
+  uses `ucs.due <= now`.
 - **The review-window cutoff is strictly before the boundary.** The repository
   predicate is `ucs.last_review < ?` (strict `<`), so a card whose `last_review`
   equals the JST start-of-day exactly is excluded — a card swiped at local
@@ -99,10 +110,10 @@ deterministic while the database does the sampling:
 
 ## Trade-off
 
-Discovery is bought at the cost of review efficiency. Long-interval
-`FSRSPhaseReview` cards (last rated Easy/Good) compete for the same four review
-slots per batch as learning-phase cards, so a large Review backlog drains more
-slowly than a pure due-date order would drain it. This is deliberate: the
+Discovery is bought at the cost of review efficiency. Rescue-band cards claim
+the review slots before filler reviews, and rescue cards due later in the JST
+day may be served before their exact due time. A large filler backlog therefore
+drains more slowly than a pure due-date order would drain it. This is deliberate:
 queue's primary job became surfacing the unseen backlog, not maximising
 retention throughput. `cards.position` remains Notion-sync metadata (assigned
 as the zero-based document index, overwritten on re-sync) but no longer drives
@@ -110,11 +121,13 @@ learn ordering — new cards are sampled randomly, not walked in document order.
 
 ## Reference
 
-- `backend/internal/domain/fsrs_state.go` — `FSRSPhase.IsLearningPhase()`.
+- `backend/internal/domain/learn_day.go` — `StartOfLearnDay`, `EndOfLearnDay`.
+- `backend/internal/domain/mastery_tier.go` — `LearnedStabilityDays`.
+- `backend/internal/domain/due_card.go` — `DueCard.Rescue`.
 - `backend/internal/domain/service/due_card_ordering.go` — `OrderingPolicy.Apply`,
-  `shuffleWithinPhase`, `interleave` (new/review shares supplied by the caller's ratio).
+  `shuffleWithinBand`, `interleave` (new/review shares supplied by the caller's ratio).
 - `backend/internal/domain/new_card_ratio.go` — `NewCardRatio` VO, `DefaultNewCardRatio` (4/5, the default 4:1 interleave).
-- `backend/internal/repository/card.go` — `FindDueCardsForUser`, `findDueCardsOn`,
-  `dueRowsOn` (the two-window selection).
-- `backend/internal/usecase/learn.go` — `startOfDayJST`, `LearnUsecase.NextDueCards`
+- `backend/internal/repository/card_due.go` — `FindDueCardsForUser`,
+  `findDueCardsOn`, `dueRowsOn` (the three-window selection).
+- `backend/internal/usecase/learn.go` — `LearnUsecase.NextDueCards`
   (interleave invocation and per-session truncation).

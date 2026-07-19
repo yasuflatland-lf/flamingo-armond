@@ -13,7 +13,7 @@ pass a fixed seed and can assert an exact output order.
 // Apply orders due cards with a two-step policy:
 //
 //  1. The new partition is fully shuffled; the review partition is shuffled
-//     within same-phase runs (shuffleWithinPhase) using rng.
+//     within same-band runs (shuffleWithinBand) using rng.
 //  2. New and review cards are interleaved at the caller-supplied ratio
 //     (ratio.NewShare new per ratio.ReviewShare review), review-first.
 //
@@ -24,7 +24,7 @@ func (p *OrderingPolicy) Apply(due []domain.DueCard, rng *rand.Rand, ratio domai
     if rng == nil {
         panic("domain/service: OrderingPolicy.Apply requires non-nil rng")
     }
-    // ... partition, shuffleWithinPhase, interleave(newCards, reviewCards, ratio.NewShare(), ratio.ReviewShare()) ...
+    // ... partition, shuffleWithinBand, interleave(newCards, reviewCards, ratio.NewShare(), ratio.ReviewShare()) ...
 }
 ```
 

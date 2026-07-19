@@ -8,6 +8,8 @@ import (
 // into the domain package.
 type FSRSPhase int
 
+// Learning and Relearning occur only on legacy rows written before the
+// long-term scheduler switch. Their next swipe absorbs them into Review.
 const (
 	FSRSPhaseNew FSRSPhase = iota
 	FSRSPhaseLearning
@@ -18,13 +20,6 @@ const (
 // IsValid reports whether the phase is a recognised FSRSPhase constant.
 func (p FSRSPhase) IsValid() bool {
 	return p >= FSRSPhaseNew && p <= FSRSPhaseRelearning
-}
-
-// IsLearningPhase reports whether the card sits in a short-interval phase
-// (Learning or Relearning) — i.e. its latest rating was Again or Hard. The
-// learn queue's review slots prioritise these over long-interval Review cards.
-func (p FSRSPhase) IsLearningPhase() bool {
-	return p == FSRSPhaseLearning || p == FSRSPhaseRelearning
 }
 
 // FSRSState is an immutable value object. Repository code persists it as a
@@ -39,6 +34,9 @@ type FSRSState struct {
 	Lapses        int
 	Phase         FSRSPhase
 	LastReview    time.Time
+	// LastRating is the rating of the swipe that produced this state; the zero
+	// value denotes a synthesized new-card state that no swipe has rated yet.
+	LastRating Rating
 }
 
 // NewFSRSStateForNewCard returns the initial scheduling state for a new card.
