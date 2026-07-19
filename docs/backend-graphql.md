@@ -282,6 +282,19 @@ The legacy guard is preserved: fewer than 20 reviews always returns `ModeDefault
 
 `StudyStreak` buckets each swipe by its **JST learn-day** rather than by UTC calendar day. Every swipe is keyed with `domain.LearnDayKey(swipe.ReviewedAt)` and the streak walks back from `domain.StartOfLearnDay(now)`, both of which use a fixed UTC+9 offset (`time.FixedZone("JST", 9*60*60)` in [`backend/internal/domain/learn_day.go`](../backend/internal/domain/learn_day.go)). The learn-day therefore rolls over at **15:00 UTC** (JST midnight), not UTC midnight, and the streak is 0 whenever the current JST learn-day has no swipe yet. This keeps `studyStreak` consistent with the learn queue's JST start-of-day cutoff — see [`docs/backend/ddd-patterns/discovery-first-due-ordering.md` § "Contracts"](backend/ddd-patterns/discovery-first-due-ordering.md#contracts). The UTC+9 offset is hard-coded because the product currently assumes a Japan-resident learner; a per-user profile time-zone field would replace it as a separate feature.
 
+### Learn and practice queries
+
+Guard order for `learnNextDueCards` and `practiceTodaysCards` (both run the shared
+`authorizeCardgroupForLearn` in `backend/internal/usecase/learn.go` before touching
+the card repository):
+
+1. `requireCallerSub(auth.UserFrom(ctx))` — nil caller or empty `Sub` ⇒ `UNAUTHENTICATED`.
+2. `authorizeCardgroupOrBadInput(...)` — missing cardgroup ⇒ `BAD_USER_INPUT` on `cardgroupId`; a cardgroup owned by another user ⇒ `UNAUTHENTICATED`.
+
+Authentication is checked first, so an unauthenticated caller receives `UNAUTHENTICATED`
+even when the requested cardgroup does not exist. That ordering keeps anonymous callers
+from using either query as an existence oracle over cardgroup ids.
+
 ### Integration tests
 
 `backend/cmd/server/main_test.go` contains `TestGraphQL_Me_Anonymous`, `TestGraphQL_Me_Authenticated`, and `TestGraphQL_UpdateProfile_Authenticated`. These tests use the testcontainer Postgres, a local JWKS HTTP server (`jwtFixture`), and ECDSA-signed JWTs. Future GraphQL integration tests should reuse the same `jwtFixture` + `startServer` helpers rather than re-inventing the JWKS mock.
@@ -347,18 +360,9 @@ and the two error codes the caller must handle. Keep descriptions result-oriente
 calls). Do not list error codes only in the resolver body — that surface is invisible
 to client code-generators and frontend teams reading the schema. The queue composition
 behind the description is documented in
-[`docs/backend/ddd-patterns/discovery-first-due-ordering.md`](backend/ddd-patterns/discovery-first-due-ordering.md).
-
-Guard order for `learnNextDueCards` and `practiceTodaysCards` (both run the shared
-`authorizeCardgroupForLearn` in `backend/internal/usecase/learn.go` before touching
-the card repository):
-
-1. `requireCallerSub(auth.UserFrom(ctx))` — nil caller or empty `Sub` ⇒ `UNAUTHENTICATED`.
-2. `authorizeCardgroupOrBadInput(...)` — missing cardgroup ⇒ `BAD_USER_INPUT` on `cardgroupId`; a cardgroup owned by another user ⇒ `UNAUTHENTICATED`.
-
-Authentication is checked first, so an unauthenticated caller receives `UNAUTHENTICATED`
-even when the requested cardgroup does not exist. That ordering keeps anonymous callers
-from using either query as an existence oracle over cardgroup ids.
+[`docs/backend/ddd-patterns/discovery-first-due-ordering.md`](backend/ddd-patterns/discovery-first-due-ordering.md),
+and the order in which those two error codes are decided in
+[Learn and practice queries](#learn-and-practice-queries).
 
 **Dedupe is asymmetric: `importCards` dedupes, `validateCardImport` does not.** `importCards` runs dedup and surfaces dropped rows as `CardImportError` entries with `Front`/`Back` populated. `validateCardImport` runs `textdic.Process` directly and surfaces only parser-level syntax errors — those entries never carry `Front`/`Back`. The resolver mapping site for `validateCardImport` (in `backend/graph/resolver/card_import.resolvers.go`) therefore deliberately omits `nilIfEmpty(e.Front)` calls; there is nothing to map. If a future change adds dedup to `validateCardImport`, the resolver mapping site must be updated symmetrically with `importCards`.
 
