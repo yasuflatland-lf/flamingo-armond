@@ -61,7 +61,9 @@ describe("gqlFetch", () => {
 
     await gqlFetch(MasterCatalogDocument, { variables: { first: 20, search: null } });
 
-    const body = JSON.parse((fetchSpy.mock.calls[0]?.[1] as RequestInit).body as string);
+    const body = JSON.parse(
+      (fetchSpy.mock.calls[0]?.[1] as RequestInit | undefined)?.body as string,
+    );
     // The MasterCatalog node selection spreads `...CatalogDeckFields on MasterCardgroup`,
     // a type-conditioned fragment the cache cannot resolve without __typename.
     expect(body.query).toContain("__typename");
@@ -164,7 +166,9 @@ describe("gqlFetch", () => {
       .spyOn(global, "fetch")
       .mockResolvedValue(new Response(JSON.stringify({ data: { health: "ok" } })));
     await gqlFetch(HealthQuery);
-    const body = JSON.parse((fetchSpy.mock.calls[0]?.[1] as RequestInit).body as string);
+    const body = JSON.parse(
+      (fetchSpy.mock.calls[0]?.[1] as RequestInit | undefined)?.body as string,
+    );
     expect(body.variables).toEqual({});
   });
 

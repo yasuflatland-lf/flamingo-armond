@@ -164,7 +164,7 @@ describe("CardsNewPage — Suspense boundary", () => {
 
     const suspenseEl = findSuspense(result);
     expect(suspenseEl).not.toBeNull();
-    const fallback = (suspenseEl?.props as { fallback?: { type?: unknown } }).fallback;
+    const fallback = (suspenseEl?.props as { fallback?: { type?: unknown } } | undefined)?.fallback;
     expect(fallback).toBeDefined();
     expect((fallback as { type?: unknown }).type).toBe(CardsNewSkeleton);
   });
