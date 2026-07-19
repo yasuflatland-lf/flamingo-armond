@@ -3,8 +3,8 @@ package domain
 // FSRSStat is a lightweight per-card projection of a user's FSRS state, consumed
 // by the learning-stats domain services (AggregateMastery, TopStruggling). It
 // carries no card front text — just CardID (row identity), CardgroupID (per-deck
-// bucketing), Phase/Stability (the columns ClassifyMastery needs), and Lapses
-// (the struggling-card ranking key).
+// bucketing), Phase (carried for other consumers), Stability (the column
+// ClassifyMastery needs), and Lapses (the struggling-card ranking key).
 //
 // FSRSStat is not an aggregate; it is a view-level value shared between the
 // repository (which builds it from a JOIN of user_card_fsrs and cards) and the

@@ -65,10 +65,11 @@ func TestComputeMetrics(t *testing.T) {
 		},
 		{
 			// Review->Again is the one FSRS lapse transition: it counts as a lapse
-			// and, being an Again, is never an on-time recall.
+			// once the pre-swipe stability is learned and, being an Again, is never
+			// an on-time recall.
 			name: "new-format review again is a lapse and not a retention",
 			swipes: []domain.SwipeRecord{
-				swipeBefore(domain.RatingAgain, now, stateWithLapses(5, 3, 0, domain.FSRSPhaseRelearning, 1), domain.FSRSPhaseReview, 5),
+				swipeBefore(domain.RatingAgain, now, stateWithLapses(5, 3, 0, domain.FSRSPhaseRelearning, 1), domain.FSRSPhaseReview, 7),
 			},
 			want: PerformanceMetrics{
 				SuccessRate:   0,
@@ -85,7 +86,7 @@ func TestComputeMetrics(t *testing.T) {
 			// so SuccessRate (0) and RetentionRate (1) diverge deliberately.
 			name: "new-format review hard on time is a retention but not a success",
 			swipes: []domain.SwipeRecord{
-				swipeBefore(domain.RatingHard, now, state(5, 4, 6, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
+				swipeBefore(domain.RatingHard, now, state(5, 4, 8, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 7),
 			},
 			want: PerformanceMetrics{
 				SuccessRate:   0,
@@ -101,7 +102,7 @@ func TestComputeMetrics(t *testing.T) {
 			// within is a review, but not an on-time recall.
 			name: "new-format review easy later than scheduled is a review but not a retention",
 			swipes: []domain.SwipeRecord{
-				swipeBefore(domain.RatingEasy, now, state(5, 5, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 2),
+				swipeBefore(domain.RatingEasy, now, state(5, 8, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 7),
 			},
 			want: PerformanceMetrics{
 				SuccessRate:   1,
@@ -117,7 +118,7 @@ func TestComputeMetrics(t *testing.T) {
 			// boundary).
 			name: "new-format review at the exact scheduled boundary is on time",
 			swipes: []domain.SwipeRecord{
-				swipeBefore(domain.RatingGood, now, state(5, 5, 9, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
+				swipeBefore(domain.RatingGood, now, state(5, 7, 9, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 7),
 			},
 			want: PerformanceMetrics{
 				SuccessRate:   1,
@@ -152,9 +153,9 @@ func TestComputeMetrics(t *testing.T) {
 			// numerator; one on-time Hard is the retention numerator.
 			name: "new-format mixed reviews scope both rates to the review denominator",
 			swipes: []domain.SwipeRecord{
-				swipeBefore(domain.RatingAgain, now, stateWithLapses(5, 3, 0, domain.FSRSPhaseRelearning, 1), domain.FSRSPhaseReview, 5),
-				swipeBefore(domain.RatingHard, now, state(5, 4, 6, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
-				swipeBefore(domain.RatingEasy, now, state(5, 9, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
+				swipeBefore(domain.RatingAgain, now, stateWithLapses(5, 3, 0, domain.FSRSPhaseRelearning, 1), domain.FSRSPhaseReview, 7),
+				swipeBefore(domain.RatingHard, now, state(5, 4, 8, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 7),
+				swipeBefore(domain.RatingEasy, now, state(5, 9, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 7),
 				swipeBefore(domain.RatingEasy, now, state(5, 0, 1, domain.FSRSPhaseReview), domain.FSRSPhaseLearning, 0),
 			},
 			want: PerformanceMetrics{
@@ -212,8 +213,8 @@ func TestComputeMetrics(t *testing.T) {
 			// Again-on-Learning are not reviews).
 			name: "mixed legacy and new-format window scopes rates across both branches",
 			swipes: []domain.SwipeRecord{
-				swipeBefore(domain.RatingHard, now, state(5, 4, 9, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
-				swipeBefore(domain.RatingAgain, now, stateWithLapses(5, 2, 0, domain.FSRSPhaseRelearning, 1), domain.FSRSPhaseReview, 5),
+				swipeBefore(domain.RatingHard, now, state(5, 4, 9, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 7),
+				swipeBefore(domain.RatingAgain, now, stateWithLapses(5, 2, 0, domain.FSRSPhaseRelearning, 1), domain.FSRSPhaseReview, 7),
 				swipeBefore(domain.RatingEasy, now, state(5, 0, 1, domain.FSRSPhaseReview), domain.FSRSPhaseLearning, 0),
 				swipe(domain.RatingGood, now, state(5, 10, 3, domain.FSRSPhaseReview)),
 				swipe(domain.RatingAgain, now, state(5, 1, 0, domain.FSRSPhaseLearning)),
@@ -233,10 +234,10 @@ func TestComputeMetrics(t *testing.T) {
 			// reviews, so the scoped rates stay at 1 / 0.
 			name: "study streak counts consecutive days from provided now",
 			swipes: []domain.SwipeRecord{
-				swipeBefore(domain.RatingGood, now.Add(-2*time.Hour), state(5, 1, 5, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
-				swipeBefore(domain.RatingGood, now.AddDate(0, 0, -1), state(5, 1, 5, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
-				swipeBefore(domain.RatingGood, now.AddDate(0, 0, -2), state(5, 1, 5, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
-				swipeBefore(domain.RatingGood, now.AddDate(0, 0, -4), state(5, 1, 5, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 5),
+				swipeBefore(domain.RatingGood, now.Add(-2*time.Hour), state(5, 1, 7, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 7),
+				swipeBefore(domain.RatingGood, now.AddDate(0, 0, -1), state(5, 1, 7, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 7),
+				swipeBefore(domain.RatingGood, now.AddDate(0, 0, -2), state(5, 1, 7, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 7),
+				swipeBefore(domain.RatingGood, now.AddDate(0, 0, -4), state(5, 1, 7, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 7),
 			},
 			want: PerformanceMetrics{
 				SuccessRate:   1,
@@ -262,6 +263,78 @@ func TestComputeMetrics(t *testing.T) {
 			require.Equal(t, tc.want.StudyStreak, got.StudyStreak)
 			require.InDelta(t, tc.want.LapseRate, got.LapseRate, 0.000000001)
 			require.Equal(t, tc.want.ReviewCount, got.ReviewCount)
+		})
+	}
+}
+
+func TestIsKnownCardReview(t *testing.T) {
+	t.Parallel()
+
+	reviewPhase := domain.FSRSPhaseReview
+	cases := []struct {
+		name  string
+		swipe domain.SwipeRecord
+		want  bool
+	}{
+		{
+			name:  "first-Again card second review at interval one is excluded",
+			swipe: swipeBefore(domain.RatingAgain, time.Time{}, state(5, 1, 1, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 1),
+			want:  false,
+		},
+		{
+			name:  "lapse recovery review at interval one is excluded",
+			swipe: swipeBefore(domain.RatingGood, time.Time{}, stateWithLapses(5, 1, 1, domain.FSRSPhaseReview, 1), domain.FSRSPhaseReview, 1),
+			want:  false,
+		},
+		{
+			name:  "interval six is below the learned boundary",
+			swipe: swipeBefore(domain.RatingGood, time.Time{}, state(5, 6, 6, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 6),
+			want:  false,
+		},
+		{
+			name:  "interval seven is at the learned boundary",
+			swipe: swipeBefore(domain.RatingGood, time.Time{}, state(5, 7, 7, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 7),
+			want:  true,
+		},
+		{
+			name:  "graduated card next review at interval sixteen is included",
+			swipe: swipeBefore(domain.RatingGood, time.Time{}, state(5, 16, 16, domain.FSRSPhaseReview), domain.FSRSPhaseReview, 16),
+			want:  true,
+		},
+		{
+			name: "new-format row without scheduled interval is excluded",
+			swipe: domain.SwipeRecord{
+				PhaseBefore: &reviewPhase,
+			},
+			want: false,
+		},
+		{
+			name:  "non-review phase is excluded above the stability boundary",
+			swipe: swipeBefore(domain.RatingGood, time.Time{}, state(5, 16, 16, domain.FSRSPhaseReview), domain.FSRSPhaseLearning, 16),
+			want:  false,
+		},
+		{
+			name:  "legacy Good with post-swipe Review phase is included",
+			swipe: swipe(domain.RatingGood, time.Time{}, state(5, 7, 7, domain.FSRSPhaseReview)),
+			want:  true,
+		},
+		{
+			name:  "legacy Again with post-swipe Relearning phase and lapses is included",
+			swipe: swipe(domain.RatingAgain, time.Time{}, stateWithLapses(5, 1, 0, domain.FSRSPhaseRelearning, 1)),
+			want:  true,
+		},
+		{
+			name:  "legacy Again with post-swipe Learning phase is excluded",
+			swipe: swipe(domain.RatingAgain, time.Time{}, state(5, 1, 0, domain.FSRSPhaseLearning)),
+			want:  false,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, isKnownCardReview(tc.swipe))
 		})
 	}
 }
