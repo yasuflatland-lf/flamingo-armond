@@ -72,13 +72,16 @@ describe("<DeleteAccountSection>", () => {
     expect(screen.getByTestId("delete-account-trigger")).toBeInTheDocument();
   });
 
-  it("renders the trigger as a low-emphasis ghost while the confirm stays filled", async () => {
+  it("renders the trigger as an outlined danger button while the confirm stays filled", async () => {
     const user = userEvent.setup();
     renderSection();
 
     const trigger = screen.getByTestId("delete-account-trigger");
     expect(trigger).not.toHaveClass("bg-destructive");
     expect(trigger).toHaveClass("text-destructive");
+    // The border is what makes the trigger read as a button; the ghost variant
+    // it replaces had no visible affordance at rest.
+    expect(trigger).toHaveClass("border", "border-destructive/45");
 
     await user.click(trigger);
     const confirm = await screen.findByTestId("delete-account-confirm");
