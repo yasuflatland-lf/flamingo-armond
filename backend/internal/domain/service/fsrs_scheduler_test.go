@@ -23,6 +23,32 @@ func TestFSRSSchedulerApplyIsPure(t *testing.T) {
 	require.Equal(t, now, got.LastReview)
 }
 
+func TestFSRSScheduler_Apply_BackwardClockSkewClamped(t *testing.T) {
+	t.Parallel()
+
+	scheduler := NewFSRSScheduler()
+
+	reviewAt := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
+	// First review promotes a new card into the Review phase, stamping
+	// LastReview == reviewAt.
+	reviewed := scheduler.Apply(
+		domain.NewFSRSStateForNewCard(reviewAt.Add(-24*time.Hour)),
+		domain.RatingEasy,
+		reviewAt,
+	)
+	require.Equal(t, domain.FSRSPhaseReview, reviewed.Phase)
+	require.Equal(t, reviewAt, reviewed.LastReview)
+
+	// A backward clock step (now before LastReview) must clamp to LastReview, so
+	// the result is byte-for-byte identical to reviewing exactly at LastReview.
+	skewed := scheduler.Apply(reviewed, domain.RatingGood, reviewAt.Add(-time.Second))
+	atLastReview := scheduler.Apply(reviewed, domain.RatingGood, reviewAt)
+
+	require.Equal(t, atLastReview, skewed)
+	require.Equal(t, 0, skewed.ElapsedDays)
+	require.GreaterOrEqual(t, skewed.ScheduledDays, 1)
+}
+
 func TestFSRSSchedulerApplyGoldenTransitions(t *testing.T) {
 	t.Parallel()
 
