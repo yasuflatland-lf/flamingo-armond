@@ -165,12 +165,14 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
   // never re-appended, which would let the learner rate it twice and record a
   // duplicate same-day FSRS review.
   //
-  // Ids are never pruned mid-session. Every server-side due window requires
-  // `last_review < StartOfLearnDay(now)` (see the contract on
-  // `StartOfLearnDay` in `backend/internal/domain/learn_day.go`), so a card
-  // swiped today can never legitimately re-enter today's queue — any prefetched
-  // batch carrying one of these ids is a stale read that predates the swipe's
-  // commit. Reset when the active cardgroup changes.
+  // Ids are never pruned mid-session. Both server-side REVIEW windows require
+  // `last_review < StartOfLearnDay(now)` (see the contract on `StartOfLearnDay`
+  // in `backend/internal/domain/learn_day.go`), and the new-card window carries
+  // no `last_review` predicate at all — it matches only cards with no FSRS row,
+  // which the swipe itself creates. So once a swipe commits, no window can
+  // return that card again today: any prefetched batch carrying one of these
+  // ids is a stale read that predates the commit. Reset when the active
+  // cardgroup changes.
   //
   // A transport failure keeps its id here too, which is harmless: the catch
   // handler puts the card back at the queue head, so `seen` covers it for as
@@ -180,9 +182,13 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
   // due pool is exhausted, so every subsequent tail swipe would otherwise fire a
   // redundant network-only query that returns nothing new. A stale batch whose
   // ids were all swiped this session lands here too, and that verdict is correct
-  // for the same-day queue. The effect short-circuits while this is set. Cleared
-  // after a swipe mutation succeeds (a rated card may become due again) and on
-  // cardgroup change.
+  // for the same-day queue. The effect short-circuits while this is set.
+  //
+  // Cleared after a swipe mutation succeeds and on cardgroup change. The reset is
+  // not about the just-swiped card — that one can never come back today — but
+  // about the verdict's age: it is a point-in-time snapshot, and the filler
+  // review window admits a card once `due <= now`, so the pool can refill with
+  // newly-due cards while the session runs.
   const exhaustedRef = useRef(false);
   // Tracks the cardgroup the exhaustion verdict belongs to. When the active
   // cardgroup changes, the prefetch effect below clears `exhaustedRef` before
@@ -284,8 +290,10 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
       // UI consumer reads today. Only the non-success branches need handling.
       const payload = result.data?.handleSwipe;
       if (payload?.__typename === "HandleSwipeSuccess") {
-        // A rated card can become due again (e.g. an "again" rating), so re-open
-        // prefetching in case the pool was previously marked exhausted.
+        // Re-open prefetching in case the pool was previously marked exhausted.
+        // That verdict may predate cards that have since become due (the filler
+        // review window admits a card once its `due` has arrived); the
+        // just-swiped card itself never returns today.
         exhaustedRef.current = false;
         return;
       }

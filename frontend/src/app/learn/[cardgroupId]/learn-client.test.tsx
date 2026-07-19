@@ -1519,7 +1519,8 @@ describe("<LearnClient> queue prefetch", () => {
   it("resumes prefetch after a successful swipe clears the exhaustion guard", async () => {
     // Recovery counterpart to the suppression test above (regression guard for
     // issue #789). Once the pool is exhausted (`exhaustedRef` set), a swipe that
-    // SUCCEEDS must re-open prefetching: a rated card may become due again, so
+    // SUCCEEDS must re-open prefetching: the exhaustion verdict is a
+    // point-in-time snapshot that newly-due cards can outdate, so
     // `HandleSwipeSuccess` resets `exhaustedRef`. The NEXT tail swipe that
     // re-crosses the threshold then dispatches a fresh prefetch. If the
     // `exhaustedRef.current = false` reset on `HandleSwipeSuccess` were removed,
