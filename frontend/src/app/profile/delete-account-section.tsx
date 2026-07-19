@@ -104,7 +104,7 @@ export function DeleteAccountSection() {
 
       <AlertDialog open={open} onOpenChange={handleOpenChange}>
         <AlertDialogTrigger asChild>
-          <Button type="button" variant="destructiveGhost" data-testid="delete-account-trigger">
+          <Button type="button" variant="destructiveOutline" data-testid="delete-account-trigger">
             <Trash2 aria-hidden="true" className="h-4 w-4" />
             {t("deleteAccountButton")}
           </Button>

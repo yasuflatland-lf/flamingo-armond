@@ -24,9 +24,10 @@ rule that the two colors must never co-locate:
 - **Emphasis ladder** — exactly one filled coral CTA per view; every other control steps
   back to a lower-emphasis variant. This is what keeps a screen from looking like a wall
   of coral buttons.
-- **Danger two-tier** — an inline delete *trigger* is low-emphasis ghost-red
-  (`destructiveGhost`); the data-loss *commit* inside the confirm dialog is the only
-  filled crimson. The trigger invites; the commit re-affirms.
+- **Danger two-tier** — a delete *trigger* is low-emphasis red on a transparent ground
+  (`destructiveGhost`, or `destructiveOutline` when it needs a visible border); the data-loss
+  *commit* inside the confirm dialog is the only filled crimson. The trigger invites; the
+  commit re-affirms.
 
 These supersede the older "two reds that never co-locate" defense. Coral and crimson are
 allowed to share a surface because the emphasis ladder and the two-tier already disambiguate
@@ -84,7 +85,8 @@ single primary action stays visually dominant:
 |---|---|---|
 | Primary CTA (one per view) | `brand` | filled coral |
 | Secondary action | `ghost` (or `outline` in dense lists / dialogs) | neutral, no fill until hover |
-| Danger trigger (inline) | `destructiveGhost` | red text, transparent, faint red hover |
+| Danger trigger (in a row / list) | `destructiveGhost` | red text, transparent, faint red hover |
+| Danger trigger (standalone) | `destructiveOutline` | red text, transparent, red border |
 | Danger commit (confirm) | `destructive` | filled crimson |
 | Cancel / Keep-editing | `outline` | bordered, transparent |
 
@@ -98,32 +100,55 @@ watch for: demote all but the genuine primary.
 Danger is expressed at two emphasis levels, and the level tracks how close the user is to
 irreversible loss:
 
-- **Trigger (inline) — `destructiveGhost` + a `Trash2` icon.** An inline Delete affordance is
-  low-emphasis: `bg-transparent text-destructive hover:bg-destructive/10`. It reads as red but
-  never paints a filled red row in a list. The trigger only *opens* the confirm — it does not
-  itself destroy data.
+- **Trigger — `destructiveGhost` / `destructiveOutline` + a `Trash2` icon.** A Delete affordance
+  is low-emphasis: red text on `bg-transparent`, faint red hover. It reads as red but never
+  paints a filled red row. The trigger only *opens* the confirm — it does not itself destroy
+  data.
 - **Commit (confirm) — filled `destructive`.** The `AlertDialogAction` that actually deletes /
   overwrites / discards is the **only** filled crimson in the flow. This re-affirms the
   existing filled-destructive confirm rule below, which is **unchanged**.
 
 A filled red row in a list is the anti-pattern this two-tier replaces: it shouts danger at rest,
-before the user has expressed any delete intent. Ghost-red at the trigger, filled crimson only at
-the commit.
+before the user has expressed any delete intent. Transparent red at the trigger, filled crimson
+only at the commit.
+
+### Border is affordance, not emphasis: `destructiveGhost` vs `destructiveOutline`
+
+The two trigger variants sit on the *same* rung of the ladder — both are transparent red. The
+border answers a different question than the fill does: **is this thing tappable at all?**
+
+- **`destructiveGhost` (borderless)** — the trigger lives inside a structure that already
+  supplies the affordance: a table row, a list item, an overflow menu, a sheet section with
+  sibling controls. Neighbouring hit targets tell the user this region is interactive, so the
+  border would be redundant chrome.
+- **`destructiveOutline` (bordered)** — the trigger stands alone on the page with no
+  interactive neighbours. Borderless red text in isolation reads as a static label or an inline
+  link, not a button, so the affordance has to be drawn explicitly.
+
+Reach for `destructiveOutline` only on the isolation test. It is **not** a way to make a delete
+"stand out more" — that would re-open the emphasis question the two-tier settles. The rule of
+thumb: if removing the button would leave a region with no other controls in it, it needs the
+border.
+
+Worked example: the `/profile` Danger zone
+([`delete-account-section.tsx`](../../frontend/src/app/profile/delete-account-section.tsx)) is a
+heading, a sentence, and one control. As `destructiveGhost` the trigger rendered as a red text
+row and did not read as a button; it uses `destructiveOutline`. By contrast the admin
+user-profile sheet's Delete user
+([`admin-user-profile-sheet.tsx`](../../frontend/src/app/admin/users/admin-user-profile-sheet.tsx))
+sits below other sheet controls and stays `destructiveGhost`.
 
 ### Selection toolbars: the destructive action is the bar's primary
 
 A contextual selection bar — e.g. the cards bulk-action bar
 ([`bulk-action-bar.tsx`](../../frontend/src/components/cardgroups/bulk-action-bar.tsx)) — is the
 one place where a danger trigger is also the **primary** action of its view: the user entered
-selection mode *in order to* delete. There the inline `destructiveGhost` trigger carries a local
-affordance border (`border border-destructive/45`) so it reads as clearly tappable and findable,
-and its sibling **Cancel is demoted from `outline` to `ghost`** so the single bordered control is
-the destructive one. This is a deliberate, local exception to the "Cancel → `outline`" ladder row
-above: emphasis tracks intent, and the bar's intent is to delete. The trigger stays transparent
-(border only, never a filled red row), and the real safety gate remains the filled `destructive`
-commit in the confirm dialog. Standalone danger triggers outside a selection bar (Delete account,
-Delete user) keep the plain borderless `destructiveGhost` — there delete is a rare, dangerous
-escape hatch, not the view's purpose, so it stays recessive.
+selection mode *in order to* delete. There the trigger uses `destructiveOutline` so it reads as
+clearly tappable and findable, and its sibling **Cancel is demoted from `outline` to `ghost`** so
+the single bordered control is the destructive one. This is a deliberate, local exception to the
+"Cancel → `outline`" ladder row above: emphasis tracks intent, and the bar's intent is to delete.
+The trigger stays transparent (border only, never a filled red row), and the real safety gate
+remains the filled `destructive` commit in the confirm dialog.
 
 ## Button variants
 
@@ -134,7 +159,8 @@ not by appearance:
 |---|---|---|
 | `brand` | flamingo coral (`--brand-primary`) | **Primary constructive CTA** — Save, Create, Login, Import, Publish, Study again (one per view) |
 | `destructive` | filled crimson (`--destructive`) | **Destructive / data-loss commit** — the confirm-dialog action; see the dialog convention below |
-| `destructiveGhost` | none until hover (`text-destructive`, faint red hover) | **Low-emphasis danger trigger** — inline Delete that opens a confirm |
+| `destructiveGhost` | none until hover (`text-destructive`, faint red hover) | **Low-emphasis danger trigger** — Delete inside a row / list / menu that opens a confirm |
+| `destructiveOutline` | none until hover, plus a `border-destructive/45` border | **Low-emphasis danger trigger, standalone** — same rung as `destructiveGhost`; the border supplies affordance where no interactive neighbours do |
 | `outline` | bordered, transparent | Cancel, Keep-editing, toggle-off, secondary action in dense lists / dialogs |
 | `ghost` | none until hover | **Recommended secondary** — toolbar / icon-only actions and step-back secondaries inside dense UI |
 | `link` | text + underline (coral `--brand-link`) | Inline text-link affordance |
@@ -173,8 +199,9 @@ import { buttonVariants } from "@/components/ui/button";
 (tailwind-merge) lets the later `bg-destructive` win over the default `bg-primary`, so passing
 the destructive classes via `className` is sufficient — no override of the component is needed.
 
-The inline trigger that *opens* this dialog is the lower tier: it uses `destructiveGhost`
-(transparent, red text + `Trash2`), never filled `destructive`. Only the commit above is filled.
+The trigger that *opens* this dialog is the lower tier: it uses `destructiveGhost` or
+`destructiveOutline` (transparent, red text + `Trash2`), never filled `destructive`. Only the
+commit above is filled.
 
 ### What counts as a "danger" confirm
 
@@ -190,7 +217,8 @@ data**:
 
 Constructive confirms in the same dialogs stay non-red: `AlertDialogCancel` is `outline`,
 "Keep editing" is `outline`. A constructive *primary* action elsewhere (Save / Create) is `brand`,
-never `destructive`. The inline trigger that opens any of these dialogs is `destructiveGhost`.
+never `destructive`. The trigger that opens any of these dialogs is `destructiveGhost` or
+`destructiveOutline`.
 
 ## Accessibility notes
 

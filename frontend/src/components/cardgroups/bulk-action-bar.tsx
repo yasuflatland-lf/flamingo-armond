@@ -37,11 +37,11 @@ export function BulkActionBar({ count, busy, onConfirm, onClear }: BulkActionBar
       <AlertDialog>
         <AlertDialogTrigger asChild>
           <Button
-            variant="destructiveGhost"
+            variant="destructiveOutline"
             size="sm"
             disabled={busy}
             data-testid="cards-bulk-delete-button"
-            className="w-full border border-destructive/45 sm:w-auto"
+            className="w-full sm:w-auto"
           >
             {tCommon("deleteSelected")}
             <Trash2 aria-hidden="true" className="ml-1.5 h-4 w-4" />

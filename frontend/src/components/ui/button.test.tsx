@@ -12,6 +12,20 @@ describe("Button variants", () => {
     expect(button).not.toHaveClass("bg-destructive");
   });
 
+  it("destructiveOutline adds a visible border to the ghost-red trigger without filling it", () => {
+    render(<Button variant="destructiveOutline">Delete my account</Button>);
+    const button = screen.getByRole("button", { name: "Delete my account" });
+    expect(button).toHaveClass(
+      "border",
+      "border-destructive/45",
+      "bg-transparent",
+      "text-destructive",
+      "hover:bg-destructive/10",
+    );
+    // Still a trigger, not the commit: the border buys affordance, not emphasis.
+    expect(button).not.toHaveClass("bg-destructive");
+  });
+
   it("link variant uses the coral link token, not the neutral primary", () => {
     render(<Button variant="link">Learn more</Button>);
     const button = screen.getByRole("button", { name: "Learn more" });
