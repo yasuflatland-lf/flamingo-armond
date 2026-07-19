@@ -1102,9 +1102,11 @@ type PrefetchCard = ReturnType<typeof makeQueue>[number];
  * Builds a LearnNextDueCards mock that returns `cards` and tracks call count.
  * Optional `delay` (ms) holds the response open, allowing tests to fire the
  * effect multiple times before the first response resolves — used to verify
- * the in-flight guard prevents concurrent prefetch requests.
+ * the in-flight guard prevents concurrent prefetch requests. Optional
+ * `cardgroupId` targets a deck other than the default one, for tests that
+ * switch the active cardgroup mid-session.
  */
-function makePrefetchMock(cards: PrefetchCard[], opts?: { delay?: number }) {
+function makePrefetchMock(cards: PrefetchCard[], opts?: { delay?: number; cardgroupId?: string }) {
   let calls = 0;
   const mock: {
     request: { query: typeof LearnNextDueCardsDocument; variables: object };
@@ -1113,7 +1115,7 @@ function makePrefetchMock(cards: PrefetchCard[], opts?: { delay?: number }) {
   } = {
     request: {
       query: LearnNextDueCardsDocument,
-      variables: { cardgroupId: CG_ID, limit: LEARN_PAGE_LIMIT },
+      variables: { cardgroupId: opts?.cardgroupId ?? CG_ID, limit: LEARN_PAGE_LIMIT },
     },
     result: () => {
       calls += 1;
@@ -1124,6 +1126,40 @@ function makePrefetchMock(cards: PrefetchCard[], opts?: { delay?: number }) {
     mock.delay = opts.delay;
   }
   return { mock, callCount: () => calls };
+}
+
+/**
+ * Builds a successful `HandleSwipe` mock for `cardId` (rating 4 / Easy) that
+ * records whether its result fn ran. Tests await `wasCalled()` when they must
+ * order a later event after the mutation actually resolves: the optimistic
+ * queue advance is synchronous, so waiting on the rendered queue would let the
+ * next step race the mutation's continuation.
+ */
+function makeSwipeSuccessMock(cardId: string) {
+  let called = false;
+  return {
+    mock: {
+      request: {
+        query: HandleSwipeDocument,
+        variables: { input: { cardId, cardgroupId: CG_ID, rating: 4 } },
+      },
+      result: () => {
+        called = true;
+        return {
+          data: {
+            handleSwipe: {
+              __typename: "HandleSwipeSuccess" as const,
+              response: {
+                __typename: "SwipeResponse" as const,
+                performanceMode: "DIFFICULT",
+              },
+            },
+          },
+        };
+      },
+    },
+    wasCalled: () => called,
+  };
 }
 
 describe("<LearnClient> queue prefetch", () => {
@@ -1356,8 +1392,8 @@ describe("<LearnClient> queue prefetch", () => {
     // write commit, the just-swiped card still reads as "due" and comes back in
     // the batch; because the dedup `seen` set is built from the post-removal
     // queue (which no longer holds the card), it would be re-appended — a
-    // duplicate FSRS review. The in-flight-id filter drops it while still
-    // merging a genuinely new card from the same batch.
+    // duplicate FSRS review. The session-scoped swiped-id filter drops it while
+    // still merging a genuinely new card from the same batch.
     const initial = makeQueue(PREFETCH_THRESHOLD + 1); // q-1..q-6 — above threshold, no mount prefetch
     const swipedCard = initial[0] as PrefetchCard; // q-1, "Front 1"
     const freshCard: PrefetchCard = {
@@ -1405,7 +1441,7 @@ describe("<LearnClient> queue prefetch", () => {
     });
 
     // The genuinely new card IS merged (proving the merge ran and dedup filtered
-    // ONLY the in-flight id)...
+    // ONLY the swiped id)...
     await waitFor(() => {
       const latest = capturedCardSnapshots.at(-1);
       expect(latest?.map((c) => c.id)).toContain("p-new");
@@ -1519,34 +1555,8 @@ describe("<LearnClient> queue prefetch", () => {
     // before dispatching the second swipe — the optimistic queue advance is
     // synchronous and would otherwise let the second swipe race ahead of the
     // guard reset.
-    const makeSwipeSuccess = (cardId: string) => {
-      let called = false;
-      return {
-        mock: {
-          request: {
-            query: HandleSwipeDocument,
-            variables: { input: { cardId, cardgroupId: CG_ID, rating: 4 } },
-          },
-          result: () => {
-            called = true;
-            return {
-              data: {
-                handleSwipe: {
-                  __typename: "HandleSwipeSuccess" as const,
-                  response: {
-                    __typename: "SwipeResponse" as const,
-                    performanceMode: "DIFFICULT",
-                  },
-                },
-              },
-            };
-          },
-        },
-        wasCalled: () => called,
-      };
-    };
-    const swipe1 = makeSwipeSuccess("q-1");
-    const swipe2 = makeSwipeSuccess("q-2");
+    const swipe1 = makeSwipeSuccessMock("q-1");
+    const swipe2 = makeSwipeSuccessMock("q-2");
 
     const user = userEvent.setup();
     renderLearnClient(
@@ -1600,6 +1610,150 @@ describe("<LearnClient> queue prefetch", () => {
     await waitFor(() => {
       const latest = capturedCardSnapshots.at(-1);
       expect(latest?.map((c) => c.id)).toContain("r-recovery");
+    });
+  });
+
+  it("does not re-append a card whose prefetch snapshot predates its swipe commit", async () => {
+    // Settled-swipe counterpart to the in-flight test above. Here the swipe
+    // mutation resolves FIRST and the racing prefetch — whose server read ran
+    // before the FSRS write committed — resolves afterwards, still carrying the
+    // swiped card. A filter keyed on in-flight ids alone would have released the
+    // id by then and let the card back into the queue, where rating it a second
+    // time records a duplicate same-day FSRS review. The server never returns a
+    // same-day-swiped card (`StartOfLearnDay` in
+    // backend/internal/domain/learn_day.go), so the session-scoped swiped-id set
+    // treats such a batch entry as the stale read it is.
+    const initial = makeQueue(PREFETCH_THRESHOLD + 1); // q-1..q-6 — above threshold, no mount prefetch
+    const swipedCard = initial[0] as PrefetchCard; // q-1, "Front 1"
+    const freshCard: PrefetchCard = {
+      __typename: "Card" as const,
+      id: "p-late",
+      front: "Late Prefetched",
+      back: "Late Back",
+      cefrLevel: null,
+      userCardState: userCardState("2026-04-30T00:00:00Z", 0),
+      cardgroupId: CG_ID,
+    };
+    // The stale batch is held open long enough for the swipe mutation to settle
+    // first; the settle is awaited explicitly below rather than inferred from
+    // the delay, so the ordering the regression depends on is deterministic.
+    const prefetch = makePrefetchMock([swipedCard, freshCard], { delay: 300 });
+    // No delay — `handleSwipe` settles before the prefetch response lands.
+    const swipe = makeSwipeSuccessMock("q-1");
+
+    const user = userEvent.setup();
+    renderLearnClient([prefetch.mock, swipe.mock], initial, { skipDefaultPrefetchMocks: true });
+
+    // Swipe q-1 — queue shrinks 6 → 5, crossing the threshold and firing the
+    // prefetch whose snapshot still lists q-1 as due.
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+    // Wait for the mutation to resolve, then drain microtasks so its
+    // continuation has fully run before the stale batch merges.
+    await waitFor(() => {
+      expect(swipe.wasCalled()).toBe(true);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    await waitFor(
+      () => {
+        expect(prefetch.callCount()).toBe(1);
+      },
+      { timeout: 1000 },
+    );
+
+    // The genuinely new card IS merged, proving the merge ran...
+    await waitFor(() => {
+      const latest = capturedCardSnapshots.at(-1);
+      expect(latest?.map((c) => c.id)).toContain("p-late");
+    });
+
+    // ...while the settled, already-swiped card stays out of the queue and is
+    // never rendered again.
+    const merged = capturedCardSnapshots.at(-1);
+    expect(merged?.map((c) => c.id) ?? []).not.toContain("q-1");
+    expect(screen.queryByText("Front 1")).not.toBeInTheDocument();
+  });
+
+  it("resets the swiped-session filter when the active cardgroup changes", async () => {
+    // The swiped-id set is scoped to one deck's session: a different cardgroup
+    // has its own due pool, so an id recorded against the previous deck must not
+    // suppress a legitimate prefetch result after the switch. This mirrors the
+    // reset of `exhaustedRef` in the same guard.
+    const OTHER_CG_ID = "cg-2";
+    const initial = makeQueue(PREFETCH_THRESHOLD + 1); // q-1..q-6 — above threshold
+    const swipedCard = initial[0] as PrefetchCard; // q-1, "Front 1"
+    // Deck A's prefetch (fired by the optimistic removal) finds nothing due.
+    const prefetchA = makePrefetchMock([]);
+    // Deck B returns a card with the id swiped in deck A. Reusing the id is the
+    // point of the fixture — the filter must not carry across decks.
+    const prefetchB = makePrefetchMock([{ ...swipedCard, cardgroupId: OTHER_CG_ID }], {
+      cardgroupId: OTHER_CG_ID,
+    });
+    const swipe = makeSwipeSuccessMock("q-1");
+    // The persist-last-viewed effect fires once per cardgroup, so both decks
+    // need a no-op mock or the file-wide leak spy records an unmatched request.
+    const persistB = {
+      request: {
+        query: SetLastViewedCardgroupDocument,
+        variables: { cardgroupId: OTHER_CG_ID },
+      },
+      result: {
+        data: {
+          setLastViewedCardgroup: {
+            __typename: "SetLastViewedCardgroupSuccess" as const,
+            user: {
+              __typename: "User" as const,
+              id: "u-default",
+              lastViewedCardgroup: { __typename: "Cardgroup" as const, id: OTHER_CG_ID },
+            },
+          },
+        },
+      },
+    };
+
+    const mocks = [prefetchA.mock, prefetchB.mock, swipe.mock, makeDefaultPersistMock(), persistB];
+
+    const user = userEvent.setup();
+    const { rerender } = renderWithIntl(
+      <MockedProvider mocks={mocks as never}>
+        <LearnClient cardgroupId={CG_ID} initialCards={initial} displayMode="ALWAYS_VISIBLE" />
+      </MockedProvider>,
+    );
+
+    // Swipe q-1 in deck A — queue shrinks 6 → 5 and deck A's prefetch resolves
+    // empty, recording q-1 in the session set along the way.
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+    await waitFor(() => {
+      expect(prefetchA.callCount()).toBe(1);
+    });
+    // Let the resolved prefetch's `.then` and the in-flight reset run before the
+    // deck switch re-evaluates the effect.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    rerender(
+      <MockedProvider mocks={mocks as never}>
+        <LearnClient
+          cardgroupId={OTHER_CG_ID}
+          initialCards={initial}
+          displayMode="ALWAYS_VISIBLE"
+        />
+      </MockedProvider>,
+    );
+
+    // The deck change resets the guards, so the queue (still at threshold)
+    // dispatches deck B's prefetch.
+    await waitFor(() => {
+      expect(prefetchB.callCount()).toBe(1);
+    });
+    // q-1 is appended: the previous deck's swipe no longer filters it.
+    await waitFor(() => {
+      const latest = capturedCardSnapshots.at(-1);
+      expect(latest?.map((c) => c.id)).toContain("q-1");
     });
   });
 });
