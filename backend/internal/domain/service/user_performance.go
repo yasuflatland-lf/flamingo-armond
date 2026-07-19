@@ -56,7 +56,7 @@ func AggregateMastery(stats []domain.FSRSStat, deckCardTotals map[string]int) (M
 	mastery := MasteryBreakdown{TotalStudied: len(stats)}
 	for _, s := range stats {
 		tier := domain.ClassifyMastery(
-			domain.FSRSState{Phase: s.Phase, Stability: s.Stability},
+			domain.FSRSState{Stability: s.Stability},
 			domain.LearnedStabilityDays,
 			domain.MatureStabilityDays,
 		)

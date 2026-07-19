@@ -27,6 +27,7 @@ func TestClassifyMastery_Boundary(t *testing.T) {
 		{"legacy learning phase in learned band", FSRSPhaseLearning, 15.0, TierLearned},
 		{"just below mature threshold", FSRSPhaseReview, 20.999, TierLearned},
 		{"at mature threshold", FSRSPhaseReview, 21.0, TierMature},
+		{"above mature threshold", FSRSPhaseReview, 21.1, TierMature},
 	}
 
 	for _, tc := range cases {

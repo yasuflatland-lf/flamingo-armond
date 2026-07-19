@@ -71,6 +71,15 @@ func TestAggregateMastery(t *testing.T) {
 			wantDecks:   []DeckMastery{{CardgroupID: "cg1", TotalCards: 1, LearnedCards: 1, MatureCards: 0}},
 		},
 		{
+			name: "review-phase acquisition card (low stability) is InProgress",
+			stats: []domain.FSRSStat{
+				fsrsStat("acquiring", "cg1", domain.FSRSPhaseReview, 3, 2),
+			},
+			totals:      map[string]int{"cg1": 1},
+			wantMastery: MasteryBreakdown{InProgress: 1, TotalStudied: 1},
+			wantDecks:   []DeckMastery{{CardgroupID: "cg1", TotalCards: 1}},
+		},
+		{
 			name: "studied card whose deck is absent from totals counts globally but has no deck row",
 			stats: []domain.FSRSStat{
 				fsrsStat("x", "cgX", domain.FSRSPhaseReview, 30, 0),

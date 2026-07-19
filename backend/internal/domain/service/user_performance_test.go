@@ -313,6 +313,21 @@ func TestIsKnownCardReview(t *testing.T) {
 			swipe: swipeBefore(domain.RatingGood, time.Time{}, state(5, 16, 16, domain.FSRSPhaseReview), domain.FSRSPhaseLearning, 16),
 			want:  false,
 		},
+		{
+			name:  "legacy Good with post-swipe Review phase is included",
+			swipe: swipe(domain.RatingGood, time.Time{}, state(5, 7, 7, domain.FSRSPhaseReview)),
+			want:  true,
+		},
+		{
+			name:  "legacy Again with post-swipe Relearning phase and lapses is included",
+			swipe: swipe(domain.RatingAgain, time.Time{}, stateWithLapses(5, 1, 0, domain.FSRSPhaseRelearning, 1)),
+			want:  true,
+		},
+		{
+			name:  "legacy Again with post-swipe Learning phase is excluded",
+			swipe: swipe(domain.RatingAgain, time.Time{}, state(5, 1, 0, domain.FSRSPhaseLearning)),
+			want:  false,
+		},
 	}
 
 	for _, tc := range cases {
