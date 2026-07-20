@@ -14,6 +14,19 @@ import (
 )
 
 // Owner is the resolver for the owner field.
+//
+// This resolver has no gate of its own: it hands back whichever User owns the
+// cardgroup. It is safe only because no current path hands a foreign Cardgroup
+// to a non-owner — Query.cardgroup returns null for a non-owner and a missing id
+// alike, and every other edge that reaches a Cardgroup is caller-scoped.
+//
+// Do not read that as "the User type protects itself". Only two of its five
+// field resolvers run a self-or-admin check: User.roles and User.lastSignInAt.
+// The other three — User.lastViewedCardgroup, User.learnDisplayMode and
+// User.newCardRatio — resolve straight off obj.ID through the UserPreference
+// loader with no caller lookup at all. Any resolver that starts returning a
+// Cardgroup the caller does not own must therefore either gate itself or add
+// field-level guards to those three fields first.
 func (r *cardgroupResolver) Owner(ctx context.Context, obj *model.Cardgroup) (*model.User, error) {
 	loaders, gqlErr := loadersOrInternal(ctx)
 	if gqlErr != nil {
