@@ -1,6 +1,8 @@
 package usecase
 
 import (
+	"strings"
+
 	"backend/internal/cursor"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
@@ -193,4 +195,28 @@ func firstLastCursor[T any](rows []T, id func(T) string) (start, end string) {
 		return "", ""
 	}
 	return id(rows[0]), id(rows[len(rows)-1])
+}
+
+// derefOr returns *p when p is non-nil, otherwise def.
+func derefOr[T any](p *T, def T) T {
+	if p != nil {
+		return *p
+	}
+	return def
+}
+
+// normalizeSearch collapses nil and whitespace-only search inputs to nil and
+// trims a non-empty search. After this the repository receives either nil (no
+// filter) or a non-empty, trimmed string — the same invariant ListMasterCards
+// relies on. Normalizing at the usecase boundary keeps totalCount and the page
+// query in agreement instead of depending on the repository to trim.
+func normalizeSearch(search *string) *string {
+	if search == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*search)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }
