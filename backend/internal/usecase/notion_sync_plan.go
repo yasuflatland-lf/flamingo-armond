@@ -6,32 +6,21 @@ import (
 	"backend/internal/domain"
 )
 
-// masterRowSkip records one parsed row that domain.NewMasterCard rejected.
-// It carries both halves of the diagnostic so the plan computation can stay
-// pure: the caller-facing CardImportError (line, message, front) that feeds the
-// whole-payload rejection error, and the log-facing detail (the row's position
-// in the deduped slice and the raw constructor error) the structured skip warn
-// is keyed on. The plan never logs; the sync iterates these and emits the warns.
+// masterRowSkip records one parsed row that domain.NewMasterCard rejected,
+// carrying both the caller-facing diagnostic and the log-facing detail.
+// The plan deliberately does not log: it stays pure, and the sync emits the
+// structured warns from these entries.
 type masterRowSkip struct {
 	Position   int
 	Reason     error
 	Diagnostic CardImportError
 }
 
-// notionSyncPlan is the complete description of what a Notion sync would
-// persist, computed without touching a repository, a transaction runner, a
-// clock or a logger:
-//
-//   - Rows / ParseErrors: the deduped rows and the accumulated diagnostics that
-//     the sync reports back to the caller.
-//   - Cards: the master cards to upsert, in deduped document order.
-//   - KeepFronts: the case-insensitive keep-set the diff-prune step compares the
-//     currently stored fronts against.
-//   - DomainSkips: one entry per row dropped by domain construction.
-//
-// Isolating the plan from its surroundings turns "never persist a plan that
-// keeps nothing" into a checkable property of a value (NothingValidToPersist)
-// instead of an ad-hoc condition wired into the sync routine.
+// notionSyncPlan is everything a Notion sync would persist, computed without a
+// repository, transaction runner, clock or logger. Keeping it a plain value —
+// rather than wiring these steps into the sync routine — is what turns "never
+// persist a plan that keeps nothing" into a checkable property of that value
+// (NothingValidToPersist) instead of an ad-hoc condition.
 type notionSyncPlan struct {
 	Rows        []ParsedRow
 	ParseErrors []CardImportError
@@ -40,46 +29,32 @@ type notionSyncPlan struct {
 	DomainSkips []masterRowSkip
 }
 
-// NothingValidToPersist reports whether the plan carries rows but produced no
-// card at all — every row parsed at the grammar level and then failed domain
-// construction (e.g. an editor pushed every back side past domain.CardTextMax).
-//
-// Such a plan has an empty KeepFronts, so persisting it would make the
-// diff-prune delete every existing card in the target master cardgroup, wiping
-// a published deck. The sync must refuse it before opening the transaction.
-// A plan with no rows at all is not "nothing valid to persist": the empty
-// payload is handled earlier by the grammar-skip short-circuit, and a plan with
-// no rows and no skips has nothing to complain about.
+// NothingValidToPersist reports whether every row survived the grammar and then
+// failed domain construction. Such a plan has an empty KeepFronts, so persisting
+// it would let the diff-prune wipe a published deck. A plan with no rows at all
+// deliberately does not qualify: the empty payload is caught earlier by the
+// grammar-skip short-circuit.
 func (p notionSyncPlan) NothingValidToPersist() bool {
 	return len(p.Cards) == 0 && len(p.Rows) > 0
 }
 
-// computeSyncPlan turns the grammar-parsed rows of a Notion sync into the plan
-// the persistence step executes. It is pure: no repository, no transaction
-// runner, no logger, and no clock — now is injected so the whole batch is
-// pinned to a single timestamp and the function stays testable without fakes.
-//
-// masterCardgroupID is resolved by the caller (the cardgroup must exist before
-// its id can be stamped onto the cards), but nothing else about the plan
-// depends on the outside world.
-//
-// The steps run in the order the pipeline requires: dedupe first (it appends
-// "duplicate front" diagnostics that must not be visible to the skip-only
-// classifier, which the caller therefore runs beforehand), then master-card
-// construction, then keep-set derivation from the surviving cards.
+// computeSyncPlan turns grammar-parsed rows into the plan the persistence step
+// executes. It takes no repository, transaction runner, logger or clock — now
+// is injected rather than read here so the batch shares one timestamp and the
+// function needs no fakes to test.
 func computeSyncPlan(
 	rows []ParsedRow,
 	parseErrs []CardImportError,
 	masterCardgroupID string,
 	now time.Time,
 ) notionSyncPlan {
+	// Dedupe cannot run before the caller's skip-only classifier: it appends
+	// "duplicate front" diagnostics the classifier must not see.
 	dedupedRows, allErrs := dedupeParsedRows(rows, parseErrs)
 	cards, skips := masterCardsFromParsedRows(masterCardgroupID, dedupedRows, now)
-	// Derive the keep-set from the validated cards' (trimmed) fronts so the
-	// diff-prune step stays consistent with what is actually upserted: rows
-	// dropped by ParseCardText validation are absent here and so are pruned if
-	// a stale card with the same front exists. Keyed by frontMatchKey so the
-	// prune is case-insensitive, matching the citext master_cards.front column.
+	// Keyed off the validated cards, not the rows: a row dropped by validation
+	// must not keep a stale card alive. frontMatchKey rather than the raw front,
+	// because master_cards.front is citext.
 	keepFronts := make(map[string]struct{}, len(cards))
 	for _, card := range cards {
 		keepFronts[frontMatchKey(card.Front.String())] = struct{}{}
@@ -93,18 +68,10 @@ func computeSyncPlan(
 	}
 }
 
-// masterCardsFromParsedRows builds master cards from deduped, document-order
-// parsed rows. Position is the index in the deduped slice (0..n-1) so the
-// catalog reflects the original Notion document position. Each row is built
-// through domain.NewMasterCard, which validates and normalizes Front and Back;
-// a row whose constructor fails (empty/whitespace-only or over-CardTextMax
-// front/back, or an ID-generation failure) is skipped (not persisted) so the
-// rest of the sync still imports the valid rows.
-//
-// The second return value collects one masterRowSkip per dropped row. It lets
-// the caller distinguish "some rows dropped" from "every row dropped" — the
-// latter being a whole-payload rejection rather than a per-row skip — and
-// carries the detail the caller needs to emit the structured skip warn. See
+// masterCardsFromParsedRows builds master cards from deduped rows, positioned
+// by index so the catalog mirrors Notion document order. A row the constructor
+// rejects is skipped rather than failing the whole sync; the returned skips
+// carry the caller diagnostic and the detail the warn is keyed on. See
 // docs/backend/error-wrapping/log-structured-event-when-batch-item-fails.md.
 func masterCardsFromParsedRows(
 	masterCardgroupID string, rows []ParsedRow, now time.Time,
@@ -126,9 +93,7 @@ func masterCardsFromParsedRows(
 			})
 			continue
 		}
-		// NewMasterCard stamps per-card timestamps; pin the whole sync batch to
-		// one created_at. updated_at is database-owned, so the constructor's value
-		// is neither sent nor pinned here.
+		// updated_at is deliberately not pinned: the DB trigger owns it.
 		card.CreatedAt = now
 		cards = append(cards, card)
 	}

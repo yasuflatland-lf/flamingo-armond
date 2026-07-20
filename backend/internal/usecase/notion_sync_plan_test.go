@@ -6,8 +6,7 @@ import (
 	"time"
 )
 
-// testSyncNow is the fixed timestamp injected into the plan computation in place
-// of a clock. Every card in one plan must be stamped with this single value.
+// testSyncNow is the fixed timestamp injected in place of a clock.
 var testSyncNow = time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
 
 const testPlanCardgroupID = "mcg-plan"
@@ -19,10 +18,9 @@ func hasKeepFront(plan notionSyncPlan, front string) bool {
 	return ok
 }
 
-// TestComputeSyncPlan_AllValid pins the happy path: every row survives domain
-// construction, so the plan carries one card per row in document order, a
-// keep-set covering all of them, no skips, and nothing that would block
-// persistence. No repository, transaction runner, logger or clock is involved.
+// TestComputeSyncPlan_AllValid pins the happy path: one card per row in
+// document order, a keep-set covering all of them, no skips, nothing blocking
+// persistence.
 func TestComputeSyncPlan_AllValid(t *testing.T) {
 	t.Parallel()
 
@@ -57,10 +55,7 @@ func TestComputeSyncPlan_AllValid(t *testing.T) {
 			t.Errorf("plan.Cards[%d].MasterCardgroupID = %q, want %q",
 				i, card.MasterCardgroupID, testPlanCardgroupID)
 		}
-		// The whole batch is pinned to the single injected created_at. updated_at
-		// is database-owned (the BEFORE INSERT OR UPDATE trigger sets it), so the
-		// plan deliberately leaves whatever the constructor stamped and nothing
-		// here pins or asserts it.
+		// updated_at is not asserted: the DB trigger owns it, not the plan.
 		if !card.CreatedAt.Equal(testSyncNow) {
 			t.Errorf("plan.Cards[%d].CreatedAt = %s, want %s", i, card.CreatedAt, testSyncNow)
 		}
@@ -75,10 +70,9 @@ func TestComputeSyncPlan_AllValid(t *testing.T) {
 	}
 }
 
-// TestComputeSyncPlan_PartiallyInvalid pins the per-row skip semantics: a row
-// rejected by domain.NewMasterCard is absent from both the cards and the
-// keep-set (so the diff-prune deletes its stale row), while the surviving rows
-// keep their deduped-slice index as Position. The plan is still persistable.
+// TestComputeSyncPlan_PartiallyInvalid pins the per-row skip semantics: a
+// rejected row is absent from the cards AND the keep-set, while survivors keep
+// their deduped-slice index as Position. Such a plan is still persistable.
 func TestComputeSyncPlan_PartiallyInvalid(t *testing.T) {
 	t.Parallel()
 
@@ -118,16 +112,14 @@ func TestComputeSyncPlan_PartiallyInvalid(t *testing.T) {
 	if skip.Reason == nil {
 		t.Error("skip.Reason = nil, want the constructor error")
 	}
-	// The dropped row is not in the keep-set, so its stale card is pruned.
 	if hasKeepFront(plan, "banana") {
 		t.Error("plan.KeepFronts contains banana, want it absent so the stale row is pruned")
 	}
 }
 
-// TestComputeSyncPlan_AllInvalid pins the wipe guard as a property of the plan:
-// when every row fails domain construction the keep-set is empty, so persisting
-// would delete every card in the target master cardgroup. NothingValidToPersist
-// is the single checkable condition that expresses the rule.
+// TestComputeSyncPlan_AllInvalid pins the wipe guard: an all-invalid batch
+// leaves the keep-set empty, so persisting it would delete every card in the
+// target master cardgroup.
 func TestComputeSyncPlan_AllInvalid(t *testing.T) {
 	t.Parallel()
 
@@ -147,8 +139,7 @@ func TestComputeSyncPlan_AllInvalid(t *testing.T) {
 	if len(plan.KeepFronts) != 0 {
 		t.Fatalf("len(plan.KeepFronts) = %d, want 0", len(plan.KeepFronts))
 	}
-	// The guard's error message and warn are built from the first skip, so the
-	// slice must be non-empty and ordered by row.
+	// Order is not incidental: the guard reads DomainSkips[0] for its message.
 	if len(plan.DomainSkips) != 2 {
 		t.Fatalf("len(plan.DomainSkips) = %d, want 2", len(plan.DomainSkips))
 	}
@@ -158,11 +149,10 @@ func TestComputeSyncPlan_AllInvalid(t *testing.T) {
 	}
 }
 
-// TestComputeSyncPlan_CaseVariantDuplicateFronts pins the citext-matching
-// behaviour the plan inherits from dedupeParsedRows and frontMatchKey: two rows
-// whose fronts differ only in case collapse to one row (the later occurrence
-// wins and keeps its own case), a DUPLICATE diagnostic is appended for the
-// discarded row, and the keep-set holds a single case-insensitive key.
+// TestComputeSyncPlan_CaseVariantDuplicateFronts pins the citext matching the
+// plan inherits from dedupeParsedRows and frontMatchKey: fronts differing only
+// in case collapse to one row (later wins, keeping its own case) with a
+// DUPLICATE diagnostic and a single keep-set key.
 func TestComputeSyncPlan_CaseVariantDuplicateFronts(t *testing.T) {
 	t.Parallel()
 

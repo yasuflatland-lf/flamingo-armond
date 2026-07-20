@@ -869,13 +869,10 @@ func TestMasterCardsFromParsedRows_AssignsContiguousPositions(t *testing.T) {
 	}
 }
 
-// TestMasterCardsFromParsedRows_SkipsInvalidRows verifies that rows whose front
-// or back fail CardText validation (empty, whitespace-only, or over CardTextMax
-// graphemes) are dropped from the import and surfaced as skip diagnostics, while
-// the remaining valid rows still produce cards. Position is the index in the
-// original deduped slice, so survivors keep gaps where invalid rows were
-// skipped, and every skip carries the (position, reason) pair the sync's
-// structured warn is keyed on.
+// TestMasterCardsFromParsedRows_SkipsInvalidRows verifies that rows failing
+// CardText validation are dropped as skip diagnostics while the valid rows still
+// produce cards. Position stays the index in the original deduped slice, so
+// survivors keep gaps rather than being renumbered.
 func TestMasterCardsFromParsedRows_SkipsInvalidRows(t *testing.T) {
 	t.Parallel()
 
@@ -900,8 +897,7 @@ func TestMasterCardsFromParsedRows_SkipsInvalidRows(t *testing.T) {
 	if len(skipped) != 3 {
 		t.Fatalf("len(skipped) = %d, want 3", len(skipped))
 	}
-	// Each skip carries the deduped-slice position and the raw constructor error
-	// so the sync can emit the structured warn without the plan touching a logger.
+	// Reason is carried rather than pre-formatted: the plan must not touch a logger.
 	wantSkips := []struct {
 		line     int
 		position int
@@ -939,14 +935,10 @@ func TestMasterCardsFromParsedRows_SkipsInvalidRows(t *testing.T) {
 	}
 }
 
-// TestMasterNotionSyncUsecase_SkippedRowWarnFields pins the structured warn the
-// sync emits for rows dropped by domain construction. The plan computation is
-// pure and never logs; Sync emits exactly one warn per plan skip diagnostic,
-// keyed on (cardgroupID, position, field, reason). The payload carries two
-// invalid rows so the one-warn-per-skipped-row multiplicity is pinned, not just
-// the shape of the first record.
-//
-// Not parallel: injects a logger directly into the usecase.
+// TestMasterNotionSyncUsecase_SkippedRowWarnFields pins the structured warn Sync
+// emits per dropped row, keyed on (cardgroupID, position, field, reason). Two
+// invalid rows, not one, so the multiplicity is pinned and not just the first
+// record's shape. Not parallel: injects a logger into the usecase.
 func TestMasterNotionSyncUsecase_SkippedRowWarnFields(t *testing.T) {
 	overLongBack := jpRunes(domain.CardTextMax + 1)
 	fetcher := &stubNotionFetcher{pages: []notion.Page{
@@ -968,8 +960,7 @@ func TestMasterNotionSyncUsecase_SkippedRowWarnFields(t *testing.T) {
 		t.Fatalf("Sync: %v", err)
 	}
 
-	// Collect EVERY skip warn, not just the first: a regression that collapses
-	// the per-skip fan-out in Sync to a single warn must fail here.
+	// Every warn, not just the first: a collapse of the fan-out must fail here.
 	type skip struct {
 		position int
 		field    string
@@ -995,8 +986,7 @@ func TestMasterNotionSyncUsecase_SkippedRowWarnFields(t *testing.T) {
 		field, _ := rec["field"].(string)
 		got[skip{int(pos), field}] = true
 	}
-	// The deduped slice is [apple, banana, carrot]; the two over-long backs are
-	// dropped at positions 1 and 2.
+	// Positions are 1 and 2, not 0 and 1: they index the deduped slice.
 	want := []skip{{1, "back"}, {2, "back"}}
 	if warnCount != len(want) {
 		t.Fatalf("warn records = %d, want %d (log output:\n%s)", warnCount, len(want), buf.String())
@@ -1147,9 +1137,8 @@ func TestMasterNotionSyncUsecase_NoDeletions(t *testing.T) {
 // TestMasterNotionSyncUsecase_AllRowsFailDomainValidation pins the whole-payload
 // guard: every row parses at the grammar level but fails domain construction, so
 // the keep-set would be empty and the diff-prune would wipe the master cardgroup.
-// The sync must reject the payload before opening the persistence transaction,
-// and the per-row skip detail must still reach the operator — the warns are
-// emitted ahead of the guard's early return, not skipped along with persistence.
+// The payload is rejected before the persistence transaction, but the warns are
+// not skipped along with it: they are emitted ahead of the guard's early return.
 func TestMasterNotionSyncUsecase_AllRowsFailDomainValidation(t *testing.T) {
 	t.Parallel()
 

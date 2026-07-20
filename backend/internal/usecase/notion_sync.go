@@ -178,25 +178,15 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 		return MasterNotionSyncOutput{}, eris.Wrap(errors.Join(ErrNotionSyncPersist, err), "ensure master cardgroup")
 	}
 
-	// Everything from here to the transaction is pure: computeSyncPlan owns the
-	// dedupe, the master-card construction and the keep-set derivation, so the
-	// "never persist a plan that keeps nothing" rule below is a property of a
-	// value rather than an ad-hoc condition threaded through this method.
 	plan := computeSyncPlan(rows, parseErrs, cardgroup.ID, time.Now().UTC())
-	// The plan is silent by construction; the sync owns the logging. One
-	// structured warn per row dropped by domain construction, so the rest of the
-	// import still lands and operators can see what was skipped.
+	// computeSyncPlan does not log, so the warns are emitted here rather than
+	// where the rows are dropped: that keeps it pure and testable without fakes.
 	for _, skip := range plan.DomainSkips {
 		u.warnSkippedMasterRow(ctx, cardgroup.ID, skip.Position, skip.Reason)
 	}
-	// Every row parsed at the grammar level but failed domain construction (e.g.
-	// an editor pushed every back side past domain.CardTextMax). The keep-set is
-	// empty and the diff-prune would delete every existing card in the master
-	// cardgroup, wiping a published deck. Refuse to persist — the same
-	// no-mutation outcome the grammar-skip short-circuit gives when the payload
-	// yields no rows at all. Partially-invalid batches are unaffected: they keep
-	// pruning per row, which is the deliberate behaviour documented in
-	// computeSyncPlan.
+	// Refuse rather than persist: the keep-set is empty, so the diff-prune would
+	// wipe a published deck. Not extended to partially-invalid batches — those
+	// still prune per row, which is intended.
 	if plan.NothingValidToPersist() {
 		first := plan.DomainSkips[0].Diagnostic
 		u.logger.WarnContext(ctx, "notion sync: all rows failed domain validation, no persistence",
