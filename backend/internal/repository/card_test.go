@@ -1352,10 +1352,19 @@ func TestCardRepository_FindPracticeCards_BoundaryComplementarity(t *testing.T) 
 		return ucsRepo.UpsertTx(ctx, tx, today)
 	}))
 
+	// This test isolates the shared boundary, so the rescue window's
+	// minimum-elapsed floor is passed wide open and every fixture clears it. The
+	// floor is a strictly tighter bound than the boundary used here, so leaving
+	// it at its real value would keep reviewedAtBoundary out of the learn window
+	// even under a mutation of the strict `<`, silently killing the documented
+	// mutation proof; the floor is pinned on its own by
+	// TestCardRepository_FindDueCards_RescueRequiresWholeDaySinceLastReview.
+	openRescueFloor := now.Add(time.Second)
+
 	// Learn window: cards reviewed strictly before the boundary, plus the
 	// never-reviewed card via the new-card window. reviewedAtBoundary and
 	// reviewedToday are excluded (learn predicate is last_review < boundary).
-	learn, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), now, boundary, domain.EndOfLearnDay(now), domain.RescueReviewedBefore(now), 10)
+	learn, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), now, boundary, domain.EndOfLearnDay(now), openRescueFloor, 10)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{reviewedYesterday.ID, neverReviewed.ID}, repoCardIDs(learn),
 		"learn window holds cards reviewed before the boundary plus never-reviewed new cards")

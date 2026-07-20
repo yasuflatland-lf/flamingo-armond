@@ -167,7 +167,9 @@ interleaved with 4 prior-day review slots (20%). Review slots prioritise rescue
 cards whose latest rating was Again or whose stability is below
 `LearnedStabilityDays`; other reviews act as filler. Rescue is day-granular up
 to the exclusive JST learn-day end, while filler must be due now, and both
-exclude cards swiped today via the JST start-of-day cutoff. SQL `random()`
+exclude cards swiped today via the JST start-of-day cutoff; a rescue card is
+additionally served early only once a whole day has elapsed since its last
+review, because a sub-24h repeat earns zero FSRS scheduling credit. SQL `random()`
 decides *which* rows enter each window (selection); the injected `*rand.Rand` in
 `OrderingPolicy.Apply` decides their arrangement (deterministic in tests) and
 interleaves at the caller-supplied `domain.NewCardRatio` (`domain.DefaultNewCardRatio`
