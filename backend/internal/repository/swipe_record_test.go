@@ -368,3 +368,56 @@ func TestSwipeRecordRepository_OutOfRangePhaseBefore_ReturnsError(t *testing.T) 
 	require.Error(t, err, "an out-of-range phase_before must propagate as an error")
 	require.Contains(t, err.Error(), "swipe record: invalid phase_before value 99")
 }
+
+// TestSwipeRecordRepository_OnDeleteCardgroup_CascadesSwipeRecords proves the
+// swipe_records.cardgroup_id foreign key carries ON DELETE CASCADE, per
+// docs/backend/library-gotchas/fk-action-integration-test.md.
+//
+// The fixture deliberately records the swipe against a DIFFERENT deck than the
+// one holding the card: deleting a deck that owns the card would remove the swipe
+// through the cards -> card_id cascade even with no cardgroup_id foreign key at
+// all, so a same-deck fixture cannot tell the two constraints apart. Here the
+// card survives in cgCurrent and only the cardgroup_id reference reaches the
+// deleted deck, so the assertion isolates the new constraint.
+//
+// The alternatives this rules out:
+//   - NO ACTION / RESTRICT would make the cardgroup DELETE fail outright,
+//     breaking deck deletion for every user with review history.
+//   - SET NULL would violate the column's NOT NULL and abort the DELETE.
+func TestSwipeRecordRepository_OnDeleteCardgroup_CascadesSwipeRecords(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cgAtSwipe := insertCardgroup(t, ctx, ownerID)
+	cgCurrent := insertCardgroup(t, ctx, ownerID)
+	cardRepo := repository.NewCardRepository(testDB.GORM)
+	swipeRepo := repository.NewSwipeRecordRepository(testDB.GORM)
+
+	card := newCard(cgCurrent.ID, "fk cascade front", "back")
+	require.NoError(t, cardRepo.Create(ctx, card))
+	reviewedAt := time.Now().UTC().Truncate(time.Microsecond)
+	state := domain.NewFSRSStateForNewCard(reviewedAt)
+	sr, err := domain.NewSwipeRecord(domain.UserID(ownerID), card.ID, cgAtSwipe.ID, domain.RatingGood, reviewedAt, state, state)
+	require.NoError(t, err)
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return swipeRepo.CreateTx(ctx, tx, sr)
+	}))
+
+	before, err := swipeRepo.FindByIDs(ctx, []string{sr.ID})
+	require.NoError(t, err)
+	require.Len(t, before, 1, "swipe record must exist before the cardgroup delete")
+
+	sqlDB := sqlDBHandle(t)
+	_, err = sqlDB.ExecContext(ctx, `DELETE FROM public.cardgroups WHERE id = $1`, string(cgAtSwipe.ID))
+	require.NoError(t, err, "deleting the cardgroup must not be blocked by the foreign key")
+
+	after, err := swipeRepo.FindByIDs(ctx, []string{sr.ID})
+	require.NoError(t, err)
+	require.Empty(t, after, "swipe record survived the cardgroup delete: the FK is not ON DELETE CASCADE")
+
+	// The card itself lives in a different deck and must be untouched, proving the
+	// cascade travelled through cardgroup_id rather than through cards.card_id.
+	survivor, err := cardRepo.FindByID(ctx, string(card.ID))
+	require.NoError(t, err)
+	require.Equal(t, card.ID, survivor.ID)
+}
