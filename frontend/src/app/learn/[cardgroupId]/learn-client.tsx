@@ -17,6 +17,7 @@ import { ErrorBanner } from "@/components/ui/error-banner";
 import type { LearnNextDueCardsQuery } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
+import { learnDayKey } from "@/lib/learn/learn-day";
 import { PracticeClient } from "./practice-client";
 
 type LearnCard = LearnNextDueCardsQuery["learnNextDueCards"][number];
@@ -165,14 +166,19 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
   // never re-appended, which would let the learner rate it twice and record a
   // duplicate same-day FSRS review.
   //
-  // Ids are never pruned mid-session. Both server-side REVIEW windows require
+  // Ids are never pruned card-by-card. Both server-side REVIEW windows require
   // `last_review < StartOfLearnDay(now)` (see the contract on `StartOfLearnDay`
   // in `backend/internal/domain/learn_day.go`), and the new-card window carries
   // no `last_review` predicate at all — it matches only cards with no FSRS row,
   // which the swipe itself creates. So once a swipe commits, no window can
-  // return that card again today: any prefetched batch carrying one of these
-  // ids is a stale read that predates the commit. Reset when the active
-  // cardgroup changes.
+  // return that card again WITHIN THE SAME JST LEARN DAY: any prefetched batch
+  // carrying one of these ids is a stale read that predates the commit.
+  //
+  // That invariant expires at the learn-day rollover. `StartOfLearnDay` advances
+  // at JST midnight, so a session held open past it sees the server legitimately
+  // re-serve cards swiped on the previous day. The set is therefore keyed by the
+  // JST learn day (`learnDayRef`) as well as by the cardgroup, and is discarded
+  // whenever either key changes.
   //
   // A transport failure keeps its id here too, which is harmless: the catch
   // handler puts the card back at the queue head, so `seen` covers it for as
@@ -184,7 +190,8 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
   // ids were all swiped this session lands here too, and that verdict is correct
   // for the same-day queue. The effect short-circuits while this is set.
   //
-  // Cleared after a swipe mutation succeeds and on cardgroup change. The reset is
+  // Cleared after a swipe mutation succeeds, on cardgroup change, and at the JST
+  // learn-day rollover (which refills the due pool wholesale). The reset is
   // not about the just-swiped card — that one can never come back today — but
   // about the verdict's age: it is a point-in-time snapshot, and the filler
   // review window admits a card once `due <= now`, so the pool can refill with
@@ -195,6 +202,29 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
   // its threshold checks, because a different deck has its own due pool and a
   // previous "nothing due" verdict must not carry over.
   const exhaustedForCardgroupRef = useRef(cardgroupId);
+  // Tracks the JST learn day both session guards belong to. The server rolls the
+  // learn day over at JST midnight and re-serves the previous day's cards, so a
+  // session that outlives the boundary must drop the swiped-id set (or every
+  // re-served card is filtered out) and the exhaustion verdict (or the refilled
+  // queue is never fetched). The key is re-read at the start of every swipe and
+  // on each run of the prefetch effect below.
+  const learnDayRef = useRef(learnDayKey());
+
+  // Drops both session guards when the JST learn day has advanced since they
+  // were last keyed. This runs at the top of `onSwipe` as well as inside the
+  // prefetch effect: an effect-only check would fire for the first time on the
+  // commit caused by the boundary-crossing swipe, which has already recorded its
+  // own id, and would therefore erase exactly the guard that stops the racing
+  // prefetch from re-appending that card. Resetting before the id is recorded
+  // re-registers it into the fresh set, while ids swiped on the previous learn
+  // day are still dropped.
+  const syncLearnDay = useCallback(() => {
+    const today = learnDayKey();
+    if (learnDayRef.current === today) return;
+    learnDayRef.current = today;
+    exhaustedRef.current = false;
+    swipedThisSessionRef.current = new Set();
+  }, []);
 
   useEffect(() => {
     if (exhaustedForCardgroupRef.current !== cardgroupId) {
@@ -202,6 +232,7 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
       exhaustedRef.current = false;
       swipedThisSessionRef.current = new Set();
     }
+    syncLearnDay();
     if (queue.length === 0 || queue.length > PREFETCH_THRESHOLD) return;
     if (prefetchInFlightRef.current) return;
     if (exhaustedRef.current) return;
@@ -246,7 +277,7 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
       .finally(() => {
         prefetchInFlightRef.current = false;
       });
-  }, [queue.length, cardgroupId, client]);
+  }, [queue.length, cardgroupId, client, syncLearnDay]);
 
   const onSwipe = useCallback(
     async (card: LearnCard, direction: SwipeDirection) => {
@@ -256,8 +287,11 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
       // effect (which the removal can re-fire) filters it out of any racing
       // LearnNextDueCards batch. Recording at swipe time rather than on success
       // also closes the gap between the mutation settling and its continuation
-      // running. The id stays in the set for the rest of the session — see the
-      // ref's declaration above.
+      // running. The id stays in the set until the JST learn day rolls over —
+      // see the ref's declaration above. The rollover check runs FIRST so a
+      // swipe that crosses JST midnight records its id into the freshly-cleared
+      // set, instead of having it erased by the effect this very swipe re-fires.
+      syncLearnDay();
       swipedThisSessionRef.current.add(card.id);
       setQueue((current) => current.filter((candidate) => candidate.id !== card.id));
       setCompletedCount((current) => current + 1);
@@ -322,7 +356,7 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
         cardgroupId,
       });
     },
-    [cardgroupId, handleSwipe],
+    [cardgroupId, handleSwipe, syncLearnDay],
   );
 
   if (phase === "practice") {
