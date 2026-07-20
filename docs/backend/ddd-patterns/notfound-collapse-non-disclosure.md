@@ -43,13 +43,23 @@ The gate-then-write shape has a time-of-check/time-of-use window: the caller pas
 `FindPublishedByID` at the mutation boundary, then a copy/merge transaction snapshots
 the deck. An unpublish landing in that window would import a now-draft deck if the
 transaction re-read the master through the any-status `FindByID`. The write paths
-therefore re-read through the **same** published-scoped `FindPublishedByID` inside the
-transaction (`copyMasterToUserTx`, and a fetch added before `ListByMasterCardgroup` in
+therefore re-read through the **same** published-scoped `FindPublishedByID`
+(`copyMasterToUserTx`, and a fetch added before `ListByMasterCardgroup` in
 `MergeMasterIntoCardgroup`); the resulting `ErrNotFound` is mapped by `ImportMaster` /
 `MergeMaster` to the same `NotFound` outcome as a pre-gate unknown/draft. `SeedForNewUser`
 is unaffected — it already sources ids from `ListPublishedDefaultStarters`, which returns
-only published decks. This closes the TOCTOU without reversing the collapse: an unpublished
-master is indistinguishable from an unknown one on every path.
+only published decks. This **narrows** the TOCTOU window — from "between the outer
+mutation-boundary gate and the write" down to "between the re-read and the write" —
+without reversing the collapse: an unpublished master is indistinguishable from an
+unknown one on every path.
+
+The re-read does **not** close the window. `FindPublishedByID` takes no transaction
+handle (the repository reads through `r.db`), so it runs on a pooled connection outside
+the surrounding transaction and gains neither the transaction's snapshot nor any row
+lock; an unpublish committing after it still lets a now-draft deck be snapshotted.
+Closure would require a `FOR SHARE` lock on the master row taken on the transaction
+connection — the read-side sibling of
+[TOCTOU authorization guard: lock the read rows with `FOR UPDATE`](../library-gotchas/toctou-authorization-guard-for-update-lock.md).
 
 ## The boundary — this is for unauthorized observers only
 
@@ -70,8 +80,10 @@ Pin the collapse where it happens, not only end-to-end:
   by the repo mock) yield the not-found outcome with the copy/side-effect **not run**
   (`TestImportMaster_UnknownOrDraft_ReturnsNotFoundOutcome`).
 - Usecase (write-path TOCTOU): a test that a master present at the gate but unpublished
-  by the time the write transaction re-reads it yields the not-found outcome with no
-  cards written — proving the in-transaction re-read closes the window
+  by the time the write path re-reads it yields the not-found outcome with no
+  cards written — proving the re-read catches the interleaving it can see. The
+  interleaving where the unpublish commits *after* the re-read stays reachable and is
+  not pinned by any test
   (`TestMasterDeckUsecase_MergeMasterIntoCardgroup_MasterUnpublishedMidFlight_NoImport`,
   `TestImportMaster_MasterUnpublishedMidFlight_ReturnsNotFoundOutcome`,
   `TestMasterCatalogUsecase_MergeMaster_MasterUnpublishedMidFlight_ReturnsNotFoundOutcome`).

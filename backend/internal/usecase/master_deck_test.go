@@ -717,7 +717,7 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_AddsAndUpdates(t *testing.T)
 	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
 
 	uc := NewMasterDeckUsecaseWithTx(
-		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}}, // published-scoped re-read inside the tx
+		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}}, // published-scoped re-read (runs outside the tx)
 		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: masterCards}},
 		&fakeUserCardRepo{result: repository.UpsertManyTxResult{Inserted: 1, Updated: 1}},
 		&fakeUserCG{byID: map[string]*domain.Cardgroup{destID: destCG}},
@@ -811,7 +811,7 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_EmptyDeck(t *testing.T) {
 	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
 
 	uc := NewMasterDeckUsecaseWithTx(
-		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}}, // published-scoped re-read inside the tx
+		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}}, // published-scoped re-read (runs outside the tx)
 		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: {}}},                        // zero cards
 		&fakeUserCardRepo{}, // default: Inserted=len(cards)=0, Updated=0
 		&fakeUserCG{byID: map[string]*domain.Cardgroup{destID: destCG}},

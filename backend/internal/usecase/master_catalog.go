@@ -695,10 +695,12 @@ func (u *masterCatalogUsecase) ListAdminConnection(
 // FindPublishedByID, which returns ErrNotFound for both unknown ids and draft decks,
 // so draft existence is never disclosed — both collapse to ImportMasterOutcome{NotFound:true}.
 // The delegated copy re-reads the master through the same published-scoped method
-// inside its transaction, so a master unpublished between this gate and the write
-// also collapses to NotFound (the ErrNotFound the copy surfaces is mapped below)
-// rather than silently importing a now-draft deck. Unauthenticated callers receive
-// ucerr.ErrUnauthenticated. Import is the second entry point into "the caller now
+// on the repository's pooled connection (not the transaction handle), so a master
+// unpublished before that re-read also collapses to NotFound (the ErrNotFound the
+// copy surfaces is mapped below) rather than silently importing a now-draft deck.
+// The re-read narrows the unpublish window rather than closing it; see
+// masterDeckUsecase.copyMasterToUserTx for the residual race.
+// Unauthenticated callers receive ucerr.ErrUnauthenticated. Import is the second entry point into "the caller now
 // owns a new cardgroup", so it applies the same per-user cardgroup quota as
 // CardgroupUsecase.Create via checkCardgroupLimit (admins exempt) — without it the
 // cap would be a property of the create form rather than an invariant of the
@@ -759,11 +761,13 @@ func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string
 // the caller-owned cardgroup cardgroupID. The master is gated through
 // FindPublishedByID, collapsing unknown and draft into MergeMasterOutcome{NotFound:true}
 // so draft existence is never disclosed. The delegated merge re-reads the master
-// through the same published-scoped method inside its transaction, so a master
-// unpublished between this gate and the write also collapses to NotFound (the
-// ErrNotFound the merge surfaces is mapped below) rather than snapshotting a
-// now-draft deck. Destination ownership is enforced by the delegated usecase
-// (BAD_USER_INPUT for unknown, UNAUTHENTICATED for foreign), surfaced as an error
+// through the same published-scoped method on the repository's pooled connection
+// (not the transaction handle), so a master unpublished before that re-read also
+// collapses to NotFound (the ErrNotFound the merge surfaces is mapped below)
+// rather than snapshotting a now-draft deck. The re-read narrows the unpublish
+// window rather than closing it; see masterDeckUsecase.MergeMasterIntoCardgroup
+// for the residual race. Destination ownership is enforced by the delegated
+// usecase (BAD_USER_INPUT for unknown, UNAUTHENTICATED for foreign), surfaced as an error
 // rather than via the outcome. Unauthenticated callers receive
 // ucerr.ErrUnauthenticated. The merge is a one-time snapshot.
 func (u *masterCatalogUsecase) MergeMaster(ctx context.Context, masterID, cardgroupID string) (MergeMasterOutcome, error) {
@@ -789,7 +793,7 @@ func (u *masterCatalogUsecase) MergeMaster(ctx context.Context, masterID, cardgr
 		}
 		if errors.Is(err, repository.ErrNotFound) {
 			// The master was unpublished between the FindPublishedByID gate and the
-			// merge tx's own published-scoped re-read (TOCTOU). Collapse into the same
+			// merge's own published-scoped re-read (TOCTOU). Collapse into the same
 			// non-disclosure not-found outcome as a pre-gate unknown/draft master. That
 			// re-read is the only ErrNotFound producer this branch can see: the
 			// destination ownership gate maps a missing cardgroup to a

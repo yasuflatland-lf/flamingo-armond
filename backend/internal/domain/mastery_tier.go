@@ -17,8 +17,11 @@ const MatureStabilityDays = 21.0
 // backend/internal/domain/service/fsrs_scheduler.go), so cards never sit in the
 // Learning/Relearning phases. The stats known-review gate additionally requires
 // PhaseBefore == Review, a conjunct ClassifyMastery does not test; today no card
-// can fail it. Flipping EnableShortTerm back to true would admit a card with a
-// non-Review phase and stability at or above this constant: the mastery tiles
+// with stability at or above this constant can fail it. (A first-ever swipe does
+// fail it, carrying PhaseBefore == FSRSPhaseNew, but its stability is below the
+// boundary, so both populations exclude it and the parity holds.) Flipping
+// EnableShortTerm back to true would admit a card with a non-Review phase and
+// stability at or above this constant: the mastery tiles
 // would still count it as learned while the retention/lapse population dropped
 // it, and the two would diverge with no compile error and no failing test at
 // this constant's own site. Revisit this boundary if the scheduler mode changes.
