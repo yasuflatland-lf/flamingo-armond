@@ -76,6 +76,14 @@ func (r *userCardFSRSRepo) UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.
 // ListFSRSStatesByUser returns one row per studied card for userID, joined to
 // cards for the owning cardgroup. WHERE user_card_fsrs.user_id = ? is backed by
 // the (user_id, card_id) PK.
+//
+// Phase and stability are re-checked per row, mirroring the userCardFSRSToDomain
+// guards used by FindByUserAndCardIDs. Stability is the load-bearing one on this
+// path: domain.ClassifyMastery is fed exclusively from this projection, and a
+// NaN stability falls through both of its comparisons and is reported as the
+// Learned mastery tier, besides breaking JSON marshalling of the GraphQL Float
+// StrugglingCard.stability feeds. FSRSStat carries no difficulty column, so
+// there is nothing to check for it here.
 func (r *userCardFSRSRepo) ListFSRSStatesByUser(ctx context.Context, userID string) ([]domain.FSRSStat, error) {
 	var rows []domain.FSRSStat
 	err := r.db.WithContext(ctx).
@@ -90,6 +98,9 @@ func (r *userCardFSRSRepo) ListFSRSStatesByUser(ctx context.Context, userID stri
 	for i := range rows {
 		if !rows[i].Phase.IsValid() {
 			return nil, eris.Errorf("repository: user card fsrs: invalid FSRSPhase value %d for card %s", int(rows[i].Phase), rows[i].CardID)
+		}
+		if !domain.IsValidStability(rows[i].Stability) {
+			return nil, eris.Errorf("repository: user card fsrs: invalid stability value %v for card %s", rows[i].Stability, rows[i].CardID)
 		}
 	}
 	return rows, nil
@@ -202,10 +213,11 @@ func userCardFSRSLastRating(state domain.FSRSState) *int {
 // Every column that the domain constrains is re-checked here rather than trusted:
 // the table carries no CHECK constraints, so a row edited outside the application
 // is the one way an out-of-range value can reach the domain. Rejecting is
-// deliberate — a corrupted stability would otherwise be classified as the Learned
-// mastery tier (NaN fails both ClassifyMastery comparisons) or break JSON
-// marshalling of the GraphQL Float it feeds, both of which are harder to diagnose
-// than a failed read.
+// deliberate — a corrupted stability or difficulty would otherwise reach the
+// UserCardState GraphQL Floats it feeds and break JSON marshalling of the whole
+// response, which is harder to diagnose than a failed read. The sibling
+// ListFSRSStatesByUser carries the matching stability guard for the /stats
+// projection, which is the path domain.ClassifyMastery consumes.
 func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
 	state := domain.FSRSPhase(row.State)
 	if !state.IsValid() {

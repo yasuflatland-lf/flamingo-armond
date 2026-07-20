@@ -170,9 +170,11 @@ func TestMasterCardgroupRepository_EnsureByName_DifferentNames_DifferentIDs(t *t
 
 // TestMasterCardgroupRepository_EnsureByName_InvalidName proves EnsureByName
 // routes its name through domain.ParseCardgroupName before touching the
-// database: an over-cap or blank name fails as the typed domain sentinel rather
-// than reaching the insert and dying on the name-length CHECK as an
-// unclassified constraint violation.
+// database, so the domain grapheme cap bounds the stored name rather than the
+// far wider master_cardgroups_name_length CHECK (1..2000 code points). A blank
+// name previously died on that CHECK's lower bound as an unclassified
+// constraint violation; a 101-code-point over-cap name sat inside the CHECK and
+// was persisted silently. Both now surface the typed domain sentinel instead.
 func TestMasterCardgroupRepository_EnsureByName_InvalidName(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

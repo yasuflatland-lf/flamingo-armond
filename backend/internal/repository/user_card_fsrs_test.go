@@ -87,8 +87,9 @@ func TestUserCardFSRSRepository_FindByUserAndCardIDs_InvalidLastRating(t *testin
 // constraint and no application write path yields such a value, so raw SQL is
 // the only way to seed one — the guard is defence in depth against a row edited
 // outside the application. Without it a NaN stability reconstitutes silently and
-// is classified as the Learned mastery tier (NaN fails both ClassifyMastery
-// comparisons) and breaks JSON marshalling of the GraphQL Float it feeds.
+// breaks JSON marshalling of the UserCardState GraphQL Float it feeds. The
+// mastery-tier harm travels through the sibling ListFSRSStatesByUser projection,
+// which carries its own stability guard.
 func TestUserCardFSRSRepository_FindByUserAndCardIDs_InvalidStabilityOrDifficulty(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -342,6 +343,58 @@ func TestUserCardFSRSRepository_ListFSRSStatesByUser_InvalidPhaseErrors(t *testi
 
 	_, err = ucsRepo.ListFSRSStatesByUser(ctx, ownerID)
 	require.Error(t, err, "an invalid persisted FSRSPhase must be rejected, not silently reconstituted")
+}
+
+// TestUserCardFSRSRepository_ListFSRSStatesByUser_InvalidStabilityErrors proves
+// the stability guard mirrors the userCardFSRSToDomain one on the /stats
+// projection. This is the path domain.ClassifyMastery consumes, so an unchecked
+// NaN would be silently bucketed into the Learned mastery tier (NaN fails both
+// of its comparisons) and would break JSON marshalling of the GraphQL Float
+// StrugglingCard.stability feeds. Raw SQL is the only way to seed such a value:
+// the column carries no CHECK constraint and no application write path yields
+// one.
+func TestUserCardFSRSRepository_ListFSRSStatesByUser_InvalidStabilityErrors(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	cases := []struct {
+		name string
+		// stability is a SQL literal so the non-finite values can be seeded
+		// exactly as Postgres stores them in a double precision column.
+		stability string
+	}{
+		{name: "nan", stability: "'NaN'"},
+		{name: "positive_infinity", stability: "'Infinity'"},
+		{name: "negative_infinity", stability: "'-Infinity'"},
+		{name: "zero", stability: "0"},
+		{name: "negative", stability: "-1.5"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ownerID := insertAuthUser(t, ctx)
+			cg := insertCardgroupForUser(t, ctx, ownerID, "Invalid Stability Deck "+tc.name)
+			cardRepo := repository.NewCardRepository(testDB.GORM)
+			ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+
+			card := newCard(domain.CardgroupID(cg), "bad-stability-"+tc.name, "back")
+			require.NoError(t, cardRepo.Create(ctx, card))
+
+			now := time.Now().UTC().Truncate(time.Microsecond)
+			_, err := sqlDBHandle(t).ExecContext(ctx,
+				`INSERT INTO public.user_card_fsrs
+					(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, elapsed_days, scheduled_days)
+				 VALUES ($1, $2, $3, $4, `+tc.stability+`::double precision, 5.0, 1, 0, $4, 1, 1)`,
+				ownerID, card.ID, int(domain.FSRSPhaseReview), now)
+			require.NoError(t, err, "seed a row with an invalid stability value via raw SQL")
+
+			_, err = ucsRepo.ListFSRSStatesByUser(ctx, ownerID)
+			require.ErrorContains(t, err, "repository: user card fsrs: invalid stability value",
+				"an invalid persisted stability must be rejected, not fed to ClassifyMastery")
+		})
+	}
 }
 
 // TestUserCardFSRSRepository_CountCardsByCardgroupForUser_ScopesByOwner proves

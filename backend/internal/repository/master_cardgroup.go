@@ -163,13 +163,18 @@ func findMasterCardgroupByID(db *gorm.DB, id string) (*domain.MasterCardgroup, e
 // literal 'master' namespace plus the name to serialize lookup-then-insert
 // without adding a DB-level constraint. Master cardgroups have no owner.
 //
-// name is parsed through domain.ParseCardgroupName before anything else, so an
-// empty or over-cap name fails as a typed domain sentinel
-// (domain.ErrCardgroupNameRequired / domain.ErrCardgroupNameTooLong) instead of
-// reaching the database and dying on the name-length CHECK as an unclassified
-// constraint violation. The parsed (trimmed) value is what the advisory lock,
-// the lookup and the insert all key on, so the row this method creates is always
-// the row a repeat call finds.
+// name is parsed through domain.ParseCardgroupName before anything else, so the
+// domain grapheme cap (domain.CardgroupNameMax) is what bounds a stored master
+// cardgroup name, not the far wider master_cardgroups_name_length CHECK
+// (1..2000 code points). The two previously disagreed: a blank name died on the
+// CHECK's lower bound as an unclassified constraint violation, while an over-cap
+// name between the grapheme cap and the CHECK's upper bound was persisted
+// silently. Both now fail up front as typed domain sentinels
+// (domain.ErrCardgroupNameRequired / domain.ErrCardgroupNameTooLong). The only
+// production caller parses the name itself before calling, so this is defence in
+// depth rather than a reachable behaviour change. The parsed (trimmed) value is
+// what the advisory lock, the lookup and the insert all key on, so the row this
+// method creates is always the row a repeat call finds.
 func (r *masterCardgroupRepo) EnsureByName(ctx context.Context, name string) (*domain.MasterCardgroup, error) {
 	cgName, err := domain.ParseCardgroupName(name)
 	if err != nil {
