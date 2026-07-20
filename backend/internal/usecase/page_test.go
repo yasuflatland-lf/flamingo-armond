@@ -4,6 +4,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"backend/internal/cursor"
 	"backend/internal/repository"
@@ -394,34 +395,45 @@ func TestResolveRelayPage_InvalidComboSkipsClamp(t *testing.T) {
 }
 
 // TestDecodeCursorOrBadInput covers the shared decode+guard prefix extracted
-// from the four resolve*Cursor methods: a nil/empty cursor yields present=false
-// with no error, a malformed v1 envelope is a field-level BAD_USER_INPUT
-// validation error, and a well-formed cursor decodes to the raw id.
+// from the five resolve*Cursor methods: a nil/empty cursor yields present=false
+// with no error, a malformed envelope is a field-level BAD_USER_INPUT
+// validation error, a well-formed v1 cursor decodes to the raw id with no
+// ordering metadata, and a v2 cursor additionally carries the ordering it was
+// served under plus the captured ordering-key value.
 func TestDecodeCursorOrBadInput(t *testing.T) {
 	t.Parallel()
 
 	empty := ""
 	valid := cursor.Encode("abc123")
+	ordered := cursor.EncodeV2(cursor.Payload{ID: "abc123", OrderBy: "updated_at", Direction: "DESC", OrderKey: "2026-07-20T00:00:00Z"})
 	// A v1 envelope with a base64 payload that cannot be decoded.
 	bad := "v1:!!!not-base64!!!"
+	badV2 := "v2:!!!not-base64!!!"
 
 	tests := []struct {
 		name        string
 		cursorStr   *string
-		wantID      string
+		want        cursor.Payload
 		wantPresent bool
 		wantErr     bool
 	}{
 		{name: "nil -> not present, no error", cursorStr: nil, wantPresent: false},
 		{name: "empty -> not present, no error", cursorStr: &empty, wantPresent: false},
-		{name: "valid -> decoded id, present", cursorStr: &valid, wantID: "abc123", wantPresent: true},
-		{name: "malformed -> validation error", cursorStr: &bad, wantErr: true},
+		{name: "v1 -> decoded id, no ordering", cursorStr: &valid, want: cursor.Payload{ID: "abc123"}, wantPresent: true},
+		{
+			name:        "v2 -> decoded id plus ordering",
+			cursorStr:   &ordered,
+			want:        cursor.Payload{ID: "abc123", HasOrdering: true, OrderBy: "updated_at", Direction: "DESC", OrderKey: "2026-07-20T00:00:00Z"},
+			wantPresent: true,
+		},
+		{name: "malformed v1 -> validation error", cursorStr: &bad, wantErr: true},
+		{name: "malformed v2 -> validation error", cursorStr: &badV2, wantErr: true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			id, present, err := decodeCursorOrBadInput(tc.cursorStr, "after")
+			got, present, err := decodeCursorOrBadInput(tc.cursorStr, "after")
 			if tc.wantErr {
 				var ve *ucerr.ValidationError
 				if !errors.As(err, &ve) {
@@ -430,8 +442,8 @@ func TestDecodeCursorOrBadInput(t *testing.T) {
 				if ve.Field != "after" {
 					t.Fatalf("want field after, got %q", ve.Field)
 				}
-				if present || id != "" {
-					t.Fatalf("want empty/not-present on error, got id=%q present=%v", id, present)
+				if present || got != (cursor.Payload{}) {
+					t.Fatalf("want zero/not-present on error, got payload=%+v present=%v", got, present)
 				}
 				return
 			}
@@ -441,10 +453,96 @@ func TestDecodeCursorOrBadInput(t *testing.T) {
 			if present != tc.wantPresent {
 				t.Fatalf("present: got %v, want %v", present, tc.wantPresent)
 			}
-			if id != tc.wantID {
-				t.Fatalf("id: got %q, want %q", id, tc.wantID)
+			if got != tc.want {
+				t.Fatalf("payload: got %+v, want %+v", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestRequireCursorOrdering covers the shared v2 ordering guard: a cursor that
+// carries no ordering (v1 / legacy bare id) always passes so it can fall back
+// to the re-hydration path, a v2 cursor whose ordering matches the request
+// passes, and a v2 cursor taken under a different column or direction is a
+// field-level BAD_USER_INPUT rather than a silent mis-page.
+func TestRequireCursorOrdering(t *testing.T) {
+	t.Parallel()
+
+	req := PageOrdering{OrderBy: "updated_at", Direction: "DESC"}
+
+	tests := []struct {
+		name    string
+		payload cursor.Payload
+		wantErr bool
+	}{
+		{name: "no ordering passes through", payload: cursor.Payload{ID: "a"}},
+		{
+			name:    "matching ordering accepted",
+			payload: cursor.Payload{ID: "a", HasOrdering: true, OrderBy: "updated_at", Direction: "DESC"},
+		},
+		{
+			name:    "different column rejected",
+			payload: cursor.Payload{ID: "a", HasOrdering: true, OrderBy: "name", Direction: "DESC"},
+			wantErr: true,
+		},
+		{
+			name:    "different direction rejected",
+			payload: cursor.Payload{ID: "a", HasOrdering: true, OrderBy: "updated_at", Direction: "ASC"},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := requireCursorOrdering(tc.payload, req, "after")
+			if !tc.wantErr {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			var ve *ucerr.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("want ValidationError, got %v", err)
+			}
+			if ve.Field != "after" {
+				t.Fatalf("want field after, got %q", ve.Field)
+			}
+		})
+	}
+}
+
+// TestOrderKeyCodecs covers the ordering-key serializers shared by the
+// mutable-key aggregates: a timestamp round-trips at the microsecond
+// resolution Postgres stores, and both the timestamp and integer parsers
+// classify an unparseable client-supplied value as errCursorKeyMalformed so
+// the caller maps it to BAD_USER_INPUT rather than INTERNAL.
+func TestOrderKeyCodecs(t *testing.T) {
+	t.Parallel()
+
+	want := time.Date(2026, 7, 20, 4, 5, 6, 789012000, time.UTC)
+	got, err := decodeTimeOrderKey(encodeTimeOrderKey(want))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !got.Equal(want) {
+		t.Fatalf("timestamp round-trip mismatch: got %v, want %v", got, want)
+	}
+
+	if _, err := decodeTimeOrderKey("not-a-timestamp"); !errors.Is(err, errCursorKeyMalformed) {
+		t.Fatalf("want errCursorKeyMalformed, got %v", err)
+	}
+
+	n, err := decodeIntOrderKey("-42")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != -42 {
+		t.Fatalf("int round-trip mismatch: got %d, want -42", n)
+	}
+	if _, err := decodeIntOrderKey("not-an-int"); !errors.Is(err, errCursorKeyMalformed) {
+		t.Fatalf("want errCursorKeyMalformed, got %v", err)
 	}
 }
 

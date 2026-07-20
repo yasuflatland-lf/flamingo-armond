@@ -12,8 +12,9 @@ A Relay-style `Connection` edge carries two distinct identifiers, and they are
 - `edge.node.id` — the entity's stable primary key (`"01J…"`). This is what the
   rest of the app uses to address the entity (open its editor, delete it, read
   it from the normalized cache as `<Type>:<id>`).
-- `edge.cursor` — an **opaque pagination handle**. The backend emits
-  `cursor.Encode(id)` = `"v1:" + base64(id)` (see [cursor-encoding.md](cursor-encoding.md)).
+- `edge.cursor` — an **opaque pagination handle**. The backend emits either
+  `"v1:" + base64(id)` or, on the connections whose ordering column is mutable,
+  `"v2:" + base64(json)` (see [cursor-encoding.md](cursor-encoding.md)).
   Cursor opaqueness is a deliberate Relay invariant: clients treat the cursor as
   a black box and pass it back unchanged via `after` / `before`. The server may
   change the encoding at any time without breaking clients.
@@ -96,5 +97,5 @@ representations of the same edge:
 
 ## See also
 
-- [Cursor encoding](cursor-encoding.md) — the `"v1:base64(id)"` envelope this rule depends on.
+- [Cursor encoding](cursor-encoding.md) — the opaque `v1:` / `v2:` envelopes this rule depends on.
 - [`.claude/rules/pagination.md` § "Frontend cache patterns"](../../.claude/rules/pagination.md#frontend-cache-patterns) — the Connection create/delete/update bullets.

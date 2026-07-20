@@ -60,6 +60,15 @@ type CardgroupConnectionInput struct {
 
 // CardgroupConnectionOutput is the usecase-level page result. The resolver
 // wraps it into a model.CardgroupConnection.
+//
+// Ordering and OrderKeys exist so the resolver can emit v2 cursors: the
+// cardgroup listing defaults to the mutable UPDATED_AT column, so a cursor
+// that carried only an id would move whenever the row it points at is edited.
+// Ordering is the (orderBy, direction) this page was served under; OrderKeys
+// maps each returned cardgroup id to the serialized value its ordering column
+// held at serve time (empty string when the ordering key IS the id). Both are
+// consumed only at the resolver→model boundary — the output itself still
+// carries RAW ids, never pre-encoded cursors.
 type CardgroupConnectionOutput struct {
 	Cardgroups []*domain.Cardgroup
 	TotalCount int64
@@ -67,6 +76,8 @@ type CardgroupConnectionOutput struct {
 	HasPrev    bool
 	StartCur   string
 	EndCur     string
+	Ordering   PageOrdering
+	OrderKeys  map[string]string
 }
 
 // CardgroupUsecase is the cardgroup CRUD and paginated-list surface.
@@ -344,11 +355,13 @@ func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 		return nil, err
 	}
 
-	after, err := u.resolveCardgroupCursor(ctx, in.After, user.Sub, orderBy, "after")
+	ordering := PageOrdering{OrderBy: string(orderBy), Direction: string(dir)}
+
+	after, err := u.resolveCardgroupCursor(ctx, in.After, user.Sub, orderBy, ordering, "after")
 	if err != nil {
 		return nil, err
 	}
-	before, err := u.resolveCardgroupCursor(ctx, in.Before, user.Sub, orderBy, "before")
+	before, err := u.resolveCardgroupCursor(ctx, in.Before, user.Sub, orderBy, ordering, "before")
 	if err != nil {
 		return nil, err
 	}
@@ -374,9 +387,91 @@ func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 		return nil, err
 	}
 
-	out := &CardgroupConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Cardgroups: cgs}
+	// OrderKeys snapshots the ordering column of every row in this page so the
+	// resolver can embed it in the cursor it emits. Capturing it here — rather
+	// than re-reading the row when the cursor comes back — is what makes the
+	// bookmark survive an edit to the boundary row.
+	keys, err := cardgroupOrderKeys(orderBy, cgs)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &CardgroupConnectionOutput{
+		TotalCount: total,
+		HasNext:    hasNext,
+		HasPrev:    hasPrev,
+		Cardgroups: cgs,
+		Ordering:   ordering,
+		OrderKeys:  keys,
+	}
 	out.StartCur, out.EndCur = firstLastCursor(cgs, func(cg *domain.Cardgroup) string { return string(cg.ID) })
 	return out, nil
+}
+
+// cardgroupOrderKeys serializes the active ordering column of every row in a
+// served page, keyed by cardgroup id. An orderBy outside the allowlist is a
+// caller bug and surfaces as INTERNAL, matching cardgroupOrderKey.
+func cardgroupOrderKeys(orderBy repository.CardgroupOrderBy, cgs []*domain.Cardgroup) (map[string]string, error) {
+	keys := make(map[string]string, len(cgs))
+	for _, cg := range cgs {
+		k, err := cardgroupOrderKey(orderBy, cg)
+		if err != nil {
+			return nil, err
+		}
+		keys[string(cg.ID)] = k
+	}
+	return keys, nil
+}
+
+// cardgroupOrderKey serializes one cardgroup's ordering column for embedding
+// in a v2 cursor. Ordering by ID needs no key — the id is already carried by
+// the cursor — so it returns the empty string. The default arm mirrors
+// resolveCardgroupCursor's: an orderBy the switch does not handle is a caller
+// bug, surfaced as INTERNAL rather than a silently unhydrated cursor.
+func cardgroupOrderKey(orderBy repository.CardgroupOrderBy, cg *domain.Cardgroup) (string, error) {
+	switch orderBy {
+	case repository.CardgroupOrderByID:
+		return "", nil
+	case repository.CardgroupOrderByName:
+		return cg.Name.String(), nil
+	case repository.CardgroupOrderByCreatedAt:
+		return encodeTimeOrderKey(cg.CreatedAt), nil
+	case repository.CardgroupOrderByUpdatedAt:
+		return encodeTimeOrderKey(cg.UpdatedAt), nil
+	default:
+		return "", eris.Errorf("usecase: cardgroup: unhandled orderBy %q", orderBy)
+	}
+}
+
+// applyCardgroupOrderKey populates the repository cursor column the active
+// orderBy needs from the value a v2 cursor carried. A key that does not parse
+// into the column type wraps errCursorKeyMalformed so the caller maps it to
+// BAD_USER_INPUT; an unhandled orderBy stays INTERNAL.
+func applyCardgroupOrderKey(c *repository.CardgroupCursor, orderBy repository.CardgroupOrderBy, key string) error {
+	switch orderBy {
+	case repository.CardgroupOrderByID:
+		// No extra column needed; the id in the cursor is the ordering key.
+		return nil
+	case repository.CardgroupOrderByName:
+		c.Name = &key
+		return nil
+	case repository.CardgroupOrderByCreatedAt:
+		t, err := decodeTimeOrderKey(key)
+		if err != nil {
+			return err
+		}
+		c.CreatedAt = &t
+		return nil
+	case repository.CardgroupOrderByUpdatedAt:
+		t, err := decodeTimeOrderKey(key)
+		if err != nil {
+			return err
+		}
+		c.UpdatedAt = &t
+		return nil
+	default:
+		return eris.Errorf("usecase: cardgroup: unhandled orderBy %q", orderBy)
+	}
 }
 
 // cardgroupOrderByColumns is the usecase→repository orderBy allowlist for cardgroups.
@@ -399,31 +494,44 @@ func resolveCardgroupOrderBy(
 
 // resolveCardgroupCursor decodes an opaque cursor string into a
 // *repository.CardgroupCursor with the column required by the active orderBy
-// populated. The cursor may be a v1 envelope ("v1:" + base64) or a legacy
-// bare UUID; both are accepted during the backward-compatibility window.
-// Returns BAD_USER_INPUT when the cursor cannot be decoded, the cardgroup
-// cannot be found, or the cardgroup belongs to another owner — the latter
-// would otherwise leak existence of cardgroups outside the caller's tenant.
+// populated. The cursor may be a v2 envelope ("v2:" + base64 JSON), a v1
+// envelope ("v1:" + base64), or a legacy bare UUID; all three are accepted.
+// Returns BAD_USER_INPUT when the cursor cannot be decoded, was taken under a
+// different ordering, carries an ordering-key value that does not parse, the
+// cardgroup cannot be found, or the cardgroup belongs to another owner — the
+// last would otherwise leak existence of cardgroups outside the caller's tenant.
 //
-// The cross-tenant check runs even when orderBy is ID (no extra column to
-// hydrate). Without it, an attacker could probe for the existence of foreign
-// cardgroups by paging past a guessed cursor and observing whether any rows
-// come back.
+// A v2 cursor supplies the ordering-key value captured when its page was
+// served, so an edit to the row between two fetches cannot move the bookmark.
+// A v1 or legacy cursor carries no such value and falls back to re-reading the
+// ordering column off the CURRENT row; that fallback is what duplicates or
+// skips rows when the ordering column is mutable, and it exists only so
+// cursors persisted by older clients keep paging.
+//
+// Both paths run the same repository lookup and cross-tenant check, and both
+// run it even when orderBy is ID (no extra column to hydrate). Without it, an
+// attacker could probe for the existence of foreign cardgroups by paging past
+// a guessed cursor and observing whether any rows come back — a v2 cursor must
+// not bypass that gate just because it can hydrate itself.
 func (u *cardgroupUsecase) resolveCardgroupCursor(
 	ctx context.Context,
 	cursorStr *string,
 	ownerID string,
 	orderBy repository.CardgroupOrderBy,
+	ordering PageOrdering,
 	field string,
 ) (*repository.CardgroupCursor, error) {
-	id, present, err := decodeCursorOrBadInput(cursorStr, field)
+	p, present, err := decodeCursorOrBadInput(cursorStr, field)
 	if err != nil {
 		return nil, err
 	}
 	if !present {
 		return nil, nil
 	}
-	cg, err := u.repo.FindByID(ctx, id)
+	if err := requireCursorOrdering(p, ordering, field); err != nil {
+		return nil, err
+	}
+	cg, err := u.repo.FindByID(ctx, p.ID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ucerr.NewValidationError(field, "cursor not found")
@@ -437,7 +545,18 @@ func (u *cardgroupUsecase) resolveCardgroupCursor(
 		return nil, ucerr.NewValidationError(field, "cursor not found")
 	}
 
-	c := &repository.CardgroupCursor{ID: id}
+	c := &repository.CardgroupCursor{ID: p.ID}
+	if p.HasOrdering {
+		if err := applyCardgroupOrderKey(c, orderBy, p.OrderKey); err != nil {
+			if errors.Is(err, errCursorKeyMalformed) {
+				return nil, ucerr.NewValidationError(field, "invalid cursor")
+			}
+			return nil, err
+		}
+		return c, nil
+	}
+
+	// v1 / legacy bare-UUID fallback: re-hydrate from the current row.
 	switch orderBy {
 	case repository.CardgroupOrderByID:
 		// No extra column needed; ownership-check above is the gate.

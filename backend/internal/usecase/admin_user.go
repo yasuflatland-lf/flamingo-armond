@@ -210,14 +210,17 @@ func (u *adminUserUsecase) List(
 	// Decode the opaque inbound cursors to raw user ids before the repository's
 	// id-based hydration. A malformed v1 cursor is BAD_USER_INPUT; the repository
 	// looks up the cursor row by raw id, so it must never receive the v1 envelope.
-	afterID, afterPresent, err := decodeCursorOrBadInput(after, "after")
+	afterCur, afterPresent, err := decodeCursorOrBadInput(after, "after")
 	if err != nil {
 		return nil, err
 	}
-	beforeID, beforePresent, err := decodeCursorOrBadInput(before, "before")
+	beforeCur, beforePresent, err := decodeCursorOrBadInput(before, "before")
 	if err != nil {
 		return nil, err
 	}
+	// The admin-users listing orders by the immutable created_at, so its cursors
+	// stay on the v1 envelope and only the raw id is consumed here.
+	afterID, beforeID := afterCur.ID, beforeCur.ID
 	var afterPtr, beforePtr *string
 	if afterPresent {
 		afterPtr = &afterID
