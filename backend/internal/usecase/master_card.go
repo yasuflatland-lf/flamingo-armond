@@ -503,9 +503,10 @@ func (u *masterCardUsecase) ImportMasterCards(ctx context.Context, in ImportMast
 		if err != nil {
 			return ImportMasterCardsOutput{}, translateCardErr(err)
 		}
-		// NewMasterCard stamps per-card timestamps; pin the whole batch to one now.
+		// NewMasterCard stamps per-card timestamps; pin the whole batch to one
+		// created_at. updated_at is database-owned, so the constructor's value is
+		// neither sent nor pinned here.
 		c.CreatedAt = now
-		c.UpdatedAt = now
 		cards = append(cards, c)
 	}
 

@@ -389,9 +389,9 @@ func (u *MasterNotionSyncUsecase) masterCardsFromParsedRows(
 			continue
 		}
 		// NewMasterCard stamps per-card timestamps; pin the whole sync batch to
-		// one now.
+		// one created_at. updated_at is database-owned, so the constructor's value
+		// is neither sent nor pinned here.
 		card.CreatedAt = now
-		card.UpdatedAt = now
 		cards = append(cards, card)
 	}
 	return cards, skipped
