@@ -28,8 +28,9 @@ read, not reconstructed in the usecase from a richer result:
   the usecase would leak the row's existence to any usecase bug that forgot the check.
 - **Usecase:** maps `ErrNotFound` to a not-found *data* outcome (errors-as-data),
   not an error. `ImportMaster` returns `ImportMasterOutcome{NotFound: true}, nil`
-  (`backend/internal/usecase/master_catalog.go`). It never branches on draft-vs-unknown
-  because the repository already erased the distinction.
+  (`backend/internal/usecase/master_catalog_import.go`, via the shared
+  `verifyPublishedMaster` gate in `master_catalog.go`). It never branches on
+  draft-vs-unknown because the repository already erased the distinction.
 - **Resolver:** returns a generic, state-free message. `ImportMasterCardgroup`
   returns `MasterNotFoundError{Message: "Master cardgroup not found"}` — no field
   reveals whether the id was unknown or a draft.

@@ -45,6 +45,6 @@ union HandleSwipeResult =
   | InputValidationError
 
 extend type Mutation {
-  """Apply one swipe rating, persist the SwipeRecord event, and return the latest performance snapshot."""
+  """Apply one swipe rating, persist the SwipeRecord event, and return the latest performance snapshot. A repeat review of the same card within the same JST learn day is accepted and ignored: the card's schedule is left untouched and no second SwipeRecord is written, but the mutation still returns the normal success payload, so a replayed request needs no special client handling."""
   handleSwipe(input: HandleSwipeInput!): HandleSwipeResult!
 }

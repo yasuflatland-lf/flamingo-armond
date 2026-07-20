@@ -22,6 +22,7 @@ import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { FLAMINGO_EVENT, subscribeFlamingo } from "@/lib/events/flamingo-events";
 import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
+import { makeMergeConnection } from "@/lib/pagination/make-merge-connection";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useSeedConnectionCache } from "@/lib/pagination/use-seed-connection-cache";
 import { useUndoDelete } from "@/lib/undo-delete";
@@ -46,18 +47,11 @@ const CARDGROUPS_INITIAL = {
   totalCount: 0,
 };
 
-// Concatenate the next page's edges onto the cached cardgroups connection.
-function mergeCardgroupsConnection(
-  prev: MyCardgroupsConnectionQuery,
-  more: MyCardgroupsConnectionQuery,
-): MyCardgroupsConnectionQuery {
-  return {
-    myCardgroupsConnection: {
-      ...more.myCardgroupsConnection,
-      edges: [...prev.myCardgroupsConnection.edges, ...more.myCardgroupsConnection.edges],
-    },
-  };
-}
+// Concatenate the next page's edges onto the cached cardgroups connection. A
+// module-level constant so the reducer identity useConnectionPagination
+// memoizes on stays stable across renders.
+const mergeCardgroupsConnection =
+  makeMergeConnection<MyCardgroupsConnectionQuery>("myCardgroupsConnection");
 
 function CreateCardgroupSheetContent({
   submit,

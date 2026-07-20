@@ -11,8 +11,8 @@ import (
 	"backend/internal/domain"
 )
 
-func (r *cardRepo) FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now, reviewedBefore, rescueDueBefore time.Time, limit int) ([]domain.DueCard, error) {
-	return findDueCardsOn(r.db.WithContext(ctx), userID, cardgroupID, now, reviewedBefore, rescueDueBefore, limit)
+func (r *cardRepo) FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now, reviewedBefore, rescueDueBefore, rescueReviewedBefore time.Time, limit int) ([]domain.DueCard, error) {
+	return findDueCardsOn(r.db.WithContext(ctx), userID, cardgroupID, now, reviewedBefore, rescueDueBefore, rescueReviewedBefore, limit)
 }
 
 func (r *cardRepo) FindPracticeCardsForUser(ctx context.Context, userID, cardgroupID string, reviewedAfter time.Time, limit int) ([]domain.DueCard, error) {
@@ -36,7 +36,7 @@ type dueCardRow struct {
 	Due         *time.Time `gorm:"column:due"`
 }
 
-// Rescue window:   due IS NOT NULL AND due < learn-day end AND last_review < learn-day start.
+// Rescue window:   due IS NOT NULL AND due < learn-day end AND last_review < learn-day start AND last_review <= now-24h.
 // Filler window:   due IS NOT NULL AND due <= now AND last_review < learn-day start.
 // Practice window: last_review >= boundary; due not consulted.
 // Both usecase methods (NextDueCards and PracticeTodaysCards) derive the
@@ -56,7 +56,11 @@ type dueCardRow struct {
 // caller's JST start-of-today), its latest rating was Again or its stability is
 // below domain.LearnedStabilityDays, and its due is before rescueDueBefore (the
 // exclusive JST end-of-today). The day-granular due bound deliberately surfaces
-// rescue cards due later today. random() varies selection within the band.
+// rescue cards due later today. The early serve is floored by
+// rescueReviewedBefore (domain.RescueReviewedBefore, 24 hours before now):
+// FSRS counts elapsed days as floor(hours/24), so a repeat inside the same 24
+// hours earns a stability growth factor of exactly zero and the rescue slot is
+// wasted. random() varies selection within the band.
 //
 // Filler window: the same last-review guard excludes cards swiped today, but
 // only non-rescue cards whose due has arrived (due <= now) qualify. Its
@@ -66,19 +70,23 @@ type dueCardRow struct {
 // New window: no FSRS row yet; random() samples uniformly across the whole
 // unseen pool so consecutive sessions surface different cards instead of
 // walking the deterministic created_at/position (document) order.
-func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now, reviewedBefore, rescueDueBefore time.Time, limit int) ([]domain.DueCard, error) {
+func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now, reviewedBefore, rescueDueBefore, rescueReviewedBefore time.Time, limit int) ([]domain.DueCard, error) {
 	userID = coalesceUserIDForJoin(userID)
 	if limit <= 0 {
 		return []domain.DueCard{}, nil
 	}
 
+	// Only domain.RatingAgain and domain.LearnedStabilityDays are formatted into
+	// the predicate: both are compile-time constants. Every caller-supplied
+	// instant — including the rescueReviewedBefore floor — travels as a bound
+	// query argument.
 	rescueWhere := fmt.Sprintf(
-		"cards.cardgroup_id = ? AND ucs.due IS NOT NULL AND ucs.due < ? AND ucs.last_review < ? AND (ucs.last_rating = %d OR ucs.stability < %g)",
+		"cards.cardgroup_id = ? AND ucs.due IS NOT NULL AND ucs.due < ? AND ucs.last_review < ? AND ucs.last_review <= ? AND (ucs.last_rating = %d OR ucs.stability < %g)",
 		domain.RatingAgain, domain.LearnedStabilityDays,
 	)
 	rescueRows, err := dueRowsOn(db, userID,
 		rescueWhere,
-		[]any{cardgroupID, rescueDueBefore, reviewedBefore},
+		[]any{cardgroupID, rescueDueBefore, reviewedBefore, rescueReviewedBefore},
 		"random()",
 		limit,
 		"repository: card: find due cards")
