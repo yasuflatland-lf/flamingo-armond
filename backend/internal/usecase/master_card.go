@@ -32,9 +32,10 @@ type MasterCardUsecase interface {
 	// (first/after) or backward (last/before) cursors. Admin-only.
 	ListMasterCards(ctx context.Context, in MasterCardConnectionInput) (*MasterCardConnectionOutput, error)
 	// ListPublicMasterCards paginates a PUBLISHED master deck's cards for any
-	// authenticated caller (no admin gate). The deck must be published — a DRAFT or
-	// unknown id is rejected as a validation error on "masterCardgroupId"
-	// (non-disclosure gate). Anonymous callers receive UNAUTHENTICATED.
+	// authenticated caller (no admin gate). The deck must be catalog-visible
+	// (published AND non-empty) — a DRAFT, card-less or unknown id is rejected as a
+	// validation error on "masterCardgroupId" (non-disclosure gate). Anonymous
+	// callers receive UNAUTHENTICATED.
 	ListPublicMasterCards(ctx context.Context, in MasterCardConnectionInput) (*MasterCardConnectionOutput, error)
 	// CreateMasterCard persists a new master card. Admin-only. A duplicate
 	// (case-insensitive) front is returned as data via the outcome's Duplicate
@@ -574,9 +575,9 @@ func (u *masterCardUsecase) ListMasterCards(
 // ListPublicMasterCards paginates a PUBLISHED master deck's cards for any
 // authenticated caller (no admin gate). The body from the page assembly onward
 // mirrors ListMasterCards; only the gate differs — the admin gate is replaced by
-// an authentication check plus a published-only visibility gate. totalCount is the
-// search-aware count captured inside the assemblePage closure (same as the admin
-// path).
+// an authentication check plus the catalog-visibility gate (published AND
+// non-empty). totalCount is the search-aware count captured inside the
+// assemblePage closure (same as the admin path).
 func (u *masterCardUsecase) ListPublicMasterCards(
 	ctx context.Context, in MasterCardConnectionInput,
 ) (*MasterCardConnectionOutput, error) {
@@ -604,7 +605,7 @@ func (u *masterCardUsecase) ListPublicMasterCards(
 // listMasterCardsCore holds the shared page-assembly body for ListMasterCards
 // and ListPublicMasterCards. The gate closure runs first and supplies the
 // per-caller authorization / visibility check (admin gate vs. authentication +
-// published-only gate); everything from cursor resolution onward is identical.
+// catalog-visibility gate); everything from cursor resolution onward is identical.
 // opPrefix is the caller's two-segment module prefix, supplied so the shared
 // find-page eris wrap carries the correct attribution (error-wrapping rule:
 // shared helpers take the caller prefix as an argument, never hardcode it).

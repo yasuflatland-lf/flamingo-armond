@@ -195,8 +195,9 @@ When a lifecycle-gated resource (draft/published, soft-deleted, other-tenant) is
 a caller not authorized to know it exists, return the *same* not-found for both "unknown
 id" and "exists but hidden" so the endpoint cannot be used as an existence oracle. Collapse
 at the lowest layer: the repository read is scoped to the visible set (`FindPublishedByID`
-returns `ErrNotFound` for unknown AND draft), the usecase maps it to a not-found data
-outcome, the resolver emits a state-free message. Owner-facing reads of the same resource
+returns `ErrNotFound` for unknown, draft AND published-but-card-less decks alike), the
+usecase maps it to a not-found data outcome, the resolver emits a state-free message.
+Owner-facing reads of the same resource
 may keep the distinction; erase it only across the trust boundary it protects.
 
 [`docs/backend/ddd-patterns/notfound-collapse-non-disclosure.md`](../../docs/backend/ddd-patterns/notfound-collapse-non-disclosure.md)

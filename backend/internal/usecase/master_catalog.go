@@ -219,7 +219,7 @@ func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsec
 // masterCatalogPageFetch is the repository page-fetch closure shape shared by
 // MasterCatalogRepository.FindPublishedPage and FindPageAnyStatus. listMasterCatalogCore
 // takes one as an argument so the shared page-assembly body stays agnostic to the
-// status filter (published-only vs. all statuses).
+// visibility filter (catalog-visible vs. all statuses).
 type masterCatalogPageFetch func(
 	ctx context.Context,
 	after, before *repository.MasterCatalogCursor,
@@ -837,7 +837,7 @@ func (u *masterCatalogUsecase) FindPublishedMaster(ctx context.Context, id strin
 	deck, err := u.repo.FindPublishedByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, nil // unknown or draft → GraphQL null (non-disclosure)
+			return nil, nil // unknown, draft or card-less → GraphQL null (non-disclosure)
 		}
 		if isContextDone(err) {
 			return nil, err
