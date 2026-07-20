@@ -160,6 +160,42 @@ func translateRoleNameErr(err error) error {
 	}
 }
 
+// InputValidationInfo carries an input-validation failure as a typed value
+// (not as an error). The resolver maps it to model.InputValidationError.
+// Lives at package usecase so all promoted outcome-returning methods can
+// share the carrier.
+type InputValidationInfo struct {
+	Field   string
+	Message string
+}
+
+// NewInputValidationInfo constructs an InputValidationInfo. Panics on an
+// empty field for the same reason as ucerr.NewValidationError: an empty
+// field produces extensions.field == "" on the wire, which the frontend
+// cannot render against any input.
+func NewInputValidationInfo(field, message string) *InputValidationInfo {
+	if field == "" {
+		panic("usecase.NewInputValidationInfo: field must be non-empty")
+	}
+	return &InputValidationInfo{Field: field, Message: message}
+}
+
+// liftValidationErr bridges a validator that returns error into an outcome-
+// bearing call site. *ucerr.ValidationError values are unwrapped into an
+// InputValidationInfo carrier (first slot); any other error is passed through
+// unchanged (second slot). nil maps to (nil, nil). The shape lets call sites
+// in promoted methods uniformly route validation failures into outcome data
+// without having to re-classify each validator's return type.
+func liftValidationErr(err error) (*InputValidationInfo, error) {
+	if err == nil {
+		return nil, nil
+	}
+	if ve, ok := errors.AsType[*ucerr.ValidationError](err); ok {
+		return NewInputValidationInfo(ve.Field, ve.Message), nil
+	}
+	return nil, err
+}
+
 // SentinelMapping maps a repository error sentinel to an input-validation field/message pair.
 type SentinelMapping struct {
 	Sentinel error

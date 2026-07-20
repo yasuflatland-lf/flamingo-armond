@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"fmt"
 	"strings"
 
 	"backend/internal/cursor"
@@ -56,6 +57,40 @@ func resolveStandardPageSize(first, last *int) (int, int, error) {
 		return clamp(*first), 0, nil
 	}
 	return 0, clamp(*last), nil
+}
+
+// resolveAdminPageSize enforces the (first XOR last) constraint and clamps
+// each value to [0, maxPageSize]. When both are nil, defaults to
+// (maxPageSize, 0) — unlike the other resolvers (which default to
+// defaultPageSize=20), admin queries default forward paging at the documented
+// maximum to keep single-page admin views simple. maxPageSize is the
+// package-wide cap shared with the card/cardgroup/master-catalog resolvers.
+func resolveAdminPageSize(first, last *int) (int, int, error) {
+	if first != nil && last != nil {
+		return 0, 0, ucerr.NewValidationError("first", "specify either first or last")
+	}
+	if first == nil && last == nil {
+		return maxPageSize, 0, nil
+	}
+	check := func(field string, v int) error {
+		if v < 0 {
+			return ucerr.NewValidationError(field, fmt.Sprintf("%s must be >= 0", field))
+		}
+		if v > maxPageSize {
+			return ucerr.NewValidationError(field, fmt.Sprintf("%s must be <= %d", field, maxPageSize))
+		}
+		return nil
+	}
+	if first != nil {
+		if err := check("first", *first); err != nil {
+			return 0, 0, err
+		}
+		return *first, 0, nil
+	}
+	if err := check("last", *last); err != nil {
+		return 0, 0, err
+	}
+	return 0, *last, nil
 }
 
 // TrimAndDetect trims one trailing item from items when len(items) > want and
