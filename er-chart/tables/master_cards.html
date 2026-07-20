@@ -309,12 +309,12 @@
                                 </thead>
                                 <tbody>
                                 <tr>
-                                    <td>master_cards_back_length</td>
-                                    <td>((char_length(TRIM(BOTH FROM back)) &gt;&#61; 1) AND (char_length(TRIM(BOTH FROM back)) &lt;&#61; 500))</td>
+                                    <td>master_cards_front_length</td>
+                                    <td>((char_length(TRIM(BOTH FROM front)) &gt;&#61; 1) AND (char_length(TRIM(BOTH FROM front)) &lt;&#61; 10000))</td>
                                 </tr>
                                 <tr>
-                                    <td>master_cards_front_length</td>
-                                    <td>((char_length(TRIM(BOTH FROM front)) &gt;&#61; 1) AND (char_length(TRIM(BOTH FROM front)) &lt;&#61; 500))</td>
+                                    <td>master_cards_back_length</td>
+                                    <td>((char_length(TRIM(BOTH FROM back)) &gt;&#61; 1) AND (char_length(TRIM(BOTH FROM back)) &lt;&#61; 10000))</td>
                                 </tr>
                                 </tbody>
                             </table>
