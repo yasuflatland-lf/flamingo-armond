@@ -205,6 +205,61 @@ func TestDecode_MalformedV2_ReturnsError(t *testing.T) {
 	}
 }
 
+// TestDecode_StructurallyIncompleteV2_ReturnsError pins the hand-crafted-body
+// cases that a plain-string v2Body would have accepted. A missing or null "k"
+// used to decode to "" — a legal ordering-key value for the ID orderings — so
+// the body was served as a real bookmark whose text boundary was the empty
+// string, silently returning the wrong page. Every field is now required to be
+// present and non-null, unknown keys are rejected, and a second JSON value
+// after the object is rejected.
+func TestDecode_StructurallyIncompleteV2_ReturnsError(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"missing order key":   `{"i":"cg-1","o":"name","d":"ASC"}`,
+		"null order key":      `{"i":"cg-1","o":"name","d":"ASC","k":null}`,
+		"missing id":          `{"o":"name","d":"ASC","k":"Alpha"}`,
+		"null id":             `{"i":null,"o":"name","d":"ASC","k":"Alpha"}`,
+		"missing order by":    `{"i":"cg-1","d":"ASC","k":"Alpha"}`,
+		"null order by":       `{"i":"cg-1","o":null,"d":"ASC","k":"Alpha"}`,
+		"missing direction":   `{"i":"cg-1","o":"name","k":"Alpha"}`,
+		"null direction":      `{"i":"cg-1","o":"name","d":null,"k":"Alpha"}`,
+		"empty object":        `{}`,
+		"json null":           `null`,
+		"unknown field":       `{"i":"cg-1","o":"name","d":"ASC","k":"Alpha","x":"extra"}`,
+		"trailing json value": `{"i":"cg-1","o":"name","d":"ASC","k":"Alpha"}{"i":"cg-2"}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c := "v2:" + base64.RawURLEncoding.EncodeToString([]byte(body))
+			if _, err := cursor.Decode(c); err == nil {
+				t.Fatalf("expected error for structurally incomplete v2 body %s, got nil", body)
+			}
+		})
+	}
+}
+
+// TestDecode_V2EmptyOrderKeyIsPreserved verifies that an explicitly-present
+// empty "k" still decodes — the ID orderings carry no separate ordering key, so
+// "" is a legal value and must not be conflated with the absent/null cases
+// rejected above.
+func TestDecode_V2EmptyOrderKeyIsPreserved(t *testing.T) {
+	t.Parallel()
+
+	c := "v2:" + base64.RawURLEncoding.EncodeToString([]byte(`{"i":"cg-1","o":"id","d":"ASC","k":""}`))
+	got, err := cursor.Decode(c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !got.HasOrdering {
+		t.Fatalf("expected HasOrdering=true, got %+v", got)
+	}
+	if got.ID != "cg-1" || got.OrderBy != "id" || got.Direction != "ASC" || got.OrderKey != "" {
+		t.Fatalf("unexpected payload: %+v", got)
+	}
+}
+
 // TestEncodeV2_IgnoresHasOrdering verifies that EncodeV2 always emits a v2
 // envelope regardless of the input payload's HasOrdering flag, so a caller
 // cannot accidentally downgrade a cursor by leaving the flag false.

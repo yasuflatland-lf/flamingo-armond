@@ -14,6 +14,7 @@
 package cursor
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"strings"
@@ -52,11 +53,19 @@ type Payload struct {
 // v2Body is the JSON body wrapped by the v2 envelope. The keys are terse
 // because the marshalled form is base64-wrapped into every edge cursor of
 // every page.
+//
+// Every field is a pointer so Decode can tell "absent or null" from "present
+// and empty". A plain string field would decode a missing or null "k" to ""
+// without an error, and "" is a legal ordering-key value (the ID orderings
+// carry no separate key), so the two cases are indistinguishable after the
+// fact — a hand-crafted body with no "k" would then be served as an empty
+// name/text boundary and silently return the wrong page instead of
+// BAD_USER_INPUT.
 type v2Body struct {
-	ID        string `json:"i"`
-	OrderBy   string `json:"o"`
-	Direction string `json:"d"`
-	OrderKey  string `json:"k"`
+	ID        *string `json:"i"`
+	OrderBy   *string `json:"o"`
+	Direction *string `json:"d"`
+	OrderKey  *string `json:"k"`
 }
 
 // Encode wraps a raw entity ID in the v1 opaque cursor envelope.
@@ -78,10 +87,10 @@ func Encode(id string) string {
 // envelope, so Decode always reports HasOrdering true for its output.
 func EncodeV2(p Payload) string {
 	body, err := json.Marshal(v2Body{
-		ID:        p.ID,
-		OrderBy:   p.OrderBy,
-		Direction: p.Direction,
-		OrderKey:  p.OrderKey,
+		ID:        &p.ID,
+		OrderBy:   &p.OrderBy,
+		Direction: &p.Direction,
+		OrderKey:  &p.OrderKey,
 	})
 	if err != nil {
 		// Unreachable: v2Body is a flat struct of strings, which encoding/json
@@ -97,8 +106,8 @@ func EncodeV2(p Payload) string {
 //
 // The bare-ID branch does not validate UUID shape — that is the caller's
 // responsibility. The v1 and v2 branches return a hard error on a malformed
-// base64 payload (and, for v2, on a body that is not the expected JSON);
-// callers should map this to BAD_USER_INPUT.
+// base64 payload (and, for v2, on a body that is not a complete, exactly-shaped
+// JSON object); callers should map this to BAD_USER_INPUT.
 func Decode(c string) (Payload, error) {
 	switch {
 	case strings.HasPrefix(c, v2Prefix):
@@ -106,16 +115,16 @@ func Decode(c string) (Payload, error) {
 		if err != nil {
 			return Payload{}, eris.Wrap(err, "cursor: invalid v2 base64 payload")
 		}
-		var body v2Body
-		if err := json.Unmarshal(raw, &body); err != nil {
-			return Payload{}, eris.Wrap(err, "cursor: invalid v2 json payload")
+		body, err := decodeV2Body(raw)
+		if err != nil {
+			return Payload{}, err
 		}
 		return Payload{
-			ID:          body.ID,
+			ID:          *body.ID,
 			HasOrdering: true,
-			OrderBy:     body.OrderBy,
-			Direction:   body.Direction,
-			OrderKey:    body.OrderKey,
+			OrderBy:     *body.OrderBy,
+			Direction:   *body.Direction,
+			OrderKey:    *body.OrderKey,
 		}, nil
 	case strings.HasPrefix(c, v1Prefix):
 		decoded, err := base64.RawURLEncoding.DecodeString(c[len(v1Prefix):])
@@ -127,4 +136,41 @@ func Decode(c string) (Payload, error) {
 		// Legacy bare-ID path: pass through unchanged.
 		return Payload{ID: c}, nil
 	}
+}
+
+// decodeV2Body parses the v2 envelope's JSON body and rejects anything that is
+// not exactly one complete object of the four known keys: an unknown key, a
+// second JSON value after the object, and any field that is absent or null all
+// return an error rather than a partially-populated body.
+//
+// The strictness matters because the serving code trusts every field it gets
+// back — the ordering pair selects which column the boundary compares against
+// and the key becomes that comparison's right-hand side. A body that decodes
+// with holes would be served as a real bookmark whose missing fields read as
+// empty strings, producing a silently wrong page instead of BAD_USER_INPUT.
+func decodeV2Body(raw []byte) (v2Body, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+
+	var body v2Body
+	if err := dec.Decode(&body); err != nil {
+		return v2Body{}, eris.Wrap(err, "cursor: invalid v2 json payload")
+	}
+	if dec.More() {
+		return v2Body{}, eris.New("cursor: trailing data after v2 json payload")
+	}
+	for _, f := range []struct {
+		key   string
+		value *string
+	}{
+		{"i", body.ID},
+		{"o", body.OrderBy},
+		{"d", body.Direction},
+		{"k", body.OrderKey},
+	} {
+		if f.value == nil {
+			return v2Body{}, eris.Errorf("cursor: v2 json payload is missing %q", f.key)
+		}
+	}
+	return body, nil
 }
