@@ -957,6 +957,44 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_PostTxFindByIDError_Propagat
 	assertInternalChain(t, err, "usecase: master deck: merge master into cardgroup: find destination")
 }
 
+// TestMasterDeckUsecase_MergeMasterIntoCardgroup_PostTxDestVanished_NotErrNotFound
+// pins the translation of the post-commit destination read-back. The merge has
+// already committed when the destination cardgroup is deleted concurrently (no
+// FOR UPDATE is held on that row), so FindByID yields repository.ErrNotFound. The
+// sentinel must NOT travel up: MergeMaster maps any repository.ErrNotFound from
+// this delegate to the master-not-found outcome, which would report the catalog
+// deck as missing and hide the committed merge.
+func TestMasterDeckUsecase_MergeMasterIntoCardgroup_PostTxDestVanished_NotErrNotFound(t *testing.T) {
+	t.Parallel()
+	const ownerID = "11111111-1111-7111-8111-111111111111"
+	const destID = "22222222-2222-7222-8222-222222222222"
+	const masterID = "master-id"
+
+	// One card so the tx body executes and reaches the post-tx FindByID.
+	masterCards := []*domain.MasterCard{
+		masterCard("mc-1", masterID, "alpha", "first", 0),
+	}
+	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
+
+	uc := NewMasterDeckUsecaseWithTx(
+		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}},
+		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: masterCards}},
+		&fakeUserCardRepo{},
+		&fakeUserCG{
+			byID:              map[string]*domain.Cardgroup{destID: destCG},
+			findByIDErr:       repository.ErrNotFound,
+			findByIDErrOnCall: 2, // call 1 = ownership gate (succeeds), call 2 = post-tx read (destination deleted)
+		},
+		stubTxRunner,
+		newTestLogger(),
+	)
+
+	_, err := uc.MergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID(ownerID))
+	require.Error(t, err)
+	require.NotErrorIs(t, err, repository.ErrNotFound, "the post-commit read-back must not surface the ErrNotFound sentinel")
+	assertInternalChain(t, err, "usecase: master deck: merge master into cardgroup: destination cardgroup vanished after merge commit")
+}
+
 // --- PreviewMergeMasterIntoCardgroup tests ------------------------------------
 
 func TestPreviewMergeMasterIntoCardgroup_CountsAddedAndUpdated(t *testing.T) {

@@ -1220,6 +1220,47 @@ func TestMasterCatalogUsecase_MergeMaster_MasterUnpublishedMidFlight_ReturnsNotF
 	}
 }
 
+// TestMasterCatalogUsecase_MergeMaster_DestVanishedAfterCommit_NotNotFoundOutcome
+// wires the real master-deck usecase so the post-commit destination read-back is
+// exercised end to end. The merge commits, then the destination cardgroup is
+// deleted concurrently and FindByID yields repository.ErrNotFound. MergeMaster
+// must surface an internal-class error rather than MergeMasterOutcome{NotFound:true},
+// which would tell the learner the catalog deck does not exist and hide both the
+// committed merge and the deleted destination.
+func TestMasterCatalogUsecase_MergeMaster_DestVanishedAfterCommit_NotNotFoundOutcome(t *testing.T) {
+	t.Parallel()
+	const ownerID = "u1"
+	const destID = "22222222-2222-7222-8222-222222222222"
+	const masterID = "master-id"
+
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Master"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	deck := NewMasterDeckUsecaseWithTx(
+		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}},
+		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
+			masterID: {masterCard("mc-1", masterID, "alpha", "first", 0)},
+		}},
+		&fakeUserCardRepo{},
+		&fakeUserCG{
+			byID:              map[string]*domain.Cardgroup{destID: mustCardgroup(t, destID, ownerID, "My Deck")},
+			findByIDErr:       repository.ErrNotFound,
+			findByIDErrOnCall: 2, // call 1 = ownership gate (succeeds), call 2 = post-commit read (destination deleted)
+		},
+		stubTxRunner,
+		newTestLogger(),
+	)
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+
+	out, err := uc.MergeMaster(authedCtx(ownerID), masterID, destID)
+	if out.NotFound {
+		t.Fatal("a vanished destination must not be reported as a missing master")
+	}
+	assertInternalChain(t, err, "usecase: master catalog: merge: merge master into cardgroup")
+}
+
 func TestMasterCatalogUsecase_MergeMaster_VerifyPublished_ContextCancelled_PassesThrough(t *testing.T) {
 	// context.Canceled from the published-check must propagate unwrapped so its
 	// identity survives errors.Is at the resolver boundary (FromUsecaseError →

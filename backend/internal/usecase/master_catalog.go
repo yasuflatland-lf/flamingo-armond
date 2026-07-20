@@ -741,9 +741,12 @@ func (u *masterCatalogUsecase) MergeMaster(ctx context.Context, masterID, cardgr
 		if errors.Is(err, repository.ErrNotFound) {
 			// The master was unpublished between the FindPublishedByID gate and the
 			// merge tx's own published-scoped re-read (TOCTOU). Collapse into the same
-			// non-disclosure not-found outcome as a pre-gate unknown/draft master. The
-			// destination ownership gate never yields ErrNotFound (it maps a missing
-			// cardgroup to a ucerr.ValidationError), so this branch is master-scoped.
+			// non-disclosure not-found outcome as a pre-gate unknown/draft master. That
+			// in-tx re-read is the only ErrNotFound producer this branch can see: the
+			// destination ownership gate maps a missing cardgroup to a
+			// ucerr.ValidationError, and the post-commit destination read-back translates
+			// its ErrNotFound into a non-sentinel internal error so a destination deleted
+			// mid-merge is never reported as a missing master.
 			return MergeMasterOutcome{NotFound: true}, nil
 		}
 		// Wrap unconditionally, exactly like ImportMaster wraps CopyMasterToUser.

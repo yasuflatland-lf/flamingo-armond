@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -403,6 +404,16 @@ func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 	if err != nil {
 		if isContextDone(err) {
 			return nil, err
+		}
+		if errors.Is(err, repository.ErrNotFound) {
+			// The merge already committed; no FOR UPDATE is held on the destination row
+			// (the card upsert takes only an FK FOR KEY SHARE, released at commit), so a
+			// concurrent delete of the destination cardgroup can land here. Translate the
+			// sentinel into a plain internal error: letting repository.ErrNotFound travel
+			// up would make MergeMaster's master-scoped not-found branch report the
+			// *catalog* deck as missing, hiding both the committed merge and the deleted
+			// destination.
+			return nil, eris.New("usecase: master deck: merge master into cardgroup: destination cardgroup vanished after merge commit")
 		}
 		return nil, eris.Wrap(err, "usecase: master deck: merge master into cardgroup: find destination")
 	}
