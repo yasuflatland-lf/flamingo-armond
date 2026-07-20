@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"math/big"
 
 	"github.com/rotisserie/eris"
@@ -23,11 +24,13 @@ const NewCardRatioDenMax = 100
 
 // ParseNewCardRatio's rejection reasons, one sentinel per rule so callers can
 // attribute the fault to a field with errors.Is instead of re-deriving the
-// bounds. NewCardRatioDenMax is interpolated into the cap message so the
-// exported bound and the message can never drift apart.
+// bounds. The bound-free reasons use plain errors.New so errors.Is matches by
+// identity rather than by eris's message equality; the cap reason follows the
+// bound-carrying sibling precedent (ErrRoleNameTooLong) and interpolates
+// NewCardRatioDenMax so the exported bound and the message cannot drift apart.
 var (
-	ErrNewCardRatioDenominatorNotPositive = eris.New("domain: new card ratio: denominator must be positive")
-	ErrNewCardRatioShareOutOfRange        = eris.New("domain: new card ratio: numerator must satisfy 0 < num < den")
+	ErrNewCardRatioDenominatorNotPositive = errors.New("domain: new card ratio: denominator must be positive")
+	ErrNewCardRatioShareOutOfRange        = errors.New("domain: new card ratio: numerator must satisfy 0 < num < den")
 	ErrNewCardRatioDenominatorTooLarge    = eris.Errorf("domain: new card ratio: reduced denominator exceeds max %d", NewCardRatioDenMax)
 )
 
