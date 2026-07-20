@@ -513,6 +513,54 @@ func TestRequireCursorOrdering(t *testing.T) {
 	}
 }
 
+// TestRejectOrderedCursor covers the guard the connections that still emit v1
+// use in place of requireCursorOrdering. A v1 / legacy bare id passes so those
+// connections keep working, while any v2 cursor is a field-level
+// BAD_USER_INPUT — it cannot have been issued by a connection that never emits
+// the v2 envelope, and accepting it would page by the raw id under an ordering
+// nothing validated against the request.
+func TestRejectOrderedCursor(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		payload cursor.Payload
+		wantErr bool
+	}{
+		{name: "legacy bare id passes through", payload: cursor.Payload{ID: "a"}},
+		{
+			name:    "v2 cursor rejected",
+			payload: cursor.Payload{ID: "a", HasOrdering: true, OrderBy: "updated_at", Direction: "DESC", OrderKey: "k"},
+			wantErr: true,
+		},
+		{
+			name:    "v2 cursor rejected even with empty ordering fields",
+			payload: cursor.Payload{ID: "a", HasOrdering: true},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := rejectOrderedCursor(tc.payload, "before")
+			if !tc.wantErr {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			var ve *ucerr.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("want ValidationError, got %v", err)
+			}
+			if ve.Field != "before" {
+				t.Fatalf("want field before, got %q", ve.Field)
+			}
+		})
+	}
+}
+
 // TestOrderKeyCodecs covers the ordering-key serializers shared by the
 // mutable-key aggregates: a timestamp round-trips at the microsecond
 // resolution Postgres stores, and both the timestamp and integer parsers

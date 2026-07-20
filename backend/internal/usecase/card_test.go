@@ -14,6 +14,7 @@ import (
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 
+	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/repository"
 )
@@ -912,6 +913,33 @@ func TestCardUsecase_ResolveCursor_MalformedV1_ReturnsBadUserInput(t *testing.T)
 		&malformed, "cg1", repository.CardOrderByID, "after",
 	)
 	assertValidationError(t, err, "after", "")
+}
+
+// TestCardUsecase_ResolveCursor_V2Rejected pins the guard against
+// cross-envelope acceptance. Card cursors stay on the v1 envelope — the default
+// ordering is the immutable ID — so a decodable v2 cursor cannot have been
+// issued here and must be BAD_USER_INPUT rather than paged by its raw id under
+// ordering metadata this connection never validated. The ID orderBy is used so
+// the rejection is provably ahead of any repository lookup.
+func TestCardUsecase_ResolveCursor_V2Rejected(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockCardRepository{}
+	uc := NewCardUsecase(nil, repo,
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
+		nil, nil, newTestLogger(),
+	)
+	v2 := cursor.EncodeV2(cursor.Payload{
+		ID:        "card-abc",
+		OrderBy:   "updated_at",
+		Direction: "DESC",
+		OrderKey:  "2026-07-20T00:00:00Z",
+	})
+	_, err := uc.(*cardUsecase).resolveCardCursor(
+		context.Background(),
+		&v2, "cg1", repository.CardOrderByID, "after",
+	)
+	assertValidationError(t, err, "after", "cursor does not match the requested ordering")
 }
 
 // TestCardUsecase_ResolveCursor_V1EncodedID verifies that a v1 encoded cursor

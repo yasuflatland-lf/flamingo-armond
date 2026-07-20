@@ -229,6 +229,26 @@ func requireCursorOrdering(p cursor.Payload, ord PageOrdering, field string) err
 	return nil
 }
 
+// rejectOrderedCursor is the counterpart requireCursorOrdering for connections
+// that do not emit v2: it rejects any inbound cursor carrying ordering
+// metadata, because such a cursor cannot have come from this connection.
+//
+// The guard exists because Decode is shared. A connection that ignores the
+// embedded ordering would accept a v2 cursor and page by the raw id alone —
+// serving a bookmark under an ordering that was never validated against the
+// request. Rejecting is also the behaviour these connections had before Decode
+// learned the v2 envelope: a "v2:" string then fell through the bare-id branch
+// and failed the row lookup as cursor-not-found.
+//
+// Call it at every resolve*Cursor that consumes only p.ID. Once a connection
+// migrates to v2, swap the call for requireCursorOrdering.
+func rejectOrderedCursor(p cursor.Payload, field string) error {
+	if p.HasOrdering {
+		return ucerr.NewValidationError(field, "cursor does not match the requested ordering")
+	}
+	return nil
+}
+
 // errCursorKeyMalformed marks a v2 ordering-key value that does not parse back
 // into the column type the active orderBy needs. Every apply*OrderKey helper
 // returns it in place of the underlying parse failure so the caller can map it

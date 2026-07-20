@@ -469,7 +469,11 @@ func (u *cardUsecase) resolveCardCursor(
 	if !present {
 		return nil, nil
 	}
-	// Card cursors stay on the v1 envelope, so only the raw id is consumed here.
+	// Card cursors stay on the v1 envelope, so only the raw id is consumed here
+	// and a cursor carrying ordering metadata cannot have come from here.
+	if err := rejectOrderedCursor(p, field); err != nil {
+		return nil, err
+	}
 	id := p.ID
 	c := &repository.CardCursor{ID: id}
 	if orderBy == repository.CardOrderByID {

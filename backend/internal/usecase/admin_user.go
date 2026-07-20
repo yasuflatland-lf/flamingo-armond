@@ -199,7 +199,14 @@ func (u *adminUserUsecase) List(
 		return nil, err
 	}
 	// The admin-users listing orders by the immutable created_at, so its cursors
-	// stay on the v1 envelope and only the raw id is consumed here.
+	// stay on the v1 envelope and only the raw id is consumed here; a cursor
+	// carrying ordering metadata cannot have come from this connection.
+	if err := rejectOrderedCursor(afterCur, "after"); err != nil {
+		return nil, err
+	}
+	if err := rejectOrderedCursor(beforeCur, "before"); err != nil {
+		return nil, err
+	}
 	afterID, beforeID := afterCur.ID, beforeCur.ID
 	var afterPtr, beforePtr *string
 	if afterPresent {
