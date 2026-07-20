@@ -11,7 +11,18 @@ Chat replies between Claude Code and the user remain in 日本語 — the rule c
 
 ## Exception — translated UI copy in message catalogs
 
-The frontend ships a localized UI (English + Japanese) via `next-intl`. Deliberately-translated UI strings live **only** in the JSON message catalogs under `frontend/messages/*.json` (e.g. `frontend/messages/ja.json`, plus native-language endonyms such as `Language.ja: "日本語"` in `en.json`). These are data, not source, and are the one sanctioned place to commit non-English text. The CJK verification grep below targets `.go/.ts/.tsx/.graphql/.sql/.md` under `frontend/src` and never `.json` or `frontend/messages/`, so catalogs are exempt by construction. Never inline a Japanese string literal in a `.ts`/`.tsx` source file — extract it into the catalog and reference it via `t("…")`. See [`docs/frontend/i18n.md`](../../docs/frontend/i18n.md).
+The frontend ships a localized UI (English + Japanese) via `next-intl`. Deliberately-translated UI strings live **only** in the JSON message catalogs under `frontend/messages/*.json` (e.g. `frontend/messages/ja.json`, plus native-language endonyms such as `Language.ja: "日本語"` in `en.json`). These are data, not source, and are the one sanctioned place to commit non-English text. The CJK verification grep below targets `.go/.ts/.tsx/.graphql/.sql/.md` under `frontend/src` and never `.json` or `frontend/messages/`, so catalogs are exempt by construction. Never inline a Japanese string literal in a `.ts`/`.tsx` source file for UI copy — extract it into the catalog and reference it via `t("…")`. The single narrow carve-out is the enumerated legal-document modules in [§ "Exception — long-form legal content modules"](#exception--long-form-legal-content-modules) below. See [`docs/frontend/i18n.md`](../../docs/frontend/i18n.md).
+
+## Exception — long-form legal content modules
+
+Two files ship their complete Japanese text inline as module constants and are **exempt** from the "never inline" rule above:
+
+- `frontend/src/app/privacy/content.ts` — `PRIVACY_EN` / `PRIVACY_JA`
+- `frontend/src/app/terms/content.ts` — `TERMS_EN` / `TERMS_JA`
+
+**Reasoning.** A privacy policy and a terms of service are versioned legal data with a publication lifecycle of their own, not UI copy. Each carries its own "last updated" date, is amended as a whole document, and changes on a cadence unrelated to UI string churn. Splitting one across `frontend/messages/{en,ja}.json` would scatter its numbered sections among hundreds of unrelated UI keys, making the document impossible to read, diff, date, or review **as a document** — which is the only way a legal text can be reviewed. Keeping both locales side by side in one module is what makes an amendment reviewable. These pages do not go through `next-intl` at all: each page selects `*_JA` or `*_EN` from `getLocale()` at render time (`frontend/src/app/privacy/page.tsx`, `frontend/src/app/terms/page.tsx`), in both the default export and `generateMetadata`, so no catalog lookup is involved.
+
+**The exemption is enumerated, not general.** It covers whole legal-document modules at the two paths listed above and nothing else. An incidental Japanese literal anywhere else — a component's JSX text, a `placeholder`, an `aria-label`, an error message, a test fixture — remains a violation and must be extracted into the catalog. Adding a third legal document extends the list above in the same edit that adds the file; until it is listed here, it is not exempt.
 
 ## No PR-order references
 
@@ -74,7 +85,7 @@ When a large doc is split into chapter files and an index file lists them, an an
 
 ## Verification
 
-Run before committing — both should print nothing:
+Run before committing. The PR-order grep must print nothing; the CJK grep must print nothing **beyond the expected hits enumerated below**.
 
 ```bash
 # No CJK characters in tracked source/docs.
@@ -95,5 +106,17 @@ perl -CSD -ne 'print "$ARGV\n" if /[\x{3040}-\x{30ff}\x{4e00}-\x{9fff}]/' \
 ```
 
 Plain `perl` (without `-CSD`) also misreports — the `-CSD` flag is what enables UTF-8 stdin/stdout decoding. **Important:** this gate scans `frontend/src/**` including `*.test.tsx`, so a deliberately-CJK test fixture (an arbitrary card `back`, etc.) trips it. Keep fixture data ASCII unless the test is specifically asserting i18n rendering — the CJK exception is for the message catalogs and locale-rendering tests, not incidental fixture strings.
+
+### Expected CJK hits
+
+The command above does **not** print nothing: five tracked files legitimately carry CJK. Diff its output against this list — every line is either on the list or is a real violation.
+
+- `frontend/src/app/privacy/content.ts` — `PRIVACY_JA`, an exempt legal document. See [§ "Exception — long-form legal content modules"](#exception--long-form-legal-content-modules).
+- `frontend/src/app/terms/content.ts` — `TERMS_JA`, the same exemption.
+- `frontend/src/app/privacy/page.test.tsx` — locale-rendering test asserting the `ja` branch renders `PRIVACY_JA` (heading, intro, back-link, `generateMetadata` title).
+- `frontend/src/app/terms/page.test.tsx` — locale-rendering test asserting the `ja` branch renders `TERMS_JA`.
+- `docs/frontend/i18n.md` — documents an e2e assertion that pins a rendered Japanese nav label, so the expected string has to appear verbatim.
+
+The two test files fall under the locale-rendering carve-out described just above; the two content modules fall under the enumerated legal-document exemption. Any other file in the output is a violation to fix, not an entry to add — extend this list only together with a change that this rule's exception sections already sanction.
 
 Run the CJK grep **before writing** any new UI string literals (JSX text, `placeholder`, `aria-label`, etc.), not after. Memory and convention assumptions about "matching existing UX text" are unreliable — grep is the canonical proof. A design-doc claim that "the text matches the rest of the app" was disproven by grep during the card-duplicate-overwrite implementation: the target component was the only file in `frontend/src/` carrying CJK content, requiring a full English rewrite. The grep takes under one second; discovering the violation in review wastes far more.
