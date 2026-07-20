@@ -844,8 +844,7 @@ func TestMasterCardsFromParsedRows_AssignsContiguousPositions(t *testing.T) {
 	}
 
 	const masterCardgroupID = "mcg-test"
-	uc := NewMasterNotionSyncUsecaseWithTx(nil, nil, nil, nil, newTestLogger())
-	cards, skipped := uc.masterCardsFromParsedRows(context.Background(), masterCardgroupID, rows)
+	cards, skipped := masterCardsFromParsedRows(masterCardgroupID, rows, testSyncNow)
 
 	if len(skipped) != 0 {
 		t.Fatalf("skipped = %+v, want none (all rows valid)", skipped)
@@ -870,18 +869,15 @@ func TestMasterCardsFromParsedRows_AssignsContiguousPositions(t *testing.T) {
 	}
 }
 
-// TestMasterCardsFromParsedRows_SkipsInvalidRowsWithWarn verifies that rows
-// whose front or back fail CardText validation (empty, whitespace-only, or
-// over CardTextMax graphemes) are dropped from the import and surfaced with a
-// structured WarnContext record, while the remaining valid rows still produce
-// cards. Position is the index in the original deduped slice, so survivors keep
-// gaps where invalid rows were skipped.
-//
-// Not parallel: injects a logger directly into the usecase.
-func TestMasterCardsFromParsedRows_SkipsInvalidRowsWithWarn(t *testing.T) {
-	var buf bytes.Buffer
-	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	uc := NewMasterNotionSyncUsecaseWithTx(nil, nil, nil, nil, logger)
+// TestMasterCardsFromParsedRows_SkipsInvalidRows verifies that rows whose front
+// or back fail CardText validation (empty, whitespace-only, or over CardTextMax
+// graphemes) are dropped from the import and surfaced as skip diagnostics, while
+// the remaining valid rows still produce cards. Position is the index in the
+// original deduped slice, so survivors keep gaps where invalid rows were
+// skipped, and every skip carries the (position, reason) pair the sync's
+// structured warn is keyed on.
+func TestMasterCardsFromParsedRows_SkipsInvalidRows(t *testing.T) {
+	t.Parallel()
 
 	rows := []ParsedRow{
 		{Front: "apple", Back: "fruit", SourcePageID: "page-1", Line: 1},  // valid
@@ -892,7 +888,7 @@ func TestMasterCardsFromParsedRows_SkipsInvalidRowsWithWarn(t *testing.T) {
 	}
 
 	const masterCardgroupID = "mcg-skip"
-	cards, skipped := uc.masterCardsFromParsedRows(context.Background(), masterCardgroupID, rows)
+	cards, skipped := masterCardsFromParsedRows(masterCardgroupID, rows, testSyncNow)
 
 	// Only the two valid rows survive, keeping their original deduped-slice
 	// indices as Position (0 and 4).
@@ -904,16 +900,35 @@ func TestMasterCardsFromParsedRows_SkipsInvalidRowsWithWarn(t *testing.T) {
 	if len(skipped) != 3 {
 		t.Fatalf("len(skipped) = %d, want 3", len(skipped))
 	}
-	wantSkipLines := []int{2, 3, 4}
-	for i, want := range wantSkipLines {
-		if skipped[i].Line != want {
-			t.Errorf("skipped[%d].Line = %d, want %d", i, skipped[i].Line, want)
+	// Each skip carries the deduped-slice position and the raw constructor error
+	// so the sync can emit the structured warn without the plan touching a logger.
+	wantSkips := []struct {
+		line     int
+		position int
+		field    string
+	}{
+		{line: 2, position: 1, field: "front"},
+		{line: 3, position: 2, field: "back"},
+		{line: 4, position: 3, field: "front"},
+	}
+	for i, want := range wantSkips {
+		if skipped[i].Diagnostic.Line != want.line {
+			t.Errorf("skipped[%d].Diagnostic.Line = %d, want %d", i, skipped[i].Diagnostic.Line, want.line)
 		}
-		if skipped[i].Kind != CardImportErrKindHard {
-			t.Errorf("skipped[%d].Kind = %q, want %q", i, skipped[i].Kind, CardImportErrKindHard)
+		if skipped[i].Diagnostic.Kind != CardImportErrKindHard {
+			t.Errorf("skipped[%d].Diagnostic.Kind = %q, want %q", i, skipped[i].Diagnostic.Kind, CardImportErrKindHard)
 		}
-		if skipped[i].Message == "" {
-			t.Errorf("skipped[%d].Message is empty, want the constructor error text", i)
+		if skipped[i].Diagnostic.Message == "" {
+			t.Errorf("skipped[%d].Diagnostic.Message is empty, want the constructor error text", i)
+		}
+		if skipped[i].Position != want.position {
+			t.Errorf("skipped[%d].Position = %d, want %d", i, skipped[i].Position, want.position)
+		}
+		if skipped[i].Reason == nil {
+			t.Fatalf("skipped[%d].Reason = nil, want the constructor error", i)
+		}
+		if got := masterRowErrorField(skipped[i].Reason); got != want.field {
+			t.Errorf("masterRowErrorField(skipped[%d].Reason) = %q, want %q", i, got, want.field)
 		}
 	}
 	if string(cards[0].Front) != "apple" || cards[0].Position != 0 {
@@ -922,36 +937,57 @@ func TestMasterCardsFromParsedRows_SkipsInvalidRowsWithWarn(t *testing.T) {
 	if string(cards[1].Front) != "banana" || cards[1].Position != 4 {
 		t.Errorf("cards[1] = {Front:%q, Position:%d}, want {banana, 4}", cards[1].Front, cards[1].Position)
 	}
+}
 
-	// Three warn records, one per skipped row, anchored to (position, field).
+// TestMasterNotionSyncUsecase_SkippedRowWarnFields pins the structured warn the
+// sync emits for a row dropped by domain construction. The plan computation is
+// pure, so the warn is now emitted by Sync from the plan's skip diagnostics —
+// this test proves the emission survived the extraction with its exact keys.
+//
+// Not parallel: injects a logger directly into the usecase.
+func TestMasterNotionSyncUsecase_SkippedRowWarnFields(t *testing.T) {
+	overLongBack := jpRunes(domain.CardTextMax + 1)
+	fetcher := &stubNotionFetcher{pages: []notion.Page{
+		{ID: "page-1", Text: "apple " + uniqueBack(1) + "\nbanana " + overLongBack + "\n"},
+	}}
+	cardgroups := &mockMasterCardgroupRepo{cg: &domain.MasterCardgroup{ID: "mcg-target"}}
+	cards := &mockMasterCardRepo{}
+	tx, _ := dictTxRunner()
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, logger)
+
+	if _, err := uc.Sync(context.Background(), SyncToMasterInput{
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
+	}); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
 	records := decodeJSONRecords(t, buf.Bytes())
-	type skip struct {
-		position int
-		field    string
-	}
-	got := make(map[skip]bool)
+	var warnRec map[string]any
 	for _, rec := range records {
-		if rec["msg"] != "notion sync: skipping invalid master card row" {
-			continue
+		if rec["msg"] == "notion sync: skipping invalid master card row" {
+			warnRec = rec
+			break
 		}
-		if rec["cardgroupID"] != masterCardgroupID {
-			t.Errorf("warn cardgroupID = %v, want %q", rec["cardgroupID"], masterCardgroupID)
-		}
-		if rec["reason"] == nil || rec["reason"] == "" {
-			t.Errorf("warn reason is empty for record %v", rec)
-		}
-		pos, _ := rec["position"].(float64)
-		field, _ := rec["field"].(string)
-		got[skip{int(pos), field}] = true
 	}
-	want := []skip{{1, "front"}, {2, "back"}, {3, "front"}}
-	if len(got) != len(want) {
-		t.Fatalf("warn records = %d, want %d (records=%v)", len(got), len(want), got)
+	if warnRec == nil {
+		t.Fatalf("no WarnContext record with msg %q found in log output:\n%s",
+			"notion sync: skipping invalid master card row", buf.String())
 	}
-	for _, w := range want {
-		if !got[w] {
-			t.Errorf("missing warn for skipped row position=%d field=%q", w.position, w.field)
-		}
+	if warnRec["cardgroupID"] != "mcg-target" {
+		t.Errorf("cardgroupID = %v, want %q", warnRec["cardgroupID"], "mcg-target")
+	}
+	// position: JSON numbers decode as float64 in map[string]any.
+	if v, ok := warnRec["position"].(float64); !ok || int(v) != 1 {
+		t.Errorf("position = %v (%T), want 1", warnRec["position"], warnRec["position"])
+	}
+	if warnRec["field"] != "back" {
+		t.Errorf("field = %v, want %q", warnRec["field"], "back")
+	}
+	if warnRec["reason"] == nil || warnRec["reason"] == "" {
+		t.Errorf("reason is empty, want the constructor error text")
 	}
 }
 
