@@ -93,6 +93,61 @@ The following read-path composite indexes are intentionally **not** present. The
 
 Measure before adding either: `EXPLAIN (ANALYZE, BUFFERS)` on the query plus `pg_stat_user_tables.seq_scan` / `pg_stat_statements` to confirm the index will be used.
 
+### Account deletion — what cascades
+
+Deleting an account is a **single `DELETE` against `auth.users`**. Everything a learner owns — decks, cards, review history, FSRS scheduling state, preferences and role assignments — is removed by the database's own `ON DELETE CASCADE` foreign keys; there is no application-level multi-step delete to keep in sync. The isolation point in Go is `UserRepository.DeleteAuthUserTx` (`backend/internal/repository/user.go`), which issues that one statement inside the caller's transaction.
+
+The full set of foreign keys that participate, read from the migration files:
+
+| Child column | References | `ON DELETE` | Declared in |
+|---|---|---|---|
+| `public.users.id` | `auth.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql:98` |
+| `user_roles.user_id` | `public.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql:110` |
+| `user_roles.role_id` | `public.roles(id)` | CASCADE | `20260430080000_initial_schema.up.sql:111` |
+| `cardgroups.owner_id` | `public.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql:120` |
+| `cards.cardgroup_id` | `public.cardgroups(id)` | CASCADE | `20260430080000_initial_schema.up.sql:134` |
+| `swipe_records.user_id` | `public.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql:153` |
+| `swipe_records.card_id` | `public.cards(id)` | CASCADE | `20260430080000_initial_schema.up.sql:154` |
+| `swipe_records.cardgroup_id` | `public.cardgroups(id)` | CASCADE | `20260721000000_add_cardgroup_fk_to_swipe_records.up.sql` |
+| `user_card_fsrs.user_id` | `public.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql:182` |
+| `user_card_fsrs.card_id` | `public.cards(id)` | CASCADE | `20260430080000_initial_schema.up.sql:183` |
+| `user_preferences.user_id` | `public.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql:205` |
+| `user_preferences.last_viewed_cardgroup_id` | `public.cardgroups(id)` | **SET NULL** | `20260430080000_initial_schema.up.sql:207` |
+| `master_cards.master_cardgroup_id` | `public.master_cardgroups(id)` | CASCADE | `20260614000000_add_master_tables.up.sql:89` |
+
+Three properties of that table are load-bearing:
+
+- **The single `SET NULL` is `user_preferences.last_viewed_cardgroup_id`.** No `RESTRICT` (and no `NO ACTION`) foreign key exists anywhere in the migration tree, so nothing can block an account delete. `SET NULL` is what lets a deck be deleted without destroying its owner's preference row; the rationale is in [§ "`user_preferences` — per-user UI continuity"](#user_preferences--per-user-ui-continuity).
+- **`roles`, `ping_records` and `master_cardgroups` carry no user-referencing column.** Deleting a user removes their `user_roles` membership rows, never the `roles` catalog itself. And because `master_cardgroups` has no owner column, **published master decks survive the deletion of the admin who created them** — there is nothing to cascade from.
+- **Every foreign key has a backing index**, so a cascade never degrades to a sequential scan; see [§ "Index strategy"](#index-strategy).
+
+#### The two delete paths
+
+Both entry points converge on the same `DeleteAuthUserTx` call and reach an **identical end state**. They share the last-admin guard (`guardNotLastAdmin`, taken under the admin-role advisory lock), and the admin path additionally refuses self-deletion. They differ on exactly one thing — what a **missing `auth.users` row** means:
+
+| Path | Usecase | Missing `auth.users` row |
+|---|---|---|
+| `deleteMyAccount` | `userUsecase.DeleteMyAccount` (`backend/internal/usecase/user.go`) | idempotent success — returns `nil`, since the account is already gone from the system's perspective |
+| `adminDeleteUser` | `adminUserUsecase.DeleteUser` (`backend/internal/usecase/admin_user.go`) | `ucerr.NewValidationError("id", "user not found")`, i.e. `BAD_USER_INPUT` on the `id` field |
+
+The asymmetry is deliberate: a self-delete is a request to reach a state ("my account is gone") that a second call has already satisfied, whereas an admin naming a nonexistent `id` has supplied bad input and should be told so.
+
+#### Runbook — verify the Supabase-managed `auth.*` cascades
+
+The repository integration tests create only a **stub** `auth.users` table (`backend/internal/database/testsupport/auth_schema.go` — `id`, `email`, `last_sign_in_at` and nothing else). They therefore cannot cover Supabase's own `auth.*` children (`auth.identities`, `auth.sessions`, `auth.refresh_tokens`, `auth.mfa_factors`, …), whose foreign keys are managed by GoTrue migrations and can change across Supabase upgrades. Verifying those is a **manual** operator check; run this against the target database and confirm every row reports `c` (CASCADE):
+
+```sql
+SELECT c.conname,
+       c.conrelid::regclass AS child_table,
+       c.confdeltype        AS on_delete_action
+FROM pg_constraint AS c
+WHERE c.contype = 'f'
+  AND c.confrelid = 'auth.users'::regclass
+ORDER BY child_table, c.conname;
+```
+
+`confdeltype` is a single character: `c` = CASCADE, `n` = SET NULL, `d` = SET DEFAULT, `r` = RESTRICT, `a` = NO ACTION. Anything other than `c` on an `auth.*` child means a delete can fail or leave a row behind, and should be investigated before the next account deletion in production.
+
 ### Postgres upsert: prerequisite UNIQUE / EXCLUSION constraint
 
 `INSERT ... ON CONFLICT (cols) ...` requires the column set to be backed by a UNIQUE constraint, UNIQUE INDEX, or EXCLUSION constraint. Plain (non-unique) indexes and CHECK constraints do not satisfy the requirement — Postgres rejects the statement with SQLSTATE `42P10` "there is no unique or exclusion constraint matching the ON CONFLICT specification". This is checked at planning time, so the failure surfaces immediately, not on a colliding row.

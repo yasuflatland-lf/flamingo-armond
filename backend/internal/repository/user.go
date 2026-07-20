@@ -100,6 +100,10 @@ type UserRepository interface {
 	// user_preferences) are removed automatically by the existing ON DELETE
 	// CASCADE foreign keys — no application-level multi-step delete is needed.
 	// Returns ErrNotFound when no auth.users row matches id (RowsAffected == 0).
+	// The canonical write-up of the cascade — the full foreign-key table, the
+	// single SET NULL, the two delete paths and the operator runbook for the
+	// Supabase-managed auth.* children — is docs/backend-db.md § "Account
+	// deletion — what cascades".
 	//
 	// The delete is transaction-scoped because callers must hold the admin-role
 	// advisory lock (AcquireAdminRoleLockTx) across the last-admin count and the
