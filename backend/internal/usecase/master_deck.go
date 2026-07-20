@@ -247,6 +247,9 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) (
 		}
 		if count > 0 {
 			// Already seeded (or the user created their own cardgroup): no-op.
+			// This guard is also why seeding needs no explicit cardgroup-quota
+			// check: it only ever runs for an owner holding zero cardgroups, and
+			// the published default-starter set is admin-curated and small.
 			return nil
 		}
 
