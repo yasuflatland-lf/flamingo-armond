@@ -38,6 +38,18 @@ type gormCard struct {
 	CreatedAt   time.Time `gorm:"column:created_at"`
 	UpdatedAt   time.Time `gorm:"column:updated_at"`
 	Position    int       `gorm:"column:position"`
+	// OrderKey carries the value the page query ORDERED BY, projected into the
+	// same result set. It backs no column on `cards`: the `->` tag makes it
+	// read-only so GORM never tries to write or migrate it, and it stays nil on
+	// every query that does not alias a column `order_key`.
+	//
+	// It exists for the DUE ordering, whose key is `COALESCE(ucs.due,
+	// cards.created_at)` over a LEFT JOIN and therefore appears on no card
+	// column. Recovering that value with a second query would read a different
+	// snapshot than the one that ordered the page, so a concurrent review of the
+	// boundary card would mint a cursor keyed to a position the page never used.
+	// Selecting it alongside the row keeps emit and order on one snapshot.
+	OrderKey *time.Time `gorm:"->;column:order_key"`
 }
 
 func (gormCard) TableName() string { return "cards" }
@@ -74,6 +86,13 @@ type CardPageRepository interface {
 		dir SortOrder,
 		search *string,
 	) (cards []*domain.Card, totalCount int64, err error)
+	// FindPageByCardgroupForUser additionally returns orderKeys: the value the
+	// query ORDERED BY for each returned row, keyed by card id, taken from the
+	// same result set. The caller mints v2 cursors from it instead of re-reading
+	// the ordering value afterwards — the DUE ordering keys off
+	// COALESCE(user_card_fsrs.due, cards.created_at), which a second query would
+	// resolve against a later snapshot. orderKeys is nil when orderBy is ID,
+	// whose ordering key is the id the cursor already carries.
 	FindPageByCardgroupForUser(
 		ctx context.Context,
 		userID, cardgroupID string,
@@ -82,7 +101,7 @@ type CardPageRepository interface {
 		orderBy CardOrderBy,
 		dir SortOrder,
 		search *string,
-	) (cards []*domain.Card, totalCount int64, err error)
+	) (cards []*domain.Card, totalCount int64, orderKeys map[string]time.Time, err error)
 }
 
 // CardSessionRepository reads a learn/practice session's card pool. Unlike
