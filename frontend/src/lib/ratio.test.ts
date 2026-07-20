@@ -30,8 +30,8 @@ describe("shareTenths", () => {
     expect(shareTenths({ numerator: 1, denominator: 8 })).toBe(125);
   });
 
-  it("truncates toward zero when the exact share sits below the half", () => {
-    // 1/3 = 33.333...%, 2/3 = 66.666...%.
+  it("rounds a repeating share to the nearest tenth in both directions", () => {
+    // 1/3 = 33.333...% rounds down to 333; 2/3 = 66.666...% rounds up to 667.
     expect(shareTenths({ numerator: 1, denominator: 3 })).toBe(333);
     expect(shareTenths({ numerator: 2, denominator: 3 })).toBe(667);
   });
