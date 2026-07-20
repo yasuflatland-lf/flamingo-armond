@@ -311,9 +311,10 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) (
 // inside the caller's transaction. Callers list the master cards first and pass
 // them in, so this helper stays free of the listing step and the caller controls
 // the operation order. pin, when non-nil, overrides every copied card's
-// CreatedAt/UpdatedAt (import pins to the new cardgroup's CreatedAt for a
-// consistent batch timestamp; merge passes nil and keeps the constructor's now()).
-// Returns the insert/update tally. MUST NOT embed a fixed eris layer prefix — the
+// CreatedAt (import pins it to the new cardgroup's CreatedAt; merge passes nil
+// and keeps the constructor's time). The database assigns updated_at uniformly
+// from the transaction timestamp. Returns the insert/update tally. MUST NOT
+// embed a fixed eris layer prefix — the
 // public callers apply their own wrap so the error_chain attributes the failure
 // to the calling operation.
 func (u *masterDeckUsecase) copyMasterCardsIntoTx(
@@ -327,7 +328,6 @@ func (u *masterDeckUsecase) copyMasterCardsIntoTx(
 		}
 		if pin != nil {
 			card.CreatedAt = *pin
-			card.UpdatedAt = *pin
 		}
 		userCards = append(userCards, card)
 	}
@@ -417,8 +417,8 @@ func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx *gorm.DB,
 // row, acquired on the transaction connection. Emptiness needs no such lock: it
 // is decided by len(cards) on the enumeration this merge consumes, so a deck
 // that loses its last card can never be merged as a successful 0/0. Cards
-// conflicting on (cardgroup_id, front) are overwritten
-// (back/position/updated_at); ids are preserved so FSRS state survives. Returns
+// conflicting on (cardgroup_id, front) have back and position overwritten, and
+// the database advances updated_at; ids are preserved so FSRS state survives. Returns
 // the destination cardgroup plus the add/update tally.
 func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 	ctx context.Context, masterID string, destCardgroupID domain.CardgroupID, ownerID domain.UserID,
