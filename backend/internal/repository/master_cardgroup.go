@@ -137,9 +137,17 @@ func NewMasterCardgroupRepository(db *gorm.DB) MasterCardgroupRepository {
 
 // FindByID returns the master cardgroup with the given id, or ErrNotFound.
 func (r *masterCardgroupRepo) FindByID(ctx context.Context, id string) (*domain.MasterCardgroup, error) {
+	return findMasterCardgroupByID(r.db.WithContext(ctx), id)
+}
+
+// findMasterCardgroupByID reads one master cardgroup on the supplied session,
+// returning ErrNotFound when no row matches. Taking the session as a parameter
+// lets a transaction-scoped caller re-read the row it just wrote without
+// leaving its transaction (an outer-connection read would not see the
+// uncommitted write).
+func findMasterCardgroupByID(db *gorm.DB, id string) (*domain.MasterCardgroup, error) {
 	var row gormMasterCardgroup
-	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
-	if err != nil {
+	if err := db.Where("id = ?", id).Take(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}
@@ -332,11 +340,20 @@ func (r *masterCardgroupRepo) applyStatusTransition(
 		if err := transition(m); err != nil {
 			return eris.Wrap(err, "repository: master cardgroup: "+op+": apply")
 		}
-		if err := tx.Model(&gormMasterCardgroup{}).Where("id = ?", id).
-			Updates(map[string]any{"status": string(m.Status), "version": m.Version}).Error; err != nil {
-			return eris.Wrap(err, "repository: master cardgroup: "+op+": save")
+		res := tx.Model(&gormMasterCardgroup{}).Where("id = ?", id).
+			Updates(map[string]any{"status": string(m.Status), "version": m.Version})
+		if res.Error != nil {
+			return eris.Wrap(res.Error, "repository: master cardgroup: "+op+": save")
 		}
-		out = m
+		// Re-fetch inside the same transaction so callers see the
+		// trigger-refreshed updated_at rather than the pre-write aggregate.
+		fresh, err := refetchAfterUpdate(res.RowsAffected, ErrNotFound,
+			func() (*domain.MasterCardgroup, error) { return findMasterCardgroupByID(tx, id) },
+			"repository: master cardgroup: "+op+": refetch")
+		if err != nil {
+			return err
+		}
+		out = fresh
 		return nil
 	})
 	if err != nil {
