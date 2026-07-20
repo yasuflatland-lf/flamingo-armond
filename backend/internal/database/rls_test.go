@@ -79,6 +79,13 @@ func TestRLSPolicies_AuthenticatedRole(t *testing.T) {
 			fx.userB, fx.cardA, fx.groupA, time.Now().UTC())
 		execDeniedAs(t, ctx, authPool, fx.adminUser, insertSwipeSQL(),
 			fx.userB, fx.cardB, fx.groupB, time.Now().UTC())
+
+		// The swipe_records_insert_own policy constrains user_id only, so a
+		// caller inserting their own user_id can still name any deck id. The
+		// cardgroup_id foreign key is what rejects a planted value: this insert
+		// passes the RLS WITH CHECK and fails on SQLSTATE 23503 instead.
+		execDeniedAs(t, ctx, authPool, fx.userA, insertSwipeSQL(),
+			fx.userA, fx.cardA, uuid.NewString(), time.Now().UTC())
 	})
 
 	t.Run("user_card_fsrs", func(t *testing.T) {

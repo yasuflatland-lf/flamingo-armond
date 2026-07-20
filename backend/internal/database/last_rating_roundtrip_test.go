@@ -38,16 +38,16 @@ func TestLastRatingDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back two migrations newest-first:
-	// add_stability_before_to_swipe_records, then add_last_rating_to_user_card_fsrs
-	// (the target). Bump this count when adding migrations after
-	// add_last_rating_to_user_card_fsrs.
-	if err := m.Steps(-2); err != nil {
+	// Step back three migrations newest-first:
+	// add_cardgroup_fk_to_swipe_records, add_stability_before_to_swipe_records,
+	// then add_last_rating_to_user_card_fsrs (the target). Bump this count when
+	// adding migrations after add_last_rating_to_user_card_fsrs.
+	if err := m.Steps(-3); err != nil {
 		t.Fatalf("migrate down to before last_rating migration: %v", err)
 	}
 	requireColumnMissing(t, ctx, sqlDB, "user_card_fsrs", "last_rating")
 
-	if err := m.Steps(2); err != nil {
+	if err := m.Steps(3); err != nil {
 		t.Fatalf("migrate up last_rating migration: %v", err)
 	}
 	requireColumnExists(t, ctx, sqlDB, "user_card_fsrs", "last_rating")
@@ -78,8 +78,9 @@ func TestLastRatingUpMigrationBackfillsLatestSwipe(t *testing.T) {
 		}
 	}()
 
-	// Two steps: add_stability_before_to_swipe_records sits above the target.
-	if err := m.Steps(-2); err != nil {
+	// Three steps: add_cardgroup_fk_to_swipe_records and
+	// add_stability_before_to_swipe_records sit above the target.
+	if err := m.Steps(-3); err != nil {
 		t.Fatalf("migrate down to before last_rating migration: %v", err)
 	}
 	requireColumnMissing(t, ctx, sqlDB, "user_card_fsrs", "last_rating")
@@ -118,7 +119,7 @@ func TestLastRatingUpMigrationBackfillsLatestSwipe(t *testing.T) {
 		t.Fatalf("seed swipe_records rows: %v", err)
 	}
 
-	if err := m.Steps(2); err != nil {
+	if err := m.Steps(3); err != nil {
 		t.Fatalf("migrate up last_rating migration: %v", err)
 	}
 	requireColumnExists(t, ctx, sqlDB, "user_card_fsrs", "last_rating")
