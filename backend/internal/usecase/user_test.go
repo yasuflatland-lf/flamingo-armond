@@ -1,9 +1,11 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -12,6 +14,7 @@ import (
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
+	"backend/internal/usecase/ucerr"
 )
 
 type mockUserRepository struct {
@@ -24,6 +27,12 @@ type mockUserRepository struct {
 	deleteAuthErr    error
 	deleteAuthCalls  int
 	lastDeleteAuthID string
+
+	// authUserMissing makes AuthUserExists report the auth.users row as gone,
+	// i.e. the account was deleted while its JWT was still valid. The zero value
+	// keeps the row present, which is the handle_new_user provisioning race.
+	authUserMissing bool
+	authUserErr     error
 }
 
 func (m *mockUserRepository) FindByID(_ context.Context, _ string) (*domain.User, error) {
@@ -39,6 +48,10 @@ func (m *mockUserRepository) DeleteAuthUserTx(_ context.Context, _ *gorm.DB, id 
 	m.deleteAuthCalls++
 	m.lastDeleteAuthID = id
 	return m.deleteAuthErr
+}
+
+func (m *mockUserRepository) AuthUserExists(_ context.Context, _ string) (bool, error) {
+	return !m.authUserMissing, m.authUserErr
 }
 
 type mockUserRolesRepository struct {
@@ -97,12 +110,15 @@ func TestUserUsecase_Me(t *testing.T) {
 
 	alice := dnPtr("Alice")
 	cases := []struct {
-		name       string
-		ctx        context.Context
-		findResult *domain.User
-		findErr    error
-		wantErr    string // expected outcome label: "UNAUTHENTICATED" (sentinel) | "INTERNAL" (eris-wrapped chain) | "" (no error)
-		wantID     string
+		name            string
+		ctx             context.Context
+		findResult      *domain.User
+		findErr         error
+		authUserMissing bool
+		authUserErr     error
+		wantErr         string // expected outcome label: "UNAUTHENTICATED" (sentinel) | "INTERNAL" (eris-wrapped chain) | "" (no error)
+		wantInternal    string // substring the INTERNAL chain must carry; defaults to the find-user-by-ID wrap
+		wantID          string
 	}{
 		{
 			name:    "unauthenticated returns UNAUTHENTICATED",
@@ -116,10 +132,25 @@ func TestUserUsecase_Me(t *testing.T) {
 			wantID:     "u1",
 		},
 		{
-			name:    "ErrNotFound returns empty user with no error",
+			name:    "ErrNotFound with auth row present returns empty user with no error",
 			ctx:     authedCtx("u1"),
 			findErr: repository.ErrNotFound,
 			wantID:  "u1",
+		},
+		{
+			name:            "ErrNotFound with auth row gone returns UNAUTHENTICATED",
+			ctx:             authedCtx("u1"),
+			findErr:         repository.ErrNotFound,
+			authUserMissing: true,
+			wantErr:         "UNAUTHENTICATED",
+		},
+		{
+			name:         "auth-row probe failure returns INTERNAL",
+			ctx:          authedCtx("u1"),
+			findErr:      repository.ErrNotFound,
+			authUserErr:  errors.New("auth schema unreachable"),
+			wantErr:      "INTERNAL",
+			wantInternal: "usecase: user: me: auth user exists",
 		},
 		{
 			name:    "non-ErrNotFound DB error returns INTERNAL",
@@ -132,7 +163,12 @@ func TestUserUsecase_Me(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			repo := &mockUserRepository{findResult: tc.findResult, findErr: tc.findErr}
+			repo := &mockUserRepository{
+				findResult:      tc.findResult,
+				findErr:         tc.findErr,
+				authUserMissing: tc.authUserMissing,
+				authUserErr:     tc.authUserErr,
+			}
 			uc := NewUserUsecase(nil, repo, nil, nil, newTestLogger())
 
 			p, err := uc.Me(tc.ctx)
@@ -145,7 +181,11 @@ func TestUserUsecase_Me(t *testing.T) {
 				case "UNAUTHENTICATED":
 					assertUnauthenticated(t, err)
 				case "INTERNAL":
-					assertInternalChain(t, err, "usecase: user: me: find user by ID")
+					wantSubstr := tc.wantInternal
+					if wantSubstr == "" {
+						wantSubstr = "usecase: user: me: find user by ID"
+					}
+					assertInternalChain(t, err, wantSubstr)
 				default:
 					t.Fatalf("unhandled wantErr code %q in test", tc.wantErr)
 				}
@@ -161,6 +201,56 @@ func TestUserUsecase_Me(t *testing.T) {
 				t.Fatalf("expected user.ID=%q, got %q", tc.wantID, p.ID)
 			}
 		})
+	}
+}
+
+// TestUserUsecase_Me_ProvisioningRace_LogsWarn pins the log side of the
+// degrade branch: when the auth.users row is still present, the missing
+// public.users row is the handle_new_user provisioning race, and the empty-user
+// return must be announced at WARN so the race stays observable. The
+// deleted-account branch returns before this log, so a warn line here also
+// proves the two cases did not collapse.
+func TestUserUsecase_Me_ProvisioningRace_LogsWarn(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	repo := &mockUserRepository{findErr: repository.ErrNotFound}
+	uc := NewUserUsecase(nil, repo, nil, nil, logger)
+
+	p, err := uc.Me(authedCtx("u1"))
+	if err != nil {
+		t.Fatalf("Me: unexpected error: %v", err)
+	}
+	if p == nil || string(p.ID) != "u1" {
+		t.Fatalf("Me: expected empty user with ID=u1, got %#v", p)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, `"level":"WARN"`) {
+		t.Fatalf("expected a WARN log line, got %q", out)
+	}
+	if !strings.Contains(out, "user row missing for authenticated user") {
+		t.Fatalf("expected the degrade warn message, got %q", out)
+	}
+}
+
+// TestUserUsecase_Me_DeletedAccount_NoWarn proves the deleted-account branch
+// does not reuse the provisioning-race warn: an operator seeing that line would
+// go looking for a broken trigger.
+func TestUserUsecase_Me_DeletedAccount_NoWarn(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	repo := &mockUserRepository{findErr: repository.ErrNotFound, authUserMissing: true}
+	uc := NewUserUsecase(nil, repo, nil, nil, logger)
+
+	if _, err := uc.Me(authedCtx("u1")); !errors.Is(err, ucerr.ErrUnauthenticated) {
+		t.Fatalf("Me: expected ucerr.ErrUnauthenticated, got %v", err)
+	}
+	if out := buf.String(); strings.Contains(out, "user row missing for authenticated user") {
+		t.Fatalf("deleted account must not emit the provisioning-race warn, got %q", out)
 	}
 }
 

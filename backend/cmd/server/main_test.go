@@ -784,6 +784,10 @@ func (c *countingUserRepo) DeleteAuthUserTx(ctx context.Context, tx *gorm.DB, id
 	return c.inner.DeleteAuthUserTx(ctx, tx, id)
 }
 
+func (c *countingUserRepo) AuthUserExists(ctx context.Context, id string) (bool, error) {
+	return c.inner.AuthUserExists(ctx, id)
+}
+
 func (c *countingUserRepo) LastSignInByUserIDs(ctx context.Context, ids []string) (map[string]*time.Time, error) {
 	return c.inner.LastSignInByUserIDs(ctx, ids)
 }

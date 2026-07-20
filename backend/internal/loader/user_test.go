@@ -295,6 +295,12 @@ func (r *countingRepo) DeleteAuthUserTx(_ context.Context, _ *gorm.DB, _ string)
 	panic("countingRepo.DeleteAuthUserTx not configured")
 }
 
+// AuthUserExists satisfies repository.UserRepository. Loader-layer tests never
+// probe auth-row existence; panic if called so accidental coupling is surfaced.
+func (r *countingRepo) AuthUserExists(_ context.Context, _ string) (bool, error) {
+	panic("countingRepo.AuthUserExists not configured")
+}
+
 // LastSignInByUserIDs satisfies repository.UserRepository. Configure the
 // lastSignInByUserIDs func to exercise the LastSignInByUserID loader; the
 // card/cardgroup loader tests leave it nil and panic if it is unexpectedly

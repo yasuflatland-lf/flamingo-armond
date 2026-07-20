@@ -113,6 +113,16 @@ type UserRepository interface {
 	// Supabase Admin REST API is a change to this method body alone.
 	DeleteAuthUserTx(ctx context.Context, tx *gorm.DB, id string) error
 
+	// AuthUserExists reports whether an auth.users row with the given id exists.
+	// It is the existence probe that lets a caller distinguish a deleted account
+	// from a public.users row the handle_new_user trigger has not written yet —
+	// both surface as ErrNotFound on a public.users read.
+	//
+	// Like DeleteAuthUserTx, this is an isolated auth.users access point; it
+	// requires the connection role to have SELECT on auth.users (the production
+	// postgres role has it).
+	AuthUserExists(ctx context.Context, id string) (bool, error)
+
 	// LastSignInByUserIDs reads auth.users.last_sign_in_at for the given user
 	// ids. Each known id maps to its *time.Time (nil when the column is NULL,
 	// i.e. the user has never signed in); ids without an auth.users row are
@@ -231,6 +241,18 @@ func (r *userRepo) DeleteAuthUserTx(ctx context.Context, tx *gorm.DB, id string)
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (r *userRepo) AuthUserExists(ctx context.Context, id string) (bool, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).
+		Table("auth.users").
+		Where("id = ?", id).
+		Limit(1).
+		Count(&count).Error; err != nil {
+		return false, eris.Wrap(err, "repository: user: auth user exists")
+	}
+	return count > 0, nil
 }
 
 func (r *userRepo) LastSignInByUserIDs(ctx context.Context, ids []string) (map[string]*time.Time, error) {

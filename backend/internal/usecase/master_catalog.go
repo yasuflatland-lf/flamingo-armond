@@ -722,6 +722,14 @@ func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string
 		if isContextDone(err) {
 			return ImportMasterOutcome{}, err
 		}
+		// The owner FK no longer resolves: the caller's account was deleted while
+		// their JWT was still valid. Surface UNAUTHENTICATED so the client signs
+		// them out instead of paging an operator with an INTERNAL error. Checked
+		// ahead of the ErrNotFound branch below because the two are distinct
+		// standalone sentinels — a missing owner is not an unpublished master.
+		if errors.Is(err, repository.ErrCardgroupOwnerNotFound) {
+			return ImportMasterOutcome{}, ucerr.ErrUnauthenticated
+		}
 		if errors.Is(err, repository.ErrNotFound) {
 			// The master was unpublished between the FindPublishedByID gate and the
 			// copy's own published-scoped re-read (TOCTOU). Collapse into the same
@@ -849,6 +857,12 @@ func (u *masterCatalogUsecase) SeedDefaultStarters(ctx context.Context) ([]*doma
 	if err != nil {
 		if isContextDone(err) {
 			return nil, err
+		}
+		// Same deleted-account path as ImportMaster: the seed writes cardgroups
+		// owned by the caller, so an unresolvable owner FK means the account is
+		// gone and the client must sign out rather than page an operator.
+		if errors.Is(err, repository.ErrCardgroupOwnerNotFound) {
+			return nil, ucerr.ErrUnauthenticated
 		}
 		return nil, eris.Wrap(err, "usecase: master catalog: seed default starters")
 	}

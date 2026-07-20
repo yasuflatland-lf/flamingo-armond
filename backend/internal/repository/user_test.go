@@ -332,6 +332,35 @@ func TestDeleteAuthUserTx_Success(t *testing.T) {
 	}
 }
 
+// TestAuthUserExists covers both arms of the existence probe Me uses to tell a
+// deleted account apart from an unprovisioned public.users row.
+func TestAuthUserExists(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	id := insertAuthUser(t, ctx)
+	repo := repository.NewUserRepository(testDB.GORM)
+
+	exists, err := repo.AuthUserExists(ctx, id)
+	if err != nil {
+		t.Fatalf("AuthUserExists: %v", err)
+	}
+	if !exists {
+		t.Fatal("AuthUserExists: want true for a live auth user, got false")
+	}
+
+	if err := deleteAuthUserInTx(ctx, repo, id); err != nil {
+		t.Fatalf("DeleteAuthUserTx: %v", err)
+	}
+
+	exists, err = repo.AuthUserExists(ctx, id)
+	if err != nil {
+		t.Fatalf("AuthUserExists after delete: %v", err)
+	}
+	if exists {
+		t.Fatal("AuthUserExists: want false after the auth row is deleted, got true")
+	}
+}
+
 func TestDeleteAuthUserTx_NotFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
