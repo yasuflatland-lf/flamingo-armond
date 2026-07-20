@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   CardsByCardgroupConnectionQuery,
@@ -10,9 +9,9 @@ import type {
   CardgroupQuery as CardgroupQueryType,
   CardsByCardgroupConnectionQuery as CardsByCardgroupConnectionQueryType,
 } from "@/generated/graphql";
-import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
+import { redirectIfAuthError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
-import { readAuthContext } from "@/lib/supabase/auth-status";
+import { requireAuthenticated } from "@/lib/supabase/auth-status";
 import { CardgroupManagementClient } from "./cardgroup-management-client";
 
 // Per-user private route — must not be indexed.
@@ -25,7 +24,7 @@ type Props = {
 export default async function EditCardgroupPage({ params }: Props) {
   const { id } = await params;
 
-  if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
+  await requireAuthenticated("/login");
 
   let cardgroupData: CardgroupQueryType | null = null;
   let connectionData: CardsByCardgroupConnectionQueryType | null = null;
@@ -39,7 +38,7 @@ export default async function EditCardgroupPage({ params }: Props) {
       }),
     ]);
   } catch (err) {
-    if (isUnauthenticatedGraphQLError(err)) redirect("/login");
+    redirectIfAuthError(err, "/login");
     console.error("[cardgroups/:id/edit] gqlFetch failed:", {
       name: err instanceof Error ? err.name : "unknown",
     });

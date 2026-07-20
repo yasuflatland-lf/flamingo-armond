@@ -1,7 +1,5 @@
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { sanitizeReturnTo } from "@/lib/sanitize-return-to";
-import { readAuthContext } from "@/lib/supabase/auth-status";
+import { requireAuthenticated } from "@/lib/supabase/auth-status";
 import { NewCardgroupClient } from "./new-cardgroup-client";
 
 interface NewCardgroupPageProps {
@@ -9,7 +7,7 @@ interface NewCardgroupPageProps {
 }
 
 export default async function NewCardgroupPage({ searchParams }: NewCardgroupPageProps) {
-  if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
+  await requireAuthenticated("/login");
 
   const { welcome, returnTo } = await searchParams;
   const showWelcome = welcome === "1";

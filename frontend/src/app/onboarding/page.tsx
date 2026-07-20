@@ -1,23 +1,20 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { OnboardingMeQuery as OnboardingMeQueryType } from "@/generated/graphql";
-import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
+import { redirectIfAuthError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { isUserOnboarded } from "@/lib/auth/onboarding";
-import { readAuthContext } from "@/lib/supabase/auth-status";
+import { requireAuthenticated } from "@/lib/supabase/auth-status";
 import { OnboardingForm } from "./onboarding-form";
 import { OnboardingMeQuery } from "./queries";
 
 export default async function OnboardingPage() {
-  if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
+  await requireAuthenticated("/login");
 
   let data: OnboardingMeQueryType;
   try {
     data = await gqlFetch(OnboardingMeQuery, { revalidate: 0 });
   } catch (err) {
-    if (isUnauthenticatedGraphQLError(err)) {
-      redirect("/login");
-    }
+    redirectIfAuthError(err, "/login");
     console.error("[onboarding] gqlFetch failed:", {
       name: err instanceof Error ? err.name : "unknown",
     });
