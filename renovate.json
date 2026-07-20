@@ -40,7 +40,7 @@
       "rangeStrategy": "replace"
     },
     {
-      "description": "Hold TypeScript on 6.x. typescript@7 is the native Go port: its package exports map resolves '.' to lib/version.cjs and it no longer ships lib/typescript.js. Next.js probes for exactly that file in dist/lib/verify-typescript-setup.js to detect TypeScript, so `next build` aborts with 'you do not have the required package(s) installed' even though `tsc --noEmit` passes. That breaks the frontend build, the Playwright webServer and the Vercel deploy at once. Lift this cap once Next.js supports the native compiler for a non-preview `typescript` dependency (it currently only special-cases @typescript/native-preview).",
+      "description": "Hold TypeScript on the latest 6.x. typescript@7 is the native Go port: its package exports map resolves '.' to lib/version.cjs and it no longer ships lib/typescript.js. Next.js probes for exactly that file in dist/lib/verify-typescript-setup.js to detect TypeScript, so `next build` aborts with 'you do not have the required package(s) installed' even though `tsc --noEmit` passes. That breaks the frontend build, the Playwright webServer and the Vercel deploy at once. allowedVersions caps how far an upgrade may go without freezing the dependency, so 6.x releases keep flowing through the normal minor/patch automerge path while 7.x is filtered out. It carries no matchUpdateTypes because Renovate rejects that combination in a single rule. Lift this cap once Next.js supports the native compiler for a non-preview `typescript` dependency (it currently only special-cases @typescript/native-preview).",
       "matchManagers": ["npm"],
       "matchPackageNames": ["typescript"],
       "allowedVersions": "<7"
