@@ -78,7 +78,7 @@ l.errors = append(l.errors, parseError{
 return tok
 ```
 
-Returning `NEWLINE` rather than `0` at EOF matters when the malformed line is the last in the payload and carries no trailing newline: the grammar still receives a token that closes the entry, and the *next* `Lex` call reports EOF by itself. Returning `0` there truncates the parse one entry early.
+Returning `NEWLINE` rather than `0` at EOF matters when the malformed line is the last in the payload and carries no trailing newline: the grammar still receives a shiftable token for that line, and the *next* `Lex` call reports EOF by itself. Returning `0` there does not lose any entry — `$end` follows `start`, so the parser reduces `entries` and every previously accepted entry survives — but when the malformed line is the *only* content there is nothing to reduce yet, and the parser emits a second, spurious `syntax error: unexpected $end` HARD diagnostic on top of the UNRECOGNIZED one. The `unrecognized-eof` case in `backend/internal/textdic/service_test.go` pins that: the payload `"@broken no nl"` must produce exactly one validation error.
 
 The live implementation is `backend/internal/textdic/lexer.go:184-219`, called from `lexer.go:119`.
 
