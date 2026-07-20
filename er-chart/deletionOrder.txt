@@ -1,8 +1,8 @@
 ping_records
+swipe_records
 user_roles
 user_preferences
 user_card_fsrs
-swipe_records
 master_cards
 cards
 cardgroups

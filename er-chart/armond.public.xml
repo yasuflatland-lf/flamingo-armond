@@ -4,6 +4,7 @@
       <table name="cardgroups" remarks="" schema="public" type="TABLE">
          <column autoUpdated="false" defaultValue="gen_random_uuid()" digits="0" id="0" name="id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
             <child column="cardgroup_id" foreignKey="cards_cardgroup_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="cards"/>
+            <child column="cardgroup_id" foreignKey="swipe_records_cardgroup_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="swipe_records"/>
             <child column="last_viewed_cardgroup_id" foreignKey="user_preferences_last_viewed_cardgroup_id_fkey" implied="false" onDeleteCascade="false" schema="public" table="user_preferences"/>
          </column>
          <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="owner_id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
@@ -143,7 +144,9 @@
          <column autoUpdated="false" defaultValue="null" digits="0" id="11" name="lapses" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
          <column autoUpdated="false" defaultValue="null" digits="0" id="12" name="state" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
          <column autoUpdated="false" defaultValue="null" digits="6" id="13" name="last_review" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="14" name="cardgroup_id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="14" name="cardgroup_id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
+            <parent column="id" foreignKey="swipe_records_cardgroup_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="cardgroups"/>
+         </column>
          <column autoUpdated="false" defaultValue="null" digits="0" id="15" name="phase_before" nullable="true" remarks="" size="5" type="int2" typeCode="5"/>
          <column autoUpdated="false" defaultValue="null" digits="0" id="16" name="scheduled_days_before" nullable="true" remarks="" size="10" type="int4" typeCode="4"/>
          <column autoUpdated="false" defaultValue="null" digits="17" id="17" name="stability_before" nullable="true" remarks="" size="17" type="float8" typeCode="8"/>
@@ -153,6 +156,9 @@
          </index>
          <index name="idx_swipe_records_card_id" unique="false">
             <column ascending="true" name="card_id"/>
+         </index>
+         <index name="idx_swipe_records_cardgroup_id" unique="false">
+            <column ascending="true" name="cardgroup_id"/>
          </index>
          <index name="idx_swipe_records_user_cardgroup" unique="false">
             <column ascending="true" name="user_id"/>

@@ -123,6 +123,11 @@
                                                 <td class="constraint detail"><span title='Cascade on delete:&#10;Deletion of parent deletes child'>C</span></td>
                                             </tr>
                                             <tr>
+                                                <td title="swipe_records.cardgroup_id references cardgroups.id via swipe_records_cardgroup_id_fkey"><a href='swipe_records.html'>swipe_records</a><span class='relatedKey'>.cardgroup_id</span></td>
+                                                <td class="constraint detail">swipe_records_cardgroup_id_fkey</td>
+                                                <td class="constraint detail"><span title='Cascade on delete:&#10;Deletion of parent deletes child'>C</span></td>
+                                            </tr>
+                                            <tr>
                                                 <td title="user_preferences.last_viewed_cardgroup_id references cardgroups.id via user_preferences_last_viewed_cardgroup_id_fkey"><a href='user_preferences.html'>user_preferences</a><span class='relatedKey'>.last_viewed_cardgroup_id</span></td>
                                                 <td class="constraint detail">user_preferences_last_viewed_cardgroup_id_fkey</td>
                                                 <td class="constraint detail"><span title='Null on delete:&#10;Foreign key to parent set to NULL when parent deleted'>N</span></td>
@@ -311,23 +316,24 @@
                                 <div class="tab-content no-padding">
                                     <div class="chart tab-pane active" id="oneDegreeImg-chart" style="position: relative; overflow-x:auto;">
                                         <map id="oneDegreeRelationshipsDiagram" name="oneDegreeRelationshipsDiagram">
-<area shape="rect" id="node1" href="cardgroups.html" target="_top" title="cardgroups" alt="" coords="231,81,541,297">
-<area shape="rect" id="node2" href="users.html" target="_top" title="users" alt="" coords="5,60,187,207">
-<area shape="rect" id="node3" href="cards.html" target="_top" title="cards" alt="" coords="647,169,823,345">
-<area shape="rect" id="node4" href="user_preferences.html" target="_top" title="user_preferences" alt="" coords="585,5,884,152">
+<area shape="rect" id="node1" href="cardgroups.html" target="_top" title="cardgroups" alt="" coords="231,227,541,443">
+<area shape="rect" id="node2" href="users.html" target="_top" title="users" alt="" coords="5,94,187,240">
+<area shape="rect" id="node3" href="cards.html" target="_top" title="cards" alt="" coords="647,258,823,434">
+<area shape="rect" id="node4" href="swipe_records.html" target="_top" title="swipe_records" alt="" coords="928,199,1203,434">
+<area shape="rect" id="node5" href="user_preferences.html" target="_top" title="user_preferences" alt="" coords="585,94,884,240">
 </map>
                                         <a name='diagram'><img id="oneDegreeImg" src="../diagrams/tables/cardgroups.1degree.png" usemap="#oneDegreeRelationshipsDiagram" class="diagram" border="0" align="left"></a>
                                     </div>
                                     <div class="chart tab-pane " id="twodegreesDegreeImg-chart" style="position: relative; overflow-x:auto;">
                                         <map id="twoDegreesRelationshipsDiagram" name="twoDegreesRelationshipsDiagram">
-<area shape="rect" id="node1" href="cardgroups.html" target="_top" title="cardgroups" alt="" coords="417,108,728,324">
-<area shape="rect" id="node2" href="users.html" target="_top" title="users" alt="" coords="237,306,373,394">
-<area shape="rect" id="node8" title="auth.users" alt="" coords="5,304,193,392">
-<area shape="rect" id="node3" href="cards.html" target="_top" title="cards" alt="" coords="810,80,986,256">
-<area shape="rect" id="node4" href="swipe_records.html" target="_top" title="swipe_records" alt="" coords="1068,45,1291,133">
-<area shape="rect" id="node5" href="user_card_fsrs.html" target="_top" title="user_card_fsrs" alt="" coords="1068,226,1291,314">
-<area shape="rect" id="node6" href="user_preferences.html" target="_top" title="user_preferences" alt="" coords="772,273,1024,361">
-<area shape="rect" id="node7" href="user_roles.html" target="_top" title="user_roles" alt="" coords="481,414,665,502">
+<area shape="rect" id="node1" href="cardgroups.html" target="_top" title="cardgroups" alt="" coords="417,91,728,307">
+<area shape="rect" id="node2" href="users.html" target="_top" title="users" alt="" coords="237,290,373,378">
+<area shape="rect" id="node8" title="auth.users" alt="" coords="5,287,193,375">
+<area shape="rect" id="node3" href="cards.html" target="_top" title="cards" alt="" coords="830,134,966,222">
+<area shape="rect" id="node4" href="swipe_records.html" target="_top" title="swipe_records" alt="" coords="1068,63,1291,151">
+<area shape="rect" id="node5" href="user_card_fsrs.html" target="_top" title="user_card_fsrs" alt="" coords="1068,246,1291,334">
+<area shape="rect" id="node6" href="user_preferences.html" target="_top" title="user_preferences" alt="" coords="772,245,1024,333">
+<area shape="rect" id="node7" href="user_roles.html" target="_top" title="user_roles" alt="" coords="481,397,665,485">
 </map>
                                         <a name='diagram'><img id="twodegreesDegreeImg" src="../diagrams/tables/cardgroups.2degrees.png" usemap="#twoDegreesRelationshipsDiagram" class="diagram" border="0" align="left"></a>
                                     </div>

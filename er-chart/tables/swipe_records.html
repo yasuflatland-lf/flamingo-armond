@@ -357,7 +357,7 @@
                                     <td></td>
                                 </tr>
                                 <tr>
-                                    <td class='indexedColumn' title='Indexed'><i class='fa fa-sitemap fa-rotate-120' style='padding-right: 5px;'></i><span id="cardgroup_id">cardgroup_id</span></td>
+                                    <td class='foreignKey' title='Foreign Key'><i class='icon ion-key iconkey' style='padding-left: 5px;'></i><span id="cardgroup_id">cardgroup_id</span></td>
                                     <td>uuid</td>
                                     <td>2147483647</td>
                                     <td title=''></td>
@@ -369,6 +369,11 @@
                                     </td>
                                     <td>
                                         <table border='0' cellspacing='0' cellpadding='0'>
+                                            <tr>
+                                                <td title="swipe_records.cardgroup_id references cardgroups.id via swipe_records_cardgroup_id_fkey"><a href='cardgroups.html'>cardgroups</a><span class='relatedKey'>.id</span></td>
+                                                <td class="constraint detail">swipe_records_cardgroup_id_fkey</td>
+                                                <td class="constraint detail"><span title='Cascade on delete:&#10;Deletion of parent deletes child'>C</span></td>
+                                            </tr>
                                         </table>
                                     </td>
                                     <td></td>
@@ -467,6 +472,12 @@
                                     <td>card_id</td>
                                 </tr>
                                 <tr>
+                                    <td title='Indexed'>idx_swipe_records_cardgroup_id</td>
+                                    <td>Performance</td>
+                                    <td><span title='Ascending'>Asc</span></td>
+                                    <td>cardgroup_id</td>
+                                </tr>
+                                <tr>
                                     <td title='Indexed'>idx_swipe_records_user_cardgroup</td>
                                     <td>Performance</td>
                                     <td><span title='Ascending'>Asc</span>/<span title='Ascending'>Asc</span>/<span title='Descending'>Desc</span></td>
@@ -533,22 +544,23 @@
                                 <div class="tab-content no-padding">
                                     <div class="chart tab-pane active" id="oneDegreeImg-chart" style="position: relative; overflow-x:auto;">
                                         <map id="oneDegreeRelationshipsDiagram" name="oneDegreeRelationshipsDiagram">
-<area shape="rect" id="node1" href="swipe_records.html" target="_top" title="swipe_records" alt="" coords="231,40,656,637">
-<area shape="rect" id="node2" href="cards.html" target="_top" title="cards" alt="" coords="8,169,184,345">
-<area shape="rect" id="node3" href="users.html" target="_top" title="users" alt="" coords="5,5,187,152">
+<area shape="rect" id="node1" href="cardgroups.html" target="_top" title="cardgroups" alt="" coords="231,143,425,319">
+<area shape="rect" id="node2" href="users.html" target="_top" title="users" alt="" coords="5,105,187,252">
+<area shape="rect" id="node3" href="cards.html" target="_top" title="cards" alt="" coords="469,113,645,289">
+<area shape="rect" id="node4" href="swipe_records.html" target="_top" title="swipe_records" alt="" coords="689,5,1115,603">
 </map>
                                         <a name='diagram'><img id="oneDegreeImg" src="../diagrams/tables/swipe_records.1degree.png" usemap="#oneDegreeRelationshipsDiagram" class="diagram" border="0" align="left"></a>
                                     </div>
                                     <div class="chart tab-pane " id="twodegreesDegreeImg-chart" style="position: relative; overflow-x:auto;">
                                         <map id="twoDegreesRelationshipsDiagram" name="twoDegreesRelationshipsDiagram">
-<area shape="rect" id="node1" href="cardgroups.html" target="_top" title="cardgroups" alt="" coords="463,439,657,527">
-<area shape="rect" id="node2" href="users.html" target="_top" title="users" alt="" coords="237,504,419,651">
-<area shape="rect" id="node8" title="auth.users" alt="" coords="5,507,193,595">
-<area shape="rect" id="node3" href="cards.html" target="_top" title="cards" alt="" coords="739,297,915,473">
-<area shape="rect" id="node4" href="swipe_records.html" target="_top" title="swipe_records" alt="" coords="997,5,1423,603">
-<area shape="rect" id="node5" href="user_card_fsrs.html" target="_top" title="user_card_fsrs" alt="" coords="1099,620,1321,708">
-<area shape="rect" id="node6" href="user_preferences.html" target="_top" title="user_preferences" alt="" coords="701,491,953,579">
-<area shape="rect" id="node7" href="user_roles.html" target="_top" title="user_roles" alt="" coords="468,632,652,720">
+<area shape="rect" id="node1" href="cardgroups.html" target="_top" title="cardgroups" alt="" coords="417,465,612,553">
+<area shape="rect" id="node2" href="users.html" target="_top" title="users" alt="" coords="237,555,373,643">
+<area shape="rect" id="node8" title="auth.users" alt="" coords="5,552,193,640">
+<area shape="rect" id="node3" href="cards.html" target="_top" title="cards" alt="" coords="714,447,850,535">
+<area shape="rect" id="node4" href="swipe_records.html" target="_top" title="swipe_records" alt="" coords="952,5,1377,603">
+<area shape="rect" id="node5" href="user_card_fsrs.html" target="_top" title="user_card_fsrs" alt="" coords="1053,620,1276,708">
+<area shape="rect" id="node6" href="user_preferences.html" target="_top" title="user_preferences" alt="" coords="656,552,908,640">
+<area shape="rect" id="node7" href="user_roles.html" target="_top" title="user_roles" alt="" coords="423,693,607,781">
 </map>
                                         <a name='diagram'><img id="twodegreesDegreeImg" src="../diagrams/tables/swipe_records.2degrees.png" usemap="#twoDegreesRelationshipsDiagram" class="diagram" border="0" align="left"></a>
                                     </div>
