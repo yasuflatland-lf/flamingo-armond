@@ -727,6 +727,42 @@ describe("SwipeCardStack — keyboard triggers all three directions", () => {
 });
 
 // ---------------------------------------------------------------------------
+// describe: auto-repeat keydown is ignored
+// ---------------------------------------------------------------------------
+
+describe("SwipeCardStack — ignores auto-repeat keydown", () => {
+  it.each([
+    ["ArrowLeft", "left"],
+    ["ArrowRight", "right"],
+    ["ArrowDown", "down"],
+  ] as const)("emits no rating for a repeat '%s' keydown, but still rates on a normal press", (key, expectedDirection) => {
+    const onCardSwiped = vi.fn();
+
+    renderWithIntl(
+      <SwipeCardStack cards={[cardA]} displayMode="ALWAYS_VISIBLE" onCardSwiped={onCardSwiped} />,
+    );
+
+    // A held key auto-repeats: the browser fires keydown with repeat = true.
+    // None of those may reach triggerSwipe, so no fly-off is even queued.
+    fireEvent.keyDown(document, { key, repeat: true });
+    fireEvent.keyDown(document, { key, repeat: true });
+    expect(pendingFlyOuts).toHaveLength(0);
+    act(() => {
+      settleFlyOuts();
+    });
+    expect(onCardSwiped).not.toHaveBeenCalled();
+
+    // A deliberate discrete press still rates the active card.
+    fireEvent.keyDown(document, { key });
+    act(() => {
+      settleFlyOuts();
+    });
+    expect(onCardSwiped).toHaveBeenCalledTimes(1);
+    expect(onCardSwiped).toHaveBeenCalledWith(cardA, expectedDirection);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // describe: internal state reset after card change
 // ---------------------------------------------------------------------------
 

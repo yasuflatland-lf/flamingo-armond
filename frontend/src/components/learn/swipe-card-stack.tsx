@@ -201,6 +201,11 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (!activeCardRef.current) return;
+      // Auto-repeat from a held key is not a deliberate rating. Each repeat
+      // would advance the stack and commit an irreversible FSRS schedule step,
+      // so a resting finger could burn through the whole queue. Discrete
+      // presses (repeat === false) stay unthrottled.
+      if (event.repeat) return;
       const activeElement = document.activeElement;
       const tagName = activeElement?.tagName;
       if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") return;
