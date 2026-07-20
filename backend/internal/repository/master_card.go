@@ -322,6 +322,9 @@ func (r *masterCardRepo) Create(ctx context.Context, c *domain.MasterCard) error
 		if classified := classifyMasterCardFKError(err); classified != nil {
 			return classified
 		}
+		if classified := classifyTextLengthViolation(err); classified != nil {
+			return classified
+		}
 		return eris.Wrap(err, "repository: master card: create")
 	}
 	return nil
@@ -361,6 +364,9 @@ func (r *masterCardRepo) Update(ctx context.Context, id string, patch MasterCard
 
 	res := r.db.WithContext(ctx).Model(&gormMasterCard{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
+		if classified := classifyTextLengthViolation(res.Error); classified != nil {
+			return nil, classified
+		}
 		return nil, eris.Wrap(res.Error, "repository: master card: update")
 	}
 	return refetchAfterUpdate(res.RowsAffected, ErrNotFound,
@@ -403,6 +409,9 @@ func (r *masterCardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []
 	res, err := upsertManyTx(ctx, tx, rows, "master_cards", "master_cardgroup_id")
 	if err != nil {
 		if classified := classifyMasterCardFKError(err); classified != nil {
+			return UpsertManyTxResult{}, classified
+		}
+		if classified := classifyTextLengthViolation(err); classified != nil {
 			return UpsertManyTxResult{}, classified
 		}
 		return UpsertManyTxResult{}, eris.Wrap(err, "repository: master card: upsert many")

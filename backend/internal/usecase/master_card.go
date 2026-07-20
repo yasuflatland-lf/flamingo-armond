@@ -293,6 +293,9 @@ func (u *masterCardUsecase) CreateMasterCard(ctx context.Context, in CreateMaste
 		if errors.Is(err, repository.ErrMasterCardgroupNotFound) {
 			return CreateMasterCardOutcome{}, ucerr.NewValidationError("masterCardgroupId", "master cardgroup not found")
 		}
+		if translated := translateTextLengthViolation(err); translated != nil {
+			return CreateMasterCardOutcome{}, translated
+		}
 		if isContextDone(err) {
 			return CreateMasterCardOutcome{}, err
 		}
@@ -360,6 +363,9 @@ func (u *masterCardUsecase) UpdateMasterCard(ctx context.Context, id string, in 
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return UpdateMasterCardOutcome{}, ucerr.NewValidationError("id", "master card not found")
+		}
+		if translated := translateTextLengthViolation(err); translated != nil {
+			return UpdateMasterCardOutcome{}, translated
 		}
 		if isContextDone(err) {
 			return UpdateMasterCardOutcome{}, err
@@ -504,6 +510,9 @@ func (u *masterCardUsecase) ImportMasterCards(ctx context.Context, in ImportMast
 	}); err != nil {
 		if errors.Is(err, repository.ErrMasterCardgroupNotFound) {
 			return ImportMasterCardsOutput{}, ucerr.NewValidationError("masterCardgroupId", "master cardgroup not found")
+		}
+		if translated := translateTextLengthViolation(err); translated != nil {
+			return ImportMasterCardsOutput{}, translated
 		}
 		if isContextDone(err) {
 			return ImportMasterCardsOutput{}, err

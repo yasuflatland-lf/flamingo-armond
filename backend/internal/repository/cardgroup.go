@@ -315,6 +315,9 @@ func (r *cardgroupRepo) Create(ctx context.Context, cg *domain.Cardgroup) error 
 		if fkErr := classifyCardgroupOwnerFKError(err); fkErr != nil {
 			return fkErr
 		}
+		if classified := classifyTextLengthViolation(err); classified != nil {
+			return classified
+		}
 		return eris.Wrap(err, "repository: cardgroup: create")
 	}
 	return nil
@@ -331,6 +334,9 @@ func (r *cardgroupRepo) CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Ca
 	if err := tx.WithContext(ctx).Create(cardgroupToRow(cg)).Error; err != nil {
 		if fkErr := classifyCardgroupOwnerFKError(err); fkErr != nil {
 			return fkErr
+		}
+		if classified := classifyTextLengthViolation(err); classified != nil {
+			return classified
 		}
 		return eris.Wrap(err, "repository: cardgroup: create tx")
 	}
@@ -411,6 +417,9 @@ func (r *cardgroupRepo) Update(ctx context.Context, id string, patch CardgroupUp
 
 	res := r.db.WithContext(ctx).Model(&gormCardgroup{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
+		if classified := classifyTextLengthViolation(res.Error); classified != nil {
+			return nil, classified
+		}
 		return nil, eris.Wrap(res.Error, "repository: cardgroup: update")
 	}
 	// Re-fetch so callers see the trigger-refreshed updated_at.

@@ -527,6 +527,13 @@ func (u *masterCatalogUsecase) CreateMaster(ctx context.Context, in CreateMaster
 		return CreateMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: create master: construct")
 	}
 	if err := u.repo.Create(ctx, m); err != nil {
+		if translated := translateTextLengthViolation(err); translated != nil {
+			info, lerr := liftValidationErr(translated)
+			if lerr != nil {
+				return CreateMasterOutcome{}, lerr
+			}
+			return CreateMasterOutcome{Validation: info}, nil
+		}
 		return CreateMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: create master")
 	}
 	return CreateMasterOutcome{Master: m}, nil
@@ -584,6 +591,13 @@ func (u *masterCatalogUsecase) UpdateMaster(ctx context.Context, id string, in U
 
 	updated, err := u.repo.Update(ctx, id, patch)
 	if err != nil {
+		if translated := translateTextLengthViolation(err); translated != nil {
+			info, lerr := liftValidationErr(translated)
+			if lerr != nil {
+				return UpdateMasterOutcome{}, lerr
+			}
+			return UpdateMasterOutcome{Validation: info}, nil
+		}
 		info, perr := mapMasterAdminErr(err, "id", "usecase: master catalog: update master")
 		if perr != nil {
 			return UpdateMasterOutcome{}, perr

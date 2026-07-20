@@ -203,6 +203,9 @@ func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {
 		if classified := classifyCardDuplicateFront(err); classified != nil {
 			return classified
 		}
+		if classified := classifyTextLengthViolation(err); classified != nil {
+			return classified
+		}
 		return eris.Wrap(err, "repository: card: create")
 	}
 	return nil
@@ -251,6 +254,9 @@ func (r *cardRepo) Update(ctx context.Context, id string, patch CardUpdate) (*do
 	res := r.db.WithContext(ctx).Model(&gormCard{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
 		if classified := classifyCardDuplicateFront(res.Error); classified != nil {
+			return nil, classified
+		}
+		if classified := classifyTextLengthViolation(res.Error); classified != nil {
 			return nil, classified
 		}
 		return nil, eris.Wrap(res.Error, "repository: card: update")

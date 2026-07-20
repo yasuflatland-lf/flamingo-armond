@@ -7,6 +7,7 @@ import (
 	"github.com/rotisserie/eris"
 
 	"backend/internal/domain"
+	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
 )
 
@@ -75,6 +76,24 @@ func translateCardErr(err error) error {
 	default:
 		return eris.Wrap(err, "usecase: translate card err: unexpected domain error")
 	}
+}
+
+// translateTextLengthViolation maps a *repository.TextLengthViolationError -- the
+// database-side CHECK backstop on a "<table>_<column>_length" constraint
+// (SQLSTATE 23514) -- to a field-scoped BAD_USER_INPUT validation error keyed on
+// the column the constraint guards ("front", "back", "name").
+//
+// It returns nil when err is not a text-length violation, so callers use it as a
+// pre-filter before their existing eris.Wrap. The domain layer enforces the
+// user-visible cap in grapheme clusters and the database bound is a wide
+// multiple of it, so this path fires only for pathological combining-mark input;
+// classifying it as BAD_USER_INPUT rather than INTERNAL means the learner sees a
+// length message instead of an unexplained failure.
+func translateTextLengthViolation(err error) error {
+	if v, ok := errors.AsType[*repository.TextLengthViolationError](err); ok {
+		return ucerr.NewValidationError(v.Field, fmt.Sprintf("%s is too long", v.Field))
+	}
+	return nil
 }
 
 // translateCardgroupNameErr maps domain sentinel errors from ParseCardgroupName

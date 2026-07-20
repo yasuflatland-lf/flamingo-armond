@@ -266,6 +266,9 @@ func (u *cardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 			}
 			return CreateCardOutcome{Duplicate: dup}, nil
 		}
+		if translated := translateTextLengthViolation(err); translated != nil {
+			return CreateCardOutcome{}, translated
+		}
 		return CreateCardOutcome{}, eris.Wrap(err, "usecase: card: create: repo create")
 	}
 	u.observer.OnCardCreated(ctx, card)
@@ -341,6 +344,9 @@ func (u *cardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 		if errors.Is(err, repository.ErrCardDuplicateFront) {
 			return UpdateCardOutcome{}, ucerr.NewValidationError("front",
 				"A card with this front already exists in this cardgroup")
+		}
+		if translated := translateTextLengthViolation(err); translated != nil {
+			return UpdateCardOutcome{}, translated
 		}
 		return UpdateCardOutcome{}, eris.Wrap(err, "usecase: card: update: repo update")
 	}

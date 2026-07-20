@@ -300,6 +300,9 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 		if isContextDone(err) {
 			return ImportCardsOutput{}, err
 		}
+		if translated := translateTextLengthViolation(err); translated != nil {
+			return ImportCardsOutput{}, translated
+		}
 		return ImportCardsOutput{}, eris.Wrap(err, "usecase: card import: tx")
 	}
 
