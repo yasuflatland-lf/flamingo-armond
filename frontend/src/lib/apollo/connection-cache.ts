@@ -208,8 +208,8 @@ interface RemoveConnectionEdgeAcrossVariantsInput {
  * targets a single `variables` key via `readQuery`/`writeQuery`, `cache.modify`
  * visits every cached instance of the field, so a delete drops the entity from
  * all active search-filter variants in one pass. The filter resolves the edge by
- * the normalized `node.id` (never `edge.cursor`, which is an opaque "v1:..." value
- * that never equals the raw id) and short-circuits when nothing matched so an
+ * the normalized `node.id` (never `edge.cursor`, which is an opaque "v1:..." or
+ * "v2:..." envelope that never equals the raw id) and short-circuits when nothing matched so an
  * unaffected variant keeps its cached reference. See `.claude/rules/pagination.md`.
  */
 export function removeConnectionEdgeAcrossVariants(
@@ -227,7 +227,7 @@ export function removeConnectionEdgeAcrossVariants(
         };
         if (!conn.edges) return existing;
         // Filter by the normalized node id, not by `cursor` (the edge cursor is
-        // an opaque "v1:..." value that never equals the raw id).
+        // an opaque "v1:..." / "v2:..." envelope that never equals the raw id).
         const next = conn.edges.filter((edge) => readField<string>("id", edge.node) !== id);
         if (next.length === conn.edges.length) return existing;
         return { ...conn, edges: next, totalCount: Math.max(0, (conn.totalCount ?? 0) - 1) };

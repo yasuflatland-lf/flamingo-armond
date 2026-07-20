@@ -202,3 +202,17 @@ func TestUpdateNewCardRatio_InvalidRatio_FieldAttribution(t *testing.T) {
 		})
 	}
 }
+
+// TestTranslateNewCardRatioErr_NilAndDefaultArm covers the two branches
+// domain.ParseNewCardRatio can never drive: a nil error passes through, and an
+// unexpected non-domain error maps to INTERNAL rather than a validation error.
+func TestTranslateNewCardRatioErr_NilAndDefaultArm(t *testing.T) {
+	t.Parallel()
+
+	if err := translateNewCardRatioErr(nil); err != nil {
+		t.Fatalf("translateNewCardRatioErr(nil): want nil, got %v", err)
+	}
+
+	err := translateNewCardRatioErr(errors.New("surprise"))
+	assertInternalChain(t, err, "usecase: update new card ratio: translate ratio error")
+}
