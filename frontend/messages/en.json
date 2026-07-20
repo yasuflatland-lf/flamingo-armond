@@ -50,6 +50,11 @@
     "heading": "Something went wrong",
     "message": "An unexpected error occurred. Please try again."
   },
+  "RootError": {
+    "heading": "We couldn't load the app",
+    "message": "This can happen when the server is starting up. Please try again in a moment.",
+    "retry": "Try again"
+  },
   "Settings": {
     "heading": "Settings"
   },
@@ -76,7 +81,8 @@
     "sessionComplete": "Session complete",
     "sessionCompleteMessage": "There are no due cards left in this batch.",
     "reviewedCount": "{count, plural, one {You reviewed # card in this batch.} other {You reviewed # cards in this batch.}}",
-    "refreshCards": "Refresh cards"
+    "refreshCards": "Refresh cards",
+    "swipeSaveFailed": "Could not save that swipe. Please try again."
   },
   "Catalog": {
     "title": "Catalog",
@@ -99,6 +105,7 @@
     "signInAgain": "Sign in again",
     "viewDeckAriaLabel": "View {name}",
     "backToCatalog": "Back to catalog",
+    "loadingDeck": "Loading deck",
     "deckEmpty": "This deck has no cards yet.",
     "deckEmptySearch": "No cards match \"{query}\""
   },
@@ -126,6 +133,7 @@
     "renameCardgroupTitle": "Rename cardgroup",
     "deleteCardgroupTitle": "Delete cardgroup",
     "deleteCardgroupDesc": "This will permanently delete \"{name}\" and all its cards. This cannot be undone.",
+    "cardgroupDeleted": "Cardgroup \"{name}\" deleted",
     "mergeFromCatalog": "Merge from catalog",
     "mergeFromCatalogTitle": "Merge from catalog",
     "mergeSuccess": "Merge complete: added {added, number} / updated {updated, number}.",
@@ -400,6 +408,7 @@
     "editRoleTitle": "Edit role",
     "editRoleAriaLabel": "Edit role {name}",
     "deleteRoleAriaLabel": "Delete {name}",
+    "roleDeleted": "Role \"{name}\" deleted",
     "createRole": "Create",
     "deleteAuthFailed": "Your session has expired. Please sign in again.",
     "systemRole": "System role",

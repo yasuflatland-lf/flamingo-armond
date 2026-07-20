@@ -101,9 +101,12 @@ func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCardIn
 // UpdateCard is the resolver for the updateCard field.
 //
 // Returns a union: `model.UpdateCardSuccess` on the happy path, or
-// `model.InputValidationError` when front/back fails validation. Validation
-// failures are "errors as data" — the error return is reserved for auth and
-// infrastructure failures.
+// `model.InputValidationError` when front/back fails shape validation (empty /
+// too long) — those travel as "errors as data". The error return carries auth
+// and infrastructure failures, plus one field-level validation case the union
+// cannot express: renaming a front onto one that already exists in the same
+// cardgroup surfaces as BAD_USER_INPUT with `extensions.field == "front"`,
+// because `UpdateCardResult` has no duplicate-front variant.
 func (r *mutationResolver) UpdateCard(ctx context.Context, id string, input model.UpdateCardInput) (model.UpdateCardResult, error) {
 	outcome, err := r.CardUC.Update(ctx, id, usecase.UpdateCardInput{
 		Front: input.Front,

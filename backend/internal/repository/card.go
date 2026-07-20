@@ -12,11 +12,23 @@ import (
 	"backend/internal/domain"
 )
 
-// ErrCardDuplicateFront is returned by Create when an INSERT collides with the
-// (cardgroup_id, front) unique index. Standalone — do NOT join with ErrNotFound;
-// the row was found, which is precisely the failure (see
+// ErrCardDuplicateFront is returned by Create and Update when the write collides
+// with the (cardgroup_id, front) unique index. Standalone — do NOT join with
+// ErrNotFound; the row was found, which is precisely the failure (see
 // docs/backend/error-wrapping/standalone-sentinels-not-every-joins-errnotfound.md).
 var ErrCardDuplicateFront = errors.New("repository: card with same front exists in cardgroup")
+
+// classifyCardDuplicateFront maps a Postgres unique violation on the
+// (cardgroup_id, front) index to ErrCardDuplicateFront, and returns nil for any
+// other error. Both write paths — INSERT (Create) and UPDATE (Update) — can hit
+// the same constraint, so they share this classifier rather than each spelling
+// out the code/constraint pair.
+func classifyCardDuplicateFront(err error) error {
+	if pgConstraintViolation(err, "23505", "uq_cards_cardgroup_front") {
+		return ErrCardDuplicateFront
+	}
+	return nil
+}
 
 type gormCard struct {
 	ID          string    `gorm:"column:id;primaryKey;type:uuid"`
@@ -188,8 +200,8 @@ func (r *cardRepo) ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, car
 
 func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {
 	if err := r.db.WithContext(ctx).Create(cardToRow(card)).Error; err != nil {
-		if pgConstraintViolation(err, "23505", "uq_cards_cardgroup_front") {
-			return ErrCardDuplicateFront
+		if classified := classifyCardDuplicateFront(err); classified != nil {
+			return classified
 		}
 		return eris.Wrap(err, "repository: card: create")
 	}
@@ -238,6 +250,9 @@ func (r *cardRepo) Update(ctx context.Context, id string, patch CardUpdate) (*do
 
 	res := r.db.WithContext(ctx).Model(&gormCard{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
+		if classified := classifyCardDuplicateFront(res.Error); classified != nil {
+			return nil, classified
+		}
 		return nil, eris.Wrap(res.Error, "repository: card: update")
 	}
 	return refetchAfterUpdate(res.RowsAffected, ErrNotFound,

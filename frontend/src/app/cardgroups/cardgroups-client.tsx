@@ -262,7 +262,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
 
     scheduleDelete({
       id,
-      label: `Cardgroup "${name}" deleted`,
+      label: t("cardgroupDeleted", { name }),
       optimisticRollback: () => {
         restoreMyCardgroupSnapshot(apollo.cache, snapshot, activeVars);
       },

@@ -155,10 +155,17 @@ type mockAdminChecker struct {
 	isAdmin bool
 	err     error
 	calls   int
+	// onCall, when set, runs at the top of IsAdmin. Tests use it to snapshot
+	// sibling-mock counters and assert call ordering (e.g. that the admin-role
+	// advisory lock was already taken when the membership read happened).
+	onCall func()
 }
 
 func (m *mockAdminChecker) IsAdmin(_ context.Context, _ string) (bool, error) {
 	m.calls++
+	if m.onCall != nil {
+		m.onCall()
+	}
 	if m.err != nil {
 		return false, m.err
 	}

@@ -36,6 +36,32 @@ func TestCardgroupRepository_CreateTx(t *testing.T) {
 	require.Equal(t, domain.CardgroupName("CreateTx Group"), got.Name, "name is persisted")
 }
 
+// TestCardgroupRepository_CreateTx_DeletedOwner_ReturnsOwnerNotFound is the
+// transaction-scoped mirror of the Create case: the master-deck copy paths
+// (deck import and new-user starter seeding) write the caller-owned cardgroup
+// through CreateTx, so a deleted account must reach the same classification
+// there. The owner's auth.users row is deleted (cascading public.users away)
+// while a still-valid JWT would keep authenticating them, so the in-transaction
+// insert violates cardgroups_owner_id_fkey.
+func TestCardgroupRepository_CreateTx_DeletedOwner_ReturnsOwnerNotFound(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardgroupRepository(testDB.GORM)
+
+	userRepo := repository.NewUserRepository(testDB.GORM)
+	require.NoError(t, deleteAuthUserInTx(ctx, userRepo, ownerID))
+
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.CreateTx(ctx, tx, newCardgroup(ownerID, "Imported deck for a deleted account"))
+	})
+	require.ErrorIs(t, err, repository.ErrCardgroupOwnerNotFound)
+	// Standalone sentinel: a missing owner must not read as a missing cardgroup,
+	// or the import path would collapse it into the not-found outcome reserved
+	// for an unpublished master.
+	require.NotErrorIs(t, err, repository.ErrNotFound)
+}
+
 // TestCardgroupRepository_CreateTx_RollsBackOnError proves the insert
 // participates in the caller's transaction: when the transaction function
 // returns an error after the CreateTx insert, the row is rolled back and no

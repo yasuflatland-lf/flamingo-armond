@@ -712,7 +712,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	logger := slog.New(slog.DiscardHandler)
-	userUC := usecase.NewUserUsecase(userRepo, userRoleRepo, nil, logger)
+	userUC := usecase.NewUserUsecase(nil, userRepo, userRoleRepo, nil, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
@@ -780,8 +780,12 @@ func (c *countingUserRepo) ListPage(
 	return c.inner.ListPage(ctx, after, before, first, last, search)
 }
 
-func (c *countingUserRepo) DeleteAuthUser(ctx context.Context, id string) error {
-	return c.inner.DeleteAuthUser(ctx, id)
+func (c *countingUserRepo) DeleteAuthUserTx(ctx context.Context, tx *gorm.DB, id string) error {
+	return c.inner.DeleteAuthUserTx(ctx, tx, id)
+}
+
+func (c *countingUserRepo) AuthUserExists(ctx context.Context, id string) (bool, error) {
+	return c.inner.AuthUserExists(ctx, id)
 }
 
 func (c *countingUserRepo) LastSignInByUserIDs(ctx context.Context, ids []string) (map[string]*time.Time, error) {
@@ -1947,7 +1951,7 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
 	logger := slog.New(slog.DiscardHandler)
-	userUC := usecase.NewUserUsecase(userRepo, userRoleRepo, nil, logger)
+	userUC := usecase.NewUserUsecase(nil, userRepo, userRoleRepo, nil, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
@@ -2354,6 +2358,9 @@ type panicUserRoleRepo struct{}
 func (panicUserRoleRepo) HasRole(_ context.Context, _ string, _ domain.RoleName) (bool, error) {
 	panic("not used in this test")
 }
+func (panicUserRoleRepo) HasRoleTx(_ context.Context, _ *gorm.DB, _ string, _ domain.RoleName) (bool, error) {
+	panic("not used in this test")
+}
 func (panicUserRoleRepo) AssignRoleToUser(_ context.Context, _, _ string) error {
 	panic("not used in this test")
 }
@@ -2367,6 +2374,12 @@ func (panicUserRoleRepo) ListByUserIDs(_ context.Context, _ []string) (map[strin
 	panic("not used in this test")
 }
 func (panicUserRoleRepo) CountAdmins(_ context.Context) (int64, error) {
+	panic("not used in this test")
+}
+func (panicUserRoleRepo) CountAdminsTx(_ context.Context, _ *gorm.DB) (int64, error) {
+	panic("not used in this test")
+}
+func (panicUserRoleRepo) AcquireAdminRoleLockTx(_ context.Context, _ *gorm.DB) error {
 	panic("not used in this test")
 }
 

@@ -845,8 +845,11 @@ func TestMasterCardsFromParsedRows_AssignsContiguousPositions(t *testing.T) {
 
 	const masterCardgroupID = "mcg-test"
 	uc := NewMasterNotionSyncUsecaseWithTx(nil, nil, nil, nil, newTestLogger())
-	cards := uc.masterCardsFromParsedRows(context.Background(), masterCardgroupID, rows)
+	cards, skipped := uc.masterCardsFromParsedRows(context.Background(), masterCardgroupID, rows)
 
+	if len(skipped) != 0 {
+		t.Fatalf("skipped = %+v, want none (all rows valid)", skipped)
+	}
 	if len(cards) != len(rows) {
 		t.Fatalf("len(cards) = %d, want %d", len(cards), len(rows))
 	}
@@ -889,12 +892,29 @@ func TestMasterCardsFromParsedRows_SkipsInvalidRowsWithWarn(t *testing.T) {
 	}
 
 	const masterCardgroupID = "mcg-skip"
-	cards := uc.masterCardsFromParsedRows(context.Background(), masterCardgroupID, rows)
+	cards, skipped := uc.masterCardsFromParsedRows(context.Background(), masterCardgroupID, rows)
 
 	// Only the two valid rows survive, keeping their original deduped-slice
 	// indices as Position (0 and 4).
 	if len(cards) != 2 {
 		t.Fatalf("len(cards) = %d, want 2", len(cards))
+	}
+	// One diagnostic per dropped row, keyed by the source line, so the caller can
+	// tell "some rows dropped" from "every row dropped".
+	if len(skipped) != 3 {
+		t.Fatalf("len(skipped) = %d, want 3", len(skipped))
+	}
+	wantSkipLines := []int{2, 3, 4}
+	for i, want := range wantSkipLines {
+		if skipped[i].Line != want {
+			t.Errorf("skipped[%d].Line = %d, want %d", i, skipped[i].Line, want)
+		}
+		if skipped[i].Kind != CardImportErrKindHard {
+			t.Errorf("skipped[%d].Kind = %q, want %q", i, skipped[i].Kind, CardImportErrKindHard)
+		}
+		if skipped[i].Message == "" {
+			t.Errorf("skipped[%d].Message is empty, want the constructor error text", i)
+		}
 	}
 	if string(cards[0].Front) != "apple" || cards[0].Position != 0 {
 		t.Errorf("cards[0] = {Front:%q, Position:%d}, want {apple, 0}", cards[0].Front, cards[0].Position)
@@ -1068,5 +1088,77 @@ func TestMasterNotionSyncUsecase_NoDeletions(t *testing.T) {
 	}
 	if *txCalls != 1 {
 		t.Fatalf("tx calls = %d, want 1", *txCalls)
+	}
+}
+
+// TestMasterNotionSyncUsecase_AllRowsFailDomainValidation pins the whole-payload
+// guard: every row parses at the grammar level but fails domain construction, so
+// the keep-set would be empty and the diff-prune would wipe the master cardgroup.
+// The sync must reject the payload before opening the persistence transaction.
+func TestMasterNotionSyncUsecase_AllRowsFailDomainValidation(t *testing.T) {
+	t.Parallel()
+
+	overLongBack := jpRunes(domain.CardTextMax + 1)
+	fetcher := &stubNotionFetcher{pages: []notion.Page{
+		{ID: "page-1", Text: "apple " + overLongBack + "\nbanana " + overLongBack + "\n"},
+	}}
+	cardgroups := &mockMasterCardgroupRepo{cg: &domain.MasterCardgroup{ID: "mcg-target"}}
+	cards := &mockMasterCardRepo{existingFronts: []string{"apple", "banana"}}
+	tx, txCalls := dictTxRunner()
+	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+
+	_, err := uc.Sync(context.Background(), SyncToMasterInput{
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
+	})
+	if err == nil {
+		t.Fatal("Sync error = nil, want ErrNotionSyncInvalidInput")
+	}
+	if !errors.Is(err, ErrNotionSyncInvalidInput) {
+		t.Fatalf("Sync error = %v, want ErrNotionSyncInvalidInput", err)
+	}
+	if cards.upsertCalls != 0 || cards.listCalls != 0 || cards.deleteCalls != 0 || *txCalls != 0 {
+		t.Fatalf("persistence ran: upserts=%d list=%d deletes=%d tx=%d, want all zero",
+			cards.upsertCalls, cards.listCalls, cards.deleteCalls, *txCalls)
+	}
+	if len(cards.deletedFronts) != 0 {
+		t.Fatalf("deletedFronts = %v, want none (existing master cards must survive)", cards.deletedFronts)
+	}
+}
+
+// TestMasterNotionSyncUsecase_PartiallyInvalidBatchStillPrunes pins the
+// complement of the guard above: when at least one row survives domain
+// construction, the per-row prune semantics are unchanged — a row dropped by
+// NewMasterCard is absent from the keep-set and its stale card is pruned.
+func TestMasterNotionSyncUsecase_PartiallyInvalidBatchStillPrunes(t *testing.T) {
+	t.Parallel()
+
+	overLongBack := jpRunes(domain.CardTextMax + 1)
+	fetcher := &stubNotionFetcher{pages: []notion.Page{
+		{ID: "page-1", Text: "apple " + uniqueBack(1) + "\nbanana " + overLongBack + "\n"},
+	}}
+	cardgroups := &mockMasterCardgroupRepo{cg: &domain.MasterCardgroup{ID: "mcg-target"}}
+	cards := &mockMasterCardRepo{existingFronts: []string{"apple", "banana"}}
+	tx, txCalls := dictTxRunner()
+	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+
+	out, err := uc.Sync(context.Background(), SyncToMasterInput{
+		PageIDs:             []string{"page-1"},
+		MasterCardgroupName: "English",
+	})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if len(cards.upserted) != 1 || cards.upserted[0].Front.String() != "apple" {
+		t.Fatalf("upserted = %+v, want only the valid apple row", cards.upserted)
+	}
+	if len(cards.deletedFronts) != 1 || cards.deletedFronts[0] != "banana" {
+		t.Fatalf("deletedFronts = %v, want [banana] (per-row prune is deliberate)", cards.deletedFronts)
+	}
+	if *txCalls != 1 {
+		t.Fatalf("tx calls = %d, want 1", *txCalls)
+	}
+	if out.CardgroupID != "mcg-target" {
+		t.Fatalf("CardgroupID = %q, want mcg-target", out.CardgroupID)
 	}
 }

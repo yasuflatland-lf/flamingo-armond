@@ -8,10 +8,12 @@ import (
 	"log/slog"
 
 	"github.com/rotisserie/eris"
+	"gorm.io/gorm"
 
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
+	"backend/internal/usecase/ucerr"
 )
 
 // UserRepository is the consumer-driven interface used by UserUsecase.
@@ -19,20 +21,33 @@ import (
 type UserRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.User, error)
 	Update(ctx context.Context, id string, patch repository.UserUpdate) (*domain.User, error)
-	// DeleteAuthUser deletes the caller's auth.users row, cascading to all
-	// associated data. See repository.UserRepository.DeleteAuthUser for details.
-	DeleteAuthUser(ctx context.Context, id string) error
+	// DeleteAuthUserTx deletes the caller's auth.users row inside the caller's
+	// transaction, cascading to all associated data. See
+	// repository.UserRepository.DeleteAuthUserTx for details.
+	DeleteAuthUserTx(ctx context.Context, tx *gorm.DB, id string) error
+	// AuthUserExists reports whether an auth.users row with the given id still
+	// exists. Me uses it to tell a deleted account apart from a public.users row
+	// the handle_new_user trigger has not written yet.
+	AuthUserExists(ctx context.Context, id string) (bool, error)
 }
 
 type UserRolesRepository interface {
 	ListByUser(ctx context.Context, userID string) ([]*domain.Role, error)
-	// CountAdmins returns the number of users holding the admin role. Used by
+	// AcquireAdminRoleLockTx serializes admin-count-changing mutations; see
+	// repository.UserRoleRepository for the race it closes.
+	AcquireAdminRoleLockTx(ctx context.Context, tx *gorm.DB) error
+	// CountAdminsTx returns the number of users holding the admin role, read
+	// inside the caller's transaction under the lock above. Used by
 	// DeleteMyAccount's last-admin guard.
-	CountAdmins(ctx context.Context) (int64, error)
+	CountAdminsTx(ctx context.Context, tx *gorm.DB) (int64, error)
 }
 
 // UserUsecase is the authenticated user profile and role-query surface.
 type UserUsecase interface {
+	// Me returns the authenticated caller's profile. Returns
+	// ucerr.ErrUnauthenticated when no caller is on the context, and also when
+	// the caller's auth.users row is gone (the account was deleted while its
+	// JWT was still valid) so the client signs the caller out.
 	Me(ctx context.Context) (*domain.User, error)
 	UpdateUser(ctx context.Context, in UpdateUserInput) (UpdateProfileOutcome, error)
 	// DeleteMyAccount deletes the authenticated caller's own account and all
@@ -45,15 +60,18 @@ type userUsecase struct {
 	repo   UserRepository
 	roles  UserRolesRepository
 	auth   AdminChecker
+	tx     txRunner
 	logger *slog.Logger
 }
 
-// NewUserUsecase constructs the user profile usecase.
-func NewUserUsecase(repo UserRepository, roles UserRolesRepository, authSvc AdminChecker, logger *slog.Logger) UserUsecase {
+// NewUserUsecase constructs the user profile usecase. db backs the transaction
+// runner that scopes DeleteMyAccount's last-admin guard together with the
+// delete; tests that inject repository fakes may pass nil (see runInTx).
+func NewUserUsecase(db *gorm.DB, repo UserRepository, roles UserRolesRepository, authSvc AdminChecker, logger *slog.Logger) UserUsecase {
 	if logger == nil {
 		panic("usecase: user: logger is required")
 	}
-	return &userUsecase{repo: repo, roles: roles, auth: authSvc, logger: logger}
+	return &userUsecase{repo: repo, roles: roles, auth: authSvc, tx: newTxRunner(db), logger: logger}
 }
 
 func (u *userUsecase) Me(ctx context.Context) (*domain.User, error) {
@@ -66,7 +84,21 @@ func (u *userUsecase) Me(ctx context.Context) (*domain.User, error) {
 		return appUser, nil
 	}
 	if errors.Is(err, repository.ErrNotFound) {
-		// handle_new_user trigger should have provisioned the row; degrade gracefully.
+		// A missing public.users row has two causes that must not share an outcome:
+		// the handle_new_user trigger has not provisioned it yet (a race on a brand
+		// new sign-up), or the account was deleted while its JWT was still valid
+		// (auth.users delete cascades to public.users). JWT verification is
+		// stateless, so this read is the first place the deletion is observable.
+		// Probe auth.users to tell them apart: absent means deleted, so return
+		// ucerr.ErrUnauthenticated and let the client sign the caller out; present
+		// means the provisioning race, which keeps the empty-user degrade.
+		exists, existsErr := u.repo.AuthUserExists(ctx, user.Sub)
+		if existsErr != nil {
+			return nil, eris.Wrap(existsErr, "usecase: user: me: auth user exists")
+		}
+		if !exists {
+			return nil, ucerr.ErrUnauthenticated
+		}
 		u.logger.WarnContext(ctx, "user row missing for authenticated user; returning empty user",
 			"user_id", user.Sub)
 		return &domain.User{ID: domain.UserID(user.Sub)}, nil
@@ -170,9 +202,10 @@ func buildUserProfilePatch(displayName *string, bio *string) (repository.UserUpd
 //  1. Authentication: no caller on the context returns ucerr.ErrUnauthenticated.
 //  2. Last-admin guard: if the caller holds the admin role and is the only admin,
 //     return a forbidden error so the system is never left without an admin.
-//     This is best-effort (no row lock): a concurrent admin deletion could race
-//     past the count. At this app's scale the TOCTOU window is acceptable; a
-//     Postgres advisory lock is the upgrade path if it ever matters.
+//     The admin-role advisory lock is taken at the front of the transaction,
+//     before the caller's admin membership is read, so neither a concurrent
+//     admin removal nor a concurrent promotion of the caller can race past the
+//     count; the guard and the delete then commit under the same lock.
 //
 // A missing auth.users row at delete time is treated as idempotent success — the
 // account is already gone from the system's perspective.
@@ -185,31 +218,40 @@ func (u *userUsecase) DeleteMyAccount(ctx context.Context) error {
 	if u.auth == nil || u.roles == nil {
 		return eris.New("usecase: user: delete my account: admin guard deps not configured")
 	}
-	isAdmin, err := u.auth.IsAdmin(ctx, caller.Sub)
-	if err != nil {
-		if isContextDone(err) {
-			return err
+	return runInTx(ctx, u.tx, func(tx *gorm.DB) error {
+		if lerr := acquireAdminRoleLock(ctx, tx, u.roles, "usecase: user: delete my account: count admins"); lerr != nil {
+			return lerr
 		}
-		return eris.Wrap(err, "usecase: user: delete my account: check admin")
-	}
-	if err := guardNotLastAdmin(
-		ctx,
-		isAdmin,
-		u.roles,
-		"usecase: user: delete my account: count admins",
-		"cannot delete the last admin account; promote another admin first",
-	); err != nil {
-		return err
-	}
+		// Read the caller's admin membership only once the lock is held: a
+		// caller promoted to admin between an unlocked read and the delete
+		// would skip the guard and could empty the admin set.
+		isAdmin, aerr := u.auth.IsAdmin(ctx, caller.Sub)
+		if aerr != nil {
+			if isContextDone(aerr) {
+				return aerr
+			}
+			return eris.Wrap(aerr, "usecase: user: delete my account: check admin")
+		}
+		if gerr := guardNotLastAdmin(
+			ctx,
+			tx,
+			isAdmin,
+			u.roles,
+			"usecase: user: delete my account: count admins",
+			"cannot delete the last admin account; promote another admin first",
+		); gerr != nil {
+			return gerr
+		}
 
-	if err := u.repo.DeleteAuthUser(ctx, caller.Sub); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil
+		if derr := u.repo.DeleteAuthUserTx(ctx, tx, caller.Sub); derr != nil {
+			if errors.Is(derr, repository.ErrNotFound) {
+				return nil
+			}
+			if isContextDone(derr) {
+				return derr
+			}
+			return eris.Wrap(derr, "usecase: user: delete my account")
 		}
-		if isContextDone(err) {
-			return err
-		}
-		return eris.Wrap(err, "usecase: user: delete my account")
-	}
-	return nil
+		return nil
+	})
 }

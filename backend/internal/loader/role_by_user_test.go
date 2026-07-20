@@ -25,6 +25,10 @@ func (s *roleBatchRepoStub) HasRole(_ context.Context, _ string, _ domain.RoleNa
 	panic("roleBatchRepoStub.HasRole not configured")
 }
 
+func (s *roleBatchRepoStub) HasRoleTx(_ context.Context, _ *gorm.DB, _ string, _ domain.RoleName) (bool, error) {
+	panic("roleBatchRepoStub.HasRoleTx not configured")
+}
+
 func (s *roleBatchRepoStub) AssignRoleToUser(_ context.Context, _, _ string) error {
 	panic("roleBatchRepoStub.AssignRoleToUser not configured")
 }
@@ -46,6 +50,14 @@ func (s *roleBatchRepoStub) ListByUserIDs(ctx context.Context, userIDs []string)
 
 func (s *roleBatchRepoStub) CountAdmins(_ context.Context) (int64, error) {
 	panic("roleBatchRepoStub.CountAdmins not configured")
+}
+
+func (s *roleBatchRepoStub) CountAdminsTx(_ context.Context, _ *gorm.DB) (int64, error) {
+	panic("roleBatchRepoStub.CountAdminsTx not configured")
+}
+
+func (s *roleBatchRepoStub) AcquireAdminRoleLockTx(_ context.Context, _ *gorm.DB) error {
+	panic("roleBatchRepoStub.AcquireAdminRoleLockTx not configured")
 }
 
 // Compile-time assertion that the stub satisfies the unified interface.

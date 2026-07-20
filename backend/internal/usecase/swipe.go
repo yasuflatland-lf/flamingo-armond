@@ -12,6 +12,7 @@ import (
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/domain/service"
+	"backend/internal/logging"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
 )
@@ -161,10 +162,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			if errors.Is(err, repository.ErrNotFound) {
 				return ucerr.NewValidationError("cardId", "card not found")
 			}
-			if isContextDone(err) {
-				return err
-			}
-			return eris.Wrap(err, "usecase: swipe: find card by id")
+			return wrapSwipeErr(err, "usecase: swipe: find card by id")
 		}
 		if !card.BelongsToCardgroup(in.CardgroupID) {
 			return ucerr.NewValidationError("cardId", "card not found")
@@ -173,10 +171,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		now = time.Now().UTC()
 		byCardID, err := u.userFSRSRepo.FindByUserAndCardIDsTx(ctx, tx, user.Sub, []string{card.ID})
 		if err != nil {
-			if isContextDone(err) {
-				return err
-			}
-			return eris.Wrap(err, "usecase: swipe: find user-card fsrs")
+			return wrapSwipeErr(err, "usecase: swipe: find user-card fsrs")
 		}
 		current := byCardID[card.ID]
 		if current == nil {
@@ -190,20 +185,14 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			return eris.Wrap(err, "usecase: swipe: apply rating")
 		}
 		if err := u.userFSRSRepo.UpsertTx(ctx, tx, current); err != nil {
-			if isContextDone(err) {
-				return err
-			}
-			return eris.Wrap(err, "usecase: swipe: upsert user-card fsrs")
+			return wrapSwipeErr(err, "usecase: swipe: upsert user-card fsrs")
 		}
 		sr, err := u.newSwipeRecord(domain.UserID(user.Sub), card.ID, card.CardgroupID, rating, now, before, current.State)
 		if err != nil {
 			return eris.Wrap(err, "usecase: swipe: new swipe record")
 		}
 		if err := u.swipeRepo.CreateTx(ctx, tx, sr); err != nil {
-			if isContextDone(err) {
-				return err
-			}
-			return eris.Wrap(err, "usecase: swipe: insert swipe record")
+			return wrapSwipeErr(err, "usecase: swipe: insert swipe record")
 		}
 		return nil
 	})
@@ -219,18 +208,48 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			return HandleSwipeOutcome{Validation: info}, nil
 		}
 	}
-	recentSwipes, err := u.swipeRepo.ListRecentByUser(ctx, user.Sub, swipePerformanceSampleLimit)
+	// The transaction has committed: the FSRS row and the swipe record are
+	// durable from here on. Everything below is read-only telemetry assembly,
+	// so past this point the error channel means "the swipe was NOT persisted".
+	metrics, err := u.performanceSnapshot(ctx, user.Sub, now)
 	if err != nil {
-		if isContextDone(err) {
-			return HandleSwipeOutcome{}, err
-		}
-		return HandleSwipeOutcome{}, eris.Wrap(err, "usecase: swipe: list recent swipes")
+		return HandleSwipeOutcome{}, err
 	}
-	metrics := service.ComputeMetrics(swipeRecordsByValue(recentSwipes), now)
 	return HandleSwipeOutcome{Swipe: &SwipeOutput{
 		PerformanceMode: int(service.ModeFromMetrics(metrics)),
 		Metrics:         metrics,
 	}}, nil
+}
+
+// performanceSnapshot assembles the read-only performance telemetry that
+// accompanies an already-committed swipe. An infrastructure failure of the
+// recent-swipe read degrades to the neutral empty-window snapshot (which
+// ModeFromMetrics maps to service.ModeDefault) and is logged rather than
+// returned, because reporting a durable swipe as failed makes the client
+// re-queue the card and review it twice. Context cancellation still propagates
+// unwrapped: the caller is being torn down and has nothing to report to.
+func (u *swipeUsecase) performanceSnapshot(ctx context.Context, userID string, now time.Time) (service.PerformanceMetrics, error) {
+	recentSwipes, err := u.swipeRepo.ListRecentByUser(ctx, userID, swipePerformanceSampleLimit)
+	if err != nil {
+		if isContextDone(err) {
+			return service.PerformanceMetrics{}, err
+		}
+		logging.LogWarn(ctx, u.logger,
+			"swipe committed but recent-swipe read failed; returning default performance snapshot",
+			eris.Wrap(err, "usecase: swipe: list recent swipes"),
+		)
+		return service.ComputeMetrics(nil, now), nil
+	}
+	return service.ComputeMetrics(swipeRecordsByValue(recentSwipes), now), nil
+}
+
+// wrapSwipeErr passes a context cancellation through unwrapped and wraps any
+// other error with the caller-supplied chain prefix.
+func wrapSwipeErr(err error, msg string) error {
+	if isContextDone(err) {
+		return err
+	}
+	return eris.Wrap(err, msg)
 }
 
 func swipeRecordsByValue(swipes []*domain.SwipeRecord) []domain.SwipeRecord {

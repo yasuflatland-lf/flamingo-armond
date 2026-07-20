@@ -44,7 +44,7 @@ type mockAdminUserRepository struct {
 	lastListLast   int
 	lastListSearch *string
 
-	// DeleteAuthUser
+	// DeleteAuthUserTx
 	deleteAuthErr    error
 	deleteAuthCalls  int
 	lastDeleteAuthID string
@@ -94,7 +94,7 @@ func (m *mockAdminUserRepository) ListPage(
 	return m.listResult, m.listTotal, nil
 }
 
-func (m *mockAdminUserRepository) DeleteAuthUser(_ context.Context, id string) error {
+func (m *mockAdminUserRepository) DeleteAuthUserTx(_ context.Context, _ *gorm.DB, id string) error {
 	m.deleteAuthCalls++
 	m.lastDeleteAuthID = id
 	return m.deleteAuthErr
@@ -135,15 +135,26 @@ type mockAdminUserRoleRepository struct {
 	lastSetUID     string
 	lastSetRoleIDs []string
 
-	// HasRole — keyed by userID so DeleteUser tests can mark a specific target
+	// HasRoleTx — keyed by userID so DeleteUser tests can mark a specific target
 	// as an admin (or not).
 	hasRoleByUser map[string]bool
 	hasRoleErr    error
 	hasRoleCalls  int
+	// lockCallsAtHasRole snapshots lockCalls the moment HasRoleTx runs, so a
+	// test can prove the advisory lock was taken *before* the membership read
+	// rather than merely before the count.
+	lockCallsAtHasRole int
 
-	// CountAdmins
+	// CountAdminsTx / AcquireAdminRoleLockTx
 	adminCount int64
 	countErr   error
+	lockErr    error
+	// lockCallsAtCount snapshots lockCalls the moment CountAdminsTx runs, so a
+	// test can prove the advisory lock was taken *before* the count rather than
+	// merely at some point during the request.
+	lockCalls        int
+	countCalls       int
+	lockCallsAtCount int
 }
 
 func (m *mockAdminUserRoleRepository) SetUserRolesTx(_ context.Context, _ *gorm.DB, userID string, roleIDs []string) error {
@@ -153,15 +164,23 @@ func (m *mockAdminUserRoleRepository) SetUserRolesTx(_ context.Context, _ *gorm.
 	return m.setErr
 }
 
-func (m *mockAdminUserRoleRepository) HasRole(_ context.Context, userID string, _ domain.RoleName) (bool, error) {
+func (m *mockAdminUserRoleRepository) HasRoleTx(_ context.Context, _ *gorm.DB, userID string, _ domain.RoleName) (bool, error) {
 	m.hasRoleCalls++
+	m.lockCallsAtHasRole = m.lockCalls
 	if m.hasRoleErr != nil {
 		return false, m.hasRoleErr
 	}
 	return m.hasRoleByUser[userID], nil
 }
 
-func (m *mockAdminUserRoleRepository) CountAdmins(_ context.Context) (int64, error) {
+func (m *mockAdminUserRoleRepository) AcquireAdminRoleLockTx(_ context.Context, _ *gorm.DB) error {
+	m.lockCalls++
+	return m.lockErr
+}
+
+func (m *mockAdminUserRoleRepository) CountAdminsTx(_ context.Context, _ *gorm.DB) (int64, error) {
+	m.countCalls++
+	m.lockCallsAtCount = m.lockCalls
 	return m.adminCount, m.countErr
 }
 
@@ -329,7 +348,7 @@ func TestAdminUserUsecase_DeleteUser(t *testing.T) {
 
 		assertForbidden(t, err, "cannot delete your own account from the admin panel; use deleteMyAccount")
 		if users.deleteAuthCalls != 0 {
-			t.Fatalf("DeleteAuthUser must not run on self-deletion, got %d calls", users.deleteAuthCalls)
+			t.Fatalf("DeleteAuthUserTx must not run on self-deletion, got %d calls", users.deleteAuthCalls)
 		}
 		if userRoles.hasRoleCalls != 0 {
 			t.Fatalf("HasRole must not run on self-deletion, got %d calls", userRoles.hasRoleCalls)
@@ -349,7 +368,7 @@ func TestAdminUserUsecase_DeleteUser(t *testing.T) {
 
 		assertForbidden(t, err, "cannot delete the last admin account")
 		if users.deleteAuthCalls != 0 {
-			t.Fatalf("DeleteAuthUser must not run when the target is the last admin, got %d calls", users.deleteAuthCalls)
+			t.Fatalf("DeleteAuthUserTx must not run when the target is the last admin, got %d calls", users.deleteAuthCalls)
 		}
 	})
 
@@ -367,7 +386,7 @@ func TestAdminUserUsecase_DeleteUser(t *testing.T) {
 			t.Fatalf("DeleteUser: unexpected error: %v", err)
 		}
 		if users.deleteAuthCalls != 1 || users.lastDeleteAuthID != "target" {
-			t.Fatalf("DeleteAuthUser: calls=%d id=%q, want 1 and \"target\"", users.deleteAuthCalls, users.lastDeleteAuthID)
+			t.Fatalf("DeleteAuthUserTx: calls=%d id=%q, want 1 and \"target\"", users.deleteAuthCalls, users.lastDeleteAuthID)
 		}
 	})
 
@@ -386,7 +405,7 @@ func TestAdminUserUsecase_DeleteUser(t *testing.T) {
 			t.Fatalf("DeleteUser: unexpected error: %v", err)
 		}
 		if users.deleteAuthCalls != 1 {
-			t.Fatalf("DeleteAuthUser: calls=%d, want 1", users.deleteAuthCalls)
+			t.Fatalf("DeleteAuthUserTx: calls=%d, want 1", users.deleteAuthCalls)
 		}
 	})
 
@@ -1077,6 +1096,303 @@ func TestAdminUser_EditUser_Self_NoRolesSubmitted_CannotRevokeOwnAdmin(t *testin
 	}
 	if userRoles.setCalls != 0 {
 		t.Fatalf("SetUserRolesTx calls = %d, want 0 (guard aborts before write)", userRoles.setCalls)
+	}
+}
+
+// TestAdminUser_EditUser_DemoteOther_LastAdmin exercises the demote-other
+// branch of the last-admin guard: an admin submits a role set that drops the
+// admin role from another user who is currently the only admin. The rejection
+// carries the same shape as DeleteUser's last-admin rejection — a
+// *ucerr.ForbiddenError on the error channel, not an outcome field — and no
+// write reaches the repository.
+func TestAdminUser_EditUser_DemoteOther_LastAdmin(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"target": {ID: "target"}}}
+	roles := &mockAdminRoleRepository{
+		roles: map[string]*domain.Role{
+			"r-general": {ID: "r-general", Name: "general"},
+		},
+	}
+	userRoles := &mockAdminUserRoleRepository{
+		hasRoleByUser: map[string]bool{"target": true},
+		adminCount:    1,
+	}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
+
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "target", AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
+
+	assertForbidden(t, err, "cannot remove the admin role from the last admin account")
+	if outcome.User != nil || outcome.Validation != nil || outcome.CannotRevokeOwnAdmin || outcome.ConcurrentUpdate {
+		t.Fatalf("outcome must be zero when the guard rejects, got %+v", outcome)
+	}
+	if users.updateTxCalls != 0 {
+		t.Fatalf("UpdateTxVersioned calls = %d, want 0 (guard aborts before any write)", users.updateTxCalls)
+	}
+	if userRoles.setCalls != 0 {
+		t.Fatalf("SetUserRolesTx calls = %d, want 0 (guard aborts before any write)", userRoles.setCalls)
+	}
+	// The count must be read while the advisory lock is held; otherwise two
+	// mutual demotions each observe two admins and both commit.
+	if userRoles.countCalls != 1 || userRoles.lockCallsAtCount != 1 {
+		t.Fatalf("count=%d lockCallsAtCount=%d, want the admin count read once under the lock",
+			userRoles.countCalls, userRoles.lockCallsAtCount)
+	}
+}
+
+// TestAdminUser_EditUser_DemoteOther_NotLastAdmin proves the guard only blocks
+// the last admin: with another admin left, the demotion goes through.
+func TestAdminUser_EditUser_DemoteOther_NotLastAdmin(t *testing.T) {
+	t.Parallel()
+
+	target := &domain.User{ID: "target"}
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"target": target}}
+	roles := &mockAdminRoleRepository{
+		roles: map[string]*domain.Role{
+			"r-general": {ID: "r-general", Name: "general"},
+		},
+	}
+	userRoles := &mockAdminUserRoleRepository{
+		hasRoleByUser: map[string]bool{"target": true},
+		adminCount:    2,
+	}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
+
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "target", AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
+	if err != nil {
+		t.Fatalf("EditUser: unexpected error: %v", err)
+	}
+	assertAdminEditUserOutcomeXOR(t, outcome)
+	if outcome.User != target {
+		t.Fatalf("outcome.User = %v, want %v", outcome.User, target)
+	}
+	if userRoles.setCalls != 1 {
+		t.Fatalf("SetUserRolesTx calls = %d, want 1", userRoles.setCalls)
+	}
+}
+
+// TestAdminUser_EditUser_DemoteOther_NonAdminTargetSkipsCount proves the guard
+// short-circuits for a target that does not hold the admin role: a blocking
+// admin count is configured, and the edit still succeeds because the count is
+// never consulted.
+func TestAdminUser_EditUser_DemoteOther_NonAdminTargetSkipsCount(t *testing.T) {
+	t.Parallel()
+
+	target := &domain.User{ID: "target"}
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"target": target}}
+	roles := &mockAdminRoleRepository{
+		roles: map[string]*domain.Role{
+			"r-general": {ID: "r-general", Name: "general"},
+		},
+	}
+	// "target" is absent from hasRoleByUser → not an admin. adminCount is set to
+	// a blocking value to prove the count is never consulted.
+	userRoles := &mockAdminUserRoleRepository{adminCount: 1}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
+
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "target", AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
+	if err != nil {
+		t.Fatalf("EditUser: unexpected error: %v", err)
+	}
+	if outcome.User != target {
+		t.Fatalf("outcome.User = %v, want %v", outcome.User, target)
+	}
+	if userRoles.countCalls != 0 {
+		t.Fatalf("count=%d, want 0 for a non-admin target", userRoles.countCalls)
+	}
+	// The lock is still taken once: the membership read that decides the target
+	// is a non-admin must itself happen under it, otherwise a target promoted
+	// concurrently is read as a non-admin and skips the count entirely.
+	if userRoles.lockCalls != 1 || userRoles.hasRoleCalls != 1 || userRoles.lockCallsAtHasRole != 1 {
+		t.Fatalf("lock=%d hasRole=%d lockCallsAtHasRole=%d, want the membership read taken once under the lock",
+			userRoles.lockCalls, userRoles.hasRoleCalls, userRoles.lockCallsAtHasRole)
+	}
+}
+
+// TestAdminUser_EditUser_DemoteOther_KeepingAdminSkipsGuard proves the guard is
+// keyed on the submitted set dropping admin, not on the edit touching an admin:
+// a role set that retains admin never consults the count.
+func TestAdminUser_EditUser_DemoteOther_KeepingAdminSkipsGuard(t *testing.T) {
+	t.Parallel()
+
+	target := &domain.User{ID: "target"}
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"target": target}}
+	roles := &mockAdminRoleRepository{
+		roles: map[string]*domain.Role{
+			"r-admin": {ID: "r-admin", Name: "admin"},
+		},
+	}
+	userRoles := &mockAdminUserRoleRepository{
+		hasRoleByUser: map[string]bool{"target": true},
+		adminCount:    1,
+	}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
+
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "target", AdminEditUserInput{
+		RoleIDs: []string{"r-admin"},
+	})
+	if err != nil {
+		t.Fatalf("EditUser: unexpected error: %v", err)
+	}
+	if outcome.User != target {
+		t.Fatalf("outcome.User = %v, want %v", outcome.User, target)
+	}
+	if userRoles.hasRoleCalls != 0 || userRoles.countCalls != 0 {
+		t.Fatalf("hasRole=%d count=%d, want neither when the submitted set keeps admin",
+			userRoles.hasRoleCalls, userRoles.countCalls)
+	}
+}
+
+// TestAdminUser_EditUser_DemoteOther_CountAdminsInfraError pins the wrap prefix
+// applied when the guard's count fails for an infrastructure reason, so the
+// logged error_chain attributes the failure to the edit module.
+func TestAdminUser_EditUser_DemoteOther_CountAdminsInfraError(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"target": {ID: "target"}}}
+	roles := &mockAdminRoleRepository{
+		roles: map[string]*domain.Role{
+			"r-general": {ID: "r-general", Name: "general"},
+		},
+	}
+	userRoles := &mockAdminUserRoleRepository{
+		hasRoleByUser: map[string]bool{"target": true},
+		countErr:      errors.New("boom"),
+	}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
+
+	_, err := uc.EditUser(adminCallerCtx("admin-1"), "target", AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
+
+	assertInternalChain(t, err, "usecase: admin user edit: count admins")
+	if users.updateTxCalls != 0 {
+		t.Fatalf("UpdateTxVersioned calls = %d, want 0", users.updateTxCalls)
+	}
+}
+
+// demoteOtherLockFailureUC wires the demote-other fixture with a failing
+// AcquireAdminRoleLockTx so both lock-failure tests below share one setup.
+func demoteOtherLockFailureUC(lockErr error) (AdminUserUsecase, *mockAdminUserRepository, *mockAdminUserRoleRepository) {
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"target": {ID: "target"}}}
+	roles := &mockAdminRoleRepository{
+		roles: map[string]*domain.Role{
+			"r-general": {ID: "r-general", Name: "general"},
+		},
+	}
+	userRoles := &mockAdminUserRoleRepository{
+		hasRoleByUser: map[string]bool{"target": true},
+		adminCount:    2,
+		lockErr:       lockErr,
+	}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
+	return uc, users, userRoles
+}
+
+// TestAdminUser_EditUser_DemoteOther_AcquireAdminRoleLockInfraError pins the
+// fail-closed behaviour when the advisory lock cannot be taken: the request
+// aborts before the membership read, before the count, and before any write.
+// Swallowing the lock error and continuing would count without holding the
+// lock, reopening the mutual-demotion race the lock exists to close.
+func TestAdminUser_EditUser_DemoteOther_AcquireAdminRoleLockInfraError(t *testing.T) {
+	t.Parallel()
+
+	uc, users, userRoles := demoteOtherLockFailureUC(errors.New("boom"))
+
+	_, err := uc.EditUser(adminCallerCtx("admin-1"), "target", AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
+
+	assertInternalChain(t, err, "usecase: admin user edit: count admins")
+	if userRoles.hasRoleCalls != 0 || userRoles.countCalls != 0 {
+		t.Fatalf("hasRole=%d count=%d, want neither once the lock could not be taken",
+			userRoles.hasRoleCalls, userRoles.countCalls)
+	}
+	if users.updateTxCalls != 0 || userRoles.setCalls != 0 {
+		t.Fatalf("updateTx=%d set=%d, want no write once the lock could not be taken",
+			users.updateTxCalls, userRoles.setCalls)
+	}
+}
+
+// TestAdminUser_EditUser_DemoteOther_AcquireAdminRoleLockCancelled proves a
+// cancelled context surfaces unwrapped from the lock-failure branch.
+func TestAdminUser_EditUser_DemoteOther_AcquireAdminRoleLockCancelled(t *testing.T) {
+	t.Parallel()
+
+	uc, _, userRoles := demoteOtherLockFailureUC(context.Canceled)
+
+	_, err := uc.EditUser(adminCallerCtx("admin-1"), "target", AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
+
+	assertCancelled(t, err)
+	if userRoles.countCalls != 0 {
+		t.Fatalf("count = %d, want 0 once the lock could not be taken", userRoles.countCalls)
+	}
+}
+
+// TestAdminUser_DeleteUser_AcquireAdminRoleLockInfraError is the DeleteUser
+// twin of the EditUser lock-failure test above.
+func TestAdminUser_DeleteUser_AcquireAdminRoleLockInfraError(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	userRoles := &mockAdminUserRoleRepository{
+		hasRoleByUser: map[string]bool{"target": true},
+		adminCount:    2,
+		lockErr:       errors.New("boom"),
+	}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
+
+	err := uc.DeleteUser(adminCallerCtx("admin-1"), "target")
+
+	assertInternalChain(t, err, "usecase: admin user: delete: count admins")
+	if userRoles.hasRoleCalls != 0 || userRoles.countCalls != 0 {
+		t.Fatalf("hasRole=%d count=%d, want neither once the lock could not be taken",
+			userRoles.hasRoleCalls, userRoles.countCalls)
+	}
+	if users.deleteAuthCalls != 0 {
+		t.Fatalf("DeleteAuthUserTx calls = %d, want 0 once the lock could not be taken", users.deleteAuthCalls)
+	}
+}
+
+// TestAdminUser_DeleteUser_MembershipReadTakenUnderLock pins the ordering the
+// guard depends on: the target's admin membership is read only after the
+// advisory lock is held. A read taken before the lock can observe a target that
+// a concurrent request is about to promote, skipping the count entirely.
+func TestAdminUser_DeleteUser_MembershipReadTakenUnderLock(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	userRoles := &mockAdminUserRoleRepository{
+		hasRoleByUser: map[string]bool{"target": true},
+		adminCount:    2,
+	}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
+
+	if err := uc.DeleteUser(adminCallerCtx("admin-1"), "target"); err != nil {
+		t.Fatalf("DeleteUser: unexpected error: %v", err)
+	}
+	if userRoles.hasRoleCalls != 1 || userRoles.lockCallsAtHasRole != 1 {
+		t.Fatalf("hasRole=%d lockCallsAtHasRole=%d, want the membership read taken once under the lock",
+			userRoles.hasRoleCalls, userRoles.lockCallsAtHasRole)
+	}
+	if userRoles.lockCallsAtCount != 1 {
+		t.Fatalf("lockCallsAtCount = %d, want the count read under the same lock", userRoles.lockCallsAtCount)
 	}
 }
 

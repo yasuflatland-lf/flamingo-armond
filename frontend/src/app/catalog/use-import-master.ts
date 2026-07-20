@@ -9,8 +9,8 @@ import { ImportMasterCardgroupMutation } from "./queries";
 /**
  * Discriminated outcome of an import-master attempt. The catalog client branches
  * on `status`: `success` shows a confirmation and the imported deck appears on
- * `/cardgroups` (the connection cache is updated inside this hook); `not_found`
- * and `rejected` surface a banner; `auth` surfaces a sign-in prompt.
+ * `/cardgroups` (the connection cache is updated inside this hook); `not_found`,
+ * `limit_reached`, and `rejected` surface a banner; `auth` surfaces a sign-in prompt.
  *
  * `not_found` carries no payload: it collapses both "unknown id" and "exists but
  * unpublished", and the backend's `MasterNotFoundError.message` must never reach
@@ -26,6 +26,11 @@ import { ImportMasterCardgroupMutation } from "./queries";
 export type ImportMasterOutcome =
   | { status: "success"; cardgroupId: string; cardgroupName: string }
   | { status: "not_found" }
+  // The caller is a non-admin who already owns the maximum number of cardgroups.
+  // Unlike `not_found`, the payload IS carried: `limit` / `current` are non-sensitive
+  // counts the client interpolates into its own localized copy (the backend message
+  // is still dropped, same as everywhere else at this boundary).
+  | { status: "limit_reached"; limit: number; current: number }
   // `auth.kind` mirrors the two GraphQL auth codes. `importMasterCardgroup`
   // currently only emits UNAUTHENTICATED; `forbidden` is handled defensively so a
   // future authorization rule degrades to the sign-in prompt, not the generic
@@ -67,6 +72,9 @@ export function useImportMaster() {
           // The backend message is deliberately discarded (non-disclosure); the
           // client surfaces its own localized copy.
           return { status: "not_found" };
+        }
+        if (payload?.__typename === "CardgroupLimitReachedError") {
+          return { status: "limit_reached", limit: payload.limit, current: payload.current };
         }
         if (payload?.__typename === "ImportMasterCardgroupSuccess") {
           return {
