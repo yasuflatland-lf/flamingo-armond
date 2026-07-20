@@ -21,26 +21,39 @@ type NewCardRatio struct {
 // interleave loop counts.
 const NewCardRatioDenMax = 100
 
+// ParseNewCardRatio's rejection reasons, one sentinel per rule so callers can
+// attribute the fault to a field with errors.Is instead of re-deriving the
+// bounds. NewCardRatioDenMax is interpolated into the cap message so the
+// exported bound and the message can never drift apart.
+var (
+	ErrNewCardRatioDenominatorNotPositive = eris.New("domain: new card ratio: denominator must be positive")
+	ErrNewCardRatioShareOutOfRange        = eris.New("domain: new card ratio: numerator must satisfy 0 < num < den")
+	ErrNewCardRatioDenominatorTooLarge    = eris.Errorf("domain: new card ratio: reduced denominator exceeds max %d", NewCardRatioDenMax)
+)
+
 // DefaultNewCardRatio (4/5) is applied when a user has no stored preference.
 // New share 4, review share 1 → interleave 4:1, matching the historical
 // hard-coded 4:1 new:review interleave this VO replaces.
 var DefaultNewCardRatio = mustNewCardRatio(4, 5)
 
 // ParseNewCardRatio reduces num/den to lowest terms and validates the bounds.
-// Returns a domain error (not a silent fallback) for a non-positive
-// denominator, a share outside (0, den), a reduced denominator above
-// NewCardRatioDenMax, or a zero/negative numerator.
+// It returns a sentinel (not a silent fallback) on failure:
+// ErrNewCardRatioDenominatorNotPositive for a non-positive denominator,
+// ErrNewCardRatioShareOutOfRange for a share outside (0, den) — which covers a
+// zero or negative numerator — and ErrNewCardRatioDenominatorTooLarge for a
+// reduced denominator above NewCardRatioDenMax. The checks run in that order and
+// return on the first failure, so exactly one sentinel is ever produced.
 func ParseNewCardRatio(num, den int) (NewCardRatio, error) {
 	if den <= 0 {
-		return NewCardRatio{}, eris.Errorf("domain: new card ratio: denominator must be positive, got %d", den)
+		return NewCardRatio{}, ErrNewCardRatioDenominatorNotPositive
 	}
 	if num <= 0 || num >= den {
-		return NewCardRatio{}, eris.Errorf("domain: new card ratio: numerator must satisfy 0 < num < den, got %d/%d", num, den)
+		return NewCardRatio{}, ErrNewCardRatioShareOutOfRange
 	}
 	g := int(new(big.Int).GCD(nil, nil, big.NewInt(int64(num)), big.NewInt(int64(den))).Int64())
 	rnum, rden := num/g, den/g
 	if rden > NewCardRatioDenMax {
-		return NewCardRatio{}, eris.Errorf("domain: new card ratio: reduced denominator %d exceeds max %d", rden, NewCardRatioDenMax)
+		return NewCardRatio{}, ErrNewCardRatioDenominatorTooLarge
 	}
 	return NewCardRatio{num: rnum, den: rden}, nil
 }
