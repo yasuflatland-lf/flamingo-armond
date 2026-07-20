@@ -48,14 +48,32 @@ The gate-then-write shape has a time-of-check/time-of-use window: the caller pas
 the deck. An unpublish (or a delete of the deck's last card) landing in that window
 would import an out-of-catalog deck if the
 transaction re-read the master through the any-status `FindByID`. The write paths
-therefore re-read through the **same** catalog-scoped `FindPublishedByID` inside the
-transaction (`copyMasterToUserTx`, and a fetch added before `ListByMasterCardgroup` in
+therefore re-probe through the **same** catalog-scoped `FindPublishedByID`
+(`copyMasterToUserTx`, and a fetch added before `ListByMasterCardgroup` in
 `MergeMasterIntoCardgroup`); the resulting `ErrNotFound` is mapped by `ImportMaster` /
 `MergeMaster` to the same `NotFound` outcome as a pre-gate unknown/draft/empty deck.
-`SeedForNewUser`
-is unaffected — it already sources ids from `ListPublishedDefaultStarters`, which returns
-only published, non-empty decks. This closes the TOCTOU without reversing the collapse:
-an unpublished or emptied
+
+**The re-probe narrows the window; it does not close it.** `FindPublishedByID` and
+`ListByMasterCardgroup` take no `tx` handle, so both run on the pool and share no
+snapshot with each other or with the writes that follow. A re-probe alone would
+therefore still admit a deck emptied between the probe and the enumeration.
+
+The fix for the emptiness half is to **derive the verdict from the read the write
+actually consumes** rather than from a separate probe: both write paths return
+`repository.ErrNotFound` when `len(cards) == 0` on the enumeration they are about
+to copy. That holds however the two reads interleave with a concurrent last-card
+delete, and it needs no transaction-scoped repository methods. The unpublish half
+still relies on the re-probe and keeps a residual window; closing it would require
+tx-scoped reads under an explicit repeatable-read transaction.
+
+The same `ErrNotFound` reaches `SeedForNewUser`, which **skips** that starter and
+seeds the rest rather than failing the batch — one deck leaving the catalog
+mid-signup must not break a signup, and the invariant being protected is "never
+seed an empty deck", not "seed every listed starter". Only the catalog-visibility
+sentinel is skippable: any other error still aborts the whole seed, so an
+infrastructure fault is never downgraded into a partial seed.
+
+The collapse is preserved throughout: an unpublished or emptied
 master is indistinguishable from an unknown one on every path.
 
 ## The boundary — this is for unauthorized observers only
