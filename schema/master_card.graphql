@@ -36,18 +36,19 @@ extend type Query {
   Public paginated cards in a PUBLISHED master deck, for any authenticated caller.
   Forward (first, after) / backward (last, before). Cursor is the master card UUID.
   Default page size 20; max 100. Optional case-insensitive substring search on
-  front OR back. A DRAFT or unknown deck is rejected as BAD_USER_INPUT on
-  `masterCardgroupId` (non-disclosure gate: draft existence is never revealed).
-  Anonymous callers receive UNAUTHENTICATED.
+  front OR back. A DRAFT, card-less or unknown deck is rejected as BAD_USER_INPUT
+  on `masterCardgroupId` (non-disclosure gate: draft existence and emptiness are
+  never revealed). Anonymous callers receive UNAUTHENTICATED.
   """
   masterCardsConnection(
     masterCardgroupId: ID!, first: Int, after: ID, last: Int, before: ID,
     search: String, orderBy: MasterCardOrderBy = POSITION, orderDirection: SortOrder = ASC
   ): MasterCardConnection!
   """
-  A single PUBLISHED master deck by id, for any authenticated caller. Returns null
-  for an unknown or DRAFT id (non-disclosure gate). Anonymous callers receive
-  UNAUTHENTICATED. Mirrors `adminMaster(id)` but published-only and non-admin.
+  A single catalog-visible master deck by id, for any authenticated caller. Returns
+  null for an unknown id, a DRAFT id, or a published deck holding zero cards
+  (non-disclosure gate). Anonymous callers receive UNAUTHENTICATED. Mirrors
+  `adminMaster(id)` but catalog-visible-only (published AND non-empty) and non-admin.
   """
   masterCardgroup(id: ID!): MasterCardgroup
 }

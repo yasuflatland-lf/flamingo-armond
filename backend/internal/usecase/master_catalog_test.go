@@ -214,7 +214,7 @@ func TestListPublishedConnection_Unauthenticated(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Forward pagination + published-only semantics
+// Forward pagination + catalog-visibility semantics
 // ---------------------------------------------------------------------------
 
 func TestListPublishedConnection_Forward_TrimsExtraRow_SetsHasNext(t *testing.T) {

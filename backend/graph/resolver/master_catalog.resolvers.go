@@ -107,8 +107,9 @@ func (r *mutationResolver) AdminDeleteMasterCardgroup(ctx context.Context, id st
 // ImportMasterCardgroup is the resolver for the importMasterCardgroup field.
 //
 // Returns a union: model.ImportMasterCardgroupSuccess on the happy path,
-// model.MasterNotFoundError when the master id is unknown or not published
-// (draft existence is never leaked), or model.CardgroupLimitReachedError when a
+// model.MasterNotFoundError when the master id is unknown, not published, or
+// published with zero cards (draft existence and emptiness are never leaked), or
+// model.CardgroupLimitReachedError when a
 // non-admin caller has already reached the per-user cardgroup cap. Both failure
 // cases are "errors as data"; the error return is reserved for auth and
 // infrastructure failures.
@@ -155,7 +156,8 @@ func (r *mutationResolver) SeedDefaultStarterCardgroups(ctx context.Context) (*m
 // MergeMasterCardgroup is the resolver for the mergeMasterCardgroup field.
 //
 // Returns a union: model.MergeMasterCardgroupSuccess on the happy path, or
-// model.MasterNotFoundError when the master id is unknown or not published.
+// model.MasterNotFoundError when the master id is unknown, not published, or
+// published with zero cards.
 // Destination cardgroup auth failures (unknown → BAD_USER_INPUT, foreign →
 // UNAUTHENTICATED) travel the error return via FromUsecaseError.
 func (r *mutationResolver) MergeMasterCardgroup(ctx context.Context, input model.MergeMasterCardgroupInput) (model.MergeMasterCardgroupResult, error) {
@@ -214,7 +216,8 @@ func (r *queryResolver) AdminMasters(ctx context.Context, first *int, after *str
 //
 // Read-only dry run of mergeMasterCardgroup. Returns a union:
 // model.MergeMasterCardgroupPreview on the happy path, or model.MasterNotFoundError
-// when the master id is unknown or not published. Destination cardgroup auth failures
+// when the master id is unknown, not published, or published with zero cards.
+// Destination cardgroup auth failures
 // (unknown → BAD_USER_INPUT, foreign → UNAUTHENTICATED) travel the error return via
 // FromUsecaseError.
 func (r *queryResolver) MergeMasterCardgroupPreview(ctx context.Context, input model.MergeMasterCardgroupInput) (model.MergeMasterCardgroupPreviewResult, error) {

@@ -21,9 +21,12 @@ The collapse is cheapest and least bypassable when performed at the **repository
 read, not reconstructed in the usecase from a richer result:
 
 - **Repository:** the read method is scoped to the visible set, so it cannot
-  distinguish the two states for the caller. `FindPublishedByID` filters
-  `WHERE id = ? AND status = 'published'` and returns `repository.ErrNotFound` for
-  *both* an unknown id and a draft id (`backend/internal/repository/master_cardgroup.go`).
+  distinguish the hidden states from the unknown one for the caller.
+  `FindPublishedByID` filters
+  `WHERE id = ? AND status = 'published' AND EXISTS (SELECT 1 FROM master_cards …)`
+  and returns `repository.ErrNotFound` for an unknown id, a draft id and a
+  published deck holding zero cards alike
+  (`backend/internal/repository/master_cardgroup.go`).
   A method that returned the row regardless of status and left the status check to
   the usecase would leak the row's existence to any usecase bug that forgot the check.
 - **Usecase:** maps `ErrNotFound` to a not-found *data* outcome (errors-as-data),
@@ -42,14 +45,35 @@ so a future maintainer does not "helpfully" split the two cases back apart.
 
 The gate-then-write shape has a time-of-check/time-of-use window: the caller passes
 `FindPublishedByID` at the mutation boundary, then a copy/merge transaction snapshots
-the deck. An unpublish landing in that window would import a now-draft deck if the
+the deck. An unpublish (or a delete of the deck's last card) landing in that window
+would import an out-of-catalog deck if the
 transaction re-read the master through the any-status `FindByID`. The write paths
-therefore re-read through the **same** published-scoped `FindPublishedByID` inside the
-transaction (`copyMasterToUserTx`, and a fetch added before `ListByMasterCardgroup` in
+therefore re-probe through the **same** catalog-scoped `FindPublishedByID`
+(`copyMasterToUserTx`, and a fetch added before `ListByMasterCardgroup` in
 `MergeMasterIntoCardgroup`); the resulting `ErrNotFound` is mapped by `ImportMaster` /
-`MergeMaster` to the same `NotFound` outcome as a pre-gate unknown/draft. `SeedForNewUser`
-is unaffected — it already sources ids from `ListPublishedDefaultStarters`, which returns
-only published decks. This closes the TOCTOU without reversing the collapse: an unpublished
+`MergeMaster` to the same `NotFound` outcome as a pre-gate unknown/draft/empty deck.
+
+**The re-probe narrows the window; it does not close it.** `FindPublishedByID` and
+`ListByMasterCardgroup` take no `tx` handle, so both run on the pool and share no
+snapshot with each other or with the writes that follow. A re-probe alone would
+therefore still admit a deck emptied between the probe and the enumeration.
+
+The fix for the emptiness half is to **derive the verdict from the read the write
+actually consumes** rather than from a separate probe: both write paths return
+`repository.ErrNotFound` when `len(cards) == 0` on the enumeration they are about
+to copy. That holds however the two reads interleave with a concurrent last-card
+delete, and it needs no transaction-scoped repository methods. The unpublish half
+still relies on the re-probe and keeps a residual window; closing it would require
+tx-scoped reads under an explicit repeatable-read transaction.
+
+The same `ErrNotFound` reaches `SeedForNewUser`, which **skips** that starter and
+seeds the rest rather than failing the batch — one deck leaving the catalog
+mid-signup must not break a signup, and the invariant being protected is "never
+seed an empty deck", not "seed every listed starter". Only the catalog-visibility
+sentinel is skippable: any other error still aborts the whole seed, so an
+infrastructure fault is never downgraded into a partial seed.
+
+The collapse is preserved throughout: an unpublished or emptied
 master is indistinguishable from an unknown one on every path.
 
 ## The boundary — this is for unauthorized observers only
@@ -65,8 +89,10 @@ erase the distinction only across the trust boundary it protects.
 Pin the collapse where it happens, not only end-to-end:
 
 - Repository: a test that a **draft** row returns `ErrNotFound`
-  (`TestMasterCardgroupRepository_FindPublishedByID`) — this is the load-bearing
-  layer; if it regresses, every consumer leaks.
+  (`TestMasterCardgroupRepository_FindPublishedByID`), and one that a **published
+  row with zero cards** does too
+  (`TestMasterCardgroupRepository_FindPublishedByID_EmptyDeckNotFound`) — this is
+  the load-bearing layer; if it regresses, every consumer leaks.
 - Usecase: a test that both an unknown id and a draft (both surfaced as `ErrNotFound`
   by the repo mock) yield the not-found outcome with the copy/side-effect **not run**
   (`TestImportMaster_UnknownOrDraft_ReturnsNotFoundOutcome`).

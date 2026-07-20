@@ -60,6 +60,23 @@ type gormMasterCardgroup struct {
 
 func (gormMasterCardgroup) TableName() string { return "master_cardgroups" }
 
+// masterCardsExistPredicate renders the "this deck holds at least one master
+// card" SQL predicate for the supplied master_cardgroups alias. Public catalog
+// visibility is the read-side conjunction `status = published AND at least one
+// card exists`: MasterCardgroup and MasterCard are separate aggregates, so the
+// emptiness rule is expressed at the read boundary instead of being synchronised
+// on the write side. Nothing has to be recomputed when cards are deleted, and
+// visibility self-heals the moment a card comes back. The publish-time empty
+// guard in the usecase layer stays as immediate admin feedback; it is not what
+// enforces this.
+//
+// alias is always a compile-time literal supplied by this package (the empty
+// alias is not supported — pass the table name when the query is unaliased), so
+// the concatenation carries no injection surface.
+func masterCardsExistPredicate(alias string) string {
+	return "EXISTS (SELECT 1 FROM master_cards mc WHERE mc.master_cardgroup_id = " + alias + ".id)"
+}
+
 // MasterCardgroupUpdate carries patch fields. nil means "leave untouched".
 type MasterCardgroupUpdate struct {
 	Name             *string
@@ -79,18 +96,24 @@ type MasterCardgroupRepository interface {
 	Create(ctx context.Context, m *domain.MasterCardgroup) error
 	Update(ctx context.Context, id string, patch MasterCardgroupUpdate) (*domain.MasterCardgroup, error)
 	Delete(ctx context.Context, id string) error
+	// ListPublishedDefaultStarters returns the published, NON-EMPTY default
+	// starter decks. A starter whose cards have all been deleted is skipped so
+	// the new-user seed never creates an empty cardgroup.
 	ListPublishedDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error)
-	// FindPublishedPage returns a window of PUBLISHED master cardgroups ordered
-	// by (orderBy, id), each bundled with its card count, plus the search-aware
-	// total of all matching PUBLISHED rows. The published filter is enforced in
-	// SQL and is never caller-overridable. Forward paging uses (after, first);
+	// FindPublishedPage returns a window of PUBLISHED, NON-EMPTY master
+	// cardgroups ordered by (orderBy, id), each bundled with its card count,
+	// plus the search-aware total of all matching rows. Catalog visibility is
+	// the conjunction `status = published AND at least one master card exists`;
+	// it is enforced in SQL and is never caller-overridable, so a published deck
+	// whose cards have all been deleted is absent from the list and from the
+	// total alike. Forward paging uses (after, first);
 	// backward paging uses (before, last) and the slice is reversed in memory so
 	// the caller observes the same display order regardless of direction. An
 	// optional case-insensitive substring search filters by name (ILIKE
 	// metacharacters in the search are escaped so they match literally). The
-	// returned total applies the same status + search filter as the page query
-	// and is computed before the zero-page short-circuit, so a totalCount-only
-	// request still observes the real count.
+	// returned total applies the same visibility + search filter as the page
+	// query and is computed before the zero-page short-circuit, so a
+	// totalCount-only request still observes the real count.
 	FindPublishedPage(
 		ctx context.Context,
 		after, before *MasterCatalogCursor,
@@ -102,15 +125,18 @@ type MasterCardgroupRepository interface {
 	// CountCards returns the number of master cards belonging to the given
 	// master cardgroup. Used by the admin UI to display a card count per deck.
 	CountCards(ctx context.Context, masterCardgroupID string) (int64, error)
-	// FindPublishedByID returns the PUBLISHED master cardgroup with the given
-	// id, or ErrNotFound. Draft rows return ErrNotFound — they are not part of
-	// the public catalog. Used by the usecase to hydrate a pagination cursor.
+	// FindPublishedByID returns the PUBLISHED, NON-EMPTY master cardgroup with
+	// the given id, or ErrNotFound. Draft rows return ErrNotFound — they are not
+	// part of the public catalog — and so do published rows with zero master
+	// cards, which the catalog treats as absent. Used by the usecase to hydrate
+	// a pagination cursor.
 	FindPublishedByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 	// FindPageAnyStatus returns a window of master cardgroups of ANY status (draft
-	// or published), each bundled with its card count, plus the search-aware
-	// total of all matching rows regardless of status. Unlike FindPublishedPage
-	// it does not filter by status, so admin users see draft decks. All other
-	// pagination, ordering, search, and totalCount semantics are identical to
+	// or published) and ANY card count, each bundled with its card count, plus
+	// the search-aware total of all matching rows. Unlike FindPublishedPage it
+	// applies neither the status filter nor the non-empty filter, so admin users
+	// still see draft decks and published-but-empty decks. All other pagination,
+	// ordering, search, and totalCount semantics are identical to
 	// FindPublishedPage.
 	FindPageAnyStatus(
 		ctx context.Context,
@@ -282,13 +308,16 @@ func (r *masterCardgroupRepo) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// ListPublishedDefaultStarters returns all published master cardgroups flagged as
-// default starters, ordered by (sort_order, id) so the starter set is
-// deterministic. Returns an empty slice when none are found.
+// ListPublishedDefaultStarters returns all published, NON-EMPTY master cardgroups
+// flagged as default starters, ordered by (sort_order, id) so the starter set is
+// deterministic. A starter whose cards have all been deleted is skipped, so the
+// new-user seed never hands out an empty deck. Returns an empty slice when none
+// are found.
 func (r *masterCardgroupRepo) ListPublishedDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error) {
 	var rows []gormMasterCardgroup
 	if err := r.db.WithContext(ctx).
 		Where("status = ? AND is_default_starter", string(domain.MasterStatusPublished)).
+		Where(masterCardsExistPredicate("master_cardgroups")).
 		Order("sort_order, id").
 		Find(&rows).Error; err != nil {
 		return nil, eris.Wrap(err, "repository: master cardgroup: list default starters")
@@ -304,13 +333,16 @@ func (r *masterCardgroupRepo) ListPublishedDefaultStarters(ctx context.Context) 
 	return out, nil
 }
 
-// FindPublishedByID returns the published master cardgroup with the given id,
-// or ErrNotFound. A draft row also returns ErrNotFound because the public
-// catalog never exposes draft decks.
+// FindPublishedByID returns the published, NON-EMPTY master cardgroup with the
+// given id, or ErrNotFound. A draft row also returns ErrNotFound because the
+// public catalog never exposes draft decks, and so does a published row whose
+// cards have all been deleted — an empty deck is nothing a learner can import,
+// merge or study, so the catalog treats it as absent.
 func (r *masterCardgroupRepo) FindPublishedByID(ctx context.Context, id string) (*domain.MasterCardgroup, error) {
 	var row gormMasterCardgroup
 	err := r.db.WithContext(ctx).
 		Where("id = ? AND status = ?", id, string(domain.MasterStatusPublished)).
+		Where(masterCardsExistPredicate("master_cardgroups")).
 		Take(&row).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

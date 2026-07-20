@@ -192,9 +192,9 @@ func (panicMasterCardgroupRepo) Unpublish(_ context.Context, _ string) (*domain.
 }
 
 // mockMasterCardgroupReadRepo overrides FindByID (deck incl. DRAFT), CountCards,
-// and FindPublishedByID (published-only deck). FindByID + CountCards back
+// and FindPublishedByID (catalog-visible deck). FindByID + CountCards back
 // MasterCardUsecase.AdminMaster; FindPublishedByID backs ListPublicMasterCards'
-// published-only visibility gate.
+// catalog-visibility gate (published AND non-empty).
 type mockMasterCardgroupReadRepo struct {
 	panicMasterCardgroupRepo
 
