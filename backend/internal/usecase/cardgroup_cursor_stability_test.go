@@ -30,11 +30,16 @@ import (
 // ---------------------------------------------------------------------------
 
 // cursorWalkRepo is an in-memory CardgroupRepository supporting exactly the
-// slice of the interface these walks need: forward paging over one owner's rows
-// ordered by (updated_at DESC, id DESC). Any other request is rejected loudly
-// so a future test cannot silently exercise an unimplemented branch. FindByID
-// returns the CURRENT row, which is what makes the v1 re-hydration path observe
-// a mutation made between two page fetches.
+// slice of the interface these walks need: forward AND backward paging over one
+// owner's rows ordered by (updated_at DESC, id DESC). Any other ordering is
+// rejected loudly so a future test cannot silently exercise an unimplemented
+// branch. FindByID returns the CURRENT row, which is what makes the v1
+// re-hydration path observe a mutation made between two page fetches.
+//
+// The backward branch models the repository's direction-flip + reverse: it
+// keeps the rows that sort strictly BEFORE the cursor and returns the ones
+// closest to it, still in DESC order, so the usecase's leading-edge trim
+// (TrimAndDetectBackward) sees the same slice shape SQL would hand it.
 type cursorWalkRepo struct {
 	rows []*domain.Cardgroup
 }
@@ -57,6 +62,17 @@ func afterInDescTuple(row *domain.Cardgroup, curKey time.Time, curID string) boo
 	return row.UpdatedAt.Before(curKey)
 }
 
+// beforeInDescTuple is the mirror predicate for backward paging: it reports
+// whether row sorts strictly before cur under the same total order. It is not
+// !afterInDescTuple — the cursor row itself sorts neither after nor before
+// itself, and both edges must exclude it.
+func beforeInDescTuple(row *domain.Cardgroup, curKey time.Time, curID string) bool {
+	if row.UpdatedAt.Equal(curKey) {
+		return string(row.ID) > curID
+	}
+	return row.UpdatedAt.After(curKey)
+}
+
 func (r *cursorWalkRepo) FindPageByOwner(
 	_ context.Context,
 	ownerID string,
@@ -66,10 +82,10 @@ func (r *cursorWalkRepo) FindPageByOwner(
 	dir repository.SortOrder,
 	_ *string,
 ) ([]*domain.Cardgroup, int64, error) {
-	if orderBy != repository.CardgroupOrderByUpdatedAt || dir != repository.SortDesc || before != nil || last != 0 {
+	if orderBy != repository.CardgroupOrderByUpdatedAt || dir != repository.SortDesc {
 		return nil, 0, eris.Errorf(
-			"cursorWalkRepo: only forward paging on (updated_at, DESC) is implemented; got orderBy=%q dir=%q last=%d before=%v",
-			orderBy, dir, last, before,
+			"cursorWalkRepo: only the (updated_at, DESC) ordering is implemented; got orderBy=%q dir=%q",
+			orderBy, dir,
 		)
 	}
 
@@ -99,8 +115,26 @@ func (r *cursorWalkRepo) FindPageByOwner(
 		}
 		owned = rest
 	}
+	if before != nil {
+		if before.UpdatedAt == nil {
+			return nil, 0, eris.New("cursorWalkRepo: before cursor is missing the updated_at column")
+		}
+		rest := make([]*domain.Cardgroup, 0, len(owned))
+		for _, cg := range owned {
+			if beforeInDescTuple(cg, *before.UpdatedAt, before.ID) {
+				rest = append(rest, cg)
+			}
+		}
+		owned = rest
+	}
 	if first > 0 && len(owned) > first {
 		owned = owned[:first]
+	}
+	// Backward paging takes the rows CLOSEST to the before cursor, which are the
+	// trailing ones in DESC order — the in-memory equivalent of the repository's
+	// "invert ORDER BY, LIMIT last+1, reverse" path.
+	if last > 0 && len(owned) > last {
+		owned = owned[len(owned)-last:]
 	}
 	return owned, total, nil
 }
@@ -140,6 +174,29 @@ func newCursorWalkFixture() *cursorWalkRepo {
 	}}
 }
 
+// newTiedCursorWalkFixture builds a fixture where cg-b and cg-c share the SAME
+// updated_at, so the id tie-break is the only thing separating them. Under
+// (updated_at DESC, id DESC) the order is cg-a, cg-c, cg-b, cg-d, cg-e.
+//
+// The tie matters because the ordering key alone cannot anchor a bookmark
+// between two rows that carry the same value: a cursor holding only the
+// timestamp would either re-serve the sibling or swallow it, depending on which
+// side of the comparison the implementation puts the equal case on.
+func newTiedCursorWalkFixture() *cursorWalkRepo {
+	mk := func(id string, minutesAgo int) *domain.Cardgroup {
+		return &domain.Cardgroup{
+			ID:        domain.CardgroupID(id),
+			OwnerID:   "u1",
+			Name:      domain.CardgroupName("Deck " + id),
+			CreatedAt: walkBase,
+			UpdatedAt: walkBase.Add(-time.Duration(minutesAgo) * time.Minute),
+		}
+	}
+	return &cursorWalkRepo{rows: []*domain.Cardgroup{
+		mk("cg-a", 1), mk("cg-b", 2), mk("cg-c", 2), mk("cg-d", 4), mk("cg-e", 5),
+	}}
+}
+
 // encodeWalkCursor rebuilds the opaque cursor the resolver emits for a boundary
 // row of the given page: the v2 envelope carrying the ordering the page was
 // served under plus that row's ordering-key value as captured at serve time.
@@ -173,6 +230,20 @@ func fetchWalkPage(t *testing.T, uc CardgroupUsecase, after *string) *CardgroupC
 	})
 	if err != nil {
 		t.Fatalf("unexpected error paging: %v", err)
+	}
+	return out
+}
+
+// fetchWalkPageBackward runs one backward page of the given size, optionally
+// before a cursor. Passing a nil cursor asks for the tail of the listing.
+func fetchWalkPageBackward(t *testing.T, uc CardgroupUsecase, before *string, last int) *CardgroupConnectionOutput {
+	t.Helper()
+	out, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("u1"), CardgroupConnectionInput{
+		Last:   &last,
+		Before: before,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error paging backward: %v", err)
 	}
 	return out
 }
@@ -362,6 +433,159 @@ func TestCardgroupCursorWalk_OrderKeysCoverEveryReturnedRow(t *testing.T) {
 			t.Fatalf("OrderKeys[%q] = %q, want %q", cg.ID, got, want)
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Backward paging and tied ordering keys.
+//
+// The forward walks above exercise the trailing-edge trim. Backward paging runs
+// the opposite path — the repository inverts the ORDER BY, takes last+1 rows and
+// reverses them, and the usecase trims the LEADING row — so the v2 decode, the
+// boundary comparison and the trim have to compose correctly on that edge too.
+// ---------------------------------------------------------------------------
+
+// TestCardgroupCursorWalk_BackwardV2_BoundaryRowEditedDown_NoDuplicate is the
+// backward mirror of S1. Paging backwards from the tail, the boundary row of the
+// first backward page is edited so its ordering key drops to the bottom of the
+// listing. With the captured key the previous page still starts exactly where
+// the first ended and repeats nothing the caller has already seen.
+func TestCardgroupCursorWalk_BackwardV2_BoundaryRowEditedDown_NoDuplicate(t *testing.T) {
+	t.Parallel()
+
+	repo := newCursorWalkFixture()
+	uc := newWalkUsecase(repo)
+
+	// Tail of the listing under (updated_at DESC, id DESC): cg-d, cg-e.
+	page1 := fetchWalkPageBackward(t, uc, nil, 2)
+	if got := walkIDs(page1); len(got) != 2 || got[0] != "cg-d" || got[1] != "cg-e" {
+		t.Fatalf("backward page 1 = %v, want [cg-d cg-e]", got)
+	}
+	if !page1.HasPrev {
+		t.Fatal("backward page 1 must report hasPreviousPage: cg-a/cg-b/cg-c are still ahead")
+	}
+	if page1.HasNext {
+		t.Fatal("backward page 1 without a before cursor is the tail; hasNextPage must be false")
+	}
+
+	prev := encodeWalkCursor(page1, page1.StartCur)
+
+	// cg-d — the leading boundary row of the page just served — is edited so it
+	// now sorts last. A v1 cursor would re-read it and walk from the bottom.
+	setUpdatedAt(t, repo, "cg-d", walkBase.Add(-99*time.Minute))
+
+	page2 := fetchWalkPageBackward(t, uc, &prev, 2)
+	got := walkIDs(page2)
+	if len(got) != 2 || got[0] != "cg-b" || got[1] != "cg-c" {
+		t.Fatalf("backward page 2 = %v, want [cg-b cg-c]", got)
+	}
+	for _, id := range got {
+		if id == "cg-d" || id == "cg-e" {
+			t.Fatalf("backward page 2 repeated %q from page 1: %v", id, got)
+		}
+	}
+	if !page2.HasNext {
+		t.Fatal("a backward page taken before a cursor must report hasNextPage")
+	}
+	if !page2.HasPrev {
+		t.Fatal("cg-a is still ahead of backward page 2; hasPreviousPage must be true")
+	}
+}
+
+// TestCardgroupCursorWalk_BackwardV1Cursor_StillDuplicates pins the defect on
+// the backward edge, the mirror of the forward S1/S2 v1 regressions: an id-only
+// cursor re-reads the edited boundary row, finds it now sorts last, and hands
+// back rows the caller already saw.
+func TestCardgroupCursorWalk_BackwardV1Cursor_StillDuplicates(t *testing.T) {
+	t.Parallel()
+
+	repo := newCursorWalkFixture()
+	uc := newWalkUsecase(repo)
+
+	page1 := fetchWalkPageBackward(t, uc, nil, 2)
+	legacy := cursor.Encode(page1.StartCur)
+
+	setUpdatedAt(t, repo, "cg-d", walkBase.Add(-99*time.Minute))
+
+	page2 := fetchWalkPageBackward(t, uc, &legacy, 2)
+	got := walkIDs(page2)
+	if len(got) == 0 || got[len(got)-1] != "cg-e" {
+		t.Fatalf("v1 cursor should re-serve cg-e after the boundary row moves to the bottom; backward page 2 = %v", got)
+	}
+}
+
+// TestCardgroupCursorWalk_TiedOrderKeys_ForwardAndBackward verifies the id
+// tie-break survives the v2 round trip on both edges. cg-b and cg-c carry the
+// same updated_at, so a bookmark taken at cg-c must still separate it from
+// cg-b — forward must serve cg-b next, and paging back before cg-b must land on
+// cg-c, not skip past the whole tied pair or re-serve it.
+func TestCardgroupCursorWalk_TiedOrderKeys_ForwardAndBackward(t *testing.T) {
+	t.Parallel()
+
+	uc := newWalkUsecase(newTiedCursorWalkFixture())
+
+	// Forward: page 1 ends on cg-c, the first of the tied pair under id DESC.
+	page1 := fetchWalkPage(t, uc, nil)
+	if got := walkIDs(page1); len(got) != 2 || got[0] != "cg-a" || got[1] != "cg-c" {
+		t.Fatalf("tied page 1 = %v, want [cg-a cg-c]", got)
+	}
+	next := encodeWalkCursor(page1, page1.EndCur)
+	page2 := fetchWalkPage(t, uc, &next)
+	if got := walkIDs(page2); len(got) != 2 || got[0] != "cg-b" || got[1] != "cg-d" {
+		t.Fatalf("tied page 2 = %v, want [cg-b cg-d]: the tie-break must not swallow cg-b", got)
+	}
+
+	// Guard the premise: if the two rows stopped sharing an ordering key the
+	// walk above would pass for the wrong reason — it would no longer be
+	// exercising the tie at all.
+	keyC, keyB := page1.OrderKeys["cg-c"], page2.OrderKeys["cg-b"]
+	if keyC == "" || keyB == "" {
+		t.Fatalf("OrderKeys must cover both tied rows; got cg-c=%q cg-b=%q", keyC, keyB)
+	}
+	if keyC != keyB {
+		t.Fatalf("fixture no longer ties the rows: cg-c=%q, cg-b=%q", keyC, keyB)
+	}
+
+	// Backward: paging before cg-b must return the rows immediately ahead of it,
+	// which means stopping at its tied sibling cg-c rather than jumping the pair.
+	beforeB := cursor.EncodeV2(cursor.Payload{
+		ID:        "cg-b",
+		OrderBy:   page2.Ordering.OrderBy,
+		Direction: page2.Ordering.Direction,
+		OrderKey:  page2.OrderKeys["cg-b"],
+	})
+	back := fetchWalkPageBackward(t, uc, &beforeB, 2)
+	if got := walkIDs(back); len(got) != 2 || got[0] != "cg-a" || got[1] != "cg-c" {
+		t.Fatalf("backward page before cg-b = %v, want [cg-a cg-c]", got)
+	}
+	if back.HasPrev {
+		t.Fatal("cg-a is the head of the listing; hasPreviousPage must be false")
+	}
+	if !back.HasNext {
+		t.Fatal("a backward page taken before a cursor must report hasNextPage")
+	}
+}
+
+// TestCardgroupCursorWalk_BackwardV2_ForeignOwnerStillRejected verifies the
+// cross-tenant guard runs on the backward cursor field too. The scope lookup is
+// what keeps the endpoint from becoming an existence oracle, and the v2 path
+// skips the ordering re-read — so the guard has to be reachable independently of
+// hydration on both edges.
+func TestCardgroupCursorWalk_BackwardV2_ForeignOwnerStillRejected(t *testing.T) {
+	t.Parallel()
+
+	uc := newWalkUsecase(newCursorWalkFixture())
+	cur := cursor.EncodeV2(cursor.Payload{
+		ID:        "cg-foreign",
+		OrderBy:   string(repository.CardgroupOrderByUpdatedAt),
+		Direction: string(repository.SortDesc),
+		OrderKey:  walkBase.Add(-3 * time.Minute).Format(time.RFC3339Nano),
+	})
+	last := 2
+	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("u1"), CardgroupConnectionInput{
+		Last:   &last,
+		Before: &cur,
+	})
+	assertValidationError(t, err, "before", "cursor not found")
 }
 
 // ---------------------------------------------------------------------------
