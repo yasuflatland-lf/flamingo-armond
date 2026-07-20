@@ -112,9 +112,10 @@ type MergeMasterOutcome struct {
 	Added int64
 	// Updated is the number of existing cards (same front) overwritten.
 	Updated int64
-	// NotFound is true when the master id is unknown or not published; draft existence
-	// is subsumed so draft ids are indistinguishable from absent ids. True iff Cardgroup
-	// is nil. The XOR is a producer contract, not a compile-time guarantee: a degenerate
+	// NotFound is true when the master id is unknown, not published, or published
+	// with zero cards; draft existence and emptiness are subsumed so those ids are
+	// indistinguishable from absent ids. True iff Cardgroup is nil. The XOR is a
+	// producer contract, not a compile-time guarantee: a degenerate
 	// {Cardgroup:nil, NotFound:false} result is treated as INTERNAL by the resolver's
 	// defensive guard (newNoVariantSetError).
 	NotFound bool
@@ -135,9 +136,10 @@ type PreviewMergeOutcome struct {
 // admin methods additionally require AdminGate.Require to pass.
 type MasterCatalogUsecase interface {
 	ListPublishedConnection(ctx context.Context, in MasterCatalogConnectionInput) (*MasterCatalogConnectionOutput, error)
-	// FindPublishedMaster returns a single PUBLISHED master deck by id for any
-	// authenticated caller. Returns (nil, nil) for an unknown or DRAFT id
-	// (non-disclosure gate). Anonymous callers receive UNAUTHENTICATED.
+	// FindPublishedMaster returns a single PUBLISHED, non-empty master deck by id
+	// for any authenticated caller. Returns (nil, nil) for an unknown id, a DRAFT
+	// id, or a published deck holding zero cards (non-disclosure gate). Anonymous
+	// callers receive UNAUTHENTICATED.
 	FindPublishedMaster(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 	ImportMaster(ctx context.Context, masterID string) (ImportMasterOutcome, error)
 	MergeMaster(ctx context.Context, masterID, cardgroupID string) (MergeMasterOutcome, error)
@@ -155,8 +157,9 @@ type MasterCatalogUsecase interface {
 
 // ImportMasterOutcome is the usecase result of ImportMaster. On the valid paths
 // exactly one signal is set: Cardgroup on the happy path, NotFound=true when the
-// master id is unknown or not published, or LimitReached when a non-admin caller
-// already owns the maximum number of cardgroups. Both failure cases are surfaced
+// master id is unknown, not published, or published with zero cards, or
+// LimitReached when a non-admin caller already owns the maximum number of
+// cardgroups. Both failure cases are surfaced
 // as data (the MasterNotFoundError / CardgroupLimitReachedError union variants)
 // rather than as errors so the resolver can return them in `data`. The XOR is a
 // producer contract, not a compile-time guarantee: a degenerate
@@ -166,8 +169,9 @@ type ImportMasterOutcome struct {
 	// Cardgroup is the newly created user-owned cardgroup snapshot on the happy
 	// path. Non-nil iff neither NotFound nor LimitReached is set.
 	Cardgroup *domain.Cardgroup
-	// NotFound is true when the master id is unknown or not published; it subsumes
-	// draft existence so draft ids are indistinguishable from absent ids.
+	// NotFound is true when the master id is unknown, not published, or published
+	// with zero cards; it subsumes draft existence and emptiness so those ids are
+	// indistinguishable from absent ids.
 	NotFound bool
 	// LimitReached is non-nil when the caller is a non-admin who already holds
 	// domain.GeneralUserCardgroupLimit cardgroups. It carries the same cap/count
@@ -229,9 +233,11 @@ type masterCatalogPageFetch func(
 // Relay-style cursors. Forward paging uses (first, after); backward uses
 // (last, before). The five mixed-direction combinations are rejected with
 // BAD_USER_INPUT before the repository is touched so the caller never gets a
-// silently re-interpreted page boundary. Only PUBLISHED decks are ever
-// returned — the published filter is enforced in the repository SQL and is not
-// a caller-overridable argument. Unauthenticated callers receive
+// silently re-interpreted page boundary. Only PUBLISHED decks that hold at
+// least one card are ever returned — that visibility filter is enforced in the
+// repository SQL and is not a caller-overridable argument, so a published deck
+// whose cards have all been deleted disappears from both the page and its
+// totalCount until a card is restored. Unauthenticated callers receive
 // UNAUTHENTICATED.
 func (u *masterCatalogUsecase) ListPublishedConnection(
 	ctx context.Context, in MasterCatalogConnectionInput,
@@ -250,9 +256,10 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 // authentication for the published catalog vs. adminGate.Require for the admin
 // surface); everything from cursor resolution onward is identical except two
 // caller-supplied knobs: publishedOnly threads into resolveMasterCatalogCursor to pick the
-// hydration scope (true = published catalog, a DRAFT or unknown id is rejected as
-// cursor-not-found so drafts never leak; false = admin, DRAFT decks are valid
-// cursors), and fetch is the repository page method (FindPublishedPage /
+// hydration scope (true = published catalog, a DRAFT, EMPTY or unknown id is
+// rejected as cursor-not-found so invisible decks never leak; false = admin,
+// DRAFT and empty decks are valid cursors), and fetch is the repository page
+// method (FindPublishedPage /
 // FindPageAnyStatus). opPrefix is the caller's eris wrap message, supplied so the shared
 // find-page wrap carries the correct attribution (error-wrapping rule: shared helpers
 // take the caller prefix as an argument, never hardcode it).
@@ -341,10 +348,11 @@ func resolveMasterCatalogOrderBy(
 // resolveMasterCatalogCursor decodes an opaque cursor string into a
 // *repository.MasterCatalogCursor with the column required by the active orderBy
 // populated. The publishedOnly flag selects the hydration scope: true hydrates
-// via FindPublishedByID (catalog scope — a draft or unknown id is rejected as
-// cursor-not-found so drafts never leak); false hydrates via FindByID (admin
-// scope — DRAFT decks are valid cursors). Returns BAD_USER_INPUT when the cursor
-// cannot be decoded or references a row outside the active scope. The scope check
+// via FindPublishedByID (catalog scope — a draft, card-less or unknown id is
+// rejected as cursor-not-found so decks outside the catalog never leak); false
+// hydrates via FindByID (admin scope — DRAFT and empty decks are valid
+// cursors). Returns BAD_USER_INPUT when the cursor cannot be decoded or
+// references a row outside the active scope. The scope check
 // runs even when orderBy is missing a hydratable column.
 func (u *masterCatalogUsecase) resolveMasterCatalogCursor(
 	ctx context.Context,
@@ -614,6 +622,10 @@ func (u *masterCatalogUsecase) UpdateMaster(ctx context.Context, id string, in U
 // PublishMaster publishes a master cardgroup after confirming it has at least one
 // card. Admin-only. A deck with zero cards is rejected via outcome.EmptyMaster
 // (mapped to MasterCardgroupEmptyError) without touching the publish path.
+// This guard is immediate admin feedback, not the enforcement point: catalog
+// visibility is a read-side predicate (published AND at least one card) applied
+// in the repository, so a deck emptied AFTER publication leaves the catalog on
+// its own and returns the moment a card is restored.
 func (u *masterCatalogUsecase) PublishMaster(ctx context.Context, id string) (PublishMasterOutcome, error) {
 	if _, err := u.adminGate.Require(ctx, "usecase: master catalog: publish master"); err != nil {
 		return PublishMasterOutcome{}, err
@@ -692,13 +704,15 @@ func (u *masterCatalogUsecase) ListAdminConnection(
 
 // ImportMaster copies the published master cardgroup identified by masterID into a
 // fresh cardgroup owned by the authenticated caller. The master is gated through
-// FindPublishedByID, which returns ErrNotFound for both unknown ids and draft decks,
-// so draft existence is never disclosed — both collapse to ImportMasterOutcome{NotFound:true}.
-// The delegated copy re-reads the master through the same published-scoped method
-// inside its transaction, so a master unpublished between this gate and the write
+// FindPublishedByID, which returns ErrNotFound for unknown ids, draft decks and
+// published decks holding zero cards, so neither draft existence nor an empty
+// deck is ever disclosed — all three collapse to ImportMasterOutcome{NotFound:true}
+// and no cardgroup row is written. The delegated copy re-reads the master
+// through the same catalog-scoped method inside its transaction, so a master
+// unpublished — or emptied of its last card — between this gate and the write
 // also collapses to NotFound (the ErrNotFound the copy surfaces is mapped below)
-// rather than silently importing a now-draft deck. Unauthenticated callers receive
-// ucerr.ErrUnauthenticated. Import is the second entry point into "the caller now
+// rather than silently importing a now-invisible deck. Unauthenticated callers
+// receive ucerr.ErrUnauthenticated. Import is the second entry point into "the caller now
 // owns a new cardgroup", so it applies the same per-user cardgroup quota as
 // CardgroupUsecase.Create via checkCardgroupLimit (admins exempt) — without it the
 // cap would be a property of the create form rather than an invariant of the
@@ -745,9 +759,10 @@ func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string
 			return ImportMasterOutcome{}, ucerr.ErrUnauthenticated
 		}
 		if errors.Is(err, repository.ErrNotFound) {
-			// The master was unpublished between the FindPublishedByID gate and the
-			// copy's own published-scoped re-read (TOCTOU). Collapse into the same
-			// non-disclosure not-found outcome as a pre-gate unknown/draft master.
+			// The master was unpublished, or lost its last card, between the
+			// FindPublishedByID gate and the copy's own catalog-scoped re-read
+			// (TOCTOU). Collapse into the same non-disclosure not-found outcome as
+			// a pre-gate unknown/draft/empty master.
 			return ImportMasterOutcome{NotFound: true}, nil
 		}
 		return ImportMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: import: copy master to user")
@@ -757,12 +772,13 @@ func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string
 
 // MergeMaster merges the published master cardgroup identified by masterID into
 // the caller-owned cardgroup cardgroupID. The master is gated through
-// FindPublishedByID, collapsing unknown and draft into MergeMasterOutcome{NotFound:true}
-// so draft existence is never disclosed. The delegated merge re-reads the master
-// through the same published-scoped method inside its transaction, so a master
-// unpublished between this gate and the write also collapses to NotFound (the
+// FindPublishedByID, collapsing unknown, draft and card-less decks into
+// MergeMasterOutcome{NotFound:true} so neither draft existence nor an empty deck
+// is ever disclosed. The delegated merge re-reads the master through the same
+// catalog-scoped method inside its transaction, so a master unpublished or
+// emptied between this gate and the write also collapses to NotFound (the
 // ErrNotFound the merge surfaces is mapped below) rather than snapshotting a
-// now-draft deck. Destination ownership is enforced by the delegated usecase
+// now-invisible deck. Destination ownership is enforced by the delegated usecase
 // (BAD_USER_INPUT for unknown, UNAUTHENTICATED for foreign), surfaced as an error
 // rather than via the outcome. Unauthenticated callers receive
 // ucerr.ErrUnauthenticated. The merge is a one-time snapshot.
@@ -788,10 +804,11 @@ func (u *masterCatalogUsecase) MergeMaster(ctx context.Context, masterID, cardgr
 			return MergeMasterOutcome{}, err
 		}
 		if errors.Is(err, repository.ErrNotFound) {
-			// The master was unpublished between the FindPublishedByID gate and the
-			// merge tx's own published-scoped re-read (TOCTOU). Collapse into the same
-			// non-disclosure not-found outcome as a pre-gate unknown/draft master. That
-			// in-tx re-read is the only ErrNotFound producer this branch can see: the
+			// The master was unpublished, or lost its last card, between the
+			// FindPublishedByID gate and the merge tx's own catalog-scoped re-read
+			// (TOCTOU). Collapse into the same non-disclosure not-found outcome as a
+			// pre-gate unknown/draft/empty master. That in-tx re-read is the only
+			// ErrNotFound producer this branch can see: the
 			// destination ownership gate maps a missing cardgroup to a
 			// ucerr.ValidationError, and the post-commit destination read-back translates
 			// its ErrNotFound into a non-sentinel internal error so a destination deleted
@@ -807,9 +824,10 @@ func (u *masterCatalogUsecase) MergeMaster(ctx context.Context, masterID, cardgr
 	return MergeMasterOutcome{Cardgroup: res.Cardgroup, Added: res.Added, Updated: res.Updated}, nil
 }
 
-// FindPublishedMaster returns a single PUBLISHED master deck by id for any
-// authenticated caller. FindPublishedByID returns ErrNotFound for both unknown
-// ids and draft decks, so draft existence is never disclosed — both collapse to
+// FindPublishedMaster returns a single PUBLISHED, non-empty master deck by id
+// for any authenticated caller. FindPublishedByID returns ErrNotFound for
+// unknown ids, draft decks and published decks holding zero cards, so neither
+// draft existence nor an empty deck is ever disclosed — all three collapse to
 // a (nil, nil) result that the resolver maps to GraphQL null (non-disclosure
 // gate). Unauthenticated callers receive ucerr.ErrUnauthenticated.
 func (u *masterCatalogUsecase) FindPublishedMaster(ctx context.Context, id string) (*domain.MasterCardgroup, error) {
@@ -830,9 +848,9 @@ func (u *masterCatalogUsecase) FindPublishedMaster(ctx context.Context, id strin
 }
 
 // PreviewMergeMaster mirrors MergeMaster as a read-only dry run. Same gates:
-// unauthenticated -> ErrUnauthenticated; unknown/draft master -> NotFound (collapsed
-// via FindPublishedByID, never disclosing draft existence); destination auth failures
-// travel as errors from the delegated usecase.
+// unauthenticated -> ErrUnauthenticated; unknown/draft/card-less master -> NotFound
+// (collapsed via FindPublishedByID, never disclosing draft existence); destination
+// auth failures travel as errors from the delegated usecase.
 func (u *masterCatalogUsecase) PreviewMergeMaster(ctx context.Context, masterID, cardgroupID string) (PreviewMergeOutcome, error) {
 	caller := auth.UserFrom(ctx)
 	if err := requireCallerSub(caller); err != nil {

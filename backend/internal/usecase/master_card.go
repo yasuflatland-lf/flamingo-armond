@@ -118,8 +118,8 @@ type masterCardRepoForMasterCard interface {
 
 // masterCardgroupRepoForMasterCard is the narrow consumer interface for master-
 // cardgroup reads used by masterCardUsecase: the admin deck lookup (incl. DRAFT),
-// its card count, and the published-only visibility gate. Satisfied implicitly by
-// repository.MasterCardgroupRepository.
+// its card count, and the catalog-visibility gate (published AND non-empty).
+// Satisfied implicitly by repository.MasterCardgroupRepository.
 type masterCardgroupRepoForMasterCard interface {
 	FindByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 	CountCards(ctx context.Context, masterCardgroupID string) (int64, error)
@@ -584,8 +584,9 @@ func (u *masterCardUsecase) ListPublicMasterCards(
 		if err := requireCallerSub(auth.UserFrom(ctx)); err != nil {
 			return err
 		}
-		// Published-only visibility gate. FindPublishedByID returns ErrNotFound for
-		// BOTH unknown and DRAFT ids, collapsing them into one not-found so the
+		// Catalog-visibility gate. FindPublishedByID returns ErrNotFound for
+		// unknown ids, DRAFT ids AND published decks holding zero cards,
+		// collapsing them into one not-found so the
 		// endpoint cannot be used as a draft-existence oracle (non-disclosure gate).
 		if _, err := u.masterCardgroupRepo.FindPublishedByID(ctx, in.MasterCardgroupID); err != nil {
 			if errors.Is(err, repository.ErrNotFound) {

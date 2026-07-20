@@ -284,53 +284,85 @@ func TestMasterCardgroupRepository_ListPublishedDefaultStarters_FilterAndOrder(t
 	ctx := context.Background()
 	repo := repository.NewMasterCardgroupRepository(testDB.GORM)
 
-	// (a) published + starter, sort_order=2
+	// (a) published + starter + 1 card, sort_order=2
 	mA := newMasterCardgroupMinimal("Starter A " + uuid.NewString())
 	mA.Status = domain.MasterStatusPublished
 	mA.IsDefaultStarter = true
 	mA.SortOrder = 2
 	require.NoError(t, repo.Create(ctx, mA))
+	insertMasterCards(t, ctx, mA.ID, 1)
 
-	// (b) published + starter, sort_order=1
+	// (b) published + starter + 1 card, sort_order=1
 	mB := newMasterCardgroupMinimal("Starter B " + uuid.NewString())
 	mB.Status = domain.MasterStatusPublished
 	mB.IsDefaultStarter = true
 	mB.SortOrder = 1
 	require.NoError(t, repo.Create(ctx, mB))
+	insertMasterCards(t, ctx, mB.ID, 1)
 
 	// (c) published + NOT starter
 	mC := newMasterCardgroupMinimal("Not Starter " + uuid.NewString())
 	mC.Status = domain.MasterStatusPublished
 	mC.IsDefaultStarter = false
 	require.NoError(t, repo.Create(ctx, mC))
+	insertMasterCards(t, ctx, mC.ID, 1)
 
 	// (d) draft + starter
 	mD := newMasterCardgroupMinimal("Draft Starter " + uuid.NewString())
 	mD.Status = domain.MasterStatusDraft
 	mD.IsDefaultStarter = true
 	require.NoError(t, repo.Create(ctx, mD))
+	insertMasterCards(t, ctx, mD.ID, 1)
+
+	// (e) published + starter but ZERO cards. Seeding a learner with an empty
+	// deck is worse than seeding them with nothing, so the catalog-visibility
+	// predicate excludes it here exactly as it does in the catalog listing.
+	mE := newMasterCardgroupMinimal("Empty Starter " + uuid.NewString())
+	mE.Status = domain.MasterStatusPublished
+	mE.IsDefaultStarter = true
+	mE.SortOrder = 3
+	require.NoError(t, repo.Create(ctx, mE))
 
 	all, err := repo.ListPublishedDefaultStarters(ctx)
 	require.NoError(t, err)
 
 	// Filter down to only the rows we created in this test.
-	ours := filterMasterCardgroupsByIDs(all, []string{mA.ID, mB.ID, mC.ID, mD.ID})
+	ours := filterMasterCardgroupsByIDs(all, []string{mA.ID, mB.ID, mC.ID, mD.ID, mE.ID})
 
 	// Only (a) and (b) should be in the result.
-	require.Len(t, ours, 2, "only published+starter rows should be returned")
+	require.Len(t, ours, 2, "only published+starter rows holding at least one card should be returned")
 
 	ids := make([]string, len(ours))
 	for i, row := range ours {
 		ids[i] = row.ID
 	}
-	assert.Contains(t, ids, mA.ID, "published+starter (a) must be in list")
-	assert.Contains(t, ids, mB.ID, "published+starter (b) must be in list")
+	assert.Contains(t, ids, mA.ID, "published+starter+cards (a) must be in list")
+	assert.Contains(t, ids, mB.ID, "published+starter+cards (b) must be in list")
 	assert.NotContains(t, ids, mC.ID, "published+non-starter (c) must NOT be in list")
 	assert.NotContains(t, ids, mD.ID, "draft+starter (d) must NOT be in list")
+	assert.NotContains(t, ids, mE.ID, "published+starter with zero cards (e) must NOT be in list")
 
 	// Ordering: sort_order ASC — (b) sort_order=1 must come before (a) sort_order=2.
 	require.Equal(t, mB.ID, ours[0].ID, "lower sort_order (b) must come first")
 	require.Equal(t, mA.ID, ours[1].ID, "higher sort_order (a) must come second")
+
+	// Self-healing: adding a card to (e) makes it a valid starter again with no
+	// admin action, and it lands last by sort_order.
+	insertMasterCards(t, ctx, mE.ID, 1)
+	all, err = repo.ListPublishedDefaultStarters(ctx)
+	require.NoError(t, err)
+	healed := filterMasterCardgroupsByIDs(all, []string{mA.ID, mB.ID, mE.ID})
+	require.Equal(t, []string{mB.ID, mA.ID, mE.ID}, masterCardgroupIDs(healed),
+		"restoring a card returns the starter to the seed set (self-healing)")
+}
+
+// masterCardgroupIDs extracts the ids from a slice of master cardgroups.
+func masterCardgroupIDs(rows []*domain.MasterCardgroup) []string {
+	out := make([]string, len(rows))
+	for i, row := range rows {
+		out[i] = row.ID
+	}
+	return out
 }
 
 // filterMasterCardgroupsByIDs returns only the rows whose IDs appear in wantIDs,
