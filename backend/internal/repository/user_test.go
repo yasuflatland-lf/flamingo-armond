@@ -305,7 +305,17 @@ func TestUser_OnDeleteCascade(t *testing.T) {
 	}
 }
 
-func TestDeleteAuthUser_Success(t *testing.T) {
+// deleteAuthUserInTx runs DeleteAuthUserTx inside a real transaction, mirroring
+// the usecase-layer call shape (guard + delete under one advisory lock). The
+// sentinel returned by the repository must survive the transaction boundary, so
+// the closure's error is returned verbatim.
+func deleteAuthUserInTx(ctx context.Context, repo repository.UserRepository, id string) error {
+	return testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.DeleteAuthUserTx(ctx, tx, id)
+	})
+}
+
+func TestDeleteAuthUserTx_Success(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	id := insertAuthUser(t, ctx)
@@ -314,28 +324,28 @@ func TestDeleteAuthUser_Success(t *testing.T) {
 	if _, err := repo.FindByID(ctx, id); err != nil {
 		t.Fatalf("precondition FindByID: %v", err)
 	}
-	if err := repo.DeleteAuthUser(ctx, id); err != nil {
-		t.Fatalf("DeleteAuthUser: %v", err)
+	if err := deleteAuthUserInTx(ctx, repo, id); err != nil {
+		t.Fatalf("DeleteAuthUserTx: %v", err)
 	}
 	if _, err := repo.FindByID(ctx, id); !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("want ErrNotFound after delete, got %v", err)
 	}
 }
 
-func TestDeleteAuthUser_NotFound(t *testing.T) {
+func TestDeleteAuthUserTx_NotFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repo := repository.NewUserRepository(testDB.GORM)
 
-	if err := repo.DeleteAuthUser(ctx, uuid.NewString()); !errors.Is(err, repository.ErrNotFound) {
+	if err := deleteAuthUserInTx(ctx, repo, uuid.NewString()); !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("want ErrNotFound for missing auth user, got %v", err)
 	}
 }
 
-// TestDeleteAuthUser_CascadesOwnedCardgroup proves DeleteAuthUser (not a raw
+// TestDeleteAuthUserTx_CascadesOwnedCardgroup proves DeleteAuthUserTx (not a raw
 // SQL statement) drives the ON DELETE CASCADE chain down to a user-owned
 // cardgroup row.
-func TestDeleteAuthUser_CascadesOwnedCardgroup(t *testing.T) {
+func TestDeleteAuthUserTx_CascadesOwnedCardgroup(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	id := insertAuthUser(t, ctx)
@@ -349,8 +359,8 @@ func TestDeleteAuthUser_CascadesOwnedCardgroup(t *testing.T) {
 		t.Fatalf("insert cardgroup: %v", err)
 	}
 
-	if err := repo.DeleteAuthUser(ctx, id); err != nil {
-		t.Fatalf("DeleteAuthUser: %v", err)
+	if err := deleteAuthUserInTx(ctx, repo, id); err != nil {
+		t.Fatalf("DeleteAuthUserTx: %v", err)
 	}
 
 	var count int

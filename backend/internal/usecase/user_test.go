@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"gorm.io/gorm"
+
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
@@ -33,7 +35,7 @@ func (m *mockUserRepository) Update(_ context.Context, _ string, patch repositor
 	return m.updateResult, m.updateErr
 }
 
-func (m *mockUserRepository) DeleteAuthUser(_ context.Context, id string) error {
+func (m *mockUserRepository) DeleteAuthUserTx(_ context.Context, _ *gorm.DB, id string) error {
 	m.deleteAuthCalls++
 	m.lastDeleteAuthID = id
 	return m.deleteAuthErr
@@ -47,6 +49,9 @@ type mockUserRolesRepository struct {
 
 	adminCount     int64
 	countAdminsErr error
+	lockErr        error
+	lockCalls      int
+	countCalls     int
 }
 
 func (m *mockUserRolesRepository) ListByUser(_ context.Context, userID string) ([]*domain.Role, error) {
@@ -55,7 +60,15 @@ func (m *mockUserRolesRepository) ListByUser(_ context.Context, userID string) (
 	return m.roles, m.err
 }
 
-func (m *mockUserRolesRepository) CountAdmins(_ context.Context) (int64, error) {
+// AcquireAdminRoleLockTx records that the guard serialized before counting; the
+// counter asserts the lock is taken ahead of every count.
+func (m *mockUserRolesRepository) AcquireAdminRoleLockTx(_ context.Context, _ *gorm.DB) error {
+	m.lockCalls++
+	return m.lockErr
+}
+
+func (m *mockUserRolesRepository) CountAdminsTx(_ context.Context, _ *gorm.DB) (int64, error) {
+	m.countCalls++
 	return m.adminCount, m.countAdminsErr
 }
 
@@ -120,7 +133,7 @@ func TestUserUsecase_Me(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			repo := &mockUserRepository{findResult: tc.findResult, findErr: tc.findErr}
-			uc := NewUserUsecase(repo, nil, nil, newTestLogger())
+			uc := NewUserUsecase(nil, repo, nil, nil, newTestLogger())
 
 			p, err := uc.Me(tc.ctx)
 
@@ -299,7 +312,7 @@ func TestUserUsecase_UpdateUser(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			repo := &mockUserRepository{updateResult: tc.repoResult, updateErr: tc.repoErr}
-			uc := NewUserUsecase(repo, nil, nil, newTestLogger())
+			uc := NewUserUsecase(nil, repo, nil, nil, newTestLogger())
 
 			outcome, err := uc.UpdateUser(tc.ctx, tc.input)
 
@@ -373,7 +386,7 @@ func TestUserUsecase_UpdateUser_SuccessVariant(t *testing.T) {
 
 	returned := &domain.User{ID: "u1", DisplayName: dnPtr("Alice")}
 	repo := &mockUserRepository{updateResult: returned}
-	uc := NewUserUsecase(repo, nil, nil, newTestLogger())
+	uc := NewUserUsecase(nil, repo, nil, nil, newTestLogger())
 
 	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: "Alice"})
 
@@ -392,7 +405,7 @@ func TestUserUsecase_UpdateUser_ValidationVariant_DisplayName(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockUserRepository{}
-	uc := NewUserUsecase(repo, nil, nil, newTestLogger())
+	uc := NewUserUsecase(nil, repo, nil, nil, newTestLogger())
 
 	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: ""})
 
@@ -417,7 +430,7 @@ func TestUserUsecase_UpdateUser_ValidationVariant_Bio(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockUserRepository{}
-	uc := NewUserUsecase(repo, nil, nil, newTestLogger())
+	uc := NewUserUsecase(nil, repo, nil, nil, newTestLogger())
 
 	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{
 		DisplayName: "Alice",
@@ -445,7 +458,7 @@ func TestUserUsecase_UpdateUser_RepoError_InfraChannel(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockUserRepository{updateErr: errors.New("db: storage failure")}
-	uc := NewUserUsecase(repo, nil, nil, newTestLogger())
+	uc := NewUserUsecase(nil, repo, nil, nil, newTestLogger())
 
 	_, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: "Alice"})
 
@@ -464,7 +477,7 @@ func TestUserUsecase_DeleteMyAccount(t *testing.T) {
 
 	t.Run("unauthenticated", func(t *testing.T) {
 		t.Parallel()
-		uc := NewUserUsecase(&mockUserRepository{}, &mockUserRolesRepository{}, &mockAdminChecker{}, newTestLogger())
+		uc := NewUserUsecase(nil, &mockUserRepository{}, &mockUserRolesRepository{}, &mockAdminChecker{}, newTestLogger())
 		assertUnauthenticated(t, uc.DeleteMyAccount(anonCtx()))
 	})
 
@@ -473,13 +486,26 @@ func TestUserUsecase_DeleteMyAccount(t *testing.T) {
 		repo := &mockUserRepository{}
 		// adminCount is a blocking value to prove it is never consulted for non-admins.
 		roles := &mockUserRolesRepository{adminCount: 1}
-		uc := NewUserUsecase(repo, roles, &mockAdminChecker{isAdmin: false}, newTestLogger())
+		lockCallsAtIsAdmin := -1
+		authChk := &mockAdminChecker{isAdmin: false}
+		authChk.onCall = func() { lockCallsAtIsAdmin = roles.lockCalls }
+		uc := NewUserUsecase(nil, repo, roles, authChk, newTestLogger())
 
 		if err := uc.DeleteMyAccount(authedCtx(caller)); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if repo.deleteAuthCalls != 1 || repo.lastDeleteAuthID != caller {
-			t.Fatalf("DeleteAuthUser: calls=%d id=%q, want 1 and %q", repo.deleteAuthCalls, repo.lastDeleteAuthID, caller)
+			t.Fatalf("DeleteAuthUserTx: calls=%d id=%q, want 1 and %q", repo.deleteAuthCalls, repo.lastDeleteAuthID, caller)
+		}
+		if roles.countCalls != 0 {
+			t.Fatalf("count=%d, want 0 for a non-admin caller", roles.countCalls)
+		}
+		// The lock is still taken once: the membership read that decides the
+		// caller is a non-admin must itself happen under it, otherwise a caller
+		// promoted concurrently is read as a non-admin and skips the count.
+		if roles.lockCalls != 1 || lockCallsAtIsAdmin != 1 {
+			t.Fatalf("lock=%d lockCallsAtIsAdmin=%d, want the membership read taken once under the lock",
+				roles.lockCalls, lockCallsAtIsAdmin)
 		}
 	})
 
@@ -487,13 +513,13 @@ func TestUserUsecase_DeleteMyAccount(t *testing.T) {
 		t.Parallel()
 		repo := &mockUserRepository{}
 		roles := &mockUserRolesRepository{adminCount: 2}
-		uc := NewUserUsecase(repo, roles, &mockAdminChecker{isAdmin: true}, newTestLogger())
+		uc := NewUserUsecase(nil, repo, roles, &mockAdminChecker{isAdmin: true}, newTestLogger())
 
 		if err := uc.DeleteMyAccount(authedCtx(caller)); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if repo.deleteAuthCalls != 1 {
-			t.Fatalf("DeleteAuthUser calls=%d, want 1", repo.deleteAuthCalls)
+			t.Fatalf("DeleteAuthUserTx calls=%d, want 1", repo.deleteAuthCalls)
 		}
 	})
 
@@ -501,13 +527,53 @@ func TestUserUsecase_DeleteMyAccount(t *testing.T) {
 		t.Parallel()
 		repo := &mockUserRepository{}
 		roles := &mockUserRolesRepository{adminCount: 1}
-		uc := NewUserUsecase(repo, roles, &mockAdminChecker{isAdmin: true}, newTestLogger())
+		uc := NewUserUsecase(nil, repo, roles, &mockAdminChecker{isAdmin: true}, newTestLogger())
 
 		err := uc.DeleteMyAccount(authedCtx(caller))
 
 		assertForbidden(t, err, "cannot delete the last admin account; promote another admin first")
 		if repo.deleteAuthCalls != 0 {
-			t.Fatalf("DeleteAuthUser must not run for the last admin, got %d calls", repo.deleteAuthCalls)
+			t.Fatalf("DeleteAuthUserTx must not run for the last admin, got %d calls", repo.deleteAuthCalls)
+		}
+		// The count is only trustworthy while the admin-role advisory lock is
+		// held; without it a concurrent admin removal races past it.
+		if roles.lockCalls != 1 || roles.countCalls != 1 {
+			t.Fatalf("lock=%d count=%d, want the admin count read once under the lock",
+				roles.lockCalls, roles.countCalls)
+		}
+	})
+
+	t.Run("advisory lock failure fails closed", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockUserRepository{}
+		roles := &mockUserRolesRepository{adminCount: 2, lockErr: errors.New("boom")}
+		authChk := &mockAdminChecker{isAdmin: true}
+		uc := NewUserUsecase(nil, repo, roles, authChk, newTestLogger())
+
+		err := uc.DeleteMyAccount(authedCtx(caller))
+
+		// Swallowing the lock error and counting anyway would reopen the race
+		// the lock closes, so the request must abort before the membership
+		// read, before the count, and before the delete.
+		assertInternalChain(t, err, "usecase: user: delete my account: count admins")
+		if authChk.calls != 0 || roles.countCalls != 0 {
+			t.Fatalf("isAdmin=%d count=%d, want neither once the lock could not be taken",
+				authChk.calls, roles.countCalls)
+		}
+		if repo.deleteAuthCalls != 0 {
+			t.Fatalf("DeleteAuthUserTx calls = %d, want 0 once the lock could not be taken", repo.deleteAuthCalls)
+		}
+	})
+
+	t.Run("advisory lock cancellation propagates unwrapped", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockUserRepository{}
+		roles := &mockUserRolesRepository{lockErr: context.Canceled}
+		uc := NewUserUsecase(nil, repo, roles, &mockAdminChecker{isAdmin: true}, newTestLogger())
+
+		assertCancelled(t, uc.DeleteMyAccount(authedCtx(caller)))
+		if repo.deleteAuthCalls != 0 {
+			t.Fatalf("DeleteAuthUserTx calls = %d, want 0", repo.deleteAuthCalls)
 		}
 	})
 
@@ -515,7 +581,7 @@ func TestUserUsecase_DeleteMyAccount(t *testing.T) {
 		t.Parallel()
 		repo := &mockUserRepository{deleteAuthErr: repository.ErrNotFound}
 		roles := &mockUserRolesRepository{}
-		uc := NewUserUsecase(repo, roles, &mockAdminChecker{isAdmin: false}, newTestLogger())
+		uc := NewUserUsecase(nil, repo, roles, &mockAdminChecker{isAdmin: false}, newTestLogger())
 
 		if err := uc.DeleteMyAccount(authedCtx(caller)); err != nil {
 			t.Fatalf("expected nil (idempotent), got %v", err)
@@ -526,25 +592,25 @@ func TestUserUsecase_DeleteMyAccount(t *testing.T) {
 		t.Parallel()
 		repo := &mockUserRepository{deleteAuthErr: errors.New("boom")}
 		roles := &mockUserRolesRepository{}
-		uc := NewUserUsecase(repo, roles, &mockAdminChecker{isAdmin: false}, newTestLogger())
+		uc := NewUserUsecase(nil, repo, roles, &mockAdminChecker{isAdmin: false}, newTestLogger())
 
 		assertInternalChain(t, uc.DeleteMyAccount(authedCtx(caller)), "usecase: user: delete my account")
 	})
 
 	t.Run("context cancellation propagates", func(t *testing.T) {
 		t.Parallel()
-		uc := NewUserUsecase(&mockUserRepository{}, &mockUserRolesRepository{}, &mockAdminChecker{err: context.Canceled}, newTestLogger())
+		uc := NewUserUsecase(nil, &mockUserRepository{}, &mockUserRolesRepository{}, &mockAdminChecker{err: context.Canceled}, newTestLogger())
 		assertCancelled(t, uc.DeleteMyAccount(authedCtx(caller)))
 	})
 
 	t.Run("missing guard deps fail safe", func(t *testing.T) {
 		t.Parallel()
 		repo := &mockUserRepository{}
-		uc := NewUserUsecase(repo, nil, &mockAdminChecker{}, newTestLogger())
+		uc := NewUserUsecase(nil, repo, nil, &mockAdminChecker{}, newTestLogger())
 
 		assertInternalChain(t, uc.DeleteMyAccount(authedCtx(caller)), "admin guard deps not configured")
 		if repo.deleteAuthCalls != 0 {
-			t.Fatalf("DeleteAuthUser must not run when guard deps are missing, got %d calls", repo.deleteAuthCalls)
+			t.Fatalf("DeleteAuthUserTx must not run when guard deps are missing, got %d calls", repo.deleteAuthCalls)
 		}
 	})
 }
