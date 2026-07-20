@@ -179,7 +179,28 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 	}
 
 	rows, parseErrs = dedupeParsedRows(rows, parseErrs)
-	cards := u.masterCardsFromParsedRows(ctx, cardgroup.ID, rows)
+	cards, domainSkips := u.masterCardsFromParsedRows(ctx, cardgroup.ID, rows)
+	// Every row parsed at the grammar level but failed domain construction (e.g.
+	// an editor pushed every back side past domain.CardTextMax). The keep-set
+	// below would be empty and the diff-prune would delete every existing card in
+	// the master cardgroup, wiping a published deck. Refuse to persist — the same
+	// no-mutation outcome the grammar-skip short-circuit gives when the payload
+	// yields no rows at all. Partially-invalid batches are unaffected: they keep
+	// pruning per row, which is the deliberate behaviour documented below.
+	if len(cards) == 0 && len(rows) > 0 {
+		u.logger.WarnContext(ctx, "notion sync: all rows failed domain validation, no persistence",
+			"cardgroup_id", cardgroup.ID,
+			"skipped_count", len(domainSkips),
+			"first_line", domainSkips[0].Line,
+			"first_front", domainSkips[0].Front,
+			"first_reason", domainSkips[0].Message,
+		)
+		return MasterNotionSyncOutput{}, eris.Wrapf(
+			ErrNotionSyncInvalidInput,
+			"all %d rows failed domain validation (first: line %d: %s)",
+			len(domainSkips), domainSkips[0].Line, domainSkips[0].Message,
+		)
+	}
 	// Derive the keep-set from the validated cards' (trimmed) fronts so the
 	// diff-prune step stays consistent with what was actually upserted: rows
 	// dropped by ParseCardText validation are absent here and so are pruned if
@@ -345,15 +366,26 @@ func dedupeParsedRows(rows []ParsedRow, errs []CardImportError) ([]ParsedRow, []
 // front/back, or an ID-generation failure) is skipped (not persisted) and a
 // structured warn is emitted so the rest of the sync still imports the valid
 // rows. See docs/backend/error-wrapping/log-structured-event-when-batch-item-fails.md.
+//
+// The second return value collects one diagnostic per skipped row. It lets the
+// caller distinguish "some rows dropped" from "every row dropped", the latter
+// being a whole-payload rejection rather than a per-row skip.
 func (u *MasterNotionSyncUsecase) masterCardsFromParsedRows(
 	ctx context.Context, masterCardgroupID string, rows []ParsedRow,
-) []*domain.MasterCard {
+) ([]*domain.MasterCard, []CardImportError) {
 	now := time.Now().UTC()
 	cards := make([]*domain.MasterCard, 0, len(rows))
+	skipped := make([]CardImportError, 0)
 	for i, row := range rows {
 		card, err := domain.NewMasterCard(masterCardgroupID, row.Front, row.Back, i)
 		if err != nil {
 			u.warnSkippedMasterRow(ctx, masterCardgroupID, i, err)
+			skipped = append(skipped, CardImportError{
+				Line:    row.Line,
+				Message: err.Error(),
+				Kind:    CardImportErrKindHard,
+				Front:   row.Front,
+			})
 			continue
 		}
 		// NewMasterCard stamps per-card timestamps; pin the whole sync batch to
@@ -362,7 +394,7 @@ func (u *MasterNotionSyncUsecase) masterCardsFromParsedRows(
 		card.UpdatedAt = now
 		cards = append(cards, card)
 	}
-	return cards
+	return cards, skipped
 }
 
 // warnSkippedMasterRow emits a structured warn for a master-card row whose
