@@ -212,6 +212,10 @@ const (
 	maxBulkDelete   = 100
 )
 
+// Card reads a single card the caller owns. An unknown id and a card owned by
+// someone else both return ucerr.ErrUnauthenticated, so the query cannot be used
+// as an existence oracle over another user's card ids. Update / Delete collapse
+// the same two cases identically.
 func (u *cardUsecase) Card(ctx context.Context, id string) (*domain.Card, error) {
 	user := auth.UserFrom(ctx)
 	if err := requireCallerSub(user); err != nil {
@@ -220,7 +224,7 @@ func (u *cardUsecase) Card(ctx context.Context, id string) (*domain.Card, error)
 	card, err := u.cardRepo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, nil
+			return nil, ucerr.ErrUnauthenticated
 		}
 		return nil, eris.Wrap(err, "usecase: card: find by id")
 	}
