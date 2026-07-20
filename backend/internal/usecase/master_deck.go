@@ -18,10 +18,14 @@ import (
 // enumerate the published default-starter set. The lookup is deliberately
 // published-scoped (FindPublishedByID, not the any-status FindByID): the copy and
 // merge write paths re-read the master through the same visibility gate that
-// MasterCatalogUsecase applies before the transaction, so an unpublish that lands
-// between that gate and the write cannot snapshot a now-draft deck (closing the
-// TOCTOU). Unknown and unpublished collapse to repository.ErrNotFound, which the
-// catalog layer maps to the same non-disclosure not-found outcome.
+// MasterCatalogUsecase applies before the transaction. That re-read narrows the
+// unpublish race window — from "between the outer MasterCatalogUsecase gate and
+// the write" down to "between the re-read and the write" — but it does not close
+// it. The re-read is an unlocked plain read, so an unpublish committing after it
+// still lets a now-draft deck be snapshotted. Closing the window would require a
+// FOR SHARE lock on the master row taken on the transaction connection. Unknown
+// and unpublished collapse to repository.ErrNotFound, which the catalog layer
+// maps to the same non-disclosure not-found outcome.
 type masterDeckCardgroupRepo interface {
 	FindPublishedByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 	ListPublishedDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error)
@@ -319,9 +323,13 @@ func (u *masterDeckUsecase) copyMasterCardsIntoTx(
 // operation rather than this helper.
 //
 // The master is re-read through the published-scoped FindPublishedByID (not the
-// any-status FindByID), so a master unpublished between MasterCatalogUsecase's
-// FindPublishedByID gate and this copy yields repository.ErrNotFound and no rows
-// are written — closing the TOCTOU rather than silently snapshotting a draft.
+// any-status FindByID), so a master already unpublished by the time this copy
+// reaches the re-read yields repository.ErrNotFound and no rows are written. That
+// narrows the unpublish race window — from "between MasterCatalogUsecase's
+// FindPublishedByID gate and the write" down to "between the re-read and the
+// write" — rather than closing it: the re-read takes no lock, so an unpublish
+// committing after it still snapshots a draft. Closure would require a FOR SHARE
+// lock on the master row taken on the transaction connection.
 // SeedForNewUser is unaffected: it sources ids from ListPublishedDefaultStarters,
 // which already returns only published decks.
 //
@@ -361,14 +369,17 @@ func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx *gorm.DB,
 // which ownerID must own, inside its own transaction. The destination ownership
 // gate uses authorizeCardgroupOrBadInput (untrusted-input boundary): an unknown
 // cardgroup is a recoverable validation error; a foreign cardgroup is
-// UNAUTHENTICATED. Inside the transaction the master is re-read through the
-// published-scoped FindPublishedByID before its cards are listed, so a master
-// unpublished between MasterCatalogUsecase's FindPublishedByID gate and this write
-// yields repository.ErrNotFound (which MergeMaster maps to the not-found outcome)
-// rather than snapshotting a now-draft deck — closing the TOCTOU. Cards conflicting
-// on (cardgroup_id, front) are overwritten (back/position/updated_at); ids are
-// preserved so FSRS state survives. Returns the destination cardgroup plus the
-// add/update tally.
+// UNAUTHENTICATED. The master is re-read through the published-scoped
+// FindPublishedByID before its cards are listed, so a master already unpublished
+// by the time that re-read runs yields repository.ErrNotFound (which MergeMaster
+// maps to the not-found outcome) rather than snapshotting a now-draft deck. The
+// re-read narrows the unpublish race window to "between the re-read and the
+// write"; it does not close it, and it runs on the repository's pooled connection
+// rather than the transaction handle, so it gains nothing from the transaction's
+// snapshot either. Closure would require a FOR SHARE lock on the master row taken
+// on the transaction connection. Cards conflicting on (cardgroup_id, front) are
+// overwritten (back/position/updated_at); ids are preserved so FSRS state
+// survives. Returns the destination cardgroup plus the add/update tally.
 func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 	ctx context.Context, masterID string, destCardgroupID domain.CardgroupID, ownerID domain.UserID,
 ) (*MergeMasterResult, error) {
@@ -384,11 +395,18 @@ func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 
 	var res repository.UpsertManyTxResult
 	if err := u.tx(ctx, func(tx *gorm.DB) error {
-		// Re-read the master through the published-scoped method INSIDE the tx so an
-		// unpublish landing between MasterCatalogUsecase.MergeMaster's FindPublishedByID
-		// gate and this write cannot snapshot a now-draft deck (TOCTOU). ErrNotFound
-		// (unknown or unpublished) travels up the eris chain; MergeMaster collapses it
-		// into the same non-disclosure not-found outcome as a pre-gate unknown/draft.
+		// Re-read the master through the published-scoped method so an unpublish landing
+		// between MasterCatalogUsecase.MergeMaster's FindPublishedByID gate and this
+		// write is caught in the common case. This only narrows the race window to
+		// "between this re-read and the write" — it does not close it. The call takes no
+		// tx handle: repository masterCardgroupRepo.FindPublishedByID reads through r.db,
+		// so it runs on a pooled connection outside the surrounding transaction and gains
+		// neither the transaction's snapshot nor any row lock. An unpublish committing
+		// after this read still lets the merge snapshot a now-draft deck; closing the
+		// window would require a FOR SHARE lock on the master row taken on the
+		// transaction connection. ErrNotFound (unknown or unpublished) travels up the
+		// eris chain; MergeMaster collapses it into the same non-disclosure not-found
+		// outcome as a pre-gate unknown/draft.
 		if _, err := u.masterCG.FindPublishedByID(ctx, masterID); err != nil {
 			return eris.Wrap(err, "usecase: master deck: merge master into cardgroup: verify published master")
 		}
@@ -437,6 +455,13 @@ func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 // deck's fronts already exist in the destination (case-sensitively, matching the
 // cards (cardgroup_id, front) text unique index the merge upserts against).
 // Added + Updated equals the master deck's card count.
+//
+// It does NOT mirror MergeMasterIntoCardgroup's published re-verification: after
+// the ownership gate it goes straight to ListByMasterCardgroup, with no
+// FindPublishedByID call anywhere in the function. Master cards outlive an
+// unpublish, so in the unpublish window the preview still succeeds and reports a
+// tally while the follow-up merge reports not-found — a visible
+// preview-succeeds / merge-not-found asymmetry, not a merge bug.
 func (u *masterDeckUsecase) PreviewMergeMasterIntoCardgroup(
 	ctx context.Context, masterID string, destCardgroupID domain.CardgroupID, ownerID domain.UserID,
 ) (PreviewMergeResult, error) {

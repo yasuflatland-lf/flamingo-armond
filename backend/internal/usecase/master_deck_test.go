@@ -764,11 +764,14 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_DestNotFound_Validation(t *t
 }
 
 // TestMasterDeckUsecase_MergeMasterIntoCardgroup_MasterUnpublishedMidFlight_NoImport
-// pins the TOCTOU close on the merge write path. The destination ownership gate
-// passes, but the master is no longer in the published set when the tx re-reads it
-// (modelling an unpublish that landed after MasterCatalogUsecase's FindPublishedByID
-// gate). The in-tx published-scoped re-read yields repository.ErrNotFound, so no
-// master cards are listed or upserted — a now-draft deck is never snapshotted.
+// pins the narrowed TOCTOU window on the merge write path. The destination
+// ownership gate passes, but the master is no longer in the published set when the
+// merge re-reads it (modelling an unpublish that landed after
+// MasterCatalogUsecase's FindPublishedByID gate). The published-scoped re-read
+// yields repository.ErrNotFound, so no master cards are listed or upserted. This
+// covers only the interleaving the re-read does catch; the re-read takes no lock
+// and does not run on the tx connection, so an unpublish committing after it is
+// still reachable and is not pinned here.
 func TestMasterDeckUsecase_MergeMasterIntoCardgroup_MasterUnpublishedMidFlight_NoImport(t *testing.T) {
 	t.Parallel()
 	const ownerID = "11111111-1111-7111-8111-111111111111"
