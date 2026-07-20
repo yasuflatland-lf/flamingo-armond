@@ -13,7 +13,7 @@ import (
 // encodeCursor wraps a raw boundary id in the v1 opaque envelope, or returns
 // nil for the empty id that means "this page has no boundary row". Used by the
 // connections whose ordering key is immutable (admin users order by created_at)
-// or whose mutable-key defect is tracked separately (card, master card).
+// or whose mutable-key defect is tracked separately (card).
 func encodeCursor(id string) *string {
 	return encodeBoundaryCursor(cursor.Encode, id)
 }
@@ -159,7 +159,10 @@ func toMasterCardConnectionModel(ctx context.Context, out *usecase.MasterCardCon
 	if out == nil {
 		return &model.MasterCardConnection{Edges: []*model.MasterCardEdge{}, PageInfo: &model.PageInfo{}}
 	}
-	edges := buildEdges(ctx, out.Cards, "toMasterCardConnectionModel", cursor.Encode,
+	// The master-card listing defaults to the admin-mutable POSITION column, so
+	// its cursors must carry the ordering-key value captured at serve time.
+	enc := orderedCursorEncoder(out.Ordering, out.OrderKeys)
+	edges := buildEdges(ctx, out.Cards, "toMasterCardConnectionModel", enc,
 		toMasterCardModel,
 		func(c *domain.MasterCard) string { return c.ID },
 		func(cur string, n *model.MasterCard) *model.MasterCardEdge {
@@ -167,8 +170,9 @@ func toMasterCardConnectionModel(ctx context.Context, out *usecase.MasterCardCon
 		},
 	)
 	return &model.MasterCardConnection{
-		Edges:      edges,
-		PageInfo:   buildPageInfo(out.HasNext, out.HasPrev, encodeCursor(out.StartCur), encodeCursor(out.EndCur)),
+		Edges: edges,
+		PageInfo: buildPageInfo(out.HasNext, out.HasPrev,
+			encodeBoundaryCursor(enc, out.StartCur), encodeBoundaryCursor(enc, out.EndCur)),
 		TotalCount: int(out.TotalCount),
 	}
 }
