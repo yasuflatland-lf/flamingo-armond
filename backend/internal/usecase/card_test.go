@@ -910,18 +910,30 @@ func TestCardUsecase_ResolveCursor_MalformedV1_ReturnsBadUserInput(t *testing.T)
 	malformed := "v1:!!!not-base64!!!"
 	_, err := uc.(*cardUsecase).resolveCardCursor(
 		context.Background(),
-		&malformed, "cg1", repository.CardOrderByID, "after",
+		&malformed, "cg1", repository.CardOrderByID, cardIDOrdering(), "after",
 	)
 	assertValidationError(t, err, "after", "")
 }
 
-// TestCardUsecase_ResolveCursor_V2Rejected pins the guard against
-// cross-envelope acceptance. Card cursors stay on the v1 envelope — the default
-// ordering is the immutable ID — so a decodable v2 cursor cannot have been
-// issued here and must be BAD_USER_INPUT rather than paged by its raw id under
-// ordering metadata this connection never validated. The ID orderBy is used so
-// the rejection is provably ahead of any repository lookup.
-func TestCardUsecase_ResolveCursor_V2Rejected(t *testing.T) {
+// cardIDOrdering is the PageOrdering ListCardsByCardgroupConnection resolves to
+// when the client sends no orderBy/orderDirection: the schema default (ID, ASC).
+// Direct resolveCardCursor unit tests pass it so the ordering guard sees the
+// same value the connection method would have computed.
+func cardIDOrdering() PageOrdering {
+	return PageOrdering{
+		OrderBy:   string(repository.CardOrderByID),
+		Direction: string(repository.SortAsc),
+	}
+}
+
+// TestCardUsecase_ResolveCursor_V2OrderingMismatch_Rejected pins the ordering
+// guard on the card connection. Card cursors are v2 now, so a decodable v2
+// envelope is no longer rejected on sight — but one taken under a different
+// column or direction than the request resolved to must still be
+// BAD_USER_INPUT, or its captured key would be compared against a column it
+// never described. The ID orderBy is used so the rejection is provably ahead of
+// any repository lookup.
+func TestCardUsecase_ResolveCursor_V2OrderingMismatch_Rejected(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockCardRepository{}
@@ -937,7 +949,7 @@ func TestCardUsecase_ResolveCursor_V2Rejected(t *testing.T) {
 	})
 	_, err := uc.(*cardUsecase).resolveCardCursor(
 		context.Background(),
-		&v2, "cg1", repository.CardOrderByID, "after",
+		&v2, "cg1", repository.CardOrderByID, cardIDOrdering(), "after",
 	)
 	assertValidationError(t, err, "after", "cursor does not match the requested ordering")
 }
@@ -956,7 +968,7 @@ func TestCardUsecase_ResolveCursor_V1EncodedID(t *testing.T) {
 	encoded := "v1:Y2FyZC1hYmM"
 	c, err := uc.(*cardUsecase).resolveCardCursor(
 		context.Background(),
-		&encoded, "cg1", repository.CardOrderByID, "after",
+		&encoded, "cg1", repository.CardOrderByID, cardIDOrdering(), "after",
 	)
 	if err != nil {
 		t.Fatalf("unexpected error for v1 encoded cursor: %v", err)

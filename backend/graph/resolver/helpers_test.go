@@ -89,7 +89,12 @@ func TestToRoleModels_Empty(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestToCardConnectionModel_Cursors verifies that toCardConnectionModel wraps
-// each edge cursor and PageInfo cursors in the v1 opaque envelope ("v1:").
+// each edge cursor and both PageInfo cursors in the v2 opaque envelope ("v2:"),
+// carrying the page's ordering plus the per-row ordering-key value the usecase
+// captured at serve time. The card listing's DEFAULT ordering key is the
+// immutable id, but its opt-in DUE / UPDATED_AT orderings both move, so an
+// id-only v1 cursor would shift whenever the row it points at is edited or
+// reviewed.
 func TestToCardConnectionModel_Cursors(t *testing.T) {
 	t.Parallel()
 
@@ -101,21 +106,36 @@ func TestToCardConnectionModel_Cursors(t *testing.T) {
 		EndCur:   "c2",
 		HasNext:  true,
 		HasPrev:  false,
+		Ordering: usecase.PageOrdering{OrderBy: "due", Direction: "ASC"},
+		OrderKeys: map[string]string{
+			"c1": "2026-07-20T00:00:00Z",
+			"c2": "2026-07-20T01:00:00Z",
+		},
 	}
 
 	conn := toCardConnectionModel(context.Background(), out)
 
 	assert.Len(t, conn.Edges, 2)
+	wantKeys := []string{"2026-07-20T00:00:00Z", "2026-07-20T01:00:00Z"}
 	for i, edge := range conn.Edges {
-		assert.True(t, strings.HasPrefix(edge.Cursor, "v1:"),
-			"edges[%d].Cursor should start with \"v1:\", got %q", i, edge.Cursor)
+		assert.True(t, strings.HasPrefix(edge.Cursor, "v2:"),
+			"edges[%d].Cursor should start with \"v2:\", got %q", i, edge.Cursor)
+		decoded, err := cursor.Decode(edge.Cursor)
+		require.NoError(t, err)
+		assert.Equal(t, cursor.Payload{
+			ID:          edge.Node.ID,
+			HasOrdering: true,
+			OrderBy:     "due",
+			Direction:   "ASC",
+			OrderKey:    wantKeys[i],
+		}, decoded, "edges[%d].Cursor must carry the captured ordering key", i)
 	}
-	assert.NotNil(t, conn.PageInfo.StartCursor)
-	assert.NotNil(t, conn.PageInfo.EndCursor)
-	assert.True(t, strings.HasPrefix(*conn.PageInfo.StartCursor, "v1:"),
-		"pageInfo.startCursor should start with \"v1:\", got %q", *conn.PageInfo.StartCursor)
-	assert.True(t, strings.HasPrefix(*conn.PageInfo.EndCursor, "v1:"),
-		"pageInfo.endCursor should start with \"v1:\", got %q", *conn.PageInfo.EndCursor)
+	require.NotNil(t, conn.PageInfo.StartCursor)
+	require.NotNil(t, conn.PageInfo.EndCursor)
+	// PageInfo shares the edges' encoder, so the boundary cursors are
+	// byte-identical to the first/last edge cursor.
+	assert.Equal(t, conn.Edges[0].Cursor, *conn.PageInfo.StartCursor)
+	assert.Equal(t, conn.Edges[1].Cursor, *conn.PageInfo.EndCursor)
 }
 
 // TestToCardConnectionModel_EmptyCursors verifies that empty StartCur/EndCur

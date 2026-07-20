@@ -12,8 +12,8 @@ import (
 
 // encodeCursor wraps a raw boundary id in the v1 opaque envelope, or returns
 // nil for the empty id that means "this page has no boundary row". Used by the
-// connections whose ordering key is immutable (admin users order by created_at)
-// or whose mutable-key defect is tracked separately (card).
+// admin-users connection, the only one whose ordering key (created_at) is
+// immutable and therefore safe to re-read at serve time.
 func encodeCursor(id string) *string {
 	return encodeBoundaryCursor(cursor.Encode, id)
 }
@@ -72,8 +72,8 @@ func buildPageInfo(hasNext, hasPrev bool, start, end *string) *model.PageInfo {
 // inside the loop, preserving the "cursor encoding happens exactly once"
 // invariant in .claude/rules/pagination.md. All five to*ConnectionModel shims
 // below pass their encoder, node-mapper, id accessor, and edge constructor:
-// cursor.Encode for the immutable-key connections, orderedCursorEncoder for the
-// ones whose ordering key can be edited between two page fetches.
+// cursor.Encode for the connections still on v1, orderedCursorEncoder for the
+// migrated ones whose ordering key can be edited between two page fetches.
 func buildEdges[Item any, Node any, Edge any](
 	ctx context.Context,
 	items []Item,
@@ -99,14 +99,19 @@ func toCardConnectionModel(ctx context.Context, out *usecase.CardConnectionOutpu
 	if out == nil {
 		return &model.CardConnection{Edges: []*model.CardEdge{}, PageInfo: &model.PageInfo{}}
 	}
-	edges := buildEdges(ctx, out.Cards, "toCardConnectionModel", cursor.Encode,
+	// The card listing's DEFAULT ordering key is the immutable ID, but its opt-in
+	// DUE / UPDATED_AT orderings both move, so its cursors must carry the
+	// ordering-key value captured at serve time.
+	enc := orderedCursorEncoder(out.Ordering, out.OrderKeys)
+	edges := buildEdges(ctx, out.Cards, "toCardConnectionModel", enc,
 		toCardModel,
 		func(c *domain.Card) string { return c.ID },
 		func(cur string, n *model.Card) *model.CardEdge { return &model.CardEdge{Cursor: cur, Node: n} },
 	)
 	return &model.CardConnection{
-		Edges:      edges,
-		PageInfo:   buildPageInfo(out.HasNext, out.HasPrev, encodeCursor(out.StartCur), encodeCursor(out.EndCur)),
+		Edges: edges,
+		PageInfo: buildPageInfo(out.HasNext, out.HasPrev,
+			encodeBoundaryCursor(enc, out.StartCur), encodeBoundaryCursor(enc, out.EndCur)),
 		TotalCount: int(out.TotalCount),
 	}
 }
