@@ -25,7 +25,8 @@ extend type Query {
   adminMaster(id: ID!): MasterCardgroup
   """
   Admin-only paginated cards in a master deck. Forward (first, after) / backward (last, before).
-  Cursor is the master card UUID. Default page size 20; max 100. Optional case-insensitive
+  Cursors are opaque, server-encoded values: pass an edge cursor back verbatim and never build
+  one from a node id. Default page size 20; max 100. Optional case-insensitive
   substring search on front OR back.
   """
   adminMasterCardsConnection(
@@ -34,7 +35,8 @@ extend type Query {
   ): MasterCardConnection!
   """
   Public paginated cards in a PUBLISHED master deck, for any authenticated caller.
-  Forward (first, after) / backward (last, before). Cursor is the master card UUID.
+  Forward (first, after) / backward (last, before). Cursors are opaque, server-encoded
+  values: pass an edge cursor back verbatim and never build one from a node id.
   Default page size 20; max 100. Optional case-insensitive substring search on
   front OR back. A DRAFT or unknown deck is rejected as BAD_USER_INPUT on
   `masterCardgroupId` (non-disclosure gate: draft existence is never revealed).
