@@ -1,3 +1,9 @@
+// master_catalog.go holds the public reader surface of the master catalog: the
+// repository and usecase interfaces, the connection carrier types, the shared
+// page-assembly core, and the single-deck published lookup. The admin-author
+// surface lives in master_catalog_admin.go; the learner-consumption surface
+// (import / merge / preview merge / seed) lives in master_catalog_import.go.
+
 package usecase
 
 import (
@@ -5,7 +11,6 @@ import (
 	"errors"
 	"log/slog"
 	"strconv"
-	"strings"
 
 	"github.com/rotisserie/eris"
 
@@ -112,36 +117,6 @@ type masterDeckUsecaseFacade interface {
 	PreviewMergeMasterIntoCardgroupUsecase
 }
 
-// MergeMasterOutcome is the usecase result of MergeMaster. On the valid paths
-// exactly one outcome is active: the happy path sets Cardgroup with the Added/Updated
-// tallies and leaves NotFound false; the not-found path sets NotFound=true and leaves
-// Cardgroup nil with zero tallies. Destination cardgroup auth failures are returned as
-// errors, not via this outcome.
-type MergeMasterOutcome struct {
-	// Cardgroup is the caller-owned destination after the merge. Non-nil iff NotFound is false.
-	Cardgroup *domain.Cardgroup
-	// Added is the number of cards newly inserted into the destination.
-	Added int64
-	// Updated is the number of existing cards (same front) overwritten.
-	Updated int64
-	// NotFound is true when the master id is unknown or not published; draft existence
-	// is subsumed so draft ids are indistinguishable from absent ids. True iff Cardgroup
-	// is nil. The XOR is a producer contract, not a compile-time guarantee: a degenerate
-	// {Cardgroup:nil, NotFound:false} result is treated as INTERNAL by the resolver's
-	// defensive guard (newNoVariantSetError).
-	NotFound bool
-}
-
-// PreviewMergeOutcome is the usecase result of PreviewMergeMaster. On the valid
-// path Added/Updated carry the projected tally and NotFound is false; the not-found
-// path sets NotFound=true with zero tallies. Destination auth failures are returned
-// as errors, not via this outcome.
-type PreviewMergeOutcome struct {
-	Added    int64
-	Updated  int64
-	NotFound bool
-}
-
 // MasterCatalogUsecase is the published-catalog surface plus the admin
 // management operations. Every method requires an authenticated caller;
 // admin methods additionally require AdminGate.Require to pass.
@@ -163,29 +138,6 @@ type MasterCatalogUsecase interface {
 	PublishMaster(ctx context.Context, id string) (PublishMasterOutcome, error)
 	UnpublishMaster(ctx context.Context, id string) (*MasterWithCount, error)
 	DeleteMaster(ctx context.Context, id string) error
-}
-
-// ImportMasterOutcome is the usecase result of ImportMaster. On the valid paths
-// exactly one signal is set: Cardgroup on the happy path, NotFound=true when the
-// master id is unknown or not published, or LimitReached when a non-admin caller
-// already owns the maximum number of cardgroups. Both failure cases are surfaced
-// as data (the MasterNotFoundError / CardgroupLimitReachedError union variants)
-// rather than as errors so the resolver can return them in `data`. The XOR is a
-// producer contract, not a compile-time guarantee: a degenerate
-// {Cardgroup:nil, NotFound:false, LimitReached:nil} result is treated as INTERNAL
-// by the resolver's defensive guard.
-type ImportMasterOutcome struct {
-	// Cardgroup is the newly created user-owned cardgroup snapshot on the happy
-	// path. Non-nil iff neither NotFound nor LimitReached is set.
-	Cardgroup *domain.Cardgroup
-	// NotFound is true when the master id is unknown or not published; it subsumes
-	// draft existence so draft ids are indistinguishable from absent ids.
-	NotFound bool
-	// LimitReached is non-nil when the caller is a non-admin who already holds
-	// domain.GeneralUserCardgroupLimit cardgroups. It carries the same cap/count
-	// pair as CreateCardgroupOutcome.LimitReached so both entry points into "the
-	// caller now owns a new deck" surface the quota identically.
-	LimitReached *CardgroupLimitInfo
 }
 
 type masterCatalogUsecase struct {
@@ -510,493 +462,48 @@ func (u *masterCatalogUsecase) resolveMasterCatalogCursor(
 	return c, nil
 }
 
-// ---------------------------------------------------------------------------
-// Carrier types for admin mutations
-// ---------------------------------------------------------------------------
-
-// MasterWithCount bundles a master cardgroup with its current card count so the
-// resolver can populate the non-null model.MasterCardgroup.cardCount field on a
-// single-entity admin response.
-type MasterWithCount struct {
-	Master    *domain.MasterCardgroup
-	CardCount int64
-}
-
-// CreateMasterInput carries the admin create fields. Optional attributes are
-// pointers preserving "absent" semantics from the GraphQL input.
-type CreateMasterInput struct {
-	Name             string
-	Description      *string
-	IsDefaultStarter *bool
-	SortOrder        *int
-}
-
-// UpdateMasterInput carries the admin update patch. nil = leave unchanged.
-type UpdateMasterInput struct {
-	Name             *string
-	Description      *string
-	IsDefaultStarter *bool
-	SortOrder        *int
-}
-
-// CreateMasterOutcome is the result of CreateMaster. Exactly one of Master or
-// Validation is non-nil on a nil-error return. A freshly created deck has no
-// cards (cardCount = 0).
-type CreateMasterOutcome struct {
-	Master     *domain.MasterCardgroup
-	Validation *InputValidationInfo
-}
-
-// UpdateMasterOutcome is the result of UpdateMaster. Exactly one of Master or
-// Validation is non-nil. CardCount is the deck's current card count, fetched so
-// the resolver can populate model.MasterCardgroup.cardCount.
-type UpdateMasterOutcome struct {
-	Master     *domain.MasterCardgroup
-	CardCount  int64
-	Validation *InputValidationInfo
-}
-
-// PublishMasterOutcome is the result of PublishMaster. Exactly one of Master or
-// EmptyMaster is set: a deck with zero cards cannot be published, surfaced as
-// EmptyMaster = true so the resolver maps it to MasterCardgroupEmptyError.
-type PublishMasterOutcome struct {
-	Master      *domain.MasterCardgroup
-	CardCount   int64
-	EmptyMaster bool
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-// mapMasterAdminErr classifies a repository error from an admin master method
-// into either input-validation data (first slot) or a propagating error (second
-// slot) by delegating to classifyRepoErr with the master-specific sentinel
-// mapping. The input-validation emission lives HERE, not in the caller's method
-// body, so the schema-lint bare-object gate does not flag
-// adminUnpublishMasterCardgroup (which returns a bare MasterCardgroup!).
-func mapMasterAdminErr(err error, notFoundField, wrap string) (*InputValidationInfo, error) {
-	return classifyRepoErr(err, wrap, []SentinelMapping{
-		{repository.ErrNotFound, notFoundField, "master cardgroup not found"},
-	})
-}
-
-// derefOr returns *p when p is non-nil, otherwise def.
-func derefOr[T any](p *T, def T) T {
-	if p != nil {
-		return *p
-	}
-	return def
-}
-
-// normalizeSearch collapses nil and whitespace-only search inputs to nil and
-// trims a non-empty search. After this the repository receives either nil (no
-// filter) or a non-empty, trimmed string — the same invariant ListMasterCards
-// relies on. Normalizing at the usecase boundary keeps totalCount and the page
-// query in agreement instead of depending on the repository to trim.
-func normalizeSearch(search *string) *string {
-	if search == nil {
-		return nil
-	}
-	trimmed := strings.TrimSpace(*search)
-	if trimmed == "" {
-		return nil
-	}
-	return &trimmed
-}
-
-// ---------------------------------------------------------------------------
-// Admin methods
-// ---------------------------------------------------------------------------
-
-// CreateMaster creates a new DRAFT master cardgroup. Admin-only. Name validation
-// failures surface via outcome.Validation (mapped to the InputValidationError
-// union variant); a new deck starts at version 1, status DRAFT.
-func (u *masterCatalogUsecase) CreateMaster(ctx context.Context, in CreateMasterInput) (CreateMasterOutcome, error) {
-	if _, err := u.adminGate.Require(ctx, "usecase: master catalog: create master"); err != nil {
-		return CreateMasterOutcome{}, err
-	}
-
-	name, nameErr := domain.ParseCardgroupName(in.Name)
-	info, err := liftValidationErr(translateCardgroupNameErr(nameErr))
+// verifyPublishedMaster runs the published-deck non-disclosure gate shared by
+// FindPublishedMaster, ImportMaster, MergeMaster and PreviewMergeMaster. It
+// resolves id through FindPublishedByID, which returns repository.ErrNotFound for
+// both unknown ids and DRAFT decks, so draft existence is never disclosed: the two
+// collapse into notFound=true and each caller maps that to its own not-found shape
+// (an outcome flag, or the nil deck the resolver renders as GraphQL null). Context
+// cancellation passes through unwrapped. Any other repository failure is wrapped
+// with the CALLER-supplied opPrefix, never a prefix fixed inside this helper, so
+// the logged error_chain keeps naming the operation that ran rather than the
+// shared gate.
+func (u *masterCatalogUsecase) verifyPublishedMaster(
+	ctx context.Context, id, opPrefix string,
+) (deck *domain.MasterCardgroup, notFound bool, err error) {
+	deck, err = u.repo.FindPublishedByID(ctx, id)
 	if err != nil {
-		return CreateMasterOutcome{}, err
-	}
-	if info != nil {
-		return CreateMasterOutcome{Validation: info}, nil
-	}
-
-	description, descErr := domain.ParseDescription(in.Description)
-	info, err = liftValidationErr(translateDescriptionErr(descErr))
-	if err != nil {
-		return CreateMasterOutcome{}, err
-	}
-	if info != nil {
-		return CreateMasterOutcome{Validation: info}, nil
-	}
-
-	m, err := domain.NewMasterCardgroup(
-		name,
-		description,
-		derefOr(in.IsDefaultStarter, false),
-		derefOr(in.SortOrder, 0),
-	)
-	if err != nil {
-		return CreateMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: create master: construct")
-	}
-	if err := u.repo.Create(ctx, m); err != nil {
-		if translated := translateTextLengthViolation(err); translated != nil {
-			info, lerr := liftValidationErr(translated)
-			if lerr != nil {
-				return CreateMasterOutcome{}, lerr
-			}
-			return CreateMasterOutcome{Validation: info}, nil
-		}
-		return CreateMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: create master")
-	}
-	return CreateMasterOutcome{Master: m}, nil
-}
-
-// UpdateMaster applies an admin patch to an existing master cardgroup. Admin-only.
-// Name validation failures surface via outcome.Validation; a missing row surfaces
-// as a validation error on "id". CardCount is fetched so the resolver can populate
-// the response model.
-//
-// There is deliberately no MasterCardgroup.ApplyPatch aggregate method. Of the
-// patchable fields, Name and Description carry domain invariants — the
-// CardgroupName and Description grapheme-cluster length bounds — and both are
-// enforced here, at their single seams, via domain.ParseCardgroupName /
-// domain.ParseDescription below. Status is the only other VO on the aggregate, and
-// it is not patchable through this method: it has its own dedicated lifecycle seams
-// (Publish / Unpublish). The remaining fields (IsDefaultStarter, SortOrder) are
-// free-form (*bool / *int) with no Parse or bound to protect, so they are assigned
-// directly into the repository patch. An ApplyPatch wrapper over those fields would
-// be an indirection layer guarding nothing.
-func (u *masterCatalogUsecase) UpdateMaster(ctx context.Context, id string, in UpdateMasterInput) (UpdateMasterOutcome, error) {
-	if _, err := u.adminGate.Require(ctx, "usecase: master catalog: update master"); err != nil {
-		return UpdateMasterOutcome{}, err
-	}
-
-	description, descErr := domain.ParseDescription(in.Description)
-	info, err := liftValidationErr(translateDescriptionErr(descErr))
-	if err != nil {
-		return UpdateMasterOutcome{}, err
-	}
-	if info != nil {
-		return UpdateMasterOutcome{Validation: info}, nil
-	}
-
-	// Name and Description route through their VOs (above / below); the remaining
-	// free-form fields flow straight into the patch. See the method docstring for
-	// why no MasterCardgroup.ApplyPatch exists.
-	patch := repository.MasterCardgroupUpdate{
-		Description:      description.Ptr(),
-		IsDefaultStarter: in.IsDefaultStarter,
-		SortOrder:        in.SortOrder,
-	}
-	if in.Name != nil {
-		name, nameErr := domain.ParseCardgroupName(*in.Name)
-		info, err = liftValidationErr(translateCardgroupNameErr(nameErr))
-		if err != nil {
-			return UpdateMasterOutcome{}, err
-		}
-		if info != nil {
-			return UpdateMasterOutcome{Validation: info}, nil
-		}
-		nameStr := name.String()
-		patch.Name = &nameStr
-	}
-
-	updated, err := u.repo.Update(ctx, id, patch)
-	if err != nil {
-		if translated := translateTextLengthViolation(err); translated != nil {
-			info, lerr := liftValidationErr(translated)
-			if lerr != nil {
-				return UpdateMasterOutcome{}, lerr
-			}
-			return UpdateMasterOutcome{Validation: info}, nil
-		}
-		info, perr := mapMasterAdminErr(err, "id", "usecase: master catalog: update master")
-		if perr != nil {
-			return UpdateMasterOutcome{}, perr
-		}
-		return UpdateMasterOutcome{Validation: info}, nil
-	}
-	count, err := u.repo.CountCards(ctx, id)
-	if err != nil {
-		return UpdateMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: update master: count cards")
-	}
-	return UpdateMasterOutcome{Master: updated, CardCount: count}, nil
-}
-
-// PublishMaster publishes a master cardgroup after confirming it has at least one
-// card. Admin-only. A deck with zero cards is rejected via outcome.EmptyMaster
-// (mapped to MasterCardgroupEmptyError) without touching the publish path.
-func (u *masterCatalogUsecase) PublishMaster(ctx context.Context, id string) (PublishMasterOutcome, error) {
-	if _, err := u.adminGate.Require(ctx, "usecase: master catalog: publish master"); err != nil {
-		return PublishMasterOutcome{}, err
-	}
-	// Ensure the deck exists before the empty-count guard so a missing id is a
-	// validation error rather than a silent "0 cards => empty" classification.
-	if _, err := u.repo.FindByID(ctx, id); err != nil {
-		return PublishMasterOutcome{}, lowerValidationInfo(mapMasterAdminErr(err, "id", "usecase: master catalog: publish master: find"))
-	}
-	count, err := u.repo.CountCards(ctx, id)
-	if err != nil {
-		return PublishMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: publish master: count cards")
-	}
-	if count == 0 {
-		return PublishMasterOutcome{EmptyMaster: true}, nil
-	}
-	published, err := u.repo.Publish(ctx, id)
-	if err != nil {
-		return PublishMasterOutcome{}, lowerValidationInfo(mapMasterAdminErr(err, "id", "usecase: master catalog: publish master"))
-	}
-	return PublishMasterOutcome{Master: published, CardCount: count}, nil
-}
-
-// UnpublishMaster reverts a master cardgroup to DRAFT. Admin-only. Returns the
-// refreshed master plus its card count. NOTE: this method backs the bare-object
-// mutation adminUnpublishMasterCardgroup, so its body must NOT directly reference
-// ucerr.NewValidationError / ucerr.NewForbiddenError / ucerr.ErrUnauthenticated —
-// the not-found mapping is delegated to mapMasterAdminErr/lowerValidationInfo.
-func (u *masterCatalogUsecase) UnpublishMaster(ctx context.Context, id string) (*MasterWithCount, error) {
-	if _, err := u.adminGate.Require(ctx, "usecase: master catalog: unpublish master"); err != nil {
-		return nil, err
-	}
-	updated, err := u.repo.Unpublish(ctx, id)
-	if err != nil {
-		return nil, lowerValidationInfo(mapMasterAdminErr(err, "id", "usecase: master catalog: unpublish master"))
-	}
-	count, err := u.repo.CountCards(ctx, id)
-	if err != nil {
-		return nil, eris.Wrap(err, "usecase: master catalog: unpublish master: count cards")
-	}
-	return &MasterWithCount{Master: updated, CardCount: count}, nil
-}
-
-// DeleteMaster removes a master cardgroup. Admin-only. A missing row is a
-// validation error on "id". Returns Boolean! upstream (scalar — schema-lint exempt),
-// so direct ucerr use here is permitted, but routed through the helper for
-// consistency with UnpublishMaster.
-func (u *masterCatalogUsecase) DeleteMaster(ctx context.Context, id string) error {
-	if _, err := u.adminGate.Require(ctx, "usecase: master catalog: delete master"); err != nil {
-		return err
-	}
-	if err := u.repo.Delete(ctx, id); err != nil {
-		return lowerValidationInfo(mapMasterAdminErr(err, "id", "usecase: master catalog: delete master"))
-	}
-	return nil
-}
-
-// ListAdminConnection paginates ALL master cardgroups (DRAFT + PUBLISHED) for the
-// admin UI. Admin-only. Mirrors ListPublishedConnection but gates on adminGate and
-// calls the status-unfiltered FindPageAnyStatus repository method (whose returned
-// total counts decks of any status). The body from page assembly onward is shared
-// with ListPublishedConnection via listMasterCatalogCore; only the gate,
-// publishedOnly scope (false = admin, DRAFT cursors valid), the repository page
-// method, and the eris wrap prefix differ.
-func (u *masterCatalogUsecase) ListAdminConnection(
-	ctx context.Context, in MasterCatalogConnectionInput,
-) (*MasterCatalogConnectionOutput, error) {
-	return u.listMasterCatalogCore(ctx, in, false, "usecase: master catalog: find admin page",
-		func(ctx context.Context) error {
-			_, err := u.adminGate.Require(ctx, "usecase: master catalog: list admin")
-			return err
-		},
-		u.repo.FindPageAnyStatus,
-	)
-}
-
-// ImportMaster copies the published master cardgroup identified by masterID into a
-// fresh cardgroup owned by the authenticated caller. The master is gated through
-// FindPublishedByID, which returns ErrNotFound for both unknown ids and draft decks,
-// so draft existence is never disclosed — both collapse to ImportMasterOutcome{NotFound:true}.
-// The delegated copy re-reads the master through the same published-scoped method
-// inside its transaction, so a master unpublished between this gate and the write
-// also collapses to NotFound (the ErrNotFound the copy surfaces is mapped below)
-// rather than silently importing a now-draft deck. Unauthenticated callers receive
-// ucerr.ErrUnauthenticated. Import is the second entry point into "the caller now
-// owns a new cardgroup", so it applies the same per-user cardgroup quota as
-// CardgroupUsecase.Create via checkCardgroupLimit (admins exempt) — without it the
-// cap would be a property of the create form rather than an invariant of the
-// system. The copy is a one-time snapshot delegated to CopyMasterToUserUsecase;
-// FSRS/swipe state starts empty.
-func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string) (ImportMasterOutcome, error) {
-	caller := auth.UserFrom(ctx)
-	if err := requireCallerSub(caller); err != nil {
-		return ImportMasterOutcome{}, err
-	}
-
-	if _, err := u.repo.FindPublishedByID(ctx, masterID); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return ImportMasterOutcome{NotFound: true}, nil
+			return nil, true, nil
 		}
 		if isContextDone(err) {
-			return ImportMasterOutcome{}, err
+			return nil, false, err
 		}
-		return ImportMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: import: verify published")
+		return nil, false, eris.Wrap(err, opPrefix)
 	}
-
-	// The quota runs after the published gate so a capped caller probing an
-	// unknown id still gets the non-disclosure not-found outcome, and before the
-	// copy so no cardgroup row is ever written for a rejected import.
-	limit, err := checkCardgroupLimit(ctx, u.cgCounter, u.adminGate, caller.Sub)
-	if err != nil {
-		return ImportMasterOutcome{}, err
-	}
-	if limit != nil {
-		return ImportMasterOutcome{LimitReached: limit}, nil
-	}
-
-	cg, err := u.deckUC.CopyMasterToUser(ctx, masterID, caller.Sub)
-	if err != nil {
-		if isContextDone(err) {
-			return ImportMasterOutcome{}, err
-		}
-		// The owner FK no longer resolves: the caller's account was deleted while
-		// their JWT was still valid. Surface UNAUTHENTICATED so the client signs
-		// them out instead of paging an operator with an INTERNAL error. Checked
-		// ahead of the ErrNotFound branch below because the two are distinct
-		// standalone sentinels — a missing owner is not an unpublished master.
-		if errors.Is(err, repository.ErrCardgroupOwnerNotFound) {
-			return ImportMasterOutcome{}, ucerr.ErrUnauthenticated
-		}
-		if errors.Is(err, repository.ErrNotFound) {
-			// The master was unpublished between the FindPublishedByID gate and the
-			// copy's own published-scoped re-read (TOCTOU). Collapse into the same
-			// non-disclosure not-found outcome as a pre-gate unknown/draft master.
-			return ImportMasterOutcome{NotFound: true}, nil
-		}
-		return ImportMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: import: copy master to user")
-	}
-	return ImportMasterOutcome{Cardgroup: cg}, nil
-}
-
-// MergeMaster merges the published master cardgroup identified by masterID into
-// the caller-owned cardgroup cardgroupID. The master is gated through
-// FindPublishedByID, collapsing unknown and draft into MergeMasterOutcome{NotFound:true}
-// so draft existence is never disclosed. The delegated merge re-reads the master
-// through the same published-scoped method inside its transaction, so a master
-// unpublished between this gate and the write also collapses to NotFound (the
-// ErrNotFound the merge surfaces is mapped below) rather than snapshotting a
-// now-draft deck. Destination ownership is enforced by the delegated usecase
-// (BAD_USER_INPUT for unknown, UNAUTHENTICATED for foreign), surfaced as an error
-// rather than via the outcome. Unauthenticated callers receive
-// ucerr.ErrUnauthenticated. The merge is a one-time snapshot.
-func (u *masterCatalogUsecase) MergeMaster(ctx context.Context, masterID, cardgroupID string) (MergeMasterOutcome, error) {
-	caller := auth.UserFrom(ctx)
-	if err := requireCallerSub(caller); err != nil {
-		return MergeMasterOutcome{}, err
-	}
-
-	if _, err := u.repo.FindPublishedByID(ctx, masterID); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return MergeMasterOutcome{NotFound: true}, nil
-		}
-		if isContextDone(err) {
-			return MergeMasterOutcome{}, err
-		}
-		return MergeMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: merge: verify published")
-	}
-
-	res, err := u.deckUC.MergeMasterIntoCardgroup(ctx, masterID, domain.CardgroupID(cardgroupID), domain.UserID(caller.Sub))
-	if err != nil {
-		if isContextDone(err) {
-			return MergeMasterOutcome{}, err
-		}
-		if errors.Is(err, repository.ErrNotFound) {
-			// The master was unpublished between the FindPublishedByID gate and the
-			// merge tx's own published-scoped re-read (TOCTOU). Collapse into the same
-			// non-disclosure not-found outcome as a pre-gate unknown/draft master. That
-			// in-tx re-read is the only ErrNotFound producer this branch can see: the
-			// destination ownership gate maps a missing cardgroup to a
-			// ucerr.ValidationError, and the post-commit destination read-back translates
-			// its ErrNotFound into a non-sentinel internal error so a destination deleted
-			// mid-merge is never reported as a missing master.
-			return MergeMasterOutcome{NotFound: true}, nil
-		}
-		// Wrap unconditionally, exactly like ImportMaster wraps CopyMasterToUser.
-		// A ucerr.ValidationError / ucerr.ErrUnauthenticated from the delegated
-		// ownership gate is still classified correctly because FromUsecaseError
-		// walks the eris chain (errors.Is / errors.AsType). No pass-through guard.
-		return MergeMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: merge: merge master into cardgroup")
-	}
-	return MergeMasterOutcome{Cardgroup: res.Cardgroup, Added: res.Added, Updated: res.Updated}, nil
+	return deck, false, nil
 }
 
 // FindPublishedMaster returns a single PUBLISHED master deck by id for any
-// authenticated caller. FindPublishedByID returns ErrNotFound for both unknown
-// ids and draft decks, so draft existence is never disclosed — both collapse to
-// a (nil, nil) result that the resolver maps to GraphQL null (non-disclosure
-// gate). Unauthenticated callers receive ucerr.ErrUnauthenticated.
+// authenticated caller. The shared verifyPublishedMaster gate collapses unknown
+// ids and draft decks into the same not-found signal, so draft existence is never
+// disclosed — both surface as a (nil, nil) result that the resolver maps to
+// GraphQL null (non-disclosure gate). Unauthenticated callers receive
+// ucerr.ErrUnauthenticated.
 func (u *masterCatalogUsecase) FindPublishedMaster(ctx context.Context, id string) (*domain.MasterCardgroup, error) {
 	if err := requireCallerSub(auth.UserFrom(ctx)); err != nil {
 		return nil, err
 	}
-	deck, err := u.repo.FindPublishedByID(ctx, id)
+	deck, notFound, err := u.verifyPublishedMaster(ctx, id, "usecase: master catalog: find published master")
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, nil // unknown or draft → GraphQL null (non-disclosure)
-		}
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: master catalog: find published master")
-	}
-	return deck, nil
-}
-
-// PreviewMergeMaster mirrors MergeMaster as a read-only dry run. Same gates:
-// unauthenticated -> ErrUnauthenticated; unknown/draft master -> NotFound (collapsed
-// via FindPublishedByID, never disclosing draft existence); destination auth failures
-// travel as errors from the delegated usecase.
-func (u *masterCatalogUsecase) PreviewMergeMaster(ctx context.Context, masterID, cardgroupID string) (PreviewMergeOutcome, error) {
-	caller := auth.UserFrom(ctx)
-	if err := requireCallerSub(caller); err != nil {
-		return PreviewMergeOutcome{}, err
-	}
-
-	if _, err := u.repo.FindPublishedByID(ctx, masterID); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return PreviewMergeOutcome{NotFound: true}, nil
-		}
-		if isContextDone(err) {
-			return PreviewMergeOutcome{}, err
-		}
-		return PreviewMergeOutcome{}, eris.Wrap(err, "usecase: master catalog: preview merge: verify published")
-	}
-
-	res, err := u.deckUC.PreviewMergeMasterIntoCardgroup(ctx, masterID, domain.CardgroupID(cardgroupID), domain.UserID(caller.Sub))
-	if err != nil {
-		if isContextDone(err) {
-			return PreviewMergeOutcome{}, err
-		}
-		return PreviewMergeOutcome{}, eris.Wrap(err, "usecase: master catalog: preview merge: preview merge into cardgroup")
-	}
-	return PreviewMergeOutcome{Added: res.Added, Updated: res.Updated}, nil
-}
-
-// SeedDefaultStarters copies the published default-starter master decks into the
-// authenticated caller's own cardgroups (idempotent — a no-op if the caller
-// already owns a cardgroup). Unauthenticated callers receive ucerr.ErrUnauthenticated.
-func (u *masterCatalogUsecase) SeedDefaultStarters(ctx context.Context) ([]*domain.Cardgroup, error) {
-	caller := auth.UserFrom(ctx)
-	if err := requireCallerSub(caller); err != nil {
 		return nil, err
 	}
-	seeded, err := u.deckUC.SeedForNewUser(ctx, caller.Sub)
-	if err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		// Same deleted-account path as ImportMaster: the seed writes cardgroups
-		// owned by the caller, so an unresolvable owner FK means the account is
-		// gone and the client must sign out rather than page an operator.
-		if errors.Is(err, repository.ErrCardgroupOwnerNotFound) {
-			return nil, ucerr.ErrUnauthenticated
-		}
-		return nil, eris.Wrap(err, "usecase: master catalog: seed default starters")
+	if notFound {
+		return nil, nil // unknown or draft → GraphQL null (non-disclosure)
 	}
-	return seeded, nil
+	return deck, nil
 }

@@ -6,7 +6,7 @@
 
 ## Why
 
-`InputValidationInfo` (declared in `backend/internal/usecase/admin_user.go`) is the
+`InputValidationInfo` (declared in `backend/internal/usecase/validators.go`) is the
 usecase-layer carrier for an input-validation failure routed as **data** through an
 outcome union, rather than as an error. When the resolver maps the carrier to a
 `model.InputValidationError` variant, the `Field` value surfaces verbatim on the
@@ -28,7 +28,7 @@ Always construct `InputValidationInfo` via `NewInputValidationInfo(field, messag
 never via the bare struct literal. The constructor panics on empty `field`:
 
 ```go
-// backend/internal/usecase/admin_user.go
+// backend/internal/usecase/validators.go
 func NewInputValidationInfo(field, message string) *InputValidationInfo {
     if field == "" {
         panic("usecase.NewInputValidationInfo: field must be non-empty")
@@ -66,7 +66,8 @@ production code.
 - Test code is explicitly exempt by the same rationale as the `ucerr.ValidationError`
   exemption in [`.claude/rules/error-wrapping.md`](../../../.claude/rules/error-wrapping.md):
   tests legitimately construct invalid shapes to verify classifier coverage.
-- Reference: `backend/internal/usecase/admin_user.go` (`NewInputValidationInfo`,
-  `liftValidationErr`, `mapAdminEditMutationError`) and `backend/internal/usecase/admin_role.go`
+- Reference: `backend/internal/usecase/validators.go` (`NewInputValidationInfo`,
+  `liftValidationErr`), `backend/internal/usecase/admin_user.go`
+  (`mapAdminEditMutationError`) and `backend/internal/usecase/admin_role.go`
   (`mapAdminRoleError`, `translateRoleNameErr`) — all production
   construction sites flow through the constructor.

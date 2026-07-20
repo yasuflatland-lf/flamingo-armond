@@ -75,7 +75,12 @@ pagination UX".
    effect, and the local `fetchMoreError` state — with one
    `useConnectionPagination(...)` call. Inject `document`, memoized `variables`,
    `searchQuery`, `selectConnection`, `buildFetchMoreVariables`,
-   `mergeConnection`, `initial`, `resolveFetchMoreError`, and `logScope`.
+   `mergeConnection`, `initial`, `resolveFetchMoreError`, and `logScope`. Build
+   `mergeConnection` with the shared
+   `makeMergeConnection<TData>(connectionField)` factory
+   (`src/lib/pagination/make-merge-connection.ts`) rather than hand-rolling the
+   edges concat, and hold the instance at module scope so its identity stays
+   stable — the hook takes it as a `useCallback` dependency.
 2. Wire the screen's Retry buttons to the hook's `retryFetchMore` (the fetchMore
    banner) and `refetch` (the initial-query-error banner). See
    [`hook-expose-actions-not-setters.md`](../frontend/typescript-conventions/hook-expose-actions-not-setters.md).

@@ -53,8 +53,11 @@ export const SWIPE_RATING: Record<RatingTone, 1 | 2 | 4> = {
 export type { LearnDisplayMode } from "@/generated/graphql";
 
 /**
- * Reveal phase of the active card.
- * - "front_only": flip mode, back hidden, rating swipes suppressed, tap reveals.
- * - "revealed": back shown, rating swipes active. always_visible starts here.
+ * Reveal phase of the active card. The phase governs what is *displayed*, not
+ * what is *permitted*: rating (drag/swipe, action-bar buttons, arrow keys) is
+ * available in both phases — see the `flyOut` and `useDrag` comments in
+ * `animated-card.tsx` and the `ratingDisabled` comment in `learn-action-bar.tsx`.
+ * - "front_only": flip mode, back hidden, tap reveals it.
+ * - "revealed": back shown. always_visible starts here.
  */
 export type LearnCardPhase = "front_only" | "revealed";

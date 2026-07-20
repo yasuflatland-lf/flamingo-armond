@@ -2,7 +2,9 @@ package usecase
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"backend/internal/cursor"
@@ -58,6 +60,40 @@ func resolveStandardPageSize(first, last *int) (int, int, error) {
 		return clamp(*first), 0, nil
 	}
 	return 0, clamp(*last), nil
+}
+
+// resolveAdminPageSize enforces the (first XOR last) constraint and clamps
+// each value to [0, maxPageSize]. When both are nil, defaults to
+// (maxPageSize, 0) — unlike the other resolvers (which default to
+// defaultPageSize=20), admin queries default forward paging at the documented
+// maximum to keep single-page admin views simple. maxPageSize is the
+// package-wide cap shared with the card/cardgroup/master-catalog resolvers.
+func resolveAdminPageSize(first, last *int) (int, int, error) {
+	if first != nil && last != nil {
+		return 0, 0, ucerr.NewValidationError("first", "specify either first or last")
+	}
+	if first == nil && last == nil {
+		return maxPageSize, 0, nil
+	}
+	check := func(field string, v int) error {
+		if v < 0 {
+			return ucerr.NewValidationError(field, fmt.Sprintf("%s must be >= 0", field))
+		}
+		if v > maxPageSize {
+			return ucerr.NewValidationError(field, fmt.Sprintf("%s must be <= %d", field, maxPageSize))
+		}
+		return nil
+	}
+	if first != nil {
+		if err := check("first", *first); err != nil {
+			return 0, 0, err
+		}
+		return *first, 0, nil
+	}
+	if err := check("last", *last); err != nil {
+		return 0, 0, err
+	}
+	return 0, *last, nil
 }
 
 // TrimAndDetect trims one trailing item from items when len(items) > want and
@@ -273,4 +309,28 @@ func firstLastCursor[T any](rows []T, id func(T) string) (start, end string) {
 		return "", ""
 	}
 	return id(rows[0]), id(rows[len(rows)-1])
+}
+
+// derefOr returns *p when p is non-nil, otherwise def.
+func derefOr[T any](p *T, def T) T {
+	if p != nil {
+		return *p
+	}
+	return def
+}
+
+// normalizeSearch collapses nil and whitespace-only search inputs to nil and
+// trims a non-empty search. After this the repository receives either nil (no
+// filter) or a non-empty, trimmed string — the same invariant ListMasterCards
+// relies on. Normalizing at the usecase boundary keeps totalCount and the page
+// query in agreement instead of depending on the repository to trim.
+func normalizeSearch(search *string) *string {
+	if search == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*search)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }
