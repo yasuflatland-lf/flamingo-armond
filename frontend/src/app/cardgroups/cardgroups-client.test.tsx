@@ -16,6 +16,8 @@ import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
 } from "../../../__tests__/utils/mock-apollo-paginated";
+import enMessages from "../../../messages/en.json";
+import jaMessages from "../../../messages/ja.json";
 import CardgroupsClient from "./cardgroups-client";
 import { CARDGROUPS_DEFAULT_VARS, CARDGROUPS_PAGE_SIZE } from "./queries";
 
@@ -168,6 +170,7 @@ function renderClient(
   mocks: unknown[],
   initialConnection: ReturnType<typeof makeConnection> | null = null,
   cache?: InMemoryCache,
+  intl?: { locale: "en" | "ja"; messages: typeof enMessages },
 ) {
   renderWithIntl(
     <MockedProvider mocks={mocks as never} cache={cache}>
@@ -175,7 +178,17 @@ function renderClient(
         <CardgroupsClient initialConnection={initialConnection} />
       </UndoDeleteProvider>
     </MockedProvider>,
+    intl,
   );
+}
+
+/**
+ * Substitutes a single ICU `{name}` argument in a raw catalog string. Keeps the
+ * undo-toast assertions sourced from `messages/*.json` instead of re-spelling
+ * the copy, so a catalog edit surfaces here rather than silently diverging.
+ */
+function withName(template: string, name: string) {
+  return template.replace("{name}", name);
 }
 
 // ---------------------------------------------------------------------------
@@ -770,12 +783,55 @@ describe("<CardgroupsClient> delete — optimistic cache update and scheduleDele
     });
     await user.click(deleteBtn);
 
-    // scheduleDelete calls sonner toast — the mock captures the label.
-    expect(lastToastLabel).toBe(`Cardgroup "${CG_1.name}" deleted`);
+    // scheduleDelete calls sonner toast — the mock captures the label. The
+    // expectation is sourced from the catalog, so a hardcoded label would fail.
+    expect(lastToastLabel).toBe(withName(enMessages.Cardgroups.cardgroupDeleted, CG_1.name));
     // The Undo callback must be present.
     expect(lastUndoAction).toBeInstanceOf(Function);
 
     // Advance to consume the pending timer so no leak is recorded.
+    vi.advanceTimersByTime(5100);
+    vi.useRealTimers();
+    await waitFor(() => {});
+  });
+
+  it("renders the undo-toast label in the active locale with the {name} argument", async () => {
+    const user = userEvent.setup();
+
+    const cache = new InMemoryCache();
+    const conn = makeConnection([CG_1]);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+      data: { myCardgroupsConnection: conn },
+    });
+
+    const initialMock = {
+      request: { query: MyCardgroupsConnectionDocument, variables: CARDGROUPS_DEFAULT_VARS },
+      result: { data: { myCardgroupsConnection: conn } },
+    };
+    const deleteMock = {
+      request: { query: DeleteCardgroupDocument, variables: { id: CG_1.id } },
+      result: { data: { deleteCardgroup: true } },
+    };
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    renderClient([initialMock, deleteMock], null, cache, {
+      locale: "ja",
+      messages: jaMessages,
+    });
+
+    expect(await screen.findByText("Spanish Vocab")).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: withName(jaMessages.Cardgroups.deleteAriaLabel, CG_1.name),
+      }),
+    );
+
+    expect(lastToastLabel).toBe(withName(jaMessages.Cardgroups.cardgroupDeleted, CG_1.name));
+
     vi.advanceTimersByTime(5100);
     vi.useRealTimers();
     await waitFor(() => {});

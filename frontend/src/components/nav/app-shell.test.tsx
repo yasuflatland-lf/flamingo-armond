@@ -3,6 +3,8 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithIntl } from "@/test/render-with-intl";
+import enMessages from "../../../messages/en.json";
+import jaMessages from "../../../messages/ja.json";
 
 // Mock next/link so it renders a plain <a> in jsdom.
 vi.mock("next/link", () => ({
@@ -81,6 +83,33 @@ describe("<AppShell>", () => {
       const mobileHeader = screen.getByTestId("mobile-header");
       expect(mobileHeader).toBeInTheDocument();
       expect(mobileHeader.className).toContain("md:hidden");
+    });
+
+    it("labels the desktop rail from the Nav catalog namespace", () => {
+      renderWithIntl(
+        <AppShell user={SIGNED_IN_USER} isAdmin={false}>
+          <div />
+        </AppShell>,
+      );
+
+      expect(screen.getByTestId("rail-container")).toHaveAttribute(
+        "aria-label",
+        enMessages.Nav.primaryNavigation,
+      );
+    });
+
+    it("localizes the rail aria-label so assistive tech matches the page locale", () => {
+      renderWithIntl(
+        <AppShell user={SIGNED_IN_USER} isAdmin={false}>
+          <div />
+        </AppShell>,
+        { locale: "ja", messages: jaMessages },
+      );
+
+      expect(screen.getByTestId("rail-container")).toHaveAttribute(
+        "aria-label",
+        jaMessages.Nav.primaryNavigation,
+      );
     });
   });
 

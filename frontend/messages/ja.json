@@ -50,6 +50,11 @@
     "heading": "エラーが発生しました",
     "message": "予期しないエラーが発生しました。もう一度お試しください。"
   },
+  "RootError": {
+    "heading": "アプリを読み込めませんでした",
+    "message": "サーバーの起動中に発生することがあります。少し待ってからもう一度お試しください。",
+    "retry": "もう一度試す"
+  },
   "Settings": {
     "heading": "設定"
   },
@@ -76,7 +81,8 @@
     "sessionComplete": "セッション完了",
     "sessionCompleteMessage": "このバッチに期限切れのカードはありません。",
     "reviewedCount": "{count, plural, other {このバッチで#枚のカードを復習しました。}}",
-    "refreshCards": "カードを更新"
+    "refreshCards": "カードを更新",
+    "swipeSaveFailed": "スワイプを保存できませんでした。もう一度お試しください。"
   },
   "Catalog": {
     "title": "カタログ",
@@ -99,6 +105,7 @@
     "signInAgain": "再度ログイン",
     "viewDeckAriaLabel": "{name} を見る",
     "backToCatalog": "カタログに戻る",
+    "loadingDeck": "デッキを読み込んでいます",
     "deckEmpty": "このデッキにはまだカードがありません。",
     "deckEmptySearch": "「{query}」に一致するカードはありません"
   },
@@ -126,6 +133,7 @@
     "renameCardgroupTitle": "カードグループ名を変更",
     "deleteCardgroupTitle": "カードグループを削除",
     "deleteCardgroupDesc": "「{name}」とそのすべてのカードが完全に削除されます。この操作は元に戻せません。",
+    "cardgroupDeleted": "カードグループ「{name}」を削除しました",
     "mergeFromCatalog": "カタログから統合",
     "mergeFromCatalogTitle": "カタログから統合",
     "mergeSuccess": "統合が完了しました。追加 {added, number} 件 / 更新 {updated, number} 件。",
@@ -400,6 +408,7 @@
     "editRoleTitle": "ロールを編集",
     "editRoleAriaLabel": "ロール「{name}」を編集",
     "deleteRoleAriaLabel": "「{name}」を削除",
+    "roleDeleted": "ロール「{name}」を削除しました",
     "createRole": "作成",
     "deleteAuthFailed": "セッションの有効期限が切れました。再度ログインしてください。",
     "systemRole": "システムロール",

@@ -21,6 +21,8 @@ import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
 } from "../../../../__tests__/utils/mock-apollo-paginated";
+import enMessages from "../../../../messages/en.json";
+import jaMessages from "../../../../messages/ja.json";
 import { LearnClient, PREFETCH_THRESHOLD } from "./learn-client";
 
 // ---------------------------------------------------------------------------
@@ -259,6 +261,8 @@ type RenderLearnClientOptions = {
    */
   skipDefaultPrefetchMocks?: boolean;
   displayMode?: LearnDisplayMode;
+  /** Locale + catalog override for the intl harness. Defaults to en. */
+  intl?: { locale: "en" | "ja"; messages: typeof enMessages };
 };
 
 function renderLearnClient(
@@ -287,6 +291,7 @@ function renderLearnClient(
         displayMode={options.displayMode ?? "ALWAYS_VISIBLE"}
       />
     </MockedProvider>,
+    options.intl,
   );
 }
 
@@ -461,7 +466,9 @@ describe("<LearnClient>", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Hello")).toBeInTheDocument();
-      expect(screen.getByRole("alert")).toHaveTextContent("Could not save that swipe");
+      // Sourced from the catalog rather than re-spelled, so a reverted
+      // hardcoded literal in learn-client.tsx would fail here.
+      expect(screen.getByRole("alert")).toHaveTextContent(enMessages.Learn.swipeSaveFailed);
     });
 
     // PII redaction contract — docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
@@ -476,6 +483,31 @@ describe("<LearnClient>", () => {
       name: expect.any(String),
     });
     expect(payload).not.toHaveProperty("message");
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("renders the swipe-failure banner in the active locale", async () => {
+    const user = userEvent.setup();
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const mock = {
+      request: {
+        query: HandleSwipeDocument,
+        variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, rating: 1 } },
+      },
+      result: {
+        errors: [new GraphQLError("bad swipe", { extensions: { code: "BAD_USER_INPUT" } })],
+      },
+    };
+    renderLearnClient([mock], [CARD_1], { intl: { locale: "ja", messages: jaMessages } });
+
+    // The LearnActionBar mock renders fixed English labels, so the rating
+    // control is addressed by that label regardless of the active locale.
+    await user.click(screen.getByRole("button", { name: "Rate as Again" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(jaMessages.Learn.swipeSaveFailed);
+    });
 
     consoleErrorSpy.mockRestore();
   });

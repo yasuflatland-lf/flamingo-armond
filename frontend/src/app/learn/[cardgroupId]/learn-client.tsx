@@ -2,6 +2,7 @@
 
 import { gql } from "@apollo/client";
 import { useApolloClient, useMutation } from "@apollo/client/react";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   HandleSwipeMutation,
@@ -39,6 +40,7 @@ type Props = {
 };
 
 export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
+  const t = useTranslations("Learn");
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
   const [completedCount, setCompletedCount] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -313,7 +315,7 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
         });
         setQueue((current) => [card, ...current.filter((candidate) => candidate.id !== card.id)]);
         setCompletedCount((current) => Math.max(0, current - 1));
-        setLocalError("Could not save that swipe. Please try again.");
+        setLocalError(t("swipeSaveFailed"));
         return null;
       });
 
@@ -356,7 +358,7 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
         cardgroupId,
       });
     },
-    [cardgroupId, handleSwipe, syncLearnDay],
+    [cardgroupId, handleSwipe, syncLearnDay, t],
   );
 
   if (phase === "practice") {
