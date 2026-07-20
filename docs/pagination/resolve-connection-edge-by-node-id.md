@@ -19,9 +19,10 @@ A Relay-style `Connection` edge carries two distinct identifiers, and they are
   a black box and pass it back unchanged via `after` / `before`. The server may
   change the encoding at any time without breaking clients.
 
-Because the cursor is `"v1:base64(id)"` and never the raw id, **any client code
-that matches an entity by comparing a raw id against `edge.cursor` always
-misses**. The two failure shapes:
+Because the cursor is an opaque envelope (`"v1:base64(id)"`, or `"v2:base64(json)"`
+on the mutable-key connections) and never the raw id, **any client code that
+matches an entity by comparing a raw id against `edge.cursor` always misses**.
+The two failure shapes:
 
 1. **Edit-target resolution.** `edges.find((e) => e.cursor === editId)` returns
    `undefined` for every edge when `editId` is a raw node id → the editor panel
@@ -76,11 +77,15 @@ representations of the same edge:
 2. **Keep the regression-test fixture faithful: the mock edge's `cursor` MUST be
    the opaque encoded value, not the raw id.** A fixture that sets
    `cursor: master.id` lets a (wrong) cursor-based match pass and masks exactly
-   the bug this rule prevents. Mirror the backend encoder in the test:
+   the bug this rule prevents. Emit an opaque, prefixed value in the test — the
+   `"v1:" + base64(id)` shape is the simplest faithful stand-in and works for a
+   `v2:` connection too, because what makes the regression detectable is only
+   that the cursor is not the raw id:
 
    ```ts
-   // Mirror cursor.Encode (Go): "v1:" + base64(id). A faithful cursor is what
-   // makes the node.id-vs-cursor regression detectable.
+   // Stand in for the backend's opaque envelope ("v1:" + base64(id), or the
+   // longer "v2:" + base64(json) on cardgroups / the master catalog). A faithful
+   // cursor is what makes the node.id-vs-cursor regression detectable.
    function encodeCursor(id: string): string {
      return `v1:${btoa(id)}`;
    }

@@ -445,7 +445,7 @@ func cardgroupOrderKey(orderBy repository.CardgroupOrderBy, cg *domain.Cardgroup
 
 // applyCardgroupOrderKey populates the repository cursor column the active
 // orderBy needs from the value a v2 cursor carried. A key that does not parse
-// into the column type wraps errCursorKeyMalformed so the caller maps it to
+// into the column type returns errCursorKeyMalformed so the caller maps it to
 // BAD_USER_INPUT; an unhandled orderBy stays INTERNAL.
 func applyCardgroupOrderKey(c *repository.CardgroupCursor, orderBy repository.CardgroupOrderBy, key string) error {
 	switch orderBy {

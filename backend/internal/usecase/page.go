@@ -195,9 +195,11 @@ func requireCursorOrdering(p cursor.Payload, ord PageOrdering, field string) err
 
 // errCursorKeyMalformed marks a v2 ordering-key value that does not parse back
 // into the column type the active orderBy needs. Every apply*OrderKey helper
-// wraps its parse failures in it so the caller can map it to BAD_USER_INPUT;
-// any other error from those helpers is an internal caller bug (an orderBy the
-// helper does not handle) and must stay INTERNAL.
+// returns it in place of the underlying parse failure so the caller can map it
+// to BAD_USER_INPUT; the parse cause is deliberately dropped because no caller
+// surfaces it (each one answers with a fresh ucerr validation error). Any other
+// error from those helpers is an internal caller bug (an orderBy the helper
+// does not handle) and must stay INTERNAL.
 var errCursorKeyMalformed = errors.New("usecase: malformed cursor ordering key")
 
 // encodeTimeOrderKey serializes a timestamp ordering key. RFC3339 with

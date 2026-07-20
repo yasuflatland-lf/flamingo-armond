@@ -41,11 +41,13 @@ v2:<RawURLBase64(JSON{"i":id,"o":orderBy,"d":direction,"k":orderKey})>
 | --- | --- | --- |
 | `myCardgroupsConnection` | `updated_at` (mutable) | v2 |
 | `masterCatalog` / admin master catalog | `sort_order` (admin-mutable) | v2 |
-| cards by cardgroup | `due` / `created_at` | v1 |
-| master cards | `position` / `created_at` | v1 |
+| cards by cardgroup | `id` (immutable) | v1 |
+| master cards | `position` (admin-mutable) | v1 |
 | admin users | `created_at` (immutable) | v1 |
 
-The v1 rows in this table are not an endorsement — cards and master cards order on mutable columns too and carry the same latent defect; they simply have not been migrated.
+The column named is the one the connection orders by when the client sends no `orderBy` — `resolveCardOrderBy` defaults to `(ID, ASC)`, `resolveMasterCardOrderBy` to `(POSITION, ASC)`, matching the schema defaults. In every case the ordering is made total by appending `id` as the tiebreaker, so a v1 row whose default key is `id` is safe by construction.
+
+The v1 rows are still not a clean bill of health. Master cards default to the admin-mutable `position` and carry the same latent defect the cardgroup listing had. Cards are safe on their `ID` default but not on the opt-in `DUE` / `UPDATED_AT` orderings, both of which move under normal review activity. Neither has been migrated.
 
 ## What v2 guarantees, and what it does not
 
