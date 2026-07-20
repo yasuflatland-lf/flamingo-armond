@@ -62,6 +62,9 @@ export default function CatalogDeckClient({
   const t = useTranslations("Catalog");
   const tCards = useTranslations("Cards");
   const tCommon = useTranslations("Common");
+  // The cardgroup quota is the same rule the create form enforces, so the import
+  // path reuses that feature's copy rather than duplicating it under Catalog.
+  const tCardgroups = useTranslations("Cardgroups");
 
   const search = useHeaderTakeoverSearch();
 
@@ -127,6 +130,11 @@ export default function CatalogDeckClient({
         case "not_found":
           setImportError(t("importNotFound"));
           return;
+        case "limit_reached":
+          setImportError(
+            tCardgroups("limitReached", { limit: outcome.limit, current: outcome.current }),
+          );
+          return;
         case "auth":
           setImportAuthError(outcome.kind);
           return;
@@ -135,7 +143,7 @@ export default function CatalogDeckClient({
           return;
       }
     },
-    [importing, imported, importMasterCardgroup, initialDeck.name, t],
+    [importing, imported, importMasterCardgroup, initialDeck.name, t, tCardgroups],
   );
 
   return (

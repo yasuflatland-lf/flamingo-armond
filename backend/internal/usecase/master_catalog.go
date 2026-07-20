@@ -154,25 +154,32 @@ type MasterCatalogUsecase interface {
 }
 
 // ImportMasterOutcome is the usecase result of ImportMaster. On the valid paths
-// exactly one signal is set: Cardgroup on the happy path, or NotFound=true when the
-// master id is unknown or not published. The not-found case is surfaced as data (the
-// MasterNotFoundError union variant) rather than as an error so the resolver can
-// return it in `data`. The XOR is a producer contract, not a compile-time guarantee:
-// a degenerate {Cardgroup:nil, NotFound:false} result is treated as INTERNAL by the
-// resolver's defensive guard.
+// exactly one signal is set: Cardgroup on the happy path, NotFound=true when the
+// master id is unknown or not published, or LimitReached when a non-admin caller
+// already owns the maximum number of cardgroups. Both failure cases are surfaced
+// as data (the MasterNotFoundError / CardgroupLimitReachedError union variants)
+// rather than as errors so the resolver can return them in `data`. The XOR is a
+// producer contract, not a compile-time guarantee: a degenerate
+// {Cardgroup:nil, NotFound:false, LimitReached:nil} result is treated as INTERNAL
+// by the resolver's defensive guard.
 type ImportMasterOutcome struct {
 	// Cardgroup is the newly created user-owned cardgroup snapshot on the happy
-	// path. Non-nil iff NotFound is false.
+	// path. Non-nil iff neither NotFound nor LimitReached is set.
 	Cardgroup *domain.Cardgroup
 	// NotFound is true when the master id is unknown or not published; it subsumes
-	// draft existence so draft ids are indistinguishable from absent ids. True iff
-	// Cardgroup is nil.
+	// draft existence so draft ids are indistinguishable from absent ids.
 	NotFound bool
+	// LimitReached is non-nil when the caller is a non-admin who already holds
+	// domain.GeneralUserCardgroupLimit cardgroups. It carries the same cap/count
+	// pair as CreateCardgroupOutcome.LimitReached so both entry points into "the
+	// caller now owns a new deck" surface the quota identically.
+	LimitReached *CardgroupLimitInfo
 }
 
 type masterCatalogUsecase struct {
 	repo      MasterCatalogRepository
 	deckUC    masterDeckUsecaseFacade
+	cgCounter cardgroupOwnerCounter
 	adminGate *AdminGate
 	logger    *slog.Logger
 }
@@ -180,16 +187,21 @@ type masterCatalogUsecase struct {
 // NewMasterCatalogUsecase constructs a MasterCatalogUsecase backed by the given
 // repository. deckUC is the combined deck facade (CopyMasterToUserUsecase +
 // SeedForNewUserUsecase + MergeMasterIntoCardgroupUsecase) used by ImportMaster,
-// SeedDefaultStarters, and MergeMaster; adminGate gates every admin-management
-// method. The public ListPublishedConnection is gated by authentication only.
-// Panics when repo, deckUC, adminGate, or logger is nil — a nil required
-// dependency is a wiring bug that must fail at startup, not at first use.
-func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsecaseFacade, adminGate *AdminGate, logger *slog.Logger) MasterCatalogUsecase {
+// SeedDefaultStarters, and MergeMaster; cgCounter counts the caller's existing
+// cardgroups for the ImportMaster quota check; adminGate gates every
+// admin-management method and supplies the quota's admin exemption. The public
+// ListPublishedConnection is gated by authentication only. Panics when repo,
+// deckUC, cgCounter, adminGate, or logger is nil — a nil required dependency is
+// a wiring bug that must fail at startup, not at first use.
+func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsecaseFacade, cgCounter cardgroupOwnerCounter, adminGate *AdminGate, logger *slog.Logger) MasterCatalogUsecase {
 	if repo == nil {
 		panic("usecase: master catalog: repo is required")
 	}
 	if deckUC == nil {
 		panic("usecase: master catalog: deckUC is required")
+	}
+	if cgCounter == nil {
+		panic("usecase: master catalog: cgCounter is required")
 	}
 	if adminGate == nil {
 		panic("usecase: master catalog: adminGate is required")
@@ -197,7 +209,7 @@ func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsec
 	if logger == nil {
 		panic("usecase: master catalog: logger is required")
 	}
-	return &masterCatalogUsecase{repo: repo, deckUC: deckUC, adminGate: adminGate, logger: logger}
+	return &masterCatalogUsecase{repo: repo, deckUC: deckUC, cgCounter: cgCounter, adminGate: adminGate, logger: logger}
 }
 
 // masterCatalogPageFetch is the repository page-fetch closure shape shared by
@@ -672,8 +684,12 @@ func (u *masterCatalogUsecase) ListAdminConnection(
 // inside its transaction, so a master unpublished between this gate and the write
 // also collapses to NotFound (the ErrNotFound the copy surfaces is mapped below)
 // rather than silently importing a now-draft deck. Unauthenticated callers receive
-// ucerr.ErrUnauthenticated. The copy is a one-time snapshot delegated to
-// CopyMasterToUserUsecase; FSRS/swipe state starts empty.
+// ucerr.ErrUnauthenticated. Import is the second entry point into "the caller now
+// owns a new cardgroup", so it applies the same per-user cardgroup quota as
+// CardgroupUsecase.Create via checkCardgroupLimit (admins exempt) — without it the
+// cap would be a property of the create form rather than an invariant of the
+// system. The copy is a one-time snapshot delegated to CopyMasterToUserUsecase;
+// FSRS/swipe state starts empty.
 func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string) (ImportMasterOutcome, error) {
 	caller := auth.UserFrom(ctx)
 	if err := requireCallerSub(caller); err != nil {
@@ -688,6 +704,17 @@ func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string
 			return ImportMasterOutcome{}, err
 		}
 		return ImportMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: import: verify published")
+	}
+
+	// The quota runs after the published gate so a capped caller probing an
+	// unknown id still gets the non-disclosure not-found outcome, and before the
+	// copy so no cardgroup row is ever written for a rejected import.
+	limit, err := checkCardgroupLimit(ctx, u.cgCounter, u.adminGate, caller.Sub)
+	if err != nil {
+		return ImportMasterOutcome{}, err
+	}
+	if limit != nil {
+		return ImportMasterOutcome{LimitReached: limit}, nil
 	}
 
 	cg, err := u.deckUC.CopyMasterToUser(ctx, masterID, caller.Sub)
@@ -749,9 +776,12 @@ func (u *masterCatalogUsecase) MergeMaster(ctx context.Context, masterID, cardgr
 		if errors.Is(err, repository.ErrNotFound) {
 			// The master was unpublished between the FindPublishedByID gate and the
 			// merge tx's own published-scoped re-read (TOCTOU). Collapse into the same
-			// non-disclosure not-found outcome as a pre-gate unknown/draft master. The
-			// destination ownership gate never yields ErrNotFound (it maps a missing
-			// cardgroup to a ucerr.ValidationError), so this branch is master-scoped.
+			// non-disclosure not-found outcome as a pre-gate unknown/draft master. That
+			// in-tx re-read is the only ErrNotFound producer this branch can see: the
+			// destination ownership gate maps a missing cardgroup to a
+			// ucerr.ValidationError, and the post-commit destination read-back translates
+			// its ErrNotFound into a non-sentinel internal error so a destination deleted
+			// mid-merge is never reported as a missing master.
 			return MergeMasterOutcome{NotFound: true}, nil
 		}
 		// Wrap unconditionally, exactly like ImportMaster wraps CopyMasterToUser.

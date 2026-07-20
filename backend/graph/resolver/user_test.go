@@ -10,6 +10,7 @@ import (
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
+	"gorm.io/gorm"
 
 	"backend/graph/generated"
 	"backend/graph/resolver"
@@ -44,7 +45,7 @@ func (m *mockUserRepository) Update(_ context.Context, _ string, patch repositor
 	return m.updateResult, m.updateErr
 }
 
-func (m *mockUserRepository) DeleteAuthUser(_ context.Context, _ string) error {
+func (m *mockUserRepository) DeleteAuthUserTx(_ context.Context, _ *gorm.DB, _ string) error {
 	return m.deleteAuthErr
 }
 
@@ -66,7 +67,7 @@ func dnPtr(s string) *domain.DisplayName {
 // newServer builds a gqlgen handler.Server backed by a resolver that uses the
 // given mock repository.
 func newServer(mock *mockUserRepository) *handler.Server {
-	uc := usecase.NewUserUsecase(mock, nil, nil, newDiscardLogger())
+	uc := usecase.NewUserUsecase(nil, mock, nil, nil, newDiscardLogger())
 	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
@@ -396,7 +397,7 @@ func TestResolver_UpdateProfile_NilVariant_ReturnsInternal(t *testing.T) {
 // for the caller and a roles repo reporting the global admin count.
 func newDeleteMyAccountSrv(repo *mockUserRepository, isAdmin bool, adminCount int64) *handler.Server {
 	authSvc := auth.NewService(&mockUserRoleRepository{isAdmin: isAdmin})
-	uc := usecase.NewUserUsecase(repo, &mockRoleByUserIDRepo{adminCount: adminCount}, authSvc, newDiscardLogger())
+	uc := usecase.NewUserUsecase(nil, repo, &mockRoleByUserIDRepo{adminCount: adminCount}, authSvc, newDiscardLogger())
 	r := resolver.NewResolver(uc, nil, nil, nil, authSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})

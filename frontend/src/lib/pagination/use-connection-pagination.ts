@@ -7,7 +7,26 @@ import {
 import { useQuery } from "@apollo/client/react";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { getBackendFieldErrors } from "@/lib/apollo/errors";
 import type { FetchNextPageInput } from "@/lib/pagination/types";
+
+/** The connection arguments a backend cursor-not-found error can be keyed on. */
+const CURSOR_ARGUMENT_FIELDS = ["after", "before"] as const;
+
+/**
+ * True when a rejected page request carries the backend's dead-cursor shape: a
+ * field-level `BAD_USER_INPUT` keyed on a cursor argument. The backend emits it
+ * when the row a cursor points at no longer exists (deleted between page
+ * fetches), so re-sending the same cursor can never succeed.
+ *
+ * Classified structurally off `extensions` via the shared `getBackendFieldErrors`
+ * parser — never by substring-matching the message, per
+ * .claude/rules/frontend-rsc-error-handling.md.
+ */
+function isDeadCursorError(err: unknown): boolean {
+  const fields = getBackendFieldErrors(err);
+  return CURSOR_ARGUMENT_FIELDS.some((field) => field in fields);
+}
 
 /** Minimal `pageInfo` shape the IO loop reads: the next-page flag and the cursor. */
 interface PageInfoLike {
@@ -128,6 +147,11 @@ export function useConnectionPagination<
   // In-flight guard MUST be useRef<boolean>, not useState — see
   // docs/pagination/intersection-observer-in-flight-guard.md.
   const fetchingRef = useRef(false);
+  // Set when the last page request failed because its cursor row no longer
+  // exists. Retry then re-issues the whole query instead of re-sending the dead
+  // bookmark, which would fail identically forever. A ref (not state) because
+  // no render output reads it — the banner is driven by `fetchMoreError`.
+  const deadCursorRef = useRef(false);
 
   // When the active search query changes, any in-flight fetchMore from the
   // previous search holds a stale cursor. Reset the IO guard and error state
@@ -136,6 +160,7 @@ export function useConnectionPagination<
   // biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery is an intentional trigger dependency; it is not referenced in the body because the effect resets derived IO state, not searchQuery itself.
   useEffect(() => {
     fetchingRef.current = false;
+    deadCursorRef.current = false;
     setFetchMoreError(null);
   }, [searchQuery]);
 
@@ -172,9 +197,11 @@ export function useConnectionPagination<
       })
         .then(() => {
           // Clear any previous fetchMore error on success so the observer can resume.
+          deadCursorRef.current = false;
           setFetchMoreError(null);
         })
         .catch((err) => {
+          deadCursorRef.current = isDeadCursorError(err);
           // Structured warn for operator triage: name + request context only.
           // err.message is omitted — backend messages may carry user-authored content.
           // See docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
@@ -225,12 +252,53 @@ export function useConnectionPagination<
 
   const retryFetchMore = useCallback(() => {
     setFetchMoreError(null);
+    if (deadCursorRef.current) {
+      // The cursor the last request carried points at a deleted row, so the
+      // same-cursor retry below can never succeed. Re-issue the query from the
+      // first page instead; the observer loop resumes off the refreshed
+      // pageInfo. The flag is cleared only on success, so a failed refetch
+      // keeps Retry on this path rather than falling back to the dead cursor.
+      //
+      // The refetch takes the same in-flight mutex `fetchNextPage` takes at its
+      // own entry. Clearing `fetchMoreError` above re-arms the observer effect,
+      // and re-observing the still-visible sentinel delivers a fresh initial
+      // record while the refetch is still in flight — `pageInfo` has not been
+      // refreshed yet, so an unguarded observer fire would re-send the very
+      // cursor this branch exists to stop. The mutex is released in `.finally`
+      // so a failed refetch cannot wedge the observer loop shut.
+      fetchingRef.current = true;
+      refetch()
+        .then(() => {
+          deadCursorRef.current = false;
+        })
+        .catch((err) => {
+          // Structured warn for operator triage: name + request context only.
+          // err.message is omitted — backend messages may carry user-authored content.
+          console.warn(`${logScope} refetch after dead cursor failed`, {
+            name: err instanceof Error ? err.name : "unknown",
+            searchQuery,
+          });
+          setFetchMoreError(resolveFetchMoreError(err));
+        })
+        .finally(() => {
+          fetchingRef.current = false;
+        });
+      return;
+    }
     fetchNextPage({
       hasNextPage: pageInfo.hasNextPage,
       endCursor: pageInfo.endCursor ?? null,
       searchQuery,
     });
-  }, [fetchNextPage, pageInfo.endCursor, pageInfo.hasNextPage, searchQuery]);
+  }, [
+    fetchNextPage,
+    pageInfo.endCursor,
+    pageInfo.hasNextPage,
+    searchQuery,
+    refetch,
+    resolveFetchMoreError,
+    logScope,
+  ]);
 
   const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
 

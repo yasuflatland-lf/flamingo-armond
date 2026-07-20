@@ -126,6 +126,11 @@ export const ImportMasterCardgroupMutation = graphql(`
       ... on MasterNotFoundError {
         message
       }
+      ... on CardgroupLimitReachedError {
+        message
+        limit
+        current
+      }
     }
   }
 `);

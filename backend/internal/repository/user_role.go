@@ -33,6 +33,15 @@ type UserRoleRepository interface {
 	// Only DB errors return a non-nil error. Role lookup is by name (case-sensitive).
 	HasRole(ctx context.Context, userID string, roleName domain.RoleName) (bool, error)
 
+	// HasRoleTx is HasRole scoped to the supplied transaction. Callers that use
+	// the membership answer to decide whether the "never leave the system
+	// without an admin" invariant applies must use this form and take
+	// AcquireAdminRoleLockTx first, so the membership read, the admin count and
+	// the mutation they guard are one serialized unit. A membership read taken
+	// outside the lock can go stale — the target may be promoted to admin after
+	// the read — and the guard is then skipped entirely.
+	HasRoleTx(ctx context.Context, tx *gorm.DB, userID string, roleName domain.RoleName) (bool, error)
+
 	// AssignRoleToUser inserts a (user_id, role_id) row. Idempotent: if the row
 	// already exists, returns nil without error. Returns ErrUserNotFound when
 	// the user is missing and ErrRoleNotFound when the role is missing; both
@@ -62,6 +71,21 @@ type UserRoleRepository interface {
 	// admin role row itself does not exist — callers treat the absence of
 	// the role and an empty assignment table as the same operational state.
 	CountAdmins(ctx context.Context) (int64, error)
+
+	// CountAdminsTx is CountAdmins scoped to the supplied transaction, so the
+	// count and the mutation it guards commit or roll back together. Callers
+	// that enforce the "never leave the system without an admin" invariant must
+	// use this form and take AcquireAdminRoleLockTx first.
+	CountAdminsTx(ctx context.Context, tx *gorm.DB) (int64, error)
+
+	// AcquireAdminRoleLockTx takes a transaction-scoped Postgres advisory lock
+	// that serializes every mutation able to change the number of admins.
+	// Concurrent admin removals touch disjoint user_roles rows, so the database
+	// never conflicts on its own and a plain count is a check-then-act race:
+	// two callers can each observe two admins and both demote. Holding this
+	// lock across the count and the write closes that window. The lock releases
+	// at transaction end, so callers cannot leak it.
+	AcquireAdminRoleLockTx(ctx context.Context, tx *gorm.DB) error
 }
 
 type userRoleRepo struct{ db *gorm.DB }
@@ -71,8 +95,21 @@ func NewUserRoleRepository(db *gorm.DB) UserRoleRepository {
 }
 
 func (r *userRoleRepo) HasRole(ctx context.Context, userID string, roleName domain.RoleName) (bool, error) {
+	return hasRoleOn(ctx, r.db, userID, roleName)
+}
+
+func (r *userRoleRepo) HasRoleTx(ctx context.Context, tx *gorm.DB, userID string, roleName domain.RoleName) (bool, error) {
+	if tx == nil {
+		return false, eris.New("repository: user role: has role tx is nil")
+	}
+	return hasRoleOn(ctx, tx, userID, roleName)
+}
+
+// hasRoleOn is the single query shared by the Tx and non-Tx forms so the two
+// cannot drift.
+func hasRoleOn(ctx context.Context, db *gorm.DB, userID string, roleName domain.RoleName) (bool, error) {
 	var count int64
-	err := r.db.WithContext(ctx).
+	err := db.WithContext(ctx).
 		Table("user_roles").
 		Joins("JOIN roles ON roles.id = user_roles.role_id").
 		Where("user_roles.user_id = ? AND roles.name = ?", userID, roleName).
@@ -240,8 +277,21 @@ func (r *userRoleRepo) ListByUserIDs(ctx context.Context, userIDs []string) (map
 }
 
 func (r *userRoleRepo) CountAdmins(ctx context.Context) (int64, error) {
+	return countAdminsOn(ctx, r.db)
+}
+
+func (r *userRoleRepo) CountAdminsTx(ctx context.Context, tx *gorm.DB) (int64, error) {
+	if tx == nil {
+		return 0, eris.New("repository: user role: count admins tx is nil")
+	}
+	return countAdminsOn(ctx, tx)
+}
+
+// countAdminsOn is the single query shared by the Tx and non-Tx forms so the
+// two cannot drift.
+func countAdminsOn(ctx context.Context, db *gorm.DB) (int64, error) {
 	var n int64
-	err := r.db.WithContext(ctx).
+	err := db.WithContext(ctx).
 		Table("user_roles").
 		Joins("JOIN roles ON roles.id = user_roles.role_id").
 		Where("roles.name = ?", domain.AdminRoleName).
@@ -250,4 +300,23 @@ func (r *userRoleRepo) CountAdmins(ctx context.Context) (int64, error) {
 		return 0, eris.Wrap(err, "repository: user role: count admins")
 	}
 	return n, nil
+}
+
+// adminRoleLockNamespace is the advisory-lock namespace for the admin-count
+// invariant. hashtext returns int4, so pg_advisory_xact_lock(hashtext(ns),
+// hashtext(role)) keys the lock on the role within a namespace where unrelated
+// callers do not contend.
+const adminRoleLockNamespace = "user_roles"
+
+func (r *userRoleRepo) AcquireAdminRoleLockTx(ctx context.Context, tx *gorm.DB) error {
+	if tx == nil {
+		return eris.New("repository: user role: acquire admin role lock tx is nil")
+	}
+	if err := tx.WithContext(ctx).Exec(
+		"SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))",
+		adminRoleLockNamespace, string(domain.AdminRoleName),
+	).Error; err != nil {
+		return eris.Wrap(err, "repository: user role: acquire admin role lock")
+	}
+	return nil
 }

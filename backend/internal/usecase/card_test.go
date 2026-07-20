@@ -497,6 +497,39 @@ func TestCardUsecase_Update_RepoError_InfraChannel(t *testing.T) {
 	assertInternalChain(t, err, "usecase: card: update: repo update")
 }
 
+// TestCardUsecase_Update_DuplicateFront_ValidationError pins the rename-onto-an
+// -existing-front case to the validation channel: the repository's
+// ErrCardDuplicateFront must surface as a field-level error on "front"
+// (BAD_USER_INPUT once the resolver converts it), never as an INTERNAL wrap.
+func TestCardUsecase_Update_DuplicateFront_ValidationError(t *testing.T) {
+	t.Parallel()
+
+	existing := &domain.Card{
+		ID:          "card1",
+		CardgroupID: domain.CardgroupID("cg1"),
+		Front:       domain.CardText("colour"),
+		Back:        domain.CardText("old back"),
+	}
+	cardRepo := &mockCardRepository{
+		findResult: existing,
+		updateErr:  repository.ErrCardDuplicateFront,
+	}
+	uc := NewCardUsecase(nil, cardRepo,
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
+		nil, nil, newTestLogger(),
+	)
+
+	outcome, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Front: ptr("color")})
+
+	assertValidationError(t, err, "front", "A card with this front already exists in this cardgroup")
+	if outcome.Card != nil {
+		t.Fatal("expected nil Card on duplicate front")
+	}
+	if outcome.Validation != nil {
+		t.Fatal("duplicate front travels the error channel, not outcome.Validation")
+	}
+}
+
 func TestCardUsecase_Delete_NotFoundMasksExistence(t *testing.T) {
 	t.Parallel()
 
@@ -509,20 +542,42 @@ func TestCardUsecase_Delete_NotFoundMasksExistence(t *testing.T) {
 	assertUnauthenticated(t, err)
 }
 
-func TestCardUsecase_Card_NotFoundReturnsNil(t *testing.T) {
+// TestCardUsecase_Card_UnknownAndForeignAreIndistinguishable pins the
+// non-disclosure contract on the card read path: probing an unknown card id and
+// probing a card owned by another user must produce identical outcomes, so the
+// query cannot be used as an existence oracle over another user's card ids.
+func TestCardUsecase_Card_UnknownAndForeignAreIndistinguishable(t *testing.T) {
 	t.Parallel()
 
-	uc := NewCardUsecase(nil, &mockCardRepository{findErr: repository.ErrNotFound},
+	unknownUC := NewCardUsecase(nil, &mockCardRepository{findErr: repository.ErrNotFound},
 		&mockCardgroupRepoForCard{},
 		nil, nil, newTestLogger(),
 	)
+	unknownCard, unknownErr := unknownUC.Card(authedCtx("u1"), "missing")
 
-	got, err := uc.Card(authedCtx("u1"), "missing")
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+	foreignUC := NewCardUsecase(nil, &mockCardRepository{findResult: &domain.Card{
+		ID:          "card1",
+		CardgroupID: domain.CardgroupID("cg1"),
+	}},
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{
+			ID:      domain.CardgroupID("cg1"),
+			OwnerID: "u2",
+		}},
+		nil, nil, newTestLogger(),
+	)
+	foreignCard, foreignErr := foreignUC.Card(authedCtx("u1"), "card1")
+
+	assertUnauthenticated(t, unknownErr)
+	assertUnauthenticated(t, foreignErr)
+	if unknownCard != nil {
+		t.Fatalf("unknown id: expected nil card, got %+v", unknownCard)
 	}
-	if got != nil {
-		t.Fatalf("expected nil card, got %+v", got)
+	if foreignCard != nil {
+		t.Fatalf("foreign card: expected nil card, got %+v", foreignCard)
+	}
+	if unknownErr.Error() != foreignErr.Error() {
+		t.Fatalf("outcomes are distinguishable: unknown=%q foreign=%q",
+			unknownErr.Error(), foreignErr.Error())
 	}
 }
 

@@ -106,10 +106,12 @@ func (r *mutationResolver) AdminDeleteMasterCardgroup(ctx context.Context, id st
 
 // ImportMasterCardgroup is the resolver for the importMasterCardgroup field.
 //
-// Returns a union: model.ImportMasterCardgroupSuccess on the happy path, or
+// Returns a union: model.ImportMasterCardgroupSuccess on the happy path,
 // model.MasterNotFoundError when the master id is unknown or not published
-// (draft existence is never leaked). The not-found case is "errors as data";
-// the error return is reserved for auth and infrastructure failures.
+// (draft existence is never leaked), or model.CardgroupLimitReachedError when a
+// non-admin caller has already reached the per-user cardgroup cap. Both failure
+// cases are "errors as data"; the error return is reserved for auth and
+// infrastructure failures.
 func (r *mutationResolver) ImportMasterCardgroup(ctx context.Context, masterCardgroupID string) (model.ImportMasterCardgroupResult, error) {
 	outcome, err := r.MasterCatalogUC.ImportMaster(ctx, masterCardgroupID)
 	if err != nil {
@@ -118,6 +120,13 @@ func (r *mutationResolver) ImportMasterCardgroup(ctx context.Context, masterCard
 	if outcome.NotFound {
 		return model.MasterNotFoundError{
 			Message: "Master cardgroup not found",
+		}, nil
+	}
+	if outcome.LimitReached != nil {
+		return model.CardgroupLimitReachedError{
+			Message: "cardgroup limit reached",
+			Limit:   outcome.LimitReached.Limit,
+			Current: outcome.LimitReached.Current,
 		}, nil
 	}
 	if outcome.Cardgroup == nil {

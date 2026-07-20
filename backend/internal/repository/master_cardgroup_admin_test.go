@@ -6,6 +6,7 @@ package repository_test
 //   - FindPageAnyStatus (no status filter, otherwise identical to FindPublishedPage)
 //   - Publish (sets status=published, bumps version)
 //   - Unpublish (sets status=draft, version unchanged)
+//   - Publish/Unpublish updated_at freshness (trigger-refreshed re-fetch)
 //
 // All tests run against the shared testcontainers Postgres provisioned by
 // TestMain in user_test.go. Shared helpers (newMasterCardgroupMinimal,
@@ -17,6 +18,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -319,6 +321,61 @@ func TestMasterCardgroupRepository_Unpublish_SetsDraftVersionUnchanged(t *testin
 	require.NoError(t, err)
 	require.Equal(t, domain.MasterStatusDraft, refetched.Status)
 	require.Equal(t, 3, refetched.Version)
+}
+
+// TestMasterCardgroupRepository_PublishUnpublish_RefreshesUpdatedAt pins the
+// re-fetch tail of the status-transition path. A BEFORE UPDATE trigger on
+// master_cardgroups rewrites updated_at to now(), so the aggregate loaded before
+// the write carries a stale timestamp; returning it would make the mutation
+// response — and the admin list cache reading from it — disagree with the
+// database until a manual refresh. Both transitions must therefore return the
+// post-write row.
+func TestMasterCardgroupRepository_PublishUnpublish_RefreshesUpdatedAt(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewMasterCardgroupRepository(testDB.GORM)
+
+	// Seed the row with a deliberately old updated_at so the baseline comparison
+	// cannot be confused by clock skew between the test host and the database.
+	m := newMasterCardgroupMinimal("Refresh UpdatedAt " + uuid.NewString())
+	m.Version = 1
+	m.Status = domain.MasterStatusDraft
+	m.CreatedAt = time.Now().UTC().Add(-2 * time.Hour)
+	m.UpdatedAt = m.CreatedAt
+	require.NoError(t, repo.Create(ctx, m))
+
+	before, err := repo.FindByID(ctx, m.ID)
+	require.NoError(t, err)
+
+	published, err := repo.Publish(ctx, m.ID)
+	require.NoError(t, err)
+	require.True(t, published.UpdatedAt.After(before.UpdatedAt),
+		"Publish must return the trigger-refreshed updated_at (before=%v, got=%v)",
+		before.UpdatedAt, published.UpdatedAt)
+
+	afterPublish, err := repo.FindByID(ctx, m.ID)
+	require.NoError(t, err)
+	require.True(t, published.UpdatedAt.Equal(afterPublish.UpdatedAt),
+		"Publish return value must match the persisted updated_at (got=%v, db=%v)",
+		published.UpdatedAt, afterPublish.UpdatedAt)
+
+	unpublished, err := repo.Unpublish(ctx, m.ID)
+	require.NoError(t, err)
+	require.True(t, unpublished.UpdatedAt.After(published.UpdatedAt),
+		"Unpublish must return the trigger-refreshed updated_at (publish=%v, got=%v)",
+		published.UpdatedAt, unpublished.UpdatedAt)
+
+	afterUnpublish, err := repo.FindByID(ctx, m.ID)
+	require.NoError(t, err)
+	require.True(t, unpublished.UpdatedAt.Equal(afterUnpublish.UpdatedAt),
+		"Unpublish return value must match the persisted updated_at (got=%v, db=%v)",
+		unpublished.UpdatedAt, afterUnpublish.UpdatedAt)
+
+	// The re-fetch must not disturb the transition outcomes themselves.
+	require.Equal(t, domain.MasterStatusPublished, published.Status)
+	require.Equal(t, 2, published.Version, "Publish bumps version 1 -> 2")
+	require.Equal(t, domain.MasterStatusDraft, unpublished.Status)
+	require.Equal(t, 2, unpublished.Version, "Unpublish leaves the version unchanged")
 }
 
 func TestMasterCardgroupRepository_Unpublish_NotFound(t *testing.T) {

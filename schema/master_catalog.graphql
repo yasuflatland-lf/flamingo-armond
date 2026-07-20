@@ -143,8 +143,17 @@ type MasterNotFoundError implements UserError {
   message: String!
 }
 
-"""Result of `importMasterCardgroup`: the imported cardgroup, or a typed not-found error returned as data."""
-union ImportMasterCardgroupResult = ImportMasterCardgroupSuccess | MasterNotFoundError
+"""
+Result of `importMasterCardgroup`: the imported cardgroup, a typed not-found error,
+or a limit-reached error when a non-admin caller has already reached the per-user
+cardgroup cap. All three are returned as data. `CardgroupLimitReachedError` is the
+same variant `createCardgroup` returns, so both entry points into "the caller now
+owns a new deck" enforce the quota identically.
+"""
+union ImportMasterCardgroupResult =
+    ImportMasterCardgroupSuccess
+  | MasterNotFoundError
+  | CardgroupLimitReachedError
 
 """Input for `mergeMasterCardgroup`: the published catalog deck to copy from and the caller-owned destination cardgroup to merge into."""
 input MergeMasterCardgroupInput {

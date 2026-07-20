@@ -62,7 +62,7 @@ func TestCardgroupRepository_Create_DeletedOwner_ReturnsOwnerNotFound(t *testing
 	repo := repository.NewCardgroupRepository(testDB.GORM)
 
 	userRepo := repository.NewUserRepository(testDB.GORM)
-	require.NoError(t, userRepo.DeleteAuthUser(ctx, ownerID))
+	require.NoError(t, deleteAuthUserInTx(ctx, userRepo, ownerID))
 
 	err := repo.Create(ctx, newCardgroup(ownerID, "Deck for a deleted account"))
 	require.ErrorIs(t, err, repository.ErrCardgroupOwnerNotFound)

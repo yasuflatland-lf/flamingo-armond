@@ -294,6 +294,39 @@ describe("<CatalogDeckClient>", () => {
     expect(screen.getByTestId("catalog-deck-import-deck-1")).not.toBeDisabled();
   });
 
+  it("shows the limit banner when the import returns CardgroupLimitReachedError", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    const limitMock = {
+      request: {
+        query: ImportMasterCardgroupDocument,
+        variables: { masterCardgroupId: "deck-1" },
+      },
+      result: {
+        data: {
+          importMasterCardgroup: {
+            __typename: "CardgroupLimitReachedError",
+            message: "cardgroup limit reached",
+            limit: 5,
+            current: 5,
+          },
+        },
+      },
+    };
+
+    renderClient([limitMock], makeConnection([C1]), cache);
+
+    await user.click(await screen.findByTestId("catalog-deck-import-deck-1"));
+
+    // Reuses the create-form copy from the Cardgroups namespace, interpolated
+    // with the backend-supplied counts.
+    expect(await screen.findByTestId("catalog-deck-import-error")).toHaveTextContent(
+      "You already have 5 card groups (maximum 5).",
+    );
+    // Not marked imported on a limit-reached outcome.
+    expect(screen.getByTestId("catalog-deck-import-deck-1")).not.toBeDisabled();
+  });
+
   it("shows the generic error banner when the import throws a transport error", async () => {
     const user = userEvent.setup();
     const cache = new InMemoryCache();

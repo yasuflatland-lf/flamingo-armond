@@ -392,6 +392,30 @@ func TestCardRepo_Create_DuplicateFront(t *testing.T) {
 	}
 }
 
+// TestCardRepo_Update_DuplicateFront asserts that renaming a card's front onto
+// a front already used in the same cardgroup returns the ErrCardDuplicateFront
+// sentinel, exactly like the Create path — not a generic wrapped error.
+func TestCardRepo_Update_DuplicateFront(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	first := newCard(cg.ID, "taken-front", "back-one")
+	require.NoError(t, repo.Create(ctx, first))
+	second := newCard(cg.ID, "other-front", "back-two")
+	require.NoError(t, repo.Create(ctx, second))
+
+	taken := "taken-front"
+	_, err := repo.Update(ctx, second.ID, repository.CardUpdate{Front: &taken})
+	require.ErrorIs(t, err, repository.ErrCardDuplicateFront,
+		"Update onto an existing (cardgroup_id, front) must return ErrCardDuplicateFront")
+	// Standalone "found" sentinel; must not collapse into the not-found channel.
+	require.False(t, errors.Is(err, repository.ErrNotFound),
+		"ErrCardDuplicateFront must not match ErrNotFound, got %v", err)
+}
+
 func repoCardIDs(cards []domain.DueCard) []string {
 	out := make([]string, len(cards))
 	for i, dc := range cards {

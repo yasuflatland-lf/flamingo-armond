@@ -268,6 +268,8 @@ The sentinel `repository.ErrCardgroupNotFound` lives in `repository/user_prefere
 
 `backend/internal/domain/service/user_performance.go` is a stateless calculator. `SwipeUsecase.HandleSwipe` records the swipe and commits the FSRS update first, then loads the latest 100 swipe records for the user through `SwipeRecordRepository.ListRecentByUser`. This post-commit read keeps transactional rollback behavior simple and lets the just-created swipe participate in the next response's metrics.
 
+Because the read runs after the commit, an infrastructure failure there does **not** fail the mutation: `HandleSwipe` logs the chain and returns the neutral empty-window snapshot (`ModeDefault`, zero review count) instead. The `handleSwipe` error channel therefore means exactly one thing — "the swipe was NOT persisted" — which is what lets the client re-queue the card on error without risking a double review. Context cancellation is the one exception and still propagates unwrapped, since a torn-down caller has nothing to report to.
+
 The response exposes both `performanceMode` and `metrics`. On the wire `performanceMode` is the `SwipePerformanceMode` enum — `DIFFICULT`, `DEFAULT`, `GOOD`, `EASY`, `MASTERED` — which corresponds in that order to the calculator's internal modes `0..4`; `toSwipePerformanceModeModel` in `backend/graph/resolver/mapper.go` performs the order-preserving conversion. The internal modes and their bands:
 
 | Mode | Label | Success-rate band before difficulty adjustment |

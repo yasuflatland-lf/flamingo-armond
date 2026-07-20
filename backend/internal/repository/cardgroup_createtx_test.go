@@ -50,7 +50,7 @@ func TestCardgroupRepository_CreateTx_DeletedOwner_ReturnsOwnerNotFound(t *testi
 	repo := repository.NewCardgroupRepository(testDB.GORM)
 
 	userRepo := repository.NewUserRepository(testDB.GORM)
-	require.NoError(t, userRepo.DeleteAuthUser(ctx, ownerID))
+	require.NoError(t, deleteAuthUserInTx(ctx, userRepo, ownerID))
 
 	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return repo.CreateTx(ctx, tx, newCardgroup(ownerID, "Imported deck for a deleted account"))

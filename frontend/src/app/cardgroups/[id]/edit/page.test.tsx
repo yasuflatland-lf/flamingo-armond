@@ -79,7 +79,7 @@ describe("EditCardgroupPage", () => {
     await expect(EditCardgroupPage(makeParams("cg-1"))).rejects.toThrow("REDIRECT:/cardgroups");
   });
 
-  it("redirects to /cardgroups on UNAUTHENTICATED gqlFetch error", async () => {
+  it("redirects to /login on UNAUTHENTICATED gqlFetch error", async () => {
     vi.mocked(headers).mockResolvedValue(
       new Headers({ "x-auth-status": "authenticated" }) as never,
     );
@@ -87,7 +87,7 @@ describe("EditCardgroupPage", () => {
       new Error('GraphQL errors: [{"extensions":{"code":"UNAUTHENTICATED"}}]'),
     );
 
-    await expect(EditCardgroupPage(makeParams("cg-1"))).rejects.toThrow("REDIRECT:/cardgroups");
+    await expect(EditCardgroupPage(makeParams("cg-1"))).rejects.toThrow("REDIRECT:/login");
   });
 
   it("renders the management client with cardgroup data and initial connection counts", async () => {

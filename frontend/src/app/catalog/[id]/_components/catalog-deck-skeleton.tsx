@@ -1,3 +1,6 @@
+"use client";
+
+import { useTranslations } from "next-intl";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
@@ -5,8 +8,15 @@ import { Skeleton } from "@/components/ui/skeleton";
  * resolved layout — the DetailPageHeader app bar (back / count / import) with a
  * centered title and badge row, then a single-column read-only card list — to
  * prevent CLS while `CatalogDeckContent` awaits the two parallel GraphQL fetches.
+ *
+ * Client component on purpose: this is a `<Suspense>` fallback, and next-intl's
+ * server-side `useTranslations` resolves its config through `use(...)`, which
+ * would suspend the fallback itself and escalate rendering to the parent
+ * boundary. Reading the messages from `NextIntlClientProvider` is synchronous.
  */
 export function CatalogDeckSkeleton() {
+  const t = useTranslations("Catalog");
+
   return (
     <main className="p-8">
       <header className="mb-6">
@@ -27,7 +37,7 @@ export function CatalogDeckSkeleton() {
       <ul
         className="space-y-3"
         aria-busy="true"
-        aria-label="Loading deck"
+        aria-label={t("loadingDeck")}
         data-testid="catalog-deck-skeleton"
       >
         {Array.from({ length: 6 }).map((_, i) => (

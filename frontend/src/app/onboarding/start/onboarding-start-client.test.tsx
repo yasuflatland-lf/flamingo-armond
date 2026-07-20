@@ -196,6 +196,21 @@ describe("<OnboardingStartClient>", () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
+  it("shows the cardgroup-limit copy on a limit_reached outcome", async () => {
+    const user = userEvent.setup();
+    mockImport.mockResolvedValueOnce({ status: "limit_reached", limit: 5, current: 5 });
+
+    renderWithIntl(<OnboardingStartClient cardgroups={CARDGROUPS} />);
+    await user.click(screen.getByTestId("onboarding-deck-m-1"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-import-error")).toHaveTextContent(
+        "You already have 5 card groups (maximum 5).",
+      );
+    });
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
   it("shows the auth banner with a sign-in link on an auth outcome", async () => {
     const user = userEvent.setup();
     mockImport.mockResolvedValueOnce({ status: "auth", kind: "unauthenticated" });

@@ -276,7 +276,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
 
     scheduleDelete({
       id,
-      label: `Role "${role.name}" deleted`,
+      label: t("roleDeleted", { name: role.name }),
       optimisticRollback: () => {
         setRoles((prev) => [...prev.slice(0, index), role, ...prev.slice(index)]);
       },

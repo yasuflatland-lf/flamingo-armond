@@ -9,6 +9,7 @@ import (
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/graph-gophers/dataloader/v7"
+	"gorm.io/gorm"
 
 	"backend/graph/generated"
 	"backend/graph/model"
@@ -69,7 +70,7 @@ type mockRoleByUserIDRepo struct {
 	// lastIDs holds the key slice from the most recent ListByUserIDs call so
 	// N+1 batch assertions can verify all expected user IDs were batched together.
 	lastIDs []string
-	// adminCount is returned by CountAdmins; used by DeleteMyAccount tests.
+	// adminCount is returned by CountAdminsTx; used by DeleteMyAccount tests.
 	adminCount int64
 }
 
@@ -101,7 +102,11 @@ func (m *mockRoleByUserIDRepo) ListByUser(_ context.Context, userID string) ([]*
 	return roles, nil
 }
 
-func (m *mockRoleByUserIDRepo) CountAdmins(_ context.Context) (int64, error) {
+func (m *mockRoleByUserIDRepo) AcquireAdminRoleLockTx(_ context.Context, _ *gorm.DB) error {
+	return nil
+}
+
+func (m *mockRoleByUserIDRepo) CountAdminsTx(_ context.Context, _ *gorm.DB) (int64, error) {
 	return m.adminCount, nil
 }
 

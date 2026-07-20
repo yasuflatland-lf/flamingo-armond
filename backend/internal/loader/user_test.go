@@ -88,6 +88,9 @@ type emptyUserRoleRepoStub struct{}
 func (emptyUserRoleRepoStub) HasRole(_ context.Context, _ string, _ domain.RoleName) (bool, error) {
 	panic("emptyUserRoleRepoStub.HasRole not expected")
 }
+func (emptyUserRoleRepoStub) HasRoleTx(_ context.Context, _ *gorm.DB, _ string, _ domain.RoleName) (bool, error) {
+	panic("emptyUserRoleRepoStub.HasRoleTx not expected")
+}
 func (emptyUserRoleRepoStub) AssignRoleToUser(_ context.Context, _, _ string) error {
 	panic("emptyUserRoleRepoStub.AssignRoleToUser not expected")
 }
@@ -102,6 +105,12 @@ func (emptyUserRoleRepoStub) ListByUserIDs(_ context.Context, _ []string) (map[s
 }
 func (emptyUserRoleRepoStub) CountAdmins(_ context.Context) (int64, error) {
 	panic("emptyUserRoleRepoStub.CountAdmins not expected")
+}
+func (emptyUserRoleRepoStub) CountAdminsTx(_ context.Context, _ *gorm.DB) (int64, error) {
+	panic("emptyUserRoleRepoStub.CountAdminsTx not expected")
+}
+func (emptyUserRoleRepoStub) AcquireAdminRoleLockTx(_ context.Context, _ *gorm.DB) error {
+	panic("emptyUserRoleRepoStub.AcquireAdminRoleLockTx not expected")
 }
 
 func emptyUserRoleRepo() repository.UserRoleRepository {
@@ -280,10 +289,10 @@ func (r *countingRepo) ListPage(
 	panic("countingRepo.ListPage not configured")
 }
 
-// DeleteAuthUser satisfies repository.UserRepository. Loader-layer tests never
+// DeleteAuthUserTx satisfies repository.UserRepository. Loader-layer tests never
 // invoke account deletion; panic if called so accidental coupling is surfaced.
-func (r *countingRepo) DeleteAuthUser(_ context.Context, _ string) error {
-	panic("countingRepo.DeleteAuthUser not configured")
+func (r *countingRepo) DeleteAuthUserTx(_ context.Context, _ *gorm.DB, _ string) error {
+	panic("countingRepo.DeleteAuthUserTx not configured")
 }
 
 // AuthUserExists satisfies repository.UserRepository. Loader-layer tests never
