@@ -112,8 +112,10 @@ func masterCatalogCursorFieldValue(orderBy MasterCatalogOrderBy, c *MasterCatalo
 }
 
 // findCatalogPage is the shared cursor-paginated catalog engine. publishedOnly
-// adds the status filter; everything else is identical for the published and
-// admin lists. FindPublishedPage and FindPageAnyStatus are thin wrappers over it
+// adds the public catalog-visibility filter — `status = published AND at least
+// one master card exists` (see masterCardsExistPredicate) — and everything else
+// is identical for the published and admin lists. FindPublishedPage and
+// FindPageAnyStatus are thin wrappers over it
 // (mirrors card_pagination.go's FindPageByCardgroup -> FindPageByCardgroupForUser).
 func (r *masterCardgroupRepo) findCatalogPage(
 	ctx context.Context,
@@ -127,14 +129,19 @@ func (r *masterCardgroupRepo) findCatalogPage(
 	first = ClampPageSize(first)
 	last = ClampPageSize(last)
 
-	// totalCount comes from a COUNT(*) on the SAME filtered base (status filter
-	// when publishedOnly, plus the optional search predicate), built
+	// totalCount comes from a COUNT(*) on the SAME filtered base (the
+	// published + non-empty visibility filter when publishedOnly, plus the
+	// optional search predicate), built
 	// independently of the cursor/order/limit so it counts the whole matching
 	// set. Computed before the no-rows short-circuit so callers asking only for
-	// totalCount still observe the real count.
+	// totalCount still observe the real count. Every predicate added here must
+	// be added to the page query below and vice versa, or totalCount drifts
+	// permanently away from the rows the caller can actually page through.
 	countQ := r.db.WithContext(ctx).Model(&gormMasterCardgroup{})
 	if publishedOnly {
-		countQ = countQ.Where("status = ?", string(domain.MasterStatusPublished))
+		countQ = countQ.
+			Where("status = ?", string(domain.MasterStatusPublished)).
+			Where(masterCardsExistPredicate("master_cardgroups"))
 	}
 	if pattern, ok := searchLikePattern(search); ok {
 		countQ = countQ.Where("name ILIKE ?", pattern)
@@ -156,7 +163,9 @@ func (r *masterCardgroupRepo) findCatalogPage(
 		Table("master_cardgroups AS mcg").
 		Select("mcg.*, (SELECT COUNT(*) FROM master_cards mc WHERE mc.master_cardgroup_id = mcg.id) AS card_count")
 	if publishedOnly {
-		q = q.Where("mcg.status = ?", string(domain.MasterStatusPublished))
+		q = q.
+			Where("mcg.status = ?", string(domain.MasterStatusPublished)).
+			Where(masterCardsExistPredicate("mcg"))
 	}
 	if pattern, ok := searchLikePattern(search); ok {
 		q = q.Where("mcg.name ILIKE ?", pattern)
@@ -194,8 +203,8 @@ func (r *masterCardgroupRepo) findCatalogPage(
 }
 
 // FindPublishedPage returns the cursor-paginated published catalog list (drafts
-// excluded). Order is (orderBy, id) so cursors stay deterministic even when the
-// primary sort column has duplicates.
+// and published-but-empty decks excluded). Order is (orderBy, id) so cursors
+// stay deterministic even when the primary sort column has duplicates.
 func (r *masterCardgroupRepo) FindPublishedPage(
 	ctx context.Context,
 	after, before *MasterCatalogCursor,
@@ -207,8 +216,10 @@ func (r *masterCardgroupRepo) FindPublishedPage(
 	return r.findCatalogPage(ctx, after, before, first, last, orderBy, dir, search, true)
 }
 
-// FindPageAnyStatus returns the cursor-paginated admin catalog list (drafts
-// included). Identical to FindPublishedPage but without the status filter.
+// FindPageAnyStatus returns the cursor-paginated admin catalog list (drafts and
+// published-but-empty decks included). Identical to FindPublishedPage but
+// without the catalog-visibility filter, so an admin can still find and fix a
+// published deck that has lost all of its cards.
 func (r *masterCardgroupRepo) FindPageAnyStatus(
 	ctx context.Context,
 	after, before *MasterCatalogCursor,

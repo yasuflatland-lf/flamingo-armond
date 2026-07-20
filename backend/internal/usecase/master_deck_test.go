@@ -19,12 +19,15 @@ import (
 // --- fakes -----------------------------------------------------------------
 
 type fakeMasterCGRepo struct {
-	byID         map[string]*domain.MasterCardgroup
-	findErr      error
-	starters     []*domain.MasterCardgroup
-	startersErr  error
-	findCalls    int
-	startersCall int
+	byID    map[string]*domain.MasterCardgroup
+	findErr error
+	// findErrOnCall is 1-based; 0 means findErr applies to every call. Set it to
+	// target one iteration of a loop that calls FindPublishedByID per starter.
+	findErrOnCall int
+	starters      []*domain.MasterCardgroup
+	startersErr   error
+	findCalls     int
+	startersCall  int
 }
 
 // FindPublishedByID models the published-scoped master read. byID represents the
@@ -33,7 +36,7 @@ type fakeMasterCGRepo struct {
 // gate passed (the TOCTOU regression case).
 func (f *fakeMasterCGRepo) FindPublishedByID(_ context.Context, id string) (*domain.MasterCardgroup, error) {
 	f.findCalls++
-	if f.findErr != nil {
+	if f.findErr != nil && (f.findErrOnCall == 0 || f.findErrOnCall == f.findCalls) {
 		return nil, f.findErr
 	}
 	m, ok := f.byID[id]
@@ -374,7 +377,15 @@ func TestCopyMasterToUser_CopiesContentWithFreshIDsAndPositions(t *testing.T) {
 	assert.Equal(t, 1, user.upsertCall)
 }
 
-func TestCopyMasterToUser_EmptyDeck_CopiesEmptyCardgroup(t *testing.T) {
+// TestCopyMasterToUser_EmptyDeck_ReturnsNotFoundWithoutWriting pins the
+// emptiness half of catalog visibility at the copy. The FindPublishedByID probe
+// and the card enumeration do not share a snapshot — neither takes the tx handle
+// — so a deck whose last card is deleted between them would pass the probe and
+// then write a cardgroup with no cards. Deciding emptiness off the enumeration
+// this copy actually consumes makes that unreachable: the copy collapses into
+// repository.ErrNotFound, which ImportMaster maps to its non-disclosure
+// not-found outcome, and no user rows are written.
+func TestCopyMasterToUser_EmptyDeck_ReturnsNotFoundWithoutWriting(t *testing.T) {
 	t.Parallel()
 
 	const masterID = "m-empty"
@@ -386,17 +397,16 @@ func TestCopyMasterToUser_EmptyDeck_CopiesEmptyCardgroup(t *testing.T) {
 	uc, _, calls := newSeedUsecase(t, cg, card, user, userCG)
 
 	got, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-2")
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.ErrorIs(t, err, repository.ErrNotFound,
+		"an empty deck must collapse into the same not-found the catalog uses for an unknown id")
+	assert.Nil(t, got)
 	require.Equal(t, 1, *calls)
 
-	require.NotNil(t, got)
-	assert.NotEmpty(t, got.ID)
-	assert.Equal(t, domain.CardgroupName("Empty Deck"), got.Name)
-
-	// UpsertManyTx is still invoked exactly once, with an empty (non-nil) batch.
-	assert.Equal(t, 1, user.upsertCall, "the bulk insert runs once even for an empty deck")
-	require.Len(t, user.captured, 1)
-	assert.Empty(t, user.captured[0])
+	// Nothing is persisted: neither the cardgroup row nor the (empty) card batch.
+	assert.Zero(t, user.upsertCall, "no card batch is written for a deck that left the catalog")
+	assert.Empty(t, user.captured)
+	assert.Zero(t, userCG.createCalls, "no cardgroup row is created for a deck that left the catalog")
 }
 
 func TestCopyMasterToUser_MasterNotFound_ReturnsInternalChain(t *testing.T) {
@@ -562,10 +572,18 @@ func TestSeedForNewUser_ListStartersError_PropagatesChain(t *testing.T) {
 	assert.Empty(t, user.captured, "no cards persisted when listing starters fails")
 }
 
-func TestSeedForNewUser_MidLoopCopyFailure_AbortsBatch(t *testing.T) {
+// TestSeedForNewUser_StarterLeftCatalog_SkipsAndSeedsTheRest pins the skip half
+// of the seed contract. A starter can leave the catalog between
+// ListPublishedDefaultStarters and its copy — unpublished, deleted, or emptied
+// of its last card — and all three surface as repository.ErrNotFound. Failing
+// the whole seed would turn a rare admin action into a broken signup, so the
+// loop skips that starter and seeds the rest. The guarantee being protected is
+// "never seed an empty deck", not "seed every listed starter".
+func TestSeedForNewUser_StarterLeftCatalog_SkipsAndSeedsTheRest(t *testing.T) {
 	t.Parallel()
 
-	// Two default starters: the copy of m1 succeeds, m2's master lookup fails.
+	// Two default starters: m1 copies fine; m2 is absent from byID, so its
+	// catalog-scoped lookup returns ErrNotFound.
 	cg := &fakeMasterCGRepo{
 		byID:     map[string]*domain.MasterCardgroup{"m1": masterCG("m1", "Deck One")},
 		starters: []*domain.MasterCardgroup{masterCG("m1", "Deck One"), masterCG("m2", "Deck Two")},
@@ -578,13 +596,70 @@ func TestSeedForNewUser_MidLoopCopyFailure_AbortsBatch(t *testing.T) {
 
 	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
 
-	_, err := uc.SeedForNewUser(context.Background(), "mid-loop-user")
-	// The loop aborts on the second starter (m2 is absent from byID, so FindByID
-	// returns ErrNotFound). The whole batch fails. The real transaction rollback
-	// is exercised by the integration test; here we prove the loop stops.
+	seeded, err := uc.SeedForNewUser(context.Background(), "mid-loop-user")
+	require.NoError(t, err, "one starter leaving the catalog must not fail the whole seed")
+	require.Len(t, seeded, 1, "only the still-visible starter is seeded")
+	assert.Equal(t, domain.CardgroupName("Deck One"), seeded[0].Name)
+	require.Len(t, user.captured, 1, "the skipped starter writes no cards")
+}
+
+// TestSeedForNewUser_StarterEmptied_IsSkipped is the emptiness-specific case of
+// the skip above: the starter is still present and published, but its card
+// enumeration comes back empty. The copy's len(cards) guard turns that into the
+// same ErrNotFound, so the learner is never handed an empty deck.
+func TestSeedForNewUser_StarterEmptied_IsSkipped(t *testing.T) {
+	t.Parallel()
+
+	cg := &fakeMasterCGRepo{
+		byID: map[string]*domain.MasterCardgroup{
+			"m1": masterCG("m1", "Deck One"),
+			"m2": masterCG("m2", "Deck Two"),
+		},
+		starters: []*domain.MasterCardgroup{masterCG("m1", "Deck One"), masterCG("m2", "Deck Two")},
+	}
+	card := &fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
+		"m1": {masterCard("a1", "m1", "f1", "b1", 0)},
+		"m2": {}, // emptied between the listing and the copy
+	}}
+	user := &fakeUserCardRepo{}
+	userCG := &fakeUserCG{count: 0}
+
+	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
+
+	seeded, err := uc.SeedForNewUser(context.Background(), "emptied-starter-user")
+	require.NoError(t, err)
+	require.Len(t, seeded, 1, "the emptied starter is skipped, the other is seeded")
+	assert.Equal(t, domain.CardgroupName("Deck One"), seeded[0].Name)
+	assert.Equal(t, 1, userCG.createCalls, "no cardgroup row is created for the emptied starter")
+}
+
+// TestSeedForNewUser_MidLoopInfraFailure_AbortsBatch pins the other half of the
+// contract: only the catalog-visibility sentinel is skippable. An infrastructure
+// failure mid-loop still aborts the whole batch, so a database fault is never
+// silently downgraded into a partial seed. The real transaction rollback is
+// exercised by the integration test; here we prove the loop stops.
+func TestSeedForNewUser_MidLoopInfraFailure_AbortsBatch(t *testing.T) {
+	t.Parallel()
+
+	boom := errors.New("db down")
+	cg := &fakeMasterCGRepo{
+		byID:     map[string]*domain.MasterCardgroup{"m1": masterCG("m1", "Deck One")},
+		starters: []*domain.MasterCardgroup{masterCG("m1", "Deck One"), masterCG("m2", "Deck Two")},
+	}
+	card := &fakeMasterCardRepo{
+		byMaster: map[string][]*domain.MasterCard{"m1": {masterCard("a1", "m1", "f1", "b1", 0)}},
+	}
+	user := &fakeUserCardRepo{}
+	userCG := &fakeUserCG{count: 0}
+
+	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
+	// Fail the SECOND starter's master lookup with a non-sentinel error.
+	cg.findErrOnCall = 2
+	cg.findErr = boom
+
+	_, err := uc.SeedForNewUser(context.Background(), "infra-failure-user")
 	require.Error(t, err)
 	assertInternalChain(t, err, "usecase: master deck: seed for new user")
-	// Deck One copied before the failure; Deck Two never reached the card insert.
 	require.Len(t, user.captured, 1, "only the first starter was copied before the abort")
 }
 
@@ -802,29 +877,36 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_MasterUnpublishedMidFlight_N
 	assert.Empty(t, user.captured, "no draft content is snapshotted into the destination")
 }
 
-func TestMasterDeckUsecase_MergeMasterIntoCardgroup_EmptyDeck(t *testing.T) {
+// TestMasterDeckUsecase_MergeMasterIntoCardgroup_EmptyDeck_ReturnsNotFound is
+// the merge-side mirror of the copy case: a deck that lost its last card between
+// the catalog probe and the enumeration must not report a successful 0/0 merge
+// against a deck that has left the catalog. It collapses into
+// repository.ErrNotFound, which MergeMaster maps to its not-found outcome, and
+// the destination is left untouched.
+func TestMasterDeckUsecase_MergeMasterIntoCardgroup_EmptyDeck_ReturnsNotFound(t *testing.T) {
 	t.Parallel()
 	const ownerID = "11111111-1111-7111-8111-111111111111"
 	const destID = "22222222-2222-7222-8222-222222222222"
 	const masterID = "master-id-empty"
 
 	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
+	userCard := &fakeUserCardRepo{}
 
 	uc := NewMasterDeckUsecaseWithTx(
-		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}}, // published-scoped re-read (runs outside the tx)
-		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: {}}},                        // zero cards
-		&fakeUserCardRepo{}, // default: Inserted=len(cards)=0, Updated=0
+		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}}, // the catalog probe still passes (and runs outside the tx)
+		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: {}}},                        // ...but the enumeration is empty
+		userCard,
 		&fakeUserCG{byID: map[string]*domain.Cardgroup{destID: destCG}},
 		stubTxRunner,
 		newTestLogger(),
 	)
 
 	res, err := uc.MergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID(ownerID))
-	require.NoError(t, err)
-	require.NotNil(t, res)
-	assert.Equal(t, int64(0), res.Added)
-	assert.Equal(t, int64(0), res.Updated)
-	assert.Equal(t, domain.CardgroupID(destID), res.Cardgroup.ID)
+	require.Error(t, err)
+	require.ErrorIs(t, err, repository.ErrNotFound,
+		"an empty master must collapse into the same not-found the catalog uses for an unknown id")
+	assert.Nil(t, res)
+	assert.Zero(t, userCard.upsertCall, "the destination must not be written for a deck that left the catalog")
 }
 
 func TestMasterDeckUsecase_MergeMasterIntoCardgroup_ListCardsError_PropagatesChain(t *testing.T) {

@@ -56,10 +56,12 @@ beforeEach(() => {
   vi.stubGlobal("IntersectionObserver", FakeIO as unknown as typeof IntersectionObserver);
 });
 
-// Mirror the backend opaque cursor envelope (cursor.Encode in Go): "v1:" + base64(id).
-// The list edge cursor is deliberately NOT the raw node id, so a client that resolves
-// edges by `cursor` instead of `node.id` breaks. Encoding the mock cursors keeps the
-// fixture faithful to the real backend and guards the "Master not found." regression.
+// Stand in for the backend's opaque cursor envelope. The real master-catalog
+// connection emits the longer "v2:" + base64(json) form (cursor.EncodeV2 in Go);
+// "v1:" + base64(id) is a shorter stand-in that preserves the only property this
+// fixture needs — the edge cursor is deliberately NOT the raw node id, so a client
+// that resolves edges by `cursor` instead of `node.id` breaks. Encoding the mock
+// cursors guards the "Master not found." regression.
 function encodeCursor(id: string): string {
   return `v1:${btoa(id)}`;
 }
