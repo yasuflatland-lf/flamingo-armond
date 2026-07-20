@@ -39,7 +39,7 @@ export default async function EditCardgroupPage({ params }: Props) {
       }),
     ]);
   } catch (err) {
-    if (isUnauthenticatedGraphQLError(err)) redirect("/cardgroups");
+    if (isUnauthenticatedGraphQLError(err)) redirect("/login");
     console.error("[cardgroups/:id/edit] gqlFetch failed:", {
       name: err instanceof Error ? err.name : "unknown",
     });

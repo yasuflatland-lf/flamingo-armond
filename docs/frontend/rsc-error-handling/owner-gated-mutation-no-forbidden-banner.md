@@ -15,7 +15,7 @@ This is the opposite posture from the admin role-CRUD flows in [`UNAUTHENTICATED
 
 ## The route gate makes the usecase owner-check a defensive backstop
 
-Because the `cardgroup(id:)` query returns `UNAUTHENTICATED` to non-owners, the owner-gated RSC page redirects on it before any owner-gated UI renders: `frontend/src/app/cardgroups/[id]/edit/page.tsx` catches `isUnauthenticatedGraphQLError(err)` and `redirect("/cardgroups")` (and `/cards` redirects to `/edit`). A non-owner therefore never reaches the batch-import form or any owner-gated mutation through the UI. The usecase-layer owner-check (`authorizeCardgroupOrBadInput` in `backend/internal/usecase/ownership.go`, called from `cardImportUsecase.Import`) is a **defensive backstop** reachable only by a hand-crafted GraphQL request that bypasses the RSC redirect — not the primary UX gate.
+Because the `cardgroup(id:)` query returns `UNAUTHENTICATED` to non-owners, the owner-gated RSC page redirects on it before any owner-gated UI renders: `frontend/src/app/cardgroups/[id]/edit/page.tsx` catches `isUnauthenticatedGraphQLError(err)` and `redirect("/login")` (and `/cards` redirects to `/edit`). A non-owner therefore never reaches the batch-import form or any owner-gated mutation through the UI. The usecase-layer owner-check (`authorizeCardgroupOrBadInput` in `backend/internal/usecase/ownership.go`, called from `cardImportUsecase.Import`) is a **defensive backstop** reachable only by a hand-crafted GraphQL request that bypasses the RSC redirect — not the primary UX gate.
 
 ## Worked example
 
