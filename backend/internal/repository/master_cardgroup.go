@@ -202,6 +202,9 @@ func (r *masterCardgroupRepo) EnsureByName(ctx context.Context, name string) (*d
 func (r *masterCardgroupRepo) Create(ctx context.Context, m *domain.MasterCardgroup) error {
 	row := masterCardgroupFromDomain(m)
 	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
+		if classified := classifyTextLengthViolation(err); classified != nil {
+			return classified
+		}
 		return eris.Wrap(err, "repository: master cardgroup: create")
 	}
 	return nil
@@ -237,6 +240,9 @@ func (r *masterCardgroupRepo) Update(ctx context.Context, id string, patch Maste
 
 	res := r.db.WithContext(ctx).Model(&gormMasterCardgroup{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
+		if classified := classifyTextLengthViolation(res.Error); classified != nil {
+			return nil, classified
+		}
 		return nil, eris.Wrap(res.Error, "repository: master cardgroup: update")
 	}
 	// Re-fetch so callers see the trigger-refreshed updated_at.

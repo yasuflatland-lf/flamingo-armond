@@ -36,12 +36,12 @@ func TestStabilityBeforeDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back two migrations newest-first:
+	// Step back three migrations newest-first: widen_text_length_checks,
 	// add_cardgroup_fk_to_swipe_records, then add_stability_before_to_swipe_records
 	// (the target). The Steps(1) below re-applies only stability_before; the
 	// t.Cleanup restores the rest. Bump this count when adding migrations after
 	// add_stability_before_to_swipe_records.
-	if err := m.Steps(-2); err != nil {
+	if err := m.Steps(-3); err != nil {
 		t.Fatalf("migrate down stability_before migration: %v", err)
 	}
 	requireColumnMissing(t, ctx, sqlDB, "swipe_records", "stability_before")

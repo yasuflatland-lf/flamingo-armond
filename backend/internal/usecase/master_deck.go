@@ -216,6 +216,9 @@ func (u *masterDeckUsecase) CopyMasterToUser(ctx context.Context, masterID, owne
 		if isContextDone(err) {
 			return nil, err
 		}
+		if translated := translateTextLengthViolation(err); translated != nil {
+			return nil, translated
+		}
 		return nil, eris.Wrap(err, "usecase: master deck: copy master to user")
 	}
 	return out, nil
@@ -272,6 +275,9 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) (
 	}); err != nil {
 		if isContextDone(err) {
 			return nil, err
+		}
+		if translated := translateTextLengthViolation(err); translated != nil {
+			return nil, translated
 		}
 		return nil, eris.Wrap(err, "usecase: master deck: seed for new user")
 	}
@@ -399,6 +405,9 @@ func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 	}); err != nil {
 		if isContextDone(err) {
 			return nil, err
+		}
+		if translated := translateTextLengthViolation(err); translated != nil {
+			return nil, translated
 		}
 		return nil, eris.Wrap(err, "usecase: master deck: merge master into cardgroup")
 	}

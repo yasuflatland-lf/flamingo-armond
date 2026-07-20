@@ -101,9 +101,9 @@ func TestSwipeRecordsCardgroupOrphanCleanupRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// add_cardgroup_fk_to_swipe_records is the newest migration, so one step
-	// reaches it. Bump this count when adding migrations after it.
-	if err := m.Steps(-1); err != nil {
+	// Two steps reach add_cardgroup_fk_to_swipe_records: widen_text_length_checks
+	// sits above it. Bump this count when adding migrations after either one.
+	if err := m.Steps(-2); err != nil {
 		t.Fatalf("migrate down cardgroup fk migration: %v", err)
 	}
 	if got := countSwipeRecordsByID(t, ctx, sqlDB, keepID); got != 1 {
@@ -120,7 +120,7 @@ func TestSwipeRecordsCardgroupOrphanCleanupRoundtrip(t *testing.T) {
 		t.Fatalf("orphan swipe record count before up migration = %d, want 1", got)
 	}
 
-	if err := m.Steps(1); err != nil {
+	if err := m.Steps(2); err != nil {
 		t.Fatalf("migrate up cardgroup fk migration: %v", err)
 	}
 	if got := countSwipeRecordsByID(t, ctx, sqlDB, keepID); got != 1 {

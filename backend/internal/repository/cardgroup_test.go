@@ -242,12 +242,15 @@ func TestCardgroupRepository_NameLengthCheckRejectsTooLong(t *testing.T) {
 	ownerID := insertAuthUser(t, ctx)
 	repo := repository.NewCardgroupRepository(testDB.GORM)
 
-	// 101 ASCII characters: exceeds the CHECK constraint (1-100 trimmed code points).
-	longName := strings.Repeat("a", 101)
+	// 2001 ASCII characters: exceeds the CHECK constraint, whose upper bound is
+	// 20x the 100-grapheme domain cap so a ZWJ-emoji name at the domain cap still
+	// fits. The domain (ParseCardgroupName) rejects anything past 100 graphemes
+	// long before this bound; the CHECK is a storage backstop.
+	longName := strings.Repeat("a", 2001)
 	cg := newCardgroup(ownerID, longName)
 
 	err := repo.Create(ctx, cg)
-	require.Error(t, err, "DB CHECK constraint should reject a 101-char name")
+	require.Error(t, err, "DB CHECK constraint should reject a 2001-char name")
 }
 
 func TestCardgroupRepository_EnsureByName_Existing(t *testing.T) {

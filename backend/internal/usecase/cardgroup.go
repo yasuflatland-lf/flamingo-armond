@@ -220,6 +220,13 @@ func (u *cardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 		if errors.Is(err, repository.ErrCardgroupOwnerNotFound) {
 			return CreateCardgroupOutcome{}, ucerr.ErrUnauthenticated
 		}
+		if translated := translateTextLengthViolation(err); translated != nil {
+			info, lerr := liftValidationErr(translated)
+			if lerr != nil {
+				return CreateCardgroupOutcome{}, lerr
+			}
+			return CreateCardgroupOutcome{Validation: info}, nil
+		}
 		return CreateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: create")
 	}
 	return CreateCardgroupOutcome{Cardgroup: cg}, nil
@@ -278,6 +285,13 @@ func (u *cardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 	nameStr := existing.Name.String()
 	updated, err := u.repo.Update(ctx, id, repository.CardgroupUpdate{Name: &nameStr})
 	if err != nil {
+		if translated := translateTextLengthViolation(err); translated != nil {
+			info, lerr := liftValidationErr(translated)
+			if lerr != nil {
+				return UpdateCardgroupOutcome{}, lerr
+			}
+			return UpdateCardgroupOutcome{Validation: info}, nil
+		}
 		return UpdateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: update")
 	}
 	return UpdateCardgroupOutcome{Cardgroup: updated}, nil

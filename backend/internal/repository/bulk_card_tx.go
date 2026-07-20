@@ -47,6 +47,9 @@ func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domai
 	}
 	res, err := upsertManyTx(ctx, tx, rows, "cards", "cardgroup_id")
 	if err != nil {
+		if classified := classifyTextLengthViolation(err); classified != nil {
+			return UpsertManyTxResult{}, classified
+		}
 		return UpsertManyTxResult{}, eris.Wrap(err, "repository: card: upsert many")
 	}
 	return res, nil
