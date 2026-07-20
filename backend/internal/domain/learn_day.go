@@ -24,5 +24,22 @@ func EndOfLearnDay(now time.Time) time.Time {
 	return StartOfLearnDay(now).Add(24 * time.Hour)
 }
 
+// rescueMinElapsed is the minimum wall-clock time that must pass after a review
+// before the same card may be served early through the rescue window. The FSRS
+// memory model derives elapsed days as floor(hours/24), so a repeat inside the
+// same 24 hours counts as zero elapsed days: retrievability is 1 and the
+// stability growth factor exp((1-r)*W10)-1 is exactly 0. Such a review earns no
+// scheduling credit at all, so serving the card early only burns a rescue slot
+// while leaving the card below the learned threshold.
+const rescueMinElapsed = 24 * time.Hour
+
+// RescueReviewedBefore returns the latest last_review instant a card may carry
+// and still be served early through the rescue window: exactly rescueMinElapsed
+// before now. The repository compares with `<=`, so a card last reviewed exactly
+// 24 hours ago is eligible while one reviewed 23 hours ago is not.
+func RescueReviewedBefore(now time.Time) time.Time {
+	return now.Add(-rescueMinElapsed)
+}
+
 // LearnDayKey returns the canonical JST learn-day key (YYYY-MM-DD) for t.
 func LearnDayKey(t time.Time) string { return StartOfLearnDay(t).Format(time.DateOnly) }
