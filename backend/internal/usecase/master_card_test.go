@@ -765,6 +765,34 @@ func TestMasterCard_ListMasterCards_CursorCorruptRejected(t *testing.T) {
 	}
 }
 
+// TestMasterCard_ListMasterCards_CursorV2Rejected pins the guard against
+// cross-envelope acceptance. Master-card cursors stay on the v1 envelope, so a
+// decodable v2 cursor cannot have been issued here and must be BAD_USER_INPUT
+// before FindByID rather than paged by its raw id under ordering metadata this
+// connection never validated.
+func TestMasterCard_ListMasterCards_CursorV2Rejected(t *testing.T) {
+	t.Parallel()
+	mc := &mockMasterCardReadRepo{}
+	uc := newMasterCardUC(t, mc, &mockMasterCardgroupReadRepo{}, true)
+	ob := MasterCardOrderByPosition
+	after := cursor.EncodeV2(cursor.Payload{
+		ID:        "mc-1",
+		OrderBy:   "position",
+		Direction: "ASC",
+		OrderKey:  "3",
+	})
+	_, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
+		MasterCardgroupID: "id-1",
+		First:             intPtr(5),
+		After:             &after,
+		OrderBy:           &ob,
+	})
+	assertValidationError(t, err, "after", "cursor does not match the requested ordering")
+	if len(mc.findByIDCalls) != 0 {
+		t.Fatalf("v2 cursor must be rejected before FindByID, got %d calls", len(mc.findByIDCalls))
+	}
+}
+
 // A FindByID infrastructure error during cursor hydration surfaces as an
 // internal eris-chain wrap, not a validation/forbidden error.
 func TestMasterCard_ListMasterCards_CursorHydrationInfraErrorWrapped(t *testing.T) {

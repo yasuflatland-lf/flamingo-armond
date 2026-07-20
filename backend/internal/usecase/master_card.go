@@ -709,13 +709,20 @@ func (u *masterCardUsecase) resolveMasterCardCursor(
 	orderBy repository.MasterCardOrderBy,
 	field string,
 ) (*repository.MasterCardCursor, error) {
-	id, present, err := decodeCursorOrBadInput(cursorStr, field)
+	p, present, err := decodeCursorOrBadInput(cursorStr, field)
 	if err != nil {
 		return nil, err
 	}
 	if !present {
 		return nil, nil
 	}
+	// Master-card cursors stay on the v1 envelope, so only the raw id is
+	// consumed here and a cursor carrying ordering metadata cannot have come
+	// from here.
+	if err := rejectOrderedCursor(p, field); err != nil {
+		return nil, err
+	}
+	id := p.ID
 	c := &repository.MasterCardCursor{ID: id}
 	if orderBy == repository.MasterCardOrderByID {
 		return c, nil

@@ -336,19 +336,19 @@ func TestAdminMasterCardsConnection_CursorRoundTrip(t *testing.T) {
 	require.NotNil(t, conn.PageInfo.StartCursor)
 	startDecoded, decErr := cursor.Decode(*conn.PageInfo.StartCursor)
 	require.NoError(t, decErr, "StartCursor must be valid v1 cursor")
-	assert.Equal(t, "first-id", startDecoded, "StartCursor must decode to raw ID — double-encode would produce a wrong value")
+	assert.Equal(t, "first-id", startDecoded.ID, "StartCursor must decode to raw ID — double-encode would produce a wrong value")
 
 	// EndCursor must decode to "last-id".
 	require.NotNil(t, conn.PageInfo.EndCursor)
 	endDecoded, decErr := cursor.Decode(*conn.PageInfo.EndCursor)
 	require.NoError(t, decErr, "EndCursor must be valid v1 cursor")
-	assert.Equal(t, "last-id", endDecoded, "EndCursor must decode to raw ID")
+	assert.Equal(t, "last-id", endDecoded.ID, "EndCursor must decode to raw ID")
 
 	// Each edge cursor must decode to its node's ID.
 	for _, edge := range conn.Edges {
 		decoded, decErr := cursor.Decode(edge.Cursor)
 		require.NoError(t, decErr, "edge.Cursor for node %s must be valid v1 cursor", edge.Node.ID)
-		assert.Equal(t, edge.Node.ID, decoded, "edge.Cursor must decode to node.ID")
+		assert.Equal(t, edge.Node.ID, decoded.ID, "edge.Cursor must decode to node.ID")
 	}
 }
 

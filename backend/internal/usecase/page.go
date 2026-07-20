@@ -1,6 +1,12 @@
 package usecase
 
 import (
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
 	"backend/internal/cursor"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
@@ -54,6 +60,40 @@ func resolveStandardPageSize(first, last *int) (int, int, error) {
 		return clamp(*first), 0, nil
 	}
 	return 0, clamp(*last), nil
+}
+
+// resolveAdminPageSize enforces the (first XOR last) constraint and clamps
+// each value to [0, maxPageSize]. When both are nil, defaults to
+// (maxPageSize, 0) — unlike the other resolvers (which default to
+// defaultPageSize=20), admin queries default forward paging at the documented
+// maximum to keep single-page admin views simple. maxPageSize is the
+// package-wide cap shared with the card/cardgroup/master-catalog resolvers.
+func resolveAdminPageSize(first, last *int) (int, int, error) {
+	if first != nil && last != nil {
+		return 0, 0, ucerr.NewValidationError("first", "specify either first or last")
+	}
+	if first == nil && last == nil {
+		return maxPageSize, 0, nil
+	}
+	check := func(field string, v int) error {
+		if v < 0 {
+			return ucerr.NewValidationError(field, fmt.Sprintf("%s must be >= 0", field))
+		}
+		if v > maxPageSize {
+			return ucerr.NewValidationError(field, fmt.Sprintf("%s must be <= %d", field, maxPageSize))
+		}
+		return nil
+	}
+	if first != nil {
+		if err := check("first", *first); err != nil {
+			return 0, 0, err
+		}
+		return *first, 0, nil
+	}
+	if err := check("last", *last); err != nil {
+		return 0, 0, err
+	}
+	return 0, *last, nil
 }
 
 // TrimAndDetect trims one trailing item from items when len(items) > want and
@@ -142,15 +182,111 @@ func assemblePage[T any](
 // It covers only the decode+guard prefix shared by every aggregate's resolve*Cursor
 // method; the per-aggregate hydration (FindByID / FindPublishedByID) and the
 // repository cursor-struct population stay inline in each method.
-func decodeCursorOrBadInput(cursorStr *string, field string) (id string, present bool, err error) {
+//
+// The returned payload carries the raw entity id for every envelope version.
+// For a v2 cursor it additionally carries the ordering the page was served
+// under plus the ordering-key value captured at that time; aggregates ordering
+// on a mutable column consume those via requireCursorOrdering and their
+// apply*OrderKey helper instead of re-reading the column off the current row.
+func decodeCursorOrBadInput(cursorStr *string, field string) (p cursor.Payload, present bool, err error) {
 	if cursorStr == nil || *cursorStr == "" {
-		return "", false, nil
+		return cursor.Payload{}, false, nil
 	}
-	id, err = cursor.Decode(*cursorStr)
+	p, err = cursor.Decode(*cursorStr)
 	if err != nil {
-		return "", false, ucerr.NewValidationError(field, "invalid cursor")
+		return cursor.Payload{}, false, ucerr.NewValidationError(field, "invalid cursor")
 	}
-	return id, true, nil
+	return p, true, nil
+}
+
+// PageOrdering is the effective ordering a connection page was served under.
+// It is carried on the usecase connection output so the resolver can embed it
+// in the v2 cursors it emits, and compared against an incoming v2 cursor so a
+// bookmark taken under one ordering is never silently re-interpreted under
+// another. Both fields are server-internal tokens (the repository column name
+// and sort direction); they are opaque to clients.
+type PageOrdering struct {
+	OrderBy   string
+	Direction string
+}
+
+// requireCursorOrdering rejects a v2 cursor whose embedded ordering disagrees
+// with the ordering the current request resolved to. Serving such a cursor
+// would compare the stored ordering-key value against a different column (or
+// the same column in the opposite direction) and silently return a wrong page,
+// so it is a BAD_USER_INPUT — the same shape as "cursor not found".
+//
+// v1 envelopes and legacy bare ids carry no ordering and pass through: they
+// fall back to the re-hydration path, which is ordering-agnostic by
+// construction.
+func requireCursorOrdering(p cursor.Payload, ord PageOrdering, field string) error {
+	if !p.HasOrdering {
+		return nil
+	}
+	if p.OrderBy != ord.OrderBy || p.Direction != ord.Direction {
+		return ucerr.NewValidationError(field, "cursor does not match the requested ordering")
+	}
+	return nil
+}
+
+// rejectOrderedCursor is the counterpart requireCursorOrdering for connections
+// that do not emit v2: it rejects any inbound cursor carrying ordering
+// metadata, because such a cursor cannot have come from this connection.
+//
+// The guard exists because Decode is shared. A connection that ignores the
+// embedded ordering would accept a v2 cursor and page by the raw id alone —
+// serving a bookmark under an ordering that was never validated against the
+// request. Rejecting is also the behaviour these connections had before Decode
+// learned the v2 envelope: a "v2:" string then fell through the bare-id branch
+// and failed the row lookup as cursor-not-found.
+//
+// Call it at every resolve*Cursor that consumes only p.ID. Once a connection
+// migrates to v2, swap the call for requireCursorOrdering.
+func rejectOrderedCursor(p cursor.Payload, field string) error {
+	if p.HasOrdering {
+		return ucerr.NewValidationError(field, "cursor does not match the requested ordering")
+	}
+	return nil
+}
+
+// errCursorKeyMalformed marks a v2 ordering-key value that does not parse back
+// into the column type the active orderBy needs. Every apply*OrderKey helper
+// returns it in place of the underlying parse failure so the caller can map it
+// to BAD_USER_INPUT; the parse cause is deliberately dropped because no caller
+// surfaces it (each one answers with a fresh ucerr validation error). Any other
+// error from those helpers is an internal caller bug (an orderBy the helper
+// does not handle) and must stay INTERNAL.
+var errCursorKeyMalformed = errors.New("usecase: malformed cursor ordering key")
+
+// encodeTimeOrderKey serializes a timestamp ordering key. RFC3339 with
+// nanosecond precision round-trips the microsecond resolution Postgres stores,
+// so the tuple comparison lands on exactly the same boundary row the page ended
+// on. UTC normalisation keeps the encoded form stable regardless of the
+// session time zone; the comparison is by instant, so it does not shift rows.
+func encodeTimeOrderKey(t time.Time) string {
+	return t.UTC().Format(time.RFC3339Nano)
+}
+
+// decodeTimeOrderKey parses a timestamp ordering key produced by
+// encodeTimeOrderKey. A value that does not parse is a client-supplied
+// malformed cursor, not an internal fault.
+func decodeTimeOrderKey(s string) (time.Time, error) {
+	t, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		return time.Time{}, errCursorKeyMalformed
+	}
+	return t, nil
+}
+
+// decodeIntOrderKey parses an integer ordering key (the master catalog's
+// sort_order). A value that does not parse is a client-supplied malformed
+// cursor, not an internal fault.
+func decodeIntOrderKey(s string) (int, error) {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, errCursorKeyMalformed
+	}
+	return n, nil
 }
 
 // resolveOrderByColumn maps the typed usecase orderBy enum to the repository
@@ -193,4 +329,28 @@ func firstLastCursor[T any](rows []T, id func(T) string) (start, end string) {
 		return "", ""
 	}
 	return id(rows[0]), id(rows[len(rows)-1])
+}
+
+// derefOr returns *p when p is non-nil, otherwise def.
+func derefOr[T any](p *T, def T) T {
+	if p != nil {
+		return *p
+	}
+	return def
+}
+
+// normalizeSearch collapses nil and whitespace-only search inputs to nil and
+// trims a non-empty search. After this the repository receives either nil (no
+// filter) or a non-empty, trimmed string — the same invariant ListMasterCards
+// relies on. Normalizing at the usecase boundary keeps totalCount and the page
+// query in agreement instead of depending on the repository to trim.
+func normalizeSearch(search *string) *string {
+	if search == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*search)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }

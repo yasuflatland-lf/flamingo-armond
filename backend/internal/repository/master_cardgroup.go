@@ -188,15 +188,34 @@ func findMasterCardgroupByID(db *gorm.DB, id string) (*domain.MasterCardgroup, e
 // rows. This method takes a transaction-scoped advisory lock keyed on the
 // literal 'master' namespace plus the name to serialize lookup-then-insert
 // without adding a DB-level constraint. Master cardgroups have no owner.
+//
+// name is parsed through domain.ParseCardgroupName before anything else, so the
+// domain grapheme cap (domain.CardgroupNameMax) is what bounds a stored master
+// cardgroup name, not the far wider master_cardgroups_name_length CHECK
+// (1..2000 code points). The two previously disagreed: a blank name died on the
+// CHECK's lower bound as an unclassified constraint violation, while an over-cap
+// name between the grapheme cap and the CHECK's upper bound was persisted
+// silently. Both now fail up front as typed domain sentinels
+// (domain.ErrCardgroupNameRequired / domain.ErrCardgroupNameTooLong). The only
+// production caller parses the name itself before calling, so this is defence in
+// depth rather than a reachable behaviour change. The parsed (trimmed) value is
+// what the advisory lock, the lookup and the insert all key on, so the row this
+// method creates is always the row a repeat call finds.
 func (r *masterCardgroupRepo) EnsureByName(ctx context.Context, name string) (*domain.MasterCardgroup, error) {
+	cgName, err := domain.ParseCardgroupName(name)
+	if err != nil {
+		return nil, eris.Wrap(err, "repository: master cardgroup: ensure by name: parse name")
+	}
+	canonical := cgName.String()
+
 	var out *domain.MasterCardgroup
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))", "master", name).Error; err != nil {
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))", "master", canonical).Error; err != nil {
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: advisory lock")
 		}
 
 		var row gormMasterCardgroup
-		err := tx.Where("name = ?", name).Take(&row).Error
+		err := tx.Where("name = ?", canonical).Take(&row).Error
 		if err == nil {
 			out, err = masterCardgroupToDomain(row)
 			return err
@@ -205,7 +224,7 @@ func (r *masterCardgroupRepo) EnsureByName(ctx context.Context, name string) (*d
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: lookup")
 		}
 
-		m, err := domain.NewMasterCardgroup(domain.CardgroupName(name), domain.Description{}, false, 0)
+		m, err := domain.NewMasterCardgroup(cgName, domain.Description{}, false, 0)
 		if err != nil {
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: construct")
 		}

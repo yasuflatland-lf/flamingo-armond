@@ -12,15 +12,17 @@ A Relay-style `Connection` edge carries two distinct identifiers, and they are
 - `edge.node.id` — the entity's stable primary key (`"01J…"`). This is what the
   rest of the app uses to address the entity (open its editor, delete it, read
   it from the normalized cache as `<Type>:<id>`).
-- `edge.cursor` — an **opaque pagination handle**. The backend emits
-  `cursor.Encode(id)` = `"v1:" + base64(id)` (see [cursor-encoding.md](cursor-encoding.md)).
+- `edge.cursor` — an **opaque pagination handle**. The backend emits either
+  `"v1:" + base64(id)` or, on the connections whose ordering column is mutable,
+  `"v2:" + base64(json)` (see [cursor-encoding.md](cursor-encoding.md)).
   Cursor opaqueness is a deliberate Relay invariant: clients treat the cursor as
   a black box and pass it back unchanged via `after` / `before`. The server may
   change the encoding at any time without breaking clients.
 
-Because the cursor is `"v1:base64(id)"` and never the raw id, **any client code
-that matches an entity by comparing a raw id against `edge.cursor` always
-misses**. The two failure shapes:
+Because the cursor is an opaque envelope (`"v1:base64(id)"`, or `"v2:base64(json)"`
+on the mutable-key connections) and never the raw id, **any client code that
+matches an entity by comparing a raw id against `edge.cursor` always misses**.
+The two failure shapes:
 
 1. **Edit-target resolution.** `edges.find((e) => e.cursor === editId)` returns
    `undefined` for every edge when `editId` is a raw node id → the editor panel
@@ -75,11 +77,15 @@ representations of the same edge:
 2. **Keep the regression-test fixture faithful: the mock edge's `cursor` MUST be
    the opaque encoded value, not the raw id.** A fixture that sets
    `cursor: master.id` lets a (wrong) cursor-based match pass and masks exactly
-   the bug this rule prevents. Mirror the backend encoder in the test:
+   the bug this rule prevents. Emit an opaque, prefixed value in the test — the
+   `"v1:" + base64(id)` shape is the simplest faithful stand-in and works for a
+   `v2:` connection too, because what makes the regression detectable is only
+   that the cursor is not the raw id:
 
    ```ts
-   // Mirror cursor.Encode (Go): "v1:" + base64(id). A faithful cursor is what
-   // makes the node.id-vs-cursor regression detectable.
+   // Stand in for the backend's opaque envelope ("v1:" + base64(id), or the
+   // longer "v2:" + base64(json) on cardgroups / the master catalog). A faithful
+   // cursor is what makes the node.id-vs-cursor regression detectable.
    function encodeCursor(id: string): string {
      return `v1:${btoa(id)}`;
    }
@@ -96,5 +102,5 @@ representations of the same edge:
 
 ## See also
 
-- [Cursor encoding](cursor-encoding.md) — the `"v1:base64(id)"` envelope this rule depends on.
+- [Cursor encoding](cursor-encoding.md) — the opaque `v1:` / `v2:` envelopes this rule depends on.
 - [`.claude/rules/pagination.md` § "Frontend cache patterns"](../../.claude/rules/pagination.md#frontend-cache-patterns) — the Connection create/delete/update bullets.

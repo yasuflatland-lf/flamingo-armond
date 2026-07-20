@@ -1580,3 +1580,243 @@ func TestListPublishedConnection_CursorFindByIDCancelled(t *testing.T) {
 		t.Fatalf("expected unwrapped context.Canceled, got %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// v2 cursors — the catalog orders by the admin-mutable sort_order column, so
+// its cursors must carry the ordering-key value captured at serve time rather
+// than re-reading it off the current row.
+// ---------------------------------------------------------------------------
+
+// TestListPublishedConnection_V2Cursor_UsesEmbeddedOrderKey verifies the
+// repository receives the sort_order value the cursor captured, NOT the value
+// the row currently holds. The stub row deliberately reports a different
+// sort_order so a re-hydration regression would fail this assertion.
+func TestListPublishedConnection_V2Cursor_UsesEmbeddedOrderKey(t *testing.T) {
+	t.Parallel()
+
+	cur := cursor.EncodeV2(cursor.Payload{
+		ID:        "cur-1",
+		OrderBy:   string(repository.MasterCatalogOrderBySortOrder),
+		Direction: string(repository.SortAsc),
+		OrderKey:  "7",
+	})
+	repo := &mockMasterCatalogRepository{
+		findByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			mcg := catalogItem(id, 0).Cardgroup
+			mcg.SortOrder = 999 // an admin re-ordered the deck since the page was served
+			return mcg, nil
+		},
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
+		First: intPtr(2),
+		After: &cur,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(repo.findPageCalls) != 1 {
+		t.Fatalf("want 1 FindPublishedPage call, got %d", len(repo.findPageCalls))
+	}
+	after := repo.findPageCalls[0].After
+	if after == nil || after.SortOrder == nil {
+		t.Fatalf("want a hydrated after cursor, got %+v", after)
+	}
+	if *after.SortOrder != 7 {
+		t.Fatalf("after.SortOrder = %d, want the captured 7 (not the current 999)", *after.SortOrder)
+	}
+	if after.ID != "cur-1" {
+		t.Fatalf("after.ID = %q, want cur-1", after.ID)
+	}
+}
+
+// TestListPublishedConnection_V2Cursor_OrderingMismatch_BadUserInput verifies a
+// cursor taken under a different column or direction is rejected with the
+// existing BAD_USER_INPUT shape rather than silently mis-paging.
+func TestListPublishedConnection_V2Cursor_OrderingMismatch_BadUserInput(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]cursor.Payload{
+		"different column": {
+			ID: "cur-1", OrderBy: string(repository.MasterCatalogOrderByName),
+			Direction: string(repository.SortAsc), OrderKey: "Deck cur-1",
+		},
+		"different direction": {
+			ID: "cur-1", OrderBy: string(repository.MasterCatalogOrderBySortOrder),
+			Direction: string(repository.SortDesc), OrderKey: "7",
+		},
+	}
+	for name, p := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cur := cursor.EncodeV2(p)
+			repo := &mockMasterCatalogRepository{
+				findByIDFn: func(id string) (*domain.MasterCardgroup, error) { return catalogItem(id, 0).Cardgroup, nil },
+			}
+			uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
+
+			_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
+				First: intPtr(2),
+				After: &cur,
+			})
+			assertValidationError(t, err, "after", "")
+			if len(repo.findPageCalls) != 0 {
+				t.Fatal("a mismatched cursor must be rejected before the repository page query runs")
+			}
+		})
+	}
+}
+
+// TestListPublishedConnection_V2Cursor_MalformedOrderKey_BadUserInput verifies a
+// sort_order value that is not an integer is a client error, not INTERNAL.
+func TestListPublishedConnection_V2Cursor_MalformedOrderKey_BadUserInput(t *testing.T) {
+	t.Parallel()
+
+	cur := cursor.EncodeV2(cursor.Payload{
+		ID:        "cur-1",
+		OrderBy:   string(repository.MasterCatalogOrderBySortOrder),
+		Direction: string(repository.SortAsc),
+		OrderKey:  "not-an-int",
+	})
+	repo := &mockMasterCatalogRepository{
+		findByIDFn: func(id string) (*domain.MasterCardgroup, error) { return catalogItem(id, 0).Cardgroup, nil },
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
+		First: intPtr(2),
+		After: &cur,
+	})
+	assertValidationError(t, err, "after", "")
+}
+
+// TestListPublishedConnection_V2Cursor_DraftScopeStillEnforced verifies the
+// published-scope gate is not bypassed by a v2 cursor. A v2 cursor can hydrate
+// its ordering column without the repository, but FindPublishedByID must still
+// run or a draft deck's existence leaks through the catalog.
+func TestListPublishedConnection_V2Cursor_DraftScopeStillEnforced(t *testing.T) {
+	t.Parallel()
+
+	cur := cursor.EncodeV2(cursor.Payload{
+		ID:        "draft-id",
+		OrderBy:   string(repository.MasterCatalogOrderBySortOrder),
+		Direction: string(repository.SortAsc),
+		OrderKey:  "7",
+	})
+	repo := &mockMasterCatalogRepository{
+		findByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, repository.ErrNotFound },
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
+		First: intPtr(2),
+		After: &cur,
+	})
+	assertValidationError(t, err, "after", "cursor not found")
+}
+
+// TestListPublishedConnection_CarriesOrderingAndOrderKeys verifies the output
+// carries the ordering metadata the resolver needs to emit a v2 cursor for
+// every edge, defaulting to the schema's (SORT_ORDER, ASC).
+func TestListPublishedConnection_CarriesOrderingAndOrderKeys(t *testing.T) {
+	t.Parallel()
+
+	first := catalogItem("a", 1)
+	first.Cardgroup.SortOrder = 3
+	second := catalogItem("b", 2)
+	second.Cardgroup.SortOrder = 5
+	repo := &mockMasterCatalogRepository{
+		findPageTotal:  2,
+		findPageResult: []*repository.MasterCatalogItem{first, second},
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
+
+	out, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(5)})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := PageOrdering{
+		OrderBy:   string(repository.MasterCatalogOrderBySortOrder),
+		Direction: string(repository.SortAsc),
+	}
+	if out.Ordering != want {
+		t.Fatalf("Ordering = %+v, want %+v", out.Ordering, want)
+	}
+	if out.OrderKeys["a"] != "3" || out.OrderKeys["b"] != "5" {
+		t.Fatalf("OrderKeys = %v, want a=3 b=5", out.OrderKeys)
+	}
+}
+
+// TestMasterCatalogOrderKeyCodec covers both halves of the ordering-key codec
+// for every column in the allowlist plus the impossible default arms, which
+// must stay INTERNAL rather than degrade to BAD_USER_INPUT.
+func TestMasterCatalogOrderKeyCodec(t *testing.T) {
+	t.Parallel()
+
+	when := time.Date(2026, 7, 20, 4, 5, 6, 789012000, time.UTC)
+	mcg := &domain.MasterCardgroup{
+		ID:        "m1",
+		Name:      domain.CardgroupName("Deck m1"),
+		SortOrder: -4,
+		CreatedAt: when,
+	}
+
+	for _, tc := range []struct {
+		orderBy repository.MasterCatalogOrderBy
+		wantKey string
+		check   func(t *testing.T, c *repository.MasterCatalogCursor)
+	}{
+		{
+			orderBy: repository.MasterCatalogOrderBySortOrder,
+			wantKey: "-4",
+			check: func(t *testing.T, c *repository.MasterCatalogCursor) {
+				if c.SortOrder == nil || *c.SortOrder != -4 {
+					t.Fatalf("want SortOrder=-4, got %+v", c)
+				}
+			},
+		},
+		{
+			orderBy: repository.MasterCatalogOrderByCreatedAt,
+			wantKey: when.Format(time.RFC3339Nano),
+			check: func(t *testing.T, c *repository.MasterCatalogCursor) {
+				if c.CreatedAt == nil || !c.CreatedAt.Equal(when) {
+					t.Fatalf("want CreatedAt=%v, got %+v", when, c)
+				}
+			},
+		},
+		{
+			orderBy: repository.MasterCatalogOrderByName,
+			wantKey: "Deck m1",
+			check: func(t *testing.T, c *repository.MasterCatalogCursor) {
+				if c.Name == nil || *c.Name != "Deck m1" {
+					t.Fatalf("want Name=Deck m1, got %+v", c)
+				}
+			},
+		},
+	} {
+		t.Run(string(tc.orderBy), func(t *testing.T) {
+			t.Parallel()
+
+			gotKey, err := masterCatalogOrderKey(tc.orderBy, mcg)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if gotKey != tc.wantKey {
+				t.Fatalf("key = %q, want %q", gotKey, tc.wantKey)
+			}
+			c := &repository.MasterCatalogCursor{ID: "m1"}
+			if err := applyMasterCatalogOrderKey(c, tc.orderBy, gotKey); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			tc.check(t, c)
+		})
+	}
+
+	_, err := masterCatalogOrderKeys(repository.MasterCatalogOrderBy("not_a_real_column"), []*MasterCatalogItem{{Cardgroup: mcg}})
+	assertInternalChain(t, err, "usecase: master catalog: unhandled orderBy")
+
+	err = applyMasterCatalogOrderKey(&repository.MasterCatalogCursor{}, repository.MasterCatalogOrderBy("not_a_real_column"), "")
+	assertInternalChain(t, err, "usecase: master catalog: unhandled orderBy")
+}
