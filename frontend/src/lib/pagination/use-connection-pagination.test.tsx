@@ -411,6 +411,278 @@ describe("useConnectionPagination", () => {
     expect(result.current.edges[2]?.node.id).toBe(CG_3.id);
   });
 
+  it("dead-cursor fetchMore rejection makes retryFetchMore refetch instead of re-sending the cursor", async () => {
+    // The row CG_2 points at was deleted between page fetches, so the backend
+    // rejects `after: cg-2` with a field-level BAD_USER_INPUT keyed on the
+    // cursor argument. Re-sending that cursor can never succeed, so Retry must
+    // re-issue the query from the first page. Only ONE mock is provided for the
+    // dead cursor: if Retry re-sent it, MockedProvider would have no match and
+    // the leak spy would fail the run.
+    const CG_4 = {
+      __typename: "Cardgroup" as const,
+      id: "cg-4",
+      name: "Delta",
+      updatedAt: "2024-03-01T04:00:00.000Z",
+    };
+
+    const cache = new InMemoryCache();
+    seedCache(cache, connection([CG_1, CG_2], true));
+
+    const deadCursorMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: { ...DEFAULT_VARS, after: CG_2.id, search: null },
+      },
+      result: {
+        errors: [
+          new GraphQLError("cursor not found", {
+            extensions: { code: "BAD_USER_INPUT", field: "after" },
+          }),
+        ],
+      },
+    };
+    // The refetch re-issues the base query (no `after`) and returns a list that
+    // no longer contains the deleted row, with a fresh cursor to continue from.
+    const refetchMock = {
+      request: { query: MyCardgroupsConnectionDocument, variables: DEFAULT_VARS },
+      result: { data: { myCardgroupsConnection: connection([CG_1, CG_3], true) } },
+    };
+    const afterRefetchMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: { ...DEFAULT_VARS, after: CG_3.id, search: null },
+      },
+      result: { data: { myCardgroupsConnection: connection([CG_4]) } },
+    };
+
+    const { result } = renderProbe({
+      mocks: [deadCursorMock, refetchMock, afterRefetchMock],
+      cache,
+    });
+
+    act(() => {
+      fireIntersect();
+    });
+
+    await waitFor(() => {
+      expect(result.current.fetchMoreError).not.toBeNull();
+    });
+
+    act(() => {
+      result.current.retryFetchMore();
+    });
+
+    // The refreshed first page replaces the stale edges — proof the retry went
+    // through refetch, not through fetchMore with the dead cursor.
+    await waitFor(() => {
+      expect(result.current.edges.map((e) => e.node.id)).toEqual([CG_1.id, CG_3.id]);
+    });
+    expect(result.current.fetchMoreError).toBeNull();
+
+    // The banner is cleared and the observer is re-armed, so the loop resumes
+    // off the refreshed cursor.
+    expect(latestObserver()).toBeDefined();
+    act(() => {
+      fireIntersect();
+    });
+    await waitFor(() => {
+      expect(result.current.edges).toHaveLength(3);
+    });
+    expect(result.current.edges[2]?.node.id).toBe(CG_4.id);
+  });
+
+  it("dead-cursor Retry holds the in-flight guard so a re-armed observer cannot re-send the dead cursor", async () => {
+    // Clearing the banner inside Retry re-arms the observer effect, and
+    // re-observing the still-visible sentinel delivers a fresh initial record
+    // while the refetch is still in flight. `pageInfo.endCursor` is still the
+    // dead bookmark at that instant, so unless the refetch holds the same
+    // in-flight mutex `fetchNextPage` takes, that record re-sends the dead
+    // cursor — exactly the request the dead-cursor branch exists to stop.
+    let deadCursorRequests = 0;
+    const cache = new InMemoryCache();
+    seedCache(cache, connection([CG_1, CG_2], true));
+
+    const deadCursorRequest = {
+      query: MyCardgroupsConnectionDocument,
+      variables: { ...DEFAULT_VARS, after: CG_2.id, search: null },
+    };
+    const deadCursorResult = () => {
+      deadCursorRequests += 1;
+      return {
+        errors: [
+          new GraphQLError("cursor not found", {
+            extensions: { code: "BAD_USER_INPUT", field: "after" },
+          }),
+        ],
+      };
+    };
+    // Two identical dead-cursor mocks on purpose: a leaked second request must
+    // fail on the counter assertion below (which names the defect) rather than
+    // as an unmatched-mock warning in teardown.
+    const mocks = [
+      { request: deadCursorRequest, result: deadCursorResult },
+      { request: deadCursorRequest, result: deadCursorResult },
+      {
+        request: { query: MyCardgroupsConnectionDocument, variables: DEFAULT_VARS },
+        // Keeps the refetch in flight across the observer fire below.
+        delay: 30,
+        result: { data: { myCardgroupsConnection: connection([CG_1, CG_3], true) } },
+      },
+    ];
+
+    const { result } = renderProbe({ mocks, cache });
+
+    act(() => {
+      fireIntersect();
+    });
+
+    await waitFor(() => {
+      expect(result.current.fetchMoreError).not.toBeNull();
+    });
+    expect(deadCursorRequests).toBe(1);
+
+    act(() => {
+      result.current.retryFetchMore();
+    });
+    // The banner is cleared and the observer re-armed, but the refetch has not
+    // resolved: the guard must swallow this record.
+    act(() => {
+      fireIntersect();
+    });
+
+    await waitFor(() => {
+      expect(result.current.edges.map((e) => e.node.id)).toEqual([CG_1.id, CG_3.id]);
+    });
+    expect(deadCursorRequests).toBe(1);
+    expect(result.current.fetchMoreError).toBeNull();
+  });
+
+  it("a failed dead-cursor refetch releases the in-flight guard, so a later Retry resumes the loop", async () => {
+    // The guard the Retry path takes must be released on the FAILURE arm too.
+    // A guard that leaked on rejection would wedge the observer permanently:
+    // every later intersection record would be swallowed and the list could
+    // never advance again, which is worse than the dead cursor it replaced.
+    const CG_4 = {
+      __typename: "Cardgroup" as const,
+      id: "cg-4",
+      name: "Delta",
+      updatedAt: "2024-03-01T04:00:00.000Z",
+    };
+
+    const cache = new InMemoryCache();
+    seedCache(cache, connection([CG_1, CG_2], true));
+
+    const baseRequest = { query: MyCardgroupsConnectionDocument, variables: DEFAULT_VARS };
+    const mocks = [
+      {
+        request: {
+          query: MyCardgroupsConnectionDocument,
+          variables: { ...DEFAULT_VARS, after: CG_2.id, search: null },
+        },
+        result: {
+          errors: [
+            new GraphQLError("cursor not found", {
+              extensions: { code: "BAD_USER_INPUT", field: "after" },
+            }),
+          ],
+        },
+      },
+      // First Retry: the refetch itself fails.
+      { request: baseRequest, error: new Error("network down") },
+      // Second Retry: the refetch succeeds and refreshes the cursor.
+      {
+        request: baseRequest,
+        result: { data: { myCardgroupsConnection: connection([CG_1, CG_3], true) } },
+      },
+      {
+        request: {
+          query: MyCardgroupsConnectionDocument,
+          variables: { ...DEFAULT_VARS, after: CG_3.id, search: null },
+        },
+        result: { data: { myCardgroupsConnection: connection([CG_4]) } },
+      },
+    ];
+
+    const { result } = renderProbe({ mocks, cache });
+
+    act(() => {
+      fireIntersect();
+    });
+    await waitFor(() => {
+      expect(result.current.fetchMoreError).not.toBeNull();
+    });
+
+    act(() => {
+      result.current.retryFetchMore();
+    });
+    // The failed refetch re-raises the banner and keeps Retry on this path.
+    await waitFor(() => {
+      expect(result.current.fetchMoreError).not.toBeNull();
+    });
+
+    act(() => {
+      result.current.retryFetchMore();
+    });
+    await waitFor(() => {
+      expect(result.current.edges.map((e) => e.node.id)).toEqual([CG_1.id, CG_3.id]);
+    });
+    expect(result.current.fetchMoreError).toBeNull();
+
+    // The guard is free again: the re-armed observer advances off the fresh cursor.
+    expect(latestObserver()).toBeDefined();
+    act(() => {
+      fireIntersect();
+    });
+    await waitFor(() => {
+      expect(result.current.edges).toHaveLength(3);
+    });
+    expect(result.current.edges[2]?.node.id).toBe(CG_4.id);
+  });
+
+  it("network fetchMore rejection still retries via fetchMore with the same endCursor", async () => {
+    // The transport failed, not the cursor: the bookmark is still valid, so the
+    // existing same-cursor retry path must be preserved. Both mocks are keyed on
+    // `after: cg-2` — a retry that refetched the base query instead would leave
+    // the second mock unconsumed and never reach three edges.
+    const cache = new InMemoryCache();
+    seedCache(cache, connection([CG_1, CG_2], true));
+
+    const networkErrorMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: { ...DEFAULT_VARS, after: CG_2.id, search: null },
+      },
+      error: new Error("network down"),
+    };
+    const retryMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: { ...DEFAULT_VARS, after: CG_2.id, search: null },
+      },
+      result: { data: { myCardgroupsConnection: connection([CG_3]) } },
+    };
+
+    const { result } = renderProbe({ mocks: [networkErrorMock, retryMock], cache });
+
+    act(() => {
+      fireIntersect();
+    });
+
+    await waitFor(() => {
+      expect(result.current.fetchMoreError).not.toBeNull();
+    });
+
+    act(() => {
+      result.current.retryFetchMore();
+    });
+
+    await waitFor(() => {
+      expect(result.current.edges).toHaveLength(3);
+    });
+    expect(result.current.edges[2]?.node.id).toBe(CG_3.id);
+    expect(result.current.fetchMoreError).toBeNull();
+  });
+
   it("searchQuery change clears fetchMoreError via the immediate-reset effect", async () => {
     const cache = new InMemoryCache();
     const page1 = connection([CG_1, CG_2], true);
