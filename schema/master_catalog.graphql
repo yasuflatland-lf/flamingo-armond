@@ -40,7 +40,12 @@ type MasterCatalogEdge {
 type MasterCatalogConnection {
   edges: [MasterCatalogEdge!]!
   pageInfo: PageInfo!
-  """Total catalog-visible (published AND non-empty) master cardgroup count matching the filter (independent of paging)."""
+  """
+  Total master cardgroup count matching the active query's scope and filter,
+  independent of paging. The scope is the querying field's, not this type's:
+  `masterCatalog` counts only catalog-visible (published AND non-empty) decks,
+  while `adminMasters` counts every deck regardless of status or card count.
+  """
   totalCount: Int!
 }
 
