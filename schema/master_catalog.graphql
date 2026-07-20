@@ -31,7 +31,11 @@ enum MasterCatalogOrderBy {
 
 """One master cardgroup plus the cursor pointing at it."""
 type MasterCatalogEdge {
-  """Opaque cursor for resuming pagination at this edge. Currently the master cardgroup id."""
+  """
+  Opaque, server-encoded cursor for resuming pagination at this edge. Pass it back
+  verbatim as `after` / `before`; never construct, parse, or derive one from `node.id`.
+  The encoding is a server implementation detail and is not part of the contract.
+  """
   cursor: ID!
   node: MasterCardgroup!
 }
@@ -49,7 +53,12 @@ extend type Query {
   Paginated published master cardgroups (the public catalog) for authenticated
   callers. Only `status = PUBLISHED` decks are ever returned — draft decks never
   leak. Forward pagination uses (first, after); backward uses (last, before).
-  Cursor is the master cardgroup UUID. Default page size is 20; max is 100.
+  Cursors are opaque, server-encoded values: pass an edge cursor back verbatim and
+  never build one from a node id. Default page size is 20; max is 100.
+  `first: 0` is a deliberate deviation from the Relay spec for callers that want only
+  `totalCount`: no edges are fetched and `hasNextPage` / `hasPreviousPage` are both false
+  even when more rows exist. A negative `first` or `last` is clamped to 0 and therefore
+  behaves identically.
   Optional case-insensitive substring search on name.
   """
   masterCatalog(
@@ -183,7 +192,9 @@ is the number of catalog cards whose front is not present in the destination;
 `updatedCount` is the number whose front already exists (case-sensitively, matching
 the destination `cards (cardgroup_id, front)` text unique index the merge upserts
 against). The preview equals the tally `mergeMasterCardgroup` produces for the same
-inputs.
+inputs over an unchanged destination and master deck: the preview reads outside a
+transaction while the merge upserts inside one, so a concurrent edit to either deck
+between the two calls can move a card from `addedCount` to `updatedCount`.
 """
 type MergeMasterCardgroupPreview {
   addedCount: Int!

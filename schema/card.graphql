@@ -105,7 +105,11 @@ enum CardOrderBy {
 
 """One element in a CardConnection."""
 type CardEdge {
-  """Opaque cursor for this position. Currently equal to node.id."""
+  """
+  Opaque, server-encoded cursor for this position. Pass it back verbatim as
+  `after` / `before`; never construct, parse, or derive one from `node.id`.
+  The encoding is a server implementation detail and is not part of the contract.
+  """
   cursor: ID!
   node: Card!
 }
@@ -125,7 +129,18 @@ extend type Query {
   """Single card by ID. Returns UNAUTHENTICATED for non-owners (existence is not leaked)."""
   card(id: ID!): Card
   """
-  Next batch of cards for a learning session: randomly sampled never-seen cards interleaved 4:1 with review cards due today (JST); among review cards, those you failed on their last review or whose memory stability is still below the learned threshold are served first, and other due cards fill the remaining slots. Returns an empty list when the cardgroup has no eligible cards.
+  Next batch of cards for a learning session: randomly sampled never-seen cards
+  interleaved with review cards at the caller's own `User.newCardRatio` setting
+  (see `updateNewCardRatio`), which defaults to 4/5 — four new cards per five
+  slots — until the caller changes it. Each interleave cycle emits its review
+  cards first, so a small `limit` can return review cards only and no new cards
+  at all.
+  The review side is drawn from cards whose due time has arrived or passed, plus
+  cards you failed on their last review or whose memory stability is still below
+  the learned threshold; those are served ahead of the rest and may be served
+  ahead of their own due time as long as it falls inside today's JST learn day.
+  Cards already reviewed today (JST) are excluded from both groups.
+  Returns an empty list when the cardgroup has no eligible cards.
   Limit defaults to 20 (clamped to 100). Returns UNAUTHENTICATED if the caller does not own
   the cardgroup; BAD_USER_INPUT if the cardgroup does not exist.
   A limit of zero, a negative limit, and an explicit null are all treated as omitted and fall back to the default.
@@ -143,7 +158,12 @@ extend type Query {
   practiceTodaysCards(cardgroupId: ID!, limit: Int = 100): [Card!]!
   """
   Paginated cards in a cardgroup. Forward pagination uses (first, after); backward uses (last, before).
-  Cursor is the card UUID. Default page size is 20; max is 100.
+  Cursors are opaque, server-encoded values: pass an edge cursor back verbatim and never build
+  one from a node id. Default page size is 20; max is 100.
+  `first: 0` is a deliberate deviation from the Relay spec for callers that want only
+  `totalCount`: no edges are fetched and `hasNextPage` / `hasPreviousPage` are both false
+  even when more rows exist. A negative `first` or `last` is clamped to 0 and therefore
+  behaves identically.
   Optional case-insensitive substring search on front OR back (ILIKE partial match).
   Nil or empty string skips the search filter.
   """
