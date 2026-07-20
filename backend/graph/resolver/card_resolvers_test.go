@@ -626,3 +626,52 @@ func TestResolver_PracticeTodaysCards_MissingCardgroup(t *testing.T) {
 		t.Fatalf("expected extensions.field=cardgroupId, got %q; ext: %v", field, ext)
 	}
 }
+
+// TestResolver_Card_UnknownAndForeignBothUnauthenticated pins the schema promise
+// on the card field ("Returns UNAUTHENTICATED for non-owners (existence is not
+// leaked)"): an unknown card id and a card owned by someone else must produce the
+// same UNAUTHENTICATED wire response, never a null card with no error.
+func TestResolver_Card_UnknownAndForeignBothUnauthenticated(t *testing.T) {
+	t.Parallel()
+
+	body := `{"query":"query { card(id: \"c1\") { id } }"}`
+
+	unknownSrv := newCardSrv(
+		&cardMockRepo{findByIDErr: repository.ErrNotFound},
+		&cardMockCGRepo{},
+		cardFakeTx(),
+	)
+	unknownResp := gqlRequest(t, unknownSrv, authedCtx("u1"), body)
+
+	foreignSrv := newCardSrv(
+		&cardMockRepo{findByIDResult: &domain.Card{
+			ID:          "c1",
+			CardgroupID: domain.CardgroupID("cg1"),
+		}},
+		&cardMockCGRepo{findResult: &domain.Cardgroup{
+			ID:      domain.CardgroupID("cg1"),
+			OwnerID: "u2",
+		}},
+		cardFakeTx(),
+	)
+	foreignResp := gqlRequest(t, foreignSrv, authedCtx("u1"), body)
+
+	if code := errCode(t, unknownResp); code != "UNAUTHENTICATED" {
+		t.Fatalf("unknown id: expected UNAUTHENTICATED, got %q; response: %v", code, unknownResp)
+	}
+	if code := errCode(t, foreignResp); code != "UNAUTHENTICATED" {
+		t.Fatalf("foreign card: expected UNAUTHENTICATED, got %q; response: %v", code, foreignResp)
+	}
+
+	unknownJSON, err := json.Marshal(unknownResp)
+	if err != nil {
+		t.Fatalf("marshal unknown response: %v", err)
+	}
+	foreignJSON, err := json.Marshal(foreignResp)
+	if err != nil {
+		t.Fatalf("marshal foreign response: %v", err)
+	}
+	if string(unknownJSON) != string(foreignJSON) {
+		t.Fatalf("responses are distinguishable:\n unknown=%s\n foreign=%s", unknownJSON, foreignJSON)
+	}
+}
