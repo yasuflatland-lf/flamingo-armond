@@ -35,7 +35,9 @@ type SuperUserPromoter struct {
 
 	// confirmedAdmins is the process-lifetime set of subs already known to hold the
 	// admin role. Once a sub is recorded, the middleware skips the per-request
-	// IsAdmin role query for it.
+	// IsAdmin role query for it. A sub is recorded only by a request from that same
+	// sub, so an account that has not been seen since the process started is absent
+	// from the set regardless of how long the process has been running.
 	//
 	// The admin role CAN be removed while the process runs: adminEditUser replaces
 	// a user's final role set and adminDeleteUser removes the account outright, so
@@ -46,9 +48,10 @@ type SuperUserPromoter struct {
 	// every call and returns a forbidden error when it comes back false. A stale
 	// entry can therefore only cause a missed re-promotion, never a privilege leak.
 	//
-	// SUPER_USER_EMAILS membership cannot change without a process restart, and a
-	// restart drops the cache, so re-promotion resumes for every still-listed
-	// address on its next request. The zero value is ready to use.
+	// SUPER_USER_EMAILS membership cannot change without a process restart. A
+	// restart also empties the cache, so re-promotion becomes certain for every
+	// still-listed address at that point — but an uncached sub is re-promoted on
+	// its next request without one. The zero value is ready to use.
 	confirmedAdmins sync.Map // map[string]struct{}
 }
 
