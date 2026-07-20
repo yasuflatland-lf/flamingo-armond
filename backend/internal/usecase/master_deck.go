@@ -19,12 +19,15 @@ import (
 // `status = published AND at least one master card exists`, so a deck emptied by
 // an admin or a Notion sync prune is as invisible as a draft. The lookup is
 // deliberately catalog-scoped (FindPublishedByID, not the any-status FindByID):
-// the copy and merge write paths re-read the master through the same visibility
+// the copy and merge write paths re-probe the master through the same visibility
 // gate that MasterCatalogUsecase applies before the transaction, so an unpublish
-// or a last-card delete that lands between that gate and the write cannot
-// snapshot an invisible deck (closing the TOCTOU). Unknown, unpublished and
-// empty all collapse to repository.ErrNotFound, which the catalog layer maps to
-// the same non-disclosure not-found outcome.
+// landing between that gate and the write is caught rather than snapshotted.
+// Neither method takes a tx handle, so that re-probe narrows the TOCTOU window
+// without closing it; the emptiness half is instead decided by len(cards) on the
+// enumeration each write consumes, which no interleaving can defeat. Unknown,
+// unpublished and empty all collapse to repository.ErrNotFound, which the catalog
+// layer maps to the same non-disclosure not-found outcome and SeedForNewUser
+// treats as "skip this starter".
 type masterDeckCardgroupRepo interface {
 	FindPublishedByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 	ListPublishedDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error)
@@ -273,6 +276,14 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) (
 			// applies the single "seed for new user" prefix, so wrapping here
 			// would duplicate that frame in the error chain.
 			cg, err := u.copyMasterToUserTx(ctx, tx, m.ID, userID)
+			if errors.Is(err, repository.ErrNotFound) {
+				// The starter left the catalog between ListPublishedDefaultStarters
+				// and its copy — unpublished, deleted, or emptied of its last card.
+				// Skip it and seed the rest: one starter losing visibility mid-signup
+				// must not fail the whole seed, and the guarantee this protects is
+				// "never seed an empty deck", not "seed every listed starter".
+				continue
+			}
 			if err != nil {
 				return err
 			}
@@ -326,12 +337,20 @@ func (u *masterDeckUsecase) copyMasterCardsIntoTx(
 // operation rather than this helper.
 //
 // The master is re-read through the catalog-scoped FindPublishedByID (not the
-// any-status FindByID), so a master unpublished — or emptied of its last card —
-// between MasterCatalogUsecase's FindPublishedByID gate and this copy yields
-// repository.ErrNotFound and no rows are written — closing the TOCTOU rather
-// than silently snapshotting a draft or an empty deck. SeedForNewUser is
-// unaffected: it sources ids from ListPublishedDefaultStarters, which already
-// returns only published, non-empty decks.
+// any-status FindByID), so a master unpublished between MasterCatalogUsecase's
+// gate and this copy yields repository.ErrNotFound and no rows are written
+// rather than silently snapshotting a draft.
+//
+// That probe narrows the TOCTOU window but does not close it: neither it nor
+// the card enumeration takes the tx handle, so both run on the pool and none of
+// the three reads share a snapshot with each other or with the writes below.
+// The emptiness half of catalog visibility is therefore decided by len(cards)
+// on the enumeration this copy consumes — see the guard at its call site — which
+// holds no matter how the reads interleave with a concurrent last-card delete.
+// Widening the guarantee to unpublish would need tx-scoped repository reads.
+//
+// SeedForNewUser tolerates that ErrNotFound by skipping the starter, since one
+// deck leaving the catalog mid-signup must not fail the whole seed.
 //
 // The new cardgroup row is inserted via the cardgroup repository's CreateTx with
 // the supplied tx handle so the insert participates in the caller's transaction.
@@ -347,6 +366,15 @@ func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx *gorm.DB,
 	cards, err := u.masterCard.ListByMasterCardgroup(ctx, masterID)
 	if err != nil {
 		return nil, eris.Wrap(err, "list master cards")
+	}
+	// Emptiness is decided by the enumeration this copy actually consumes, not
+	// by the FindPublishedByID probe above. The two reads do not share a
+	// snapshot, so a last-card delete landing between them would otherwise pass
+	// the catalog gate and then write a cardgroup with no cards. Deriving the
+	// verdict from `cards` makes an empty import unreachable regardless of how
+	// the two reads interleave.
+	if len(cards) == 0 {
+		return nil, eris.Wrap(repository.ErrNotFound, "master cardgroup holds no cards")
 	}
 
 	newCG, err := domain.NewCardgroup(domain.UserID(ownerID), master.Name)
@@ -369,12 +397,15 @@ func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx *gorm.DB,
 // which ownerID must own, inside its own transaction. The destination ownership
 // gate uses authorizeCardgroupOrBadInput (untrusted-input boundary): an unknown
 // cardgroup is a recoverable validation error; a foreign cardgroup is
-// UNAUTHENTICATED. Inside the transaction the master is re-read through the
-// catalog-scoped FindPublishedByID before its cards are listed, so a master
-// unpublished or emptied between MasterCatalogUsecase's FindPublishedByID gate
-// and this write yields repository.ErrNotFound (which MergeMaster maps to the
-// not-found outcome) rather than snapshotting a deck that has left the catalog —
-// closing the TOCTOU. Cards conflicting
+// UNAUTHENTICATED. The master is re-read through the catalog-scoped
+// FindPublishedByID before its cards are listed, so a master unpublished
+// between MasterCatalogUsecase's gate and this write yields
+// repository.ErrNotFound (which MergeMaster maps to the not-found outcome)
+// rather than snapshotting a draft. That probe narrows the TOCTOU window but
+// does not close it — it takes no tx handle, so it runs on the pool and shares
+// no snapshot with the enumeration or the write. Emptiness is instead decided
+// by len(cards) on the enumeration this merge consumes, so a deck that loses
+// its last card can never be merged as a successful 0/0. Cards conflicting
 // on (cardgroup_id, front) are overwritten (back/position/updated_at); ids are
 // preserved so FSRS state survives. Returns the destination cardgroup plus the
 // add/update tally.
@@ -393,19 +424,27 @@ func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 
 	var res repository.UpsertManyTxResult
 	if err := u.tx(ctx, func(tx *gorm.DB) error {
-		// Re-read the master through the catalog-scoped method INSIDE the tx so an
-		// unpublish or a last-card delete landing between
-		// MasterCatalogUsecase.MergeMaster's FindPublishedByID gate and this write
-		// cannot snapshot a deck that has left the catalog (TOCTOU). ErrNotFound
-		// (unknown, unpublished or empty) travels up the eris chain; MergeMaster
-		// collapses it into the same non-disclosure not-found outcome as a pre-gate
-		// unknown/draft/empty master.
+		// Re-probe the master through the catalog-scoped method so an unpublish
+		// landing between MasterCatalogUsecase.MergeMaster's FindPublishedByID gate
+		// and this write is caught (TOCTOU). The probe takes no tx handle, so it
+		// runs on the pool and only narrows the window; the emptiness half is
+		// closed exactly below, off the enumeration this merge consumes.
+		// ErrNotFound (unknown, unpublished or empty) travels up the eris chain;
+		// MergeMaster collapses it into the same non-disclosure not-found outcome
+		// as a pre-gate unknown/draft/empty master.
 		if _, err := u.masterCG.FindPublishedByID(ctx, masterID); err != nil {
 			return eris.Wrap(err, "usecase: master deck: merge master into cardgroup: verify published master")
 		}
 		cards, err := u.masterCard.ListByMasterCardgroup(ctx, masterID)
 		if err != nil {
 			return eris.Wrap(err, "usecase: master deck: merge master into cardgroup: list master cards")
+		}
+		// Same reasoning as copyMasterToUserTx: the verdict comes from the
+		// enumeration this merge consumes, so a deck emptied between the probe
+		// above and this read collapses to not-found instead of reporting a
+		// successful 0/0 merge against a deck that has left the catalog.
+		if len(cards) == 0 {
+			return eris.Wrap(repository.ErrNotFound, "usecase: master deck: merge master into cardgroup: master cardgroup holds no cards")
 		}
 		r, err := u.copyMasterCardsIntoTx(ctx, tx, cards, destCardgroupID, nil)
 		if err != nil {
