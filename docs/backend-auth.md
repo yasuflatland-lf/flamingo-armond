@@ -130,6 +130,14 @@ A fresh deployment has zero admin rows, but every existing admin-management muta
 
 **No automatic revocation.** Removing an email from `SUPER_USER_EMAILS` does not strip the role; an admin must update the user's final role set through `adminEditUser`. This is deliberate: a typo in the env var should not silently lock the service out of every admin operation on the next deploy.
 
+**Demoting a still-listed account does not stick.** The paragraph above covers the env-removal direction; this one covers its opposite. When an admin revokes the admin role from a user whose email is *still listed* in `SUPER_USER_EMAILS`, the demotion holds only while the promoter's in-process confirmed-admin cache still carries that account's sub — and that cache is populated only by a request from that same account, on the `IsAdmin == true` branch or after a successful promotion. A demoted account that has not issued an authenticated request since the process started therefore misses the cache on its very next request, and the promoter re-grants the admin role immediately, with no restart involved. That is the usual case: the demotion target is typically idle, and the demotion itself is performed by a *different* admin, which never records the target's sub. A restart or redeploy empties the cache for everyone, so re-promotion becomes certain for every still-listed address at that point. This is intended: `SUPER_USER_EMAILS` is the declaration of who must always be able to reach admin, so an entry left in the env var wins over a manual demotion. To make a demotion durable, do it in this order:
+
+1. Remove the email from `SUPER_USER_EMAILS`.
+2. Redeploy (or restart) the backend so the new value is in effect.
+3. Demote the user via `adminEditUser`, submitting a final role set that omits `admin`.
+
+Doing step 3 first only appears to work: the demotion survives until the account is next seen by a process that has not cached its sub — guaranteed after any restart or redeploy, and frequently much sooner on a live process. The demotion's database write is not rolled back — the promoter simply inserts the `admin` role again — so the symptom is an account that silently reacquires admin rather than one whose demotion failed.
+
 **Failure mode: WARN + continue, never 5xx.** Both `IsAdmin` and `AssignToUser` failures are logged via `logging.LogWarn` (carrying the eris `error_chain`) and the middleware falls through to `next(c)`. The promotion is best-effort — a transient DB blip during a routine page load should not surface as a user-facing error. Any downstream resolver that actually requires admin remains protected by `AdminGate.Require`, which is fail-closed.
 
 **Concurrent first-login is safe.** `repository.RoleRepository.AssignToUser` uses `INSERT ... ON CONFLICT DO NOTHING`, so two simultaneous requests from the same user that both read `IsAdmin == false` produce two harmless inserts — both return `nil`, both proceed.
