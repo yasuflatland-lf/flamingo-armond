@@ -7,6 +7,7 @@ import (
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
+	"gorm.io/gorm"
 
 	"backend/graph/generated"
 	"backend/graph/resolver"
@@ -29,6 +30,10 @@ type mockUserRoleRepository struct {
 }
 
 func (m *mockUserRoleRepository) HasRole(_ context.Context, _ string, _ domain.RoleName) (bool, error) {
+	return m.isAdmin, m.err
+}
+
+func (m *mockUserRoleRepository) HasRoleTx(_ context.Context, _ *gorm.DB, _ string, _ domain.RoleName) (bool, error) {
 	return m.isAdmin, m.err
 }
 

@@ -94,19 +94,24 @@ type UserRepository interface {
 		search *string,
 	) (users []*domain.User, total int64, err error)
 
-	// DeleteAuthUser deletes the auth.users row identified by id. The public.users
-	// row and every cascade-linked row (user_roles, cardgroups → cards →
-	// swipe_records / user_card_fsrs, user_preferences) are removed automatically
-	// by the existing ON DELETE CASCADE foreign keys — no application-level
-	// multi-step delete is needed. Returns ErrNotFound when no auth.users row
-	// matches id (RowsAffected == 0).
+	// DeleteAuthUserTx deletes the auth.users row identified by id inside the
+	// supplied transaction. The public.users row and every cascade-linked row
+	// (user_roles, cardgroups → cards → swipe_records / user_card_fsrs,
+	// user_preferences) are removed automatically by the existing ON DELETE
+	// CASCADE foreign keys — no application-level multi-step delete is needed.
+	// Returns ErrNotFound when no auth.users row matches id (RowsAffected == 0).
+	//
+	// The delete is transaction-scoped because callers must hold the admin-role
+	// advisory lock (AcquireAdminRoleLockTx) across the last-admin count and the
+	// delete; a delete issued on a pooled connection outside that transaction
+	// would commit after the lock released and reopen the race.
 	//
 	// The operation requires the connection role to have DELETE privilege on
 	// auth.users; the production DSN connects as the postgres role, which has it
 	// (the same statement is exercised by the repository integration tests). This
 	// is the single isolation point for auth-account deletion: swapping to the
 	// Supabase Admin REST API is a change to this method body alone.
-	DeleteAuthUser(ctx context.Context, id string) error
+	DeleteAuthUserTx(ctx context.Context, tx *gorm.DB, id string) error
 
 	// LastSignInByUserIDs reads auth.users.last_sign_in_at for the given user
 	// ids. Each known id maps to its *time.Time (nil when the column is NULL,
@@ -115,7 +120,7 @@ type UserRepository interface {
 	// "WHERE id IN ()" into an unfiltered full scan, so the call is
 	// short-circuited).
 	//
-	// Like DeleteAuthUser, this is an isolated auth.users access point; it
+	// Like DeleteAuthUserTx, this is an isolated auth.users access point; it
 	// requires the connection role to have SELECT on auth.users (the
 	// production postgres role has it).
 	LastSignInByUserIDs(ctx context.Context, ids []string) (map[string]*time.Time, error)
@@ -211,11 +216,14 @@ func (r *userRepo) UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string
 	return ErrConcurrentUpdate
 }
 
-// DeleteAuthUser deletes the auth.users row, cascading to public.users and all
+// DeleteAuthUserTx deletes the auth.users row, cascading to public.users and all
 // child data via the schema's ON DELETE CASCADE foreign keys. See the interface
-// doc for the privilege and isolation rationale.
-func (r *userRepo) DeleteAuthUser(ctx context.Context, id string) error {
-	res := r.db.WithContext(ctx).Exec("DELETE FROM auth.users WHERE id = ?", id)
+// doc for the privilege, transaction-scoping, and isolation rationale.
+func (r *userRepo) DeleteAuthUserTx(ctx context.Context, tx *gorm.DB, id string) error {
+	if tx == nil {
+		return eris.New("repository: user: delete auth user tx is nil")
+	}
+	res := tx.WithContext(ctx).Exec("DELETE FROM auth.users WHERE id = ?", id)
 	if res.Error != nil {
 		return eris.Wrap(res.Error, "repository: user: delete auth user")
 	}

@@ -95,9 +95,10 @@ type adminUserRepository interface {
 		first, last int,
 		search *string,
 	) ([]*domain.User, int64, error)
-	// DeleteAuthUser deletes the target's auth.users row, cascading to all
-	// associated data. See repository.UserRepository.DeleteAuthUser for details.
-	DeleteAuthUser(ctx context.Context, id string) error
+	// DeleteAuthUserTx deletes the target's auth.users row inside the caller's
+	// transaction, cascading to all associated data. See
+	// repository.UserRepository.DeleteAuthUserTx for details.
+	DeleteAuthUserTx(ctx context.Context, tx *gorm.DB, id string) error
 }
 
 // adminRoleRepository is the subset of repository.RoleRepository used by the
@@ -110,15 +111,22 @@ type adminRoleRepository interface {
 
 // adminUserRoleRepository is the subset of repository.UserRoleRepository used
 // by the AdminUser usecase: atomic membership replacement (EditUser) and the
-// last-admin / target-is-admin checks (DeleteUser).
+// last-admin / target-is-admin checks (EditUser's demote-other branch and
+// DeleteUser). The lock + count pair is the AdminCounter port consumed by
+// guardNotLastAdmin.
 type adminUserRoleRepository interface {
 	SetUserRolesTx(ctx context.Context, tx *gorm.DB, userID string, roleIDs []string) error
-	// HasRole reports whether the user holds the named role. Used by DeleteUser
-	// to decide whether the last-admin guard applies to the target.
-	HasRole(ctx context.Context, userID string, roleName domain.RoleName) (bool, error)
-	// CountAdmins returns the number of users holding the admin role. Used by
-	// DeleteUser's last-admin guard.
-	CountAdmins(ctx context.Context) (int64, error)
+	// HasRoleTx reports whether the user holds the named role, read inside the
+	// caller's transaction. Used to decide whether the last-admin guard applies
+	// to the target; it must be read under AcquireAdminRoleLockTx so a
+	// concurrent promotion cannot make the answer stale before the mutation.
+	HasRoleTx(ctx context.Context, tx *gorm.DB, userID string, roleName domain.RoleName) (bool, error)
+	// AcquireAdminRoleLockTx serializes admin-count-changing mutations; see
+	// repository.UserRoleRepository for the race it closes.
+	AcquireAdminRoleLockTx(ctx context.Context, tx *gorm.DB) error
+	// CountAdminsTx returns the number of users holding the admin role, read
+	// inside the caller's transaction under the lock above.
+	CountAdminsTx(ctx context.Context, tx *gorm.DB) (int64, error)
 }
 
 // adminUserUsecase wires the admin gate, the user repository, the role
@@ -288,15 +296,23 @@ func (u *adminUserUsecase) Get(ctx context.Context, id string) (*domain.User, er
 // EditUser surfaces a wrapped 'tx runner not configured' error rather than
 // panicking, since the wiring gap is recoverable per-request.
 //
-// The self-demotion guard runs at the front of the transaction and reads role
-// names with a FOR UPDATE lock (FindByIDsTx), so the role-name read is atomic
-// with the role-set write. This closes the TOCTOU window where a concurrent
-// admin could rename or delete the admin role between the guard read and the
-// role-set replacement. When the guard blocks (self-demotion or an unknown
-// submitted role) it returns nil from the tx closure after capturing the
-// outcome in earlyOutcome — there is no write to roll back, so no control-flow
-// sentinel is needed; the post-tx code returns the captured outcome before
-// inspecting the transaction error.
+// The role-set guards run at the front of the transaction and read role names
+// with a FOR UPDATE lock (FindByIDsTx), so the role-name read is atomic with
+// the role-set write. This closes the TOCTOU window where a concurrent admin
+// could rename or delete the admin role between the guard read and the role-set
+// replacement. Two guards branch off the same "the submitted set drops admin"
+// condition: editing your own row yields outcome.CannotRevokeOwnAdmin, while
+// demoting somebody else takes the admin-role advisory lock, reads the target's
+// admin membership under it, and only then runs guardNotLastAdmin — so neither
+// two administrators demoting each other concurrently nor a target promoted
+// after the membership read can leave the workspace with zero admins.
+//
+// When a guard blocks (self-demotion or an unknown submitted role) it returns
+// nil from the tx closure after capturing the outcome in earlyOutcome — there
+// is no write to roll back, so no control-flow sentinel is needed; the post-tx
+// code returns the captured outcome before inspecting the transaction error.
+// The last-admin guard is surfaced the same way through guardErr, which carries
+// a forbidden error rather than an outcome field.
 func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminEditUserInput) (AdminEditUserOutcome, error) {
 	callerID, err := u.adminGate.Require(ctx, "usecase: admin user: check admin")
 	if err != nil {
@@ -325,36 +341,70 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 	// write, so blocking is an early `return nil` — there is nothing to roll back,
 	// and no control-flow sentinel is needed.
 	var earlyOutcome *AdminEditUserOutcome
+	// guardErr carries the last-admin guard's forbidden error (or its
+	// infrastructure failure) out of the tx closure. Like earlyOutcome it is
+	// captured before any write, so the closure returns nil and the post-tx code
+	// surfaces it without going through the mutation-error classifier.
+	var guardErr error
 
 	err = u.tx(ctx, func(tx *gorm.DB) error {
-		// No write may be inserted ahead of this guard: the guard blocks via an
+		// No write may be inserted ahead of these guards: a guard blocks via an
 		// early `return nil`, which commits the transaction, so any prior write
 		// would be persisted despite the block.
-		if callerID == id {
-			keepsAdmin := false
-			if len(roleIDs) > 0 {
-				roles, lerr := u.roles.FindByIDsTx(ctx, tx, roleIDs)
-				if lerr != nil {
-					if isContextDone(lerr) {
-						return lerr
-					}
-					return eris.Wrap(lerr, "usecase: admin user edit: lookup roles")
+		keepsAdmin := false
+		if len(roleIDs) > 0 {
+			roles, lerr := u.roles.FindByIDsTx(ctx, tx, roleIDs)
+			if lerr != nil {
+				if isContextDone(lerr) {
+					return lerr
 				}
-				// An unknown submitted roleId is a validation failure, not a
-				// self-demotion: the downstream SetUserRolesTx would also reject it,
-				// but only after passing the keepsAdmin check on the partial map.
-				if len(roles) != len(roleIDs) {
-					earlyOutcome = &AdminEditUserOutcome{Validation: NewInputValidationInfo("roleIds", "role not found")}
-					return nil
-				}
-				set := make(domain.RoleSet, 0, len(roles))
-				for _, r := range roles {
-					set = append(set, *r)
-				}
-				keepsAdmin = set.ContainsAdmin()
+				return eris.Wrap(lerr, "usecase: admin user edit: lookup roles")
 			}
-			if !keepsAdmin {
+			// An unknown submitted roleId is a validation failure, not a
+			// self-demotion: the downstream SetUserRolesTx would also reject it,
+			// but only after passing the keepsAdmin check on the partial map.
+			// Other targets keep the downstream rejection so the relative
+			// precedence of the id and roleIds validation errors is unchanged.
+			if callerID == id && len(roles) != len(roleIDs) {
+				earlyOutcome = &AdminEditUserOutcome{Validation: NewInputValidationInfo("roleIds", "role not found")}
+				return nil
+			}
+			set := make(domain.RoleSet, 0, len(roles))
+			for _, r := range roles {
+				set = append(set, *r)
+			}
+			keepsAdmin = set.ContainsAdmin()
+		}
+		if !keepsAdmin {
+			if callerID == id {
 				earlyOutcome = &AdminEditUserOutcome{CannotRevokeOwnAdmin: true}
+				return nil
+			}
+			// Demoting somebody else: the guard applies only when the target
+			// currently holds the role the submitted set drops. The advisory
+			// lock is taken before that membership read, not inside the guard,
+			// so a target promoted concurrently cannot be read as a non-admin
+			// and skip the guard altogether.
+			if lerr := acquireAdminRoleLock(ctx, tx, u.userRoles, "usecase: admin user edit: count admins"); lerr != nil {
+				guardErr = lerr
+				return nil
+			}
+			isAdmin, herr := u.userRoles.HasRoleTx(ctx, tx, id, domain.AdminRoleName)
+			if herr != nil {
+				if isContextDone(herr) {
+					return herr
+				}
+				return eris.Wrap(herr, "usecase: admin user edit: check admin role")
+			}
+			if gerr := guardNotLastAdmin(
+				ctx,
+				tx,
+				isAdmin,
+				u.userRoles,
+				"usecase: admin user edit: count admins",
+				"cannot remove the admin role from the last admin account",
+			); gerr != nil {
+				guardErr = gerr
 				return nil
 			}
 		}
@@ -376,6 +426,9 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 
 	if earlyOutcome != nil {
 		return *earlyOutcome, nil
+	}
+	if guardErr != nil {
+		return AdminEditUserOutcome{}, guardErr
 	}
 	if err != nil {
 		if isContextDone(err) {
@@ -410,7 +463,10 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 //     lockout.
 //  3. Last-admin guard: when the target holds the admin role and is the only
 //     admin, the deletion is refused so the system is never left without an
-//     admin. Best-effort (no row lock) — see DeleteMyAccount for the TOCTOU note.
+//     admin. The membership read, the count and the delete share one
+//     transaction that holds the admin-role advisory lock from before the
+//     membership read, so neither a concurrent admin removal nor a concurrent
+//     promotion of the target can slip between the checks and the delete.
 //
 // A missing target maps to a validation error on "id" (BAD_USER_INPUT).
 func (u *adminUserUsecase) DeleteUser(ctx context.Context, id string) error {
@@ -422,34 +478,43 @@ func (u *adminUserUsecase) DeleteUser(ctx context.Context, id string) error {
 		return ucerr.NewForbiddenError("cannot delete your own account from the admin panel; use deleteMyAccount")
 	}
 
-	// Only consult the global admin count when the target is itself an admin.
-	isAdmin, err := u.userRoles.HasRole(ctx, id, domain.AdminRoleName)
-	if err != nil {
-		if isContextDone(err) {
-			return err
+	return runInTx(ctx, u.tx, func(tx *gorm.DB) error {
+		// The admin-role lock is taken before the membership read so a target
+		// promoted concurrently cannot be read as a non-admin and bypass the
+		// count entirely; only then is the global admin count consulted, and
+		// only when the target is itself an admin.
+		if lerr := acquireAdminRoleLock(ctx, tx, u.userRoles, "usecase: admin user: delete: count admins"); lerr != nil {
+			return lerr
 		}
-		return eris.Wrap(err, "usecase: admin user: delete: check admin role")
-	}
-	if err := guardNotLastAdmin(
-		ctx,
-		isAdmin,
-		u.userRoles,
-		"usecase: admin user: delete: count admins",
-		"cannot delete the last admin account",
-	); err != nil {
-		return err
-	}
+		isAdmin, herr := u.userRoles.HasRoleTx(ctx, tx, id, domain.AdminRoleName)
+		if herr != nil {
+			if isContextDone(herr) {
+				return herr
+			}
+			return eris.Wrap(herr, "usecase: admin user: delete: check admin role")
+		}
+		if gerr := guardNotLastAdmin(
+			ctx,
+			tx,
+			isAdmin,
+			u.userRoles,
+			"usecase: admin user: delete: count admins",
+			"cannot delete the last admin account",
+		); gerr != nil {
+			return gerr
+		}
 
-	if err := u.users.DeleteAuthUser(ctx, id); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return ucerr.NewValidationError("id", "user not found")
+		if derr := u.users.DeleteAuthUserTx(ctx, tx, id); derr != nil {
+			if errors.Is(derr, repository.ErrNotFound) {
+				return ucerr.NewValidationError("id", "user not found")
+			}
+			if isContextDone(derr) {
+				return derr
+			}
+			return eris.Wrap(derr, "usecase: admin user: delete")
 		}
-		if isContextDone(err) {
-			return err
-		}
-		return eris.Wrap(err, "usecase: admin user: delete")
-	}
-	return nil
+		return nil
+	})
 }
 
 func mapAdminEditMutationError(err error) (*InputValidationInfo, error) {
