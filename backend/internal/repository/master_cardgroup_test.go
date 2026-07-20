@@ -141,6 +141,10 @@ func TestMasterCardgroupRepository_EnsureByName_Idempotent(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, first.ID)
 	require.Equal(t, name, first.Name.String())
+	// The create branch builds its row in-place, so the only source of
+	// updated_at is the RETURNING clause; dropping it leaves the zero time here.
+	require.False(t, first.UpdatedAt.IsZero(),
+		"EnsureByName must return the database-assigned updated_at")
 
 	// Call again with the SAME name — must return same ID, no duplicate row.
 	second, err := repo.EnsureByName(ctx, name)

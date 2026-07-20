@@ -13,35 +13,48 @@ import (
 )
 
 var updatedAtTriggers = []struct {
-	table   string
-	trigger string
+	table    string
+	trigger  string
+	function string
 }{
-	{"users", "trg_users_set_updated_at"},
-	{"cardgroups", "trg_cardgroups_set_updated_at"},
-	{"cards", "trg_cards_set_updated_at"},
-	{"user_card_fsrs", "trg_user_card_fsrs_set_updated_at"},
-	{"master_cardgroups", "trg_master_cardgroups_set_updated_at"},
-	{"master_cards", "trg_master_cards_set_updated_at"},
+	{"users", "trg_users_set_updated_at", "set_users_updated_at"},
+	{"cardgroups", "trg_cardgroups_set_updated_at", "set_cardgroups_updated_at"},
+	{"cards", "trg_cards_set_updated_at", "set_cards_updated_at"},
+	{"user_card_fsrs", "trg_user_card_fsrs_set_updated_at", "set_user_card_fsrs_updated_at"},
+	{"master_cardgroups", "trg_master_cardgroups_set_updated_at", "set_master_cardgroups_updated_at"},
+	{"master_cards", "trg_master_cards_set_updated_at", "set_master_cards_updated_at"},
 }
 
+// requireUpdatedAtTriggerEvents asserts, for every updated_at trigger, that it
+// fires BEFORE ROW on the expected events and still executes its own table's
+// trigger function. The tgfoid join is what makes the check meaningful: a
+// CREATE OR REPLACE TRIGGER that names the right trigger but binds the wrong
+// function would satisfy the event bitmask alone, and only the cardgroups path
+// below is proven behaviorally.
 func requireUpdatedAtTriggerEvents(t *testing.T, ctx context.Context, sqlDB *sql.DB, wantInsert bool) {
 	t.Helper()
 	for _, trigger := range updatedAtTriggers {
-		var firesOnInsert, firesOnUpdate bool
+		var firesOnInsert, firesOnUpdate, firesBeforeRow bool
+		var function string
 		err := sqlDB.QueryRowContext(ctx, `
 			SELECT (tg.tgtype::int & 4) <> 0,
-			       (tg.tgtype::int & 16) <> 0
+			       (tg.tgtype::int & 16) <> 0,
+			       (tg.tgtype::int & 1) <> 0 AND (tg.tgtype::int & 2) <> 0,
+			       fn.proname
 			FROM pg_trigger AS tg
 			JOIN pg_class AS tbl ON tbl.oid = tg.tgrelid
 			JOIN pg_namespace AS ns ON ns.oid = tbl.relnamespace
+			JOIN pg_proc AS fn ON fn.oid = tg.tgfoid
 			WHERE ns.nspname = 'public'
 			  AND tbl.relname = $1
 			  AND tg.tgname = $2
 			  AND NOT tg.tgisinternal
-		`, trigger.table, trigger.trigger).Scan(&firesOnInsert, &firesOnUpdate)
+		`, trigger.table, trigger.trigger).Scan(&firesOnInsert, &firesOnUpdate, &firesBeforeRow, &function)
 		require.NoError(t, err, "%s trigger metadata", trigger.table)
 		require.Equal(t, wantInsert, firesOnInsert, "%s INSERT event", trigger.table)
 		require.True(t, firesOnUpdate, "%s UPDATE event", trigger.table)
+		require.True(t, firesBeforeRow, "%s must stay BEFORE ROW", trigger.table)
+		require.Equal(t, trigger.function, function, "%s trigger function", trigger.table)
 	}
 }
 

@@ -287,6 +287,10 @@ func TestCardgroupRepository_EnsureByName_Create(t *testing.T) {
 	require.Equal(t, ownerID, string(got.OwnerID))
 	require.Equal(t, "Ensure Create", got.Name.String())
 	require.NotEmpty(t, got.ID)
+	// The create branch builds its row in-place, so the only source of
+	// updated_at is the RETURNING clause; dropping it leaves the zero time here.
+	require.False(t, got.UpdatedAt.IsZero(),
+		"EnsureByName must return the database-assigned updated_at")
 
 	found, err := repo.FindByName(ctx, ownerID, "Ensure Create")
 	require.NoError(t, err)
