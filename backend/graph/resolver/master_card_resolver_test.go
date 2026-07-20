@@ -375,7 +375,7 @@ func TestAdminMasterCardsConnection_CursorRoundTrip(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// MasterCardsConnection (public, published-only)
+// MasterCardsConnection (public, catalog-visible)
 // ---------------------------------------------------------------------------
 
 // TestMasterCardsConnection_Success verifies the public resolver routes through
