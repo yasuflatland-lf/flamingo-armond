@@ -2,6 +2,7 @@ package resolver
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/rotisserie/eris"
@@ -308,9 +309,13 @@ func TestAdminMasterCardsConnection_TranslatesNonNilInputs(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestAdminMasterCardsConnection_CursorRoundTrip asserts that the resolver
-// applies cursor.Encode exactly once to the raw IDs returned by the usecase
-// (the C1 fix: prevent double-encoding). StartCursor, EndCursor, and each
-// edge.Cursor must all decode back to the original raw ID.
+// applies the connection's encoder exactly once to the raw IDs returned by the
+// usecase (the C1 fix: prevent double-encoding). StartCursor, EndCursor, and
+// each edge.Cursor must all decode back to the original raw ID, and every one of
+// them must carry the v2 envelope with the ordering plus the per-row
+// ordering-key value the usecase captured — the master-card listing defaults to
+// the admin-mutable POSITION column, so an id-only v1 cursor would move whenever
+// a batch import repositions the row it points at.
 func TestAdminMasterCardsConnection_CursorRoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -324,6 +329,8 @@ func TestAdminMasterCardsConnection_CursorRoundTrip(t *testing.T) {
 		HasPrev:    false,
 		StartCur:   "first-id",
 		EndCur:     "last-id",
+		Ordering:   usecase.PageOrdering{OrderBy: "position", Direction: "ASC"},
+		OrderKeys:  map[string]string{"first-id": "1", "last-id": "2"},
 	}}
 	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
 
@@ -335,20 +342,35 @@ func TestAdminMasterCardsConnection_CursorRoundTrip(t *testing.T) {
 	// StartCursor must decode to "first-id" (singly encoded).
 	require.NotNil(t, conn.PageInfo.StartCursor)
 	startDecoded, decErr := cursor.Decode(*conn.PageInfo.StartCursor)
-	require.NoError(t, decErr, "StartCursor must be valid v1 cursor")
+	require.NoError(t, decErr, "StartCursor must be a valid cursor envelope")
 	assert.Equal(t, "first-id", startDecoded.ID, "StartCursor must decode to raw ID — double-encode would produce a wrong value")
 
 	// EndCursor must decode to "last-id".
 	require.NotNil(t, conn.PageInfo.EndCursor)
 	endDecoded, decErr := cursor.Decode(*conn.PageInfo.EndCursor)
-	require.NoError(t, decErr, "EndCursor must be valid v1 cursor")
+	require.NoError(t, decErr, "EndCursor must be a valid cursor envelope")
 	assert.Equal(t, "last-id", endDecoded.ID, "EndCursor must decode to raw ID")
 
-	// Each edge cursor must decode to its node's ID.
-	for _, edge := range conn.Edges {
+	// PageInfo shares the edges' encoder, so the boundary cursors are
+	// byte-identical to the first/last edge cursor.
+	assert.Equal(t, conn.Edges[0].Cursor, *conn.PageInfo.StartCursor)
+	assert.Equal(t, conn.Edges[1].Cursor, *conn.PageInfo.EndCursor)
+
+	// Each edge cursor must decode to its node's ID and carry the captured
+	// ordering key.
+	wantKeys := []string{"1", "2"}
+	for i, edge := range conn.Edges {
+		assert.True(t, strings.HasPrefix(edge.Cursor, "v2:"),
+			"edges[%d].Cursor should start with \"v2:\", got %q", i, edge.Cursor)
 		decoded, decErr := cursor.Decode(edge.Cursor)
-		require.NoError(t, decErr, "edge.Cursor for node %s must be valid v1 cursor", edge.Node.ID)
-		assert.Equal(t, edge.Node.ID, decoded.ID, "edge.Cursor must decode to node.ID")
+		require.NoError(t, decErr, "edge.Cursor for node %s must be a valid cursor envelope", edge.Node.ID)
+		assert.Equal(t, cursor.Payload{
+			ID:          edge.Node.ID,
+			HasOrdering: true,
+			OrderBy:     "position",
+			Direction:   "ASC",
+			OrderKey:    wantKeys[i],
+		}, decoded, "edges[%d].Cursor must carry the captured ordering key", i)
 	}
 }
 

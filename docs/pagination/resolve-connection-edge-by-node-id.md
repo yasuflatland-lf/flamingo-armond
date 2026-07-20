@@ -84,8 +84,9 @@ representations of the same edge:
 
    ```ts
    // Stand in for the backend's opaque envelope ("v1:" + base64(id), or the
-   // longer "v2:" + base64(json) on cardgroups / the master catalog). A faithful
-   // cursor is what makes the node.id-vs-cursor regression detectable.
+   // longer "v2:" + base64(json) on cardgroups / the master catalog / master
+   // cards). A faithful cursor is what makes the node.id-vs-cursor regression
+   // detectable.
    function encodeCursor(id: string): string {
      return `v1:${btoa(id)}`;
    }

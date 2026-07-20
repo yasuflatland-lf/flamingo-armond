@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -85,6 +86,16 @@ type MasterCardConnectionInput struct {
 
 // MasterCardConnectionOutput is the usecase-level page result. The resolver
 // wraps it into a model.MasterCardConnection.
+//
+// Ordering and OrderKeys exist so the resolver can emit v2 cursors: the
+// master-card listing defaults to the POSITION column, which an admin batch
+// import rewrites for every conflicting row, so a cursor that carried only an
+// id would move whenever the row it points at is repositioned. Ordering is the
+// (orderBy, direction) this page was served under; OrderKeys maps each returned
+// master card id to the serialized value its ordering column held at serve time
+// (empty string when the ordering key IS the id). Both are consumed only at the
+// resolver→model boundary — the output itself still carries RAW ids, never
+// pre-encoded cursors.
 type MasterCardConnectionOutput struct {
 	Cards      []*domain.MasterCard
 	TotalCount int64
@@ -92,6 +103,8 @@ type MasterCardConnectionOutput struct {
 	HasPrev    bool
 	StartCur   string
 	EndCur     string
+	Ordering   PageOrdering
+	OrderKeys  map[string]string
 }
 
 // masterCardRepoForMasterCard is the narrow consumer interface for master-card
@@ -626,11 +639,13 @@ func (u *masterCardUsecase) listMasterCardsCore(
 		return nil, err
 	}
 
-	after, err := u.resolveMasterCardCursor(ctx, in.After, in.MasterCardgroupID, orderBy, "after")
+	ordering := PageOrdering{OrderBy: string(orderBy), Direction: string(dir)}
+
+	after, err := u.resolveMasterCardCursor(ctx, in.After, in.MasterCardgroupID, orderBy, ordering, "after")
 	if err != nil {
 		return nil, err
 	}
-	before, err := u.resolveMasterCardCursor(ctx, in.Before, in.MasterCardgroupID, orderBy, "before")
+	before, err := u.resolveMasterCardCursor(ctx, in.Before, in.MasterCardgroupID, orderBy, ordering, "before")
 	if err != nil {
 		return nil, err
 	}
@@ -664,11 +679,100 @@ func (u *masterCardUsecase) listMasterCardsCore(
 		return nil, err
 	}
 
+	// OrderKeys snapshots the ordering column of every row in this page so the
+	// resolver can embed it in the cursor it emits. Capturing it here — rather
+	// than re-reading the row when the cursor comes back — is what makes the
+	// bookmark survive a repositioning of the boundary row.
+	keys, err := masterCardOrderKeys(orderBy, cards)
+	if err != nil {
+		return nil, err
+	}
+
 	// StartCur / EndCur carry the RAW node id; the resolver's connection layer
 	// applies the cursor encoder once. Encoding here would double-encode.
-	out := &MasterCardConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Cards: cards}
+	out := &MasterCardConnectionOutput{
+		TotalCount: total,
+		HasNext:    hasNext,
+		HasPrev:    hasPrev,
+		Cards:      cards,
+		Ordering:   ordering,
+		OrderKeys:  keys,
+	}
 	out.StartCur, out.EndCur = firstLastCursor(cards, func(c *domain.MasterCard) string { return c.ID })
 	return out, nil
+}
+
+// masterCardOrderKeys serializes the active ordering column of every row in a
+// served page, keyed by master card id. An orderBy outside the allowlist is a
+// caller bug and surfaces as INTERNAL, matching masterCardOrderKey.
+func masterCardOrderKeys(orderBy repository.MasterCardOrderBy, cards []*domain.MasterCard) (map[string]string, error) {
+	keys := make(map[string]string, len(cards))
+	for _, c := range cards {
+		if c == nil {
+			continue
+		}
+		k, err := masterCardOrderKey(orderBy, c)
+		if err != nil {
+			return nil, err
+		}
+		keys[c.ID] = k
+	}
+	return keys, nil
+}
+
+// masterCardOrderKey serializes one master card's ordering column for embedding
+// in a v2 cursor. Ordering by ID needs no key — the id is already carried by the
+// cursor — so it returns the empty string. The default arm mirrors
+// resolveMasterCardCursor's: an orderBy the switch does not handle is a caller
+// bug, surfaced as INTERNAL rather than a silently unanchored cursor.
+func masterCardOrderKey(orderBy repository.MasterCardOrderBy, card *domain.MasterCard) (string, error) {
+	switch orderBy {
+	case repository.MasterCardOrderByID:
+		return "", nil
+	case repository.MasterCardOrderByPosition:
+		return strconv.Itoa(card.Position), nil
+	case repository.MasterCardOrderByCreatedAt:
+		return encodeTimeOrderKey(card.CreatedAt), nil
+	case repository.MasterCardOrderByUpdatedAt:
+		return encodeTimeOrderKey(card.UpdatedAt), nil
+	default:
+		return "", eris.Errorf("usecase: master card: unhandled orderBy %q", orderBy)
+	}
+}
+
+// applyMasterCardOrderKey populates the repository cursor column the active
+// orderBy needs from the value a v2 cursor carried. A key that does not parse
+// into the column type returns errCursorKeyMalformed so the caller maps it to
+// BAD_USER_INPUT; an unhandled orderBy stays INTERNAL.
+func applyMasterCardOrderKey(c *repository.MasterCardCursor, orderBy repository.MasterCardOrderBy, key string) error {
+	switch orderBy {
+	case repository.MasterCardOrderByID:
+		// No extra column needed; the id in the cursor is the ordering key.
+		return nil
+	case repository.MasterCardOrderByPosition:
+		n, err := decodeIntOrderKey(key)
+		if err != nil {
+			return err
+		}
+		c.Position = &n
+		return nil
+	case repository.MasterCardOrderByCreatedAt:
+		t, err := decodeTimeOrderKey(key)
+		if err != nil {
+			return err
+		}
+		c.CreatedAt = &t
+		return nil
+	case repository.MasterCardOrderByUpdatedAt:
+		t, err := decodeTimeOrderKey(key)
+		if err != nil {
+			return err
+		}
+		c.UpdatedAt = &t
+		return nil
+	default:
+		return eris.Errorf("usecase: master card: unhandled orderBy %q", orderBy)
+	}
 }
 
 // masterCardOrderByColumns is the usecase→repository orderBy allowlist for master cards.
@@ -691,22 +795,33 @@ func resolveMasterCardOrderBy(
 
 // resolveMasterCardCursor decodes an opaque cursor string into a
 // *repository.MasterCardCursor with the column required by the active orderBy
-// populated. Returns BAD_USER_INPUT when the cursor cannot be decoded, the
-// master card cannot be found, or it belongs to a different master cardgroup.
+// populated. The cursor may be a v2 envelope ("v2:" + base64 JSON), a v1
+// envelope ("v1:" + base64), or a legacy bare UUID; all three are accepted.
+// Returns BAD_USER_INPUT when the cursor cannot be decoded, was taken under a
+// different ordering, carries an ordering-key value that does not parse, the
+// master card cannot be found, or it belongs to a different master cardgroup —
+// the last would otherwise let a cursor reference rows outside the requested
+// deck.
 //
-// For MasterCardOrderByID no column hydration is needed — the decoded id is the
-// full cursor. For the time/position orderings the column value is hydrated via
-// a single-row FindByID lookup. FindByID is group-agnostic, so the cross-group
-// guard is explicit: a card whose MasterCardgroupID differs from the requested
-// group is treated as cursor-not-found, never leaked into the page query. A
-// missing column for the active orderBy is a caller/internal bug surfaced as an
-// error, never a silent zero-value (which would generate a wrong-but-valid SQL
-// predicate and quietly skip rows).
+// A v2 cursor supplies the ordering-key value captured when its page was
+// served, so an admin repositioning the row between two fetches cannot move the
+// bookmark. A v1 or legacy cursor carries no such value and falls back to
+// re-reading the ordering column off the CURRENT row; that fallback is what
+// duplicates or skips rows when the ordering column is mutable, and it exists
+// only so cursors persisted by older clients keep paging.
+//
+// On every ordering where v2 actually matters — POSITION, CREATED_AT,
+// UPDATED_AT — the FindByID lookup and the cross-deck guard both run, on the v2
+// path as well as the v1 one: a v2 cursor must not skip the scope check just
+// because it can hydrate itself. MasterCardOrderByID returns before the lookup
+// because there is no ordering column to hydrate and the page query is already
+// deck-scoped, so no cross-deck row can be reached through it.
 func (u *masterCardUsecase) resolveMasterCardCursor(
 	ctx context.Context,
 	cursorStr *string,
 	masterCardgroupID string,
 	orderBy repository.MasterCardOrderBy,
+	ordering PageOrdering,
 	field string,
 ) (*repository.MasterCardCursor, error) {
 	p, present, err := decodeCursorOrBadInput(cursorStr, field)
@@ -716,10 +831,7 @@ func (u *masterCardUsecase) resolveMasterCardCursor(
 	if !present {
 		return nil, nil
 	}
-	// Master-card cursors stay on the v1 envelope, so only the raw id is
-	// consumed here and a cursor carrying ordering metadata cannot have come
-	// from here.
-	if err := rejectOrderedCursor(p, field); err != nil {
+	if err := requireCursorOrdering(p, ordering, field); err != nil {
 		return nil, err
 	}
 	id := p.ID
@@ -745,6 +857,17 @@ func (u *masterCardUsecase) resolveMasterCardCursor(
 		return nil, ucerr.NewValidationError(field, "cursor not found")
 	}
 
+	if p.HasOrdering {
+		if err := applyMasterCardOrderKey(c, orderBy, p.OrderKey); err != nil {
+			if errors.Is(err, errCursorKeyMalformed) {
+				return nil, ucerr.NewValidationError(field, "invalid cursor")
+			}
+			return nil, err
+		}
+		return c, nil
+	}
+
+	// v1 / legacy bare-UUID fallback: re-hydrate from the current row.
 	switch orderBy {
 	case repository.MasterCardOrderByPosition:
 		pos := card.Position

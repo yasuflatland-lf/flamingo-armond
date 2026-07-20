@@ -42,12 +42,12 @@ v2:<RawURLBase64(JSON{"i":id,"o":orderBy,"d":direction,"k":orderKey})>
 | `myCardgroupsConnection` | `updated_at` (mutable) | v2 |
 | `masterCatalog` / admin master catalog | `sort_order` (admin-mutable) | v2 |
 | cards by cardgroup | `id` (immutable) | v1 |
-| master cards | `position` (admin-mutable) | v1 |
+| master cards | `position` (admin-mutable) | v2 |
 | admin users | `created_at` (immutable) | v1 |
 
 The column named is the one the connection orders by when the client sends no `orderBy` — `resolveCardOrderBy` defaults to `(ID, ASC)`, `resolveMasterCardOrderBy` to `(POSITION, ASC)`, matching the schema defaults. In every case the ordering is made total by appending `id` as the tiebreaker, so a v1 row whose default key is `id` is safe by construction.
 
-The v1 rows are still not a clean bill of health. Master cards default to the admin-mutable `position` and carry the same latent defect the cardgroup listing had. Cards are safe on their `ID` default but not on the opt-in `DUE` / `UPDATED_AT` orderings, both of which move under normal review activity. Neither has been migrated.
+The one remaining v1 row is not quite a clean bill of health. The cards connection is safe on its `ID` default but not on the opt-in `DUE` / `UPDATED_AT` orderings, both of which move under normal review activity; it has not been migrated.
 
 ## What v2 guarantees, and what it does not
 
@@ -56,7 +56,7 @@ Guaranteed once a connection is on v2:
 - **No duplicates when the boundary row's ordering key is edited upward.** The bookmark compares against the value captured at serve time, so the next page starts exactly where the previous one ended instead of after the row's new position.
 - **No skipped rows when the boundary row's ordering key is edited downward.** Under v1 the re-read moved the bookmark past every remaining row, emptying the rest of the walk; the captured value keeps the walk anchored.
 - **No silent mis-page across an ordering change.** A cursor whose embedded `orderBy` / `direction` disagrees with the current request is rejected as `BAD_USER_INPUT` rather than compared against a different column.
-- **No weakening of the scope checks.** A v2 cursor can hydrate its ordering column without the repository, but the owner lookup (cardgroups) and the published-scope lookup (catalog) still run, so the endpoint never becomes an existence oracle.
+- **No weakening of the scope checks.** A v2 cursor can hydrate its ordering column without the repository, but the owner lookup (cardgroups), the published-scope lookup (catalog) and the cross-deck guard (master cards) still run, so the endpoint never becomes an existence oracle.
 
 Not guaranteed — these are inherent to cursor pagination over a mutable column, and no envelope format fixes them:
 
@@ -80,7 +80,7 @@ Every aggregate's `resolve*Cursor` decodes its incoming `after`/`before` argumen
 The v2 connections then run two extra steps before hydration:
 
 1. `requireCursorOrdering` rejects a cursor taken under a different column or direction (`BAD_USER_INPUT`).
-2. `applyCardgroupOrderKey` / `applyMasterCatalogOrderKey` populates the repository cursor column from the embedded value. A value that does not parse into the column's type is `BAD_USER_INPUT`; an `orderBy` the helper does not handle is a caller bug and stays `INTERNAL`.
+2. `applyCardgroupOrderKey` / `applyMasterCatalogOrderKey` / `applyMasterCardOrderKey` populates the repository cursor column from the embedded value. A value that does not parse into the column's type is `BAD_USER_INPUT`; an `orderBy` the helper does not handle is a caller bug and stays `INTERNAL`.
 
 ## Backward compatibility
 
