@@ -27,6 +27,12 @@ type mockUserRepository struct {
 	updateErr     error
 	capturedPatch repository.UserUpdate
 	deleteAuthErr error
+
+	// authUserMissing makes AuthUserExists report the auth.users row as gone,
+	// i.e. the account was deleted while its JWT was still valid. The zero value
+	// keeps the row present, which is the normal case for every other test.
+	authUserMissing bool
+	authUserErr     error
 }
 
 func (m *mockUserRepository) FindByID(_ context.Context, _ string) (*domain.User, error) {
@@ -40,6 +46,10 @@ func (m *mockUserRepository) Update(_ context.Context, _ string, patch repositor
 
 func (m *mockUserRepository) DeleteAuthUser(_ context.Context, _ string) error {
 	return m.deleteAuthErr
+}
+
+func (m *mockUserRepository) AuthUserExists(_ context.Context, _ string) (bool, error) {
+	return !m.authUserMissing, m.authUserErr
 }
 
 // ptr returns a pointer to s.
@@ -136,6 +146,47 @@ func TestResolver_Me_Anonymous(t *testing.T) {
 	code := errCode(t, resp)
 	if code != "UNAUTHENTICATED" {
 		t.Fatalf("expected UNAUTHENTICATED, got %q", code)
+	}
+}
+
+// TestResolver_Me_DeletedAccount_Unauthenticated verifies that a still-valid JWT
+// whose auth.users row is gone surfaces UNAUTHENTICATED on the profile read, so
+// the client signs the caller out instead of rendering an empty profile.
+func TestResolver_Me_DeletedAccount_Unauthenticated(t *testing.T) {
+	t.Parallel()
+	mock := &mockUserRepository{
+		findErr:         repository.ErrNotFound,
+		authUserMissing: true,
+	}
+	srv := newServer(mock)
+	resp := gqlRequest(t, srv, authedCtx("u1"), meQuery)
+
+	code := errCode(t, resp)
+	if code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q; response: %v", code, resp)
+	}
+}
+
+// TestResolver_Me_ProvisioningRace_EmptyUser verifies the other side of the
+// missing-public-row fork: when the auth.users row is still present, the
+// handle_new_user trigger simply has not run yet, so the empty-user degrade
+// stands and no error reaches the wire.
+func TestResolver_Me_ProvisioningRace_EmptyUser(t *testing.T) {
+	t.Parallel()
+	mock := &mockUserRepository{findErr: repository.ErrNotFound}
+	srv := newServer(mock)
+	resp := gqlRequest(t, srv, authedCtx("u1"), meQuery)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	me, _ := data["me"].(map[string]any)
+	if me == nil {
+		t.Fatalf("expected data.me, got nil; full response: %v", resp)
+	}
+	if me["id"] != "u1" {
+		t.Fatalf("expected id=u1, got %v", me["id"])
 	}
 }
 

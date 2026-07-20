@@ -52,6 +52,29 @@ type CardgroupUpdate struct {
 	Name *string
 }
 
+// ErrCardgroupOwnerNotFound is returned when an insert names an owner_id with
+// no matching public.users row — in practice, a still-valid JWT whose account
+// has already been deleted (auth.users delete cascades to public.users). It is
+// deliberately standalone rather than joined with ErrNotFound: the cardgroup
+// itself is not missing, the caller is, and callers that branch on ErrNotFound
+// would otherwise misread this as "cardgroup not found".
+//
+// Plain errors.New (not eris) so errors.Is walks identity directly.
+var ErrCardgroupOwnerNotFound = errors.New("repository: cardgroup: owner not found")
+
+// classifyCardgroupOwnerFKError maps a Postgres FK violation (code 23503) on
+// cardgroups.owner_id to ErrCardgroupOwnerNotFound. Returns nil for any other
+// error so callers can use it as a pre-filter before falling through to
+// eris.Wrap. Extracted as a free function so the classification can be
+// unit-tested with a fabricated *pgconn.PgError without a live DB race
+// (mirrors role.go's classifyFKError).
+func classifyCardgroupOwnerFKError(err error) error {
+	if pgConstraintViolation(err, "23503", "owner_id") {
+		return ErrCardgroupOwnerNotFound
+	}
+	return nil
+}
+
 // CardgroupRepository provides persistence operations for the Cardgroup
 // aggregate.
 type CardgroupRepository interface {
@@ -283,10 +306,15 @@ func (r *cardgroupRepo) FindByIDs(ctx context.Context, ids []string) (map[string
 }
 
 // Create inserts a new cardgroup row. The caller is responsible for pre-filling
-// cg.ID (uuid v7) and both timestamps.
+// cg.ID (uuid v7) and both timestamps. An owner_id that no longer resolves to a
+// public.users row returns ErrCardgroupOwnerNotFound rather than an opaque
+// internal error.
 func (r *cardgroupRepo) Create(ctx context.Context, cg *domain.Cardgroup) error {
 	row := cardgroupToRow(cg)
 	if err := r.db.WithContext(ctx).Create(row).Error; err != nil {
+		if fkErr := classifyCardgroupOwnerFKError(err); fkErr != nil {
+			return fkErr
+		}
 		return eris.Wrap(err, "repository: cardgroup: create")
 	}
 	return nil
@@ -294,9 +322,16 @@ func (r *cardgroupRepo) Create(ctx context.Context, cg *domain.Cardgroup) error 
 
 // CreateTx inserts a new cardgroup row using the supplied transaction handle so
 // the insert participates in the caller's transaction. The caller is
-// responsible for pre-filling cg.ID (uuid v7) and both timestamps.
+// responsible for pre-filling cg.ID (uuid v7) and both timestamps. An owner_id
+// that no longer resolves to a public.users row returns ErrCardgroupOwnerNotFound
+// rather than an opaque internal error — the master-deck copy paths write the
+// caller-owned cardgroup through this method, so a deleted account importing or
+// seeding a starter deck must reach the same classification as Create.
 func (r *cardgroupRepo) CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Cardgroup) error {
 	if err := tx.WithContext(ctx).Create(cardgroupToRow(cg)).Error; err != nil {
+		if fkErr := classifyCardgroupOwnerFKError(err); fkErr != nil {
+			return fkErr
+		}
 		return eris.Wrap(err, "repository: cardgroup: create tx")
 	}
 	return nil

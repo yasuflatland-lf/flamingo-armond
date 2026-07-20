@@ -214,6 +214,12 @@ func (u *cardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 	}
 
 	if err := u.repo.Create(ctx, cg); err != nil {
+		// The owner FK no longer resolves: the caller's account was deleted while
+		// their JWT was still valid. Surface UNAUTHENTICATED so the client signs
+		// them out instead of paging an operator with an INTERNAL error.
+		if errors.Is(err, repository.ErrCardgroupOwnerNotFound) {
+			return CreateCardgroupOutcome{}, ucerr.ErrUnauthenticated
+		}
 		return CreateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: create")
 	}
 	return CreateCardgroupOutcome{Cardgroup: cg}, nil

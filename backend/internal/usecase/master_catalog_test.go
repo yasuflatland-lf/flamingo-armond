@@ -804,6 +804,47 @@ func TestImportMaster_CopyError_Wrapped(t *testing.T) {
 	assertInternalChain(t, err, "usecase: master catalog: import: copy master to user")
 }
 
+// TestImportMaster_DeletedOwner_ReturnsUnauthenticated pins the deleted-account
+// import path. The copy writes the new cardgroup through cardgroupRepo.CreateTx,
+// which classifies the owner-FK violation as ErrCardgroupOwnerNotFound; the eris
+// wraps applied inside the master-deck usecase keep the sentinel reachable via
+// errors.Is. ImportMaster must translate it to ucerr.ErrUnauthenticated so the
+// caller is signed out instead of seeing an operator-paging INTERNAL error —
+// matching what createCardgroup already does for the same deleted account.
+func TestImportMaster_DeletedOwner_ReturnsUnauthenticated(t *testing.T) {
+	repo := &mockMasterCatalogRepository{
+		findByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Deck"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	copyUC := &mockCopyMasterToUserUC{fn: func(context.Context, string, string) (*domain.Cardgroup, error) {
+		return nil, eris.Wrap(repository.ErrCardgroupOwnerNotFound, "usecase: master deck: copy master to user")
+	}}
+	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true), newTestLogger())
+
+	out, err := uc.ImportMaster(authedCtx("deleted-user"), "m1")
+
+	assertUnauthenticated(t, err)
+	// The deleted owner must not be laundered into the non-disclosure not-found
+	// outcome reserved for an unpublished master.
+	if out.NotFound {
+		t.Fatal("deleted owner must not collapse into the NotFound outcome")
+	}
+}
+
+// TestSeedDefaultStarters_DeletedOwner_ReturnsUnauthenticated covers the sibling
+// onboarding path, which reaches the same cardgroupRepo.CreateTx write site.
+func TestSeedDefaultStarters_DeletedOwner_ReturnsUnauthenticated(t *testing.T) {
+	deck := &mockCopyMasterToUserUC{
+		seedErr: eris.Wrap(repository.ErrCardgroupOwnerNotFound, "usecase: master deck: seed for new user"),
+	}
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, deck, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.SeedDefaultStarters(authedCtx("deleted-user"))
+
+	assertUnauthenticated(t, err)
+}
+
 func TestImportMaster_VerifyPublishedError_Wrapped(t *testing.T) {
 	// A non-ErrNotFound failure from FindPublishedByID (e.g. a DB outage) is an
 	// internal error, not the errors-as-data NotFound outcome. The copy primitive

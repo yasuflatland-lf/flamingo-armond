@@ -50,6 +50,26 @@ func TestCardgroupRepository_CreateAndFindByID(t *testing.T) {
 	require.False(t, got.UpdatedAt.IsZero())
 }
 
+// TestCardgroupRepository_Create_DeletedOwner_ReturnsOwnerNotFound exercises the
+// real 23503 path end-to-end: the owner's auth.users row is deleted (cascading
+// public.users away) while a still-valid JWT would keep authenticating them, so
+// the insert violates cardgroups_owner_id_fkey. The classification must surface
+// as ErrCardgroupOwnerNotFound rather than an opaque wrapped error.
+func TestCardgroupRepository_Create_DeletedOwner_ReturnsOwnerNotFound(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardgroupRepository(testDB.GORM)
+
+	userRepo := repository.NewUserRepository(testDB.GORM)
+	require.NoError(t, userRepo.DeleteAuthUser(ctx, ownerID))
+
+	err := repo.Create(ctx, newCardgroup(ownerID, "Deck for a deleted account"))
+	require.ErrorIs(t, err, repository.ErrCardgroupOwnerNotFound)
+	// Standalone sentinel: a missing owner must not read as a missing cardgroup.
+	require.NotErrorIs(t, err, repository.ErrNotFound)
+}
+
 func TestCardgroupRepository_FindByName_ScopedToOwner(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

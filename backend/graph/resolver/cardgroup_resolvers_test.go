@@ -42,6 +42,10 @@ type mockCardgroupRepoForResolver struct {
 	// Used by the TestResolver_UpdateCardgroup_* tests.
 	updateResult *domain.Cardgroup
 	updateErr    error
+
+	// createErr controls the return value of Create. Used by the deleted-account
+	// test to inject repository.ErrCardgroupOwnerNotFound.
+	createErr error
 }
 
 func (m *mockCardgroupRepoForResolver) FindByID(_ context.Context, _ string) (*domain.Cardgroup, error) {
@@ -65,7 +69,7 @@ func (m *mockCardgroupRepoForResolver) CountByOwner(_ context.Context, _ string,
 }
 
 func (m *mockCardgroupRepoForResolver) Create(_ context.Context, _ *domain.Cardgroup) error {
-	return nil
+	return m.createErr
 }
 
 func (m *mockCardgroupRepoForResolver) Update(_ context.Context, _ string, _ repository.CardgroupUpdate) (*domain.Cardgroup, error) {
@@ -459,6 +463,24 @@ func TestResolver_CreateCardgroup_Unauthenticated(t *testing.T) {
 	repo := &mockCardgroupRepoForResolver{}
 	srv := newCardgroupSrv(repo)
 	resp := gqlRequest(t, srv, context.Background(), createCardgroupBody("Test"))
+
+	code := errCode(t, resp)
+	if code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q; response: %v", code, resp)
+	}
+}
+
+// TestResolver_CreateCardgroup_DeletedAccount_Unauthenticated verifies the wire
+// outcome of the deleted-account path: a still-valid JWT whose auth.users row is
+// gone violates cardgroups_owner_id_fkey, and the repository → usecase →
+// resolver chain must surface UNAUTHENTICATED (an actionable code the client can
+// sign the caller out on) rather than INTERNAL.
+func TestResolver_CreateCardgroup_DeletedAccount_Unauthenticated(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockCardgroupRepoForResolver{createErr: repository.ErrCardgroupOwnerNotFound}
+	srv := newCardgroupSrv(repo)
+	resp := gqlRequest(t, srv, authedCtx("u1"), createCardgroupBody("Test Group"))
 
 	code := errCode(t, resp)
 	if code != "UNAUTHENTICATED" {

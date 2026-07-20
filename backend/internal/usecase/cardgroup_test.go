@@ -347,6 +347,33 @@ func TestCardgroupUsecase_Create_Success_AssignsOwnerToCaller(t *testing.T) {
 	}
 }
 
+// TestCardgroupUsecase_Create_DeletedOwner_ReturnsUnauthenticated pins the
+// deleted-account path: the repository classifies the owner-FK violation as
+// ErrCardgroupOwnerNotFound and the usecase must translate it to
+// ucerr.ErrUnauthenticated so the caller is signed out instead of seeing an
+// operator-paging INTERNAL error.
+func TestCardgroupUsecase_Create_DeletedOwner_ReturnsUnauthenticated(t *testing.T) {
+	t.Parallel()
+	repo := &mockCardgroupRepository{createErr: repository.ErrCardgroupOwnerNotFound}
+	uc := NewCardgroupUsecase(repo, cgDefaultAdmin(), newTestLogger())
+
+	_, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "My Group"})
+
+	assertUnauthenticated(t, err)
+}
+
+// TestCardgroupUsecase_Create_RepoError_Wrapped keeps the generic failure path
+// distinct from the deleted-owner classification above.
+func TestCardgroupUsecase_Create_RepoError_Wrapped(t *testing.T) {
+	t.Parallel()
+	repo := &mockCardgroupRepository{createErr: errors.New("db died")}
+	uc := NewCardgroupUsecase(repo, cgDefaultAdmin(), newTestLogger())
+
+	_, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "My Group"})
+
+	assertInternalChain(t, err, "usecase: cardgroup: create")
+}
+
 // --- Create per-user cardgroup-limit tests ---
 
 // TestCardgroupUsecase_Create_GeneralUser_UnderLimit_Succeeds verifies that a

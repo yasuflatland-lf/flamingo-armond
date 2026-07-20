@@ -12,3 +12,13 @@
 
 importCards            # uses ImportCardsPayload — different shape
 adminImportMasterCards # uses ImportCardsPayload — mirrors importCards (admin-gated)
+
+# The only typed variant SeedDefaultStarters emits is ucerr.ErrUnauthenticated,
+# which is a protocol-level signal (the caller must sign out), not a business
+# outcome a client would switch on — a union variant adds no schema structure
+# here. The mutation could already return UNAUTHENTICATED via requireCallerSub;
+# that emission was invisible to the body-only walker because it is
+# helper-delegated (see docs/backend/error-wrapping/outcome-union-enforcement.md
+# § "Typed-error emission detection"). Making the deleted-owner branch explicit
+# only surfaced the pre-existing condition.
+seedDefaultStarterCardgroups # emits only ucerr.ErrUnauthenticated — protocol signal, not a union variant

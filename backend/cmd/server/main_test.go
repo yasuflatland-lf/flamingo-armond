@@ -784,6 +784,10 @@ func (c *countingUserRepo) DeleteAuthUser(ctx context.Context, id string) error 
 	return c.inner.DeleteAuthUser(ctx, id)
 }
 
+func (c *countingUserRepo) AuthUserExists(ctx context.Context, id string) (bool, error) {
+	return c.inner.AuthUserExists(ctx, id)
+}
+
 func (c *countingUserRepo) LastSignInByUserIDs(ctx context.Context, ids []string) (map[string]*time.Time, error) {
 	return c.inner.LastSignInByUserIDs(ctx, ids)
 }

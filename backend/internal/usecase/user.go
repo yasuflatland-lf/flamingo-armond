@@ -12,6 +12,7 @@ import (
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
+	"backend/internal/usecase/ucerr"
 )
 
 // UserRepository is the consumer-driven interface used by UserUsecase.
@@ -22,6 +23,10 @@ type UserRepository interface {
 	// DeleteAuthUser deletes the caller's auth.users row, cascading to all
 	// associated data. See repository.UserRepository.DeleteAuthUser for details.
 	DeleteAuthUser(ctx context.Context, id string) error
+	// AuthUserExists reports whether an auth.users row with the given id still
+	// exists. Me uses it to tell a deleted account apart from a public.users row
+	// the handle_new_user trigger has not written yet.
+	AuthUserExists(ctx context.Context, id string) (bool, error)
 }
 
 type UserRolesRepository interface {
@@ -33,6 +38,10 @@ type UserRolesRepository interface {
 
 // UserUsecase is the authenticated user profile and role-query surface.
 type UserUsecase interface {
+	// Me returns the authenticated caller's profile. Returns
+	// ucerr.ErrUnauthenticated when no caller is on the context, and also when
+	// the caller's auth.users row is gone (the account was deleted while its
+	// JWT was still valid) so the client signs the caller out.
 	Me(ctx context.Context) (*domain.User, error)
 	UpdateUser(ctx context.Context, in UpdateUserInput) (UpdateProfileOutcome, error)
 	// DeleteMyAccount deletes the authenticated caller's own account and all
@@ -66,7 +75,21 @@ func (u *userUsecase) Me(ctx context.Context) (*domain.User, error) {
 		return appUser, nil
 	}
 	if errors.Is(err, repository.ErrNotFound) {
-		// handle_new_user trigger should have provisioned the row; degrade gracefully.
+		// A missing public.users row has two causes that must not share an outcome:
+		// the handle_new_user trigger has not provisioned it yet (a race on a brand
+		// new sign-up), or the account was deleted while its JWT was still valid
+		// (auth.users delete cascades to public.users). JWT verification is
+		// stateless, so this read is the first place the deletion is observable.
+		// Probe auth.users to tell them apart: absent means deleted, so return
+		// ucerr.ErrUnauthenticated and let the client sign the caller out; present
+		// means the provisioning race, which keeps the empty-user degrade.
+		exists, existsErr := u.repo.AuthUserExists(ctx, user.Sub)
+		if existsErr != nil {
+			return nil, eris.Wrap(existsErr, "usecase: user: me: auth user exists")
+		}
+		if !exists {
+			return nil, ucerr.ErrUnauthenticated
+		}
 		u.logger.WarnContext(ctx, "user row missing for authenticated user; returning empty user",
 			"user_id", user.Sub)
 		return &domain.User{ID: domain.UserID(user.Sub)}, nil
