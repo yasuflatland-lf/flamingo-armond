@@ -97,23 +97,23 @@ Measure before adding either: `EXPLAIN (ANALYZE, BUFFERS)` on the query plus `pg
 
 Deleting an account is a **single `DELETE` against `auth.users`**. Everything a learner owns — decks, cards, review history, FSRS scheduling state, preferences and role assignments — is removed by the database's own `ON DELETE CASCADE` foreign keys; there is no application-level multi-step delete to keep in sync. The isolation point in Go is `UserRepository.DeleteAuthUserTx` (`backend/internal/repository/user.go`), which issues that one statement inside the caller's transaction.
 
-The full set of foreign keys that participate, read from the migration files:
+Every foreign key in the schema, read from the migration files. All but two fire on an account delete — `user_roles.role_id` and `master_cards.master_cardgroup_id` hang off the `roles` / `master_cardgroups` catalog tables, which carry no user-referencing column, so nothing reaches them from an `auth.users` delete:
 
 | Child column | References | `ON DELETE` | Declared in |
 |---|---|---|---|
-| `public.users.id` | `auth.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql:98` |
-| `user_roles.user_id` | `public.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql:110` |
-| `user_roles.role_id` | `public.roles(id)` | CASCADE | `20260430080000_initial_schema.up.sql:111` |
-| `cardgroups.owner_id` | `public.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql:120` |
-| `cards.cardgroup_id` | `public.cardgroups(id)` | CASCADE | `20260430080000_initial_schema.up.sql:134` |
-| `swipe_records.user_id` | `public.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql:153` |
-| `swipe_records.card_id` | `public.cards(id)` | CASCADE | `20260430080000_initial_schema.up.sql:154` |
+| `public.users.id` | `auth.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql` |
+| `user_roles.user_id` | `public.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql` |
+| `user_roles.role_id` | `public.roles(id)` | CASCADE | `20260430080000_initial_schema.up.sql` |
+| `cardgroups.owner_id` | `public.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql` |
+| `cards.cardgroup_id` | `public.cardgroups(id)` | CASCADE | `20260430080000_initial_schema.up.sql` |
+| `swipe_records.user_id` | `public.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql` |
+| `swipe_records.card_id` | `public.cards(id)` | CASCADE | `20260430080000_initial_schema.up.sql` |
 | `swipe_records.cardgroup_id` | `public.cardgroups(id)` | CASCADE | `20260721000000_add_cardgroup_fk_to_swipe_records.up.sql` |
-| `user_card_fsrs.user_id` | `public.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql:182` |
-| `user_card_fsrs.card_id` | `public.cards(id)` | CASCADE | `20260430080000_initial_schema.up.sql:183` |
-| `user_preferences.user_id` | `public.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql:205` |
-| `user_preferences.last_viewed_cardgroup_id` | `public.cardgroups(id)` | **SET NULL** | `20260430080000_initial_schema.up.sql:207` |
-| `master_cards.master_cardgroup_id` | `public.master_cardgroups(id)` | CASCADE | `20260614000000_add_master_tables.up.sql:89` |
+| `user_card_fsrs.user_id` | `public.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql` |
+| `user_card_fsrs.card_id` | `public.cards(id)` | CASCADE | `20260430080000_initial_schema.up.sql` |
+| `user_preferences.user_id` | `public.users(id)` | CASCADE | `20260430080000_initial_schema.up.sql` |
+| `user_preferences.last_viewed_cardgroup_id` | `public.cardgroups(id)` | **SET NULL** | `20260430080000_initial_schema.up.sql` |
+| `master_cards.master_cardgroup_id` | `public.master_cardgroups(id)` | CASCADE | `20260614000000_add_master_tables.up.sql` |
 
 Three properties of that table are load-bearing:
 
@@ -147,6 +147,8 @@ ORDER BY child_table, c.conname;
 ```
 
 `confdeltype` is a single character: `c` = CASCADE, `n` = SET NULL, `d` = SET DEFAULT, `r` = RESTRICT, `a` = NO ACTION. Anything other than `c` on an `auth.*` child means a delete can fail or leave a row behind, and should be investigated before the next account deletion in production.
+
+The query reports **direct** children of `auth.users` only. GoTrue tables that reach the user through another table — `auth.refresh_tokens` and `auth.mfa_amr_claims` via `auth.sessions`, `auth.mfa_challenges` via `auth.mfa_factors` — never appear in its output, so an all-`c` result is not on its own proof that the whole chain cascades. Re-run the query with `confrelid` set to each child table returned by the first pass to walk the next hop.
 
 ### Postgres upsert: prerequisite UNIQUE / EXCLUSION constraint
 
