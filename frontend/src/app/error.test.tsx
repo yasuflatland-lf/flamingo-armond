@@ -1,6 +1,9 @@
 // @vitest-environment happy-dom
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
+import enMessages from "../../messages/en.json";
+import jaMessages from "../../messages/ja.json";
 import RootError from "./error";
 
 afterEach(() => {
@@ -9,17 +12,29 @@ afterEach(() => {
 
 describe("root <RootError>", () => {
   it("renders the message and a retry affordance", () => {
-    render(<RootError error={new Error("boom")} reset={vi.fn()} />);
+    renderWithIntl(<RootError error={new Error("boom")} reset={vi.fn()} />);
 
-    expect(screen.getByRole("heading", { name: /couldn't load the app/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: enMessages.RootError.heading })).toBeInTheDocument();
+    expect(screen.getByText(enMessages.RootError.message)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: enMessages.RootError.retry })).toBeInTheDocument();
+  });
+
+  it("renders all three strings from the catalog in the active locale", () => {
+    renderWithIntl(<RootError error={new Error("boom")} reset={vi.fn()} />, {
+      locale: "ja",
+      messages: jaMessages,
+    });
+
+    expect(screen.getByRole("heading", { name: jaMessages.RootError.heading })).toBeInTheDocument();
+    expect(screen.getByText(jaMessages.RootError.message)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: jaMessages.RootError.retry })).toBeInTheDocument();
   });
 
   it("calls reset when the retry button is clicked", () => {
     const reset = vi.fn();
-    render(<RootError error={new Error("boom")} reset={reset} />);
+    renderWithIntl(<RootError error={new Error("boom")} reset={reset} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+    fireEvent.click(screen.getByRole("button", { name: enMessages.RootError.retry }));
 
     expect(reset).toHaveBeenCalledTimes(1);
   });
@@ -28,7 +43,7 @@ describe("root <RootError>", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const error = Object.assign(new Error("secret-user-content"), { digest: "abc123" });
 
-    render(<RootError error={error} reset={vi.fn()} />);
+    renderWithIntl(<RootError error={error} reset={vi.fn()} />);
 
     expect(spy).toHaveBeenCalledWith("[error]", { name: "Error", digest: "abc123" });
     // Assert the raw message is absent explicitly, so a future switch to a

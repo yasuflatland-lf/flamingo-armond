@@ -1,3 +1,4 @@
+import { useTranslations } from "next-intl";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { GlobalRail } from "./global-rail";
 import { LogoDrawer } from "./logo-drawer";
@@ -25,6 +26,8 @@ interface AppShellProps {
  * client nav components it mounts.
  */
 export function AppShell({ user, isAdmin, children }: AppShellProps) {
+  const t = useTranslations("Nav");
+
   return (
     <SidebarProvider>
       {/* PC layout (md+): GlobalRail is a direct child of SidebarProvider so the
@@ -34,7 +37,7 @@ export function AppShell({ user, isAdmin, children }: AppShellProps) {
       <aside
         data-testid="rail-container"
         className="hidden md:flex"
-        aria-label="Primary navigation"
+        aria-label={t("primaryNavigation")}
       >
         <GlobalRail user={user} isAdmin={isAdmin} />
       </aside>

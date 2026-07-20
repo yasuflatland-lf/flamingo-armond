@@ -14,11 +14,25 @@ import {
 } from "@/generated/graphql";
 import { UndoDeleteProvider } from "@/lib/undo-delete";
 import { renderWithIntl } from "@/test/render-with-intl";
+import enMessages from "../../../../messages/en.json";
+import jaMessages from "../../../../messages/ja.json";
 import { AdminRolesClient, type RoleItem } from "./admin-roles-client";
 
 // ---------------------------------------------------------------------------
 // Runtime mocks
 // ---------------------------------------------------------------------------
+
+// sonner mock — captures the undo-toast label so the localized copy can be
+// asserted. Without a mounted <Toaster> the real toast() is a no-op, so this
+// is the only seam that observes the label.
+let lastToastLabel: string | undefined;
+vi.mock("sonner", () => ({
+  toast: vi.fn((label: string) => {
+    lastToastLabel = label;
+    return "toast-id";
+  }),
+  Toaster: () => null,
+}));
 
 let mockPathname = "/admin/roles";
 let mockSearchParamsValue = "";
@@ -77,14 +91,27 @@ const ADMIN_ROLE: RoleItem = { id: "r-admin", name: "admin" };
 // Helpers
 // ---------------------------------------------------------------------------
 
-function renderRoles(roles: RoleItem[], mocks: unknown[] = []) {
+function renderRoles(
+  roles: RoleItem[],
+  mocks: unknown[] = [],
+  intl?: { locale: "en" | "ja"; messages: typeof enMessages },
+) {
   renderWithIntl(
     <MockedProvider mocks={mocks as never}>
       <UndoDeleteProvider>
         <AdminRolesClient initialRoles={roles} />
       </UndoDeleteProvider>
     </MockedProvider>,
+    intl,
   );
+}
+
+/**
+ * Substitutes a single ICU `{name}` argument in a raw catalog string, so the
+ * undo-toast assertions stay sourced from `messages/*.json`.
+ */
+function withName(template: string, name: string) {
+  return template.replace("{name}", name);
 }
 
 function makeCodedError(code: string): CombinedGraphQLErrors {
@@ -103,6 +130,7 @@ beforeEach(() => {
   mockPush.mockReset();
   mockReplace.mockReset();
   mockRefresh.mockReset();
+  lastToastLabel = undefined;
 });
 
 afterEach(() => {
@@ -718,6 +746,36 @@ describe("AdminRolesClient — edit role sheet", () => {
     } finally {
       warnSpy.mockRestore();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AdminRolesClient — undo-toast label (localized copy + {name} argument)
+// ---------------------------------------------------------------------------
+
+describe("AdminRolesClient — undo-toast label", () => {
+  it.each([
+    ["en" as const, enMessages],
+    ["ja" as const, jaMessages],
+  ])("renders the %s undo-toast label with the {name} argument", async (locale, messages) => {
+    const user = userEvent.setup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const mocks = [
+      {
+        request: { query: AdminDeleteRoleDocument, variables: { id: CUSTOM_ROLE.id } },
+        result: { data: { adminDeleteRole: true } },
+      },
+    ];
+    renderRoles([CUSTOM_ROLE], mocks, { locale, messages });
+
+    await user.click(screen.getByTestId(`admin-role-delete-btn-${CUSTOM_ROLE.id}`));
+
+    expect(lastToastLabel).toBe(withName(messages.Admin.roleDeleted, CUSTOM_ROLE.name));
+
+    act(() => vi.advanceTimersByTime(5100));
+    vi.useRealTimers();
+    await waitFor(() => {});
   });
 });
 
