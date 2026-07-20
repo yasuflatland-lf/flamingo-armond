@@ -194,12 +194,46 @@ func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Rol
 // LastSignInAt resolves auth.users.last_sign_in_at via the per-request
 // LastSignInByUserID DataLoader (batched, so the admin user list issues one
 // auth.users read per page). A nil result means the user has never signed in.
+//
+// Authorization mirrors Roles: last_sign_in_at is a privileged authentication
+// signal, and the field is reachable from every resolver that returns a User,
+// so the gate lives in the field resolver rather than on any one query. A
+// caller reads their own value unconditionally; reading another user's value
+// requires the admin role, computed from the same RoleByUserID batch.
 func (r *userResolver) LastSignInAt(ctx context.Context, obj *model.User) (*time.Time, error) {
 	loaders, gqlErr := loadersOrInternal(ctx)
 	if gqlErr != nil {
 		return nil, gqlErr
 	}
-	t, err := loaders.LastSignInByUserID.Load(ctx, obj.ID)()
+	caller := auth.UserFrom(ctx)
+	if caller == nil || caller.Sub == "" {
+		return nil, gqlerr.Unauthenticated()
+	}
+
+	// Register the target load before the admin-status load so both keys share
+	// one batch window; the page's auth.users keys then resolve in one read.
+	lastSignInThunk := loaders.LastSignInByUserID.Load(ctx, obj.ID)
+
+	if caller.Sub != obj.ID {
+		callerRoles, err := loaders.RoleByUserID.Load(ctx, caller.Sub)()
+		if err != nil {
+			return nil, classifyLoaderErr(ctx, err, "resolver: last sign in: admin check")
+		}
+		// Reuse the domain admin-membership predicate rather than a resolver-local
+		// role loop, mirroring Roles above. Nil entries from the batch loader are
+		// skipped defensively before dereferencing.
+		callerSet := make(domain.RoleSet, 0, len(callerRoles))
+		for _, role := range callerRoles {
+			if role != nil {
+				callerSet = append(callerSet, *role)
+			}
+		}
+		if !callerSet.ContainsAdmin() {
+			return nil, gqlerr.NewForbidden("admin only")
+		}
+	}
+
+	t, err := lastSignInThunk()
 	if err != nil {
 		return nil, classifyLoaderErr(ctx, err, "resolver: last sign in")
 	}
