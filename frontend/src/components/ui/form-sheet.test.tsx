@@ -91,6 +91,19 @@ describe("<FormSheet>", () => {
     expect(screen.getByTestId("form-sheet-body")).toHaveClass("flex-1", "overflow-y-auto");
   });
 
+  it("reserves padding around the desktop sheet body so a focused field's ring is not clipped", () => {
+    renderWithIntl(
+      <FormSheet open onOpenChange={vi.fn()} title="Edit card">
+        <input aria-label="First field" />
+      </FormSheet>,
+    );
+
+    // `overflow-y-auto` clips at the padding box, and `ring-2 ring-offset-2` paints 4px
+    // outside the field's border box. `p-2` reserves that room; `-m-2` cancels it so the
+    // body keeps its original position.
+    expect(screen.getByTestId("form-sheet-body")).toHaveClass("-m-2", "p-2");
+  });
+
   it("renders a mobile drawer dialog when useIsMobile returns true", () => {
     vi.mocked(useIsMobile).mockReturnValue(true);
 
@@ -384,6 +397,20 @@ describe("<FormSheet>", () => {
       "max-h-[calc(100dvh-7rem)]",
       "overflow-y-auto",
     );
+  });
+
+  it("reserves padding above the mobile drawer body so a focused field's ring is not clipped", () => {
+    vi.mocked(useIsMobile).mockReturnValue(true);
+
+    renderWithIntl(
+      <FormSheet open onOpenChange={vi.fn()} title="Add card">
+        <input aria-label="First field" />
+      </FormSheet>,
+    );
+
+    // Same reserve as the desktop body; `px-4` already leaves horizontal room, so only the
+    // top edge needs it here.
+    expect(screen.getByTestId("form-sheet-body")).toHaveClass("-mt-2", "pt-2");
   });
 
   it("renders a string-title desktop sheet with accessible description '<title> form'", () => {

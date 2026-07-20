@@ -266,7 +266,9 @@ export function MergeFromCatalogSheet({
                   <button
                     type="button"
                     onClick={() => void handleSelect(deck.id, deck.name)}
-                    className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-muted/40"
+                    // `px-3` matches the search field's own horizontal padding so the deck
+                    // name lines up with the placeholder text directly above it.
+                    className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left hover:bg-muted/40"
                     data-testid={`merge-from-catalog-row-${deck.id}`}
                   >
                     <span className="min-w-0">

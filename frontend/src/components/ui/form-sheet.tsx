@@ -131,8 +131,16 @@ function FormSheet({
             {a11yDescription}
           </DrawerDescription>
         </DrawerHeader>
+        {/*
+          `pt-2` (cancelled out by `-mt-2` so the first child keeps its position) reserves
+          scroll-container padding above the first child: `overflow-y-auto` clips at the
+          padding box, and a focused field's `ring-2 ring-offset-2` paints 4px outside its
+          border box. Without the reserve, a field flush against the top of the body — e.g.
+          the search input in `merge-from-catalog-sheet.tsx` — renders with its focus ring
+          sheared off. `px-4` already leaves horizontal room.
+        */}
         <div
-          className="flex max-h-[calc(100dvh-7rem)] flex-col gap-4 overflow-y-auto px-4 pb-4"
+          className="-mt-2 flex max-h-[calc(100dvh-7rem)] flex-col gap-4 overflow-y-auto px-4 pb-4 pt-2"
           data-testid="form-sheet-body"
         >
           {children}
@@ -150,7 +158,8 @@ function FormSheet({
             {a11yDescription}
           </SheetDescription>
         </SheetHeader>
-        <div className="-mx-2 flex-1 overflow-y-auto px-2" data-testid="form-sheet-body">
+        {/* `-m-2 p-2`: same focus-ring reserve as the drawer body, on all four sides. */}
+        <div className="-m-2 flex-1 overflow-y-auto p-2" data-testid="form-sheet-body">
           {children}
         </div>
       </SheetContent>

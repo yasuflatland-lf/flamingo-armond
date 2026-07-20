@@ -221,6 +221,14 @@ describe("<MergeFromCatalogSheet>", () => {
     expect(screen.getByText("JLPT Kanji")).toBeInTheDocument();
   });
 
+  it("insets each deck row horizontally so its name lines up with the search placeholder", async () => {
+    renderSheet({ mocks: [BASE_CATALOG] });
+
+    // The search field is a design-system `<Input>` with `px-3`; a row rendered flush
+    // against the list container reads as misaligned against the placeholder above it.
+    expect(await screen.findByTestId("merge-from-catalog-row-master-1")).toHaveClass("px-3");
+  });
+
   it("selecting a row previews the diff and confirming merges", async () => {
     const user = userEvent.setup();
     const onMerged = vi.fn();
