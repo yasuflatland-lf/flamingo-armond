@@ -1381,7 +1381,7 @@ func TestMasterCatalogUsecase_MergeMaster_DestVanishedAfterCommit_NotNotFoundOut
 		stubTxRunner,
 		newTestLogger(),
 	)
-	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, deck, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 
 	out, err := uc.MergeMaster(authedCtx(ownerID), masterID, destID)
 	if out.NotFound {
