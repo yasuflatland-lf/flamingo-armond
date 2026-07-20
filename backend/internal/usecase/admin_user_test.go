@@ -9,6 +9,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/repository"
 )
@@ -649,6 +650,50 @@ func TestAdminUser_List_MalformedCursor_Before(t *testing.T) {
 	assertValidationError(t, err, "before", "invalid cursor")
 	if users.listCalls != 0 {
 		t.Fatalf("malformed cursor must be rejected before ListPage, got %d calls", users.listCalls)
+	}
+}
+
+// TestAdminUser_List_V2Cursor_Rejected pins the guard against cross-envelope
+// acceptance. The admin-users listing orders by the immutable created_at and
+// never emits a v2 cursor, so a decodable v2 envelope — even one whose id names
+// a real user — must be rejected before ListPage rather than paged by its raw
+// id under ordering metadata this connection never validated. The fixture is a
+// hand-built envelope because no production code path can produce one here.
+func TestAdminUser_List_V2Cursor_Rejected(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		field string
+	}{
+		{name: "after", field: "after"},
+		{name: "before", field: "before"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			users := &mockAdminUserRepository{}
+			authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+			uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
+
+			cur := cursor.EncodeV2(cursor.Payload{
+				ID:        "00000000-0000-0000-0000-000000000000",
+				OrderBy:   "sort_order",
+				Direction: "ASC",
+				OrderKey:  "1",
+			})
+
+			var err error
+			if tc.field == "after" {
+				_, err = uc.List(adminCallerCtx("admin-1"), intPtr(5), nil, &cur, nil, nil)
+			} else {
+				_, err = uc.List(adminCallerCtx("admin-1"), nil, intPtr(5), nil, &cur, nil)
+			}
+			assertValidationError(t, err, tc.field, "cursor does not match the requested ordering")
+			if users.listCalls != 0 {
+				t.Fatalf("v2 cursor must be rejected before ListPage, got %d calls", users.listCalls)
+			}
+		})
 	}
 }
 

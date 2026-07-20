@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strconv"
 
 	"github.com/rotisserie/eris"
 
@@ -84,6 +85,15 @@ type MasterCatalogItem struct {
 
 // MasterCatalogConnectionOutput is the usecase-level page result. The resolver
 // wraps it into a model.MasterCatalogConnection.
+//
+// Ordering and OrderKeys exist so the resolver can emit v2 cursors: the
+// catalog defaults to the admin-mutable SORT_ORDER column, so a cursor that
+// carried only an id would move whenever an admin re-orders the deck it points
+// at. Ordering is the (orderBy, direction) this page was served under;
+// OrderKeys maps each returned master cardgroup id to the serialized value its
+// ordering column held at serve time. Both are consumed only at the
+// resolver→model boundary — the output itself still carries RAW ids, never
+// pre-encoded cursors.
 type MasterCatalogConnectionOutput struct {
 	Items      []*MasterCatalogItem
 	TotalCount int64
@@ -91,6 +101,8 @@ type MasterCatalogConnectionOutput struct {
 	HasPrev    bool
 	StartCur   string
 	EndCur     string
+	Ordering   PageOrdering
+	OrderKeys  map[string]string
 }
 
 // masterDeckUsecaseFacade is the master-deck capability the catalog consumes:
@@ -230,11 +242,13 @@ func (u *masterCatalogUsecase) listMasterCatalogCore(
 		return nil, err
 	}
 
-	after, err := u.resolveMasterCatalogCursor(ctx, in.After, orderBy, "after", publishedOnly)
+	ordering := PageOrdering{OrderBy: string(orderBy), Direction: string(dir)}
+
+	after, err := u.resolveMasterCatalogCursor(ctx, in.After, orderBy, ordering, "after", publishedOnly)
 	if err != nil {
 		return nil, err
 	}
-	before, err := u.resolveMasterCatalogCursor(ctx, in.Before, orderBy, "before", publishedOnly)
+	before, err := u.resolveMasterCatalogCursor(ctx, in.Before, orderBy, ordering, "before", publishedOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -266,11 +280,90 @@ func (u *masterCatalogUsecase) listMasterCatalogCore(
 		return nil, err
 	}
 
+	// OrderKeys snapshots the ordering column of every row in this page so the
+	// resolver can embed it in the cursor it emits. Capturing it here — rather
+	// than re-reading the row when the cursor comes back — is what makes the
+	// bookmark survive an admin edit to the boundary row.
+	keys, err := masterCatalogOrderKeys(orderBy, items)
+	if err != nil {
+		return nil, err
+	}
+
 	// StartCur / EndCur carry the RAW node id; the resolver's connection layer
 	// applies the cursor encoder once. Encoding here would double-encode.
-	out := &MasterCatalogConnectionOutput{TotalCount: total, HasNext: hasNext, HasPrev: hasPrev, Items: items}
+	out := &MasterCatalogConnectionOutput{
+		TotalCount: total,
+		HasNext:    hasNext,
+		HasPrev:    hasPrev,
+		Items:      items,
+		Ordering:   ordering,
+		OrderKeys:  keys,
+	}
 	out.StartCur, out.EndCur = firstLastCursor(items, func(it *MasterCatalogItem) string { return it.Cardgroup.ID })
 	return out, nil
+}
+
+// masterCatalogOrderKeys serializes the active ordering column of every row in
+// a served page, keyed by master cardgroup id. An orderBy outside the allowlist
+// is a caller bug and surfaces as INTERNAL, matching masterCatalogOrderKey.
+func masterCatalogOrderKeys(orderBy repository.MasterCatalogOrderBy, items []*MasterCatalogItem) (map[string]string, error) {
+	keys := make(map[string]string, len(items))
+	for _, it := range items {
+		if it == nil || it.Cardgroup == nil {
+			continue
+		}
+		k, err := masterCatalogOrderKey(orderBy, it.Cardgroup)
+		if err != nil {
+			return nil, err
+		}
+		keys[it.Cardgroup.ID] = k
+	}
+	return keys, nil
+}
+
+// masterCatalogOrderKey serializes one master cardgroup's ordering column for
+// embedding in a v2 cursor. The default arm mirrors
+// resolveMasterCatalogCursor's: an orderBy the switch does not handle is a
+// caller bug, surfaced as INTERNAL rather than a silently unhydrated cursor.
+func masterCatalogOrderKey(orderBy repository.MasterCatalogOrderBy, mcg *domain.MasterCardgroup) (string, error) {
+	switch orderBy {
+	case repository.MasterCatalogOrderBySortOrder:
+		return strconv.Itoa(mcg.SortOrder), nil
+	case repository.MasterCatalogOrderByCreatedAt:
+		return encodeTimeOrderKey(mcg.CreatedAt), nil
+	case repository.MasterCatalogOrderByName:
+		return mcg.Name.String(), nil
+	default:
+		return "", eris.Errorf("usecase: master catalog: unhandled orderBy %q", orderBy)
+	}
+}
+
+// applyMasterCatalogOrderKey populates the repository cursor column the active
+// orderBy needs from the value a v2 cursor carried. A key that does not parse
+// into the column type returns errCursorKeyMalformed so the caller maps it to
+// BAD_USER_INPUT; an unhandled orderBy stays INTERNAL.
+func applyMasterCatalogOrderKey(c *repository.MasterCatalogCursor, orderBy repository.MasterCatalogOrderBy, key string) error {
+	switch orderBy {
+	case repository.MasterCatalogOrderBySortOrder:
+		n, err := decodeIntOrderKey(key)
+		if err != nil {
+			return err
+		}
+		c.SortOrder = &n
+		return nil
+	case repository.MasterCatalogOrderByCreatedAt:
+		t, err := decodeTimeOrderKey(key)
+		if err != nil {
+			return err
+		}
+		c.CreatedAt = &t
+		return nil
+	case repository.MasterCatalogOrderByName:
+		c.Name = &key
+		return nil
+	default:
+		return eris.Errorf("usecase: master catalog: unhandled orderBy %q", orderBy)
+	}
 }
 
 // masterCatalogOrderByColumns is the usecase→repository orderBy allowlist for the master catalog.
@@ -296,27 +389,41 @@ func resolveMasterCatalogOrderBy(
 // via FindPublishedByID (catalog scope — a draft or unknown id is rejected as
 // cursor-not-found so drafts never leak); false hydrates via FindByID (admin
 // scope — DRAFT decks are valid cursors). Returns BAD_USER_INPUT when the cursor
-// cannot be decoded or references a row outside the active scope. The scope check
-// runs even when orderBy is missing a hydratable column.
+// cannot be decoded, was taken under a different ordering, carries an
+// ordering-key value that does not parse, or references a row outside the
+// active scope.
+//
+// A v2 cursor supplies the ordering-key value captured when its page was
+// served, so an admin edit to the row between two fetches cannot move the
+// bookmark. A v1 or legacy cursor carries no such value and falls back to
+// re-reading the ordering column off the CURRENT row.
+//
+// Both paths run the scope-selected lookup, and both run it even when the
+// active orderBy needs no hydratable column — a v2 cursor must not bypass the
+// published-scope gate just because it can hydrate itself.
 func (u *masterCatalogUsecase) resolveMasterCatalogCursor(
 	ctx context.Context,
 	cursorStr *string,
 	orderBy repository.MasterCatalogOrderBy,
+	ordering PageOrdering,
 	field string,
 	publishedOnly bool,
 ) (*repository.MasterCatalogCursor, error) {
-	id, present, err := decodeCursorOrBadInput(cursorStr, field)
+	p, present, err := decodeCursorOrBadInput(cursorStr, field)
 	if err != nil {
 		return nil, err
 	}
 	if !present {
 		return nil, nil
 	}
+	if err := requireCursorOrdering(p, ordering, field); err != nil {
+		return nil, err
+	}
 	fetchByID := u.repo.FindByID
 	if publishedOnly {
 		fetchByID = u.repo.FindPublishedByID
 	}
-	mcg, err := fetchByID(ctx, id)
+	mcg, err := fetchByID(ctx, p.ID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ucerr.NewValidationError(field, "cursor not found")
@@ -327,7 +434,18 @@ func (u *masterCatalogUsecase) resolveMasterCatalogCursor(
 		return nil, eris.Wrap(err, "usecase: master catalog: hydrate cursor")
 	}
 
-	c := &repository.MasterCatalogCursor{ID: id}
+	c := &repository.MasterCatalogCursor{ID: p.ID}
+	if p.HasOrdering {
+		if err := applyMasterCatalogOrderKey(c, orderBy, p.OrderKey); err != nil {
+			if errors.Is(err, errCursorKeyMalformed) {
+				return nil, ucerr.NewValidationError(field, "invalid cursor")
+			}
+			return nil, err
+		}
+		return c, nil
+	}
+
+	// v1 / legacy bare-UUID fallback: re-hydrate from the current row.
 	switch orderBy {
 	case repository.MasterCatalogOrderBySortOrder:
 		so := mcg.SortOrder
