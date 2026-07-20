@@ -37,6 +37,15 @@ func NewAdminGate(checker AdminChecker) *AdminGate {
 	return &AdminGate{checker: checker}
 }
 
+// IsAdmin delegates to the wrapped AdminChecker so *AdminGate itself satisfies
+// AdminChecker. Usecases that already hold an *AdminGate for their admin-gated
+// methods can therefore pass it to helpers that take a bare AdminChecker (e.g.
+// checkCardgroupLimit's admin exemption) instead of carrying a second,
+// redundant dependency on the same underlying auth service.
+func (g *AdminGate) IsAdmin(ctx context.Context, userID string) (bool, error) {
+	return g.checker.IsAdmin(ctx, userID)
+}
+
 // Require returns the caller's user ID after confirming the bearer is an
 // admin. Return paths:
 //

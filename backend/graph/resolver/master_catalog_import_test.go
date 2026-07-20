@@ -58,6 +58,35 @@ func TestMutationResolver_ImportMasterCardgroup_NotFound_ReturnsTypedError(t *te
 	}
 }
 
+func TestMutationResolver_ImportMasterCardgroup_LimitReached_ReturnsTypedError(t *testing.T) {
+	t.Parallel()
+
+	// The quota rejection is data, mapped to the same CardgroupLimitReachedError
+	// variant createCardgroup returns, carrying limit/current so the client can
+	// localize the copy without a second round-trip.
+	stub := &stubMasterCatalogUC{
+		importOut: usecase.ImportMasterOutcome{
+			LimitReached: &usecase.CardgroupLimitInfo{Limit: 5, Current: 5},
+		},
+	}
+	r := &Resolver{MasterCatalogUC: stub}
+
+	res, err := r.Mutation().ImportMasterCardgroup(context.Background(), "m1")
+	if err != nil {
+		t.Fatalf("limit-reached must be data, not error; got %v", err)
+	}
+	limit, ok := res.(model.CardgroupLimitReachedError)
+	if !ok {
+		t.Fatalf("expected CardgroupLimitReachedError, got %T", res)
+	}
+	if limit.Limit != 5 || limit.Current != 5 {
+		t.Fatalf("expected limit=5 current=5, got limit=%d current=%d", limit.Limit, limit.Current)
+	}
+	if limit.Message == "" {
+		t.Fatal("expected a non-empty message")
+	}
+}
+
 func TestMutationResolver_ImportMasterCardgroup_Unauthenticated_WrapsError(t *testing.T) {
 	t.Parallel()
 

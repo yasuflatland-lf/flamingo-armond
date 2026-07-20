@@ -40,7 +40,7 @@ func masterCardgroup(id string) *domain.MasterCardgroup {
 
 func TestMasterCatalog_CreateMaster_NonAdminForbidden(t *testing.T) {
 	t.Parallel()
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(false), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(false), newTestLogger())
 	ctx := authedCtx("u1")
 	_, err := uc.CreateMaster(ctx, CreateMasterInput{Name: "Deck"})
 	var forbidden *ucerr.ForbiddenError
@@ -49,7 +49,7 @@ func TestMasterCatalog_CreateMaster_NonAdminForbidden(t *testing.T) {
 
 func TestMasterCatalog_CreateMaster_InvalidNameValidation(t *testing.T) {
 	t.Parallel()
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
 	out, err := uc.CreateMaster(ctx, CreateMasterInput{Name: "   "}) // empty after trim
 	require.NoError(t, err)
@@ -60,7 +60,7 @@ func TestMasterCatalog_CreateMaster_InvalidNameValidation(t *testing.T) {
 
 func TestMasterCatalog_CreateMaster_InvalidDescriptionValidation(t *testing.T) {
 	t.Parallel()
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
 	tooLong := strings.Repeat("a", domain.DescriptionMax+1)
 	out, err := uc.CreateMaster(ctx, CreateMasterInput{Name: "My Deck", Description: &tooLong})
@@ -73,7 +73,7 @@ func TestMasterCatalog_CreateMaster_InvalidDescriptionValidation(t *testing.T) {
 func TestMasterCatalog_CreateMaster_Success(t *testing.T) {
 	t.Parallel()
 	repo := &mockMasterCatalogRepository{}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
 	out, err := uc.CreateMaster(ctx, CreateMasterInput{Name: "My Deck"})
 	require.NoError(t, err)
@@ -90,7 +90,7 @@ func TestMasterCatalog_CreateMaster_Success(t *testing.T) {
 
 func TestMasterCatalog_UpdateMaster_NonAdminForbidden(t *testing.T) {
 	t.Parallel()
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(false), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(false), newTestLogger())
 	ctx := authedCtx("u1")
 	_, err := uc.UpdateMaster(ctx, "some-id", UpdateMasterInput{})
 	var forbidden *ucerr.ForbiddenError
@@ -99,7 +99,7 @@ func TestMasterCatalog_UpdateMaster_NonAdminForbidden(t *testing.T) {
 
 func TestMasterCatalog_UpdateMaster_InvalidName(t *testing.T) {
 	t.Parallel()
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
 	name := "   "
 	out, err := uc.UpdateMaster(ctx, "some-id", UpdateMasterInput{Name: &name})
@@ -111,7 +111,7 @@ func TestMasterCatalog_UpdateMaster_InvalidName(t *testing.T) {
 
 func TestMasterCatalog_UpdateMaster_InvalidDescription(t *testing.T) {
 	t.Parallel()
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
 	tooLong := strings.Repeat("a", domain.DescriptionMax+1)
 	out, err := uc.UpdateMaster(ctx, "some-id", UpdateMasterInput{Description: &tooLong})
@@ -130,7 +130,7 @@ func TestMasterCatalog_UpdateMaster_Success(t *testing.T) {
 		},
 		countCardsRes: 5,
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
 	newName := "Updated"
 	out, err := uc.UpdateMaster(ctx, "id-1", UpdateMasterInput{Name: &newName})
@@ -143,7 +143,7 @@ func TestMasterCatalog_UpdateMaster_Success(t *testing.T) {
 func TestMasterCatalog_UpdateMaster_NotFound(t *testing.T) {
 	t.Parallel()
 	// updateFn defaults to returning ErrNotFound when nil in mock.
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
 	out, err := uc.UpdateMaster(ctx, "missing", UpdateMasterInput{})
 	require.NoError(t, err)
@@ -165,7 +165,7 @@ func TestMasterCatalog_PublishMaster_EmptyMasterRejected(t *testing.T) {
 		countCardsRes: 0,
 		publishFn:     func(_ string) (*domain.MasterCardgroup, error) { publishCalled = true; return mcg, nil },
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
 	out, err := uc.PublishMaster(ctx, "id-1")
 	require.NoError(t, err)
@@ -185,7 +185,7 @@ func TestMasterCatalog_PublishMaster_Success(t *testing.T) {
 		countCardsRes: 3,
 		publishFn:     func(_ string) (*domain.MasterCardgroup, error) { return &published, nil },
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
 	out, err := uc.PublishMaster(ctx, "id-1")
 	require.NoError(t, err)
@@ -209,7 +209,7 @@ func TestMasterCatalog_UnpublishMaster_Success(t *testing.T) {
 		unpublishFn:   func(_ string) (*domain.MasterCardgroup, error) { return &draft, nil },
 		countCardsRes: 7,
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
 	result, err := uc.UnpublishMaster(ctx, "id-1")
 	require.NoError(t, err)
@@ -221,7 +221,7 @@ func TestMasterCatalog_UnpublishMaster_Success(t *testing.T) {
 func TestMasterCatalog_UnpublishMaster_NotFound(t *testing.T) {
 	t.Parallel()
 	// unpublishFn defaults to ErrNotFound when nil in mock.
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
 	_, err := uc.UnpublishMaster(ctx, "missing")
 	// lowerValidationInfo converts the not-found info into a *ucerr.ValidationError.
@@ -236,7 +236,7 @@ func TestMasterCatalog_UnpublishMaster_NotFound(t *testing.T) {
 
 func TestMasterCatalog_DeleteMaster_NonAdminForbidden(t *testing.T) {
 	t.Parallel()
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(false), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(false), newTestLogger())
 	ctx := authedCtx("u1")
 	err := uc.DeleteMaster(ctx, "some-id")
 	var forbidden *ucerr.ForbiddenError
@@ -246,7 +246,7 @@ func TestMasterCatalog_DeleteMaster_NonAdminForbidden(t *testing.T) {
 func TestMasterCatalog_DeleteMaster_Success(t *testing.T) {
 	t.Parallel()
 	repo := &mockMasterCatalogRepository{deleteErr: nil}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
 	err := uc.DeleteMaster(ctx, "some-id")
 	require.NoError(t, err)
@@ -255,7 +255,7 @@ func TestMasterCatalog_DeleteMaster_Success(t *testing.T) {
 func TestMasterCatalog_DeleteMaster_NotFound(t *testing.T) {
 	t.Parallel()
 	repo := &mockMasterCatalogRepository{deleteErr: repository.ErrNotFound}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
 	err := uc.DeleteMaster(ctx, "some-id")
 	var ve *ucerr.ValidationError
@@ -269,7 +269,7 @@ func TestMasterCatalog_DeleteMaster_NotFound(t *testing.T) {
 
 func TestMasterCatalog_ListAdminConnection_NonAdminForbidden(t *testing.T) {
 	t.Parallel()
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(false), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(false), newTestLogger())
 	ctx := authedCtx("u1")
 	_, err := uc.ListAdminConnection(ctx, MasterCatalogConnectionInput{})
 	var forbidden *ucerr.ForbiddenError
@@ -286,7 +286,7 @@ func TestMasterCatalog_ListAdminConnection_ReturnsPage(t *testing.T) {
 		findPageAnyStatusTotal: 2,
 		findPageAnyStatus:      items,
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
 	out, err := uc.ListAdminConnection(ctx, MasterCatalogConnectionInput{
 		First: intPtr(10),
@@ -307,7 +307,7 @@ func TestNewMasterCatalogUsecase_NilAdminGatePanics(t *testing.T) {
 			t.Fatal("expected panic on nil adminGate")
 		}
 	}()
-	NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, nil, newTestLogger())
+	NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, nil, newTestLogger())
 }
 
 // ---------------------------------------------------------------------------
@@ -327,7 +327,7 @@ func TestMasterCatalog_PublishMaster_NotFound(t *testing.T) {
 			return nil, nil
 		},
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
 	_, err := uc.PublishMaster(ctx, "missing-id")
 	require.Error(t, err)
@@ -351,7 +351,7 @@ func TestMasterCatalog_UpdateMaster_CountCardsErrorAfterUpdate(t *testing.T) {
 		},
 		countCardsErr: sentinel,
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
 	newName := "New name"
 	out, err := uc.UpdateMaster(ctx, "id-1", UpdateMasterInput{Name: &newName})
@@ -375,7 +375,7 @@ func TestMasterCatalog_PublishMaster_CountCardsError(t *testing.T) {
 		countCardsErr: sentinel,
 		publishFn:     func(_ string) (*domain.MasterCardgroup, error) { publishCalled = true; return mcg, nil },
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	ctx := authedCtx("admin1")
 	out, err := uc.PublishMaster(ctx, "id-1")
 	require.Error(t, err)

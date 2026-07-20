@@ -39,7 +39,7 @@ func newMasterCatalogUsecaseForParityTest(t *testing.T) usecase.MasterCatalogUse
 	cgRepo := repository.NewCardgroupRepository(testDB.GORM)
 	deckUC := usecase.NewMasterDeckUsecase(mcgRepo, mcRepo, cardRepo, cgRepo, testDB.GORM, logger)
 	adminGate := usecase.NewAdminGate(stubParityAdminChecker{})
-	return usecase.NewMasterCatalogUsecase(mcgRepo, deckUC, adminGate, logger)
+	return usecase.NewMasterCatalogUsecase(mcgRepo, deckUC, cgRepo, adminGate, logger)
 }
 
 // seedOwnedCardgroupWithCards creates a user-owned cardgroup and inserts the given

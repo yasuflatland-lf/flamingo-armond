@@ -35,6 +35,9 @@ interface OnboardingStartClientProps {
  */
 export function OnboardingStartClient({ cardgroups }: OnboardingStartClientProps) {
   const t = useTranslations("OnboardingStart");
+  // The cardgroup quota is the same rule the create form enforces, so the import
+  // path reuses that feature's copy rather than duplicating it under OnboardingStart.
+  const tCardgroups = useTranslations("Cardgroups");
   const router = useRouter();
   const { importMasterCardgroup } = useImportMaster();
   const { seedDefaultStarters } = useSeedDefaultStarters();
@@ -66,6 +69,12 @@ export function OnboardingStartClient({ cardgroups }: OnboardingStartClientProps
           setImportError(t("importNotFound"));
           setImportingId(null);
           return;
+        case "limit_reached":
+          setImportError(
+            tCardgroups("limitReached", { limit: outcome.limit, current: outcome.current }),
+          );
+          setImportingId(null);
+          return;
         case "auth":
           setImportAuthError(outcome.kind);
           setImportingId(null);
@@ -76,7 +85,7 @@ export function OnboardingStartClient({ cardgroups }: OnboardingStartClientProps
           return;
       }
     },
-    [importingId, seeding, importMasterCardgroup, router, t],
+    [importingId, seeding, importMasterCardgroup, router, t, tCardgroups],
   );
 
   const handleStartWithDefaults = useCallback(async () => {
