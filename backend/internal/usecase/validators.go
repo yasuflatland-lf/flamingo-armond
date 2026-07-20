@@ -62,8 +62,11 @@ func translateBioErr(err error) error {
 }
 
 // translateCardErr maps domain Card sentinels into usecase-layer typed errors.
-// Unexpected errors are wrapped with eris.
+// Unexpected errors are wrapped with eris. Returns nil when err is nil.
 func translateCardErr(err error) error {
+	if err == nil {
+		return nil
+	}
 	switch {
 	case errors.Is(err, domain.ErrCardFrontRequired):
 		return ucerr.NewValidationError("front", "front is required")

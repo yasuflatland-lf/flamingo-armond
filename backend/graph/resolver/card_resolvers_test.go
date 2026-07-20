@@ -44,7 +44,7 @@ type cardMockRepo struct {
 func (m *cardMockRepo) FindByID(_ context.Context, _ string) (*domain.Card, error) {
 	return m.findByIDResult, m.findByIDErr
 }
-func (m *cardMockRepo) FindDueCardsForUser(_ context.Context, _ string, _ string, _ time.Time, _ time.Time, _ time.Time, limit int) ([]domain.DueCard, error) {
+func (m *cardMockRepo) FindDueCardsForUser(_ context.Context, _ string, _ string, _ time.Time, _ time.Time, _ time.Time, _ time.Time, limit int) ([]domain.DueCard, error) {
 	m.findDueLimit = limit
 	return m.findDueRows, m.findDueErr
 }

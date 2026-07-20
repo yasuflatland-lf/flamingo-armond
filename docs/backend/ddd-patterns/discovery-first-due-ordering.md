@@ -54,8 +54,10 @@ Within those mechanisms:
   Again or whose FSRS stability is below `domain.LearnedStabilityDays`. The
   rescue window admits those cards when their due timestamp falls before the
   current JST learn day's exclusive end, so a rescue due later today can be
-  served early. Rows outside the rescue band act as filler only after their due
-  timestamp has arrived. A mature card last rated Hard is filler, not rescue.
+  served early — but only once a whole day has passed since the card's last
+  review (`domain.RescueReviewedBefore(now)`, 24 hours before now). Rows outside
+  the rescue band act as filler only after their due timestamp has arrived. A
+  mature card last rated Hard is filler, not rescue.
 - A card whose `last_review` is at or after the learner's JST start-of-today is
   **excluded** from the review window, so a card swiped today never reappears
   in today's queue regardless of its FSRS re-due interval.
@@ -70,7 +72,7 @@ deterministic while the database does the sampling:
 
 | Stage | Owner | Behaviour |
 |---|---|---|
-| Selection (which rows enter each window) | `repository.FindDueCardsForUser` | Three independent `LIMIT` windows, each ordered by `random()`: rescue reviews (`due < rescueDueBefore AND last_review < reviewedBefore` plus `last_rating = Again OR stability < LearnedStabilityDays`), disjoint filler reviews (`due <= now` plus the inverse band predicate), then new cards with no FSRS row. |
+| Selection (which rows enter each window) | `repository.FindDueCardsForUser` | Three independent `LIMIT` windows, each ordered by `random()`: rescue reviews (`due < rescueDueBefore AND last_review < reviewedBefore AND last_review <= rescueReviewedBefore` plus `last_rating = Again OR stability < LearnedStabilityDays`), disjoint filler reviews (`due <= now` plus the inverse band predicate), then new cards with no FSRS row. |
 | Arrangement (order within the batch) | `service.OrderingPolicy.Apply` | Injected `*rand.Rand` shuffles the new partition fully and the review partition within same-band runs; then interleaves at the caller-supplied ratio (`domain.DefaultNewCardRatio` = 4:1 absent a stored preference) with review-first emission. |
 | Truncation | `usecase.LearnUsecase.NextDueCards` | Caps the interleaved result to the session limit (`ordered[:n]`). Because the three windows return up to `3*limit` rows, this truncate is load-bearing: it yields the 16/4 split for a 20-card request only when both the combined review pool and new-card pool are full, and skews toward review when the unseen pool is short (see Policy). |
 
@@ -101,6 +103,29 @@ deterministic while the database does the sampling:
   `domain.EndOfLearnDay(now)`. A rescue due later today is eligible, while one
   due exactly at the next JST midnight is not. Filler remains time-granular and
   uses `ucs.due <= now`.
+- **A rescue card is served early only after a whole day of elapsed time.** The
+  rescue predicate additionally requires `ucs.last_review <= rescueReviewedBefore`,
+  where `rescueReviewedBefore` is `domain.RescueReviewedBefore(now)` — exactly 24
+  hours before now. FSRS derives elapsed days as `floor(hours/24)`, so a repeat
+  inside the same 24 hours counts as zero elapsed days: retrievability is 1 and
+  the stability growth factor `exp((1-r)*W10)-1` is bit-exactly 0. Because the
+  early serve deliberately surfaces cards due later today, without this floor the
+  queue manufactures zero-credit reviews — a learner who fails a card at 23:00
+  and answers it at 09:00 the next morning earns no scheduling progress, the card
+  stays below the learned threshold, and it occupies a rescue slot again in the
+  next session. The bound is non-strict: a card last reviewed exactly 24 hours
+  ago is eligible. The floor is always at or before `domain.StartOfLearnDay(now)`,
+  so within the rescue window it is the tighter of the two `last_review` bounds;
+  the day-boundary bound stays in the predicate because it is the sole
+  `last_review` guard for the filler window. The threshold is computed by the
+  usecase and passed as a bound query argument — the repository never reads the
+  clock.
+- **The rescue floor narrows, never widens, the windows.** A rescue-band card
+  blocked by the floor does not fall through to filler: the filler predicate
+  requires the inverse band (`last_rating IS DISTINCT FROM Again AND stability >=
+  LearnedStabilityDays`) and the new-card window requires a NULL `due`. The three
+  windows therefore stay pairwise disjoint, and the blocked card simply has no
+  window for that day.
 - **The review-window cutoff is strictly before the boundary.** The repository
   predicate is `ucs.last_review < ?` (strict `<`), so a card whose `last_review`
   equals the JST start-of-day exactly is excluded — a card swiped at local
@@ -113,8 +138,8 @@ deterministic while the database does the sampling:
   before `UpsertTx` persists the aggregate. Each column carries a different part
   of the partition, and each fails differently if its NOT NULL is relaxed:
   - **`last_review`** is the one whose NULL hides a card completely. Rescue and
-    filler test `ucs.last_review < ?` and practice tests `ucs.last_review >= ?`,
-    all unknown for NULL, while the new-card window is closed to the row because
+    filler test `ucs.last_review < ?` (rescue also `ucs.last_review <= ?` against
+    the 24-hour floor) and practice tests `ucs.last_review >= ?`, all unknown for NULL, while the new-card window is closed to the row because
     its `due` is not NULL. The card then satisfies no window and vanishes from
     every queue with no error surfaced.
   - **`due`** does not hide the row; it moves it. Rescue and filler guard on
@@ -136,7 +161,9 @@ deterministic while the database does the sampling:
 
 Discovery is bought at the cost of review efficiency. Rescue-band cards claim
 the review slots before filler reviews, and rescue cards due later in the JST
-day may be served before their exact due time. A large filler backlog therefore
+day may be served before their exact due time — but never within 24 hours of
+their last review, because such a repeat earns no FSRS credit at all and would
+consume a rescue slot for nothing. A large filler backlog therefore
 drains more slowly than a pure due-date order would drain it. This is deliberate:
 queue's primary job became surfacing the unseen backlog, not maximising
 retention throughput. `cards.position` remains Notion-sync metadata (assigned
@@ -145,7 +172,8 @@ learn ordering — new cards are sampled randomly, not walked in document order.
 
 ## Reference
 
-- `backend/internal/domain/learn_day.go` — `StartOfLearnDay`, `EndOfLearnDay`.
+- `backend/internal/domain/learn_day.go` — `StartOfLearnDay`, `EndOfLearnDay`,
+  `RescueReviewedBefore` (the rescue window's 24-hour minimum-elapsed floor).
 - `backend/internal/domain/mastery_tier.go` — `LearnedStabilityDays`.
 - `backend/internal/domain/due_card.go` — `DueCard.Rescue`.
 - `backend/internal/domain/service/due_card_ordering.go` — `OrderingPolicy.Apply`,
