@@ -42,11 +42,12 @@ func TestSwipeRecordsCardgroupFKDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back two migrations newest-first: widen_text_length_checks, then
-	// add_cardgroup_fk_to_swipe_records (the target). The Steps(1) below
+	// Step back three migrations newest-first: widen_updated_at_triggers_to_insert,
+	// widen_text_length_checks, then add_cardgroup_fk_to_swipe_records (the target).
+	// The Steps(1) below
 	// re-applies only the cardgroup FK; the t.Cleanup restores the rest. Bump
 	// this count when adding migrations after add_cardgroup_fk_to_swipe_records.
-	if err := m.Steps(-2); err != nil {
+	if err := m.Steps(-3); err != nil {
 		t.Fatalf("migrate down cardgroup fk migration: %v", err)
 	}
 	if _, ok := swipeRecordsCardgroupFKDeleteRule(t, ctx, sqlDB); ok {

@@ -23,7 +23,6 @@ func insertCards(t *testing.T, ctx context.Context, repo repository.CardReposito
 		c := newCard(cgID, fmt.Sprintf("front-%d", i), "back")
 		// Stagger timestamps by 1 hour so ordering is unambiguous.
 		c.CreatedAt = now.Add(time.Duration(i) * time.Hour)
-		c.UpdatedAt = c.CreatedAt
 		require.NoError(t, repo.Create(ctx, c))
 		cards[i] = c
 	}
@@ -320,7 +319,6 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue(t *tes
 	for i := 0; i < 3; i++ {
 		c := newCard(cg.ID, fmt.Sprintf("front-%d", i), "back")
 		c.CreatedAt = now
-		c.UpdatedAt = now
 		require.NoError(t, repo.Create(ctx, c))
 		cards[i] = c
 	}
@@ -452,7 +450,6 @@ func TestCardRepo_FindPageByCardgroup_Search_WithAfter(t *testing.T) {
 	for i, front := range matchingFronts {
 		c := newCard(cg.ID, front, "back")
 		c.CreatedAt = now.Add(time.Duration(i) * time.Hour)
-		c.UpdatedAt = c.CreatedAt
 		require.NoError(t, repo.Create(ctx, c))
 		matching[i] = c
 	}
@@ -463,7 +460,6 @@ func TestCardRepo_FindPageByCardgroup_Search_WithAfter(t *testing.T) {
 	for i, front := range []string{"front-cherry", "front-banana"} {
 		c := newCard(cg.ID, front, "back")
 		c.CreatedAt = now.Add(time.Duration(3+i) * time.Hour)
-		c.UpdatedAt = c.CreatedAt
 		require.NoError(t, repo.Create(ctx, c))
 		nonMatching[i] = c
 	}

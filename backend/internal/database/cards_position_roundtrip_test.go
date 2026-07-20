@@ -56,10 +56,10 @@ func TestCardsPositionDownUpRoundtrip(t *testing.T) {
 	// add_last_rating_to_user_card_fsrs,
 	// add_stability_before_to_swipe_records,
 	// add_cardgroup_fk_to_swipe_records, widen_text_length_checks), then past
-	// add_position_to_cards itself. Sixteen steps are required because
+	// add_position_to_cards itself. Seventeen steps are required because
 	// add_position_to_cards is no longer near the newest migration; bump this
 	// count when adding migrations after it.
-	if err := m.Steps(-16); err != nil {
+	if err := m.Steps(-17); err != nil {
 		t.Fatalf("migrate down to before add_position_to_cards: %v", err)
 	}
 

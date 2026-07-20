@@ -20,7 +20,7 @@ type gormUser struct {
 	AvatarURL   *string   `gorm:"column:avatar_url"`
 	Version     int64     `gorm:"column:version"`
 	CreatedAt   time.Time `gorm:"column:created_at"`
-	UpdatedAt   time.Time `gorm:"column:updated_at"`
+	UpdatedAt   time.Time `gorm:"column:updated_at;->"`
 }
 
 func (gormUser) TableName() string { return "users" }

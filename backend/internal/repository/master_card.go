@@ -7,6 +7,7 @@ import (
 
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"backend/internal/domain"
 )
@@ -47,7 +48,7 @@ type gormMasterCard struct {
 	Front             string    `gorm:"column:front"`
 	Back              string    `gorm:"column:back"`
 	CreatedAt         time.Time `gorm:"column:created_at"`
-	UpdatedAt         time.Time `gorm:"column:updated_at"`
+	UpdatedAt         time.Time `gorm:"column:updated_at;->"`
 	Position          int       `gorm:"column:position"`
 }
 
@@ -315,7 +316,10 @@ func (r *masterCardRepo) Create(ctx context.Context, c *domain.MasterCard) error
 		}
 		c.ID = id
 	}
-	if err := r.db.WithContext(ctx).Create(masterCardToRow(c)).Error; err != nil {
+	row := masterCardToRow(c)
+	if err := r.db.WithContext(ctx).
+		Clauses(clause.Returning{Columns: []clause.Column{{Name: "updated_at"}}}).
+		Create(row).Error; err != nil {
 		if pgConstraintViolation(err, "23505", "uq_master_cards_cg_front") {
 			return ErrCardDuplicateFront
 		}
@@ -327,6 +331,7 @@ func (r *masterCardRepo) Create(ctx context.Context, c *domain.MasterCard) error
 		}
 		return eris.Wrap(err, "repository: master card: create")
 	}
+	c.UpdatedAt = row.UpdatedAt
 	return nil
 }
 
@@ -390,9 +395,9 @@ func (r *masterCardRepo) DeleteMany(ctx context.Context, ids []string) (int64, e
 }
 
 // UpsertManyTx upserts master cards by (master_cardgroup_id, front). Existing
-// rows have `back`, `updated_at`, and `position` overwritten. Returns the
-// per-row Inserted/Updated split. Empty input is a no-op (handled by the shared
-// helper). Operates on the supplied tx only.
+// rows have `back` and `position` overwritten; the database trigger advances
+// updated_at. Returns the per-row Inserted/Updated split. Empty input is a no-op
+// (handled by the shared helper). Operates on the supplied tx only.
 func (r *masterCardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.MasterCard) (UpsertManyTxResult, error) {
 	rows := make([]upsertCardRow, len(cards))
 	for i, c := range cards {
@@ -403,7 +408,6 @@ func (r *masterCardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []
 			Back:      string(c.Back),
 			Position:  c.Position,
 			CreatedAt: c.CreatedAt,
-			UpdatedAt: c.UpdatedAt,
 		}
 	}
 	res, err := upsertManyTx(ctx, tx, rows, "master_cards", "master_cardgroup_id")

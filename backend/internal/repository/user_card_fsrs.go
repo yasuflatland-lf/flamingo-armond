@@ -25,7 +25,7 @@ type gormUserCardFSRS struct {
 	ElapsedDays   int       `gorm:"column:elapsed_days"`
 	ScheduledDays int       `gorm:"column:scheduled_days"`
 	CreatedAt     time.Time `gorm:"column:created_at"`
-	UpdatedAt     time.Time `gorm:"column:updated_at"`
+	UpdatedAt     time.Time `gorm:"column:updated_at;->"`
 }
 
 func (gormUserCardFSRS) TableName() string { return "user_card_fsrs" }
@@ -52,6 +52,7 @@ func NewUserCardFSRSRepository(db *gorm.DB) UserCardFSRSRepository {
 }
 
 func (r *userCardFSRSRepo) UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.UserCardFSRS) error {
+	row := userCardFSRSToRow(u)
 	if err := tx.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "user_id"}, {Name: "card_id"}},
 		DoUpdates: clause.Assignments(map[string]any{
@@ -65,11 +66,11 @@ func (r *userCardFSRSRepo) UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.
 			"last_rating":    userCardFSRSLastRating(u.State),
 			"elapsed_days":   u.State.ElapsedDays,
 			"scheduled_days": u.State.ScheduledDays,
-			"updated_at":     gorm.Expr("now()"),
 		}),
-	}).Create(userCardFSRSToRow(u)).Error; err != nil {
+	}, clause.Returning{Columns: []clause.Column{{Name: "updated_at"}}}).Create(row).Error; err != nil {
 		return eris.Wrap(err, "repository: user card fsrs: upsert")
 	}
+	u.UpdatedAt = row.UpdatedAt
 	return nil
 }
 

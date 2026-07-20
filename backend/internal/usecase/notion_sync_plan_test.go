@@ -57,10 +57,12 @@ func TestComputeSyncPlan_AllValid(t *testing.T) {
 			t.Errorf("plan.Cards[%d].MasterCardgroupID = %q, want %q",
 				i, card.MasterCardgroupID, testPlanCardgroupID)
 		}
-		// The whole batch is pinned to the single injected timestamp.
-		if !card.CreatedAt.Equal(testSyncNow) || !card.UpdatedAt.Equal(testSyncNow) {
-			t.Errorf("plan.Cards[%d] timestamps = (%s, %s), want both %s",
-				i, card.CreatedAt, card.UpdatedAt, testSyncNow)
+		// The whole batch is pinned to the single injected created_at. updated_at
+		// is database-owned (the BEFORE INSERT OR UPDATE trigger sets it), so the
+		// plan deliberately leaves whatever the constructor stamped and nothing
+		// here pins or asserts it.
+		if !card.CreatedAt.Equal(testSyncNow) {
+			t.Errorf("plan.Cards[%d].CreatedAt = %s, want %s", i, card.CreatedAt, testSyncNow)
 		}
 	}
 	for _, front := range []string{"apple", "banana", "carrot"} {

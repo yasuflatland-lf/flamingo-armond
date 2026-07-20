@@ -55,7 +55,7 @@ type gormMasterCardgroup struct {
 	IsDefaultStarter bool      `gorm:"column:is_default_starter"`
 	SortOrder        int       `gorm:"column:sort_order"`
 	CreatedAt        time.Time `gorm:"column:created_at"`
-	UpdatedAt        time.Time `gorm:"column:updated_at"`
+	UpdatedAt        time.Time `gorm:"column:updated_at;->"`
 }
 
 func (gormMasterCardgroup) TableName() string { return "master_cardgroups" }
@@ -229,7 +229,9 @@ func (r *masterCardgroupRepo) EnsureByName(ctx context.Context, name string) (*d
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: construct")
 		}
 		row = masterCardgroupFromDomain(m)
-		if err := tx.Create(&row).Error; err != nil {
+		if err := tx.
+			Clauses(clause.Returning{Columns: []clause.Column{{Name: "updated_at"}}}).
+			Create(&row).Error; err != nil {
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: create")
 		}
 		out, err = masterCardgroupToDomain(row)
@@ -242,16 +244,20 @@ func (r *masterCardgroupRepo) EnsureByName(ctx context.Context, name string) (*d
 }
 
 // Create inserts a new master cardgroup row. The caller is responsible for
-// supplying a fully-formed value (ID and both timestamps set); build it via
-// domain.NewMasterCardgroup.
+// supplying a fully-formed value (ID and CreatedAt set); build it via
+// domain.NewMasterCardgroup. UpdatedAt is assigned by the database and copied
+// back into m.
 func (r *masterCardgroupRepo) Create(ctx context.Context, m *domain.MasterCardgroup) error {
 	row := masterCardgroupFromDomain(m)
-	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
+	if err := r.db.WithContext(ctx).
+		Clauses(clause.Returning{Columns: []clause.Column{{Name: "updated_at"}}}).
+		Create(&row).Error; err != nil {
 		if classified := classifyTextLengthViolation(err); classified != nil {
 			return classified
 		}
 		return eris.Wrap(err, "repository: master cardgroup: create")
 	}
+	m.UpdatedAt = row.UpdatedAt
 	return nil
 }
 

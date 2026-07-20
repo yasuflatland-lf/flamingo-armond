@@ -36,7 +36,7 @@ type gormCard struct {
 	Front       string    `gorm:"column:front"`
 	Back        string    `gorm:"column:back"`
 	CreatedAt   time.Time `gorm:"column:created_at"`
-	UpdatedAt   time.Time `gorm:"column:updated_at"`
+	UpdatedAt   time.Time `gorm:"column:updated_at;->"`
 	Position    int       `gorm:"column:position"`
 	// OrderKey carries the value the page query ORDERED BY, projected into the
 	// same result set. It backs no column on `cards`: the `->` tag makes it
@@ -144,8 +144,9 @@ type CardWriteRepository interface {
 	// See `.claude/rules/go-library-gotchas.md` § GORM empty IN.
 	DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
 	// UpsertManyTx upserts cards by (cardgroup_id, front). Existing rows have
-	// their `back`, `updated_at`, and `position` columns overwritten. Returns the
-	// per-row split between Inserted and Updated. Empty input is a no-op.
+	// their `back` and `position` columns overwritten, while the database trigger
+	// advances updated_at. Returns the per-row split between Inserted and Updated.
+	// Empty input is a no-op.
 	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (UpsertManyTxResult, error)
 }
 
@@ -220,7 +221,10 @@ func (r *cardRepo) ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, car
 }
 
 func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {
-	if err := r.db.WithContext(ctx).Create(cardToRow(card)).Error; err != nil {
+	row := cardToRow(card)
+	if err := r.db.WithContext(ctx).
+		Clauses(clause.Returning{Columns: []clause.Column{{Name: "updated_at"}}}).
+		Create(row).Error; err != nil {
 		if classified := classifyCardDuplicateFront(err); classified != nil {
 			return classified
 		}
@@ -229,6 +233,7 @@ func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {
 		}
 		return eris.Wrap(err, "repository: card: create")
 	}
+	card.UpdatedAt = row.UpdatedAt
 	return nil
 }
 

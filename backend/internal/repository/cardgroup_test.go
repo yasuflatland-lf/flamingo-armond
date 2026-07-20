@@ -39,6 +39,7 @@ func TestCardgroupRepository_CreateAndFindByID(t *testing.T) {
 	repo := repository.NewCardgroupRepository(testDB.GORM)
 
 	cg := newCardgroup(ownerID, "My Flashcards")
+	cg.UpdatedAt = time.Unix(1, 0).UTC()
 	require.NoError(t, repo.Create(ctx, cg))
 
 	got, err := repo.FindByID(ctx, string(cg.ID))
@@ -48,6 +49,9 @@ func TestCardgroupRepository_CreateAndFindByID(t *testing.T) {
 	require.Equal(t, "My Flashcards", got.Name.String())
 	require.False(t, got.CreatedAt.IsZero())
 	require.False(t, got.UpdatedAt.IsZero())
+	require.Equal(t, cg.UpdatedAt, got.UpdatedAt,
+		"Create must copy the database-assigned updated_at back into the aggregate")
+	require.NotEqual(t, time.Unix(1, 0).UTC(), cg.UpdatedAt)
 }
 
 // TestCardgroupRepository_Create_DeletedOwner_ReturnsOwnerNotFound exercises the
@@ -150,6 +154,8 @@ func TestCardgroupRepository_Update_NameOnly(t *testing.T) {
 
 	cg := newCardgroup(ownerID, "Original")
 	require.NoError(t, repo.Create(ctx, cg))
+	before, err := repo.FindByID(ctx, string(cg.ID))
+	require.NoError(t, err)
 
 	time.Sleep(5 * time.Millisecond)
 
@@ -157,8 +163,8 @@ func TestCardgroupRepository_Update_NameOnly(t *testing.T) {
 	got, err := repo.Update(ctx, string(cg.ID), repository.CardgroupUpdate{Name: &newName})
 	require.NoError(t, err)
 	require.Equal(t, "Renamed", got.Name.String())
-	require.True(t, got.UpdatedAt.After(cg.CreatedAt),
-		"updated_at should be strictly later than created_at")
+	require.True(t, got.UpdatedAt.After(before.UpdatedAt),
+		"updated_at should advance from the post-Create database value")
 }
 
 func TestCardgroupRepository_Update_EmptyPatchReturnsCurrent(t *testing.T) {
@@ -281,6 +287,10 @@ func TestCardgroupRepository_EnsureByName_Create(t *testing.T) {
 	require.Equal(t, ownerID, string(got.OwnerID))
 	require.Equal(t, "Ensure Create", got.Name.String())
 	require.NotEmpty(t, got.ID)
+	// The create branch builds its row in-place, so the only source of
+	// updated_at is the RETURNING clause; dropping it leaves the zero time here.
+	require.False(t, got.UpdatedAt.IsZero(),
+		"EnsureByName must return the database-assigned updated_at")
 
 	found, err := repo.FindByName(ctx, ownerID, "Ensure Create")
 	require.NoError(t, err)
@@ -365,12 +375,30 @@ func insertNamedCardgroups(t *testing.T, ctx context.Context, ownerID string, na
 			OwnerID:   domain.UserID(ownerID),
 			Name:      domain.CardgroupName(name),
 			CreatedAt: now,
-			UpdatedAt: now,
 		}
 		require.NoError(t, repo.Create(ctx, cg))
-		cgs[i] = cg
+		persisted, err := repo.FindByID(ctx, string(cg.ID))
+		require.NoError(t, err)
+		cgs[i] = persisted
 	}
 	return cgs
+}
+
+func sortCardgroupsByUpdatedAt(cgs []*domain.Cardgroup, dir repository.SortOrder) []*domain.Cardgroup {
+	sorted := append([]*domain.Cardgroup(nil), cgs...)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].UpdatedAt.Equal(sorted[j].UpdatedAt) {
+			if dir == repository.SortAsc {
+				return sorted[i].ID < sorted[j].ID
+			}
+			return sorted[i].ID > sorted[j].ID
+		}
+		if dir == repository.SortAsc {
+			return sorted[i].UpdatedAt.Before(sorted[j].UpdatedAt)
+		}
+		return sorted[i].UpdatedAt.After(sorted[j].UpdatedAt)
+	})
+	return sorted
 }
 
 func countCardgroupsByOwnerAndName(t *testing.T, ctx context.Context, ownerID, name string) int64 {
@@ -721,8 +749,9 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_UpdatedAt_Desc(t *testing.T) {
 	// Wait then bump second so it has the latest updated_at.
 	time.Sleep(5 * time.Millisecond)
 	updated := "second updated"
-	_, err := repo.Update(ctx, string(cgs[1].ID), repository.CardgroupUpdate{Name: &updated})
+	updatedCG, err := repo.Update(ctx, string(cgs[1].ID), repository.CardgroupUpdate{Name: &updated})
 	require.NoError(t, err)
+	cgs[1] = updatedCG
 
 	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
 	got, _, err := repo.FindPageByOwner(
@@ -732,8 +761,8 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_UpdatedAt_Desc(t *testing.T) {
 	require.NoError(t, err)
 	mine := pickOwnerCardgroups(got, want)
 	require.Len(t, mine, 3)
-	// The most recently updated row must come first under DESC.
-	require.Equal(t, cgs[1].ID, mine[0].ID, "most recently updated row sorts first under updated_at DESC")
+	expected := sortCardgroupsByUpdatedAt(cgs, repository.SortDesc)
+	require.Equal(t, expected[0].ID, mine[0].ID, "most recently updated row sorts first under updated_at DESC")
 }
 
 // TestCardgroupRepo_FindPageByOwner_OrderBy_UpdatedAt_Asc verifies the ASC
@@ -747,8 +776,9 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_UpdatedAt_Asc(t *testing.T) {
 	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"first", "second", "third"})
 	time.Sleep(5 * time.Millisecond)
 	updated := "third updated"
-	_, err := repo.Update(ctx, string(cgs[2].ID), repository.CardgroupUpdate{Name: &updated})
+	updatedCG, err := repo.Update(ctx, string(cgs[2].ID), repository.CardgroupUpdate{Name: &updated})
 	require.NoError(t, err)
+	cgs[2] = updatedCG
 
 	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
 	got, _, err := repo.FindPageByOwner(
@@ -758,8 +788,8 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_UpdatedAt_Asc(t *testing.T) {
 	require.NoError(t, err)
 	mine := pickOwnerCardgroups(got, want)
 	require.Len(t, mine, 3)
-	// First inserted (and not re-updated) is the earliest.
-	require.Equal(t, cgs[0].ID, mine[0].ID,
+	expected := sortCardgroupsByUpdatedAt(cgs, repository.SortAsc)
+	require.Equal(t, expected[0].ID, mine[0].ID,
 		"earliest updated row sorts first under updated_at ASC")
 }
 
