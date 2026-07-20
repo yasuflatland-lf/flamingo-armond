@@ -12,6 +12,7 @@ import (
 	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
+	"backend/internal/gqlerr/gqlerrtest"
 	"backend/internal/usecase"
 	"backend/internal/usecase/ucerr"
 )
@@ -124,7 +125,7 @@ func TestAdminMaster_WrapsForbidden(t *testing.T) {
 
 	_, err := qr.AdminMaster(context.Background(), "m1")
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
 }
 
 // TestAdminMaster_WrapsValidation verifies a usecase ValidationError (e.g. a
@@ -136,7 +137,7 @@ func TestAdminMaster_WrapsValidation(t *testing.T) {
 
 	_, err := qr.AdminMaster(context.Background(), "missing")
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeBadUserInput), "want BAD_USER_INPUT wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeBadUserInput), "want BAD_USER_INPUT wire code")
 }
 
 // TestAdminMasterCardsConnection_Success verifies the resolver maps the model
@@ -192,7 +193,7 @@ func TestAdminMasterCardsConnection_WrapsForbidden(t *testing.T) {
 
 	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil, nil, nil)
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
 }
 
 // ---------------------------------------------------------------------------
@@ -208,7 +209,7 @@ func TestAdminMaster_WrapsUnauthenticated(t *testing.T) {
 
 	_, err := qr.AdminMaster(context.Background(), "m1")
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeUnauthenticated), "want UNAUTHENTICATED wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeUnauthenticated), "want UNAUTHENTICATED wire code")
 }
 
 // TestAdminMasterCardsConnection_WrapsUnauthenticated verifies a usecase
@@ -220,7 +221,7 @@ func TestAdminMasterCardsConnection_WrapsUnauthenticated(t *testing.T) {
 
 	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil, nil, nil)
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeUnauthenticated), "want UNAUTHENTICATED wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeUnauthenticated), "want UNAUTHENTICATED wire code")
 }
 
 // ---------------------------------------------------------------------------
@@ -236,7 +237,7 @@ func TestAdminMaster_WrapsInternal(t *testing.T) {
 
 	_, err := qr.AdminMaster(context.Background(), "m1")
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
 }
 
 // TestAdminMasterCardsConnection_WrapsInternal verifies that an opaque infra
@@ -248,7 +249,7 @@ func TestAdminMasterCardsConnection_WrapsInternal(t *testing.T) {
 
 	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil, nil, nil)
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
 }
 
 // ---------------------------------------------------------------------------
@@ -416,7 +417,7 @@ func TestMasterCardsConnection_WrapsUsecaseError(t *testing.T) {
 			qr := &queryResolver{&Resolver{MasterCardUC: stub}}
 			_, err := qr.MasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil, nil, nil)
 			require.Error(t, err)
-			assert.True(t, gqlerr.IsCode(err, tc.want), "want wire code %s", tc.want)
+			assert.True(t, gqlerrtest.IsCode(err, tc.want), "want wire code %s", tc.want)
 		})
 	}
 }

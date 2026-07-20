@@ -96,7 +96,7 @@ func NewMasterNotionSyncUsecase(
 	return uc
 }
 
-func NewMasterNotionSyncUsecaseWithTx(
+func newMasterNotionSyncUsecaseWithTx(
 	fetcher notion.Fetcher,
 	masterCardgroupRepo NotionSyncMasterCardgroupRepository,
 	masterCardRepo NotionSyncMasterCardRepository,

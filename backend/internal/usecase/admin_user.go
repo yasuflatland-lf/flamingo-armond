@@ -164,9 +164,9 @@ func NewAdminUser(
 	return uc
 }
 
-// NewAdminUserWithDeps is the test-time constructor that accepts the narrow
+// newAdminUserWithDeps is the test-time constructor that accepts the narrow
 // interface types. Production code must use NewAdminUser.
-func NewAdminUserWithDeps(
+func newAdminUserWithDeps(
 	users adminUserRepository,
 	roles adminRoleRepository,
 	userRoles adminUserRoleRepository,

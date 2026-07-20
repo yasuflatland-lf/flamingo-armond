@@ -11,6 +11,7 @@ import (
 	"backend/graph/model"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
+	"backend/internal/gqlerr/gqlerrtest"
 	"backend/internal/usecase"
 	"backend/internal/usecase/ucerr"
 )
@@ -65,7 +66,7 @@ func TestAdminCreateMasterCard_WrapsForbidden(t *testing.T) {
 
 	_, err := mr.AdminCreateMasterCard(context.Background(), model.NewMasterCardInput{MasterCardgroupID: "m1", Front: "f", Back: "b"})
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
 }
 
 func TestAdminCreateMasterCard_WrapsValidation(t *testing.T) {
@@ -75,7 +76,7 @@ func TestAdminCreateMasterCard_WrapsValidation(t *testing.T) {
 
 	_, err := mr.AdminCreateMasterCard(context.Background(), model.NewMasterCardInput{MasterCardgroupID: "m1", Front: "", Back: "b"})
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeBadUserInput), "want BAD_USER_INPUT wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeBadUserInput), "want BAD_USER_INPUT wire code")
 }
 
 func TestAdminCreateMasterCard_NoVariantIsInternal(t *testing.T) {
@@ -86,7 +87,7 @@ func TestAdminCreateMasterCard_NoVariantIsInternal(t *testing.T) {
 
 	_, err := mr.AdminCreateMasterCard(context.Background(), model.NewMasterCardInput{MasterCardgroupID: "m1", Front: "f", Back: "b"})
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
 }
 
 // ---------------------------------------------------------------------------
@@ -138,7 +139,7 @@ func TestAdminUpdateMasterCard_WrapsForbidden(t *testing.T) {
 	front := "f"
 	_, err := mr.AdminUpdateMasterCard(context.Background(), "c1", model.UpdateMasterCardInput{Front: &front})
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
 }
 
 func TestAdminUpdateMasterCard_WrapsValidation(t *testing.T) {
@@ -149,7 +150,7 @@ func TestAdminUpdateMasterCard_WrapsValidation(t *testing.T) {
 	front := "f"
 	_, err := mr.AdminUpdateMasterCard(context.Background(), "missing", model.UpdateMasterCardInput{Front: &front})
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeBadUserInput), "want BAD_USER_INPUT wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeBadUserInput), "want BAD_USER_INPUT wire code")
 }
 
 func TestAdminUpdateMasterCard_WrapsInternal(t *testing.T) {
@@ -160,7 +161,7 @@ func TestAdminUpdateMasterCard_WrapsInternal(t *testing.T) {
 	front := "f"
 	_, err := mr.AdminUpdateMasterCard(context.Background(), "id-1", model.UpdateMasterCardInput{Front: &front})
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
 }
 
 func TestAdminUpdateMasterCard_NoVariantIsInternal(t *testing.T) {
@@ -171,7 +172,7 @@ func TestAdminUpdateMasterCard_NoVariantIsInternal(t *testing.T) {
 	front := "f"
 	_, err := mr.AdminUpdateMasterCard(context.Background(), "c1", model.UpdateMasterCardInput{Front: &front})
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
 }
 
 // ---------------------------------------------------------------------------
@@ -197,7 +198,7 @@ func TestAdminDeleteMasterCard_WrapsValidation(t *testing.T) {
 	got, err := mr.AdminDeleteMasterCard(context.Background(), "missing")
 	require.Error(t, err)
 	assert.False(t, got)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeBadUserInput), "want BAD_USER_INPUT wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeBadUserInput), "want BAD_USER_INPUT wire code")
 }
 
 func TestAdminDeleteMasterCard_WrapsForbidden(t *testing.T) {
@@ -208,7 +209,7 @@ func TestAdminDeleteMasterCard_WrapsForbidden(t *testing.T) {
 	got, err := mr.AdminDeleteMasterCard(context.Background(), "id-1")
 	require.Error(t, err)
 	assert.False(t, got)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
 }
 
 func TestAdminDeleteMasterCard_WrapsInternal(t *testing.T) {
@@ -219,7 +220,7 @@ func TestAdminDeleteMasterCard_WrapsInternal(t *testing.T) {
 	got, err := mr.AdminDeleteMasterCard(context.Background(), "id-1")
 	require.Error(t, err)
 	assert.False(t, got)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
 }
 
 func TestAdminDeleteMasterCards_Success(t *testing.T) {
@@ -241,7 +242,7 @@ func TestAdminDeleteMasterCards_WrapsForbidden(t *testing.T) {
 	n, err := mr.AdminDeleteMasterCards(context.Background(), []string{"a"})
 	require.Error(t, err)
 	assert.Equal(t, 0, n)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
 }
 
 // ---------------------------------------------------------------------------
@@ -278,5 +279,5 @@ func TestAdminImportMasterCards_WrapsForbidden(t *testing.T) {
 
 	_, err := mr.AdminImportMasterCards(context.Background(), model.ImportMasterCardsInput{MasterCardgroupID: "m1", Payload: "x"})
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
 }

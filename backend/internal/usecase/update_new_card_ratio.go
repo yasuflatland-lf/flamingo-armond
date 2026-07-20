@@ -36,7 +36,7 @@ type updateNewCardRatioUsecase struct {
 }
 
 // NewUpdateNewCardRatio is the production constructor. Tests should prefer
-// NewUpdateNewCardRatioWithDeps to inject narrow stubs.
+// newUpdateNewCardRatioWithDeps to inject narrow stubs.
 func NewUpdateNewCardRatio(
 	prefs repository.UserPreferenceRepository,
 	users repository.UserRepository,
@@ -48,8 +48,8 @@ func NewUpdateNewCardRatio(
 	return &updateNewCardRatioUsecase{prefs: prefs, users: users, logger: logger}
 }
 
-// NewUpdateNewCardRatioWithDeps accepts narrow interfaces for tests.
-func NewUpdateNewCardRatioWithDeps(
+// newUpdateNewCardRatioWithDeps accepts narrow interfaces for tests.
+func newUpdateNewCardRatioWithDeps(
 	prefs updateNewCardRatioPrefsRepo,
 	users updateNewCardRatioUsersRepo,
 	logger *slog.Logger,

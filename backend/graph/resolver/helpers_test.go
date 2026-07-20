@@ -15,6 +15,7 @@ import (
 	"backend/graph/model"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
+	"backend/internal/gqlerr/gqlerrtest"
 	"backend/internal/loader"
 	"backend/internal/usecase"
 )
@@ -304,7 +305,7 @@ func TestLoadersOrInternal_MissingMiddlewareReturnsInternal(t *testing.T) {
 
 	assert.Nil(t, loaders, "registry must be nil when middleware is not installed")
 	require.NotNil(t, gqlErr, "want non-nil error when middleware is not installed")
-	assert.True(t, gqlerr.IsCode(gqlErr, gqlerr.CodeInternal),
+	assert.True(t, gqlerrtest.IsCode(gqlErr, gqlerr.CodeInternal),
 		"want INTERNAL wire code, got %v", gqlErr)
 }
 
@@ -344,7 +345,7 @@ func TestClassifyLoaderErr_CancelledContexts(t *testing.T) {
 			t.Parallel()
 			got := classifyLoaderErr(context.Background(), tc.err, "resolver: test")
 			require.NotNil(t, got)
-			assert.True(t, gqlerr.IsCode(got, gqlerr.CodeCancelled),
+			assert.True(t, gqlerrtest.IsCode(got, gqlerr.CodeCancelled),
 				"want CANCELLED wire code for %s, got %v", tc.name, got)
 		})
 	}
@@ -364,7 +365,7 @@ func TestClassifyLoaderErr_GenericErrorIsInternalWithLabel(t *testing.T) {
 	got := classifyLoaderErr(context.Background(), errors.New("db down"), label)
 
 	require.NotNil(t, got)
-	assert.True(t, gqlerr.IsCode(got, gqlerr.CodeInternal),
+	assert.True(t, gqlerrtest.IsCode(got, gqlerr.CodeInternal),
 		"want INTERNAL wire code for a generic loader error, got %v", got)
 	assert.Contains(t, buf.String(), label,
 		"expected the wrap label to appear in the logged error_chain, got %q", buf.String())
@@ -387,7 +388,7 @@ func TestNewNoVariantSetError_MessageAndCode(t *testing.T) {
 	got := newNoVariantSetError(context.Background(), "CreateCardOutcome")
 
 	require.NotNil(t, got)
-	assert.True(t, gqlerr.IsCode(got, gqlerr.CodeInternal),
+	assert.True(t, gqlerrtest.IsCode(got, gqlerr.CodeInternal),
 		"want INTERNAL wire code, got %v", got)
 	assert.Contains(t, buf.String(), "resolver: CreateCardOutcome has no variant set",
 		"expected the exact no-variant message in the logged error_chain, got %q", buf.String())

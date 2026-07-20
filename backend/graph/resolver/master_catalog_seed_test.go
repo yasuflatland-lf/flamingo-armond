@@ -10,6 +10,7 @@ import (
 
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
+	"backend/internal/gqlerr/gqlerrtest"
 	"backend/internal/usecase/ucerr"
 )
 
@@ -60,7 +61,7 @@ func TestMutationResolver_SeedDefaultStarterCardgroups_Unauthenticated(t *testin
 	res, err := r.Mutation().SeedDefaultStarterCardgroups(context.Background())
 	assert.Nil(t, res)
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeUnauthenticated), "want UNAUTHENTICATED wire code, got %v", err)
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeUnauthenticated), "want UNAUTHENTICATED wire code, got %v", err)
 }
 
 // TestMutationResolver_SeedDefaultStarterCardgroups_InfraError verifies that a
@@ -74,5 +75,5 @@ func TestMutationResolver_SeedDefaultStarterCardgroups_InfraError(t *testing.T) 
 	res, err := r.Mutation().SeedDefaultStarterCardgroups(context.Background())
 	assert.Nil(t, res)
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code, got %v", err)
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code, got %v", err)
 }

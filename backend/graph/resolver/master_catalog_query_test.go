@@ -11,6 +11,7 @@ import (
 	"backend/graph/model"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
+	"backend/internal/gqlerr/gqlerrtest"
 	"backend/internal/usecase"
 	"backend/internal/usecase/ucerr"
 )
@@ -164,7 +165,7 @@ func TestQueryResolver_MasterCatalog_WrapsUsecaseError(t *testing.T) {
 			qr := &queryResolver{&Resolver{MasterCatalogUC: &stubMasterCatalogUC{err: tc.err}}}
 			_, err := qr.MasterCatalog(context.Background(), nil, nil, nil, nil, nil, nil, nil)
 			require.Error(t, err)
-			assert.True(t, gqlerr.IsCode(err, tc.want), "want wire code %s", tc.want)
+			assert.True(t, gqlerrtest.IsCode(err, tc.want), "want wire code %s", tc.want)
 		})
 	}
 }
@@ -230,7 +231,7 @@ func TestQueryResolver_MasterCardgroup_WrapsUsecaseError(t *testing.T) {
 			qr := &queryResolver{&Resolver{MasterCatalogUC: &stubMasterCatalogUC{findPublishedErr: tc.err}}}
 			_, err := qr.MasterCardgroup(context.Background(), "m1")
 			require.Error(t, err)
-			assert.True(t, gqlerr.IsCode(err, tc.want), "want wire code %s", tc.want)
+			assert.True(t, gqlerrtest.IsCode(err, tc.want), "want wire code %s", tc.want)
 		})
 	}
 }

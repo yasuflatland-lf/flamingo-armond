@@ -259,7 +259,7 @@ func newSeedUsecase(
 ) (*masterDeckUsecase, *recordPool, *int) {
 	t.Helper()
 	runner, pool, calls := recordingTxRunner(t)
-	uc := NewMasterDeckUsecaseWithTx(cg, card, user, userCG, runner, newTestLogger())
+	uc := newMasterDeckUsecaseWithTx(cg, card, user, userCG, runner, newTestLogger())
 	return uc, pool, calls
 }
 
@@ -294,7 +294,7 @@ func TestNewMasterDeckUsecase_PanicsOnNilDeps(t *testing.T) {
 	}
 }
 
-func TestNewMasterDeckUsecaseWithTx_PanicsOnNilDeps(t *testing.T) {
+func Test_newMasterDeckUsecaseWithTx_PanicsOnNilDeps(t *testing.T) {
 	t.Parallel()
 
 	cg := &fakeMasterCGRepo{}
@@ -308,12 +308,12 @@ func TestNewMasterDeckUsecaseWithTx_PanicsOnNilDeps(t *testing.T) {
 		name string
 		fn   func()
 	}{
-		{"nil masterCG", func() { NewMasterDeckUsecaseWithTx(nil, card, user, userCG, runner, logger) }},
-		{"nil masterCard", func() { NewMasterDeckUsecaseWithTx(cg, nil, user, userCG, runner, logger) }},
-		{"nil userCard", func() { NewMasterDeckUsecaseWithTx(cg, card, nil, userCG, runner, logger) }},
-		{"nil userCG", func() { NewMasterDeckUsecaseWithTx(cg, card, user, nil, runner, logger) }},
-		{"nil tx", func() { NewMasterDeckUsecaseWithTx(cg, card, user, userCG, nil, logger) }},
-		{"nil logger", func() { NewMasterDeckUsecaseWithTx(cg, card, user, userCG, runner, nil) }},
+		{"nil masterCG", func() { newMasterDeckUsecaseWithTx(nil, card, user, userCG, runner, logger) }},
+		{"nil masterCard", func() { newMasterDeckUsecaseWithTx(cg, nil, user, userCG, runner, logger) }},
+		{"nil userCard", func() { newMasterDeckUsecaseWithTx(cg, card, nil, userCG, runner, logger) }},
+		{"nil userCG", func() { newMasterDeckUsecaseWithTx(cg, card, user, nil, runner, logger) }},
+		{"nil tx", func() { newMasterDeckUsecaseWithTx(cg, card, user, userCG, nil, logger) }},
+		{"nil logger", func() { newMasterDeckUsecaseWithTx(cg, card, user, userCG, runner, nil) }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -716,7 +716,7 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_AddsAndUpdates(t *testing.T)
 	}
 	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
 
-	uc := NewMasterDeckUsecaseWithTx(
+	uc := newMasterDeckUsecaseWithTx(
 		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}}, // published-scoped re-read inside the tx
 		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: masterCards}},
 		&fakeUserCardRepo{result: repository.UpsertManyTxResult{Inserted: 1, Updated: 1}},
@@ -740,7 +740,7 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_NotOwned_Unauthenticated(t *
 	const destID = "22222222-2222-7222-8222-222222222222"
 	destCG := mustCardgroup(t, destID, otherID, "Not Mine")
 
-	uc := NewMasterDeckUsecaseWithTx(
+	uc := newMasterDeckUsecaseWithTx(
 		&fakeMasterCGRepo{}, &fakeMasterCardRepo{}, &fakeUserCardRepo{},
 		&fakeUserCG{byID: map[string]*domain.Cardgroup{destID: destCG}},
 		stubTxRunner, newTestLogger(),
@@ -752,7 +752,7 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_NotOwned_Unauthenticated(t *
 
 func TestMasterDeckUsecase_MergeMasterIntoCardgroup_DestNotFound_Validation(t *testing.T) {
 	t.Parallel()
-	uc := NewMasterDeckUsecaseWithTx(
+	uc := newMasterDeckUsecaseWithTx(
 		&fakeMasterCGRepo{}, &fakeMasterCardRepo{}, &fakeUserCardRepo{},
 		&fakeUserCG{byID: map[string]*domain.Cardgroup{}}, // FindByID → ErrNotFound
 		stubTxRunner, newTestLogger(),
@@ -783,7 +783,7 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_MasterUnpublishedMidFlight_N
 	user := &fakeUserCardRepo{}
 	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
 
-	uc := NewMasterDeckUsecaseWithTx(
+	uc := newMasterDeckUsecaseWithTx(
 		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{}}, // empty published set → FindPublishedByID → ErrNotFound
 		card,
 		user,
@@ -807,7 +807,7 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_EmptyDeck(t *testing.T) {
 
 	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
 
-	uc := NewMasterDeckUsecaseWithTx(
+	uc := newMasterDeckUsecaseWithTx(
 		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}}, // published-scoped re-read inside the tx
 		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: {}}},                        // zero cards
 		&fakeUserCardRepo{}, // default: Inserted=len(cards)=0, Updated=0
@@ -832,7 +832,7 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_ListCardsError_PropagatesCha
 
 	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
 
-	uc := NewMasterDeckUsecaseWithTx(
+	uc := newMasterDeckUsecaseWithTx(
 		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}},
 		&fakeMasterCardRepo{listErr: errors.New("list cards failed")},
 		&fakeUserCardRepo{},
@@ -857,7 +857,7 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_UpsertCardsError_PropagatesC
 	}
 	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
 
-	uc := NewMasterDeckUsecaseWithTx(
+	uc := newMasterDeckUsecaseWithTx(
 		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}},
 		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: masterCards}},
 		&fakeUserCardRepo{upsertErr: errors.New("upsert failed")},
@@ -879,7 +879,7 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_ContextCancelled_PassesThrou
 
 	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
 
-	uc := NewMasterDeckUsecaseWithTx(
+	uc := newMasterDeckUsecaseWithTx(
 		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}},
 		&fakeMasterCardRepo{listErr: context.Canceled},
 		&fakeUserCardRepo{},
@@ -905,7 +905,7 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_PostTxFindByID_ContextCancel
 	}
 	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
 
-	uc := NewMasterDeckUsecaseWithTx(
+	uc := newMasterDeckUsecaseWithTx(
 		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}},
 		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: masterCards}},
 		&fakeUserCardRepo{},
@@ -939,7 +939,7 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_PostTxFindByIDError_Propagat
 	}
 	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
 
-	uc := NewMasterDeckUsecaseWithTx(
+	uc := newMasterDeckUsecaseWithTx(
 		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}},
 		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: masterCards}},
 		&fakeUserCardRepo{},
@@ -976,7 +976,7 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_PostTxDestVanished_NotErrNot
 	}
 	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
 
-	uc := NewMasterDeckUsecaseWithTx(
+	uc := newMasterDeckUsecaseWithTx(
 		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}},
 		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: masterCards}},
 		&fakeUserCardRepo{},
@@ -1019,7 +1019,7 @@ func TestPreviewMergeMasterIntoCardgroup_CountsAddedAndUpdated(t *testing.T) {
 	}}
 	cg := &fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Starter")}}
 
-	uc := NewMasterDeckUsecaseWithTx(cg, card, user, userCG, stubTxRunner, newTestLogger())
+	uc := newMasterDeckUsecaseWithTx(cg, card, user, userCG, stubTxRunner, newTestLogger())
 
 	got, err := uc.PreviewMergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID("owner-1"))
 	require.NoError(t, err)
