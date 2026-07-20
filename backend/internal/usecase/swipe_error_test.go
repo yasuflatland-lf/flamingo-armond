@@ -1,7 +1,9 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -369,11 +371,14 @@ func TestSwipeUsecase_HandleSwipe_InsertSwipeRecord_PropagatesCancelled(t *testi
 	assertCancelled(t, err)
 }
 
-// TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PinsChain verifies that an
-// infrastructure error from ListRecentByUser is wrapped with the canonical
-// "usecase: swipe: list recent swipes" prefix so the error_chain log attribute
-// points at the correct post-transaction operation.
-func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PinsChain(t *testing.T) {
+// TestSwipeUsecase_HandleSwipe_ListRecentSwipes_DegradesToSuccess verifies that
+// an infrastructure error from the post-commit ListRecentByUser read does NOT
+// fail the mutation: the swipe row and the FSRS row are already durable, so the
+// outcome carries the neutral empty-window snapshot (service.ModeDefault) and
+// the failure is only logged with the canonical
+// "usecase: swipe: list recent swipes" chain prefix. Reporting a committed
+// swipe as failed would make the client re-queue the card and review it twice.
+func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_DegradesToSuccess(t *testing.T) {
 	t.Parallel()
 
 	infraErr := eris.New("storage: simulated list-recent infra failure")
@@ -393,6 +398,8 @@ func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PinsChain(t *testing.T) {
 		byCardID: map[string]*domain.UserCardFSRS{},
 	}
 	tx, _ := fakeTxRunner()
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	uc := NewSwipeUsecaseWithTx(
 		cardRepo,
 		cardgroupRepo,
@@ -400,22 +407,37 @@ func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PinsChain(t *testing.T) {
 		service.NewFSRSScheduler(),
 		tx,
 		userFSRSRepo,
-		newTestLogger(),
+		logger,
 	)
 
-	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+	out, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
 		Rating:      int(domain.RatingEasy),
 	})
 
-	assertInternalChain(t, err, "usecase: swipe: list recent swipes")
-	require.ErrorIs(t, err, infraErr, "error chain must preserve injected root sentinel")
+	require.NoError(t, err, "a committed swipe must not surface the post-commit read failure")
+	require.Nil(t, out.Validation)
+	require.NotNil(t, out.Swipe)
+	require.Equal(t, int(service.ModeDefault), out.Swipe.PerformanceMode)
+	require.Equal(t, 0, out.Swipe.Metrics.ReviewCount, "degraded snapshot carries no reviews")
+
+	// Both writes are still durable: the FSRS row was upserted and the swipe
+	// record was inserted inside the committed transaction.
+	require.NotNil(t, userFSRSRepo.upserted, "FSRS row must still be committed")
+	require.NotNil(t, swipeRepo.created, "swipe record must still be committed")
+
+	logged := buf.String()
+	require.Contains(t, logged, "swipe committed but recent-swipe read failed")
+	require.Contains(t, logged, "usecase: swipe: list recent swipes")
+	require.Contains(t, logged, "simulated list-recent infra failure")
 }
 
 // TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesCancelled verifies
 // that context.Canceled returned from ListRecentByUser passes through unwrapped
-// after the transaction commits successfully.
+// after the transaction commits successfully. Cancellation is the deliberate
+// exception to the degrade-to-success rule: the caller is being torn down and
+// has nothing to report to.
 func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesCancelled(t *testing.T) {
 	t.Parallel()
 
@@ -457,7 +479,8 @@ func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesCancelled(t *testin
 
 // TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesDeadlineExceeded
 // verifies that context.DeadlineExceeded returned from ListRecentByUser passes
-// through unwrapped after the transaction commits successfully.
+// through unwrapped after the transaction commits successfully — the same
+// deliberate exception to the degrade-to-success rule as the cancelled case.
 func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesDeadlineExceeded(t *testing.T) {
 	t.Parallel()
 
