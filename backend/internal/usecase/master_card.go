@@ -33,9 +33,10 @@ type MasterCardUsecase interface {
 	// (first/after) or backward (last/before) cursors. Admin-only.
 	ListMasterCards(ctx context.Context, in MasterCardConnectionInput) (*MasterCardConnectionOutput, error)
 	// ListPublicMasterCards paginates a PUBLISHED master deck's cards for any
-	// authenticated caller (no admin gate). The deck must be published — a DRAFT or
-	// unknown id is rejected as a validation error on "masterCardgroupId"
-	// (non-disclosure gate). Anonymous callers receive UNAUTHENTICATED.
+	// authenticated caller (no admin gate). The deck must be catalog-visible
+	// (published AND non-empty) — a DRAFT, card-less or unknown id is rejected as a
+	// validation error on "masterCardgroupId" (non-disclosure gate). Anonymous
+	// callers receive UNAUTHENTICATED.
 	ListPublicMasterCards(ctx context.Context, in MasterCardConnectionInput) (*MasterCardConnectionOutput, error)
 	// CreateMasterCard persists a new master card. Admin-only. A duplicate
 	// (case-insensitive) front is returned as data via the outcome's Duplicate
@@ -131,8 +132,8 @@ type masterCardRepoForMasterCard interface {
 
 // masterCardgroupRepoForMasterCard is the narrow consumer interface for master-
 // cardgroup reads used by masterCardUsecase: the admin deck lookup (incl. DRAFT),
-// its card count, and the published-only visibility gate. Satisfied implicitly by
-// repository.MasterCardgroupRepository.
+// its card count, and the catalog-visibility gate (published AND non-empty).
+// Satisfied implicitly by repository.MasterCardgroupRepository.
 type masterCardgroupRepoForMasterCard interface {
 	FindByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 	CountCards(ctx context.Context, masterCardgroupID string) (int64, error)
@@ -587,9 +588,9 @@ func (u *masterCardUsecase) ListMasterCards(
 // ListPublicMasterCards paginates a PUBLISHED master deck's cards for any
 // authenticated caller (no admin gate). The body from the page assembly onward
 // mirrors ListMasterCards; only the gate differs — the admin gate is replaced by
-// an authentication check plus a published-only visibility gate. totalCount is the
-// search-aware count captured inside the assemblePage closure (same as the admin
-// path).
+// an authentication check plus the catalog-visibility gate (published AND
+// non-empty). totalCount is the search-aware count captured inside the
+// assemblePage closure (same as the admin path).
 func (u *masterCardUsecase) ListPublicMasterCards(
 	ctx context.Context, in MasterCardConnectionInput,
 ) (*MasterCardConnectionOutput, error) {
@@ -597,8 +598,9 @@ func (u *masterCardUsecase) ListPublicMasterCards(
 		if err := requireCallerSub(auth.UserFrom(ctx)); err != nil {
 			return err
 		}
-		// Published-only visibility gate. FindPublishedByID returns ErrNotFound for
-		// BOTH unknown and DRAFT ids, collapsing them into one not-found so the
+		// Catalog-visibility gate. FindPublishedByID returns ErrNotFound for
+		// unknown ids, DRAFT ids AND published decks holding zero cards,
+		// collapsing them into one not-found so the
 		// endpoint cannot be used as a draft-existence oracle (non-disclosure gate).
 		if _, err := u.masterCardgroupRepo.FindPublishedByID(ctx, in.MasterCardgroupID); err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
@@ -616,7 +618,7 @@ func (u *masterCardUsecase) ListPublicMasterCards(
 // listMasterCardsCore holds the shared page-assembly body for ListMasterCards
 // and ListPublicMasterCards. The gate closure runs first and supplies the
 // per-caller authorization / visibility check (admin gate vs. authentication +
-// published-only gate); everything from cursor resolution onward is identical.
+// catalog-visibility gate); everything from cursor resolution onward is identical.
 // opPrefix is the caller's two-segment module prefix, supplied so the shared
 // find-page eris wrap carries the correct attribution (error-wrapping rule:
 // shared helpers take the caller prefix as an argument, never hardcode it).

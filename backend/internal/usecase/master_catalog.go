@@ -122,9 +122,10 @@ type masterDeckUsecaseFacade interface {
 // admin methods additionally require AdminGate.Require to pass.
 type MasterCatalogUsecase interface {
 	ListPublishedConnection(ctx context.Context, in MasterCatalogConnectionInput) (*MasterCatalogConnectionOutput, error)
-	// FindPublishedMaster returns a single PUBLISHED master deck by id for any
-	// authenticated caller. Returns (nil, nil) for an unknown or DRAFT id
-	// (non-disclosure gate). Anonymous callers receive UNAUTHENTICATED.
+	// FindPublishedMaster returns a single PUBLISHED, non-empty master deck by id
+	// for any authenticated caller. Returns (nil, nil) for an unknown id, a DRAFT
+	// id, or a published deck holding zero cards (non-disclosure gate). Anonymous
+	// callers receive UNAUTHENTICATED.
 	FindPublishedMaster(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 	ImportMaster(ctx context.Context, masterID string) (ImportMasterOutcome, error)
 	MergeMaster(ctx context.Context, masterID, cardgroupID string) (MergeMasterOutcome, error)
@@ -179,7 +180,7 @@ func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsec
 // masterCatalogPageFetch is the repository page-fetch closure shape shared by
 // MasterCatalogRepository.FindPublishedPage and FindPageAnyStatus. listMasterCatalogCore
 // takes one as an argument so the shared page-assembly body stays agnostic to the
-// status filter (published-only vs. all statuses).
+// visibility filter (catalog-visible vs. all statuses).
 type masterCatalogPageFetch func(
 	ctx context.Context,
 	after, before *repository.MasterCatalogCursor,
@@ -193,9 +194,11 @@ type masterCatalogPageFetch func(
 // Relay-style cursors. Forward paging uses (first, after); backward uses
 // (last, before). The five mixed-direction combinations are rejected with
 // BAD_USER_INPUT before the repository is touched so the caller never gets a
-// silently re-interpreted page boundary. Only PUBLISHED decks are ever
-// returned — the published filter is enforced in the repository SQL and is not
-// a caller-overridable argument. Unauthenticated callers receive
+// silently re-interpreted page boundary. Only PUBLISHED decks that hold at
+// least one card are ever returned — that visibility filter is enforced in the
+// repository SQL and is not a caller-overridable argument, so a published deck
+// whose cards have all been deleted disappears from both the page and its
+// totalCount until a card is restored. Unauthenticated callers receive
 // UNAUTHENTICATED.
 func (u *masterCatalogUsecase) ListPublishedConnection(
 	ctx context.Context, in MasterCatalogConnectionInput,
@@ -214,9 +217,10 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 // authentication for the published catalog vs. adminGate.Require for the admin
 // surface); everything from cursor resolution onward is identical except two
 // caller-supplied knobs: publishedOnly threads into resolveMasterCatalogCursor to pick the
-// hydration scope (true = published catalog, a DRAFT or unknown id is rejected as
-// cursor-not-found so drafts never leak; false = admin, DRAFT decks are valid
-// cursors), and fetch is the repository page method (FindPublishedPage /
+// hydration scope (true = published catalog, a DRAFT, EMPTY or unknown id is
+// rejected as cursor-not-found so invisible decks never leak; false = admin,
+// DRAFT and empty decks are valid cursors), and fetch is the repository page
+// method (FindPublishedPage /
 // FindPageAnyStatus). opPrefix is the caller's eris wrap message, supplied so the shared
 // find-page wrap carries the correct attribution (error-wrapping rule: shared helpers
 // take the caller prefix as an argument, never hardcode it).
@@ -386,9 +390,10 @@ func resolveMasterCatalogOrderBy(
 // resolveMasterCatalogCursor decodes an opaque cursor string into a
 // *repository.MasterCatalogCursor with the column required by the active orderBy
 // populated. The publishedOnly flag selects the hydration scope: true hydrates
-// via FindPublishedByID (catalog scope — a draft or unknown id is rejected as
-// cursor-not-found so drafts never leak); false hydrates via FindByID (admin
-// scope — DRAFT decks are valid cursors). Returns BAD_USER_INPUT when the cursor
+// via FindPublishedByID (catalog scope — a draft, card-less or unknown id is
+// rejected as cursor-not-found so decks outside the catalog never leak); false
+// hydrates via FindByID (admin scope — DRAFT and empty decks are valid
+// cursors). Returns BAD_USER_INPUT when the cursor
 // cannot be decoded, was taken under a different ordering, carries an
 // ordering-key value that does not parse, or references a row outside the
 // active scope.
@@ -400,7 +405,7 @@ func resolveMasterCatalogOrderBy(
 //
 // Both paths run the scope-selected lookup, and both run it even when the
 // active orderBy needs no hydratable column — a v2 cursor must not bypass the
-// published-scope gate just because it can hydrate itself.
+// catalog-scope gate just because it can hydrate itself.
 func (u *masterCatalogUsecase) resolveMasterCatalogCursor(
 	ctx context.Context,
 	cursorStr *string,
@@ -462,11 +467,12 @@ func (u *masterCatalogUsecase) resolveMasterCatalogCursor(
 	return c, nil
 }
 
-// verifyPublishedMaster runs the published-deck non-disclosure gate shared by
+// verifyPublishedMaster runs the catalog-visibility non-disclosure gate shared by
 // FindPublishedMaster, ImportMaster, MergeMaster and PreviewMergeMaster. It
 // resolves id through FindPublishedByID, which returns repository.ErrNotFound for
-// both unknown ids and DRAFT decks, so draft existence is never disclosed: the two
-// collapse into notFound=true and each caller maps that to its own not-found shape
+// unknown ids, DRAFT decks and published decks holding zero cards, so neither
+// draft existence nor an empty deck is ever disclosed: all three collapse into
+// notFound=true and each caller maps that to its own not-found shape
 // (an outcome flag, or the nil deck the resolver renders as GraphQL null). Context
 // cancellation passes through unwrapped. Any other repository failure is wrapped
 // with the CALLER-supplied opPrefix, never a prefix fixed inside this helper, so
@@ -488,10 +494,11 @@ func (u *masterCatalogUsecase) verifyPublishedMaster(
 	return deck, false, nil
 }
 
-// FindPublishedMaster returns a single PUBLISHED master deck by id for any
-// authenticated caller. The shared verifyPublishedMaster gate collapses unknown
-// ids and draft decks into the same not-found signal, so draft existence is never
-// disclosed — both surface as a (nil, nil) result that the resolver maps to
+// FindPublishedMaster returns a single PUBLISHED, non-empty master deck by id
+// for any authenticated caller. The shared verifyPublishedMaster gate collapses
+// unknown ids, draft decks and published decks holding zero cards into the same
+// not-found signal, so neither draft existence nor an empty deck is ever
+// disclosed — all three surface as a (nil, nil) result that the resolver maps to
 // GraphQL null (non-disclosure gate). Unauthenticated callers receive
 // ucerr.ErrUnauthenticated.
 func (u *masterCatalogUsecase) FindPublishedMaster(ctx context.Context, id string) (*domain.MasterCardgroup, error) {
@@ -503,7 +510,7 @@ func (u *masterCatalogUsecase) FindPublishedMaster(ctx context.Context, id strin
 		return nil, err
 	}
 	if notFound {
-		return nil, nil // unknown or draft → GraphQL null (non-disclosure)
+		return nil, nil // unknown, draft or card-less → GraphQL null (non-disclosure)
 	}
 	return deck, nil
 }

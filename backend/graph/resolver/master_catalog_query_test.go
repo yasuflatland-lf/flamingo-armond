@@ -170,7 +170,7 @@ func TestQueryResolver_MasterCatalog_WrapsUsecaseError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// MasterCardgroup (public, published-only single deck)
+// MasterCardgroup (public, catalog-visible single deck)
 //
 // The masterCardgroup resolver lives in master_card.resolvers.go but reads
 // through MasterCatalogUC.FindPublishedMaster, so its tests live here alongside

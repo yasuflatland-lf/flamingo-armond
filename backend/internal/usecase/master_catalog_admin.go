@@ -202,6 +202,10 @@ func (u *masterCatalogUsecase) UpdateMaster(ctx context.Context, id string, in U
 // PublishMaster publishes a master cardgroup after confirming it has at least one
 // card. Admin-only. A deck with zero cards is rejected via outcome.EmptyMaster
 // (mapped to MasterCardgroupEmptyError) without touching the publish path.
+// This guard is immediate admin feedback, not the enforcement point: catalog
+// visibility is a read-side predicate (published AND at least one card) applied
+// in the repository, so a deck emptied AFTER publication leaves the catalog on
+// its own and returns the moment a card is restored.
 func (u *masterCatalogUsecase) PublishMaster(ctx context.Context, id string) (PublishMasterOutcome, error) {
 	if _, err := u.adminGate.Require(ctx, "usecase: master catalog: publish master"); err != nil {
 		return PublishMasterOutcome{}, err
