@@ -35,19 +35,23 @@ v2:<RawURLBase64(JSON{"i":id,"o":orderBy,"d":direction,"k":orderKey})>
 
 `backend/internal/cursor` implements both: `Encode(id)` emits v1, `EncodeV2(Payload)` emits v2, and `Decode(string)` accepts v1, v2, and a legacy bare id, returning a `Payload` whose `HasOrdering` field reports whether the ordering metadata is meaningful.
 
+### The `DUE` ordering key is not a plain column read
+
+Every other ordering key is a column on the row being served. The card connection's `DUE` key is `COALESCE(user_card_fsrs.due, cards.created_at)` for the requesting user — the same expression the page query sorts on — serialized with `encodeTimeOrderKey`. One helper (`cardUsecase.dueOrderValues`, a single batched FSRS lookup per page) resolves it for both the emit path and the v1 re-hydration path, because a value captured at emit time under one fallback and compared at serve time under another lands the bookmark on the wrong row.
+
 ## Which connections emit which envelope
 
 | Connection | Default ordering key | Envelope |
 | --- | --- | --- |
 | `myCardgroupsConnection` | `updated_at` (mutable) | v2 |
 | `masterCatalog` / admin master catalog | `sort_order` (admin-mutable) | v2 |
-| cards by cardgroup | `id` (immutable) | v1 |
+| cards by cardgroup | `id` (immutable); opt-in `DUE` / `UPDATED_AT` are mutable | v2 |
 | master cards | `position` (admin-mutable) | v2 |
 | admin users | `created_at` (immutable) | v1 |
 
-The column named is the one the connection orders by when the client sends no `orderBy` — `resolveCardOrderBy` defaults to `(ID, ASC)`, `resolveMasterCardOrderBy` to `(POSITION, ASC)`, matching the schema defaults. In every case the ordering is made total by appending `id` as the tiebreaker, so a v1 row whose default key is `id` is safe by construction.
+The column named is the one the connection orders by when the client sends no `orderBy` — `resolveCardOrderBy` defaults to `(ID, ASC)`, `resolveMasterCardOrderBy` to `(POSITION, ASC)`, matching the schema defaults. In every case the ordering is made total by appending `id` as the tiebreaker, so a connection whose default key is `id` is anchored by an immutable value on that default.
 
-The one remaining v1 row is not quite a clean bill of health. The cards connection is safe on its `ID` default but not on the opt-in `DUE` / `UPDATED_AT` orderings, both of which move under normal review activity; it has not been migrated.
+`admin users` is the only connection left on v1, and it is safe by construction: `created_at` is never updated after insert. Every other connection emits v2, including the card connection whose *default* key is immutable — it would otherwise regress the moment a screen adopts `orderBy: DUE`.
 
 ## What v2 guarantees, and what it does not
 
@@ -56,7 +60,7 @@ Guaranteed once a connection is on v2:
 - **No duplicates when the boundary row's ordering key is edited upward.** The bookmark compares against the value captured at serve time, so the next page starts exactly where the previous one ended instead of after the row's new position.
 - **No skipped rows when the boundary row's ordering key is edited downward.** Under v1 the re-read moved the bookmark past every remaining row, emptying the rest of the walk; the captured value keeps the walk anchored.
 - **No silent mis-page across an ordering change.** A cursor whose embedded `orderBy` / `direction` disagrees with the current request is rejected as `BAD_USER_INPUT` rather than compared against a different column.
-- **No weakening of the scope checks.** A v2 cursor can hydrate its ordering column without the repository, but the owner lookup (cardgroups), the published-scope lookup (catalog) and the cross-deck guard (master cards) still run, so the endpoint never becomes an existence oracle.
+- **No weakening of the scope checks.** A v2 cursor can hydrate its ordering column without the repository, but the owner lookup (cardgroups), the published-scope lookup (catalog) and the cross-deck / cross-cardgroup guards (master cards, cards) still run, so the endpoint never becomes an existence oracle.
 
 Not guaranteed — these are inherent to cursor pagination over a mutable column, and no envelope format fixes them:
 
@@ -68,7 +72,7 @@ Not guaranteed — these are inherent to cursor pagination over a mutable column
 
 The resolver boundary is the single encoding site. `backend/graph/resolver/connection.go` passes the per-connection encoder into the shared `buildEdges` generic, so every edge cursor and both `PageInfo` boundary cursors go through the same function exactly once:
 
-- `cursor.Encode` for the v1 connections.
+- `cursor.Encode` for the one v1 connection (admin users).
 - `orderedCursorEncoder(out.Ordering, out.OrderKeys)` for the v2 connections. The usecase output carries `Ordering` (the effective `orderBy` / direction) and `OrderKeys` (node id → serialized ordering-key value); the resolver reads them and never touches the repository enums.
 
 The usecase layer operates on raw entity UUIDs internally and never calls an encoder — see [`.claude/rules/pagination.md` § "Server-side design"](../../.claude/rules/pagination.md#server-side-design).
@@ -80,7 +84,7 @@ Every aggregate's `resolve*Cursor` decodes its incoming `after`/`before` argumen
 The v2 connections then run two extra steps before hydration:
 
 1. `requireCursorOrdering` rejects a cursor taken under a different column or direction (`BAD_USER_INPUT`).
-2. `applyCardgroupOrderKey` / `applyMasterCatalogOrderKey` / `applyMasterCardOrderKey` populates the repository cursor column from the embedded value. A value that does not parse into the column's type is `BAD_USER_INPUT`; an `orderBy` the helper does not handle is a caller bug and stays `INTERNAL`.
+2. `applyCardgroupOrderKey` / `applyMasterCatalogOrderKey` / `applyMasterCardOrderKey` / `applyCardOrderKey` populates the repository cursor column from the embedded value. A value that does not parse into the column's type is `BAD_USER_INPUT`; an `orderBy` the helper does not handle is a caller bug and stays `INTERNAL`.
 
 ## Backward compatibility
 

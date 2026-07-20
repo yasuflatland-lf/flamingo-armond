@@ -39,6 +39,12 @@ type mockCardRepository struct {
 	findPageRows  []*domain.Card
 	findPageTotal int64
 	findPageErr   error
+	// findPageDue overrides the DUE ordering key the fake reports per card id,
+	// standing in for the viewer's user_card_fsrs row. Cards absent from the map
+	// report their CreatedAt, mirroring the production COALESCE(ucs.due,
+	// cards.created_at). Setting an entry AFTER a page is fetched is what proves
+	// the emitted cursor came from the page read rather than a later one.
+	findPageDue map[string]time.Time
 	// captured arguments from the most recent FindPageByCardgroup call.
 	capturedFindPage struct {
 		cardgroupID string
@@ -95,7 +101,7 @@ func (m *mockCardRepository) FindPageByCardgroupForUser(
 	orderBy repository.CardOrderBy,
 	dir repository.SortOrder,
 	search *string,
-) ([]*domain.Card, int64, error) {
+) ([]*domain.Card, int64, map[string]time.Time, error) {
 	m.capturedFindPage.cardgroupID = cardgroupID
 	m.capturedFindPage.after = after
 	m.capturedFindPage.before = before
@@ -104,17 +110,49 @@ func (m *mockCardRepository) FindPageByCardgroupForUser(
 	m.capturedFindPage.orderBy = orderBy
 	m.capturedFindPage.dir = dir
 	m.capturedFindPage.search = search
-	return m.findPageRows, m.findPageTotal, m.findPageErr
+	return m.findPageRows, m.findPageTotal, m.pageOrderKeys(orderBy), m.findPageErr
+}
+
+// pageOrderKeys mirrors the production repository: the page query reports the
+// value it ordered each returned row by, read from its own result set. Deriving
+// it here — instead of returning nil — keeps the fake honest about the contract
+// the usecase now depends on, and keeps a fake that forgets to model an ordering
+// from silently emitting a zero-time cursor.
+func (m *mockCardRepository) pageOrderKeys(orderBy repository.CardOrderBy) map[string]time.Time {
+	if orderBy == repository.CardOrderByID {
+		return nil
+	}
+	keys := make(map[string]time.Time, len(m.findPageRows))
+	for _, card := range m.findPageRows {
+		switch orderBy {
+		case repository.CardOrderByCreatedAt:
+			keys[card.ID] = card.CreatedAt
+		case repository.CardOrderByUpdatedAt:
+			keys[card.ID] = card.UpdatedAt
+		case repository.CardOrderByDue:
+			if due, ok := m.findPageDue[card.ID]; ok {
+				keys[card.ID] = due
+			} else {
+				keys[card.ID] = card.CreatedAt
+			}
+		}
+	}
+	return keys
 }
 
 type mockUserCardFSRSRepository struct {
-	byCardID  map[string]*domain.UserCardFSRS
-	findErr   error
-	upserted  *domain.UserCardFSRS
-	upsertErr error
+	byCardID map[string]*domain.UserCardFSRS
+	findErr  error
+	// findByUserAndCardIDsCalls counts the lookups the code under test issues.
+	// The cursor-emit path must issue zero: the page query already reported the
+	// ordering key, and a second read would resolve a later snapshot.
+	findByUserAndCardIDsCalls int
+	upserted                  *domain.UserCardFSRS
+	upsertErr                 error
 }
 
 func (m *mockUserCardFSRSRepository) FindByUserAndCardIDs(_ context.Context, _ string, ids []string) (map[string]*domain.UserCardFSRS, error) {
+	m.findByUserAndCardIDsCalls++
 	if m.findErr != nil {
 		return nil, m.findErr
 	}
@@ -808,6 +846,70 @@ func TestCardUsecase_ListCardsByCardgroupConnection_BackwardPaging(t *testing.T)
 	}
 }
 
+// TestCardUsecase_ListCardsByCardgroupConnection_DueKeyComesFromThePageRead
+// pins the snapshot the DUE ordering key is taken from.
+//
+// DUE is the one ordering whose key lives on no card column: it is
+// COALESCE(user_card_fsrs.due, cards.created_at) over the viewer's FSRS row. An
+// earlier implementation recovered it with a SECOND query after the page came
+// back, so a review of the boundary card landing between the two reads produced
+// a cursor keyed to a position the page never served — the next page then
+// skipped every row still ahead of it, which is precisely the failure the v2
+// envelope exists to prevent.
+//
+// The fixture reproduces that interleaving directly: the page is served while
+// c-B is still stateless (key = its created_at), and only afterwards does c-B
+// acquire an FSRS row far in the future. A key sourced from a later read would
+// report that future value; a key sourced from the page read reports created_at.
+func TestCardUsecase_ListCardsByCardgroupConnection_DueKeyComesFromThePageRead(t *testing.T) {
+	t.Parallel()
+
+	createdB := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	// The due date c-B acquires AFTER its page was served.
+	reviewedB := time.Date(2099, 12, 31, 23, 59, 59, 0, time.UTC)
+
+	rows := []*domain.Card{
+		{ID: "c-A", CardgroupID: "cg1", CreatedAt: createdB.Add(-time.Hour)},
+		{ID: "c-B", CardgroupID: "cg1", CreatedAt: createdB},
+	}
+	cardRepo := &mockCardRepository{findPageRows: rows, findPageTotal: 2}
+	fsrs := &mockUserCardFSRSRepository{}
+	uc := NewCardUsecase(nil, cardRepo,
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
+		fsrs, nil, newTestLogger(),
+	)
+
+	// Serve the page while c-B has no FSRS row: the page orders it by created_at.
+	orderBy := CardOrderByDue
+	out, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
+		CardgroupID: "cg1",
+		First:       intPtr(2),
+		OrderBy:     &orderBy,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// c-B is reviewed immediately afterwards. Any read issued after the page
+	// would now see reviewedB.
+	cardRepo.findPageDue = map[string]time.Time{"c-B": reviewedB}
+
+	got := out.OrderKeys["c-B"]
+	if want := encodeTimeOrderKey(createdB); got != want {
+		t.Fatalf("OrderKeys[c-B] = %q, want %q — the key must come from the page read, "+
+			"not from a later snapshot in which c-B had already been reviewed", got, want)
+	}
+	if got == encodeTimeOrderKey(reviewedB) {
+		t.Fatal("OrderKeys[c-B] carries the post-page due date: the emit path re-read the FSRS state")
+	}
+	// The emit path must not issue an FSRS query at all — the page read already
+	// reported the key.
+	if fsrs.findByUserAndCardIDsCalls != 0 {
+		t.Fatalf("emit path issued %d FSRS lookups; the page query already reported the key",
+			fsrs.findByUserAndCardIDsCalls)
+	}
+}
+
 // TestCardUsecase_ListCardsByCardgroupConnection_ResolveCursorHydratesDueField
 // pins down that resolveCardCursor populates the field matching the active
 // orderBy on the *CardCursor passed to FindPageByCardgroup.
@@ -910,18 +1012,30 @@ func TestCardUsecase_ResolveCursor_MalformedV1_ReturnsBadUserInput(t *testing.T)
 	malformed := "v1:!!!not-base64!!!"
 	_, err := uc.(*cardUsecase).resolveCardCursor(
 		context.Background(),
-		&malformed, "cg1", repository.CardOrderByID, "after",
+		&malformed, "cg1", repository.CardOrderByID, cardIDOrdering(), "after",
 	)
 	assertValidationError(t, err, "after", "")
 }
 
-// TestCardUsecase_ResolveCursor_V2Rejected pins the guard against
-// cross-envelope acceptance. Card cursors stay on the v1 envelope — the default
-// ordering is the immutable ID — so a decodable v2 cursor cannot have been
-// issued here and must be BAD_USER_INPUT rather than paged by its raw id under
-// ordering metadata this connection never validated. The ID orderBy is used so
-// the rejection is provably ahead of any repository lookup.
-func TestCardUsecase_ResolveCursor_V2Rejected(t *testing.T) {
+// cardIDOrdering is the PageOrdering ListCardsByCardgroupConnection resolves to
+// when the client sends no orderBy/orderDirection: the schema default (ID, ASC).
+// Direct resolveCardCursor unit tests pass it so the ordering guard sees the
+// same value the connection method would have computed.
+func cardIDOrdering() PageOrdering {
+	return PageOrdering{
+		OrderBy:   string(repository.CardOrderByID),
+		Direction: string(repository.SortAsc),
+	}
+}
+
+// TestCardUsecase_ResolveCursor_V2OrderingMismatch_Rejected pins the ordering
+// guard on the card connection. Card cursors are v2 now, so a decodable v2
+// envelope is no longer rejected on sight — but one taken under a different
+// column or direction than the request resolved to must still be
+// BAD_USER_INPUT, or its captured key would be compared against a column it
+// never described. The ID orderBy is used so the rejection is provably ahead of
+// any repository lookup.
+func TestCardUsecase_ResolveCursor_V2OrderingMismatch_Rejected(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockCardRepository{}
@@ -937,7 +1051,7 @@ func TestCardUsecase_ResolveCursor_V2Rejected(t *testing.T) {
 	})
 	_, err := uc.(*cardUsecase).resolveCardCursor(
 		context.Background(),
-		&v2, "cg1", repository.CardOrderByID, "after",
+		&v2, "cg1", repository.CardOrderByID, cardIDOrdering(), "after",
 	)
 	assertValidationError(t, err, "after", "cursor does not match the requested ordering")
 }
@@ -956,7 +1070,7 @@ func TestCardUsecase_ResolveCursor_V1EncodedID(t *testing.T) {
 	encoded := "v1:Y2FyZC1hYmM"
 	c, err := uc.(*cardUsecase).resolveCardCursor(
 		context.Background(),
-		&encoded, "cg1", repository.CardOrderByID, "after",
+		&encoded, "cg1", repository.CardOrderByID, cardIDOrdering(), "after",
 	)
 	if err != nil {
 		t.Fatalf("unexpected error for v1 encoded cursor: %v", err)

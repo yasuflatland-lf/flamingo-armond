@@ -60,8 +60,8 @@ func (m *cardMockRepo) FindPageByCardgroupForUser(
 	_ repository.CardOrderBy,
 	_ repository.SortOrder,
 	_ *string,
-) ([]*domain.Card, int64, error) {
-	return nil, 0, nil
+) ([]*domain.Card, int64, map[string]time.Time, error) {
+	return nil, 0, nil, nil
 }
 func (m *cardMockRepo) FindByCardgroupAndFront(_ context.Context, _, _ string) (*domain.Card, error) {
 	return nil, nil
