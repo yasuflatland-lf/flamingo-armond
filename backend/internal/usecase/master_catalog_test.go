@@ -744,7 +744,7 @@ func TestImportMaster_UnknownOrDraft_ReturnsNotFoundOutcome(t *testing.T) {
 
 func TestImportMaster_MasterUnpublishedMidFlight_ReturnsNotFoundOutcome(t *testing.T) {
 	// TOCTOU: the master is published when the FindPublishedByID gate runs, but the
-	// delegated copy's own in-tx published-scoped re-read surfaces repository.ErrNotFound
+	// delegated copy's own published-scoped re-read surfaces repository.ErrNotFound
 	// (an unpublish landed in between). ImportMaster must collapse that into the same
 	// NotFound outcome as a pre-gate unknown/draft — not a silent import, not an error.
 	repo := &mockMasterCatalogRepository{
@@ -1365,7 +1365,7 @@ func TestMasterCatalogUsecase_MergeMaster_DelegateError_Wrapped(t *testing.T) {
 
 func TestMasterCatalogUsecase_MergeMaster_MasterUnpublishedMidFlight_ReturnsNotFoundOutcome(t *testing.T) {
 	// TOCTOU: the master is published at the FindPublishedByID gate, but the merge
-	// delegate's in-tx published-scoped re-read surfaces repository.ErrNotFound. MergeMaster
+	// delegate's published-scoped re-read surfaces repository.ErrNotFound. MergeMaster
 	// must collapse that into MergeMasterOutcome{NotFound:true}, matching a pre-gate
 	// unknown/draft — not a silent merge, not an error. A ucerr.ValidationError from the
 	// destination ownership gate is unaffected (it is not repository.ErrNotFound).

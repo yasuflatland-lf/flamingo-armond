@@ -54,17 +54,27 @@ therefore re-probe through the **same** catalog-scoped `FindPublishedByID`
 `MergeMaster` to the same `NotFound` outcome as a pre-gate unknown/draft/empty deck.
 
 **The re-probe narrows the window; it does not close it.** `FindPublishedByID` and
-`ListByMasterCardgroup` take no `tx` handle, so both run on the pool and share no
-snapshot with each other or with the writes that follow. A re-probe alone would
-therefore still admit a deck emptied between the probe and the enumeration.
+`ListByMasterCardgroup` take no `tx` handle — the repository reads through `r.db` — so
+both run on pooled connections and share no snapshot with each other or with the writes
+that follow. A re-probe alone would therefore still admit a deck emptied between the
+probe and the enumeration, and an unpublish committing after the probe still lets a
+now-draft deck be snapshotted.
 
 The fix for the emptiness half is to **derive the verdict from the read the write
 actually consumes** rather than from a separate probe: both write paths return
 `repository.ErrNotFound` when `len(cards) == 0` on the enumeration they are about
 to copy. That holds however the two reads interleave with a concurrent last-card
-delete, and it needs no transaction-scoped repository methods. The unpublish half
-still relies on the re-probe and keeps a residual window; closing it would require
-tx-scoped reads under an explicit repeatable-read transaction.
+delete, and it needs no transaction-scoped repository methods.
+
+The unpublish half still relies on the re-probe and keeps a residual window. Closing it
+would require a **`FOR SHARE` lock on the master row, taken on the transaction
+connection** — the read-side sibling of
+[TOCTOU authorization guard: lock the read rows with `FOR UPDATE`](../library-gotchas/toctou-authorization-guard-for-update-lock.md).
+Note what does *not* work: moving the probe into a repeatable-read transaction. That
+would pin the reads to the snapshot taken at transaction start, so a deck unpublished
+afterwards would still read as published — consistency between the reads, but the wrong
+answer for the write. The lock is what serialises the unpublish against the snapshot,
+not the isolation level.
 
 The same `ErrNotFound` reaches `SeedForNewUser`, which **skips** that starter and
 seeds the rest rather than failing the batch — one deck leaving the catalog
@@ -97,8 +107,10 @@ Pin the collapse where it happens, not only end-to-end:
   by the repo mock) yield the not-found outcome with the copy/side-effect **not run**
   (`TestImportMaster_UnknownOrDraft_ReturnsNotFoundOutcome`).
 - Usecase (write-path TOCTOU): a test that a master present at the gate but unpublished
-  by the time the write transaction re-reads it yields the not-found outcome with no
-  cards written — proving the in-transaction re-read closes the window
+  by the time the write path re-reads it yields the not-found outcome with no
+  cards written — proving the re-read catches the interleaving it can see. The
+  interleaving where the unpublish commits *after* the re-read stays reachable and is
+  not pinned by any test
   (`TestMasterDeckUsecase_MergeMasterIntoCardgroup_MasterUnpublishedMidFlight_NoImport`,
   `TestImportMaster_MasterUnpublishedMidFlight_ReturnsNotFoundOutcome`,
   `TestMasterCatalogUsecase_MergeMaster_MasterUnpublishedMidFlight_ReturnsNotFoundOutcome`).
