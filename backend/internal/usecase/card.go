@@ -333,6 +333,15 @@ func (u *cardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 
 	updated, err := u.cardRepo.Update(ctx, id, patch)
 	if err != nil {
+		// Renaming a front onto one that already exists in the same cardgroup is
+		// an ordinary, recoverable user mistake, not an infrastructure failure.
+		// UpdateCardResult has no duplicate variant, so it travels the error
+		// channel as a field-level validation error (BAD_USER_INPUT on "front")
+		// rather than defaulting to INTERNAL.
+		if errors.Is(err, repository.ErrCardDuplicateFront) {
+			return UpdateCardOutcome{}, ucerr.NewValidationError("front",
+				"A card with this front already exists in this cardgroup")
+		}
 		return UpdateCardOutcome{}, eris.Wrap(err, "usecase: card: update: repo update")
 	}
 	u.observer.OnCardUpdated(ctx, updated)
