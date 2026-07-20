@@ -24,20 +24,23 @@ func TestParseNewCardRatio_RejectsOutOfBounds(t *testing.T) {
 	cases := []struct {
 		name     string
 		num, den int
+		wantErr  error
 	}{
-		{"zero denominator", 1, 0},
-		{"negative denominator", 1, -5},
-		{"zero numerator", 0, 5},
-		{"negative numerator", -1, 5},
-		{"numerator equals denominator", 3, 3},
-		{"numerator exceeds denominator", 5, 3},
-		{"reduced denominator over max", 50, 101},
+		{"zero denominator", 1, 0, ErrNewCardRatioDenominatorNotPositive},
+		{"negative denominator", 1, -5, ErrNewCardRatioDenominatorNotPositive},
+		{"zero numerator", 0, 5, ErrNewCardRatioShareOutOfRange},
+		{"negative numerator", -1, 5, ErrNewCardRatioShareOutOfRange},
+		{"numerator equals denominator", 3, 3, ErrNewCardRatioShareOutOfRange},
+		{"numerator exceeds denominator", 5, 3, ErrNewCardRatioShareOutOfRange},
+		{"reduced denominator over max", 50, 101, ErrNewCardRatioDenominatorTooLarge},
+		{"denominator over max only after reduction", 3, 303, ErrNewCardRatioDenominatorTooLarge},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := ParseNewCardRatio(tc.num, tc.den)
 			require.Error(t, err)
+			require.ErrorIs(t, err, tc.wantErr)
 		})
 	}
 }
