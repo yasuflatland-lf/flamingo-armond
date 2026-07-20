@@ -71,6 +71,7 @@ func TestMasterCardgroupRepository_CreateAndFindByID_AllFields(t *testing.T) {
 	repo := repository.NewMasterCardgroupRepository(testDB.GORM)
 
 	m := newMasterCardgroup("All Fields " + uuid.NewString())
+	m.UpdatedAt = time.Unix(1, 0).UTC()
 	require.NoError(t, repo.Create(ctx, m))
 
 	got, err := repo.FindByID(ctx, m.ID)
@@ -86,6 +87,9 @@ func TestMasterCardgroupRepository_CreateAndFindByID_AllFields(t *testing.T) {
 	require.Equal(t, m.SortOrder, got.SortOrder)
 	require.False(t, got.CreatedAt.IsZero())
 	require.False(t, got.UpdatedAt.IsZero())
+	require.Equal(t, m.UpdatedAt, got.UpdatedAt,
+		"Create must copy the database-assigned updated_at back into the aggregate")
+	require.NotEqual(t, time.Unix(1, 0).UTC(), m.UpdatedAt)
 }
 
 func TestMasterCardgroupRepository_CreateAndFindByID_NullOptionalFields(t *testing.T) {
@@ -137,6 +141,10 @@ func TestMasterCardgroupRepository_EnsureByName_Idempotent(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, first.ID)
 	require.Equal(t, name, first.Name.String())
+	// The create branch builds its row in-place, so the only source of
+	// updated_at is the RETURNING clause; dropping it leaves the zero time here.
+	require.False(t, first.UpdatedAt.IsZero(),
+		"EnsureByName must return the database-assigned updated_at")
 
 	// Call again with the SAME name — must return same ID, no duplicate row.
 	second, err := repo.EnsureByName(ctx, name)

@@ -43,6 +43,7 @@ func TestCardRepository_CRUD(t *testing.T) {
 	repo := repository.NewCardRepository(testDB.GORM)
 
 	card := newCard(cg.ID, "front", "back")
+	card.UpdatedAt = time.Unix(1, 0).UTC()
 	require.NoError(t, repo.Create(ctx, card))
 
 	got, err := repo.FindByID(ctx, card.ID)
@@ -51,6 +52,9 @@ func TestCardRepository_CRUD(t *testing.T) {
 	require.Equal(t, cg.ID, got.CardgroupID)
 	require.Equal(t, domain.CardText("front"), got.Front)
 	require.Equal(t, domain.CardText("back"), got.Back)
+	require.Equal(t, card.UpdatedAt, got.UpdatedAt,
+		"Create must copy the database-assigned updated_at back into the aggregate")
+	require.NotEqual(t, time.Unix(1, 0).UTC(), card.UpdatedAt)
 
 	time.Sleep(5 * time.Millisecond)
 	front := "updated front"
