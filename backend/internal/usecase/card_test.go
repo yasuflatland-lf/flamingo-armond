@@ -39,6 +39,12 @@ type mockCardRepository struct {
 	findPageRows  []*domain.Card
 	findPageTotal int64
 	findPageErr   error
+	// findPageDue overrides the DUE ordering key the fake reports per card id,
+	// standing in for the viewer's user_card_fsrs row. Cards absent from the map
+	// report their CreatedAt, mirroring the production COALESCE(ucs.due,
+	// cards.created_at). Setting an entry AFTER a page is fetched is what proves
+	// the emitted cursor came from the page read rather than a later one.
+	findPageDue map[string]time.Time
 	// captured arguments from the most recent FindPageByCardgroup call.
 	capturedFindPage struct {
 		cardgroupID string
@@ -95,7 +101,7 @@ func (m *mockCardRepository) FindPageByCardgroupForUser(
 	orderBy repository.CardOrderBy,
 	dir repository.SortOrder,
 	search *string,
-) ([]*domain.Card, int64, error) {
+) ([]*domain.Card, int64, map[string]time.Time, error) {
 	m.capturedFindPage.cardgroupID = cardgroupID
 	m.capturedFindPage.after = after
 	m.capturedFindPage.before = before
@@ -104,17 +110,49 @@ func (m *mockCardRepository) FindPageByCardgroupForUser(
 	m.capturedFindPage.orderBy = orderBy
 	m.capturedFindPage.dir = dir
 	m.capturedFindPage.search = search
-	return m.findPageRows, m.findPageTotal, m.findPageErr
+	return m.findPageRows, m.findPageTotal, m.pageOrderKeys(orderBy), m.findPageErr
+}
+
+// pageOrderKeys mirrors the production repository: the page query reports the
+// value it ordered each returned row by, read from its own result set. Deriving
+// it here — instead of returning nil — keeps the fake honest about the contract
+// the usecase now depends on, and keeps a fake that forgets to model an ordering
+// from silently emitting a zero-time cursor.
+func (m *mockCardRepository) pageOrderKeys(orderBy repository.CardOrderBy) map[string]time.Time {
+	if orderBy == repository.CardOrderByID {
+		return nil
+	}
+	keys := make(map[string]time.Time, len(m.findPageRows))
+	for _, card := range m.findPageRows {
+		switch orderBy {
+		case repository.CardOrderByCreatedAt:
+			keys[card.ID] = card.CreatedAt
+		case repository.CardOrderByUpdatedAt:
+			keys[card.ID] = card.UpdatedAt
+		case repository.CardOrderByDue:
+			if due, ok := m.findPageDue[card.ID]; ok {
+				keys[card.ID] = due
+			} else {
+				keys[card.ID] = card.CreatedAt
+			}
+		}
+	}
+	return keys
 }
 
 type mockUserCardFSRSRepository struct {
-	byCardID  map[string]*domain.UserCardFSRS
-	findErr   error
-	upserted  *domain.UserCardFSRS
-	upsertErr error
+	byCardID map[string]*domain.UserCardFSRS
+	findErr  error
+	// findByUserAndCardIDsCalls counts the lookups the code under test issues.
+	// The cursor-emit path must issue zero: the page query already reported the
+	// ordering key, and a second read would resolve a later snapshot.
+	findByUserAndCardIDsCalls int
+	upserted                  *domain.UserCardFSRS
+	upsertErr                 error
 }
 
 func (m *mockUserCardFSRSRepository) FindByUserAndCardIDs(_ context.Context, _ string, ids []string) (map[string]*domain.UserCardFSRS, error) {
+	m.findByUserAndCardIDsCalls++
 	if m.findErr != nil {
 		return nil, m.findErr
 	}
@@ -805,6 +843,70 @@ func TestCardUsecase_ListCardsByCardgroupConnection_BackwardPaging(t *testing.T)
 	// Repo should have been asked for last+1 trailing rows.
 	if cardRepo.capturedFindPage.last != 4 {
 		t.Fatalf("expected repo.last=4 (last+1), got %d", cardRepo.capturedFindPage.last)
+	}
+}
+
+// TestCardUsecase_ListCardsByCardgroupConnection_DueKeyComesFromThePageRead
+// pins the snapshot the DUE ordering key is taken from.
+//
+// DUE is the one ordering whose key lives on no card column: it is
+// COALESCE(user_card_fsrs.due, cards.created_at) over the viewer's FSRS row. An
+// earlier implementation recovered it with a SECOND query after the page came
+// back, so a review of the boundary card landing between the two reads produced
+// a cursor keyed to a position the page never served — the next page then
+// skipped every row still ahead of it, which is precisely the failure the v2
+// envelope exists to prevent.
+//
+// The fixture reproduces that interleaving directly: the page is served while
+// c-B is still stateless (key = its created_at), and only afterwards does c-B
+// acquire an FSRS row far in the future. A key sourced from a later read would
+// report that future value; a key sourced from the page read reports created_at.
+func TestCardUsecase_ListCardsByCardgroupConnection_DueKeyComesFromThePageRead(t *testing.T) {
+	t.Parallel()
+
+	createdB := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	// The due date c-B acquires AFTER its page was served.
+	reviewedB := time.Date(2099, 12, 31, 23, 59, 59, 0, time.UTC)
+
+	rows := []*domain.Card{
+		{ID: "c-A", CardgroupID: "cg1", CreatedAt: createdB.Add(-time.Hour)},
+		{ID: "c-B", CardgroupID: "cg1", CreatedAt: createdB},
+	}
+	cardRepo := &mockCardRepository{findPageRows: rows, findPageTotal: 2}
+	fsrs := &mockUserCardFSRSRepository{}
+	uc := NewCardUsecase(nil, cardRepo,
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
+		fsrs, nil, newTestLogger(),
+	)
+
+	// Serve the page while c-B has no FSRS row: the page orders it by created_at.
+	orderBy := CardOrderByDue
+	out, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
+		CardgroupID: "cg1",
+		First:       intPtr(2),
+		OrderBy:     &orderBy,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// c-B is reviewed immediately afterwards. Any read issued after the page
+	// would now see reviewedB.
+	cardRepo.findPageDue = map[string]time.Time{"c-B": reviewedB}
+
+	got := out.OrderKeys["c-B"]
+	if want := encodeTimeOrderKey(createdB); got != want {
+		t.Fatalf("OrderKeys[c-B] = %q, want %q — the key must come from the page read, "+
+			"not from a later snapshot in which c-B had already been reviewed", got, want)
+	}
+	if got == encodeTimeOrderKey(reviewedB) {
+		t.Fatal("OrderKeys[c-B] carries the post-page due date: the emit path re-read the FSRS state")
+	}
+	// The emit path must not issue an FSRS query at all — the page read already
+	// reported the key.
+	if fsrs.findByUserAndCardIDsCalls != 0 {
+		t.Fatalf("emit path issued %d FSRS lookups; the page query already reported the key",
+			fsrs.findByUserAndCardIDsCalls)
 	}
 }
 

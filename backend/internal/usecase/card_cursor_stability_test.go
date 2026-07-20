@@ -151,14 +151,14 @@ func (r *cardWalkRepo) FindPageByCardgroupForUser(
 	orderBy repository.CardOrderBy,
 	dir repository.SortOrder,
 	_ *string,
-) ([]*domain.Card, int64, error) {
+) ([]*domain.Card, int64, map[string]time.Time, error) {
 	if orderBy != repository.CardOrderByUpdatedAt && orderBy != repository.CardOrderByDue {
-		return nil, 0, eris.Errorf(
+		return nil, 0, nil, eris.Errorf(
 			"cardWalkRepo: only the updated_at and due orderings are implemented; got orderBy=%q", orderBy,
 		)
 	}
 	if dir != repository.SortAsc {
-		return nil, 0, eris.Errorf("cardWalkRepo: only the ASC direction is implemented; got dir=%q", dir)
+		return nil, 0, nil, eris.Errorf("cardWalkRepo: only the ASC direction is implemented; got dir=%q", dir)
 	}
 
 	scoped := make([]*domain.Card, 0, len(r.cards))
@@ -179,7 +179,7 @@ func (r *cardWalkRepo) FindPageByCardgroupForUser(
 	if after != nil {
 		key, err := cardWalkCursorKey(orderBy, after)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, nil, err
 		}
 		rest := make([]*domain.Card, 0, len(scoped))
 		for _, c := range scoped {
@@ -192,7 +192,7 @@ func (r *cardWalkRepo) FindPageByCardgroupForUser(
 	if before != nil {
 		key, err := cardWalkCursorKey(orderBy, before)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, nil, err
 		}
 		rest := make([]*domain.Card, 0, len(scoped))
 		for _, c := range scoped {
@@ -211,7 +211,20 @@ func (r *cardWalkRepo) FindPageByCardgroupForUser(
 	if last > 0 && len(scoped) > last {
 		scoped = scoped[len(scoped)-last:]
 	}
-	return scoped, total, nil
+	return scoped, total, r.walkOrderKeys(orderBy, scoped), nil
+}
+
+// walkOrderKeys mirrors the production repository: the page query reports the
+// value it sorted each returned row by, from its own read. cardWalkKey is the
+// very function this fake sorted with, so emit and order cannot drift apart —
+// which is what lets a test mutate the FSRS state AFTER a page is served and
+// still assert the cursor carries the key that page actually used.
+func (r *cardWalkRepo) walkOrderKeys(orderBy repository.CardOrderBy, cards []*domain.Card) map[string]time.Time {
+	keys := make(map[string]time.Time, len(cards))
+	for _, c := range cards {
+		keys[c.ID] = r.cardWalkKey(orderBy, c)
+	}
+	return keys
 }
 
 func (r *cardWalkRepo) Create(_ context.Context, _ *domain.Card) error { return nil }
@@ -678,35 +691,45 @@ func TestCardCursorWalk_Due_NilFSRSRepo_EmitAndApplyAgreeOnCreatedAt(t *testing.
 // in a single call. The second assertion additionally shows the v2 cursor path
 // skips the per-cursor re-read entirely: a page taken after a v2 cursor still
 // costs exactly one lookup.
-func TestCardCursorWalk_Due_BatchesFSRSLookupOncePerPage(t *testing.T) {
+// TestCardCursorWalk_Due_EmitIssuesNoFSRSLookup pins the snapshot the DUE
+// ordering key is taken from, across a full v2 walk.
+//
+// The emit path used to recover the key with its own batched FSRS query after
+// the page came back. That was one query per page, but it read a DIFFERENT
+// snapshot than the one that ordered the page: a review landing between the two
+// reads minted a cursor keyed to a position the page never served, and the next
+// page then skipped every row still ahead of it. The key now travels out of the
+// page query itself, so the emit path issues no FSRS lookup at all — zero, not
+// "one, batched".
+//
+// Asserting the count rather than the values is what makes this a structural
+// guard: any future re-introduction of a post-page read fails here even if the
+// value it happens to recover agrees.
+func TestCardCursorWalk_Due_EmitIssuesNoFSRSLookup(t *testing.T) {
 	t.Parallel()
 
 	repo := newCardWalkFixture("")
 	uc := newCardWalkUsecase(repo, repo.fsrs)
 
 	page1 := fetchCardWalkPage(t, uc, CardOrderByDue, nil)
-	if repo.fsrs.calls != 1 {
-		t.Fatalf("page 1 issued %d FSRS lookups, want exactly 1; batches = %v", repo.fsrs.calls, repo.fsrs.batches)
+	if repo.fsrs.calls != 0 {
+		t.Fatalf("page 1 emit issued %d FSRS lookups, want 0 — the page query already reported the key; batches = %v",
+			repo.fsrs.calls, repo.fsrs.batches)
 	}
-	want := cardWalkIDs(page1)
-	got := repo.fsrs.batches[0]
-	if len(got) != len(want) {
-		t.Fatalf("FSRS batch = %v, want every page id in one call: %v", got, want)
-	}
-	inBatch := map[string]bool{}
-	for _, id := range got {
-		inBatch[id] = true
-	}
-	for _, id := range want {
-		if !inBatch[id] {
-			t.Fatalf("FSRS batch %v is missing page row %q", got, id)
+	// Every returned row still carries a key, so the cursor is anchored.
+	for _, id := range cardWalkIDs(page1) {
+		if page1.OrderKeys[id] == "" {
+			t.Fatalf("OrderKeys is missing row %q: an unanchored cursor restarts paging from the top", id)
 		}
 	}
 
+	// Paging on with a v2 cursor keeps the property: the second page's key comes
+	// from its own page read, and resolving the incoming cursor needs no FSRS
+	// lookup either because the cursor carries its key.
 	next := encodeCardWalkCursor(page1, page1.EndCur)
 	fetchCardWalkPage(t, uc, CardOrderByDue, &next)
-	if repo.fsrs.calls != 2 {
-		t.Fatalf("page 2 after a v2 cursor issued %d total FSRS lookups, want 2 (one per page emit); batches = %v",
+	if repo.fsrs.calls != 0 {
+		t.Fatalf("page 2 after a v2 cursor issued %d total FSRS lookups, want 0; batches = %v",
 			repo.fsrs.calls, repo.fsrs.batches)
 	}
 }
@@ -1028,22 +1051,26 @@ func TestCardOrderKey_PerColumn(t *testing.T) {
 	}
 	due := cdWalkBase.Add(2 * time.Hour)
 
+	// Every hydrating ordering now serializes the key the PAGE QUERY reported,
+	// so each case supplies its own key rather than expecting the function to
+	// pick a column off the card. The ID case ignores the key entirely.
 	cases := []struct {
 		name    string
 		orderBy repository.CardOrderBy
+		key     time.Time
 		want    string
 	}{
-		{name: "id", orderBy: repository.CardOrderByID, want: ""},
-		{name: "created_at", orderBy: repository.CardOrderByCreatedAt, want: encodeTimeOrderKey(card.CreatedAt)},
-		{name: "updated_at", orderBy: repository.CardOrderByUpdatedAt, want: encodeTimeOrderKey(card.UpdatedAt)},
-		{name: "due", orderBy: repository.CardOrderByDue, want: encodeTimeOrderKey(due)},
+		{name: "id", orderBy: repository.CardOrderByID, key: due, want: ""},
+		{name: "created_at", orderBy: repository.CardOrderByCreatedAt, key: card.CreatedAt, want: encodeTimeOrderKey(card.CreatedAt)},
+		{name: "updated_at", orderBy: repository.CardOrderByUpdatedAt, key: card.UpdatedAt, want: encodeTimeOrderKey(card.UpdatedAt)},
+		{name: "due", orderBy: repository.CardOrderByDue, key: due, want: encodeTimeOrderKey(due)},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := cardOrderKey(tc.orderBy, card, due)
+			got, err := cardOrderKey(tc.orderBy, tc.key)
 			if err != nil {
 				t.Fatalf("cardOrderKey(%s) returned an unexpected error: %v", tc.orderBy, err)
 			}
@@ -1060,7 +1087,6 @@ func TestCardOrderKey_PerColumn(t *testing.T) {
 func TestCardOrderKey_UnknownOrderBy(t *testing.T) {
 	t.Parallel()
 
-	_, err := cardOrderKey(repository.CardOrderBy("not_a_real_column"),
-		&domain.Card{ID: "c-a", CardgroupID: domain.CardgroupID("cg1")}, time.Time{})
+	_, err := cardOrderKey(repository.CardOrderBy("not_a_real_column"), time.Time{})
 	assertInternalChain(t, err, "usecase: card: unhandled orderBy")
 }

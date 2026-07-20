@@ -212,7 +212,7 @@ func (r *countingCardRepo) FindPageByCardgroupForUser(
 	_, _ int,
 	_ repository.CardOrderBy, _ repository.SortOrder,
 	_ *string,
-) ([]*domain.Card, int64, error) {
+) ([]*domain.Card, int64, map[string]time.Time, error) {
 	panic("countingCardRepo.FindPageByCardgroupForUser not configured")
 }
 func (r *countingCardRepo) Create(_ context.Context, _ *domain.Card) error {

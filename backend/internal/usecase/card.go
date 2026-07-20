@@ -17,6 +17,10 @@ import (
 
 type CardRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Card, error)
+	// The third return is the ordering key the query sorted each returned row by,
+	// keyed by card id and taken from the same result set, so the connection can
+	// embed the page's real boundary in the v2 cursors it emits. It is nil for
+	// the ID ordering, whose key is the id the cursor already carries.
 	FindPageByCardgroupForUser(
 		ctx context.Context,
 		userID, cardgroupID string,
@@ -25,7 +29,7 @@ type CardRepository interface {
 		orderBy repository.CardOrderBy,
 		dir repository.SortOrder,
 		search *string,
-	) ([]*domain.Card, int64, error)
+	) ([]*domain.Card, int64, map[string]time.Time, error)
 	Create(ctx context.Context, card *domain.Card) error
 	FindByCardgroupAndFront(ctx context.Context, cardgroupID, front string) (*domain.Card, error)
 	Update(ctx context.Context, id string, patch repository.CardUpdate) (*domain.Card, error)
@@ -434,15 +438,21 @@ func (u *cardUsecase) ListCardsByCardgroupConnection(
 	search := normalizeSearch(in.Search)
 
 	var total int64
+	// pageKeys is the ordering value the page query sorted each row by, captured
+	// from that query's own result set. The +1 fetch means it can describe one
+	// more row than the trimmed page; cardOrderKeys reads it per returned card,
+	// so the extra entry is simply never looked up.
+	var pageKeys map[string]time.Time
 	cards, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
 		func(wantFirst, wantLast int) ([]*domain.Card, error) {
-			rows, t, e := u.cardRepo.FindPageByCardgroupForUser(
+			rows, t, k, e := u.cardRepo.FindPageByCardgroupForUser(
 				ctx, user.Sub, in.CardgroupID, after, before, wantFirst, wantLast, orderBy, dir, search,
 			)
 			if e != nil {
 				return nil, eris.Wrap(e, "usecase: card: list by cardgroup: find page")
 			}
 			total = t
+			pageKeys = k
 			return rows, nil
 		},
 	)
@@ -451,10 +461,13 @@ func (u *cardUsecase) ListCardsByCardgroupConnection(
 	}
 
 	// OrderKeys snapshots the ordering key of every row in this page so the
-	// resolver can embed it in the cursor it emits. Capturing it here — rather
-	// than re-reading it when the cursor comes back — is what makes the bookmark
-	// survive an edit to the boundary row's due date or updated_at.
-	keys, err := u.cardOrderKeys(ctx, orderBy, cards)
+	// resolver can embed it in the cursor it emits. The values come from the page
+	// query itself rather than a follow-up read: the DUE ordering keys off the
+	// viewer's FSRS row, and re-reading it here would resolve a later snapshot,
+	// so a review landing between the two reads would mint a cursor pointing at a
+	// boundary the page never used. Capturing at serve time — not re-reading when
+	// the cursor comes back — is what makes the bookmark survive a later edit.
+	keys, err := cardOrderKeys(orderBy, cards, pageKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -474,13 +487,18 @@ func (u *cardUsecase) ListCardsByCardgroupConnection(
 // dueOrderValues resolves the DUE ordering key of every supplied card in ONE
 // batched repository round-trip, keyed by card id.
 //
-// This is the single implementation of the COALESCE(user_card_fsrs.due,
-// cards.created_at) fallback the page query orders by. Both consumers go
-// through it — the page-emit path that captures the key into a cursor, and the
-// v1 re-hydration path that recovers it from the current row — because a value
-// written at emit time under one fallback and compared at serve time under
-// another lands the bookmark on the wrong row, which is worse than the bug v2
-// exists to fix. Do not re-derive the fallback anywhere else.
+// Its ONLY consumer is the v1 / legacy re-hydration path, which is handed a
+// bare card id and must recover the ordering key from the current row. The emit
+// path deliberately does NOT use it: a v2 cursor's key comes from the page
+// query's own result set, because resolving it here would read a later snapshot
+// than the one that ordered the page and could anchor the bookmark to a position
+// that page never served.
+//
+// It therefore re-implements, in Go, the COALESCE(user_card_fsrs.due,
+// cards.created_at) fallback the page query expresses in SQL. The two must stay
+// in step: a key recovered here under one fallback and compared in SQL under
+// another lands the bookmark on the wrong row. Do not re-derive the fallback
+// anywhere else.
 //
 // The len(cards) == 0 early return is mandatory, not an optimisation: GORM
 // silently drops a `WHERE card_id IN ?` clause built from an empty slice and
@@ -530,25 +548,30 @@ func (u *cardUsecase) dueOrderValues(ctx context.Context, cards []*domain.Card) 
 	return due, nil
 }
 
-// cardOrderKeys serializes the active ordering key of every row in a served
-// page, keyed by card id. It takes the WHOLE page so the DUE branch can batch
-// its FSRS lookup into a single dueOrderValues call; resolving the key row by
-// row would issue one query per edge. An orderBy outside the allowlist is a
-// caller bug and surfaces as INTERNAL, matching cardOrderKey.
-func (u *cardUsecase) cardOrderKeys(
-	ctx context.Context, orderBy repository.CardOrderBy, cards []*domain.Card,
+// cardOrderKeys serializes, for every card in a served page, the ordering value
+// the page query sorted it by. pageKeys is that query's own per-row report,
+// keyed by card id; it is nil for the ID ordering, which needs no key.
+//
+// It performs no I/O by design. An earlier version re-derived the DUE key with a
+// second FSRS query, which read a different snapshot than the one that ordered
+// the page — a review of the boundary card landing between the two reads minted
+// a cursor keyed to a position the page never used, reintroducing exactly the
+// skip/duplicate the v2 envelope exists to prevent. Every key now has exactly
+// one source: the query that produced the row.
+//
+// A hydrating ordering whose key is absent from pageKeys is a repository bug,
+// surfaced as INTERNAL. Defaulting to the zero time instead would emit a cursor
+// anchored at year 1 and silently restart paging from the top of the deck.
+func cardOrderKeys(
+	orderBy repository.CardOrderBy, cards []*domain.Card, pageKeys map[string]time.Time,
 ) (map[string]string, error) {
-	var due map[string]time.Time
-	if orderBy == repository.CardOrderByDue {
-		var err error
-		due, err = u.dueOrderValues(ctx, cards)
-		if err != nil {
-			return nil, err
-		}
-	}
 	keys := make(map[string]string, len(cards))
 	for _, card := range cards {
-		k, err := cardOrderKey(orderBy, card, due[card.ID])
+		key, ok := pageKeys[card.ID]
+		if !ok && orderBy != repository.CardOrderByID {
+			return nil, eris.Errorf("usecase: card: page query returned no %q ordering key for card %q", orderBy, card.ID)
+		}
+		k, err := cardOrderKey(orderBy, key)
 		if err != nil {
 			return nil, err
 		}
@@ -559,22 +582,22 @@ func (u *cardUsecase) cardOrderKeys(
 
 // cardOrderKey serializes one card's ordering key for embedding in a v2 cursor.
 // Ordering by ID needs no key — the id is already carried by the cursor — so it
-// returns the empty string. due is the already-resolved COALESCE value from
-// dueOrderValues and is read only on the DUE branch; keeping it a parameter
-// makes this function pure, so the serialization can be unit-tested without a
-// repository. The default arm mirrors resolveCardCursor's: an orderBy the
-// switch does not handle is a caller bug, surfaced as INTERNAL rather than a
-// silently unanchored cursor.
-func cardOrderKey(orderBy repository.CardOrderBy, card *domain.Card, due time.Time) (string, error) {
+// returns the empty string and ignores key.
+//
+// key is the value the page query sorted the row by, passed in rather than read
+// off the card so that every ordering has one source and this function stays
+// pure. The three hydrating orderings share a branch deliberately: DUE keys off
+// COALESCE(user_card_fsrs.due, cards.created_at), which is on no card column, so
+// deriving CREATED_AT / UPDATED_AT from the row while deriving DUE from the query
+// would leave two sources that can disagree. The default arm mirrors
+// resolveCardCursor's: an orderBy the switch does not handle is a caller bug,
+// surfaced as INTERNAL rather than a silently unanchored cursor.
+func cardOrderKey(orderBy repository.CardOrderBy, key time.Time) (string, error) {
 	switch orderBy {
 	case repository.CardOrderByID:
 		return "", nil
-	case repository.CardOrderByCreatedAt:
-		return encodeTimeOrderKey(card.CreatedAt), nil
-	case repository.CardOrderByUpdatedAt:
-		return encodeTimeOrderKey(card.UpdatedAt), nil
-	case repository.CardOrderByDue:
-		return encodeTimeOrderKey(due), nil
+	case repository.CardOrderByCreatedAt, repository.CardOrderByUpdatedAt, repository.CardOrderByDue:
+		return encodeTimeOrderKey(key), nil
 	default:
 		return "", eris.Errorf("usecase: card: unhandled orderBy %q", orderBy)
 	}
@@ -643,8 +666,8 @@ func resolveCardOrderBy(orderBy *CardOrderBy, dir *SortOrder) (repository.CardOr
 // On the DUE ordering that also spares the per-cursor
 // FindByUserAndCardIDs round-trip the re-read needs. A v1 or legacy cursor
 // carries no such value and falls back to re-reading the ordering key off the
-// CURRENT row — via the same dueOrderValues helper the emit path uses, so the
-// two can never disagree about the COALESCE fallback. That fallback is what
+// CURRENT row — via dueOrderValues, whose Go-side COALESCE mirrors the one the
+// page query expresses in SQL. That re-read is what
 // duplicates or skips rows when the ordering key is mutable, and it exists only
 // so cursors persisted by older clients keep paging.
 //
