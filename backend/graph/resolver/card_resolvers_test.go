@@ -468,6 +468,32 @@ func TestResolver_UpdateCard_InputValidation(t *testing.T) {
 	}
 }
 
+// TestResolver_UpdateCard_DuplicateFront_BadUserInput verifies that renaming a
+// card's front onto one that already exists in the same cardgroup surfaces as
+// BAD_USER_INPUT with extensions.field == "front", not as INTERNAL.
+func TestResolver_UpdateCard_DuplicateFront_BadUserInput(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &cardMockRepo{
+		findByIDResult: &domain.Card{ID: "c-1", CardgroupID: domain.CardgroupID("cg-1"), Front: "colour", Back: "OldBack"},
+		updateErr:      repository.ErrCardDuplicateFront,
+	}
+	cgRepo := &cardMockCGRepo{
+		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"},
+	}
+	srv := newUpdateCardSrv(cardRepo, cgRepo)
+
+	resp := gqlRequest(t, srv, authedCtx("u-1"), updateCardMutation("c-1", "color", "OldBack"))
+
+	if code := errCode(t, resp); code != "BAD_USER_INPUT" {
+		t.Fatalf("expected BAD_USER_INPUT, got %q; response: %v", code, resp)
+	}
+	ext := errExtensions(t, resp)
+	if field, _ := ext["field"].(string); field != "front" {
+		t.Fatalf("expected extensions.field=front, got %v; response: %v", ext["field"], resp)
+	}
+}
+
 // TestResolver_UpdateCard_Unauthenticated verifies that an anonymous request
 // is rejected with UNAUTHENTICATED via gqlerr.FromUsecaseError.
 func TestResolver_UpdateCard_Unauthenticated(t *testing.T) {

@@ -497,6 +497,39 @@ func TestCardUsecase_Update_RepoError_InfraChannel(t *testing.T) {
 	assertInternalChain(t, err, "usecase: card: update: repo update")
 }
 
+// TestCardUsecase_Update_DuplicateFront_ValidationError pins the rename-onto-an
+// -existing-front case to the validation channel: the repository's
+// ErrCardDuplicateFront must surface as a field-level error on "front"
+// (BAD_USER_INPUT once the resolver converts it), never as an INTERNAL wrap.
+func TestCardUsecase_Update_DuplicateFront_ValidationError(t *testing.T) {
+	t.Parallel()
+
+	existing := &domain.Card{
+		ID:          "card1",
+		CardgroupID: domain.CardgroupID("cg1"),
+		Front:       domain.CardText("colour"),
+		Back:        domain.CardText("old back"),
+	}
+	cardRepo := &mockCardRepository{
+		findResult: existing,
+		updateErr:  repository.ErrCardDuplicateFront,
+	}
+	uc := NewCardUsecase(nil, cardRepo,
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
+		nil, nil, newTestLogger(),
+	)
+
+	outcome, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Front: ptr("color")})
+
+	assertValidationError(t, err, "front", "A card with this front already exists in this cardgroup")
+	if outcome.Card != nil {
+		t.Fatal("expected nil Card on duplicate front")
+	}
+	if outcome.Validation != nil {
+		t.Fatal("duplicate front travels the error channel, not outcome.Validation")
+	}
+}
+
 func TestCardUsecase_Delete_NotFoundMasksExistence(t *testing.T) {
 	t.Parallel()
 
