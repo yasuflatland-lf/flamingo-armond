@@ -77,3 +77,30 @@ func TestEndOfLearnDay(t *testing.T) {
 		})
 	}
 }
+
+// TestRescueReviewedBefore pins the rescue window's minimum-elapsed floor at
+// exactly 24 hours before now, and pins its relation to the day boundaries: the
+// floor is never later than the JST start-of-day, so it is always the tighter of
+// the two last_review bounds the rescue predicate applies.
+func TestRescueReviewedBefore(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		now  time.Time
+	}{
+		{name: "JST noon", now: time.Date(2026, 6, 5, 3, 0, 0, 0, time.UTC)},
+		{name: "exactly JST midnight", now: time.Date(2026, 6, 5, 15, 0, 0, 0, time.UTC)},
+		{name: "just before JST midnight", now: time.Date(2026, 6, 5, 14, 59, 59, 0, time.UTC)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := RescueReviewedBefore(tc.now)
+			require.True(t, got.Equal(tc.now.Add(-24*time.Hour)),
+				"got %v, want exactly 24h before %v", got, tc.now)
+			require.False(t, got.After(StartOfLearnDay(tc.now)),
+				"the rescue floor must never be later than the JST start-of-day")
+		})
+	}
+}
