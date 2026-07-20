@@ -1,9 +1,11 @@
 // master_catalog_import.go holds the learner-consumption surface of the master
 // catalog: the outcome carrier types and the methods that copy a published master
 // into caller-owned cardgroups (import, merge, preview merge, seed default
-// starters). Every method here routes the master through verifyPublishedMaster, so
-// an unknown id and a DRAFT id collapse to the same not-found outcome and draft
-// existence is never disclosed.
+// starters). Import, merge and preview merge route the caller-supplied master id
+// through verifyPublishedMaster, so an unknown id and a DRAFT id collapse to the
+// same not-found outcome and draft existence is never disclosed; seed default
+// starters takes no caller-supplied id and is published-scoped inside the
+// delegated SeedForNewUser.
 
 package usecase
 
