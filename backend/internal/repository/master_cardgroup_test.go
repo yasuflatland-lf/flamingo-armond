@@ -8,6 +8,7 @@ package repository_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -165,6 +166,66 @@ func TestMasterCardgroupRepository_EnsureByName_DifferentNames_DifferentIDs(t *t
 	require.NoError(t, err)
 
 	require.NotEqual(t, a.ID, b.ID, "different names must yield different IDs")
+}
+
+// TestMasterCardgroupRepository_EnsureByName_InvalidName proves EnsureByName
+// routes its name through domain.ParseCardgroupName before touching the
+// database: an over-cap or blank name fails as the typed domain sentinel rather
+// than reaching the insert and dying on the name-length CHECK as an
+// unclassified constraint violation.
+func TestMasterCardgroupRepository_EnsureByName_InvalidName(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewMasterCardgroupRepository(testDB.GORM)
+
+	cases := []struct {
+		name         string
+		input        string
+		wantSentinel error
+	}{
+		{
+			name:         "over cap",
+			input:        strings.Repeat("a", domain.CardgroupNameMax+1),
+			wantSentinel: domain.ErrCardgroupNameTooLong,
+		},
+		{
+			name:         "blank",
+			input:        "   ",
+			wantSentinel: domain.ErrCardgroupNameRequired,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := repo.EnsureByName(ctx, tc.input)
+			require.Nil(t, got)
+			require.ErrorIs(t, err, tc.wantSentinel,
+				"an invalid name must surface the domain sentinel, not a database constraint error")
+		})
+	}
+}
+
+// TestMasterCardgroupRepository_EnsureByName_TrimsName pins that the parsed
+// (trimmed) name is what the lookup and the insert both key on, so a
+// whitespace-padded name resolves to the same row as its trimmed form instead of
+// creating a second one.
+func TestMasterCardgroupRepository_EnsureByName_TrimsName(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewMasterCardgroupRepository(testDB.GORM)
+
+	name := "Ensure Trim " + uuid.NewString()
+
+	first, err := repo.EnsureByName(ctx, name)
+	require.NoError(t, err)
+	require.Equal(t, name, first.Name.String())
+
+	padded, err := repo.EnsureByName(ctx, "  "+name+"  ")
+	require.NoError(t, err)
+	require.Equal(t, first.ID, padded.ID,
+		"a whitespace-padded name must resolve to the row its trimmed form created")
 }
 
 func TestMasterCardgroupRepository_EnsureByName_Race(t *testing.T) {

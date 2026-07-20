@@ -198,10 +198,24 @@ func userCardFSRSLastRating(state domain.FSRSState) *int {
 	return &rating
 }
 
+// userCardFSRSToDomain reconstitutes a persisted row into the domain aggregate.
+// Every column that the domain constrains is re-checked here rather than trusted:
+// the table carries no CHECK constraints, so a row edited outside the application
+// is the one way an out-of-range value can reach the domain. Rejecting is
+// deliberate — a corrupted stability would otherwise be classified as the Learned
+// mastery tier (NaN fails both ClassifyMastery comparisons) or break JSON
+// marshalling of the GraphQL Float it feeds, both of which are harder to diagnose
+// than a failed read.
 func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
 	state := domain.FSRSPhase(row.State)
 	if !state.IsValid() {
 		return nil, eris.Errorf("repository: invalid FSRSPhase value %d for card %s", row.State, row.CardID)
+	}
+	if !domain.IsValidStability(row.Stability) {
+		return nil, eris.Errorf("repository: invalid stability value %v for card %s", row.Stability, row.CardID)
+	}
+	if !domain.IsValidDifficulty(row.Difficulty) {
+		return nil, eris.Errorf("repository: invalid difficulty value %v for card %s", row.Difficulty, row.CardID)
 	}
 	lastRating := domain.Rating(0)
 	if row.LastRating != nil {

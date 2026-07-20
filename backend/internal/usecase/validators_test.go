@@ -113,6 +113,63 @@ func TestValidateRelayArgs(t *testing.T) {
 	}
 }
 
+// TestTranslateCardErr pins the nil guard that keeps translateCardErr consistent
+// with its siblings: without it a nil error falls to the default arm and is
+// wrapped as an "unexpected domain error", turning a success into an INTERNAL
+// failure. The sentinel and unexpected-error arms are covered alongside it so
+// the guard cannot be added by short-circuiting the whole switch.
+func TestTranslateCardErr(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		input     error
+		wantField string
+		wantMsg   string
+		wantChain string
+	}{
+		{
+			name:  "nil passes through",
+			input: nil,
+		},
+		{
+			name:      "front required sentinel",
+			input:     domain.ErrCardFrontRequired,
+			wantField: "front",
+			wantMsg:   "front is required",
+		},
+		{
+			name:      "back too-long sentinel",
+			input:     domain.ErrCardBackTooLong,
+			wantField: "back",
+			wantMsg:   fmt.Sprintf("back must be at most %d characters", domain.CardTextMax),
+		},
+		{
+			name:      "unexpected error wraps as internal",
+			input:     errors.New("surprise"),
+			wantChain: "usecase: translate card err: unexpected domain error",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := translateCardErr(tc.input)
+
+			switch {
+			case tc.input == nil:
+				require.NoError(t, err, "a nil error must not be wrapped as an unexpected domain error")
+			case tc.wantChain != "":
+				assertInternalChain(t, err, tc.wantChain)
+			default:
+				require.Error(t, err)
+				assertValidationError(t, err, tc.wantField, tc.wantMsg)
+			}
+		})
+	}
+}
+
 // TestTranslateBioErr and TestTranslateDescriptionErr pin the thin wrappers over
 // the shared translateTrinaryTextErr body: nil passes through, the too-long
 // sentinel maps to a field-scoped ValidationError with the exact message, and any

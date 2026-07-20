@@ -162,15 +162,29 @@ func findMasterCardgroupByID(db *gorm.DB, id string) (*domain.MasterCardgroup, e
 // rows. This method takes a transaction-scoped advisory lock keyed on the
 // literal 'master' namespace plus the name to serialize lookup-then-insert
 // without adding a DB-level constraint. Master cardgroups have no owner.
+//
+// name is parsed through domain.ParseCardgroupName before anything else, so an
+// empty or over-cap name fails as a typed domain sentinel
+// (domain.ErrCardgroupNameRequired / domain.ErrCardgroupNameTooLong) instead of
+// reaching the database and dying on the name-length CHECK as an unclassified
+// constraint violation. The parsed (trimmed) value is what the advisory lock,
+// the lookup and the insert all key on, so the row this method creates is always
+// the row a repeat call finds.
 func (r *masterCardgroupRepo) EnsureByName(ctx context.Context, name string) (*domain.MasterCardgroup, error) {
+	cgName, err := domain.ParseCardgroupName(name)
+	if err != nil {
+		return nil, eris.Wrap(err, "repository: master cardgroup: ensure by name: parse name")
+	}
+	canonical := cgName.String()
+
 	var out *domain.MasterCardgroup
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))", "master", name).Error; err != nil {
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))", "master", canonical).Error; err != nil {
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: advisory lock")
 		}
 
 		var row gormMasterCardgroup
-		err := tx.Where("name = ?", name).Take(&row).Error
+		err := tx.Where("name = ?", canonical).Take(&row).Error
 		if err == nil {
 			out, err = masterCardgroupToDomain(row)
 			return err
@@ -179,7 +193,7 @@ func (r *masterCardgroupRepo) EnsureByName(ctx context.Context, name string) (*d
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: lookup")
 		}
 
-		m, err := domain.NewMasterCardgroup(domain.CardgroupName(name), domain.Description{}, false, 0)
+		m, err := domain.NewMasterCardgroup(cgName, domain.Description{}, false, 0)
 		if err != nil {
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: construct")
 		}
