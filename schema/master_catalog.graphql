@@ -183,7 +183,10 @@ is the number of catalog cards whose front is not present in the destination;
 `updatedCount` is the number whose front already exists (case-sensitively, matching
 the destination `cards (cardgroup_id, front)` text unique index the merge upserts
 against). The preview equals the tally `mergeMasterCardgroup` produces for the same
-inputs.
+inputs. The catalog side matches case-INsensitively (`master_cards.front` is `citext`),
+so a catalog "Apple" merged into a deck holding "apple" is counted — and merged — as an
+add, not an update. That asymmetry is deliberate; see
+`docs/backend/ddd-patterns/catalog-user-deck-front-case-asymmetry.md`.
 """
 type MergeMasterCardgroupPreview {
   addedCount: Int!
