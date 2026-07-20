@@ -1757,4 +1757,226 @@ describe("<LearnClient> queue prefetch", () => {
       expect(latest?.map((c) => c.id)).toContain("q-1");
     });
   });
+
+  it("keeps a swiped id filtered out of a later prefetch within the same JST learn day", async () => {
+    // Same-day control for the rollover test below. The clock stays inside one
+    // JST learn day, so the swiped-id set must survive and drop q-1 from the
+    // second batch while still admitting that batch's genuinely new card.
+    const user = userEvent.setup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // 2026-07-20T14:00:00Z is 23:00 JST — well inside the 2026-07-20 learn day.
+    vi.setSystemTime(new Date("2026-07-20T14:00:00.000Z"));
+
+    const initial = makeQueue(PREFETCH_THRESHOLD + 1); // q-1..q-6 — above threshold, no mount prefetch
+    const swipedCard = initial[0] as PrefetchCard; // q-1, "Front 1"
+    const makeFresh = (id: string): PrefetchCard => ({
+      __typename: "Card" as const,
+      id,
+      front: `Fresh ${id}`,
+      back: `Fresh back ${id}`,
+      cefrLevel: null,
+      userCardState: userCardState("2026-04-30T00:00:00Z", 0),
+      cardgroupId: CG_ID,
+    });
+    // First batch tops the queue back above threshold so no cascade follows.
+    const firstPrefetch = makePrefetchMock([makeFresh("p-1")]);
+    // Second batch re-offers the already-swiped q-1 alongside a new card.
+    const secondPrefetch = makePrefetchMock([swipedCard, makeFresh("p-2")]);
+
+    renderLearnClient(
+      [
+        firstPrefetch.mock,
+        secondPrefetch.mock,
+        makeSwipeSuccessMock("q-1").mock,
+        makeSwipeSuccessMock("q-2").mock,
+      ],
+      initial,
+      { skipDefaultPrefetchMocks: true },
+    );
+
+    // Swipe q-1: queue 6 → 5 fires the first prefetch, which merges p-1 back to 6.
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+    await waitFor(() => {
+      expect(firstPrefetch.callCount()).toBe(1);
+    });
+    await waitFor(() => {
+      const latest = capturedCardSnapshots.at(-1);
+      expect(latest?.map((c) => c.id)).toContain("p-1");
+    });
+
+    // Swipe q-2: queue 6 → 5 fires the second prefetch, still on the same day.
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+    await waitFor(() => {
+      expect(secondPrefetch.callCount()).toBe(1);
+    });
+    await waitFor(() => {
+      const latest = capturedCardSnapshots.at(-1);
+      expect(latest?.map((c) => c.id)).toContain("p-2");
+    });
+
+    // The merge ran (p-2 landed) but q-1 stayed filtered — same-day behaviour
+    // is unchanged.
+    const merged = capturedCardSnapshots.at(-1);
+    expect(merged?.map((c) => c.id) ?? []).not.toContain("q-1");
+
+    vi.useRealTimers();
+  });
+
+  it("clears the swiped-id set and the exhaustion verdict when the JST learn day rolls over", async () => {
+    // A learner studying at 23:55 JST keeps the tab open past midnight. The
+    // server's learn day advances at 15:00 UTC and legitimately re-serves cards
+    // swiped on the previous day, so both session guards must be dropped: the
+    // swiped-id set (or every re-served card is filtered out of the merge) and
+    // the exhaustion verdict (or the effect never dispatches the refill query).
+    const user = userEvent.setup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // 2026-07-20T14:55:00Z is 23:55 JST — five minutes before the rollover.
+    vi.setSystemTime(new Date("2026-07-20T14:55:00.000Z"));
+
+    // Three cards, so the queue can actually reach zero before the refill lands:
+    // the caught-up screen renders only on `queue.length === 0`, so a fixture
+    // that stops short of an empty queue would assert its absence vacuously.
+    const initial = makeQueue(3); // q-1..q-3 — below threshold, mount prefetch fires
+    const swipedCard = initial[0] as PrefetchCard; // q-1, "Front 1"
+    const mountPrefetch = makePrefetchMock([]); // nothing else due today → exhausted
+    // The new learn day re-serves q-1, held open long enough for the final swipe
+    // to drain the queue to zero first — so the caught-up screen is genuinely on
+    // screen when the merge decides whether q-1 survives the swiped-id filter.
+    const newDayPrefetch = makePrefetchMock([swipedCard], { delay: 300 });
+    const terminator = makePrefetchMock([]); // post-merge fire re-exhausts, ending the cascade
+    // q-1's mutation is held open past the second swipe. Its `HandleSwipeSuccess`
+    // continuation clears the exhaustion verdict on its own, so letting it settle
+    // early would mask whether the rollover reset did any work.
+    const heldSwipe = { ...makeSwipeSuccessMock("q-1").mock, delay: 250 };
+    const rolloverSwipe = makeSwipeSuccessMock("q-2");
+    const drainSwipe = makeSwipeSuccessMock("q-3");
+
+    renderLearnClient(
+      [
+        mountPrefetch.mock,
+        newDayPrefetch.mock,
+        terminator.mock,
+        heldSwipe,
+        rolloverSwipe.mock,
+        drainSwipe.mock,
+      ],
+      initial,
+      { skipDefaultPrefetchMocks: true },
+    );
+
+    // Mount prefetch finds nothing due → exhaustion guard set.
+    await waitFor(() => {
+      expect(mountPrefetch.callCount()).toBe(1);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // Swipe q-1 inside the old learn day: the id enters the session set and the
+    // queue drops to 2, but the exhaustion guard suppresses any prefetch.
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+    // JST midnight passes while that mutation is still in flight.
+    vi.setSystemTime(new Date("2026-07-20T15:01:00.000Z"));
+
+    // The next tail swipe re-runs the prefetch effect, which now reads a new
+    // learn-day key and drops both guards before its threshold checks.
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+    // Drain the last card while that refill is still in flight. The queue is now
+    // empty, so the caught-up screen is what the learner sees — the state the
+    // issue reports as stuck.
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+    expect(
+      screen.getByRole("heading", { name: "Today's learning is complete" }),
+    ).toBeInTheDocument();
+
+    // The refill query fires — proof the exhaustion verdict was cleared.
+    await waitFor(() => {
+      expect(newDayPrefetch.callCount()).toBe(1);
+    });
+    // q-1 is merged back in — proof the swiped-id set was cleared.
+    await waitFor(() => {
+      const latest = capturedCardSnapshots.at(-1);
+      expect(latest?.map((c) => c.id)).toContain("q-1");
+    });
+    // ...so the session is no longer declared complete. Without the rollover
+    // reset the merge yields zero additions and the queue stays empty, leaving
+    // this heading on screen.
+    expect(
+      screen.queryByRole("heading", { name: "Today's learning is complete" }),
+    ).not.toBeInTheDocument();
+
+    // Let the held-open first mutation and the terminating prefetch settle so
+    // teardown does not race an in-flight request.
+    await waitFor(
+      () => {
+        expect(terminator.callCount()).toBe(1);
+      },
+      { timeout: 2000 },
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+
+    vi.useRealTimers();
+  });
+
+  it("keeps a card swiped after the rollover filtered out of the prefetch that swipe fires", async () => {
+    // The rollover reset must run BEFORE the swipe records its id, not only
+    // inside the prefetch effect. The first post-rollover effect run is the one
+    // the boundary-crossing swipe itself triggers, so an effect-only reset wipes
+    // that swipe's freshly-recorded id and reopens the double-rate race: the
+    // card's `last_review` still predates the new learn day while its mutation
+    // is in flight, so the server's REVIEW window legitimately returns it, and
+    // an empty swiped-id set lets it back into the queue to be rated twice.
+    const user = userEvent.setup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // 2026-07-20T14:59:00Z is 23:59 JST — the last minute of the old learn day.
+    vi.setSystemTime(new Date("2026-07-20T14:59:00.000Z"));
+
+    const initial = makeQueue(PREFETCH_THRESHOLD + 1); // q-1..q-6 — above threshold, no mount prefetch
+    const swipedCard = initial[0] as PrefetchCard; // q-1, "Front 1"
+    const freshCard: PrefetchCard = {
+      __typename: "Card" as const,
+      id: "p-new-day",
+      front: "New Day Card",
+      back: "New Day Back",
+      cefrLevel: null,
+      userCardState: userCardState("2026-04-30T00:00:00Z", 0),
+      cardgroupId: CG_ID,
+    };
+    // The batch the crossing swipe fires re-offers that same swipe's card
+    // alongside a genuinely new one, so the merge is observable either way.
+    const rolloverPrefetch = makePrefetchMock([swipedCard, freshCard]);
+    const swipe = makeSwipeSuccessMock("q-1");
+
+    renderLearnClient([rolloverPrefetch.mock, swipe.mock], initial, {
+      skipDefaultPrefetchMocks: true,
+    });
+
+    // JST midnight passes before the learner swipes again, so this swipe belongs
+    // to the new learn day and its id must survive the rollover reset.
+    vi.setSystemTime(new Date("2026-07-20T15:00:01.000Z"));
+
+    // Swipe q-1 — queue shrinks 6 → 5, crossing the threshold and firing the
+    // prefetch whose batch still lists q-1 as due.
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+    await waitFor(() => {
+      expect(rolloverPrefetch.callCount()).toBe(1);
+    });
+    // The genuinely new card IS merged, proving the merge ran (and that the
+    // exhaustion verdict did not suppress the query)...
+    await waitFor(() => {
+      const latest = capturedCardSnapshots.at(-1);
+      expect(latest?.map((c) => c.id)).toContain("p-new-day");
+    });
+    // ...while the card swiped after the rollover stays out of the queue.
+    const merged = capturedCardSnapshots.at(-1);
+    expect(merged?.map((c) => c.id) ?? []).not.toContain("q-1");
+    expect(screen.queryByText("Front 1")).not.toBeInTheDocument();
+
+    vi.useRealTimers();
+  });
 });
