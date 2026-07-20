@@ -324,9 +324,9 @@ func TestMasterCardgroupRepository_Unpublish_SetsDraftVersionUnchanged(t *testin
 }
 
 // TestMasterCardgroupRepository_PublishUnpublish_RefreshesUpdatedAt pins the
-// re-fetch tail of the status-transition path. A BEFORE UPDATE trigger on
-// master_cardgroups rewrites updated_at to now(), so the aggregate loaded before
-// the write carries a stale timestamp; returning it would make the mutation
+// re-fetch tail of the status-transition path. A BEFORE INSERT OR UPDATE trigger
+// on master_cardgroups rewrites updated_at to now(), so the aggregate loaded
+// before the write carries a stale timestamp; returning it would make the mutation
 // response — and the admin list cache reading from it — disagree with the
 // database until a manual refresh. Both transitions must therefore return the
 // post-write row.
@@ -335,17 +335,14 @@ func TestMasterCardgroupRepository_PublishUnpublish_RefreshesUpdatedAt(t *testin
 	ctx := context.Background()
 	repo := repository.NewMasterCardgroupRepository(testDB.GORM)
 
-	// Seed the row with a deliberately old updated_at so the baseline comparison
-	// cannot be confused by clock skew between the test host and the database.
 	m := newMasterCardgroupMinimal("Refresh UpdatedAt " + uuid.NewString())
 	m.Version = 1
 	m.Status = domain.MasterStatusDraft
-	m.CreatedAt = time.Now().UTC().Add(-2 * time.Hour)
-	m.UpdatedAt = m.CreatedAt
 	require.NoError(t, repo.Create(ctx, m))
 
 	before, err := repo.FindByID(ctx, m.ID)
 	require.NoError(t, err)
+	require.NoError(t, testDB.GORM.WithContext(ctx).Exec("SELECT pg_sleep(0.005)").Error)
 
 	published, err := repo.Publish(ctx, m.ID)
 	require.NoError(t, err)
@@ -358,6 +355,7 @@ func TestMasterCardgroupRepository_PublishUnpublish_RefreshesUpdatedAt(t *testin
 	require.True(t, published.UpdatedAt.Equal(afterPublish.UpdatedAt),
 		"Publish return value must match the persisted updated_at (got=%v, db=%v)",
 		published.UpdatedAt, afterPublish.UpdatedAt)
+	require.NoError(t, testDB.GORM.WithContext(ctx).Exec("SELECT pg_sleep(0.005)").Error)
 
 	unpublished, err := repo.Unpublish(ctx, m.ID)
 	require.NoError(t, err)
