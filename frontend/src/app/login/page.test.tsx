@@ -53,12 +53,14 @@ describe("LoginPage", () => {
     vi.restoreAllMocks();
   });
 
-  it("authenticated user: redirects to /cardgroups", async () => {
+  // HomePage is the single post-login decision point; /login hands the routing
+  // decision back to it rather than short-circuiting to an app surface.
+  it("authenticated user: redirects to / (HomePage)", async () => {
     vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "authenticated" }));
 
-    await expect(LoginPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
-      "REDIRECT:/cardgroups",
-    );
+    // Anchored: the bare string "REDIRECT:/" is a substring of "REDIRECT:/cardgroups",
+    // so a plain toThrow would still pass against a redirect to any app surface.
+    await expect(LoginPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(/^REDIRECT:\/$/);
   });
 
   it("anonymous user: renders the Sign in heading", async () => {

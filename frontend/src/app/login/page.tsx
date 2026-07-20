@@ -15,7 +15,12 @@ type SearchParams = Promise<{ error?: string }>;
 export default async function LoginPage({ searchParams }: { searchParams: SearchParams }) {
   // Redirect an already-authenticated visitor away. The middleware forwards
   // identity via x-auth-status; stale / anonymous / error all render the page.
-  if (readAuthContext(await headers()).status === "authenticated") redirect("/cardgroups");
+  // The target is `/` (HomePage), never an app surface directly: HomePage is the
+  // single post-login decision point that routes on onboarding state,
+  // lastViewedCardgroup, and cardgroup count. Sending an authenticated visitor
+  // straight to /cardgroups bypasses that chain — a browser-back to /login after
+  // sign-up would forward an un-onboarded user into the app shell.
+  if (readAuthContext(await headers()).status === "authenticated") redirect("/");
 
   const t = await getTranslations("Login");
   const { error } = await searchParams;
