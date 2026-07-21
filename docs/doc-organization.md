@@ -68,6 +68,19 @@ Doc references to source lines (`see lines 22–28`, `the throw at line 81`) rot
 
 Each of these survives line shifts. Line numbers belong in commit messages or diff comments, not in committed docs.
 
+#### CI gate
+
+`scripts/check-doc-line-citations.sh` enforces this rule. It runs in `.github/workflows/docs.yml`, in the same job as `check-claude-md-hierarchy.sh`. It scans every `*.md` under `docs/` and `.claude/rules/` for `<file>.(go|ts|tsx|sql|graphql):<N>` and prints the offending file, line number and line before exiting non-zero. Run it locally before pushing:
+
+```bash
+bash scripts/check-doc-line-citations.sh
+```
+
+Two carve-outs, both structural rather than per-file allowlists:
+
+- **Fenced regions are skipped.** Quoted compiler, linter and stack-trace output legitimately carries line numbers, and it is always pasted inside a fenced block. Keeping such output inside a fence is therefore the sanctioned way to record it; a citation the author writes in prose has no fence and fails.
+- **`docs/superpowers/plans/**` is excluded.** Plan documents are dated point-in-time snapshots — the same category as issue bodies and PR descriptions — so rewriting their citations is churn rather than maintenance.
+
 ### Inline `§ "above"` / `§ "below"` references rot on split
 
 When a single rule file is split into chapters, prose references like "§ section above" or "see the rule below" become meaningless — the referenced section now lives in a sibling file, not the same document. Two compliant postures:
