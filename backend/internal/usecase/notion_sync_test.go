@@ -483,6 +483,49 @@ func TestMasterNotionSyncUsecase_MixedSkipAndLexerErrorIsNotSkipOnly(t *testing.
 	}
 }
 
+func TestMasterNotionSyncUsecase_OverSizePageIsHardErrorAndSiblingStillSyncs(t *testing.T) {
+	t.Parallel()
+
+	// The decoded-payload byte cap lives in the usecase layer, so parseNotionPages
+	// applies it per page: an over-size page contributes one HARD error and no
+	// rows, while the remaining pages sync normally.
+	fetcher := &stubNotionFetcher{pages: []notion.Page{
+		{ID: "page-oversize", Text: overCapPayload()},
+		{ID: "page-ok", Text: "apple " + uniqueBack(1) + "\n"},
+	}}
+	cardgroups := &mockMasterCardgroupRepo{cg: &domain.MasterCardgroup{ID: "mcg-target"}}
+	cards := &mockMasterCardRepo{upsertResult: repository.UpsertManyTxResult{Inserted: 1}}
+	tx, txCalls := dictTxRunner()
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+
+	out, err := uc.Sync(context.Background(), SyncToMasterInput{
+		PageIDs:             []string{"page-oversize", "page-ok"},
+		MasterCardgroupName: "English",
+	})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if len(out.ParseErrors) != 1 {
+		t.Fatalf("ParseErrors = %+v, want exactly one over-size entry", out.ParseErrors)
+	}
+	got := out.ParseErrors[0]
+	if got.Line != 0 || got.Kind != CardImportErrKindHard || got.Message != oversizeMessage() {
+		t.Fatalf("ParseErrors[0] = %+v, want {Line: 0, Kind: %s, Message: %q}",
+			got, CardImportErrKindHard, oversizeMessage())
+	}
+	// A HARD entry is not a soft skip, so the skip-only short-circuit must not
+	// fire and the sibling page's row must still reach persistence.
+	if len(out.Parsed) != 1 || out.Parsed[0].SourcePageID != "page-ok" {
+		t.Fatalf("Parsed = %+v, want exactly one row sourced from page-ok", out.Parsed)
+	}
+	if len(cards.upserted) != 1 || cards.upserted[0].Front != "apple" {
+		t.Fatalf("upserted = %+v, want the single apple card from page-ok", cards.upserted)
+	}
+	if *txCalls != 1 {
+		t.Fatalf("tx calls = %d, want 1", *txCalls)
+	}
+}
+
 func TestMasterNotionSyncUsecase_LoneFrontDoesNotOverwriteExistingBack(t *testing.T) {
 	t.Parallel()
 
