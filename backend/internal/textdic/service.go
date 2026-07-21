@@ -5,17 +5,11 @@
 package textdic
 
 import (
-	"fmt"
 	"runtime"
 	"runtime/debug"
 
 	"github.com/rotisserie/eris"
 )
-
-// maxPayloadBytes caps the parser at 1 MiB. Beyond this, Process returns
-// a payload-level ValidationError (Line == 0) without parsing. 1 MiB
-// already represents tens of thousands of entries.
-const maxPayloadBytes = 1 << 20
 
 // ParsedWord is the public, wire-friendly representation of a successful
 // parse. Line is the 1-indexed source line so the UI can highlight inputs.
@@ -60,7 +54,7 @@ func (k SkipKind) String() string {
 }
 
 // ValidationError is the public, line-scoped error type. Line == 0
-// indicates an error not tied to a specific line (e.g. payload-size).
+// indicates an error not tied to a specific line (a recovered parser panic).
 // Only Process constructs values of this type within the package.
 //
 // Kind classifies the error: SkipKindHard means a hard lexer/parser failure;
@@ -68,8 +62,8 @@ func (k SkipKind) String() string {
 // character). Snippet carries the raw source text that triggered the
 // diagnostic — the WORD token value for SkipKindFrontOnly, the DEFINITION
 // token value for SkipKindBackOnly, and the recovered malformed line (not a
-// single token) for SkipKindUnrecognized. Empty for hard errors and
-// payload-level errors. Message is the UI-facing description.
+// single token) for SkipKindUnrecognized. Empty for hard errors.
+// Message is the UI-facing description.
 type ValidationError struct {
 	Line    int
 	Message string
@@ -77,7 +71,9 @@ type ValidationError struct {
 	Snippet string
 }
 
-// Process parses a plain-text dictionary payload.
+// Process parses a plain-text dictionary payload. It applies no payload-size
+// limit: the import caps (decoded bytes, parsed rows, per-side length) all live
+// together in the usecase layer, which checks them before calling Process.
 //
 // Returns:
 //   - words: successfully parsed entries.
@@ -100,9 +96,6 @@ func Process(input string) (words []ParsedWord, errs []ValidationError, err erro
 		}
 	}()
 
-	if len(input) > maxPayloadBytes {
-		return []ParsedWord{}, []ValidationError{{Line: 0, Message: fmt.Sprintf("payload exceeds %d bytes", maxPayloadBytes), Kind: SkipKindHard, Snippet: ""}}, nil
-	}
 	if len(input) == 0 {
 		return []ParsedWord{}, []ValidationError{{Line: 1, Message: "empty payload", Kind: SkipKindHard, Snippet: ""}}, nil
 	}

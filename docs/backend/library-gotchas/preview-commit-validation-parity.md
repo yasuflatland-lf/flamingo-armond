@@ -26,9 +26,13 @@ call it from **both** paths. Re-divergence becomes structurally impossible
 because there is exactly one implementation.
 
 ```go
-// validateImportRows is the single source of cap logic for BOTH validateCardImport
-// (preview) and importCards (commit).
-func validateImportRows(words []textdic.ParsedWord) []capViolation { ... }
+// validateImportRows is the single source of the two per-parse caps for BOTH
+// validateCardImport (preview) and the commit paths (importCards,
+// adminImportMasterCards). validateImportPayloadSize is its sibling for the
+// third cap, on the decoded payload's byte length; keeping that check in the
+// same layer is what lets one helper pair cover every cap.
+func validateImportRows(words []textdic.ParsedWord) ([]validatedCard, []capViolation) { ... }
+func validateImportPayloadSize(decodedBytes int) *capViolation { ... }
 ```
 
 Three properties make the parity real, not just nominal:
@@ -148,7 +152,10 @@ whether an already-parsed value object is available to reuse:
   applied to a *duplicated scan*: the check is not deleted, it is hoisted to its
   single source and its output reused. A source-level guard test pins the loop to
   `NewCardFromValidated` (a silent regression to `NewCard` would double-scan with
-  no behavioral difference).
+  no behavioral difference). The master-deck import mirrors this exactly through
+  `domain.NewMasterCardFromValidated`, with its own source-level guard: both paths
+  build their rows inside the one shared pipeline, so the VO reuse is decided
+  once.
 
 ## Verification harness
 
@@ -160,7 +167,8 @@ with the same field/message). A preview-only test would pass even if the commit
 path re-grew its own copy — pin both ends.
 
 Worked example: `backend/internal/usecase/card_import.go` `validateImportRows`,
-called by `Validate` and `Import`; tests in
+called by `Validate` and by the shared `runCardImport` pipeline that backs both
+`Import` and `ImportMasterCards`; tests in
 `backend/internal/usecase/card_import_test.go`
 (`TestCardImportUsecase_ValidateDetects*` for the preview, the existing
 `PayloadOverCapBadInput` / `OverLengthFrontAbortsAsValidationError` for the
