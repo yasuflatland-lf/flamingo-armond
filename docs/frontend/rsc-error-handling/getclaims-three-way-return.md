@@ -8,11 +8,11 @@ The Supabase SSR client's `auth.getClaims()` return type is a union of three dis
 |---|---|---|---|
 | Success | `{ claims: {...} }` | `null` | Session valid, JWT parsed |
 | Error | `null` | `AuthError` | JWT verification failed (key rotation, missing JWKS) |
-| **TOCTOU race** | `null` | `null` | Session vanished between `getUser()` and `getClaims()` |
+| **No session** | `null` | `null` | Anonymous request, or a session that vanished mid-request |
 
 Code that branches only on `claimsError != null` silently degrades on the third path. The destructured `claimsData` is `null`, the subsequent `claimsData.claims.app_metadata?.role` access throws `Cannot read property 'claims' of null`, and the resulting error escapes the layout to `app/global-error.tsx` (or Next's default 500), even though the SDK reported no transport failure.
 
-The race is real: a sign-out from another tab, a Supabase session revocation, or a cookie expiry between `await supabase.auth.getUser()` (which returns the cached user) and `await supabase.auth.getClaims()` (which re-reads the cookie and re-validates the JWT) all land in this window. It is rare in steady state but easy to reproduce on a stale-cookie cold render.
+The third shape is not exotic: an anonymous visitor with no session cookie produces it on every request — `getClaims()` returns `{ data: null, error: null }` rather than an `AuthSessionMissingError`. A session lost mid-request lands in the same branch: a sign-out from another tab, a Supabase session revocation, or a cookie expiry between the middleware reading the request cookies and `await supabase.auth.getClaims()` re-validating the JWT. The anonymous case is the steady state; the mid-request loss is rare but easy to reproduce on a stale-cookie cold render.
 
 ## Correct three-branch shape
 
