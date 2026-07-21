@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { graphql } from "@/generated";
 import type { MeQuery as MeQueryType } from "@/generated/graphql";
-import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
+import { redirectIfAuthError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
-import { readAuthContext } from "@/lib/supabase/auth-status";
+import { requireAuthenticated } from "@/lib/supabase/auth-status";
 import { ProfilePageClient } from "./profile-page-client";
 
 export const metadata: Metadata = { title: "Profile" };
@@ -47,16 +45,13 @@ const MeNewCardRatioQuery = graphql(`
 const DEFAULT_NEW_CARD_RATIO = { numerator: 4, denominator: 5 };
 
 export default async function ProfilePage() {
-  const auth = readAuthContext(await headers());
-  if (auth.status !== "authenticated") redirect("/login");
+  const auth = await requireAuthenticated("/login");
 
   let data: MeQueryType;
   try {
     data = await gqlFetch(MeQuery, { revalidate: 0 });
   } catch (err) {
-    if (isUnauthenticatedGraphQLError(err)) {
-      redirect("/login");
-    }
+    redirectIfAuthError(err, "/login");
     console.error("[profile] gqlFetch failed:", {
       name: err instanceof Error ? err.name : "unknown",
     });
@@ -80,9 +75,7 @@ export default async function ProfilePage() {
         newCardRatio = ratioData.me.newCardRatio;
       }
     } catch (err) {
-      if (isUnauthenticatedGraphQLError(err)) {
-        redirect("/login");
-      }
+      redirectIfAuthError(err, "/login");
       console.error("[profile] newCardRatio fetch failed; using default:", {
         name: err instanceof Error ? err.name : "unknown",
       });

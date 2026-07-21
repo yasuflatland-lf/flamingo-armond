@@ -1,17 +1,13 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import type {
   CatalogMasterCardsConnectionQuery as CatalogMasterCardsConnectionQueryType,
   CatalogMasterDeckQuery as CatalogMasterDeckQueryType,
 } from "@/generated/graphql";
-import {
-  isBadUserInputGraphQLError,
-  isUnauthenticatedGraphQLError,
-} from "@/lib/apollo/graphql-errors";
+import { isBadUserInputGraphQLError, redirectIfAuthError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
-import { readAuthContext } from "@/lib/supabase/auth-status";
+import { requireAuthenticated } from "@/lib/supabase/auth-status";
 import { CatalogDeckSkeleton } from "./_components/catalog-deck-skeleton";
 import CatalogDeckClient from "./catalog-deck-client";
 import {
@@ -28,7 +24,7 @@ export default async function CatalogDeckPage({ params }: Props) {
   // Auth check runs OUTSIDE the Suspense boundary so an unauthenticated request
   // redirects to /login before any streaming starts. If the redirect ran from
   // within the suspended subtree, the skeleton would flash before the navigation.
-  if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
+  await requireAuthenticated("/login");
 
   const { id } = await params;
 
@@ -65,7 +61,7 @@ export async function CatalogDeckContent({ id }: { id: string }) {
   } catch (err) {
     // Structural parse per .claude/rules/frontend-rsc-error-handling.md §
     // "Structurally parse GraphQL extensions.code — never substring-match".
-    if (isUnauthenticatedGraphQLError(err)) redirect("/login");
+    redirectIfAuthError(err, "/login");
     // A DRAFT, card-less or unknown deck rejects the cards query as BAD_USER_INPUT
     // on `masterCardgroupId` (draft existence and emptiness are never revealed) →
     // render the 404.

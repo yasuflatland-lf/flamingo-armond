@@ -1,10 +1,23 @@
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+
+// redirect() throws in the Next.js server runtime; the mock reproduces that so
+// redirectIfAuthError's control flow is exercised the same way in tests.
+const REDIRECT_PREFIX = "REDIRECT:";
+
+vi.mock("next/navigation", () => ({
+  redirect: vi.fn((path: string) => {
+    throw new Error(`${REDIRECT_PREFIX}${path}`);
+  }),
+}));
+
+import { redirect } from "next/navigation";
 import {
   isBadUserInputGraphQLError,
   isForbiddenGraphQLError,
   isUnauthenticatedGraphQLError,
   liftGraphQLCodes,
+  redirectIfAuthError,
 } from "./graphql-errors";
 
 const PREFIX = "GraphQL errors: ";
@@ -221,5 +234,64 @@ describe("isBadUserInputGraphQLError", () => {
       { extensions: { code: "BAD_USER_INPUT", field: "cardgroupId" } },
     ]);
     expect(isBadUserInputGraphQLError(err)).toBe(true);
+  });
+});
+
+describe("redirectIfAuthError", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("redirects to the supplied target on UNAUTHENTICATED", () => {
+    const err = makeErr([{ extensions: { code: "UNAUTHENTICATED" } }]);
+    expect(() => redirectIfAuthError(err, "/login")).toThrow(`${REDIRECT_PREFIX}/login`);
+    expect(redirect).toHaveBeenCalledWith("/login");
+  });
+
+  test("uses the caller-supplied target rather than a hard-coded /login", () => {
+    const err = makeErr([{ extensions: { code: "UNAUTHENTICATED" } }]);
+    expect(() => redirectIfAuthError(err, "/")).toThrow(`${REDIRECT_PREFIX}/`);
+    expect(redirect).toHaveBeenCalledWith("/");
+  });
+
+  test("returns without redirecting when the error carries no auth code", () => {
+    const err = makeErr([{ extensions: { code: "INTERNAL" } }]);
+    expect(() => redirectIfAuthError(err, "/login")).not.toThrow();
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  test("returns without redirecting for a non-GraphQL (transport) error", () => {
+    expect(() => redirectIfAuthError(new Error("network down"), "/login")).not.toThrow();
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  test("ignores FORBIDDEN by default so the ordinary surfaces do not swallow it", () => {
+    const err = makeErr([{ extensions: { code: "FORBIDDEN" } }]);
+    expect(() => redirectIfAuthError(err, "/login")).not.toThrow();
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  test("folds FORBIDDEN into the same redirect when the forbidden option is set", () => {
+    const err = makeErr([{ extensions: { code: "FORBIDDEN" } }]);
+    expect(() => redirectIfAuthError(err, "/", { forbidden: true })).toThrow(`${REDIRECT_PREFIX}/`);
+    expect(redirect).toHaveBeenCalledWith("/");
+  });
+
+  test("still redirects on UNAUTHENTICATED when the forbidden option is set", () => {
+    const err = makeErr([{ extensions: { code: "UNAUTHENTICATED" } }]);
+    expect(() => redirectIfAuthError(err, "/", { forbidden: true })).toThrow(`${REDIRECT_PREFIX}/`);
+    expect(redirect).toHaveBeenCalledWith("/");
+  });
+
+  test("does not redirect on an unrelated code even with the forbidden option set", () => {
+    const err = makeErr([{ extensions: { code: "BAD_USER_INPUT" } }]);
+    expect(() => redirectIfAuthError(err, "/", { forbidden: true })).not.toThrow();
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  test("an explicit forbidden: false behaves like the default", () => {
+    const err = makeErr([{ extensions: { code: "FORBIDDEN" } }]);
+    expect(() => redirectIfAuthError(err, "/", { forbidden: false })).not.toThrow();
+    expect(redirect).not.toHaveBeenCalled();
   });
 });

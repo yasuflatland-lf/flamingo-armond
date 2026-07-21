@@ -1,14 +1,10 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import type { LearnNextDueCardsQuery as LearnNextDueCardsQueryType } from "@/generated/graphql";
-import {
-  isBadUserInputGraphQLError,
-  isUnauthenticatedGraphQLError,
-} from "@/lib/apollo/graphql-errors";
+import { isBadUserInputGraphQLError, redirectIfAuthError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
-import { readAuthContext } from "@/lib/supabase/auth-status";
+import { requireAuthenticated } from "@/lib/supabase/auth-status";
 import { LEARN_PAGE_LIMIT, LearnNextDueCardsQuery } from "../queries";
 import { LearnAddCardSheet } from "./_components/learn-add-card-sheet";
 import { LearnSkeleton } from "./_components/learn-skeleton";
@@ -23,7 +19,7 @@ export const metadata: Metadata = {
 export default async function LearnPage({ params }: { params: Promise<{ cardgroupId: string }> }) {
   // Auth runs OUTSIDE the Suspense boundary so the redirect fires before any
   // streaming begins — Next.js cannot redirect mid-stream.
-  if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
+  await requireAuthenticated("/login");
 
   const { cardgroupId } = await params;
 
@@ -65,9 +61,7 @@ async function LearnContent({ cardgroupId }: { cardgroupId: string }) {
       revalidate: 0,
     });
   } catch (err) {
-    if (isUnauthenticatedGraphQLError(err)) {
-      redirect("/login");
-    }
+    redirectIfAuthError(err, "/login");
     // `LearnNextDueCards` only returns BAD_USER_INPUT for a missing cardgroup
     // (usecase `authorizeCardgroupForLearn` -> `NewValidationError("cardgroupId")`),
     // so this branch is the surviving form of the old cardgroup-existence guard.
