@@ -98,34 +98,6 @@ func TestProcess_EmptyPayload(t *testing.T) {
 	}
 }
 
-func TestProcess_OversizedPayload(t *testing.T) {
-	t.Parallel()
-
-	// 1 MiB + 1 byte exceeds maxPayloadBytes.
-	input := strings.Repeat("a", (1<<20)+1)
-
-	words, errs, err := textdic.Process(input)
-	if err != nil {
-		t.Fatalf("unexpected fatal error: %v", err)
-	}
-	if len(words) != 0 {
-		t.Errorf("expected no words, got %d", len(words))
-	}
-	if len(errs) != 1 {
-		t.Fatalf("expected 1 validation error, got %d (%+v)", len(errs), errs)
-	}
-	if !strings.Contains(errs[0].Message, "payload exceeds") {
-		t.Errorf("expected message to mention 'payload exceeds', got %q", errs[0].Message)
-	}
-	// Payload-level errors are hard errors with an empty snippet.
-	if errs[0].Kind != textdic.SkipKindHard {
-		t.Errorf("Kind: got %v want SkipKindHard", errs[0].Kind)
-	}
-	if errs[0].Snippet != "" {
-		t.Errorf("Snippet: got %q want empty (payload-level error has no snippet)", errs[0].Snippet)
-	}
-}
-
 func TestProcess_LineTracking(t *testing.T) {
 	t.Parallel()
 
@@ -184,8 +156,9 @@ func TestProcess_MalformedRows(t *testing.T) {
 	t.Parallel()
 
 	// The first line is malformed (WORD with no DEFINITION); the grammar's
-	// "error NEWLINE" recovery rule should discard it. Subsequent valid
-	// lines must still be parsed.
+	// explicit `entry: WORD` skip production records it as a FRONT_ONLY skip
+	// without entering error recovery. Subsequent valid lines must still be
+	// parsed.
 	input := "apple\n" +
 		"dog " + defDog + "\n" +
 		"cat " + defCat + "\n"
@@ -608,51 +581,23 @@ func TestProcess_NotionDictRepro(t *testing.T) {
 	}
 }
 
-func TestProcess_OversizedPayloadLineZero(t *testing.T) {
+// Process applies no payload-size limit of its own (the import caps live in the
+// usecase layer), so a multi-megabyte payload must parse end to end rather than
+// short-circuit. "apple " + defRingo + "\n" repeats produce well-formed entries.
+func TestProcess_LargePayloadParsesEveryEntry(t *testing.T) {
 	t.Parallel()
 
-	// Payload-size violations are not tied to a particular source line; the
-	// resolver contract uses Line == 0 as the file-level error marker.
-	input := strings.Repeat("a", (1<<20)+1)
-
-	_, errs, err := textdic.Process(input)
-	if err != nil {
-		t.Fatalf("unexpected fatal error: %v", err)
-	}
-	if len(errs) != 1 {
-		t.Fatalf("expected 1 validation error, got %d (%+v)", len(errs), errs)
-	}
-	if errs[0].Line != 0 {
-		t.Errorf("Line: got %d want 0 (file-level error marker)", errs[0].Line)
-	}
-}
-
-func TestProcess_PayloadAtBoundary(t *testing.T) {
-	t.Parallel()
-
-	// 1 MiB exactly must be accepted (off-by-one guard around maxPayloadBytes).
-	// "apple " + defRingo + "\n" repeats produce well-formed entries; we pad
-	// the tail with blank lines so the byte length lands precisely on 1 MiB.
-	const maxBytes = 1 << 20
+	const bodyBytes = 1 << 20
 	entry := "apple " + defRingo + "\n"
-	repeats := maxBytes / len(entry)
+	repeats := bodyBytes / len(entry)
 	body := strings.Repeat(entry, repeats)
-	pad := maxBytes - len(body)
-	if pad > 0 {
-		body += strings.Repeat("\n", pad)
-	}
-	if len(body) != maxBytes {
-		t.Fatalf("test setup: expected exactly %d bytes, got %d", maxBytes, len(body))
-	}
 
 	words, errs, err := textdic.Process(body)
 	if err != nil {
 		t.Fatalf("unexpected fatal error: %v", err)
 	}
-	for _, e := range errs {
-		if strings.Contains(e.Message, "payload exceeds") {
-			t.Fatalf("1 MiB exact payload should be accepted, got size error: %+v", e)
-		}
+	if len(errs) != 0 {
+		t.Fatalf("expected no validation errors, got %d (%+v)", len(errs), errs[:1])
 	}
 	if len(words) != repeats {
 		t.Errorf("expected %d parsed words, got %d", repeats, len(words))
@@ -787,7 +732,8 @@ func TestProcess_SnippetExtraction(t *testing.T) {
 		// Snippet holds the full malformed line text (up to the newline).
 		{"unrecognized", "@broken line\n", textdic.SkipKindUnrecognized, 1, "@broken line"},
 		// Same as above but without a trailing newline — the lexer returns
-		// NEWLINE at EOF so the grammar's "error NEWLINE" rule fires cleanly.
+		// NEWLINE at EOF, which the grammar's blank-line production
+		// `entry: NEWLINE` shifts, so the parser never enters error recovery.
 		// Exactly 1 UNRECOGNIZED error is produced; the old spurious "syntax
 		// error: unexpected $end" HARD error must no longer appear.
 		{"unrecognized-eof", "@broken no nl", textdic.SkipKindUnrecognized, 1, "@broken no nl"},

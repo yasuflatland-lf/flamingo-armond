@@ -83,14 +83,14 @@ type ImportMasterOutcome struct {
 // published decks holding zero cards, so neither draft existence nor an empty
 // deck is ever disclosed — all three collapse to ImportMasterOutcome{NotFound:true}
 // and no cardgroup row is written. The delegated copy re-reads the master
-// through the same catalog-scoped method — on the repository's pooled connection,
-// NOT the transaction handle — so a master unpublished, or emptied of its last
-// card, between this gate and the write also collapses to NotFound (the
+// through the same catalog-scoped method — on the transaction handle, under a
+// FOR SHARE lock on the master row — so a master unpublished, or emptied of its
+// last card, between this gate and the write also collapses to NotFound (the
 // ErrNotFound the copy surfaces is mapped below) rather than silently importing a
-// now-invisible deck. The emptiness half is airtight; the unpublish half is only
-// narrowed, because that re-read holds no lock and shares no snapshot with the
-// write. See masterDeckUsecase.copyMasterToUserTx for the residual race and what
-// closing it would take. Unauthenticated callers
+// now-invisible deck. Both halves are airtight: emptiness because the verdict
+// comes from the enumeration the copy consumes, the unpublish because the lock
+// serialises it against the write. See masterDeckUsecase.copyMasterToUserTx.
+// Unauthenticated callers
 // receive ucerr.ErrUnauthenticated. Import is the second entry point into "the caller now
 // owns a new cardgroup", so it applies the same per-user cardgroup quota as
 // CardgroupUsecase.Create via checkCardgroupLimit (admins exempt) — without it the
@@ -152,13 +152,13 @@ func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string
 // FindPublishedByID, collapsing unknown, draft and card-less decks into
 // MergeMasterOutcome{NotFound:true} so neither draft existence nor an empty deck
 // is ever disclosed. The delegated merge re-reads the master through the same
-// catalog-scoped method — on the repository's pooled connection, NOT the
-// transaction handle — so a master unpublished or emptied between this gate and
+// catalog-scoped method — on the transaction handle, under a FOR SHARE lock on
+// the master row — so a master unpublished or emptied between this gate and
 // the write also collapses to NotFound (the ErrNotFound the merge surfaces is
-// mapped below) rather than snapshotting a now-invisible deck. The emptiness half
-// is airtight; the unpublish half is only narrowed, because that re-read holds no
-// lock and shares no snapshot with the write. See
-// masterDeckUsecase.MergeMasterIntoCardgroup for the residual race.
+// mapped below) rather than snapshotting a now-invisible deck. Both halves are
+// airtight: emptiness because the verdict comes from the enumeration the merge
+// consumes, the unpublish because the lock serialises it against the write. See
+// masterDeckUsecase.MergeMasterIntoCardgroup.
 // Destination ownership is enforced by the delegated usecase
 // (BAD_USER_INPUT for unknown, UNAUTHENTICATED for foreign), surfaced as an error
 // rather than via the outcome. Unauthenticated callers receive
@@ -185,8 +185,8 @@ func (u *masterCatalogUsecase) MergeMaster(ctx context.Context, masterID, cardgr
 		if errors.Is(err, repository.ErrNotFound) {
 			// The master was unpublished, or lost its last card, between the
 			// FindPublishedByID gate and the merge's own catalog-scoped re-read
-			// (TOCTOU). That re-read runs on the pooled connection, not inside the
-			// merge transaction. Collapse into the same non-disclosure not-found
+			// (TOCTOU). That re-read runs inside the merge transaction under a
+			// FOR SHARE lock. Collapse into the same non-disclosure not-found
 			// outcome as a pre-gate unknown/draft/empty master. That re-read is the
 			// only ErrNotFound producer this branch can see: the
 			// destination ownership gate maps a missing cardgroup to a
@@ -207,7 +207,10 @@ func (u *masterCatalogUsecase) MergeMaster(ctx context.Context, masterID, cardgr
 // PreviewMergeMaster mirrors MergeMaster as a read-only dry run. Same gates:
 // unauthenticated -> ErrUnauthenticated; unknown/draft/card-less master -> NotFound
 // (collapsed via FindPublishedByID, never disclosing draft existence); destination
-// auth failures travel as errors from the delegated usecase.
+// auth failures travel as errors from the delegated usecase. The delegated dry run
+// re-verifies published status the way the merge does, so the two agree on which
+// decks they refuse; its ErrNotFound is mapped to the same not-found outcome
+// below.
 func (u *masterCatalogUsecase) PreviewMergeMaster(ctx context.Context, masterID, cardgroupID string) (PreviewMergeOutcome, error) {
 	caller := auth.UserFrom(ctx)
 	if err := requireCallerSub(caller); err != nil {
@@ -226,6 +229,16 @@ func (u *masterCatalogUsecase) PreviewMergeMaster(ctx context.Context, masterID,
 	if err != nil {
 		if isContextDone(err) {
 			return PreviewMergeOutcome{}, err
+		}
+		if errors.Is(err, repository.ErrNotFound) {
+			// The master was unpublished, or lost its last card, between the gate
+			// above and the dry run's own catalog-scoped re-read (TOCTOU). Collapse
+			// into the same non-disclosure not-found outcome MergeMaster returns for
+			// the identical state, so the two never disagree on whether the deck is
+			// mergeable. That re-read is the only ErrNotFound producer this branch
+			// can see: the destination ownership gate maps a missing cardgroup to a
+			// ucerr.ValidationError.
+			return PreviewMergeOutcome{NotFound: true}, nil
 		}
 		return PreviewMergeOutcome{}, eris.Wrap(err, "usecase: master catalog: preview merge: preview merge into cardgroup")
 	}

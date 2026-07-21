@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"regexp"
 	"strings"
 
@@ -14,10 +15,14 @@ const RoleNameMax = 50
 // roleNamePattern allows lowercase letters, digits, underscores, and hyphens.
 var roleNamePattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
+// Role name validation sentinels. The bound-free reasons use plain errors.New so
+// errors.Is matches by identity rather than by eris's message equality; the
+// bound-carrying reason stays on eris.Errorf so the exported RoleNameMax and the
+// message cannot drift apart.
 var (
-	ErrRoleNameRequired = eris.New("role: name is required")
+	ErrRoleNameRequired = errors.New("role: name is required")
 	ErrRoleNameTooLong  = eris.Errorf("role: name exceeds %d characters", RoleNameMax)
-	ErrRoleNameInvalid  = eris.New("role: name must contain only lowercase letters, digits, '_', or '-'")
+	ErrRoleNameInvalid  = errors.New("role: name must contain only lowercase letters, digits, '_', or '-'")
 )
 
 // RoleName is the canonical, lowercase, slug-like identifier for an application

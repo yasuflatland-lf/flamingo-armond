@@ -34,7 +34,8 @@ Three collaborating pieces implement that, all keyed on the citext semantics:
   that "mirrors the citext semantics of the `master_cards.front` column". Fronts are
   ASCII by construction (the `textdic` lexer restricts the front token to ASCII letters),
   so `strings.ToLower` agrees with Postgres `lower()` with no locale ambiguity.
-- `dedupeParsedRows` collapses case-variant rows *within one payload* before the upsert.
+- the sync plan's `dedupeByKey` step, keyed by `notionRowKey`, collapses case-variant rows
+  *within one payload* before the upsert.
   This is mandatory, not cosmetic — see [hazard 2](#hazard-2--the-multi-row-upsert-needs-a-case-folded-dedup-key) below.
 - `frontsToDelete` builds the prune keep-set through the same key, so a stored row whose
   case differs from the current Notion line is not mistaken for stale and deleted.
@@ -120,12 +121,12 @@ learner-visible reconciliation policy first.
 citext, two case-variant fronts in the same batch collapse onto one conflict target and
 Postgres raises `21000`, `ON CONFLICT DO UPDATE command cannot affect row a second time`.
 
-The catalog pipeline already carries the guard — `dedupeParsedRows` keys on `frontMatchKey`
-for exactly this reason. The user-deck import pipeline has the *seam* but not the guard:
-`backend/internal/usecase/card_import.go` calls `dedupeParsedWords(words, identityKey)`
-with a pluggable key function, and today `identityKey` is the identity function because,
-as its comment states, "`cards.front` is plain text, so the conflict key is the front
-verbatim". The same `identityKey` also keys `voByKey`, the map that carries each surviving
+The catalog pipeline already carries the guard — its `dedupeByKey` step keys on
+`frontMatchKey` for exactly this reason. The user-deck import pipeline has the *seam* but
+not the guard: `runCardImport` (`backend/internal/usecase/card_import_pipeline.go`) routes
+its dedupe through a pluggable `dedupeKey`, and the user path (`card_import.go`) supplies
+`identityKey` because, as its comment states, "`cards.front` is plain text, so the conflict
+key is the front verbatim". The same `identityKey` also keys `voByKey`, the map that carries each surviving
 row's already-parsed value objects, so both uses must flip together. Flipping the column
 type without flipping that key function turns a benign user-supplied case-variant pair
 into a hard import failure.

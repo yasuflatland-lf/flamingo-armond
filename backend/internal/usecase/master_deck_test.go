@@ -22,19 +22,41 @@ type fakeMasterCGRepo struct {
 	byID    map[string]*domain.MasterCardgroup
 	findErr error
 	// findErrOnCall is 1-based; 0 means findErr applies to every call. Set it to
-	// target one iteration of a loop that calls FindPublishedByID per starter.
+	// target one iteration of a loop that reads the published master per starter.
+	// The counter it keys on spans both the pooled and the tx-scoped read.
 	findErrOnCall int
 	starters      []*domain.MasterCardgroup
 	startersErr   error
 	findCalls     int
 	startersCall  int
+
+	// pooledCalls counts FindPublishedByID; txHandles records the *gorm.DB handed
+	// to each FindPublishedByIDTx call. Together they let a test prove a write
+	// path probed on its own transaction rather than on a pooled connection.
+	pooledCalls int
+	txHandles   []*gorm.DB
 }
 
-// FindPublishedByID models the published-scoped master read. byID represents the
-// currently-published set: an id absent from the map returns repository.ErrNotFound,
-// which is how a test simulates a master that was unpublished after the caller's
-// gate passed (the TOCTOU regression case).
+// FindPublishedByID models the published-scoped master read on a pooled
+// connection — the read-only preview path. byID represents the currently-published
+// set: an id absent from the map returns repository.ErrNotFound, which is how a
+// test simulates a master that was unpublished after the caller's gate passed
+// (the TOCTOU regression case).
 func (f *fakeMasterCGRepo) FindPublishedByID(_ context.Context, id string) (*domain.MasterCardgroup, error) {
+	f.pooledCalls++
+	return f.findPublished(id)
+}
+
+// FindPublishedByIDTx models the transaction-scoped, FOR SHARE-locked read the
+// write paths take. It answers from the same published set as the pooled variant
+// (mirroring the shared repository helper) and records the transaction handle it
+// was given so a test can assert the probe ran on the write's own transaction.
+func (f *fakeMasterCGRepo) FindPublishedByIDTx(_ context.Context, tx *gorm.DB, id string) (*domain.MasterCardgroup, error) {
+	f.txHandles = append(f.txHandles, tx)
+	return f.findPublished(id)
+}
+
+func (f *fakeMasterCGRepo) findPublished(id string) (*domain.MasterCardgroup, error) {
 	f.findCalls++
 	if f.findErr != nil && (f.findErrOnCall == 0 || f.findErrOnCall == f.findCalls) {
 		return nil, f.findErr
@@ -75,9 +97,16 @@ type fakeUserCardRepo struct {
 	// existingFronts backs CountExistingFronts: maps cardgroupID -> front -> present.
 	// Case-sensitive plain map lookup mirrors the text unique index the merge upserts against.
 	existingFronts map[string]map[string]bool
+	// countFrontsCalls counts CountExistingFronts so a preview test can assert the
+	// tally step is skipped once the published probe rejects the deck.
+	countFrontsCalls int
+	// upsertTxHandles records the *gorm.DB each UpsertManyTx call received, so a
+	// test can compare it against the handle the published probe was given.
+	upsertTxHandles []*gorm.DB
 }
 
 func (f *fakeUserCardRepo) CountExistingFronts(_ context.Context, cardgroupID string, fronts []string) (int64, error) {
+	f.countFrontsCalls++
 	present := f.existingFronts[cardgroupID]
 	var n int64
 	for _, fr := range fronts {
@@ -88,8 +117,9 @@ func (f *fakeUserCardRepo) CountExistingFronts(_ context.Context, cardgroupID st
 	return n, nil
 }
 
-func (f *fakeUserCardRepo) UpsertManyTx(_ context.Context, _ *gorm.DB, cards []*domain.Card) (repository.UpsertManyTxResult, error) {
+func (f *fakeUserCardRepo) UpsertManyTx(_ context.Context, tx *gorm.DB, cards []*domain.Card) (repository.UpsertManyTxResult, error) {
 	f.upsertCall++
+	f.upsertTxHandles = append(f.upsertTxHandles, tx)
 	batch := make([]*domain.Card, len(cards))
 	for i, c := range cards {
 		clone := *c
@@ -825,6 +855,65 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_NotOwned_Unauthenticated(t *
 	require.ErrorIs(t, err, ucerr.ErrUnauthenticated)
 }
 
+// TestMasterDeckUsecase_MergeMasterIntoCardgroup_PublishedProbeRunsOnTxHandle
+// pins the wiring the unpublish fix rests on: the merge's published probe goes
+// through FindPublishedByIDTx on the SAME *gorm.DB the card upsert writes
+// through, never through the pooled FindPublishedByID. Handle identity is what
+// puts the repository's FOR SHARE lock inside the write's transaction; a probe on
+// a pooled connection would release its lock immediately and leave the window
+// open, while still passing every state-based assertion in this file.
+func TestMasterDeckUsecase_MergeMasterIntoCardgroup_PublishedProbeRunsOnTxHandle(t *testing.T) {
+	t.Parallel()
+	const ownerID = "11111111-1111-7111-8111-111111111111"
+	const destID = "22222222-2222-7222-8222-222222222222"
+	const masterID = "master-id"
+
+	cg := &fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}}
+	card := &fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
+		masterID: {masterCard("mc-1", masterID, "alpha", "first", 0)},
+	}}
+	user := &fakeUserCardRepo{}
+	userCG := &fakeUserCG{byID: map[string]*domain.Cardgroup{destID: mustCardgroup(t, destID, ownerID, "My Deck")}}
+	runner, _, _ := recordingTxRunner(t)
+
+	uc := newMasterDeckUsecaseWithTx(cg, card, user, userCG, runner, newTestLogger())
+
+	_, err := uc.MergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID(ownerID))
+	require.NoError(t, err)
+
+	assert.Zero(t, cg.pooledCalls, "the merge must not probe the master on a pooled connection")
+	require.Len(t, cg.txHandles, 1, "the merge probes the published master exactly once, on its transaction")
+	require.Len(t, user.upsertTxHandles, 1)
+	assert.Same(t, user.upsertTxHandles[0], cg.txHandles[0],
+		"the published probe and the card upsert must share one transaction handle")
+}
+
+// TestMasterDeckUsecase_CopyMasterToUser_PublishedProbeRunsOnTxHandle is the
+// copy-path mirror of the merge assertion above: same handle-identity contract,
+// exercised through CopyMasterToUser (which SeedForNewUser shares).
+func TestMasterDeckUsecase_CopyMasterToUser_PublishedProbeRunsOnTxHandle(t *testing.T) {
+	t.Parallel()
+	const masterID = "m-txhandle"
+
+	cg := &fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Deck")}}
+	card := &fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
+		masterID: {masterCard("mc1", masterID, "f1", "b1", 0)},
+	}}
+	user := &fakeUserCardRepo{}
+	userCG := &fakeUserCG{}
+
+	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
+
+	_, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-txhandle")
+	require.NoError(t, err)
+
+	assert.Zero(t, cg.pooledCalls, "the copy must not probe the master on a pooled connection")
+	require.Len(t, cg.txHandles, 1)
+	require.Len(t, user.upsertTxHandles, 1)
+	assert.Same(t, user.upsertTxHandles[0], cg.txHandles[0],
+		"the published probe and the card upsert must share one transaction handle")
+}
+
 func TestMasterDeckUsecase_MergeMasterIntoCardgroup_DestNotFound_Validation(t *testing.T) {
 	t.Parallel()
 	uc := newMasterDeckUsecaseWithTx(
@@ -839,14 +928,14 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_DestNotFound_Validation(t *t
 }
 
 // TestMasterDeckUsecase_MergeMasterIntoCardgroup_MasterUnpublishedMidFlight_NoImport
-// pins the narrowed TOCTOU window on the merge write path. The destination
+// pins the TOCTOU window on the merge write path. The destination
 // ownership gate passes, but the master is no longer in the published set when the
 // merge re-reads it (modelling an unpublish that landed after
 // MasterCatalogUsecase's FindPublishedByID gate). The published-scoped re-read
 // yields repository.ErrNotFound, so no master cards are listed or upserted. This
-// covers only the interleaving the re-read does catch; the re-read takes no lock
-// and does not run on the tx connection, so an unpublish committing after it is
-// still reachable and is not pinned here.
+// covers the state the re-read observes; that the re-read also serialises an
+// unpublish arriving later is a property of its FOR SHARE lock, pinned by the
+// real-DB tests in the repository package.
 func TestMasterDeckUsecase_MergeMasterIntoCardgroup_MasterUnpublishedMidFlight_NoImport(t *testing.T) {
 	t.Parallel()
 	const ownerID = "11111111-1111-7111-8111-111111111111"
@@ -1110,4 +1199,34 @@ func TestPreviewMergeMasterIntoCardgroup_CountsAddedAndUpdated(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), got.Added, "Cherry is new")
 	require.Equal(t, int64(2), got.Updated, "Apple + Banana already present")
+	assert.Equal(t, 1, cg.pooledCalls, "the dry run verifies published status on a pooled connection")
+	assert.Empty(t, cg.txHandles, "a read-only dry run opens no transaction and takes no row lock")
+}
+
+// TestPreviewMergeMasterIntoCardgroup_MasterUnpublished_ReturnsNotFound pins the
+// preview/merge parity decision: the dry run re-verifies published status the way
+// the merge does, so an unpublished deck is refused by both rather than producing
+// a tally the follow-up merge then rejects. Master cards outlive an unpublish, so
+// without this probe the enumeration below would succeed and report a tally.
+func TestPreviewMergeMasterIntoCardgroup_MasterUnpublished_ReturnsNotFound(t *testing.T) {
+	t.Parallel()
+
+	const masterID = "m-unpublished"
+	const destID = "cg-1"
+	card := &fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
+		masterID: {masterCard("mc1", masterID, "Apple", "a", 0)},
+	}}
+	user := &fakeUserCardRepo{}
+	userCG := &fakeUserCG{byID: map[string]*domain.Cardgroup{
+		destID: {ID: domain.CardgroupID(destID), OwnerID: "owner-1", Name: domain.CardgroupName("My Deck")},
+	}}
+	// Empty published set: the deck was unpublished after the catalog gate passed.
+	cg := &fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{}}
+
+	uc := newMasterDeckUsecaseWithTx(cg, card, user, userCG, stubTxRunner, newTestLogger())
+
+	_, err := uc.PreviewMergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID("owner-1"))
+	require.ErrorIs(t, err, repository.ErrNotFound,
+		"the dry run must surface ErrNotFound so PreviewMergeMaster collapses it into the not-found outcome")
+	assert.Zero(t, user.countFrontsCalls, "no tally is computed for a deck that has left the catalog")
 }

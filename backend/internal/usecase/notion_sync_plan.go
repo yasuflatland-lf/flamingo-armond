@@ -48,9 +48,10 @@ func computeSyncPlan(
 	masterCardgroupID string,
 	now time.Time,
 ) notionSyncPlan {
-	// Dedupe cannot run before the caller's skip-only classifier: it appends
+	// Dedupe cannot run before the caller's skip-only classifier: it produces
 	// "duplicate front" diagnostics the classifier must not see.
-	dedupedRows, allErrs := dedupeParsedRows(rows, parseErrs)
+	dedupedRows, dupErrs := dedupeByKey(rows, notionRowKey, notionDuplicateFrontDiagnostic)
+	allErrs := append(parseErrs, dupErrs...)
 	cards, skips := masterCardsFromParsedRows(masterCardgroupID, dedupedRows, now)
 	// Keyed off the validated cards, not the rows: a row dropped by validation
 	// must not keep a stale card alive. frontMatchKey rather than the raw front,
