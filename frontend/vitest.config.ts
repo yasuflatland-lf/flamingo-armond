@@ -23,6 +23,9 @@ export default defineConfig({
       NEXT_PUBLIC_SUPABASE_URL: "http://localhost:54321",
       NEXT_PUBLIC_SUPABASE_ANON_KEY:
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.vitest-dummy-key-1234567890",
+      // Set so the middleware onboarding gate exercises its signed-cookie fast
+      // path; the unset-secret fallback is covered directly in onboarding-gate.test.ts.
+      ONBOARDING_GATE_SECRET: "vitest-onboarding-gate-secret-0123456789",
     },
     coverage: {
       provider: "v8",

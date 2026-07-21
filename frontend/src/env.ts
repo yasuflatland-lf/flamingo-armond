@@ -9,6 +9,11 @@ import { z } from "zod";
 export const env = createEnv({
   server: {
     BACKEND_URL: z.string().url(),
+    // HMAC key for the middleware onboarding gate's fast-path cookie. Optional
+    // so an unset deployment still behaves correctly — the gate then falls back
+    // to a backend display-name lookup on every gated navigation instead of
+    // trusting a cookie it cannot authenticate.
+    ONBOARDING_GATE_SECRET: z.string().min(32).optional(),
   },
   client: {
     NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
@@ -19,6 +24,7 @@ export const env = createEnv({
   },
   runtimeEnv: {
     BACKEND_URL: process.env.BACKEND_URL,
+    ONBOARDING_GATE_SECRET: process.env.ONBOARDING_GATE_SECRET,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
