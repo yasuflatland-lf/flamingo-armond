@@ -147,8 +147,8 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 	// the grammar. Report the skipped rows, but do not persist an empty sync
 	// that would delete existing cards from the target master cardgroup.
 	//
-	// This short-circuit MUST run before dedupeParsedRows: dedupe appends
-	// non-skip "duplicate front" warnings to parseErrs, which would make
+	// This short-circuit MUST run before the dedupe step in computeSyncPlan:
+	// dedupe adds non-skip "duplicate front" warnings, which would make
 	// allCardImportErrorsSkipped return false for a skip-only payload that
 	// happens to also have duplicates added later in the pipeline.
 	if len(rows) == 0 && len(parseErrs) > 0 {
@@ -279,6 +279,14 @@ func parseNotionPages(ctx context.Context, logger *slog.Logger, pages []notion.P
 	rows := make([]ParsedRow, 0, len(pages))
 	errs := make([]CardImportError, 0, len(pages))
 	for i, page := range pages {
+		// The byte cap lives in the usecase layer alongside the other import caps,
+		// so every textdic.Process caller applies it explicitly. An over-size page
+		// is reported and skipped rather than parsed; the remaining pages still
+		// sync.
+		if v := validateImportPayloadSize(len(page.Text)); v != nil {
+			errs = append(errs, CardImportError{Line: v.Line, Message: v.Message, Kind: CardImportErrKindHard})
+			continue
+		}
 		words, parseErrs, err := textdic.Process(page.Text)
 		if err != nil {
 			// Earlier pages' parsed rows are about to be dropped on the caller
@@ -323,31 +331,26 @@ func frontMatchKey(front string) string {
 	return strings.ToLower(front)
 }
 
-func dedupeParsedRows(rows []ParsedRow, errs []CardImportError) ([]ParsedRow, []CardImportError) {
-	// Keyed by frontMatchKey so case-variant fronts (e.g. "Drive" / "drive")
-	// collapse to one row. This is mandatory, not cosmetic: feeding two
-	// case-variant rows into the citext upsert would make a single multi-row
-	// INSERT hit the same ON CONFLICT target twice ("cannot affect row a second
-	// time"). The last occurrence wins, keeping its original case for storage.
-	lastIndex := make(map[string]int, len(rows))
-	for i, row := range rows {
-		lastIndex[frontMatchKey(row.Front)] = i
+// notionRowKey is the in-payload conflict key for a Notion-sourced row. Keyed by
+// frontMatchKey so case-variant fronts (e.g. "Drive" / "drive") collapse to one
+// row. This is mandatory, not cosmetic: feeding two case-variant rows into the
+// citext upsert would make a single multi-row INSERT hit the same ON CONFLICT
+// target twice ("cannot affect row a second time"). The last occurrence wins,
+// keeping its original case for storage.
+func notionRowKey(row ParsedRow) string { return frontMatchKey(row.Front) }
+
+// notionDuplicateFrontDiagnostic reports a Notion row dropped by the in-payload
+// dedupe. Unlike the card-import diagnostic it does not name the winning back:
+// the rows come from several Notion pages, so "later occurrence" is the only
+// stable way to describe the survivor.
+func notionDuplicateFrontDiagnostic(dropped, _ ParsedRow) CardImportError {
+	return CardImportError{
+		Line:    dropped.Line,
+		Message: "duplicate front in Notion pages (later occurrence wins)",
+		Kind:    CardImportErrKindDuplicate,
+		Front:   dropped.Front,
+		Back:    dropped.Back,
 	}
-	out := make([]ParsedRow, 0, len(rows))
-	for i, row := range rows {
-		if lastIndex[frontMatchKey(row.Front)] != i {
-			errs = append(errs, CardImportError{
-				Line:    row.Line,
-				Message: "duplicate front in Notion pages (later occurrence wins)",
-				Kind:    CardImportErrKindDuplicate,
-				Front:   row.Front,
-				Back:    row.Back,
-			})
-			continue
-		}
-		out = append(out, row)
-	}
-	return out, errs
 }
 
 // warnSkippedMasterRow emits a structured warn for a master-card row whose

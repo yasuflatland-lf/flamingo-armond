@@ -239,7 +239,7 @@ func TestMasterNotionSyncUsecase_DuplicateFrontSamePageLastWins(t *testing.T) {
 		t.Fatalf("ParseErrors len = %d, want 1", len(out.ParseErrors))
 	}
 	// The retained row is on line 2; the discarded (earlier) row is line 1.
-	// dedupeParsedRows MUST anchor the error to the *discarded* row's line.
+	// The dedupe step MUST anchor the error to the *discarded* row's line.
 	if out.ParseErrors[0].Line != 1 {
 		t.Fatalf("ParseErrors[0].Line = %d, want 1 (the discarded row's line)", out.ParseErrors[0].Line)
 	}
