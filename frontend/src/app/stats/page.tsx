@@ -1,24 +1,21 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import type { MyLearningStatsQuery as MyLearningStatsQueryType } from "@/generated/graphql";
-import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
+import { redirectIfAuthError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
-import { readAuthContext } from "@/lib/supabase/auth-status";
+import { requireAuthenticated } from "@/lib/supabase/auth-status";
 import { MyLearningStatsQuery } from "./queries";
 import { StatsClient } from "./stats-client";
 
 export const metadata: Metadata = { title: "Progress" };
 
 export default async function StatsPage() {
-  const auth = readAuthContext(await headers());
-  if (auth.status !== "authenticated") redirect("/login");
+  await requireAuthenticated("/login");
 
   let data: MyLearningStatsQueryType;
   try {
     data = await gqlFetch(MyLearningStatsQuery, { revalidate: 0 });
   } catch (err) {
-    if (isUnauthenticatedGraphQLError(err)) redirect("/login");
+    redirectIfAuthError(err, "/login");
     console.error("[stats] gqlFetch failed:", {
       name: err instanceof Error ? err.name : "unknown",
     });

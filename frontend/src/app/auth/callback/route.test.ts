@@ -26,7 +26,7 @@ describe("GET /auth/callback", () => {
     vi.clearAllMocks();
   });
 
-  it("exchanges valid code and redirects to / by default", async () => {
+  it("exchanges valid code and redirects to /", async () => {
     mockExchangeCodeForSession.mockResolvedValueOnce({ error: null });
 
     const response = await GET(makeRequest("http://localhost/auth/callback?code=abc123"));
@@ -55,50 +55,13 @@ describe("GET /auth/callback", () => {
     expect(response.headers.get("location")).toBe("http://localhost/login?error=exchange_failed");
   });
 
-  it("honors ?next query param for deep-link redirect", async () => {
+  it("ignores a caller-supplied return-to and always lands on /", async () => {
     mockExchangeCodeForSession.mockResolvedValueOnce({ error: null });
 
     const response = await GET(
-      makeRequest("http://localhost/auth/callback?code=xyz&next=/profile"),
+      makeRequest("http://localhost/auth/callback?code=ok&next=https://evil.example"),
     );
 
-    expect([301, 302, 307, 308]).toContain(response.status);
-    expect(response.headers.get("location")).toBe("http://localhost/profile");
-  });
-
-  it("falls back to / when next is an absolute URL", async () => {
-    mockExchangeCodeForSession.mockResolvedValueOnce({ error: null });
-
-    const response = await GET(
-      makeRequest("http://localhost/auth/callback?code=valid&next=https://evil.com"),
-    );
-
-    expect([301, 302, 307, 308]).toContain(response.status);
-    const location = response.headers.get("location") ?? "";
-    expect(location.startsWith("http://localhost")).toBe(true);
-    expect(new URL(location).pathname).toBe("/");
-  });
-
-  it("falls back to / when next is protocol-relative", async () => {
-    mockExchangeCodeForSession.mockResolvedValueOnce({ error: null });
-
-    const response = await GET(
-      makeRequest("http://localhost/auth/callback?code=valid&next=//evil.com"),
-    );
-
-    expect([301, 302, 307, 308]).toContain(response.status);
-    const location = response.headers.get("location") ?? "";
-    expect(location.startsWith("http://localhost")).toBe(true);
-    expect(new URL(location).pathname).toBe("/");
-  });
-
-  it("falls back to / when next contains a backslash (URL-parser normalizes to /)", async () => {
-    mockExchangeCodeForSession.mockResolvedValueOnce({ error: null });
-    const response = await GET(
-      makeRequest("http://localhost/auth/callback?code=valid&next=/%5Cevil.com"),
-    );
-    // location header should NOT have host "evil.com"
-    const location = response.headers.get("location");
-    expect(location).toBe("http://localhost/");
+    expect(response.headers.get("location")).toBe("http://localhost/");
   });
 });

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
@@ -153,13 +154,30 @@ func TestResolver_MyCardgroupsConnection_Authenticated_DelegatesToUsecase(t *tes
 	if len(edges) != 2 {
 		t.Fatalf("expected 2 edges (third row trimmed), got %d", len(edges))
 	}
-	wantCursorCG1 := cursor.Encode("cg1")
-	wantCursorCG2 := cursor.Encode("cg2")
+	// The cardgroup connection orders by the mutable updated_at column, so it
+	// emits v2 cursors: the ordering the page was served under plus the row's
+	// ordering-key value captured at serve time.
+	assertCardgroupCursor := func(label, got, wantID string) {
+		t.Helper()
+		p, decErr := cursor.Decode(got)
+		if decErr != nil {
+			t.Fatalf("%s = %q is not a decodable cursor: %v", label, got, decErr)
+		}
+		want := cursor.Payload{
+			ID:          wantID,
+			HasOrdering: true,
+			OrderBy:     string(repository.CardgroupOrderByUpdatedAt),
+			Direction:   string(repository.SortDesc),
+			OrderKey:    time.Time{}.UTC().Format(time.RFC3339Nano),
+		}
+		if p != want {
+			t.Fatalf("%s decoded to %+v, want %+v", label, p, want)
+		}
+	}
 
 	first, _ := edges[0].(map[string]any)
-	if first["cursor"] != wantCursorCG1 {
-		t.Fatalf("expected first edge cursor=%q, got %v", wantCursorCG1, first["cursor"])
-	}
+	gotFirstCursor, _ := first["cursor"].(string)
+	assertCardgroupCursor("edges[0].cursor", gotFirstCursor, "cg1")
 	node, _ := first["node"].(map[string]any)
 	if node["name"] != "Alpha" {
 		t.Fatalf("expected first node.name=Alpha, got %v", node["name"])
@@ -172,11 +190,12 @@ func TestResolver_MyCardgroupsConnection_Authenticated_DelegatesToUsecase(t *tes
 	if pageInfo["hasPreviousPage"] != false {
 		t.Fatalf("expected hasPreviousPage=false on page 1, got %v", pageInfo["hasPreviousPage"])
 	}
-	if pageInfo["startCursor"] != wantCursorCG1 {
-		t.Fatalf("expected startCursor=%q, got %v", wantCursorCG1, pageInfo["startCursor"])
-	}
-	if pageInfo["endCursor"] != wantCursorCG2 {
-		t.Fatalf("expected endCursor=%q, got %v", wantCursorCG2, pageInfo["endCursor"])
+	gotStart, _ := pageInfo["startCursor"].(string)
+	assertCardgroupCursor("pageInfo.startCursor", gotStart, "cg1")
+	gotEnd, _ := pageInfo["endCursor"].(string)
+	assertCardgroupCursor("pageInfo.endCursor", gotEnd, "cg2")
+	if gotStart != gotFirstCursor {
+		t.Fatalf("pageInfo.startCursor %q must be byte-identical to edges[0].cursor %q", gotStart, gotFirstCursor)
 	}
 }
 

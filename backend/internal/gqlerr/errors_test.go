@@ -13,6 +13,7 @@ import (
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
 	"backend/internal/gqlerr"
+	"backend/internal/gqlerr/gqlerrtest"
 )
 
 func extString(t *testing.T, e *gqlerror.Error, key string) string {
@@ -83,7 +84,7 @@ func TestInternal_logsError(t *testing.T) {
 func TestIsCode_true(t *testing.T) {
 	t.Parallel()
 
-	if !gqlerr.IsCode(gqlerr.Unauthenticated(), gqlerr.CodeUnauthenticated) {
+	if !gqlerrtest.IsCode(gqlerr.Unauthenticated(), gqlerr.CodeUnauthenticated) {
 		t.Error("IsCode should return true for matching code")
 	}
 }
@@ -91,7 +92,7 @@ func TestIsCode_true(t *testing.T) {
 func TestIsCode_plainError(t *testing.T) {
 	t.Parallel()
 
-	if gqlerr.IsCode(errors.New("plain"), gqlerr.CodeUnauthenticated) {
+	if gqlerrtest.IsCode(errors.New("plain"), gqlerr.CodeUnauthenticated) {
 		t.Error("IsCode should return false for non-gqlerror")
 	}
 }
@@ -99,7 +100,7 @@ func TestIsCode_plainError(t *testing.T) {
 func TestIsCode_NilExtensions(t *testing.T) {
 	t.Parallel()
 
-	if gqlerr.IsCode(&gqlerror.Error{Message: "x"}, gqlerr.CodeInternal) {
+	if gqlerrtest.IsCode(&gqlerror.Error{Message: "x"}, gqlerr.CodeInternal) {
 		t.Error("IsCode should return false when Extensions is nil")
 	}
 }
@@ -107,7 +108,7 @@ func TestIsCode_NilExtensions(t *testing.T) {
 func TestIsCode_EmptyCode(t *testing.T) {
 	t.Parallel()
 
-	if gqlerr.IsCode(gqlerr.Unauthenticated(), gqlerr.Code("")) {
+	if gqlerrtest.IsCode(gqlerr.Unauthenticated(), gqlerr.Code("")) {
 		t.Error("IsCode should return false for empty Code")
 	}
 }
@@ -159,7 +160,7 @@ func TestNewForbidden(t *testing.T) {
 func TestIsCode_Forbidden(t *testing.T) {
 	t.Parallel()
 
-	if !gqlerr.IsCode(gqlerr.NewForbidden("x"), gqlerr.CodeForbidden) {
+	if !gqlerrtest.IsCode(gqlerr.NewForbidden("x"), gqlerr.CodeForbidden) {
 		t.Error("IsCode should return true for FORBIDDEN code")
 	}
 }
@@ -222,7 +223,7 @@ func TestCancelled(t *testing.T) {
 	if code := extString(t, got, "code"); code != "CANCELLED" {
 		t.Errorf("Extensions[code] = %q, want %q", code, "CANCELLED")
 	}
-	if !gqlerr.IsCode(got, gqlerr.CodeCancelled) {
+	if !gqlerrtest.IsCode(got, gqlerr.CodeCancelled) {
 		t.Error("IsCode should return true for CANCELLED code")
 	}
 

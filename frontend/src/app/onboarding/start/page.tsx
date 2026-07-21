@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { OnboardingStartQuery as OnboardingStartQueryType } from "@/generated/graphql";
-import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
+import { redirectIfAuthError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { isUserOnboarded } from "@/lib/auth/onboarding";
-import { readAuthContext } from "@/lib/supabase/auth-status";
+import { requireAuthenticated } from "@/lib/supabase/auth-status";
 import { OnboardingStartClient } from "./onboarding-start-client";
 import { OnboardingStartQuery } from "./queries";
 
@@ -19,13 +18,13 @@ export const metadata: Metadata = { title: "Get started" };
  * <main> landmark.
  */
 export default async function OnboardingStartPage() {
-  if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
+  await requireAuthenticated("/login");
 
   let data: OnboardingStartQueryType;
   try {
     data = await gqlFetch(OnboardingStartQuery, { revalidate: 0 });
   } catch (err) {
-    if (isUnauthenticatedGraphQLError(err)) redirect("/login");
+    redirectIfAuthError(err, "/login");
     // err.message is omitted deliberately — gqlFetch error messages can carry
     // backend-echoed content; err.name is sufficient for triage. Same posture as
     // catalog/page.tsx. See docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.

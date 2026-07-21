@@ -79,7 +79,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Test stubs `t.Fatalf` on exhausted fixture access, never panic](../../docs/backend/library-gotchas/test-stub-fatal-on-exhausted-fixture.md)
 - [Call-count error injection on a fake to cover the Nth call of a twice-called repo method](../../docs/backend/library-gotchas/call-count-error-injection-for-nth-call.md)
 - [Optional feature: pass `nil` handler and let the router skip route registration](../../docs/backend/library-gotchas/optional-feature-nil-handler-skip-route.md)
-- [goyacc lexer: recover via NEWLINE to enable `error NEWLINE` grammar rules](../../docs/backend/library-gotchas/goyacc-lexer-recovery-via-newline.md)
+- [goyacc lexer: recover by emitting NEWLINE instead of `0`, and use explicit skip productions for lone rows](../../docs/backend/library-gotchas/goyacc-lexer-recovery-via-newline.md)
 - [gqlgen `transport.POST` response headers must be set at construction time](../../docs/backend/library-gotchas/gqlgen-transport-post-response-headers.md)
 - [gqlgen wraps deleted-field resolvers in a `// !!! WARNING !!!` block — they are not auto-removed](../../docs/backend/library-gotchas/gqlgen-warning-block-on-deleted-resolver.md)
 - [gqlgen `follow-schema` layout orphans the old resolver file when a schema FILE is renamed](../../docs/backend/library-gotchas/gqlgen-schema-file-rename-orphans-resolver.md)

@@ -8,13 +8,13 @@ The structural split is:
 
 ```tsx
 // frontend/src/app/cardgroups/page.tsx
-import { headers } from "next/headers";
-import { readAuthContext } from "@/lib/supabase/auth-status";
+import { redirectIfAuthError } from "@/lib/apollo/graphql-errors";
+import { requireAuthenticated } from "@/lib/supabase/auth-status";
 
 export default async function CardgroupsPage() {
   // Auth runs OUTSIDE the Suspense boundary so an unauthenticated request
   // redirects to /login before any streaming starts.
-  if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
+  await requireAuthenticated("/login");
 
   return (
     <Suspense fallback={<CardgroupsSkeleton />}>
@@ -32,7 +32,7 @@ export async function CardgroupsContent() {
     const data = await gqlFetch(MyCardgroupsConnectionQuery, { revalidate: 0 });
     return <CardgroupsClient initialConnection={data.myCardgroupsConnection} />;
   } catch (err) {
-    if (isUnauthenticatedGraphQLError(err)) redirect("/login");
+    redirectIfAuthError(err, "/login");
     console.error("[cardgroups] gqlFetch failed:", {
       name: err instanceof Error ? err.name : "unknown",
     });
@@ -41,7 +41,7 @@ export async function CardgroupsContent() {
 }
 ```
 
-**Why the inner component still needs its own auth check:** the outer gate validates the middleware-forwarded session status. The inner `gqlFetch` validates the GraphQL JWT issued from that session. Clock skew, JWKS rotation, or a short-lived edge token can make the session status valid while the backend rejects the JWT. If the inner component omits the `isUnauthenticatedGraphQLError` check, a revoked JWT throws into the `<Suspense>` boundary's nearest `error.tsx`, showing an error page rather than redirecting to `/login`.
+**Why the inner component still needs its own auth check:** the outer gate validates the middleware-forwarded session status. The inner `gqlFetch` validates the GraphQL JWT issued from that session. Clock skew, JWKS rotation, or a short-lived edge token can make the session status valid while the backend rejects the JWT. If the inner component omits the `redirectIfAuthError` arm, a revoked JWT throws into the `<Suspense>` boundary's nearest `error.tsx`, showing an error page rather than redirecting to `/login`.
 
 ## Named export `CardgroupsContent` for testability
 
@@ -70,7 +70,7 @@ it("passes connection edges to CardgroupsClient", async () => {
 
 Apply this split to every page that uses `loading.tsx` + `<Suspense>`: outer `page.tsx` handles auth and returns the Suspense shell; inner `*Content` handles data and is named-exported for direct test invocation. The `loading.tsx` file renders the skeleton that Next.js displays automatically during navigation to the route, so the `<Suspense fallback={...}>` covers in-page streaming while `loading.tsx` covers the initial route transition.
 
-Reference: `frontend/src/app/cardgroups/page.tsx`, `frontend/src/app/cardgroups/page.test.tsx`, `frontend/src/app/cards/new/page.tsx`, `frontend/src/app/learn/[cardgroupId]/page.tsx`. Each outer `page.tsx` gates on `readAuthContext(await headers()).status !== "authenticated"`; each inner `*Content` component checks `isUnauthenticatedGraphQLError` for the independent JWT path.
+Reference: `frontend/src/app/cardgroups/page.tsx`, `frontend/src/app/cardgroups/page.test.tsx`, `frontend/src/app/cards/new/page.tsx`, `frontend/src/app/learn/[cardgroupId]/page.tsx`. Each outer `page.tsx` gates with `await requireAuthenticated("/login")`; each inner `*Content` component calls `redirectIfAuthError(err, "/login")` for the independent JWT path. The `requireAuthenticated` docblock (`frontend/src/lib/supabase/auth-status.ts`) carries the outside-Suspense constraint alongside the implementation.
 
 ## Contrast: display-hint resolution that degrades (runs inside Suspense)
 

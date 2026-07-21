@@ -17,6 +17,7 @@ import (
 	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
+	"backend/internal/gqlerr/gqlerrtest"
 	"backend/internal/loader"
 	"backend/internal/usecase"
 	"backend/internal/usecase/ucerr"
@@ -248,8 +249,8 @@ func TestAdminUserResolver_Users_AdminHappyPath(t *testing.T) {
 			t.Fatalf("edges[%d].cursor = %q must not be the raw user id", i, gotCur)
 		}
 		dec, err := cursor.Decode(gotCur)
-		if err != nil || dec != want {
-			t.Fatalf("edges[%d].cursor decode = (%q, %v), want (%q, nil)", i, dec, err, want)
+		if err != nil || dec.ID != want {
+			t.Fatalf("edges[%d].cursor decode = (%q, %v), want (%q, nil)", i, dec.ID, err, want)
 		}
 	}
 
@@ -438,7 +439,7 @@ func TestUserResolver_Roles_Unauthenticated(t *testing.T) {
 
 	ctx := ctxWithRoles(context.Background(), map[string][]*domain.Role{"u-1": {}})
 	_, err := (&resolver.Resolver{}).User().Roles(ctx, &model.User{ID: "u-1"})
-	if !gqlerr.IsCode(err, gqlerr.CodeUnauthenticated) {
+	if !gqlerrtest.IsCode(err, gqlerr.CodeUnauthenticated) {
 		t.Fatalf("want UNAUTHENTICATED, got %v", err)
 	}
 }
@@ -449,7 +450,7 @@ func TestUserResolver_Roles_MissingLoaderInternal(t *testing.T) {
 	t.Parallel()
 
 	_, err := (&resolver.Resolver{}).User().Roles(authedCtx("u-1"), &model.User{ID: "u-1"})
-	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+	if !gqlerrtest.IsCode(err, gqlerr.CodeInternal) {
 		t.Fatalf("want INTERNAL when loader middleware is not installed, got %v", err)
 	}
 }
@@ -461,7 +462,7 @@ func TestUserResolver_Roles_LoaderErrorInternal(t *testing.T) {
 
 	ctx := ctxWithRolesLoaderError(authedCtx("u-1"), errors.New("db down"))
 	_, err := (&resolver.Resolver{}).User().Roles(ctx, &model.User{ID: "u-1"})
-	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+	if !gqlerrtest.IsCode(err, gqlerr.CodeInternal) {
 		t.Fatalf("want INTERNAL for a generic loader error, got %v", err)
 	}
 }
@@ -473,7 +474,7 @@ func TestUserResolver_Roles_ContextCancelled(t *testing.T) {
 
 	ctx := ctxWithRolesLoaderError(authedCtx("u-1"), context.Canceled)
 	_, err := (&resolver.Resolver{}).User().Roles(ctx, &model.User{ID: "u-1"})
-	if !gqlerr.IsCode(err, gqlerr.CodeCancelled) {
+	if !gqlerrtest.IsCode(err, gqlerr.CodeCancelled) {
 		t.Fatalf("want CANCELLED for a cancelled-context loader error, got %v", err)
 	}
 }

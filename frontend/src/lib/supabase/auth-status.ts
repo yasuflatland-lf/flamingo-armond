@@ -1,3 +1,6 @@
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+
 /** Result classification of the middleware's getClaims() call. */
 export type AuthStatus = "authenticated" | "anonymous" | "stale" | "error";
 
@@ -32,11 +35,36 @@ const VALID_STATUS: ReadonlySet<string> = new Set(["authenticated", "anonymous",
  * dropped header degrades to the anonymous shell / a protected-page redirect
  * rather than leaking an authenticated view.
  */
-export function readAuthContext(headers: Headers): AuthContext {
-  const raw = headers.get(AUTH_STATUS_HEADER);
+export function readAuthContext(requestHeaders: Headers): AuthContext {
+  const raw = requestHeaders.get(AUTH_STATUS_HEADER);
   const status: AuthStatus =
     raw != null && VALID_STATUS.has(raw) ? (raw as AuthStatus) : "anonymous";
-  const email = headers.get(USER_EMAIL_HEADER) || null;
-  const isAdmin = headers.get(USER_IS_ADMIN_HEADER) === "true";
+  const email = requestHeaders.get(USER_EMAIL_HEADER) || null;
+  const isAdmin = requestHeaders.get(USER_IS_ADMIN_HEADER) === "true";
   return { status, email, isAdmin };
+}
+
+/**
+ * The RSC auth gate: reads the forwarded identity headers and sends the visitor
+ * to `target` unless the middleware classified the request as "authenticated"
+ * (i.e. also on "anonymous", "stale" and "error").
+ *
+ * The redirect target is an explicit argument rather than a literal baked into
+ * the helper, so every page states in reviewable form where its unauthenticated
+ * visitor lands: `/login` for the ordinary signed-in surfaces, `/` for the admin
+ * surfaces. See
+ * docs/frontend/rsc-error-handling/unauthenticated-redirect-target-must-be-login.md
+ * for why those are the only two sanctioned targets.
+ *
+ * Returns the AuthContext so a page that also reads `email` / `isAdmin` can bind
+ * the result instead of parsing the headers a second time. `redirect()` throws,
+ * so the returned context is always an authenticated one.
+ *
+ * Call this OUTSIDE any <Suspense> boundary — Next.js cannot redirect mid-stream,
+ * and a redirect from within a suspended subtree flashes the skeleton first.
+ */
+export async function requireAuthenticated(target: string): Promise<AuthContext> {
+  const auth = readAuthContext(await headers());
+  if (auth.status !== "authenticated") redirect(target);
+  return auth;
 }

@@ -34,7 +34,7 @@ type gormCard struct {
     Front       string    `gorm:"column:front"`   // <- string, not CardText
     Back        string    `gorm:"column:back"`
     CreatedAt   time.Time `gorm:"column:created_at"`
-    UpdatedAt   time.Time `gorm:"column:updated_at"`
+    UpdatedAt   time.Time `gorm:"column:updated_at;->"` // read-only: DB trigger owns it
 }
 ```
 

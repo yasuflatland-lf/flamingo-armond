@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Suspense } from "react";
 import type { CardsNewBootstrapQuery as CardsNewBootstrapQueryType } from "@/generated/graphql";
-import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
+import { redirectIfAuthError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
-import { readAuthContext } from "@/lib/supabase/auth-status";
+import { requireAuthenticated } from "@/lib/supabase/auth-status";
 import { CardsNewSkeleton } from "./_components/cards-new-skeleton";
 import CardsNewClient from "./cards-new-client";
 import { CardsNewBootstrapQuery } from "./queries";
@@ -22,7 +21,7 @@ export default async function CardsNewPage({ searchParams }: CardsNewPageProps) 
   // redirects to /login before any streaming starts. The middleware forwards
   // identity via x-auth-status; a missing or malformed header degrades to
   // "anonymous" so a dropped header never leaks an authenticated view.
-  if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
+  await requireAuthenticated("/login");
 
   const t = await getTranslations("Cards");
   const { cardgroup: cardgroupParam } = await searchParams;
@@ -52,9 +51,7 @@ export async function CardsNewContent({ cardgroupParam }: { cardgroupParam: stri
   try {
     bootstrapData = await gqlFetch(CardsNewBootstrapQuery, { revalidate: 0 });
   } catch (err) {
-    if (isUnauthenticatedGraphQLError(err)) {
-      redirect("/login");
-    }
+    redirectIfAuthError(err, "/login");
     console.error("[cards-new] gqlFetch failed:", {
       name: err instanceof Error ? err.name : "unknown",
     });

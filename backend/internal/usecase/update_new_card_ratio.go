@@ -2,7 +2,10 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+
+	"github.com/rotisserie/eris"
 
 	"backend/internal/auth"
 	"backend/internal/domain"
@@ -36,7 +39,7 @@ type updateNewCardRatioUsecase struct {
 }
 
 // NewUpdateNewCardRatio is the production constructor. Tests should prefer
-// NewUpdateNewCardRatioWithDeps to inject narrow stubs.
+// newUpdateNewCardRatioWithDeps to inject narrow stubs.
 func NewUpdateNewCardRatio(
 	prefs repository.UserPreferenceRepository,
 	users repository.UserRepository,
@@ -48,8 +51,8 @@ func NewUpdateNewCardRatio(
 	return &updateNewCardRatioUsecase{prefs: prefs, users: users, logger: logger}
 }
 
-// NewUpdateNewCardRatioWithDeps accepts narrow interfaces for tests.
-func NewUpdateNewCardRatioWithDeps(
+// newUpdateNewCardRatioWithDeps accepts narrow interfaces for tests.
+func newUpdateNewCardRatioWithDeps(
 	prefs updateNewCardRatioPrefsRepo,
 	users updateNewCardRatioUsersRepo,
 	logger *slog.Logger,
@@ -87,21 +90,31 @@ func (u *updateNewCardRatioUsecase) Set(ctx context.Context, numerator, denomina
 
 	ratio, err := domain.ParseNewCardRatio(numerator, denominator)
 	if err != nil {
-		// Attribute the fault the way domain.ParseNewCardRatio does on the
-		// reduced fraction: a non-positive denominator, or a reduced denominator
-		// above NewCardRatioDenMax, is a denominator problem; a new-card share
-		// outside the open interval (0, denominator) is a numerator problem. The
-		// share bound is ratio-invariant (num/den < 1 iff rnum/rden < 1), so this
-		// verdict matches the reduced fraction the VO actually checks. The wire
-		// message stays generic to avoid leaking internal bounds phrasing.
-		field := "denominator"
-		if denominator > 0 && (numerator <= 0 || numerator >= denominator) {
-			field = "numerator"
-		}
-		return nil, ucerr.NewValidationError(field, "invalid new-card ratio")
+		return nil, translateNewCardRatioErr(err)
 	}
 
 	return setUserPreference(ctx, func(ctx context.Context, sub string) error {
 		return u.prefs.UpsertNewCardRatio(ctx, sub, ratio.Numerator(), ratio.Denominator())
 	}, u.users, "usecase: update new card ratio")
+}
+
+// translateNewCardRatioErr maps domain NewCardRatio sentinels into usecase-layer
+// typed errors, attributing each rejection to the field the caller can fix: a
+// share outside the open interval (0, denominator) faults the numerator; a
+// non-positive or over-cap reduced denominator faults the denominator. The wire
+// message stays generic so the internal bounds phrasing never leaks. Unexpected
+// errors are wrapped with eris. Returns nil when err is nil.
+func translateNewCardRatioErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, domain.ErrNewCardRatioShareOutOfRange):
+		return ucerr.NewValidationError("numerator", "invalid new-card ratio")
+	case errors.Is(err, domain.ErrNewCardRatioDenominatorNotPositive),
+		errors.Is(err, domain.ErrNewCardRatioDenominatorTooLarge):
+		return ucerr.NewValidationError("denominator", "invalid new-card ratio")
+	default:
+		return eris.Wrap(err, "usecase: update new card ratio: translate ratio error")
+	}
 }

@@ -45,7 +45,7 @@ type lastViewedCardgroupUsecase struct {
 }
 
 // NewLastViewedCardgroup is the production constructor. Tests should prefer
-// NewLastViewedCardgroupWithDeps to inject narrow stubs.
+// newLastViewedCardgroupWithDeps to inject narrow stubs.
 func NewLastViewedCardgroup(
 	prefs repository.UserPreferenceRepository,
 	users repository.UserRepository,
@@ -57,8 +57,8 @@ func NewLastViewedCardgroup(
 	return &lastViewedCardgroupUsecase{prefs: prefs, users: users, logger: logger}
 }
 
-// NewLastViewedCardgroupWithDeps accepts narrow interfaces for tests.
-func NewLastViewedCardgroupWithDeps(
+// newLastViewedCardgroupWithDeps accepts narrow interfaces for tests.
+func newLastViewedCardgroupWithDeps(
 	prefs lastViewedCardgroupRepo,
 	users lastViewedCardgroupUsersRepo,
 	logger *slog.Logger,

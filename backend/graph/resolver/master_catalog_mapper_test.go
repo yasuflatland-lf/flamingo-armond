@@ -111,21 +111,28 @@ func TestToMasterCatalogConnectionModel_Mapping(t *testing.T) {
 		HasPrev:    false,
 		StartCur:   "a",
 		EndCur:     "b",
+		Ordering:   usecase.PageOrdering{OrderBy: "sort_order", Direction: "ASC"},
+		OrderKeys:  map[string]string{"a": "1", "b": "2"},
 	}
 
 	got := toMasterCatalogConnectionModel(context.Background(), out)
 	require.Len(t, got.Edges, 2)
-	// Cursors are opaque; assert they equal the canonical encoding of the node ID.
-	assert.Equal(t, cursor.Encode("a"), got.Edges[0].Cursor)
+	// The catalog orders by the admin-mutable sort_order column, so cursors are
+	// v2 envelopes carrying the page's ordering plus the row's captured
+	// ordering-key value. They stay opaque to clients; assert they equal the
+	// canonical encoding for the node.
+	wantA := cursor.EncodeV2(cursor.Payload{ID: "a", OrderBy: "sort_order", Direction: "ASC", OrderKey: "1"})
+	wantB := cursor.EncodeV2(cursor.Payload{ID: "b", OrderBy: "sort_order", Direction: "ASC", OrderKey: "2"})
+	assert.Equal(t, wantA, got.Edges[0].Cursor)
 	assert.Equal(t, "a", got.Edges[0].Node.ID)
-	assert.Equal(t, cursor.Encode("b"), got.Edges[1].Cursor)
+	assert.Equal(t, wantB, got.Edges[1].Cursor)
 	assert.Equal(t, 9, got.TotalCount)
 	assert.True(t, got.PageInfo.HasNextPage)
 	assert.False(t, got.PageInfo.HasPreviousPage)
 	require.NotNil(t, got.PageInfo.StartCursor)
-	assert.Equal(t, cursor.Encode("a"), *got.PageInfo.StartCursor)
+	assert.Equal(t, wantA, *got.PageInfo.StartCursor)
 	require.NotNil(t, got.PageInfo.EndCursor)
-	assert.Equal(t, cursor.Encode("b"), *got.PageInfo.EndCursor)
+	assert.Equal(t, wantB, *got.PageInfo.EndCursor)
 }
 
 // TestToMasterCatalogConnectionModel_SkipsNilNode exercises the defensive branch

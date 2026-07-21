@@ -9,6 +9,7 @@ import (
 	"backend/graph/model"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
+	"backend/internal/gqlerr/gqlerrtest"
 	"backend/internal/usecase"
 	"backend/internal/usecase/ucerr"
 )
@@ -97,7 +98,7 @@ func TestMutationResolver_ImportMasterCardgroup_Unauthenticated_WrapsError(t *te
 	if res != nil {
 		t.Fatalf("expected nil union on error, got %T", res)
 	}
-	if !gqlerr.IsCode(err, gqlerr.CodeUnauthenticated) {
+	if !gqlerrtest.IsCode(err, gqlerr.CodeUnauthenticated) {
 		t.Fatalf("expected UNAUTHENTICATED wire error, got %v", err)
 	}
 }
@@ -115,7 +116,7 @@ func TestMutationResolver_ImportMasterCardgroup_InfraError_WrapsInternal(t *test
 	if res != nil {
 		t.Fatalf("expected nil union on error, got %T", res)
 	}
-	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+	if !gqlerrtest.IsCode(err, gqlerr.CodeInternal) {
 		t.Fatalf("expected INTERNAL wire error, got %v", err)
 	}
 }
@@ -134,7 +135,7 @@ func TestMutationResolver_ImportMasterCardgroup_XORInvariantViolation(t *testing
 	if res != nil {
 		t.Fatalf("expected nil union on invariant violation, got %T", res)
 	}
-	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+	if !gqlerrtest.IsCode(err, gqlerr.CodeInternal) {
 		t.Fatalf("expected INTERNAL wire error, got %v", err)
 	}
 }

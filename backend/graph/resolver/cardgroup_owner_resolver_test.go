@@ -11,6 +11,7 @@ import (
 	"backend/graph/resolver"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
+	"backend/internal/gqlerr/gqlerrtest"
 	"backend/internal/loader"
 )
 
@@ -41,7 +42,7 @@ func TestCardgroupResolver_Owner_MissingLoaderMiddlewareInternal(t *testing.T) {
 	if err == nil {
 		t.Fatal("want error when loader middleware is not installed, got nil")
 	}
-	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+	if !gqlerrtest.IsCode(err, gqlerr.CodeInternal) {
 		t.Fatalf("want INTERNAL wire code, got %v", err)
 	}
 }
@@ -54,7 +55,7 @@ func TestCardgroupResolver_Owner_ContextCancelledReturnsCancelled(t *testing.T) 
 
 	ctx := ctxWithUserLoaderError(context.Background(), context.Canceled)
 	_, err := (&resolver.Resolver{}).Cardgroup().Owner(ctx, &model.Cardgroup{OwnerID: "u-1"})
-	if !gqlerr.IsCode(err, gqlerr.CodeCancelled) {
+	if !gqlerrtest.IsCode(err, gqlerr.CodeCancelled) {
 		t.Fatalf("want CANCELLED wire code for context.Canceled loader error, got %v", err)
 	}
 }
@@ -66,7 +67,7 @@ func TestCardgroupResolver_Owner_GenericLoaderErrorReturnsInternal(t *testing.T)
 
 	ctx := ctxWithUserLoaderError(context.Background(), errors.New("db down"))
 	_, err := (&resolver.Resolver{}).Cardgroup().Owner(ctx, &model.Cardgroup{OwnerID: "u-1"})
-	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+	if !gqlerrtest.IsCode(err, gqlerr.CodeInternal) {
 		t.Fatalf("want INTERNAL wire code for a generic loader error, got %v", err)
 	}
 }

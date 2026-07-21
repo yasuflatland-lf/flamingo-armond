@@ -13,6 +13,7 @@ import (
 	"backend/graph/resolver"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
+	"backend/internal/gqlerr/gqlerrtest"
 	"backend/internal/loader"
 	"backend/internal/usecase"
 )
@@ -119,7 +120,7 @@ func TestUserResolver_LastSignInAt_MissingLoaderMiddlewareInternal(t *testing.T)
 	if err == nil {
 		t.Fatal("want error when loader middleware is not installed, got nil")
 	}
-	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+	if !gqlerrtest.IsCode(err, gqlerr.CodeInternal) {
 		t.Fatalf("want INTERNAL wire code, got %v", err)
 	}
 }
@@ -135,7 +136,7 @@ func TestUserResolver_LastSignInAt_ContextCancelledReturnsCancelled(t *testing.T
 
 	ctx := ctxWithLastSignInLoaderError(authedCtx("u-1"), context.Canceled)
 	_, err := (&resolver.Resolver{}).User().LastSignInAt(ctx, &model.User{ID: "u-1"})
-	if !gqlerr.IsCode(err, gqlerr.CodeCancelled) {
+	if !gqlerrtest.IsCode(err, gqlerr.CodeCancelled) {
 		t.Fatalf("want CANCELLED wire code for context.Canceled loader error, got %v", err)
 	}
 }
@@ -145,7 +146,7 @@ func TestUserResolver_LastSignInAt_GenericLoaderErrorReturnsInternal(t *testing.
 
 	ctx := ctxWithLastSignInLoaderError(authedCtx("u-1"), errors.New("db down"))
 	_, err := (&resolver.Resolver{}).User().LastSignInAt(ctx, &model.User{ID: "u-1"})
-	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+	if !gqlerrtest.IsCode(err, gqlerr.CodeInternal) {
 		t.Fatalf("want INTERNAL wire code for a generic loader error, got %v", err)
 	}
 }
@@ -165,7 +166,7 @@ func TestUserResolver_LastSignInAt_Unauthenticated(t *testing.T) {
 	ctx := ctxWithLastSignIn(context.Background(), map[string]*time.Time{"u-1": &ts}, nil)
 
 	_, err := (&resolver.Resolver{}).User().LastSignInAt(ctx, &model.User{ID: "u-1"})
-	if !gqlerr.IsCode(err, gqlerr.CodeUnauthenticated) {
+	if !gqlerrtest.IsCode(err, gqlerr.CodeUnauthenticated) {
 		t.Fatalf("want UNAUTHENTICATED, got %v", err)
 	}
 }
@@ -185,7 +186,7 @@ func TestUserResolver_LastSignInAt_NonAdminNonSelf_Forbidden(t *testing.T) {
 	)
 
 	got, err := (&resolver.Resolver{}).User().LastSignInAt(ctx, &model.User{ID: "u-target"})
-	if !gqlerr.IsCode(err, gqlerr.CodeForbidden) {
+	if !gqlerrtest.IsCode(err, gqlerr.CodeForbidden) {
 		t.Fatalf("want FORBIDDEN, got %v", err)
 	}
 	if got != nil {
@@ -302,7 +303,7 @@ func TestUserResolver_LastSignInAt_AdminCheckLoaderError(t *testing.T) {
 	ctx := loader.WithContext(authedCtx("u-caller"), loaders)
 
 	_, err := (&resolver.Resolver{}).User().LastSignInAt(ctx, &model.User{ID: "u-target"})
-	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+	if !gqlerrtest.IsCode(err, gqlerr.CodeInternal) {
 		t.Fatalf("want INTERNAL for a failed admin-status load, got %v", err)
 	}
 }
