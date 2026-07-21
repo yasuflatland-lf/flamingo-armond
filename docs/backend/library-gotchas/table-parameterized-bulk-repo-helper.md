@@ -36,9 +36,12 @@ type upsertCardRow struct {
     Back      string
     Position  int
     CreatedAt time.Time
-    UpdatedAt time.Time
 }
 ```
+
+`updated_at` is absent by design: the `BEFORE INSERT OR UPDATE` trigger on both
+tables owns that column, so neither the INSERT column list nor the
+`ON CONFLICT DO UPDATE SET` clause mentions it.
 
 The struct has no domain imports. `GroupID` maps to `fkColumn` at SQL-build
 time; each aggregate's repo fills it from its own domain field.
@@ -107,7 +110,7 @@ func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domai
         rows[i] = upsertCardRow{
             ID: c.ID, GroupID: c.CardgroupID,
             Front: string(c.Front), Back: string(c.Back),
-            Position: c.Position, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+            Position: c.Position, CreatedAt: c.CreatedAt,
         }
     }
     res, err := upsertManyTx(ctx, tx, rows, "cards", "cardgroup_id")
@@ -127,7 +130,7 @@ func (r *masterCardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []
         rows[i] = upsertCardRow{
             ID: c.ID, GroupID: c.MasterCardgroupID,
             Front: string(c.Front), Back: string(c.Back),
-            Position: c.Position, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+            Position: c.Position, CreatedAt: c.CreatedAt,
         }
     }
     res, err := upsertManyTx(ctx, tx, rows, "master_cards", "master_cardgroup_id")

@@ -248,16 +248,15 @@ func runMigrate(dbURL, ownerEmail string) (retErr error) {
 	for _, cg := range cardgroups {
 		_, err = tx.Exec(`
 			INSERT INTO public.master_cardgroups
-			  (id, name, version, status, is_default_starter, sort_order, created_at, updated_at)
-			VALUES ($1, $2, 1, 'published', true, 0, $3, $4)
+			  (id, name, version, status, is_default_starter, sort_order, created_at)
+			VALUES ($1, $2, 1, 'published', true, 0, $3)
 			ON CONFLICT (id) DO UPDATE
 			  SET name               = EXCLUDED.name,
 			      version            = EXCLUDED.version,
 			      status             = EXCLUDED.status,
 			      is_default_starter = EXCLUDED.is_default_starter,
-			      sort_order         = EXCLUDED.sort_order,
-			      updated_at         = EXCLUDED.updated_at`,
-			cg.ID, cg.Name, cg.CreatedAt, cg.UpdatedAt,
+			      sort_order         = EXCLUDED.sort_order`,
+			cg.ID, cg.Name, cg.CreatedAt,
 		)
 		if err != nil {
 			return eris.Wrapf(err, "migrate: upsert master_cardgroup %s", cg.ID)
@@ -272,15 +271,14 @@ func runMigrate(dbURL, ownerEmail string) (retErr error) {
 	for _, c := range cards {
 		_, err = tx.Exec(`
 			INSERT INTO public.master_cards
-			  (id, master_cardgroup_id, front, back, position, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			  (id, master_cardgroup_id, front, back, position, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
 			ON CONFLICT (id) DO UPDATE
 			  SET master_cardgroup_id = EXCLUDED.master_cardgroup_id,
 			      front               = EXCLUDED.front,
 			      back                = EXCLUDED.back,
-			      position            = EXCLUDED.position,
-			      updated_at          = EXCLUDED.updated_at`,
-			c.ID, c.CardgroupID, c.Front, c.Back, c.Position, c.CreatedAt, c.UpdatedAt,
+			      position            = EXCLUDED.position`,
+			c.ID, c.CardgroupID, c.Front, c.Back, c.Position, c.CreatedAt,
 		)
 		if err != nil {
 			return eris.Wrapf(err, "migrate: upsert master_card %s", c.ID)

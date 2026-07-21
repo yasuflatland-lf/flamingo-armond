@@ -40,7 +40,7 @@ func NewFetcher(token string, cfg RetryConfig) *APIClientFetcher {
 	return &APIClientFetcher{pages: client.Page, blocks: client.Block}
 }
 
-func NewFetcherFromServices(pages pageService, blocks blockService) *APIClientFetcher {
+func newFetcherFromServices(pages pageService, blocks blockService) *APIClientFetcher {
 	return &APIClientFetcher{pages: pages, blocks: blocks}
 }
 

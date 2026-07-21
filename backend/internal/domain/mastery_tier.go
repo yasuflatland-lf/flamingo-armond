@@ -10,7 +10,21 @@ const MatureStabilityDays = 21.0
 // card counts as learned/known: the model projects at least a week of
 // retention. It is the single boundary both ClassifyMastery and the stats
 // known-review gate test a card's stability against, so the mastery tiles and
-// the retention/lapse population always describe the same set of cards.
+// the retention/lapse population describe the same set of cards.
+//
+// That parity is conditional on the scheduler running in long-term mode.
+// service.NewFSRSScheduler sets params.EnableShortTerm = false (see
+// backend/internal/domain/service/fsrs_scheduler.go), so cards never sit in the
+// Learning/Relearning phases. The stats known-review gate additionally requires
+// PhaseBefore == Review, a conjunct ClassifyMastery does not test; today no card
+// with stability at or above this constant can fail it. (A first-ever swipe does
+// fail it, carrying PhaseBefore == FSRSPhaseNew, but its stability is below the
+// boundary, so both populations exclude it and the parity holds.) Flipping
+// EnableShortTerm back to true would admit a card with a non-Review phase and
+// stability at or above this constant: the mastery tiles
+// would still count it as learned while the retention/lapse population dropped
+// it, and the two would diverge with no compile error and no failing test at
+// this constant's own site. Revisit this boundary if the scheduler mode changes.
 const LearnedStabilityDays = 7.0
 
 // MasteryTier is the disjoint learning tier a card sits in.

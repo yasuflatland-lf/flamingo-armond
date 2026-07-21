@@ -35,11 +35,23 @@ type SuperUserPromoter struct {
 
 	// confirmedAdmins is the process-lifetime set of subs already known to hold the
 	// admin role. Once a sub is recorded, the middleware skips the per-request
-	// IsAdmin role query for it. A process-lifetime cache with no TTL/eviction
-	// is safe here because promotion only ever *adds* the admin role (it is
-	// never removed), and SUPER_USER_EMAILS membership cannot change without a
-	// process restart — so a cached sub never needs re-checking within a
-	// process. The zero value is ready to use.
+	// IsAdmin role query for it. A sub is recorded only by a request from that same
+	// sub, so an account that has not been seen since the process started is absent
+	// from the set regardless of how long the process has been running.
+	//
+	// The admin role CAN be removed while the process runs: adminEditUser replaces
+	// a user's final role set and adminDeleteUser removes the account outright, so
+	// a recorded sub may no longer be an admin. A cache with no TTL/eviction is
+	// nonetheless safe, because this cache gates only *re-promotion* — it is never
+	// consulted for authorization. Every admin-gated operation goes through
+	// usecase.AdminGate.Require, which issues a fresh IsAdmin database read on
+	// every call and returns a forbidden error when it comes back false. A stale
+	// entry can therefore only cause a missed re-promotion, never a privilege leak.
+	//
+	// SUPER_USER_EMAILS membership cannot change without a process restart. A
+	// restart also empties the cache, so re-promotion becomes certain for every
+	// still-listed address at that point — but an uncached sub is re-promoted on
+	// its next request without one. The zero value is ready to use.
 	confirmedAdmins sync.Map // map[string]struct{}
 }
 
@@ -142,8 +154,8 @@ func (p *SuperUserPromoter) Middleware() echo.MiddlewareFunc {
 			}
 
 			// Already confirmed as admin in this process: skip the role query.
-			// Promotion is idempotent and the admin role is never revoked, so a
-			// previously-confirmed sub needs no re-check (see the confirmedAdmins field).
+			// Skipping it can only miss a re-promotion, never grant access — every
+			// admin-gated operation re-reads the role (see the confirmedAdmins field).
 			if _, ok := p.confirmedAdmins.Load(u.Sub); ok {
 				return next(c)
 			}

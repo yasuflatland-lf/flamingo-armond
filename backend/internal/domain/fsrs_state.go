@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"math"
 	"time"
 )
 
@@ -22,6 +23,33 @@ func (p FSRSPhase) IsValid() bool {
 	return p >= FSRSPhaseNew && p <= FSRSPhaseRelearning
 }
 
+// MinDifficulty and MaxDifficulty bound the FSRS difficulty scale. go-fsrs
+// clamps every difficulty it produces into this closed range, and
+// NewCardDifficulty sits mid-scale, so no difficulty the application persists
+// can fall outside it.
+const (
+	MinDifficulty = 1.0
+	MaxDifficulty = 10.0
+)
+
+// IsValidStability reports whether s is a stability the scheduler can produce:
+// finite and strictly positive. The check exists because NaN and the infinities
+// fail every ordered comparison silently — an unchecked NaN stability falls
+// through both ClassifyMastery comparisons and is reported as the Learned tier,
+// and it breaks JSON marshalling of the GraphQL Float it feeds.
+func IsValidStability(s float64) bool {
+	if math.IsNaN(s) || math.IsInf(s, 0) {
+		return false
+	}
+	return s > 0
+}
+
+// IsValidDifficulty reports whether d sits within [MinDifficulty, MaxDifficulty].
+// NaN and the infinities fail the comparison and are therefore rejected too.
+func IsValidDifficulty(d float64) bool {
+	return d >= MinDifficulty && d <= MaxDifficulty
+}
+
 // FSRSState is an immutable value object. Repository code persists it as a
 // flat column block, but domain consumers treat it as one scheduling state.
 type FSRSState struct {
@@ -39,12 +67,23 @@ type FSRSState struct {
 	LastRating Rating
 }
 
+// NewCardStability and NewCardDifficulty are the placeholder scheduling values a
+// card carries until its first review. The scheduler overwrites both on that
+// first review, so neither ever influences a computed interval: they exist so a
+// never-reviewed card has a displayable, in-range state, and so the first swipe
+// records a non-zero StabilityBefore snapshot (which the statistics known-review
+// gate reads).
+const (
+	NewCardStability  = 2.5
+	NewCardDifficulty = 5.0
+)
+
 // NewFSRSStateForNewCard returns the initial scheduling state for a new card.
 func NewFSRSStateForNewCard(now time.Time) FSRSState {
 	return FSRSState{
 		Due:        now,
-		Stability:  2.5,
-		Difficulty: 5.0,
+		Stability:  NewCardStability,
+		Difficulty: NewCardDifficulty,
 		Phase:      FSRSPhaseNew,
 		LastReview: now,
 	}

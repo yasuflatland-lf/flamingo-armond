@@ -11,6 +11,7 @@ import (
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
 	"backend/internal/gqlerr"
+	"backend/internal/gqlerr/gqlerrtest"
 	"backend/internal/usecase/ucerr"
 )
 
@@ -124,7 +125,7 @@ func TestFromUsecaseError(t *testing.T) {
 				return
 			}
 
-			if !gqlerr.IsCode(got, tc.wantCode) {
+			if !gqlerrtest.IsCode(got, tc.wantCode) {
 				t.Errorf("IsCode(%v) = false, want true for code %q", got, tc.wantCode)
 			}
 

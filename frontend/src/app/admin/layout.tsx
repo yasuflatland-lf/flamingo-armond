@@ -1,14 +1,10 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { graphql } from "@/generated";
 import type { AdminLayoutMeQuery as AdminLayoutMeQueryType } from "@/generated/graphql";
-import {
-  isForbiddenGraphQLError,
-  isUnauthenticatedGraphQLError,
-} from "@/lib/apollo/graphql-errors";
+import { redirectIfAuthError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
-import { readAuthContext } from "@/lib/supabase/auth-status";
+import { requireAuthenticated } from "@/lib/supabase/auth-status";
 
 /**
  * Single source of truth admin gate. Runs entirely on the server before any
@@ -42,7 +38,7 @@ const AdminLayoutMeQuery = graphql(`
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   // Step 1: session check via middleware-forwarded status.
-  if (readAuthContext(await headers()).status !== "authenticated") redirect("/");
+  await requireAuthenticated("/");
 
   // Step 2: admin-role check via GraphQL. The middleware forwarded
   // "authenticated", but the access token can expire between the middleware
@@ -52,7 +48,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   try {
     meData = await gqlFetch(AdminLayoutMeQuery, { revalidate: 0 });
   } catch (err) {
-    if (isUnauthenticatedGraphQLError(err) || isForbiddenGraphQLError(err)) redirect("/");
+    redirectIfAuthError(err, "/", { forbidden: true });
     console.error("[admin-layout] gqlFetch failed:", {
       name: err instanceof Error ? err.name : "unknown",
     });

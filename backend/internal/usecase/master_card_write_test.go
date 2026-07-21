@@ -128,7 +128,7 @@ func newMasterCardImportUC(
 	process func(string) ([]textdic.ParsedWord, []textdic.ValidationError, error),
 ) MasterCardUsecase {
 	t.Helper()
-	uc := NewMasterCardUsecaseWithTx(mc, &mockMasterCardgroupReadRepo{}, tx, newTestAdminGate(isAdmin), newTestLogger())
+	uc := newMasterCardUsecaseWithTx(mc, &mockMasterCardgroupReadRepo{}, tx, newTestAdminGate(isAdmin), newTestLogger())
 	if process != nil {
 		uc.(*masterCardUsecase).processCardImport = process
 	}

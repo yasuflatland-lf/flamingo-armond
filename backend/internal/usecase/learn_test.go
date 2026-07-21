@@ -18,13 +18,14 @@ type mockLearnCardRepo struct {
 	rows []domain.DueCard
 	err  error
 
-	cardgroupID     string
-	userID          string
-	now             time.Time
-	reviewedBefore  time.Time
-	rescueDueBefore time.Time
-	limit           int
-	calls           int
+	cardgroupID          string
+	userID               string
+	now                  time.Time
+	reviewedBefore       time.Time
+	rescueDueBefore      time.Time
+	rescueReviewedBefore time.Time
+	limit                int
+	calls                int
 
 	// Practice-mode capture fields, separate from the due-mode captures so a
 	// test exercising one window cannot read a value written by the other.
@@ -37,13 +38,14 @@ type mockLearnCardRepo struct {
 	practiceCalls         int
 }
 
-func (m *mockLearnCardRepo) FindDueCardsForUser(_ context.Context, userID, cardgroupID string, now, reviewedBefore, rescueDueBefore time.Time, limit int) ([]domain.DueCard, error) {
+func (m *mockLearnCardRepo) FindDueCardsForUser(_ context.Context, userID, cardgroupID string, now, reviewedBefore, rescueDueBefore, rescueReviewedBefore time.Time, limit int) ([]domain.DueCard, error) {
 	m.calls++
 	m.userID = userID
 	m.cardgroupID = cardgroupID
 	m.now = now
 	m.reviewedBefore = reviewedBefore
 	m.rescueDueBefore = rescueDueBefore
+	m.rescueReviewedBefore = rescueReviewedBefore
 	m.limit = limit
 	return m.rows, m.err
 }
@@ -124,6 +126,8 @@ func TestLearnUsecaseNextDueCards(t *testing.T) {
 		"JST start-of-day for 2026-05-13T09:00Z")
 	require.True(t, cardRepo.rescueDueBefore.Equal(time.Date(2026, 5, 13, 15, 0, 0, 0, time.UTC)),
 		"JST end-of-day for 2026-05-13T09:00Z")
+	require.True(t, cardRepo.rescueReviewedBefore.Equal(time.Date(2026, 5, 12, 9, 0, 0, 0, time.UTC)),
+		"rescue early-serve floor is exactly 24h before now")
 	require.ElementsMatch(t, []string{"repo-first", "repo-second"}, learnCardIDs(got))
 }
 

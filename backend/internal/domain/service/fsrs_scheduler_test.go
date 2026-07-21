@@ -24,6 +24,43 @@ func TestFSRSSchedulerApplyIsPure(t *testing.T) {
 	require.Equal(t, domain.RatingEasy, got.LastRating)
 }
 
+// TestFSRSScheduler_Apply_InvalidPhasePanics pins the guard in front of the
+// fsrs.State cast. The library dispatches on that value with no default arm, so
+// an unrecognised phase would return a zero-valued scheduling result and
+// silently wipe the card's state instead of failing. No caller can construct an
+// invalid phase today — this is a programmer-error guard, so it panics rather
+// than widening the domain.FSRSScheduler signature to return an error.
+func TestFSRSScheduler_Apply_InvalidPhasePanics(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
+	scheduler := NewFSRSScheduler()
+
+	for _, phase := range []domain.FSRSPhase{-1, 4, 99} {
+		state := domain.NewFSRSStateForNewCard(now.Add(-24 * time.Hour))
+		state.Phase = phase
+
+		require.Panics(t, func() {
+			scheduler.Apply(state, domain.RatingGood, now)
+		}, "an unrecognised FSRSPhase must fail loudly, not schedule from a zero-valued result")
+	}
+
+	// Every recognised phase still schedules normally.
+	for _, phase := range []domain.FSRSPhase{
+		domain.FSRSPhaseNew,
+		domain.FSRSPhaseLearning,
+		domain.FSRSPhaseReview,
+		domain.FSRSPhaseRelearning,
+	} {
+		state := domain.NewFSRSStateForNewCard(now.Add(-24 * time.Hour))
+		state.Phase = phase
+
+		require.NotPanics(t, func() {
+			scheduler.Apply(state, domain.RatingGood, now)
+		})
+	}
+}
+
 func TestFSRSScheduler_Apply_BackwardClockSkewClamped(t *testing.T) {
 	t.Parallel()
 

@@ -41,6 +41,9 @@ type UserCardFSRSRepoForSwipe interface {
 }
 
 // SwipeUsecase processes a single card swipe and advances the FSRS schedule.
+// A repeat review of the same card within the same JST learn day is accepted
+// and ignored: the schedule is left untouched, no second swipe record is
+// written, and the normal success outcome is still returned.
 type SwipeUsecase interface {
 	HandleSwipe(ctx context.Context, in HandleSwipeInput) (HandleSwipeOutcome, error)
 }
@@ -173,7 +176,31 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		if err != nil {
 			return wrapSwipeErr(err, "usecase: swipe: find user-card fsrs")
 		}
-		current := byCardID[card.ID]
+		// Same-learn-day repeat guard. The learn queue never serves a card twice
+		// within one JST learn day, so a second swipe of the same card inside
+		// that day is a replay: a retried request on a flaky connection, a
+		// second browser tab, or a reload after a false failure. Accept it and
+		// ignore it — re-applying the rating would inflate the card's next
+		// interval and double-count the review in the learner's statistics.
+		//
+		// The check reads the row returned by the repository, never `current`
+		// after the new-card synthesis below: NewUserCardFSRSForNewCard stamps
+		// LastReview with now, so gating on the synthesized state would skip
+		// the very first swipe of every brand-new card.
+		//
+		// The comparison is the exact complement of the serving-side window
+		// (StartOfLearnDay documents "last_review strictly before this
+		// boundary"), so recording and serving agree on the boundary instant.
+		existing := byCardID[card.ID]
+		if boundary := domain.StartOfLearnDay(now); existing != nil && !existing.State.LastReview.Before(boundary) {
+			u.logger.InfoContext(ctx, "swipe: repeat review within the same learn day ignored",
+				"card_id", card.ID,
+				"learn_day_start", boundary,
+				"last_review", existing.State.LastReview,
+			)
+			return nil
+		}
+		current := existing
 		if current == nil {
 			current = domain.NewUserCardFSRSForNewCard(domain.UserID(user.Sub), card.ID, now)
 		}

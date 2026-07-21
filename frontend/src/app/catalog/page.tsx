@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import type { MasterCatalogQuery as MasterCatalogQueryType } from "@/generated/graphql";
-import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
+import { redirectIfAuthError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
-import { readAuthContext } from "@/lib/supabase/auth-status";
+import { requireAuthenticated } from "@/lib/supabase/auth-status";
 import { CatalogSkeleton } from "./_components/catalog-skeleton";
 import CatalogClient from "./catalog-client";
 import { CATALOG_DEFAULT_VARS, MasterCatalogQuery } from "./queries";
@@ -16,7 +14,7 @@ export default async function CatalogPage() {
   // Auth check runs OUTSIDE the Suspense boundary so an unauthenticated request
   // redirects to /login before any streaming starts. If the redirect ran from
   // within the suspended subtree, the skeleton would flash before the navigation.
-  if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
+  await requireAuthenticated("/login");
 
   return (
     <Suspense fallback={<CatalogSkeleton />}>
@@ -43,7 +41,7 @@ export async function CatalogContent() {
   } catch (err) {
     // Structural parse per .claude/rules/frontend-rsc-error-handling.md §
     // "Structurally parse GraphQL extensions.code — never substring-match".
-    if (isUnauthenticatedGraphQLError(err)) redirect("/login");
+    redirectIfAuthError(err, "/login");
     console.error("[catalog] gqlFetch failed:", {
       name: err instanceof Error ? err.name : "unknown",
     });

@@ -83,7 +83,7 @@ func TestFetcherFetchPages(t *testing.T) {
 		},
 	}}
 
-	out, err := NewFetcherFromServices(pages, blocks).FetchPages(context.Background(), []string{" page-1 "})
+	out, err := newFetcherFromServices(pages, blocks).FetchPages(context.Background(), []string{" page-1 "})
 	if err != nil {
 		t.Fatalf("FetchPages: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestFetcherFetchPagesEmptyAndWhitespaceSkipped(t *testing.T) {
 		"real-id": {{Results: nil}},
 	}}
 
-	out, err := NewFetcherFromServices(pages, blocks).FetchPages(
+	out, err := newFetcherFromServices(pages, blocks).FetchPages(
 		context.Background(),
 		[]string{"", "   ", "real-id"},
 	)
@@ -133,7 +133,7 @@ func TestFetcherFetchPagesEmptySliceShortCircuits(t *testing.T) {
 	pages := &stubPageService{}
 	blocks := &stubBlockService{t: t}
 
-	out, err := NewFetcherFromServices(pages, blocks).FetchPages(context.Background(), nil)
+	out, err := newFetcherFromServices(pages, blocks).FetchPages(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("FetchPages: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestFetcherAbortOnBlockChildrenError(t *testing.T) {
 	}}
 	blocks := &stubBlockService{t: t, err: boom}
 
-	_, err := NewFetcherFromServices(pages, blocks).FetchPages(context.Background(), []string{"page-1"})
+	_, err := newFetcherFromServices(pages, blocks).FetchPages(context.Background(), []string{"page-1"})
 	if !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want boom", err)
 	}
@@ -176,7 +176,7 @@ func TestFetcherAbortOnFetchError(t *testing.T) {
 	pages := &stubPageService{err: boom}
 	blocks := &stubBlockService{t: t}
 
-	_, err := NewFetcherFromServices(pages, blocks).FetchPages(context.Background(), []string{"page-1", "page-2"})
+	_, err := newFetcherFromServices(pages, blocks).FetchPages(context.Background(), []string{"page-1", "page-2"})
 	if !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want boom", err)
 	}

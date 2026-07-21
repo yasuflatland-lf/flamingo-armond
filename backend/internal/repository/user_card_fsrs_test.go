@@ -27,6 +27,7 @@ func TestUserCardFSRSRepository_UpsertTxAndFindByUserAndCardIDs(t *testing.T) {
 	first := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), card.ID, now)
 	first.State.Reps = 1
 	first.State.Due = now.Add(time.Hour)
+	first.UpdatedAt = time.Unix(1, 0).UTC()
 
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return ucsRepo.UpsertTx(ctx, tx, first)
@@ -38,6 +39,9 @@ func TestUserCardFSRSRepository_UpsertTxAndFindByUserAndCardIDs(t *testing.T) {
 	require.Equal(t, 1, got[card.ID].State.Reps)
 	require.True(t, got[card.ID].State.Due.Equal(first.State.Due))
 	require.Equal(t, domain.Rating(0), got[card.ID].State.LastRating)
+	require.Equal(t, first.UpdatedAt, got[card.ID].UpdatedAt,
+		"UpsertTx must copy the database-assigned updated_at back into the aggregate")
+	require.NotEqual(t, time.Unix(1, 0).UTC(), first.UpdatedAt)
 
 	second := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), card.ID, now.Add(time.Minute))
 	second.State.Reps = 2
@@ -55,6 +59,8 @@ func TestUserCardFSRSRepository_UpsertTxAndFindByUserAndCardIDs(t *testing.T) {
 	require.Equal(t, 1, got[card.ID].State.Lapses)
 	require.True(t, got[card.ID].State.Due.Equal(second.State.Due))
 	require.Equal(t, domain.RatingEasy, got[card.ID].State.LastRating)
+	require.Equal(t, second.UpdatedAt, got[card.ID].UpdatedAt,
+		"conflict updates must return the database-assigned updated_at")
 }
 
 func TestUserCardFSRSRepository_FindByUserAndCardIDs_InvalidLastRating(t *testing.T) {
@@ -78,6 +84,64 @@ func TestUserCardFSRSRepository_FindByUserAndCardIDs_InvalidLastRating(t *testin
 
 	_, err = ucsRepo.FindByUserAndCardIDs(ctx, ownerID, []string{card.ID})
 	require.ErrorContains(t, err, "repository: invalid last_rating value 9 for card "+card.ID)
+}
+
+// TestUserCardFSRSRepository_FindByUserAndCardIDs_InvalidStabilityOrDifficulty
+// proves the reconstitution guard rejects a persisted stability the scheduler
+// can never produce (non-finite or non-positive) and a difficulty outside the
+// [MinDifficulty, MaxDifficulty] FSRS scale. Neither column carries a CHECK
+// constraint and no application write path yields such a value, so raw SQL is
+// the only way to seed one — the guard is defence in depth against a row edited
+// outside the application. Without it a NaN stability reconstitutes silently and
+// breaks JSON marshalling of the UserCardState GraphQL Float it feeds. The
+// mastery-tier harm travels through the sibling ListFSRSStatesByUser projection,
+// which carries its own stability guard.
+func TestUserCardFSRSRepository_FindByUserAndCardIDs_InvalidStabilityOrDifficulty(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	cardRepo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+
+	cases := []struct {
+		name string
+		// stability and difficulty are SQL literals so the non-finite values can
+		// be seeded exactly as Postgres stores them in a double precision column.
+		stability  string
+		difficulty string
+		wantErr    string
+	}{
+		{name: "stability_nan", stability: "'NaN'", difficulty: "5.0", wantErr: "repository: invalid stability value"},
+		{name: "stability_positive_infinity", stability: "'Infinity'", difficulty: "5.0", wantErr: "repository: invalid stability value"},
+		{name: "stability_negative_infinity", stability: "'-Infinity'", difficulty: "5.0", wantErr: "repository: invalid stability value"},
+		{name: "stability_zero", stability: "0", difficulty: "5.0", wantErr: "repository: invalid stability value"},
+		{name: "stability_negative", stability: "-1.5", difficulty: "5.0", wantErr: "repository: invalid stability value"},
+		{name: "difficulty_below_scale", stability: "6.9", difficulty: "0.5", wantErr: "repository: invalid difficulty value"},
+		{name: "difficulty_above_scale", stability: "6.9", difficulty: "10.5", wantErr: "repository: invalid difficulty value"},
+		{name: "difficulty_nan", stability: "6.9", difficulty: "'NaN'", wantErr: "repository: invalid difficulty value"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			card := newCard(cg.ID, "fsrs-range-"+tc.name, "back")
+			require.NoError(t, cardRepo.Create(ctx, card))
+
+			now := time.Now().UTC().Truncate(time.Microsecond)
+			_, err := sqlDBHandle(t).ExecContext(ctx,
+				`INSERT INTO public.user_card_fsrs
+					(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, last_rating, elapsed_days, scheduled_days)
+				 VALUES ($1, $2, $3, $4, `+tc.stability+`::double precision, `+tc.difficulty+`::double precision, 1, 0, $4, NULL, 1, 1)`,
+				ownerID, card.ID, int(domain.FSRSPhaseReview), now)
+			require.NoError(t, err, "seed an out-of-range scheduling row via raw SQL")
+
+			_, err = ucsRepo.FindByUserAndCardIDs(ctx, ownerID, []string{card.ID})
+			require.ErrorContains(t, err, tc.wantErr)
+			require.ErrorContains(t, err, card.ID, "the rejection must name the offending card")
+		})
+	}
 }
 
 // TestUserCardFSRSRepository_OnCardDelete_CascadesFSRSRow proves the
@@ -285,6 +349,58 @@ func TestUserCardFSRSRepository_ListFSRSStatesByUser_InvalidPhaseErrors(t *testi
 
 	_, err = ucsRepo.ListFSRSStatesByUser(ctx, ownerID)
 	require.Error(t, err, "an invalid persisted FSRSPhase must be rejected, not silently reconstituted")
+}
+
+// TestUserCardFSRSRepository_ListFSRSStatesByUser_InvalidStabilityErrors proves
+// the stability guard mirrors the userCardFSRSToDomain one on the /stats
+// projection. This is the path domain.ClassifyMastery consumes, so an unchecked
+// NaN would be silently bucketed into the Learned mastery tier (NaN fails both
+// of its comparisons) and would break JSON marshalling of the GraphQL Float
+// StrugglingCard.stability feeds. Raw SQL is the only way to seed such a value:
+// the column carries no CHECK constraint and no application write path yields
+// one.
+func TestUserCardFSRSRepository_ListFSRSStatesByUser_InvalidStabilityErrors(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	cases := []struct {
+		name string
+		// stability is a SQL literal so the non-finite values can be seeded
+		// exactly as Postgres stores them in a double precision column.
+		stability string
+	}{
+		{name: "nan", stability: "'NaN'"},
+		{name: "positive_infinity", stability: "'Infinity'"},
+		{name: "negative_infinity", stability: "'-Infinity'"},
+		{name: "zero", stability: "0"},
+		{name: "negative", stability: "-1.5"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ownerID := insertAuthUser(t, ctx)
+			cg := insertCardgroupForUser(t, ctx, ownerID, "Invalid Stability Deck "+tc.name)
+			cardRepo := repository.NewCardRepository(testDB.GORM)
+			ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+
+			card := newCard(domain.CardgroupID(cg), "bad-stability-"+tc.name, "back")
+			require.NoError(t, cardRepo.Create(ctx, card))
+
+			now := time.Now().UTC().Truncate(time.Microsecond)
+			_, err := sqlDBHandle(t).ExecContext(ctx,
+				`INSERT INTO public.user_card_fsrs
+					(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, elapsed_days, scheduled_days)
+				 VALUES ($1, $2, $3, $4, `+tc.stability+`::double precision, 5.0, 1, 0, $4, 1, 1)`,
+				ownerID, card.ID, int(domain.FSRSPhaseReview), now)
+			require.NoError(t, err, "seed a row with an invalid stability value via raw SQL")
+
+			_, err = ucsRepo.ListFSRSStatesByUser(ctx, ownerID)
+			require.ErrorContains(t, err, "repository: user card fsrs: invalid stability value",
+				"an invalid persisted stability must be rejected, not fed to ClassifyMastery")
+		})
+	}
 }
 
 // TestUserCardFSRSRepository_CountCardsByCardgroupForUser_ScopesByOwner proves

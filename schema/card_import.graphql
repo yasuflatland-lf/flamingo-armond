@@ -47,7 +47,7 @@ type CardImportError implements UserError {
 }
 
 """
-Result of validating a card import payload. The resolver enforces the
+Result of validating a card import payload. The usecase enforces the
 invariant valid = (len(errors) == 0 && len(parsedCards) > 0); conflicting
 states are representable but never emitted.
 """
@@ -65,6 +65,12 @@ extend type Query {
   Validate a base64-encoded card import payload without persisting any cards.
   Requires an authenticated user; no cardgroup ownership check is needed because
   validation does not read or write a cardgroup.
+  Two payload caps apply: the decoded text may not exceed 1 MiB (1,048,576 bytes),
+  and the payload may not parse to more than 5,000 rows. On this query both
+  violations use the same channel — the call succeeds, `valid` is false,
+  `parsedCards` is empty, and `errors` carries a `HARD` entry on `line: 0`.
+  `importCards` reports the same two caps through different channels; see its
+  description before treating a clean preview as a guaranteed import.
   """
   validateCardImport(input: ValidateCardImportInput!): CardImportValidationResult!
 }
@@ -87,7 +93,7 @@ Result of an `importCards` call. `inserted + updated` is the number of rows that
 type ImportCardsPayload {
   """Number of cards newly inserted."""
   inserted: Int!
-  """Number of cards updated (back text changed via ON CONFLICT)."""
+  """Number of cards that hit the (cardgroup_id, front) conflict key and were re-written. A row whose back text is unchanged still counts here."""
   updated: Int!
   """Per-line parse errors. Empty when the entire payload parsed cleanly."""
   errors: [CardImportError!]!
@@ -96,9 +102,14 @@ type ImportCardsPayload {
 extend type Mutation {
   """
   Persist parsed cards into the target cardgroup. Only authenticated owners of
-  the target cardgroup may import. Caps payload at 5,000 parsed rows; larger
-  payloads return BAD_USER_INPUT. Conflict key is (cardgroup_id, front);
-  conflicting rows have their `back` text updated, others are inserted.
+  the target cardgroup may import. Conflict key is (cardgroup_id, front);
+  conflicting rows have their `back` text re-written, others are inserted.
+  Two payload caps apply, and they fail through different channels. A payload
+  parsing to more than 5,000 rows returns a top-level BAD_USER_INPUT and imports
+  nothing. Decoded text larger than 1 MiB (1,048,576 bytes) never reaches the
+  parser: the call succeeds with `inserted: 0`, `updated: 0`, and a single `HARD`
+  entry on `line: 0` in `errors`, so a client must inspect `errors` rather than
+  assume a non-error response means cards were written.
   """
   importCards(input: ImportCardsInput!): ImportCardsPayload!
 }

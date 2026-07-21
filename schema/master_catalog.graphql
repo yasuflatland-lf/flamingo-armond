@@ -31,7 +31,11 @@ enum MasterCatalogOrderBy {
 
 """One master cardgroup plus the cursor pointing at it."""
 type MasterCatalogEdge {
-  """Opaque cursor for resuming pagination at this edge. Currently the master cardgroup id."""
+  """
+  Opaque, server-encoded cursor for resuming pagination at this edge. Pass it back
+  verbatim as `after` / `before`; never construct, parse, or derive one from `node.id`.
+  The encoding is a server implementation detail and is not part of the contract.
+  """
   cursor: ID!
   node: MasterCardgroup!
 }
@@ -40,16 +44,28 @@ type MasterCatalogEdge {
 type MasterCatalogConnection {
   edges: [MasterCatalogEdge!]!
   pageInfo: PageInfo!
-  """Total published master cardgroup count matching the filter (independent of paging)."""
+  """
+  Total master cardgroup count matching the active query's scope and filter,
+  independent of paging. The scope is the querying field's, not this type's:
+  `masterCatalog` counts only catalog-visible (published AND non-empty) decks,
+  while `adminMasters` counts every deck regardless of status or card count.
+  """
   totalCount: Int!
 }
 
 extend type Query {
   """
   Paginated published master cardgroups (the public catalog) for authenticated
-  callers. Only `status = PUBLISHED` decks are ever returned — draft decks never
-  leak. Forward pagination uses (first, after); backward uses (last, before).
-  Cursor is the master cardgroup UUID. Default page size is 20; max is 100.
+  callers. Only `status = PUBLISHED` decks holding at least one master card are
+  ever returned — draft and emptied decks never leak. A deck that loses its last
+  card drops out of the catalog and reappears when a card is restored.
+  Forward pagination uses (first, after); backward uses (last, before).
+  Cursors are opaque, server-encoded values: pass an edge cursor back verbatim and
+  never build one from a node id. Default page size is 20; max is 100.
+  `first: 0` is a deliberate deviation from the Relay spec for callers that want only
+  `totalCount`: no edges are fetched and `hasNextPage` / `hasPreviousPage` are both false
+  even when more rows exist. A negative `first` or `last` is clamped to 0 and therefore
+  behaves identically.
   Optional case-insensitive substring search on name.
   """
   masterCatalog(
@@ -136,8 +152,9 @@ type ImportMasterCardgroupSuccess {
 
 """
 Typed business error returned by `importMasterCardgroup` when the requested master
-cardgroup does not exist OR is not published. Draft existence is never disclosed:
-both cases collapse to this single error so a caller cannot probe for unpublished decks.
+cardgroup does not exist, is not published, OR is published with zero cards. Draft
+existence and emptiness are never disclosed: all three cases collapse to this single
+error so a caller cannot probe for unpublished or emptied decks.
 """
 type MasterNotFoundError implements UserError {
   message: String!
@@ -183,7 +200,12 @@ is the number of catalog cards whose front is not present in the destination;
 `updatedCount` is the number whose front already exists (case-sensitively, matching
 the destination `cards (cardgroup_id, front)` text unique index the merge upserts
 against). The preview equals the tally `mergeMasterCardgroup` produces for the same
-inputs.
+inputs over an unchanged destination and master deck: the preview reads outside a
+transaction while the merge upserts inside one, so a concurrent edit to either deck
+between the two calls can move a card from `addedCount` to `updatedCount`. The
+catalog side is case-INsensitive (`master_cards.front` is `citext`); that asymmetry
+is deliberate — see
+`docs/backend/ddd-patterns/catalog-user-deck-front-case-asymmetry.md`.
 """
 type MergeMasterCardgroupPreview {
   addedCount: Int!
@@ -198,7 +220,7 @@ extend type Query {
   Dry-run preview of `mergeMasterCardgroup`: how many cards would be added vs.
   updated if the caller merged the published catalog deck into their own cardgroup,
   using the same (cardgroup_id, front) conflict key as the merge. Same auth/error
-  contract as the mutation: unknown/draft master -> MasterNotFoundError; destination
+  contract as the mutation: unknown/draft/card-less master -> MasterNotFoundError; destination
   not found -> BAD_USER_INPUT; not owned -> UNAUTHENTICATED; unauthenticated callers
   receive UNAUTHENTICATED.
   """
@@ -223,9 +245,9 @@ extend type Mutation {
   adminDeleteMasterCardgroup(id: ID!): Boolean!
   """
   Copy a published master cardgroup into the authenticated caller's own cardgroups
-  as a one-time snapshot (no live link; FSRS/swipe state starts empty). An unknown id
-  or a draft master returns `MasterNotFoundError` — draft existence is never leaked.
-  Unauthenticated callers receive UNAUTHENTICATED.
+  as a one-time snapshot (no live link; FSRS/swipe state starts empty). An unknown,
+  draft, or card-less master returns `MasterNotFoundError` — draft existence and
+  emptiness are never leaked. Unauthenticated callers receive UNAUTHENTICATED.
   """
   importMasterCardgroup(masterCardgroupId: ID!): ImportMasterCardgroupResult!
   """
@@ -239,9 +261,10 @@ extend type Mutation {
   Merge a published catalog deck's cards into the caller's existing cardgroup as a
   one-time snapshot. Cards whose front already exists in the destination are
   overwritten (back/position); card ids are preserved so FSRS state survives.
-  An unknown or draft master returns MasterNotFoundError (draft existence is never
-  leaked). A destination cardgroup not found is BAD_USER_INPUT; not owned is
-  UNAUTHENTICATED. Unauthenticated callers receive UNAUTHENTICATED.
+  An unknown, draft, or card-less master returns MasterNotFoundError (draft existence
+  and emptiness are never leaked). A destination cardgroup not found is
+  BAD_USER_INPUT; not owned is UNAUTHENTICATED. Unauthenticated callers receive
+  UNAUTHENTICATED.
   """
   mergeMasterCardgroup(input: MergeMasterCardgroupInput!): MergeMasterCardgroupResult!
 }

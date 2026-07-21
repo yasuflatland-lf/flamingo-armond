@@ -104,10 +104,9 @@ path must reproduce it.
 aggregate.** `ApplyRating` stamps `u.UpdatedAt = now` with the *unclamped*
 argument while the state it stores back carries the *clamped* `LastReview`, so
 the loaded aggregate holds the inversion for the rest of the request. It does not
-travel to the row: a clamp can only fire against an existing FSRS row (a brand-new
-one is created with `LastReview = now`), so the upsert always takes the conflict
-branch, whose `DoUpdates` assigns `updated_at = now()` — and the
-`trg_user_card_fsrs_set_updated_at` BEFORE UPDATE trigger assigns `now()` again.
+travel to the row: `updated_at` is database-owned, so the repository never sends
+the aggregate's value and the `trg_user_card_fsrs_set_updated_at`
+BEFORE INSERT OR UPDATE trigger assigns `now()` on either upsert branch.
 The persisted `updated_at` is therefore the database clock, never the skewed
 aggregate value. The inversion is tolerated rather than normalised because
 nothing reads that ordering: the queue predicates compare `last_review` and `due`

@@ -300,13 +300,12 @@ func runImport(dbURL, inPath string) (retErr error) {
 			continue
 		}
 		_, err = tx.Exec(`
-			INSERT INTO public.cardgroups (id, owner_id, name, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5)
+			INSERT INTO public.cardgroups (id, owner_id, name, created_at)
+			VALUES ($1, $2, $3, $4)
 			ON CONFLICT (id) DO UPDATE
 			  SET owner_id   = EXCLUDED.owner_id,
-			      name       = EXCLUDED.name,
-			      updated_at = EXCLUDED.updated_at`,
-			cg.ID, targetOwnerID, cg.Name, cg.CreatedAt, cg.UpdatedAt,
+			      name       = EXCLUDED.name`,
+			cg.ID, targetOwnerID, cg.Name, cg.CreatedAt,
 		)
 		if err != nil {
 			return eris.Wrapf(err, "seed: upsert cardgroup %s", cg.ID)
@@ -323,14 +322,13 @@ func runImport(dbURL, inPath string) (retErr error) {
 			continue
 		}
 		_, err = tx.Exec(`
-			INSERT INTO public.cards (id, cardgroup_id, front, back, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6)
+			INSERT INTO public.cards (id, cardgroup_id, front, back, created_at)
+			VALUES ($1, $2, $3, $4, $5)
 			ON CONFLICT (id) DO UPDATE
 			  SET cardgroup_id = EXCLUDED.cardgroup_id,
 			      front        = EXCLUDED.front,
-			      back         = EXCLUDED.back,
-			      updated_at   = EXCLUDED.updated_at`,
-			c.ID, c.CardgroupID, c.Front, c.Back, c.CreatedAt, c.UpdatedAt,
+			      back         = EXCLUDED.back`,
+			c.ID, c.CardgroupID, c.Front, c.Back, c.CreatedAt,
 		)
 		if err != nil {
 			return eris.Wrapf(err, "seed: upsert card %s", c.ID)
@@ -354,8 +352,8 @@ func runImport(dbURL, inPath string) (retErr error) {
 		_, err = tx.Exec(`
 			INSERT INTO public.user_card_fsrs
 			  (user_id, card_id, state, due, stability, difficulty, reps, lapses,
-			   last_review, elapsed_days, scheduled_days, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+			   last_review, elapsed_days, scheduled_days, created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 			ON CONFLICT (user_id, card_id) DO UPDATE
 			  SET state          = EXCLUDED.state,
 			      due            = EXCLUDED.due,
@@ -365,11 +363,10 @@ func runImport(dbURL, inPath string) (retErr error) {
 			      lapses         = EXCLUDED.lapses,
 			      last_review    = EXCLUDED.last_review,
 			      elapsed_days   = EXCLUDED.elapsed_days,
-			      scheduled_days = EXCLUDED.scheduled_days,
-			      updated_at     = EXCLUDED.updated_at`,
+			      scheduled_days = EXCLUDED.scheduled_days`,
 			targetUserID, f.CardID, f.State, f.Due, f.Stability, f.Difficulty,
 			f.Reps, f.Lapses, f.LastReview, f.ElapsedDays, f.ScheduledDays,
-			f.CreatedAt, f.UpdatedAt,
+			f.CreatedAt,
 		)
 		if err != nil {
 			return eris.Wrapf(err, "seed: upsert user_card_fsrs user=%s card=%s", f.UserID, f.CardID)

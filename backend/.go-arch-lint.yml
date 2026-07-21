@@ -22,6 +22,7 @@ components:
   domain:              { in: internal/domain }
   domain_service:      { in: internal/domain/service }
   gqlerr:              { in: internal/gqlerr }
+  gqlerrtest:          { in: internal/gqlerr/gqlerrtest }
   handler_notionsync:  { in: internal/handler/notionsync }
   handler_ping:        { in: internal/handler/ping }
   loader:              { in: internal/loader }
@@ -54,6 +55,9 @@ deps:
   domain:             { anyVendorDeps: true }           # leaf: vendor-only deps (uuid, uniseg, eris)
   domain_service:     { mayDependOn: [domain] }
   gqlerr:             { mayDependOn: [logging, ucerr] }
+  # Test-only assertion helpers. Only _test.go files import this component, and
+  # those are excluded above, so no other component declares it as a dependency.
+  gqlerrtest:         { mayDependOn: [gqlerr] }
   handler_notionsync: { mayDependOn: [logging, notion, usecase] }
   handler_ping:       { mayDependOn: [repository] }
   loader:             { mayDependOn: [auth, domain, repository] }

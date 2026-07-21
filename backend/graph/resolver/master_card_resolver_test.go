@@ -2,6 +2,7 @@ package resolver
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/rotisserie/eris"
@@ -12,6 +13,7 @@ import (
 	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
+	"backend/internal/gqlerr/gqlerrtest"
 	"backend/internal/usecase"
 	"backend/internal/usecase/ucerr"
 )
@@ -124,7 +126,7 @@ func TestAdminMaster_WrapsForbidden(t *testing.T) {
 
 	_, err := qr.AdminMaster(context.Background(), "m1")
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
 }
 
 // TestAdminMaster_WrapsValidation verifies a usecase ValidationError (e.g. a
@@ -136,7 +138,7 @@ func TestAdminMaster_WrapsValidation(t *testing.T) {
 
 	_, err := qr.AdminMaster(context.Background(), "missing")
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeBadUserInput), "want BAD_USER_INPUT wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeBadUserInput), "want BAD_USER_INPUT wire code")
 }
 
 // TestAdminMasterCardsConnection_Success verifies the resolver maps the model
@@ -192,7 +194,7 @@ func TestAdminMasterCardsConnection_WrapsForbidden(t *testing.T) {
 
 	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil, nil, nil)
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
 }
 
 // ---------------------------------------------------------------------------
@@ -208,7 +210,7 @@ func TestAdminMaster_WrapsUnauthenticated(t *testing.T) {
 
 	_, err := qr.AdminMaster(context.Background(), "m1")
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeUnauthenticated), "want UNAUTHENTICATED wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeUnauthenticated), "want UNAUTHENTICATED wire code")
 }
 
 // TestAdminMasterCardsConnection_WrapsUnauthenticated verifies a usecase
@@ -220,7 +222,7 @@ func TestAdminMasterCardsConnection_WrapsUnauthenticated(t *testing.T) {
 
 	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil, nil, nil)
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeUnauthenticated), "want UNAUTHENTICATED wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeUnauthenticated), "want UNAUTHENTICATED wire code")
 }
 
 // ---------------------------------------------------------------------------
@@ -236,7 +238,7 @@ func TestAdminMaster_WrapsInternal(t *testing.T) {
 
 	_, err := qr.AdminMaster(context.Background(), "m1")
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
 }
 
 // TestAdminMasterCardsConnection_WrapsInternal verifies that an opaque infra
@@ -248,7 +250,7 @@ func TestAdminMasterCardsConnection_WrapsInternal(t *testing.T) {
 
 	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil, nil, nil)
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
 }
 
 // ---------------------------------------------------------------------------
@@ -308,9 +310,13 @@ func TestAdminMasterCardsConnection_TranslatesNonNilInputs(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestAdminMasterCardsConnection_CursorRoundTrip asserts that the resolver
-// applies cursor.Encode exactly once to the raw IDs returned by the usecase
-// (the C1 fix: prevent double-encoding). StartCursor, EndCursor, and each
-// edge.Cursor must all decode back to the original raw ID.
+// applies the connection's encoder exactly once to the raw IDs returned by the
+// usecase (the C1 fix: prevent double-encoding). StartCursor, EndCursor, and
+// each edge.Cursor must all decode back to the original raw ID, and every one of
+// them must carry the v2 envelope with the ordering plus the per-row
+// ordering-key value the usecase captured — the master-card listing defaults to
+// the admin-mutable POSITION column, so an id-only v1 cursor would move whenever
+// a batch import repositions the row it points at.
 func TestAdminMasterCardsConnection_CursorRoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -324,6 +330,8 @@ func TestAdminMasterCardsConnection_CursorRoundTrip(t *testing.T) {
 		HasPrev:    false,
 		StartCur:   "first-id",
 		EndCur:     "last-id",
+		Ordering:   usecase.PageOrdering{OrderBy: "position", Direction: "ASC"},
+		OrderKeys:  map[string]string{"first-id": "1", "last-id": "2"},
 	}}
 	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
 
@@ -335,25 +343,40 @@ func TestAdminMasterCardsConnection_CursorRoundTrip(t *testing.T) {
 	// StartCursor must decode to "first-id" (singly encoded).
 	require.NotNil(t, conn.PageInfo.StartCursor)
 	startDecoded, decErr := cursor.Decode(*conn.PageInfo.StartCursor)
-	require.NoError(t, decErr, "StartCursor must be valid v1 cursor")
-	assert.Equal(t, "first-id", startDecoded, "StartCursor must decode to raw ID — double-encode would produce a wrong value")
+	require.NoError(t, decErr, "StartCursor must be a valid cursor envelope")
+	assert.Equal(t, "first-id", startDecoded.ID, "StartCursor must decode to raw ID — double-encode would produce a wrong value")
 
 	// EndCursor must decode to "last-id".
 	require.NotNil(t, conn.PageInfo.EndCursor)
 	endDecoded, decErr := cursor.Decode(*conn.PageInfo.EndCursor)
-	require.NoError(t, decErr, "EndCursor must be valid v1 cursor")
-	assert.Equal(t, "last-id", endDecoded, "EndCursor must decode to raw ID")
+	require.NoError(t, decErr, "EndCursor must be a valid cursor envelope")
+	assert.Equal(t, "last-id", endDecoded.ID, "EndCursor must decode to raw ID")
 
-	// Each edge cursor must decode to its node's ID.
-	for _, edge := range conn.Edges {
+	// PageInfo shares the edges' encoder, so the boundary cursors are
+	// byte-identical to the first/last edge cursor.
+	assert.Equal(t, conn.Edges[0].Cursor, *conn.PageInfo.StartCursor)
+	assert.Equal(t, conn.Edges[1].Cursor, *conn.PageInfo.EndCursor)
+
+	// Each edge cursor must decode to its node's ID and carry the captured
+	// ordering key.
+	wantKeys := []string{"1", "2"}
+	for i, edge := range conn.Edges {
+		assert.True(t, strings.HasPrefix(edge.Cursor, "v2:"),
+			"edges[%d].Cursor should start with \"v2:\", got %q", i, edge.Cursor)
 		decoded, decErr := cursor.Decode(edge.Cursor)
-		require.NoError(t, decErr, "edge.Cursor for node %s must be valid v1 cursor", edge.Node.ID)
-		assert.Equal(t, edge.Node.ID, decoded, "edge.Cursor must decode to node.ID")
+		require.NoError(t, decErr, "edge.Cursor for node %s must be a valid cursor envelope", edge.Node.ID)
+		assert.Equal(t, cursor.Payload{
+			ID:          edge.Node.ID,
+			HasOrdering: true,
+			OrderBy:     "position",
+			Direction:   "ASC",
+			OrderKey:    wantKeys[i],
+		}, decoded, "edges[%d].Cursor must carry the captured ordering key", i)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// MasterCardsConnection (public, published-only)
+// MasterCardsConnection (public, catalog-visible)
 // ---------------------------------------------------------------------------
 
 // TestMasterCardsConnection_Success verifies the public resolver routes through
@@ -416,7 +439,7 @@ func TestMasterCardsConnection_WrapsUsecaseError(t *testing.T) {
 			qr := &queryResolver{&Resolver{MasterCardUC: stub}}
 			_, err := qr.MasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil, nil, nil)
 			require.Error(t, err)
-			assert.True(t, gqlerr.IsCode(err, tc.want), "want wire code %s", tc.want)
+			assert.True(t, gqlerrtest.IsCode(err, tc.want), "want wire code %s", tc.want)
 		})
 	}
 }
