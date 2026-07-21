@@ -202,7 +202,10 @@ the destination `cards (cardgroup_id, front)` text unique index the merge upsert
 against). The preview equals the tally `mergeMasterCardgroup` produces for the same
 inputs over an unchanged destination and master deck: the preview reads outside a
 transaction while the merge upserts inside one, so a concurrent edit to either deck
-between the two calls can move a card from `addedCount` to `updatedCount`.
+between the two calls can move a card from `addedCount` to `updatedCount`. The
+catalog side is case-INsensitive (`master_cards.front` is `citext`); that asymmetry
+is deliberate — see
+`docs/backend/ddd-patterns/catalog-user-deck-front-case-asymmetry.md`.
 """
 type MergeMasterCardgroupPreview {
   addedCount: Int!
