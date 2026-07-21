@@ -48,33 +48,50 @@ The gate-then-write shape has a time-of-check/time-of-use window: the caller pas
 the deck. An unpublish (or a delete of the deck's last card) landing in that window
 would import an out-of-catalog deck if the
 transaction re-read the master through the any-status `FindByID`. The write paths
-therefore re-probe through the **same** catalog-scoped `FindPublishedByID`
-(`copyMasterToUserTx`, and a fetch added before `ListByMasterCardgroup` in
+therefore re-probe through the **same** catalog-scoped visibility filter
+(`copyMasterToUserTx`, and a fetch before `ListByMasterCardgroup` in
 `MergeMasterIntoCardgroup`); the resulting `ErrNotFound` is mapped by `ImportMaster` /
 `MergeMaster` to the same `NotFound` outcome as a pre-gate unknown/draft/empty deck.
 
-**The re-probe narrows the window; it does not close it.** `FindPublishedByID` and
-`ListByMasterCardgroup` take no `tx` handle — the repository reads through `r.db` — so
-both run on pooled connections and share no snapshot with each other or with the writes
-that follow. A re-probe alone would therefore still admit a deck emptied between the
-probe and the enumeration, and an unpublish committing after the probe still lets a
-now-draft deck be snapshotted.
+**A re-probe on a pooled connection narrows the window; it does not close it.** Such a
+probe shares no snapshot with the writes that follow and holds no lock, so it admits a
+deck emptied between the probe and the enumeration, and an unpublish committing after
+it still lets a now-draft deck be snapshotted. The two halves of catalog visibility are
+closed by different mechanisms:
 
-The fix for the emptiness half is to **derive the verdict from the read the write
-actually consumes** rather than from a separate probe: both write paths return
-`repository.ErrNotFound` when `len(cards) == 0` on the enumeration they are about
-to copy. That holds however the two reads interleave with a concurrent last-card
-delete, and it needs no transaction-scoped repository methods.
+- **Emptiness** — **derive the verdict from the read the write actually consumes**
+  rather than from a separate probe: both write paths return `repository.ErrNotFound`
+  when `len(cards) == 0` on the enumeration they are about to copy. That holds however
+  the reads interleave with a concurrent last-card delete, and it needs no lock and no
+  transaction-scoped repository method.
+- **Unpublish** — the probe runs on the **transaction connection** and takes a
+  **`FOR SHARE` lock on the master row**. `FindPublishedByIDTx` is the tx-scoped sibling
+  of `FindPublishedByID`; both delegate to one private helper so the visibility filter
+  cannot drift between them. `Unpublish` loads the same row `FOR UPDATE`, so the two
+  serialise: an unpublish that committed first is seen by the probe, and one that
+  arrives later waits until the import transaction ends. This is the read-side sibling
+  of
+  [TOCTOU authorization guard: lock the read rows with `FOR UPDATE`](../library-gotchas/toctou-authorization-guard-for-update-lock.md).
 
-The unpublish half still relies on the re-probe and keeps a residual window. Closing it
-would require a **`FOR SHARE` lock on the master row, taken on the transaction
-connection** — the read-side sibling of
-[TOCTOU authorization guard: lock the read rows with `FOR UPDATE`](../library-gotchas/toctou-authorization-guard-for-update-lock.md).
 Note what does *not* work: moving the probe into a repeatable-read transaction. That
 would pin the reads to the snapshot taken at transaction start, so a deck unpublished
 afterwards would still read as published — consistency between the reads, but the wrong
 answer for the write. The lock is what serialises the unpublish against the snapshot,
 not the isolation level.
+
+The lock is deliberately narrow — one row in `master_cardgroups`. The deck's master
+cards stay unlocked, because the emptiness half above needs no lock and locking them
+would serialise every catalog card edit against every import.
+
+**The read-only preview verifies the same visibility, on the pooled read.**
+`PreviewMergeMasterIntoCardgroup` mirrors the merge's published probe so a dry run and
+the write it previews refuse the same decks: master cards outlive an unpublish, so
+without the probe the preview would report a tally for a deck the confirm then rejects.
+It takes the pooled `FindPublishedByID`, not the locking variant — a dry run opens no
+transaction, so it has no write to serialise an unpublish against and must not hold a
+row lock across a learner's think-time. The gap it cannot close is the one between the
+preview response and the confirm: that spans two requests, which no transaction-scoped
+lock reaches, and it surfaces as the same `NotFound` outcome on merge.
 
 The same `ErrNotFound` reaches `SeedForNewUser`, which **skips** that starter and
 seeds the rest rather than failing the batch — one deck leaving the catalog
@@ -108,12 +125,33 @@ Pin the collapse where it happens, not only end-to-end:
   (`TestImportMaster_UnknownOrDraft_ReturnsNotFoundOutcome`).
 - Usecase (write-path TOCTOU): a test that a master present at the gate but unpublished
   by the time the write path re-reads it yields the not-found outcome with no
-  cards written — proving the re-read catches the interleaving it can see. The
-  interleaving where the unpublish commits *after* the re-read stays reachable and is
-  not pinned by any test
+  cards written
   (`TestMasterDeckUsecase_MergeMasterIntoCardgroup_MasterUnpublishedMidFlight_NoImport`,
   `TestImportMaster_MasterUnpublishedMidFlight_ReturnsNotFoundOutcome`,
-  `TestMasterCatalogUsecase_MergeMaster_MasterUnpublishedMidFlight_ReturnsNotFoundOutcome`).
+  `TestMasterCatalogUsecase_MergeMaster_MasterUnpublishedMidFlight_ReturnsNotFoundOutcome`,
+  `TestMasterCatalogUsecase_MergeMaster_UnpublishCommitsAfterGate_NoCardsImported`).
+- Usecase (probe wiring): a test that the published probe and the card upsert receive
+  the *same* transaction handle, and that no pooled read happens on the write paths
+  (`TestMasterDeckUsecase_MergeMasterIntoCardgroup_PublishedProbeRunsOnTxHandle`,
+  `TestMasterDeckUsecase_CopyMasterToUser_PublishedProbeRunsOnTxHandle`). Without it a
+  regression to the pooled probe passes every state-based assertion above and still
+  reopens the window.
+- Repository (the lock itself):
+  `TestMasterCardgroupRepository_FindPublishedByIDTx_LocksRowForShare` asserts that a
+  concurrent `FOR UPDATE NOWAIT` — the lock an unpublish needs — fails while the read
+  transaction is open, and that a second `FOR SHARE` still succeeds so two concurrent
+  imports do not serialise.
+  `TestMasterCardgroupRepository_FindPublishedByIDTx_MatchesPooledVisibility` pins that
+  the tx-scoped read collapses draft / card-less / unknown exactly like the pooled one.
+- Real-DB concurrency:
+  `TestMergeMaster_Integration_UnpublishCommitsBeforeTxBody_NoCardsImported` stages an
+  unpublish inside an open transaction, starts the merge, and asserts it blocks rather
+  than importing; committing the unpublish then yields the not-found outcome with zero
+  cards in the destination. This is the test that fails outright if the probe moves back
+  to a pooled connection.
+- Preview/merge parity: `TestPreviewMergeMasterIntoCardgroup_MasterUnpublished_ReturnsNotFound`
+  and `TestMasterCatalogUsecase_PreviewMergeMaster_UnpublishCommitsAfterGate_ReturnsNotFoundOutcome`
+  pin that the dry run refuses exactly the decks the merge refuses.
 - Resolver: a test that the not-found outcome maps to the typed error variant with a
   generic message (`TestMutationResolver_ImportMasterCardgroup_NotFound_ReturnsTypedError`).
 

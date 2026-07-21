@@ -99,6 +99,20 @@ func translateTextLengthViolation(err error) error {
 	return nil
 }
 
+// translateMasterCardgroupNotFound maps repository.ErrMasterCardgroupNotFound --
+// raised when a master-card write targets a deck that does not exist -- to a
+// field-scoped BAD_USER_INPUT validation error on "masterCardgroupId".
+//
+// It returns nil when err is not that sentinel, so callers use it as a pre-filter
+// ahead of their remaining transaction-error classifiers, mirroring
+// translateTextLengthViolation's shape.
+func translateMasterCardgroupNotFound(err error) error {
+	if errors.Is(err, repository.ErrMasterCardgroupNotFound) {
+		return ucerr.NewValidationError("masterCardgroupId", "master cardgroup not found")
+	}
+	return nil
+}
+
 // translateCardgroupNameErr maps domain sentinel errors from ParseCardgroupName
 // to usecase-layer typed errors. Unexpected domain errors are wrapped with eris.
 // Returns nil when err is nil.

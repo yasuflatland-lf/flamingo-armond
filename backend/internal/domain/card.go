@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -8,10 +9,14 @@ import (
 
 const CardTextMax = 500
 
+// Card text validation sentinels. The bound-free reasons use plain errors.New so
+// errors.Is matches by identity rather than by eris's message equality; the
+// bound-carrying reasons stay on eris.Errorf so the exported CardTextMax and the
+// message cannot drift apart.
 var (
-	ErrCardFrontRequired = eris.New("card: front is required")
+	ErrCardFrontRequired = errors.New("card: front is required")
 	ErrCardFrontTooLong  = eris.Errorf("card: front exceeds %d characters", CardTextMax)
-	ErrCardBackRequired  = eris.New("card: back is required")
+	ErrCardBackRequired  = errors.New("card: back is required")
 	ErrCardBackTooLong   = eris.Errorf("card: back exceeds %d characters", CardTextMax)
 )
 
