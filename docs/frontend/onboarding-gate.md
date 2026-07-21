@@ -22,9 +22,10 @@ The gate never redirects these, matched on the exact path or a `/`-bounded sub-p
 | `/api` | Route handlers answer machines — a 307 would break `/api/healthz` and `/api/ping`. |
 | `/_next` | Framework assets and RSC payload fetches. |
 | `/terms`, `/privacy` | Public legal pages, readable in any account state. |
-| `/favicon.ico`, `/sw.js`, `/offline.html`, `/manifest.webmanifest` | Static single-file routes served from `public/`. |
+| `/robots.txt`, `/sitemap.xml`, `/opengraph-image` | Metadata routes the matcher forwards. Without the exemption a signed-in caller with an empty display name is 307'd instead of served the asset. |
+| `/favicon.ico`, `/sw.js`, `/offline.html`, `/manifest.webmanifest` | Static single-file routes the matcher already excludes. |
 
-The middleware matcher already excludes `/api`, `/auth/callback`, `/_next` and the static files. The overlap is deliberate — matcher and gate are two independent lists, and the gate must stay correct if the matcher widens.
+The matcher and the gate are two independent lists, and they do not fully overlap: the matcher already excludes `/api`, `/auth/callback`, `/_next` and the last row's static files, but it forwards `/robots.txt`, `/sitemap.xml` and `/opengraph-image`. Entries the matcher already excludes stay in the gate's list deliberately, so the gate is still correct if the matcher widens — but a new metadata or asset route must be checked against the matcher pattern before assuming it is covered.
 
 ### Signed fast-path cookie
 

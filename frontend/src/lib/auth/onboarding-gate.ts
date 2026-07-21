@@ -22,9 +22,9 @@ export const ONBOARDING_ENTRY_PATH = "/onboarding";
  * - `/_next` — framework assets and RSC payload fetches.
  * - `/terms`, `/privacy` — public legal pages, readable in any account state.
  *
- * The middleware matcher already excludes `/api`, `/auth/callback`, `/_next` and
- * the static files below. The overlap is deliberate: matcher and gate are two
- * independent lists, and the gate must stay correct if the matcher widens.
+ * The middleware matcher already excludes `/api`, `/auth/callback` and `/_next`.
+ * That overlap is deliberate: matcher and gate are two independent lists, and
+ * the gate must stay correct if the matcher widens.
  */
 const GATE_EXEMPT_PREFIXES = [
   "/onboarding",
@@ -36,8 +36,17 @@ const GATE_EXEMPT_PREFIXES = [
   "/privacy",
 ] as const;
 
-/** Static single-file routes served from `public/`, exempt for the same reason. */
+/**
+ * Single-file routes, exempt for the same reason. The first three are metadata
+ * routes the matcher does NOT exclude, so without them a signed-in caller with
+ * an empty display name is 307'd to `/onboarding` instead of being served the
+ * asset. The last four the matcher already excludes; they stay listed so the
+ * gate is still correct if the matcher widens.
+ */
 const GATE_EXEMPT_PATHS = [
+  "/robots.txt",
+  "/sitemap.xml",
+  "/opengraph-image",
   "/favicon.ico",
   "/sw.js",
   "/offline.html",
