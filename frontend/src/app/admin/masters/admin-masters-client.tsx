@@ -16,6 +16,7 @@ import type {
 import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
 import { classifyQueryError, getBackendErrorBanner } from "@/lib/apollo/errors";
 import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
+import { makeMergeConnection } from "@/lib/pagination/make-merge-connection";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { AdminMasterForm, type MasterFormValues } from "./admin-master-form";
@@ -37,18 +38,10 @@ const MASTERS_INITIAL = {
   totalCount: 0,
 };
 
-// Concatenate the next page's edges onto the cached adminMasters connection.
-function mergeMastersConnection(
-  prev: AdminMastersQueryResult,
-  more: AdminMastersQueryResult,
-): AdminMastersQueryResult {
-  return {
-    adminMasters: {
-      ...more.adminMasters,
-      edges: [...prev.adminMasters.edges, ...more.adminMasters.edges],
-    },
-  };
-}
+// Concatenate the next page's edges onto the cached adminMasters connection. A
+// module-level constant so the reducer identity useConnectionPagination
+// memoizes on stays stable across renders.
+const mergeMastersConnection = makeMergeConnection<AdminMastersQueryResult>("adminMasters");
 
 export function AdminMastersClient() {
   const t = useTranslations("AdminMasters");

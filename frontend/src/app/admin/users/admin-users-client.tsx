@@ -19,6 +19,7 @@ import {
   type QueryErrorKind,
 } from "@/lib/apollo/errors";
 import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
+import { makeMergeConnection } from "@/lib/pagination/make-merge-connection";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { useSheetTargetLoading } from "@/lib/url/use-sheet-target-loading";
@@ -49,18 +50,10 @@ const USERS_INITIAL = {
   totalCount: 0,
 };
 
-// Concatenate the next page's edges onto the cached users connection.
-function mergeUsersConnection(
-  prev: AdminUsersQueryResult,
-  more: AdminUsersQueryResult,
-): AdminUsersQueryResult {
-  return {
-    users: {
-      ...more.users,
-      edges: [...prev.users.edges, ...more.users.edges],
-    },
-  };
-}
+// Concatenate the next page's edges onto the cached users connection. A
+// module-level constant so the reducer identity useConnectionPagination
+// memoizes on stays stable across renders.
+const mergeUsersConnection = makeMergeConnection<AdminUsersQueryResult>("users");
 
 function UserRowFromEdge({ edge, onEdit }: { edge: Edge; onEdit: (id: string) => void }) {
   const user = useFragment(AdminUserFieldsFragment, edge.node);

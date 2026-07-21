@@ -157,6 +157,15 @@ func cgAuthedCtx(sub string) context.Context {
 	return auth.ContextWithUser(context.Background(), &auth.AuthUser{Sub: sub})
 }
 
+// cgTestOrdering builds the PageOrdering a direct resolveCardgroupCursor call
+// would receive from ListCardgroupsByOwnerConnection for the given column,
+// using the schema default direction. Tests that exercise v1 / legacy cursors
+// pass it for shape only — those cursors carry no ordering, so the guard is a
+// pass-through for them.
+func cgTestOrdering(orderBy repository.CardgroupOrderBy) PageOrdering {
+	return PageOrdering{OrderBy: string(orderBy), Direction: string(repository.SortDesc)}
+}
+
 // cgDefaultAdmin returns a fresh admin stub that reports isAdmin=true. Every
 // existing Create/Update/Find/pagination test passes this so checkCardgroupLimit
 // short-circuits before CountByOwner is reached — the prior behaviour of those
@@ -1702,7 +1711,7 @@ func TestResolveCardgroupCursor_NilCursor(t *testing.T) {
 
 	c, err := uc.(*cardgroupUsecase).resolveCardgroupCursor(
 		context.Background(),
-		nil, "u1", repository.CardgroupOrderByName, "after",
+		nil, "u1", repository.CardgroupOrderByName, cgTestOrdering(repository.CardgroupOrderByName), "after",
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1714,7 +1723,7 @@ func TestResolveCardgroupCursor_NilCursor(t *testing.T) {
 	empty := ""
 	c, err = uc.(*cardgroupUsecase).resolveCardgroupCursor(
 		context.Background(),
-		&empty, "u1", repository.CardgroupOrderByName, "after",
+		&empty, "u1", repository.CardgroupOrderByName, cgTestOrdering(repository.CardgroupOrderByName), "after",
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1736,7 +1745,7 @@ func TestResolveCardgroupCursor_OtherOwner_NonIDOrderBy(t *testing.T) {
 	id := "cg-x"
 	_, err := uc.(*cardgroupUsecase).resolveCardgroupCursor(
 		context.Background(),
-		&id, "owner-b", repository.CardgroupOrderByName, "after",
+		&id, "owner-b", repository.CardgroupOrderByName, cgTestOrdering(repository.CardgroupOrderByName), "after",
 	)
 	assertValidationError(t, err, "after", "")
 }
@@ -1755,7 +1764,7 @@ func TestResolveCardgroupCursor_UnknownOrderBy(t *testing.T) {
 	id := "cg-cursor"
 	_, err := uc.(*cardgroupUsecase).resolveCardgroupCursor(
 		context.Background(),
-		&id, "u1", repository.CardgroupOrderBy("not_a_real_column"), "after",
+		&id, "u1", repository.CardgroupOrderBy("not_a_real_column"), cgTestOrdering(repository.CardgroupOrderBy("not_a_real_column")), "after",
 	)
 	assertInternalChain(t, err, "usecase: cardgroup: unhandled orderBy")
 }
@@ -1782,7 +1791,7 @@ func TestResolveCardgroupCursor_MalformedV1_ReturnsBadUserInput(t *testing.T) {
 	malformed := "v1:!!!not-base64!!!"
 	_, err := uc.(*cardgroupUsecase).resolveCardgroupCursor(
 		context.Background(),
-		&malformed, "u1", repository.CardgroupOrderByID, "after",
+		&malformed, "u1", repository.CardgroupOrderByID, cgTestOrdering(repository.CardgroupOrderByID), "after",
 	)
 	assertValidationError(t, err, "after", "")
 }
@@ -1800,7 +1809,7 @@ func TestResolveCardgroupCursor_V1EncodedID(t *testing.T) {
 	encoded := "v1:Y2ctY3Vyc29y" // base64.RawURLEncoding.EncodeToString([]byte("cg-cursor"))
 	c, err := uc.(*cardgroupUsecase).resolveCardgroupCursor(
 		context.Background(),
-		&encoded, "u1", repository.CardgroupOrderByID, "after",
+		&encoded, "u1", repository.CardgroupOrderByID, cgTestOrdering(repository.CardgroupOrderByID), "after",
 	)
 	if err != nil {
 		t.Fatalf("unexpected error for v1 encoded cursor: %v", err)

@@ -7,7 +7,7 @@
 
 ## Why
 
-`liftValidationErr` (declared in `backend/internal/usecase/admin_user.go`) is the
+`liftValidationErr` (declared in `backend/internal/usecase/validators.go`) is the
 shared helper that bridges a validator returning `error` into the outcome-union
 shape: it unwraps a `*ucerr.ValidationError` into an `*InputValidationInfo`
 carrier and passes every other error through unchanged. Its return contract is:
@@ -42,8 +42,8 @@ are easy to get wrong:
    — the inner `err` shadows the outer one so the subsequent `if err != nil`
    branches on the helper's residual. Introducing a custom name
    (`lifted`, `validationErr`, `bridged`) makes the call site read
-   inconsistently with the precedent set by `cardgroup.go`, `card.go`,
-   `user.go`, `admin_user.go`, and `swipe.go`, and it leaves the original
+   inconsistently with the precedent set by `cardgroup.go`, `master_catalog.go`,
+   `user.go`, and `swipe.go`, and it leaves the original
    outer `err` live in scope — a subsequent edit that mistakenly references
    it gets the pre-lift value, not the residual.
 

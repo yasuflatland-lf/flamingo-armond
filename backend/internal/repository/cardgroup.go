@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"backend/internal/domain"
 )
@@ -42,7 +43,7 @@ type gormCardgroup struct {
 	OwnerID   string    `gorm:"column:owner_id"`
 	Name      string    `gorm:"column:name"`
 	CreatedAt time.Time `gorm:"column:created_at"`
-	UpdatedAt time.Time `gorm:"column:updated_at"`
+	UpdatedAt time.Time `gorm:"column:updated_at;->"`
 }
 
 func (gormCardgroup) TableName() string { return "cardgroups" }
@@ -108,7 +109,8 @@ type CardgroupRepository interface {
 	Create(ctx context.Context, cg *domain.Cardgroup) error
 	// CreateTx inserts a new cardgroup row using the supplied transaction
 	// handle so the insert participates in the caller's transaction. The caller
-	// is responsible for pre-filling cg.ID (uuid v7) and both timestamps.
+	// is responsible for pre-filling cg.ID (uuid v7) and CreatedAt. UpdatedAt is
+	// assigned by the database and copied back into cg.
 	CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Cardgroup) error
 	// AcquireUserSeedLockTx takes a per-user advisory lock (released at tx end)
 	// so concurrent seed-for-new-user calls for the same user do not race.
@@ -306,12 +308,15 @@ func (r *cardgroupRepo) FindByIDs(ctx context.Context, ids []string) (map[string
 }
 
 // Create inserts a new cardgroup row. The caller is responsible for pre-filling
-// cg.ID (uuid v7) and both timestamps. An owner_id that no longer resolves to a
+// cg.ID (uuid v7) and CreatedAt. UpdatedAt is assigned by the database and
+// copied back into cg. An owner_id that no longer resolves to a
 // public.users row returns ErrCardgroupOwnerNotFound rather than an opaque
 // internal error.
 func (r *cardgroupRepo) Create(ctx context.Context, cg *domain.Cardgroup) error {
 	row := cardgroupToRow(cg)
-	if err := r.db.WithContext(ctx).Create(row).Error; err != nil {
+	if err := r.db.WithContext(ctx).
+		Clauses(clause.Returning{Columns: []clause.Column{{Name: "updated_at"}}}).
+		Create(row).Error; err != nil {
 		if fkErr := classifyCardgroupOwnerFKError(err); fkErr != nil {
 			return fkErr
 		}
@@ -320,18 +325,23 @@ func (r *cardgroupRepo) Create(ctx context.Context, cg *domain.Cardgroup) error 
 		}
 		return eris.Wrap(err, "repository: cardgroup: create")
 	}
+	cg.UpdatedAt = row.UpdatedAt
 	return nil
 }
 
 // CreateTx inserts a new cardgroup row using the supplied transaction handle so
 // the insert participates in the caller's transaction. The caller is
-// responsible for pre-filling cg.ID (uuid v7) and both timestamps. An owner_id
-// that no longer resolves to a public.users row returns ErrCardgroupOwnerNotFound
+// responsible for pre-filling cg.ID (uuid v7) and CreatedAt. UpdatedAt is
+// assigned by the database and copied back into cg. An owner_id that no longer
+// resolves to a public.users row returns ErrCardgroupOwnerNotFound
 // rather than an opaque internal error — the master-deck copy paths write the
 // caller-owned cardgroup through this method, so a deleted account importing or
 // seeding a starter deck must reach the same classification as Create.
 func (r *cardgroupRepo) CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Cardgroup) error {
-	if err := tx.WithContext(ctx).Create(cardgroupToRow(cg)).Error; err != nil {
+	row := cardgroupToRow(cg)
+	if err := tx.WithContext(ctx).
+		Clauses(clause.Returning{Columns: []clause.Column{{Name: "updated_at"}}}).
+		Create(row).Error; err != nil {
 		if fkErr := classifyCardgroupOwnerFKError(err); fkErr != nil {
 			return fkErr
 		}
@@ -340,6 +350,7 @@ func (r *cardgroupRepo) CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Ca
 		}
 		return eris.Wrap(err, "repository: cardgroup: create tx")
 	}
+	cg.UpdatedAt = row.UpdatedAt
 	return nil
 }
 
@@ -388,9 +399,10 @@ func (r *cardgroupRepo) EnsureByName(ctx context.Context, ownerID, name string) 
 			OwnerID:   ownerID,
 			Name:      name,
 			CreatedAt: now,
-			UpdatedAt: now,
 		}
-		if err := tx.Create(&row).Error; err != nil {
+		if err := tx.
+			Clauses(clause.Returning{Columns: []clause.Column{{Name: "updated_at"}}}).
+			Create(&row).Error; err != nil {
 			return eris.Wrap(err, "repository: cardgroup: ensure by name: create")
 		}
 		out = cardgroupToDomain(row)

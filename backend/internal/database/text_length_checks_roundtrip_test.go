@@ -92,9 +92,9 @@ func TestWidenTextLengthChecksDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// widen_text_length_checks is the newest migration, so one step reaches it.
-	// Bump this count when adding migrations after it.
-	if err := m.Steps(-1); err != nil {
+	// widen_updated_at_triggers_to_insert sits above widen_text_length_checks, so
+	// two steps reach the target. Bump this count when adding later migrations.
+	if err := m.Steps(-2); err != nil {
 		t.Fatalf("migrate down widen_text_length_checks: %v", err)
 	}
 	for _, c := range widenedTextLengthChecks {

@@ -38,26 +38,6 @@ type AdminEditUserInput struct {
 	ExpectedVersion int64
 }
 
-// InputValidationInfo carries an input-validation failure as a typed value
-// (not as an error). The resolver maps it to model.InputValidationError.
-// Lives at package usecase so all promoted outcome-returning methods can
-// share the carrier.
-type InputValidationInfo struct {
-	Field   string
-	Message string
-}
-
-// NewInputValidationInfo constructs an InputValidationInfo. Panics on an
-// empty field for the same reason as ucerr.NewValidationError: an empty
-// field produces extensions.field == "" on the wire, which the frontend
-// cannot render against any input.
-func NewInputValidationInfo(field, message string) *InputValidationInfo {
-	if field == "" {
-		panic("usecase.NewInputValidationInfo: field must be non-empty")
-	}
-	return &InputValidationInfo{Field: field, Message: message}
-}
-
 // AdminEditUserOutcome is the result of adminUserUsecase.EditUser. Exactly one
 // of User, Validation, CannotRevokeOwnAdmin, or ConcurrentUpdate is active on
 // a nil-error return.
@@ -210,14 +190,24 @@ func (u *adminUserUsecase) List(
 	// Decode the opaque inbound cursors to raw user ids before the repository's
 	// id-based hydration. A malformed v1 cursor is BAD_USER_INPUT; the repository
 	// looks up the cursor row by raw id, so it must never receive the v1 envelope.
-	afterID, afterPresent, err := decodeCursorOrBadInput(after, "after")
+	afterCur, afterPresent, err := decodeCursorOrBadInput(after, "after")
 	if err != nil {
 		return nil, err
 	}
-	beforeID, beforePresent, err := decodeCursorOrBadInput(before, "before")
+	beforeCur, beforePresent, err := decodeCursorOrBadInput(before, "before")
 	if err != nil {
 		return nil, err
 	}
+	// The admin-users listing orders by the immutable created_at, so its cursors
+	// stay on the v1 envelope and only the raw id is consumed here; a cursor
+	// carrying ordering metadata cannot have come from this connection.
+	if err := rejectOrderedCursor(afterCur, "after"); err != nil {
+		return nil, err
+	}
+	if err := rejectOrderedCursor(beforeCur, "before"); err != nil {
+		return nil, err
+	}
+	afterID, beforeID := afterCur.ID, beforeCur.ID
 	var afterPtr, beforePtr *string
 	if afterPresent {
 		afterPtr = &afterID
@@ -549,54 +539,4 @@ func normalizeAdminEditRoleIDs(roleIDs []string) ([]string, *InputValidationInfo
 		out = append(out, roleID)
 	}
 	return out, nil
-}
-
-// liftValidationErr bridges a validator that returns error into an outcome-
-// bearing call site. *ucerr.ValidationError values are unwrapped into an
-// InputValidationInfo carrier (first slot); any other error is passed through
-// unchanged (second slot). nil maps to (nil, nil). The shape lets call sites
-// in promoted methods uniformly route validation failures into outcome data
-// without having to re-classify each validator's return type.
-func liftValidationErr(err error) (*InputValidationInfo, error) {
-	if err == nil {
-		return nil, nil
-	}
-	if ve, ok := errors.AsType[*ucerr.ValidationError](err); ok {
-		return NewInputValidationInfo(ve.Field, ve.Message), nil
-	}
-	return nil, err
-}
-
-// resolveAdminPageSize enforces the (first XOR last) constraint and clamps
-// each value to [0, maxPageSize]. When both are nil, defaults to
-// (maxPageSize, 0) — unlike the other resolvers (which default to
-// defaultPageSize=20), admin queries default forward paging at the documented
-// maximum to keep single-page admin views simple. maxPageSize is the
-// package-wide cap shared with the card/cardgroup/master-catalog resolvers.
-func resolveAdminPageSize(first, last *int) (int, int, error) {
-	if first != nil && last != nil {
-		return 0, 0, ucerr.NewValidationError("first", "specify either first or last")
-	}
-	if first == nil && last == nil {
-		return maxPageSize, 0, nil
-	}
-	check := func(field string, v int) error {
-		if v < 0 {
-			return ucerr.NewValidationError(field, fmt.Sprintf("%s must be >= 0", field))
-		}
-		if v > maxPageSize {
-			return ucerr.NewValidationError(field, fmt.Sprintf("%s must be <= %d", field, maxPageSize))
-		}
-		return nil
-	}
-	if first != nil {
-		if err := check("first", *first); err != nil {
-			return 0, 0, err
-		}
-		return *first, 0, nil
-	}
-	if err := check("last", *last); err != nil {
-		return 0, 0, err
-	}
-	return 0, *last, nil
 }

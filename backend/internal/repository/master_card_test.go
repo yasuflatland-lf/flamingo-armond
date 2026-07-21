@@ -71,6 +71,7 @@ func TestMasterCardRepository_CreateAndListByMasterCardgroup(t *testing.T) {
 
 	// Insert cards at positions 2, 0, 1 — list must return them in position order.
 	c2 := newMasterCard(mcg.ID, "CreateList-front-2", "back-2", 2)
+	c2.UpdatedAt = time.Unix(1, 0).UTC()
 	c0 := newMasterCard(mcg.ID, "CreateList-front-0", "back-0", 0)
 	c1 := newMasterCard(mcg.ID, "CreateList-front-1", "back-1", 1)
 	require.NoError(t, repo.Create(ctx, c2))
@@ -93,6 +94,9 @@ func TestMasterCardRepository_CreateAndListByMasterCardgroup(t *testing.T) {
 
 	require.Equal(t, domain.CardText("CreateList-front-1"), got[1].Front)
 	require.Equal(t, domain.CardText("back-2"), got[2].Back)
+	require.Equal(t, c2.UpdatedAt, got[2].UpdatedAt,
+		"Create must copy the database-assigned updated_at back into the aggregate")
+	require.NotEqual(t, time.Unix(1, 0).UTC(), c2.UpdatedAt)
 }
 
 // TestMasterCardRepository_ListByMasterCardgroup_EmptyID verifies the empty-id
@@ -546,7 +550,6 @@ func insertMasterCardsSeq(t *testing.T, ctx context.Context, repo repository.Mas
 		c := newMasterCard(mcgID, fmt.Sprintf("%s-front-%d", prefix, i), "back", i)
 		// Stagger timestamps by 1 hour so created_at ordering is unambiguous.
 		c.CreatedAt = now.Add(time.Duration(i) * time.Hour)
-		c.UpdatedAt = c.CreatedAt
 		require.NoError(t, repo.Create(ctx, c))
 		cards[i] = c
 	}

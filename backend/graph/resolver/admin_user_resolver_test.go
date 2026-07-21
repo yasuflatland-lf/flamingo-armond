@@ -249,8 +249,8 @@ func TestAdminUserResolver_Users_AdminHappyPath(t *testing.T) {
 			t.Fatalf("edges[%d].cursor = %q must not be the raw user id", i, gotCur)
 		}
 		dec, err := cursor.Decode(gotCur)
-		if err != nil || dec != want {
-			t.Fatalf("edges[%d].cursor decode = (%q, %v), want (%q, nil)", i, dec, err, want)
+		if err != nil || dec.ID != want {
+			t.Fatalf("edges[%d].cursor decode = (%q, %v), want (%q, nil)", i, dec.ID, err, want)
 		}
 	}
 

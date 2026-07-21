@@ -4,6 +4,7 @@ import type {
   MasterCatalogQueryVariables,
 } from "@/generated/graphql";
 import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
+import { makeMergeConnection } from "@/lib/pagination/make-merge-connection";
 
 // Master catalog queries
 
@@ -41,18 +42,14 @@ export const CATALOG_INITIAL = {
   totalCount: 0,
 };
 
-/** Concatenate the next page's edges onto the cached catalog connection. */
-export function mergeCatalogConnection(
-  prev: MasterCatalogQueryData,
-  more: MasterCatalogQueryData,
-): MasterCatalogQueryData {
-  return {
-    masterCatalog: {
-      ...more.masterCatalog,
-      edges: [...prev.masterCatalog.edges, ...more.masterCatalog.edges],
-    },
-  };
-}
+/**
+ * Concatenate the next page's edges onto the cached catalog connection. A single
+ * module-level instance so its two consumers ({@link CatalogClient} and
+ * {@link MergeFromCatalogSheet}), which share the {@link CATALOG_DEFAULT_VARS}
+ * cache entry, cannot diverge on the same cache key — and so the reducer
+ * identity `useConnectionPagination` memoizes on stays stable across renders.
+ */
+export const mergeCatalogConnection = makeMergeConnection<MasterCatalogQueryData>("masterCatalog");
 
 /**
  * The `MasterCardgroup` field set shared by the catalog list row

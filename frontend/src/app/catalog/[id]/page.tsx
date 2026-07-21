@@ -46,7 +46,7 @@ export default async function CatalogDeckPage({ params }: Props) {
  * directly without going through React's Suspense renderer.
  *
  * Failure mapping:
- *  - `masterCardgroup == null` (unknown or DRAFT id, non-disclosure gate) → notFound().
+ *  - `masterCardgroup == null` (unknown, DRAFT or card-less id, non-disclosure gate) → notFound().
  *  - `masterCardsConnection` rejects with BAD_USER_INPUT (same non-disclosure
  *    gate, expressed as an error on `masterCardgroupId`) → notFound().
  *  - UNAUTHENTICATED → redirect("/login").
@@ -66,8 +66,9 @@ export async function CatalogDeckContent({ id }: { id: string }) {
     // Structural parse per .claude/rules/frontend-rsc-error-handling.md §
     // "Structurally parse GraphQL extensions.code — never substring-match".
     if (isUnauthenticatedGraphQLError(err)) redirect("/login");
-    // A DRAFT or unknown deck rejects the cards query as BAD_USER_INPUT on
-    // `masterCardgroupId` (draft existence is never revealed) → render the 404.
+    // A DRAFT, card-less or unknown deck rejects the cards query as BAD_USER_INPUT
+    // on `masterCardgroupId` (draft existence and emptiness are never revealed) →
+    // render the 404.
     if (isBadUserInputGraphQLError(err)) notFound();
     console.error("[catalog/:id] gqlFetch failed:", {
       name: err instanceof Error ? err.name : "unknown",
