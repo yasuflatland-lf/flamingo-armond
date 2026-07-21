@@ -19,15 +19,16 @@ import (
 // Cursor stability across edits of the ordering key.
 //
 // The master-card listing defaults to POSITION ASC — a column an admin batch
-// import rewrites for every conflicting row. A cursor that carries only a row id
-// has to re-read that row at serve time to recover its ordering value, so
-// repositioning the row between two page fetches moves the bookmark: rows
-// already returned come back a second time (S1) or rows the caller has not seen
-// yet are skipped (S2). A v2 cursor carries the ordering value captured when the
-// page was served, so the bookmark stays put.
+// import rewrites for every conflicting row. It also offers UPDATED_AT, which
+// the same import touches on every row it overwrites. A cursor that carries only
+// a row id has to re-read that row at serve time to recover its ordering value,
+// so changing the row between two page fetches moves the bookmark: rows already
+// returned come back a second time (S1) or rows the caller has not seen yet are
+// skipped (S2). A v2 cursor carries the ordering value captured when the page was
+// served, so the bookmark stays put.
 //
 // These walks use masterCardWalkRepo, an in-memory repository implementing the
-// same (position, id) tuple comparison the SQL repository emits, so the
+// same (orderKey, id) tuple comparison the SQL repository emits, so the
 // scenarios are reproduced end-to-end through ListMasterCards /
 // ListPublicMasterCards without a database.
 //
@@ -45,10 +46,11 @@ const mcWalkForeignDeckID = "deck-2"
 
 // masterCardWalkRepo is an in-memory master-card repository supporting exactly
 // the slice of the interface these walks need: forward AND backward paging over
-// one deck's rows ordered by (position ASC, id ASC). Any other ordering is
-// rejected loudly so a future test cannot silently exercise an unimplemented
-// branch. FindByID returns the CURRENT row, which is what makes the v1
-// re-hydration path observe a mutation made between two page fetches.
+// one deck's rows ordered by (orderKey ASC, id ASC), where orderKey is position
+// or updated_at. Any other ordering is rejected loudly so a future test cannot
+// silently exercise an unimplemented branch. FindByID returns the CURRENT row,
+// which is what makes the v1 re-hydration path observe a mutation made between
+// two page fetches.
 //
 // The backward branch models the repository's direction-flip + reverse: it keeps
 // the rows that sort strictly BEFORE the cursor and returns the ones closest to
@@ -69,24 +71,60 @@ func (r *masterCardWalkRepo) FindByID(_ context.Context, id string) (*domain.Mas
 	return nil, repository.ErrNotFound
 }
 
-// mcAfterInAscTuple reports whether row sorts strictly after cur under the
-// (position ASC, id ASC) total order the repository emits.
-func mcAfterInAscTuple(row *domain.MasterCard, curPos int, curID string) bool {
-	if row.Position == curPos {
-		return row.ID > curID
+// mcWalkKey is the fake's model of the SQL sort expression, normalised to one
+// comparable scalar so a single tuple predicate serves both orderings:
+// master_cards.position for POSITION, and the nanosecond instant of
+// master_cards.updated_at for UPDATED_AT. The fixture timestamps are fixed UTC
+// values, so the nanosecond flattening is lossless here.
+func mcWalkKey(orderBy repository.MasterCardOrderBy, c *domain.MasterCard) (int64, error) {
+	switch orderBy {
+	case repository.MasterCardOrderByPosition:
+		return int64(c.Position), nil
+	case repository.MasterCardOrderByUpdatedAt:
+		return c.UpdatedAt.UnixNano(), nil
+	default:
+		return 0, eris.Errorf("masterCardWalkRepo: unhandled orderBy %q", orderBy)
 	}
-	return row.Position > curPos
+}
+
+// mcWalkCursorKey extracts the boundary value the active ordering compares
+// against. A cursor that reaches the repository without its column populated is
+// a usecase bug, so it is surfaced rather than defaulted to a zero key.
+func mcWalkCursorKey(orderBy repository.MasterCardOrderBy, c *repository.MasterCardCursor) (int64, error) {
+	switch orderBy {
+	case repository.MasterCardOrderByPosition:
+		if c.Position == nil {
+			return 0, eris.New("masterCardWalkRepo: cursor is missing the position column")
+		}
+		return int64(*c.Position), nil
+	case repository.MasterCardOrderByUpdatedAt:
+		if c.UpdatedAt == nil {
+			return 0, eris.New("masterCardWalkRepo: cursor is missing the updated_at column")
+		}
+		return c.UpdatedAt.UnixNano(), nil
+	default:
+		return 0, eris.Errorf("masterCardWalkRepo: unhandled orderBy %q", orderBy)
+	}
+}
+
+// mcAfterInAscTuple reports whether a row sorts strictly after the cursor under
+// the (orderKey ASC, id ASC) total order the repository emits.
+func mcAfterInAscTuple(rowKey int64, rowID string, curKey int64, curID string) bool {
+	if rowKey == curKey {
+		return rowID > curID
+	}
+	return rowKey > curKey
 }
 
 // mcBeforeInAscTuple is the mirror predicate for backward paging: it reports
-// whether row sorts strictly before cur under the same total order. It is not
-// !mcAfterInAscTuple — the cursor row itself sorts neither after nor before
-// itself, and both edges must exclude it.
-func mcBeforeInAscTuple(row *domain.MasterCard, curPos int, curID string) bool {
-	if row.Position == curPos {
-		return row.ID < curID
+// whether a row sorts strictly before the cursor under the same total order. It
+// is not !mcAfterInAscTuple — the cursor row itself sorts neither after nor
+// before itself, and both edges must exclude it.
+func mcBeforeInAscTuple(rowKey int64, rowID string, curKey int64, curID string) bool {
+	if rowKey == curKey {
+		return rowID < curID
 	}
-	return row.Position < curPos
+	return rowKey < curKey
 }
 
 func (r *masterCardWalkRepo) FindPageByMasterCardgroup(
@@ -98,11 +136,20 @@ func (r *masterCardWalkRepo) FindPageByMasterCardgroup(
 	dir repository.SortOrder,
 	_ *string,
 ) ([]*domain.MasterCard, int64, error) {
-	if orderBy != repository.MasterCardOrderByPosition || dir != repository.SortAsc {
-		return nil, 0, eris.Errorf(
-			"masterCardWalkRepo: only the (position, ASC) ordering is implemented; got orderBy=%q dir=%q",
-			orderBy, dir,
-		)
+	if dir != repository.SortAsc {
+		return nil, 0, eris.Errorf("masterCardWalkRepo: only the ASC direction is implemented; got dir=%q", dir)
+	}
+
+	// Keys are computed for EVERY fixture row, not just the scoped ones, so an
+	// ordering this fake does not implement is rejected even when the deck filter
+	// would have emptied the page first.
+	keys := make(map[string]int64, len(r.rows))
+	for _, c := range r.rows {
+		k, err := mcWalkKey(orderBy, c)
+		if err != nil {
+			return nil, 0, err
+		}
+		keys[c.ID] = k
 	}
 
 	scoped := make([]*domain.MasterCard, 0, len(r.rows))
@@ -112,32 +159,34 @@ func (r *masterCardWalkRepo) FindPageByMasterCardgroup(
 		}
 	}
 	sort.SliceStable(scoped, func(i, j int) bool {
-		if scoped[i].Position != scoped[j].Position {
-			return scoped[i].Position < scoped[j].Position
+		if keys[scoped[i].ID] != keys[scoped[j].ID] {
+			return keys[scoped[i].ID] < keys[scoped[j].ID]
 		}
 		return scoped[i].ID < scoped[j].ID
 	})
 	total := int64(len(scoped))
 
 	if after != nil {
-		if after.Position == nil {
-			return nil, 0, eris.New("masterCardWalkRepo: after cursor is missing the position column")
+		key, err := mcWalkCursorKey(orderBy, after)
+		if err != nil {
+			return nil, 0, err
 		}
 		rest := make([]*domain.MasterCard, 0, len(scoped))
 		for _, c := range scoped {
-			if mcAfterInAscTuple(c, *after.Position, after.ID) {
+			if mcAfterInAscTuple(keys[c.ID], c.ID, key, after.ID) {
 				rest = append(rest, c)
 			}
 		}
 		scoped = rest
 	}
 	if before != nil {
-		if before.Position == nil {
-			return nil, 0, eris.New("masterCardWalkRepo: before cursor is missing the position column")
+		key, err := mcWalkCursorKey(orderBy, before)
+		if err != nil {
+			return nil, 0, err
 		}
 		rest := make([]*domain.MasterCard, 0, len(scoped))
 		for _, c := range scoped {
-			if mcBeforeInAscTuple(c, *before.Position, before.ID) {
+			if mcBeforeInAscTuple(keys[c.ID], c.ID, key, before.ID) {
 				rest = append(rest, c)
 			}
 		}
@@ -158,9 +207,18 @@ func (r *masterCardWalkRepo) FindPageByMasterCardgroup(
 // mcWalkBase is a fixed instant so the fixture timestamps are deterministic.
 var mcWalkBase = time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
 
+// mcWalkAt returns the fixture instant N hours after the base.
+func mcWalkAt(hours int) time.Time {
+	return mcWalkBase.Add(time.Duration(hours) * time.Hour)
+}
+
 // newMasterCardWalkFixture builds five rows in mcWalkDeckID whose POSITION ASC
 // order is mc-a, mc-b, mc-c, mc-d, mc-e, plus one row in a different deck so the
 // deck filter and the cross-deck cursor guard have something to reject.
+//
+// Each row's updated_at is derived from its position, so the UPDATED_AT walks
+// start from the same row order as the POSITION ones and the two orderings can
+// share every fixture assertion.
 func newMasterCardWalkFixture() *masterCardWalkRepo {
 	mk := func(id string, pos int) *domain.MasterCard {
 		return &domain.MasterCard{
@@ -170,7 +228,7 @@ func newMasterCardWalkFixture() *masterCardWalkRepo {
 			Back:              domain.CardText("back-" + id),
 			Position:          pos,
 			CreatedAt:         mcWalkBase,
-			UpdatedAt:         mcWalkBase,
+			UpdatedAt:         mcWalkAt(pos),
 		}
 	}
 	foreign := mk("mc-foreign", 3)
@@ -241,13 +299,25 @@ func mcWalkIDs(out *MasterCardConnectionOutput) []string {
 }
 
 // mcFetchWalkPage runs one forward page of size two, optionally after a cursor.
+// It sends no orderBy, so the walk also covers the schema default (POSITION ASC)
+// resolution rather than pinning the column from the caller side.
 func mcFetchWalkPage(t *testing.T, uc MasterCardUsecase, after *string) *MasterCardConnectionOutput {
+	t.Helper()
+	return mcFetchWalkPageOrdered(t, uc, nil, after)
+}
+
+// mcFetchWalkPageOrdered runs one forward page of size two under the given
+// ordering — nil asks for the schema default — optionally after a cursor.
+func mcFetchWalkPageOrdered(
+	t *testing.T, uc MasterCardUsecase, orderBy *MasterCardOrderBy, after *string,
+) *MasterCardConnectionOutput {
 	t.Helper()
 	first := 2
 	out, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
 		MasterCardgroupID: mcWalkDeckID,
 		First:             &first,
 		After:             after,
+		OrderBy:           orderBy,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error paging: %v", err)
@@ -270,13 +340,32 @@ func mcFetchWalkPageBackward(t *testing.T, uc MasterCardUsecase, before *string,
 	return out
 }
 
-// mcSetPosition moves a row's ordering key, simulating the repositioning a batch
-// import performs on every conflicting row between two page fetches.
+// mcOrderByPtr lifts an ordering into the pointer the connection input takes.
+func mcOrderByPtr(v MasterCardOrderBy) *MasterCardOrderBy { return &v }
+
+// mcSetPosition moves a row's POSITION ordering key, simulating the
+// repositioning a batch import performs on every conflicting row between two
+// page fetches.
 func mcSetPosition(t *testing.T, repo *masterCardWalkRepo, id string, pos int) {
+	t.Helper()
+	mcMutateWalkRow(t, repo, id, func(c *domain.MasterCard) { c.Position = pos })
+}
+
+// mcSetUpdatedAt moves a row's UPDATED_AT ordering key, simulating the touch a
+// batch import applies to every row it overwrites between two page fetches.
+func mcSetUpdatedAt(t *testing.T, repo *masterCardWalkRepo, id string, at time.Time) {
+	t.Helper()
+	mcMutateWalkRow(t, repo, id, func(c *domain.MasterCard) { c.UpdatedAt = at })
+}
+
+// mcMutateWalkRow applies an edit to one fixture row in place, failing loudly
+// when the id does not exist so a renamed fixture row cannot silently turn a
+// stability walk into a no-op.
+func mcMutateWalkRow(t *testing.T, repo *masterCardWalkRepo, id string, edit func(*domain.MasterCard)) {
 	t.Helper()
 	for _, c := range repo.rows {
 		if c.ID == id {
-			c.Position = pos
+			edit(c)
 			return
 		}
 	}
@@ -404,6 +493,147 @@ func TestMasterCardCursorWalk_S2_V1Cursor_StillSkips(t *testing.T) {
 	mcSetPosition(t, repo, "mc-b", 99)
 
 	page2 := mcFetchWalkPage(t, uc, &legacy)
+	if got := mcWalkIDs(page2); len(got) != 0 {
+		t.Fatalf("v1 cursor should return an empty page after the boundary row moves to the tail, got %v", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The UPDATED_AT ordering.
+//
+// POSITION is the schema default and the one an admin reorders by hand, but
+// UPDATED_AT is mutable too and moves under the SAME operation: a batch import
+// overwrites the row and touches its updated_at. The per-column encode/decode
+// unit tests above prove the key serializes and hydrates; only a walk proves the
+// bookmark survives an edit landing between two page fetches, so each scenario
+// is paired with a v1 control that still exhibits the defect.
+// ---------------------------------------------------------------------------
+
+// TestMasterCardCursorWalk_UpdatedAt_S1_BoundaryRowMovedToHead_NoDuplicate is
+// the S1 scenario on the UPDATED_AT ordering: the boundary row of page 1 is
+// touched so its updated_at moves to the head of the listing before page 2 is
+// fetched. With the captured ordering key the second page starts exactly where
+// the first ended, so it repeats no row the caller has already seen.
+func TestMasterCardCursorWalk_UpdatedAt_S1_BoundaryRowMovedToHead_NoDuplicate(t *testing.T) {
+	t.Parallel()
+
+	repo := newMasterCardWalkFixture()
+	uc := newMasterCardWalkUsecase(repo)
+	updatedAt := mcOrderByPtr(MasterCardOrderByUpdatedAt)
+
+	page1 := mcFetchWalkPageOrdered(t, uc, updatedAt, nil)
+	if got := mcWalkIDs(page1); len(got) != 2 || got[0] != "mc-a" || got[1] != "mc-b" {
+		t.Fatalf("page 1 = %v, want [mc-a mc-b]", got)
+	}
+	if page1.Ordering.OrderBy != string(repository.MasterCardOrderByUpdatedAt) {
+		t.Fatalf("Ordering.OrderBy = %q, want updated_at: the walk must exercise the requested column", page1.Ordering.OrderBy)
+	}
+	next := mcEncodeWalkCursor(page1, page1.EndCur)
+
+	// A batch import overwrites mc-b, touching its updated_at to before mc-a's.
+	mcSetUpdatedAt(t, repo, "mc-b", mcWalkAt(0))
+
+	page2 := mcFetchWalkPageOrdered(t, uc, updatedAt, &next)
+	got := mcWalkIDs(page2)
+	if len(got) != 2 || got[0] != "mc-c" || got[1] != "mc-d" {
+		t.Fatalf("page 2 = %v, want [mc-c mc-d]", got)
+	}
+	for _, id := range got {
+		if id == "mc-a" || id == "mc-b" {
+			t.Fatalf("page 2 repeated %q from page 1: %v", id, got)
+		}
+	}
+}
+
+// TestMasterCardCursorWalk_UpdatedAt_S1_V1Cursor_StillDuplicates is the v1
+// control for the walk above: an id-only cursor re-reads the touched row and
+// therefore hands back a row page 1 already returned.
+func TestMasterCardCursorWalk_UpdatedAt_S1_V1Cursor_StillDuplicates(t *testing.T) {
+	t.Parallel()
+
+	repo := newMasterCardWalkFixture()
+	uc := newMasterCardWalkUsecase(repo)
+	updatedAt := mcOrderByPtr(MasterCardOrderByUpdatedAt)
+
+	page1 := mcFetchWalkPageOrdered(t, uc, updatedAt, nil)
+	legacy := cursor.Encode(page1.EndCur)
+
+	mcSetUpdatedAt(t, repo, "mc-b", mcWalkAt(0))
+
+	page2 := mcFetchWalkPageOrdered(t, uc, updatedAt, &legacy)
+	got := mcWalkIDs(page2)
+	if len(got) == 0 || got[0] != "mc-a" {
+		t.Fatalf("v1 cursor should re-serve mc-a after the boundary row moves to the head; page 2 = %v", got)
+	}
+}
+
+// TestMasterCardCursorWalk_UpdatedAt_S2_BoundaryRowMovedToTail_NoSkip is the S2
+// scenario on the UPDATED_AT ordering: the boundary row of page 1 is touched so
+// its updated_at drops below every remaining row. With the captured ordering key
+// the walk continues from where page 1 ended, so every row the caller had not
+// yet seen is still returned exactly once.
+//
+// The touched row itself is the documented exception: its ordering key moved
+// into the not-yet-visited region, so the walk legitimately meets it again. What
+// v2 fixes is that the UNSEEN rows are no longer swallowed along with it.
+func TestMasterCardCursorWalk_UpdatedAt_S2_BoundaryRowMovedToTail_NoSkip(t *testing.T) {
+	t.Parallel()
+
+	repo := newMasterCardWalkFixture()
+	uc := newMasterCardWalkUsecase(repo)
+	updatedAt := mcOrderByPtr(MasterCardOrderByUpdatedAt)
+
+	page1 := mcFetchWalkPageOrdered(t, uc, updatedAt, nil)
+	next := mcEncodeWalkCursor(page1, page1.EndCur)
+
+	// mc-b is touched so it now sorts last.
+	mcSetUpdatedAt(t, repo, "mc-b", mcWalkAt(99))
+
+	seen := append([]string{}, mcWalkIDs(page1)...)
+	cur := next
+	for page := 2; page <= 5; page++ {
+		out := mcFetchWalkPageOrdered(t, uc, updatedAt, &cur)
+		ids := mcWalkIDs(out)
+		if len(ids) == 0 {
+			break
+		}
+		seen = append(seen, ids...)
+		cur = mcEncodeWalkCursor(out, out.EndCur)
+	}
+
+	counts := map[string]int{}
+	for _, id := range seen {
+		counts[id]++
+	}
+	// mc-a was already served on page 1 and was not touched; mc-c / mc-d / mc-e
+	// were unseen when the edit landed. All four must appear exactly once.
+	for _, id := range []string{"mc-a", "mc-c", "mc-d", "mc-e"} {
+		if counts[id] != 1 {
+			t.Fatalf("row %q appeared %d times across the walk (want exactly 1); walk = %v", id, counts[id], seen)
+		}
+	}
+	if counts["mc-foreign"] != 0 {
+		t.Fatal("walk leaked a row from another deck")
+	}
+}
+
+// TestMasterCardCursorWalk_UpdatedAt_S2_V1Cursor_StillSkips is the v1 control
+// for the walk above: an id-only cursor re-reads the touched boundary row, finds
+// it now sorts last, and reports an empty second page — the "rows silently
+// vanish" symptom.
+func TestMasterCardCursorWalk_UpdatedAt_S2_V1Cursor_StillSkips(t *testing.T) {
+	t.Parallel()
+
+	repo := newMasterCardWalkFixture()
+	uc := newMasterCardWalkUsecase(repo)
+	updatedAt := mcOrderByPtr(MasterCardOrderByUpdatedAt)
+
+	page1 := mcFetchWalkPageOrdered(t, uc, updatedAt, nil)
+	legacy := cursor.Encode(page1.EndCur)
+
+	mcSetUpdatedAt(t, repo, "mc-b", mcWalkAt(99))
+
+	page2 := mcFetchWalkPageOrdered(t, uc, updatedAt, &legacy)
 	if got := mcWalkIDs(page2); len(got) != 0 {
 		t.Fatalf("v1 cursor should return an empty page after the boundary row moves to the tail, got %v", got)
 	}
