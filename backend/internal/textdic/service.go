@@ -54,7 +54,7 @@ func (k SkipKind) String() string {
 }
 
 // ValidationError is the public, line-scoped error type. Line == 0
-// indicates an error not tied to a specific line (e.g. payload-size).
+// indicates an error not tied to a specific line (a recovered parser panic).
 // Only Process constructs values of this type within the package.
 //
 // Kind classifies the error: SkipKindHard means a hard lexer/parser failure;
@@ -62,8 +62,8 @@ func (k SkipKind) String() string {
 // character). Snippet carries the raw source text that triggered the
 // diagnostic — the WORD token value for SkipKindFrontOnly, the DEFINITION
 // token value for SkipKindBackOnly, and the recovered malformed line (not a
-// single token) for SkipKindUnrecognized. Empty for hard errors and
-// payload-level errors. Message is the UI-facing description.
+// single token) for SkipKindUnrecognized. Empty for hard errors.
+// Message is the UI-facing description.
 type ValidationError struct {
 	Line    int
 	Message string
