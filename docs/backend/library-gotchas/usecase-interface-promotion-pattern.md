@@ -36,8 +36,9 @@ func NewCardgroupUsecase(repo CardgroupRepository, logger *slog.Logger) Cardgrou
 
 The invariants:
 - The interface name is public (`CardgroupUsecase`); the struct is unexported (`cardgroupUsecase`).
-- Private methods on the struct (`resolveCardgroupCursor`, `resolveCursor`, `clampLimit`) are
-  excluded from the interface — Go's visibility rules enforce this: unexported methods cannot
+- Private methods on the struct — `resolveCardgroupCursor` here, and the same shape elsewhere
+  (`resolveCardCursor` on `cardUsecase`, `clampLimit` on `learnUsecase`) — are
+  excluded from the interface. Go's visibility rules enforce this: unexported methods cannot
   appear on a named interface in another package, and same-package code does not need them on
   the interface.
 - `NewCardgroupUsecase` panics on nil dependencies. The panic is in the constructor, not in
