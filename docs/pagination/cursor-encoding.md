@@ -1,6 +1,6 @@
 # Cursor encoding
 
-> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `frontend/CLAUDE.md`.
+> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by [`docs/pagination/resolve-connection-edge-by-node-id.md`](resolve-connection-edge-by-node-id.md).
 
 Cursors are opaque to clients. The schema declares `cursor: ID!` and `pageInfo.startCursor`/`endCursor: ID`. Clients must treat these values as opaque handles and pass them back unchanged as `after`/`before` arguments — do NOT decode, inspect, or construct them.
 
@@ -79,12 +79,16 @@ The usecase layer operates on raw entity UUIDs internally and never calls an enc
 
 ## Decoding site
 
-Every aggregate's `resolve*Cursor` decodes its incoming `after`/`before` argument through the shared `decodeCursorOrBadInput` helper in `backend/internal/usecase/page.go`, which wraps `cursor.Decode`. A malformed payload (invalid base64, or a v2 body that is not the expected JSON) is surfaced as `BAD_USER_INPUT`, matching existing UUID-parse failures.
+All five connections decode their incoming `after`/`before` argument through the shared `decodeCursorOrBadInput` helper in `backend/internal/usecase/page.go`, which wraps `cursor.Decode`. A malformed payload (invalid base64, or a v2 body that is not the expected JSON) is surfaced as `BAD_USER_INPUT`, matching existing UUID-parse failures.
+
+Where that call sits differs by envelope. The four v2 connections each own a per-aggregate method — `resolveCardCursor`, `resolveCardgroupCursor`, `resolveMasterCardCursor`, `resolveMasterCatalogCursor` — because they have post-decode work to do. The v1 admin-users connection has no such method: it calls the helper inline from `adminUserUsecase.List`, so do not grep for a `resolveAdminUserCursor`.
 
 The v2 connections then run two extra steps before hydration:
 
 1. `requireCursorOrdering` rejects a cursor taken under a different column or direction (`BAD_USER_INPUT`).
 2. `applyCardgroupOrderKey` / `applyMasterCatalogOrderKey` / `applyMasterCardOrderKey` / `applyCardOrderKey` populates the repository cursor column from the embedded value. A value that does not parse into the column's type is `BAD_USER_INPUT`; an `orderBy` the helper does not handle is a caller bug and stays `INTERNAL`.
+
+The v1 connection runs the symmetric guard instead: `rejectOrderedCursor` refuses any inbound cursor that carries ordering metadata, since a v2 cursor cannot have been issued by the admin-users connection (`BAD_USER_INPUT`).
 
 ## Backward compatibility
 
@@ -103,11 +107,11 @@ values are read from API responses and passed back verbatim. The audit grep
 `grep -rn "atob\|btoa\|startsWith.*v1" frontend/src/` must return no matches
 for cursor-related code.
 
-## "Opaque envelope" vs plain UUID — terminology by aggregate
+## Terminology: wire form vs internal form
 
-The repo carries two distinct cursor encodings depending on the aggregate:
+Both envelopes above are the **wire form** — what a client receives and hands back. The **internal form** is the raw entity UUID, and the two are separated by one layer boundary, not by aggregate:
 
-- **Opaque envelope** (`v1:base64(uuid)` or `v2:base64(json)`): `Card`, `Cardgroup`, `MasterCardgroup`, `MasterCard`, and `User` connection cursors are all wrapped by an encoder in the resolver helpers (`toCardConnectionModel`, `toCardgroupConnectionModel`, … in `backend/graph/resolver/connection.go`). The "opaque" label is meaningful — clients treat the envelope as a black box and must not parse it.
-- **Plain UUID** (raw entity ID): the usecase connection *outputs* carry raw ids in `StartCur` / `EndCur`, and each edge keys off the raw `node.id`. Those are never handed to clients unwrapped.
+- Above the boundary (client-facing), every connection emits an envelope. `Card`, `Cardgroup`, `MasterCardgroup`, `MasterCard`, and `User` cursors are all produced by an encoder passed into `buildEdges` in `backend/graph/resolver/connection.go`. No connection hands a client a bare UUID.
+- Below the boundary (usecase and repository), nothing holds an envelope. The connection outputs carry raw ids in `StartCur` / `EndCur`, each edge keys off the raw `node.id`, and `decodeCursorOrBadInput` unwraps inbound cursors back to raw ids before any repository call.
 
-When documenting or commenting on a Connection helper, use "opaque envelope" only for the encoded form. Use "plain UUID" (or "raw entity ID") for the unwrapped form. Mixing the two terms in the same context confuses readers who grep for the encoding convention.
+When documenting or commenting on a Connection helper, say "cursor" (or name the `v1:` / `v2:` envelope) only for the wire form, and "raw entity id" for the internal form. Calling the internal form a cursor invites the id-equals-cursor assumption that the shared `buildEdges` helper exists to prevent.
