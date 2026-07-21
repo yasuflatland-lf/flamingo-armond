@@ -42,7 +42,7 @@ The cookie carries `v1.<exp>.<mac>` where `mac = HMAC-SHA256(ONBOARDING_GATE_SEC
 
 On sign-out or session expiry the middleware deletes the cookie: the branch runs whenever the request is not `authenticated` and the cookie is present, so nothing client-side has to remember to clear an `httpOnly` cookie.
 
-`ONBOARDING_GATE_SECRET` is **optional**. When it is unset the gate still enforces the invariant correctly — it just cannot trust a cookie it cannot authenticate, so every gated navigation pays the lookup and a one-shot warning is logged. Fail-loud-and-correct beats fail-fast-and-broken here: a required secret would take a deployment down until an operator set it. See [`env-vars.md`](./env-vars.md).
+`ONBOARDING_GATE_SECRET` is **optional**. When it is unset the gate still enforces the invariant correctly — it just cannot trust a cookie it cannot authenticate, so every gated navigation pays the lookup and a one-shot warning is logged. Fail-loud-and-correct beats fail-fast-and-broken here: a required secret would take a deployment down until an operator set it. The production bring-up does register it, though: the `make setup-prod` Vercel phase generates the secret with `openssl rand -hex 32`, persists it in the state file, and pushes it to the Vercel project alongside `BACKEND_URL`, so the shipped default is the fast path. See [`env-vars.md`](./env-vars.md) and [`../deployment.md` § "Step 3 — Vercel"](../deployment.md#step-3--vercel).
 
 ### Fail open, deliberately
 
