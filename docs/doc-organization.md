@@ -79,7 +79,7 @@ bash scripts/check-doc-line-citations.sh
 Two carve-outs, both structural rather than per-file allowlists:
 
 - **Fenced regions are skipped.** Quoted compiler, linter and stack-trace output legitimately carries line numbers, and it is always pasted inside a fenced block. Keeping such output inside a fence is therefore the sanctioned way to record it; a citation the author writes in prose has no fence and fails.
-- **`docs/superpowers/plans/**` is excluded.** Plan documents are dated point-in-time snapshots — the same category as issue bodies and PR descriptions — so rewriting their citations is churn rather than maintenance.
+- **`docs/superpowers/plans/**` is excluded.** Plan documents are dated point-in-time snapshots — the same category as issue bodies and PR descriptions — so rewriting their citations is churn rather than maintenance. That tree is gitignored (`.gitignore` lists `docs/superpowers/`), so it is absent from `git ls-files` and from a freshly-created worktree; do not read that absence as the exclusion being dead. The checker enumerates files with `find`, which walks ignored directories, so the exclusion is load-bearing in any working checkout that has the tree on disk.
 
 ### Inline `§ "above"` / `§ "below"` references rot on split
 

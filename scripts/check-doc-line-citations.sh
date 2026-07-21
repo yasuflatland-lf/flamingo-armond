@@ -12,6 +12,8 @@ fi
 
 # Point-in-time snapshots are exempt: plan documents record what the tree looked
 # like on a given day, so rewriting their citations is churn, not maintenance.
+# The tree is gitignored, so it is invisible to `git ls-files` but not to the
+# `find` below, which walks ignored directories in any checkout that has it.
 exclude_re='(^|/)docs/superpowers/plans/'
 
 files=()
