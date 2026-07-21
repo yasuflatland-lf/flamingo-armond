@@ -35,11 +35,13 @@ func resolveSortDir(dir *SortOrder, def repository.SortOrder) (repository.SortOr
 // passing both. Defaults first=defaultPageSize (20) when neither is provided,
 // matching the schema's documented default. maxPageSize/defaultPageSize are the
 // package-wide page-size caps (declared in card.go) shared by the card,
-// cardgroup, and master-catalog connection resolvers; the repository-level cap
-// (repository.PageCap = maxPageSize + 1) is one greater so the "+1 fetch" trick
-// survives a maximum-sized request. The admin connections deliberately do NOT
-// use this resolver (resolveAdminPageSize defaults to maxPageSize and rejects
-// rather than clamps out-of-range values).
+// cardgroup, master-catalog and master-card connection resolvers; the
+// repository-level cap (repository.PageCap = maxPageSize + 1) is one greater so
+// the "+1 fetch" trick survives a maximum-sized request. Admin gating does not
+// imply the admin page-size contract: the admin master-card and master-catalog
+// connections use this resolver too. The admin user list is the sole opt-out
+// (resolveAdminPageSize defaults to maxPageSize and rejects rather than clamps
+// out-of-range values).
 func resolveStandardPageSize(first, last *int) (int, int, error) {
 	if first != nil && last != nil {
 		return 0, 0, ucerr.NewValidationError("first", "specify either first or last, not both")
@@ -62,12 +64,13 @@ func resolveStandardPageSize(first, last *int) (int, int, error) {
 	return 0, clamp(*last), nil
 }
 
-// resolveAdminPageSize enforces the (first XOR last) constraint and clamps
-// each value to [0, maxPageSize]. When both are nil, defaults to
-// (maxPageSize, 0) — unlike the other resolvers (which default to
-// defaultPageSize=20), admin queries default forward paging at the documented
-// maximum to keep single-page admin views simple. maxPageSize is the
-// package-wide cap shared with the card/cardgroup/master-catalog resolvers.
+// resolveAdminPageSize enforces the (first XOR last) constraint and rejects
+// (rather than clamps) a value outside [0, maxPageSize]. When both are nil,
+// defaults to (maxPageSize, 0) — unlike resolveStandardPageSize (which defaults
+// to defaultPageSize=20) — so single-page admin views stay simple. The admin
+// user list is its only caller; every other connection, admin-gated or not,
+// uses resolveStandardPageSize. maxPageSize is the package-wide cap shared with
+// resolveStandardPageSize.
 func resolveAdminPageSize(first, last *int) (int, int, error) {
 	if first != nil && last != nil {
 		return 0, 0, ucerr.NewValidationError("first", "specify either first or last")

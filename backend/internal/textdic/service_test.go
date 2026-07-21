@@ -156,8 +156,9 @@ func TestProcess_MalformedRows(t *testing.T) {
 	t.Parallel()
 
 	// The first line is malformed (WORD with no DEFINITION); the grammar's
-	// "error NEWLINE" recovery rule should discard it. Subsequent valid
-	// lines must still be parsed.
+	// explicit `entry: WORD` skip production records it as a FRONT_ONLY skip
+	// without entering error recovery. Subsequent valid lines must still be
+	// parsed.
 	input := "apple\n" +
 		"dog " + defDog + "\n" +
 		"cat " + defCat + "\n"
@@ -731,7 +732,8 @@ func TestProcess_SnippetExtraction(t *testing.T) {
 		// Snippet holds the full malformed line text (up to the newline).
 		{"unrecognized", "@broken line\n", textdic.SkipKindUnrecognized, 1, "@broken line"},
 		// Same as above but without a trailing newline — the lexer returns
-		// NEWLINE at EOF so the grammar's "error NEWLINE" rule fires cleanly.
+		// NEWLINE at EOF, which the grammar's blank-line production
+		// `entry: NEWLINE` shifts, so the parser never enters error recovery.
 		// Exactly 1 UNRECOGNIZED error is produced; the old spurious "syntax
 		// error: unexpected $end" HARD error must no longer appear.
 		{"unrecognized-eof", "@broken no nl", textdic.SkipKindUnrecognized, 1, "@broken no nl"},

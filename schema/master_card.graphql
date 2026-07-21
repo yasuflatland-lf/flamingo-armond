@@ -26,8 +26,13 @@ extend type Query {
   """
   Admin-only paginated cards in a master deck. Forward (first, after) / backward (last, before).
   Cursors are opaque, server-encoded values: pass an edge cursor back verbatim and never build
-  one from a node id. Default page size 20; max 100. Optional case-insensitive
-  substring search on front OR back.
+  one from a node id. Default page size 20; max 100.
+  `first: 0` is a deliberate deviation from the Relay spec for callers that want only
+  `totalCount`: no edges are fetched and `hasNextPage` / `hasPreviousPage` are both false
+  even when more rows exist. A negative `first` or `last` is clamped to 0 and therefore
+  behaves identically. Being admin-gated does not put this connection on the `users`
+  page-size contract: out-of-range values are clamped here, never rejected.
+  Optional case-insensitive substring search on front OR back.
   """
   adminMasterCardsConnection(
     masterCardgroupId: ID!, first: Int, after: ID, last: Int, before: ID,
@@ -37,8 +42,13 @@ extend type Query {
   Public paginated cards in a PUBLISHED master deck, for any authenticated caller.
   Forward (first, after) / backward (last, before). Cursors are opaque, server-encoded
   values: pass an edge cursor back verbatim and never build one from a node id.
-  Default page size 20; max 100. Optional case-insensitive substring search on
-  front OR back. A DRAFT, card-less or unknown deck is rejected as BAD_USER_INPUT
+  Default page size 20; max 100.
+  `first: 0` is a deliberate deviation from the Relay spec for callers that want only
+  `totalCount`: no edges are fetched and `hasNextPage` / `hasPreviousPage` are both false
+  even when more rows exist. A negative `first` or `last` is clamped to 0 and therefore
+  behaves identically.
+  Optional case-insensitive substring search on front OR back.
+  A DRAFT, card-less or unknown deck is rejected as BAD_USER_INPUT
   on `masterCardgroupId` (non-disclosure gate: draft existence and emptiness are
   never revealed). Anonymous callers receive UNAUTHENTICATED.
   """
