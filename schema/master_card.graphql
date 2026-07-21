@@ -124,8 +124,10 @@ extend type Mutation {
   """Bulk-delete master cards by ID. Admin-only. Returns the number of rows deleted."""
   adminDeleteMasterCards(ids: [ID!]!): Int!
   """
-  Persist parsed cards into a master deck. Admin-only. Caps payload at 5,000 parsed rows;
-  larger payloads return BAD_USER_INPUT. Conflict key is (master_cardgroup_id, front) and is
+  Persist parsed cards into a master deck. Admin-only. Two payload caps apply, exactly as on
+  `importCards`: decoded text larger than 1 MiB (1,048,576 bytes) and a payload parsing to
+  more than 5,000 rows each return a top-level BAD_USER_INPUT on `payload` and import
+  nothing. Conflict key is (master_cardgroup_id, front) and is
   case-insensitive (citext); conflicting rows have their `back` text and `position` updated,
   others are inserted. Per-line parse errors are returned in `ImportCardsPayload.errors`.
   """
