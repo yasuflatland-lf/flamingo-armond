@@ -37,7 +37,11 @@ v2:<RawURLBase64(JSON{"i":id,"o":orderBy,"d":direction,"k":orderKey})>
 
 ### The `DUE` ordering key is not a plain column read
 
-Every other ordering key is a column on the row being served. The card connection's `DUE` key is `COALESCE(user_card_fsrs.due, cards.created_at)` for the requesting user — the same expression the page query sorts on — serialized with `encodeTimeOrderKey`. One helper (`cardUsecase.dueOrderValues`, a single batched FSRS lookup per page) resolves it for both the emit path and the v1 re-hydration path, because a value captured at emit time under one fallback and compared at serve time under another lands the bookmark on the wrong row.
+Every other ordering key is a column on the row being served. The card connection's `DUE` key is `COALESCE(user_card_fsrs.due, cards.created_at)` for the requesting user — the same expression the page query sorts on — serialized with `encodeTimeOrderKey`.
+
+The emit path takes that value **out of the page query's own result set**: the repository reports the key it sorted each returned row by, and `cardOrderKeys` merely serializes what it was handed. It performs no I/O by design. A post-page FSRS read would resolve a *later* snapshot than the one that ordered the page, so a review landing between the two reads would mint a cursor keyed to a boundary the page never served — reintroducing exactly the skip the v2 envelope exists to prevent. `TestCardCursorWalk_Due_EmitIssuesNoFSRSLookup` is the structural guard: it asserts zero FSRS calls on emit, so any future re-introduction of a post-page read fails even when the value it recovers happens to agree.
+
+`cardUsecase.dueOrderValues` — a single batched FSRS lookup — exists for the **v1 / legacy re-hydration path only**, which is handed a bare row id and has no captured key to fall back on. It re-implements the `COALESCE` fallback in Go, and the two expressions must stay in step: a key recovered there under one fallback and compared in SQL under another lands the bookmark on the wrong row.
 
 ## Which connections emit which envelope
 
