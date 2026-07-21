@@ -339,7 +339,7 @@ The resolver layer for these operations lives in `backend/graph/resolver/card_im
 
 **`Line == 0` semantics.** A `CardImportError` with `line: 0` is a payload-wide error (oversized payload, recovered panic) rather than a 1-based line number. The schema documents this explicitly on `CardImportError.line`; keep the schema description, the `service.go` doc comment, and any new producer of `Line: 0` aligned. Do not introduce a sentinel like `-1` in parallel.
 
-**`CardImportValidationResult` is a resolver-enforced product type.** The schema returns `valid` + `parsedCards` + `errors` as a flat product. The `validateCardImport` path enforces the invariant `valid = (len(errors) == 0 && len(parsedCards) > 0)` — conflicting states (e.g. `valid: true` with non-empty `errors`) are representable in the type but never emitted. Any new producer of this result must compute `Valid` the same way; do not let callers set `Valid: true` directly.
+**`CardImportValidationResult` is a usecase-enforced product type.** The schema returns `valid` + `parsedCards` + `errors` as a flat product. The `validateCardImport` path enforces the invariant `valid = (len(errors) == 0 && len(parsedCards) > 0)` — conflicting states (e.g. `valid: true` with non-empty `errors`) are representable in the type but never emitted. Any new producer of this result must compute `Valid` the same way; do not let callers set `Valid: true` directly.
 
 **Empty-string → nil-pointer mapping at the resolver boundary.** When a usecase struct field is `Front string` (zero value `""`) and the GraphQL model is `Front *string` (nullable in schema), the resolver must map `e.Front == ""` to `nil` rather than `&e.Front`. Use the existing `nilIfEmpty(s string) *string` helper declared at `backend/graph/resolver/validation.go:13` — do not inline the pointer-copy pattern at each mapping site. The struct-literal form with `nilIfEmpty` is shorter, avoids per-iteration variable shadowing, and reads consistently with the three card-import mapping sites that already use it (`validation.go:49-51`, for `Snippet` / `Front` / `Back`).
 
@@ -349,7 +349,18 @@ The resolver layer for these operations lives in `backend/graph/resolver/card_im
 
 ```graphql
 """
-Next batch of cards for a learning session: randomly sampled never-seen cards interleaved 4:1 with review cards due today (JST); among review cards, those you failed on their last review or whose memory stability is still below the learned threshold are served first, and other due cards fill the remaining slots. Returns an empty list when the cardgroup has no eligible cards.
+Next batch of cards for a learning session: randomly sampled never-seen cards
+interleaved with review cards at the caller's own `User.newCardRatio` setting
+(see `updateNewCardRatio`), which defaults to 4/5 — four new cards per five
+slots — until the caller changes it. Each interleave cycle emits its review
+cards first, so a small `limit` can return review cards only and no new cards
+at all.
+The review side is drawn from cards whose due time has arrived or passed, plus
+cards you failed on their last review or whose memory stability is still below
+the learned threshold; those are served ahead of the rest and may be served
+ahead of their own due time as long as it falls inside today's JST learn day.
+Cards already reviewed today (JST) are excluded from both groups.
+Returns an empty list when the cardgroup has no eligible cards.
 Limit defaults to 20 (clamped to 100). Returns UNAUTHENTICATED if the caller does not own
 the cardgroup; BAD_USER_INPUT if the cardgroup does not exist.
 A limit of zero, a negative limit, and an explicit null are all treated as omitted and fall back to the default.

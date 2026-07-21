@@ -89,7 +89,11 @@ extend type User {
 
 """One element in a UserConnection."""
 type UserEdge {
-  """Opaque cursor for this position. Currently equal to node.id."""
+  """
+  Opaque, server-encoded cursor for this position. Pass it back verbatim as
+  `after` / `before`; never construct, parse, or derive one from `node.id`.
+  The encoding is a server implementation detail and is not part of the contract.
+  """
   cursor: ID!
   node: User!
 }
@@ -103,7 +107,19 @@ type UserConnection {
 }
 
 extend type Query {
-  """Admin-only. Paginated user list. Non-admin callers receive FORBIDDEN."""
+  """
+  Admin-only. Paginated user list. Non-admin callers receive FORBIDDEN.
+  Cursors are opaque, server-encoded values: pass an edge cursor back verbatim and
+  never build one from a node id.
+  This connection's page-size contract deviates from the other connections in two ways.
+  When both `first` and `last` are omitted it defaults to the maximum page size (100),
+  not the usual 20. A negative `first` or `last` is rejected with BAD_USER_INPUT here
+  instead of being clamped to 0, and a value above 100 is likewise rejected instead of
+  being clamped down.
+  `first: 0` is accepted and is a deliberate deviation from the Relay spec for callers
+  that want only `totalCount`: no edges are fetched and `hasNextPage` /
+  `hasPreviousPage` are both false even when more rows exist.
+  """
   users(first: Int, after: ID, last: Int, before: ID, search: String): UserConnection!
   """Admin-only. Single user with roles populated. Non-admin callers receive FORBIDDEN."""
   adminUser(id: ID!): User
