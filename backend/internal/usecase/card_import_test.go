@@ -520,11 +520,11 @@ func TestCardImportUsecase_PayloadOverCapBadInput(t *testing.T) {
 // shape where lexer-level junk is reported as parse errors, but valid rows
 // before and after the junk still reach the repository.
 //
-// Lexer-level junk (e.g. '@') still triggers the `entries: error NEWLINE`
-// production, which discards the partial parse state at the error point; the
-// surrounding well-formed rows survive because the production resumes on the
-// next NEWLINE. Lone-WORD / lone-DEFINITION lines do not hit this recovery
-// path any more — they are matched by explicit `entry: WORD` / `entry:
+// Lexer-level junk (e.g. '@') is recovered inside the lexer: it consumes the
+// rest of the malformed line and emits NEWLINE, which the grammar's blank-line
+// production `entry: NEWLINE` shifts, so the parser never enters error recovery
+// and the well-formed rows on either side survive untouched. Lone-WORD /
+// lone-DEFINITION lines are matched by the explicit `entry: WORD` / `entry:
 // DEFINITION` skip productions and surface as "FRONT_ONLY" / "BACK_ONLY"
 // entries without disturbing the accumulator.
 func TestCardImportUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
