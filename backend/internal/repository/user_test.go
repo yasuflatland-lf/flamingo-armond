@@ -29,17 +29,18 @@ func TestMain(m *testing.M) {
 	os.Exit(runTests(m))
 }
 
-// dockerFreeTests names every test in this directory that needs no database.
-// Both `package repository` (white-box mapper and classifier tests) and
-// `package repository_test` files compile into one test binary with one
+// dockerFreeTests names the tests in this directory that are known to need no
+// database. Both `package repository` (white-box mapper and classifier tests)
+// and `package repository_test` files compile into one test binary with one
 // TestMain, so a Docker outage takes the whole directory down unless the run is
 // narrowed to this set. Narrowing rather than skipping is what the degradation
 // needs: every other test dereferences the package-level testDB, so leaving them
 // enabled would nil-panic instead of skipping. Add a new Docker-free test's name
 // here, or it will not run when Docker is unavailable.
 const dockerFreeTests = "^(TestCardRepositorySatisfiesNarrowInterfaces|TestClassify|TestCursorWhere_|" +
-	"TestEscapeLikePattern|TestMasterCardgroupToDomain_|TestOrderClause_|TestPgConstraintViolation|" +
-	"TestRefetchAfterUpdate|TestTextLengthViolationError_|TestToDomainUserPreference_|TestUserCardFSRSToDomain_)"
+	"TestDomainRejectsOverCapEmoji|TestEscapeLikePattern|TestMasterCardgroupToDomain_|TestOrderClause_|" +
+	"TestPgConstraintViolation|TestRefetchAfterUpdate|TestTextLengthViolationError_|" +
+	"TestToDomainUserPreference_|TestUserCardFSRSToDomain_|TestZWJEmojiAtGraphemeCap_)"
 
 func runTests(m *testing.M) int {
 	ctx := context.Background()
@@ -93,9 +94,13 @@ func runTests(m *testing.M) int {
 
 // runDockerFreeOnly degrades a local run whose container runtime is unreachable:
 // the DB-backed suite is dropped and only dockerFreeTests execute, so a
-// contributor without Docker still exercises the pure mappers and classifiers
-// instead of watching the whole package fail. CI keeps the hard failure above so
-// the integration suite can never silently vanish from the merge gate.
+// contributor without Docker still sees per-test results for the pure mappers
+// and classifiers instead of one opaque bootstrap failure. The exit code stays
+// non-zero regardless, because a container that will not start is never a pass:
+// an image-pull failure, a port conflict or a dead daemon would otherwise print
+// `ok` while the other ~280 tests never ran, and the banner below is the only
+// contrary signal — one that any summarizing test wrapper strips. CI keeps the
+// hard failure above so it never spends time on a degraded run at all.
 func runDockerFreeOnly(m *testing.M, cause error) int {
 	fmt.Fprintf(os.Stderr,
 		"repository: test container unavailable (%v)\nrepository: skipping the DB-backed suite; running only the Docker-free tests %s\n",
@@ -103,13 +108,26 @@ func runDockerFreeOnly(m *testing.M, cause error) int {
 	// testing registers its flags before TestMain runs but parses them inside
 	// m.Run, so the value has to be parsed here for the override to stick.
 	// The override is unconditional: honouring an explicit -run that names a
-	// DB-backed test would nil-dereference testDB rather than skip.
+	// DB-backed test would nil-dereference testDB rather than skip. Announce the
+	// replacement so a developer whose -run was dropped cannot read the surviving
+	// results as an answer about the test they actually asked for.
 	flag.Parse()
+	if f := flag.Lookup("test.run"); f != nil && f.Value.String() != "" {
+		fmt.Fprintf(os.Stderr,
+			"repository: dropping the requested -run %q; it cannot be honoured without a database\n",
+			f.Value.String())
+	}
 	if err := flag.Set("test.run", dockerFreeTests); err != nil {
 		fmt.Fprintf(os.Stderr, "narrow test.run: %v\n", err)
 		return 1
 	}
-	return m.Run()
+	code := m.Run()
+	fmt.Fprintf(os.Stderr,
+		"repository: FAILING this package on purpose: the DB-backed suite never ran. Start the container runtime and re-run for real coverage.\n")
+	if code == 0 {
+		code = 1
+	}
+	return code
 }
 
 // insertAuthUser inserts a fresh row in auth.users so the trigger creates a
