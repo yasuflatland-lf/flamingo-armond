@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/rotisserie/eris"
@@ -59,6 +60,30 @@ func TestDomainSentinels_DoNotCrossMatch(t *testing.T) {
 					"%s must not match %s — a shared message string would make errors.Is attribute the fault to the wrong field",
 					subject.name, other.name)
 			}
+		})
+	}
+}
+
+// TestDomainSentinels_MatchByIdentityNotMessage pins the declaration style itself.
+// The cross-match matrix above only fires once two sentinels share a message, so it
+// stays green if a single sentinel goes back to eris.New with its current unique text.
+// An eris root answers errors.Is for ANY error carrying the same message, so comparing
+// each sentinel against a freshly built twin of its own message discriminates the two
+// declarations directly: errors.New says no, eris.New says yes.
+func TestDomainSentinels_MatchByIdentityNotMessage(t *testing.T) {
+	t.Parallel()
+
+	for _, subject := range domainSentinels {
+		if !subject.identityMatched {
+			continue
+		}
+		t.Run(subject.name, func(t *testing.T) {
+			t.Parallel()
+
+			twin := errors.New(subject.err.Error())
+			require.NotErrorIs(t, subject.err, twin,
+				"%s matches a foreign error carrying the same message, so it is matched by message rather than by identity — declare it with errors.New, not eris.New",
+				subject.name)
 		})
 	}
 }
