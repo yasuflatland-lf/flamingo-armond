@@ -2,7 +2,6 @@ package gqlerr
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
@@ -78,18 +77,4 @@ func Cancelled(ctx context.Context, err error) *gqlerror.Error {
 			"code": string(CodeCancelled),
 		},
 	}
-}
-
-// IsCode reports whether err is a *gqlerror.Error whose extensions.code equals
-// code. An empty code never matches.
-func IsCode(err error, code Code) bool {
-	if code == "" {
-		return false
-	}
-	var gqe *gqlerror.Error
-	if !errors.As(err, &gqe) {
-		return false
-	}
-	got, _ := gqe.Extensions["code"].(string)
-	return got == string(code)
 }

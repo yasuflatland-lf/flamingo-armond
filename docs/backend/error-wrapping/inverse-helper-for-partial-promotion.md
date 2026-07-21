@@ -140,6 +140,7 @@ one-line wrap at each non-routing caller — well inside the 800-line ceiling in
 [`.claude/rules/pr-sizing.md`](../../../.claude/rules/pr-sizing.md). Reference:
 `backend/internal/usecase/admin_role.go` (`mapAdminRoleError`, `lowerValidationInfo`,
 `translateRoleNameErr`) and `backend/internal/usecase/admin_user.go`
-(`mapAdminEditMutationError`, `liftValidationErr`) — both pairs show how
+(`mapAdminEditMutationError`) paired with `backend/internal/usecase/validators.go`
+(`liftValidationErr`) — both pairs show how
 promoted outcome methods can share validation classification with error-channel
 callers.

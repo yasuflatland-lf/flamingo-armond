@@ -34,7 +34,7 @@ type updateLearnDisplayModeUsecase struct {
 }
 
 // NewUpdateLearnDisplayMode is the production constructor. Tests should prefer
-// NewUpdateLearnDisplayModeWithDeps to inject narrow stubs.
+// newUpdateLearnDisplayModeWithDeps to inject narrow stubs.
 func NewUpdateLearnDisplayMode(
 	prefs repository.UserPreferenceRepository,
 	users repository.UserRepository,
@@ -46,8 +46,8 @@ func NewUpdateLearnDisplayMode(
 	return &updateLearnDisplayModeUsecase{prefs: prefs, users: users, logger: logger}
 }
 
-// NewUpdateLearnDisplayModeWithDeps accepts narrow interfaces for tests.
-func NewUpdateLearnDisplayModeWithDeps(
+// newUpdateLearnDisplayModeWithDeps accepts narrow interfaces for tests.
+func newUpdateLearnDisplayModeWithDeps(
 	prefs updateLearnDisplayModePrefsRepo,
 	users updateLearnDisplayModeUsersRepo,
 	logger *slog.Logger,

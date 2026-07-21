@@ -167,7 +167,9 @@ interleaved with 4 prior-day review slots (20%). Review slots prioritise rescue
 cards whose latest rating was Again or whose stability is below
 `LearnedStabilityDays`; other reviews act as filler. Rescue is day-granular up
 to the exclusive JST learn-day end, while filler must be due now, and both
-exclude cards swiped today via the JST start-of-day cutoff. SQL `random()`
+exclude cards swiped today via the JST start-of-day cutoff; a rescue card is
+additionally served early only once a whole day has elapsed since its last
+review, because a sub-24h repeat earns zero FSRS scheduling credit. SQL `random()`
 decides *which* rows enter each window (selection); the injected `*rand.Rand` in
 `OrderingPolicy.Apply` decides their arrangement (deterministic in tests) and
 interleaves at the caller-supplied `domain.NewCardRatio` (`domain.DefaultNewCardRatio`
@@ -195,8 +197,9 @@ When a lifecycle-gated resource (draft/published, soft-deleted, other-tenant) is
 a caller not authorized to know it exists, return the *same* not-found for both "unknown
 id" and "exists but hidden" so the endpoint cannot be used as an existence oracle. Collapse
 at the lowest layer: the repository read is scoped to the visible set (`FindPublishedByID`
-returns `ErrNotFound` for unknown AND draft), the usecase maps it to a not-found data
-outcome, the resolver emits a state-free message. Owner-facing reads of the same resource
+returns `ErrNotFound` for unknown, draft AND published-but-card-less decks alike), the
+usecase maps it to a not-found data outcome, the resolver emits a state-free message.
+Owner-facing reads of the same resource
 may keep the distinction; erase it only across the trust boundary it protects.
 
 [`docs/backend/ddd-patterns/notfound-collapse-non-disclosure.md`](../../docs/backend/ddd-patterns/notfound-collapse-non-disclosure.md)

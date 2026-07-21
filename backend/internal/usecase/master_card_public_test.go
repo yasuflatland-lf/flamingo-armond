@@ -19,7 +19,7 @@ import (
 // (resolveRelayPage / resolveMasterCardOrderBy / resolveMasterCardCursor /
 // assemblePage), exhaustively tested for the admin path in master_card_test.go.
 // These tests pin what is specific to the public method and NOT covered by the
-// admin tests: the authentication check, the published-only visibility gate, the
+// admin tests: the authentication check, the catalog-visibility gate, the
 // public-specific error-wrap prefixes ("usecase: master card: public list: ..."),
 // and the in-method context-cancel pass-throughs.
 // ---------------------------------------------------------------------------

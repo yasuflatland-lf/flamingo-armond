@@ -182,13 +182,16 @@ would clobber the identity B worked to preserve. The delegate honoring the
 contract is the reason the outer guard is load-bearing, not a reason to skip it.
 
 Worked example: `MasterCatalogUsecase.ImportMaster`
-(`backend/internal/usecase/master_catalog.go`) gates a master via
+(`backend/internal/usecase/master_catalog_import.go`) gates a master via the
+shared `verifyPublishedMaster` helper
+(`backend/internal/usecase/master_catalog.go`), which resolves the id through
 `repo.FindPublishedByID`, then delegates the copy to
 `CopyMasterToUserUsecase.CopyMasterToUser`. `CopyMasterToUser` already returns a
-bare `context.Canceled` (it guards `isContextDone` before its own wrap). Both of
-`ImportMaster`'s error branches — the `FindPublishedByID` infra branch and the
-delegated-copy branch — guard `isContextDone` before `eris.Wrap`, so a
-cancellation surfaced by either path reaches the resolver as the bare sentinel.
+bare `context.Canceled` (it guards `isContextDone` before its own wrap). Both
+error branches on that path guard `isContextDone` before `eris.Wrap` — the
+`FindPublishedByID` infra branch inside `verifyPublishedMaster`, and the
+delegated-copy branch inside `ImportMaster` itself — so a cancellation surfaced
+by either path reaches the resolver as the bare sentinel.
 Pinned by `TestImportMaster_FindPublishedByID_ContextCancelled_PassesThrough`
 and `TestImportMaster_CopyMasterToUser_ContextCancelled_PassesThrough`, each
 using the dual assertion (`assertCancelled` + `err != context.Canceled`).

@@ -6,6 +6,7 @@ package repository_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -24,6 +25,7 @@ func TestCardgroupRepository_CreateTx(t *testing.T) {
 	repo := repository.NewCardgroupRepository(testDB.GORM)
 
 	cg := newCardgroup(ownerID, "CreateTx Group")
+	cg.UpdatedAt = time.Unix(1, 0).UTC()
 
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return repo.CreateTx(ctx, tx, cg)
@@ -34,6 +36,9 @@ func TestCardgroupRepository_CreateTx(t *testing.T) {
 	require.Equal(t, cg.ID, got.ID)
 	require.Equal(t, ownerID, string(got.OwnerID), "owner_id is persisted")
 	require.Equal(t, domain.CardgroupName("CreateTx Group"), got.Name, "name is persisted")
+	require.Equal(t, cg.UpdatedAt, got.UpdatedAt,
+		"CreateTx must copy the database-assigned updated_at back into the aggregate")
+	require.NotEqual(t, time.Unix(1, 0).UTC(), cg.UpdatedAt)
 }
 
 // TestCardgroupRepository_CreateTx_DeletedOwner_ReturnsOwnerNotFound is the

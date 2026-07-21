@@ -44,7 +44,7 @@ type cardMockRepo struct {
 func (m *cardMockRepo) FindByID(_ context.Context, _ string) (*domain.Card, error) {
 	return m.findByIDResult, m.findByIDErr
 }
-func (m *cardMockRepo) FindDueCardsForUser(_ context.Context, _ string, _ string, _ time.Time, _ time.Time, _ time.Time, limit int) ([]domain.DueCard, error) {
+func (m *cardMockRepo) FindDueCardsForUser(_ context.Context, _ string, _ string, _ time.Time, _ time.Time, _ time.Time, _ time.Time, limit int) ([]domain.DueCard, error) {
 	m.findDueLimit = limit
 	return m.findDueRows, m.findDueErr
 }
@@ -60,8 +60,8 @@ func (m *cardMockRepo) FindPageByCardgroupForUser(
 	_ repository.CardOrderBy,
 	_ repository.SortOrder,
 	_ *string,
-) ([]*domain.Card, int64, error) {
-	return nil, 0, nil
+) ([]*domain.Card, int64, map[string]time.Time, error) {
+	return nil, 0, nil, nil
 }
 func (m *cardMockRepo) FindByCardgroupAndFront(_ context.Context, _, _ string) (*domain.Card, error) {
 	return nil, nil

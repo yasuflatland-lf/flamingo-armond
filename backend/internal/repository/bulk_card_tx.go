@@ -20,8 +20,9 @@ type UpsertManyTxResult struct {
 }
 
 // UpsertManyTx upserts cards by (cardgroup_id, front). Existing rows have
-// `back`, `updated_at`, and `position` overwritten. The conflict key requires the
-// unique index `uq_cards_cardgroup_front` (migration 20260430080000_initial_schema).
+// `back` and `position` overwritten; the database trigger advances updated_at.
+// The conflict key requires the unique index `uq_cards_cardgroup_front`
+// (migration 20260430080000_initial_schema).
 //
 // Counts are derived per-row from the PostgreSQL system column `xmax`. A
 // freshly inserted row has `xmax = 0` in the same transaction; a row updated
@@ -42,7 +43,6 @@ func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domai
 			Back:      string(c.Back),
 			Position:  c.Position,
 			CreatedAt: c.CreatedAt,
-			UpdatedAt: c.UpdatedAt,
 		}
 	}
 	res, err := upsertManyTx(ctx, tx, rows, "cards", "cardgroup_id")
@@ -85,7 +85,7 @@ func (r *cardRepo) DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB
 
 // upsertCardRow is the domain-agnostic, normalized representation of a card row
 // consumed by upsertManyTx. It mirrors exactly the columns that upsertManyTx
-// writes — (id, <fkColumn>, front, back, created_at, updated_at, position) — so
+// writes — (id, <fkColumn>, front, back, created_at, position) — so
 // any table sharing the (group_id, front) upsert shape (cards, master_cards)
 // can reuse the helper without importing a domain type. GroupID maps to the
 // foreign-key column named by upsertManyTx's fkColumn argument.
@@ -96,13 +96,13 @@ type upsertCardRow struct {
 	Back      string
 	Position  int
 	CreatedAt time.Time
-	UpdatedAt time.Time
 }
 
 // upsertManyTx is the table-parameterized bulk upsert shared by cardRepo and the
 // master_card repository. It builds a single multi-row INSERT into tableName and
-// resolves conflicts on the (fkColumn, front) unique key, overwriting back,
-// updated_at, and position. The per-row insert/update split is derived from the
+// resolves conflicts on the (fkColumn, front) unique key, overwriting back and
+// position. The updated_at trigger fires for either branch. The per-row
+// insert/update split is derived from the
 // PostgreSQL `xmax = 0` system-column trick in the RETURNING clause, avoiding a
 // second query.
 //
@@ -131,10 +131,10 @@ func upsertManyTx(ctx context.Context, tx *gorm.DB, rows []upsertCardRow, tableN
 		}
 	}
 
-	// Build a single multi-row INSERT. Each row contributes 7 placeholders
+	// Build a single multi-row INSERT. Each row contributes 6 placeholders
 	// matching the column list below.
-	columns := "(id, " + fkColumn + ", front, back, created_at, updated_at, position)"
-	const rowPH = "(?, ?, ?, ?, ?, ?, ?)"
+	columns := "(id, " + fkColumn + ", front, back, created_at, position)"
+	const rowPH = "(?, ?, ?, ?, ?, ?)"
 
 	var sb strings.Builder
 	sb.WriteString("INSERT INTO ")
@@ -142,7 +142,7 @@ func upsertManyTx(ctx context.Context, tx *gorm.DB, rows []upsertCardRow, tableN
 	sb.WriteString(" ")
 	sb.WriteString(columns)
 	sb.WriteString(" VALUES ")
-	args := make([]any, 0, len(rows)*7)
+	args := make([]any, 0, len(rows)*6)
 	for i, row := range rows {
 		if i > 0 {
 			sb.WriteString(", ")
@@ -154,13 +154,12 @@ func upsertManyTx(ctx context.Context, tx *gorm.DB, rows []upsertCardRow, tableN
 			row.Front,
 			row.Back,
 			row.CreatedAt,
-			row.UpdatedAt,
 			row.Position,
 		)
 	}
 	sb.WriteString("\n        ON CONFLICT (")
 	sb.WriteString(fkColumn)
-	sb.WriteString(", front)\n        DO UPDATE SET back = EXCLUDED.back, updated_at = now(), position = EXCLUDED.position\n        RETURNING (xmax = 0) AS inserted")
+	sb.WriteString(", front)\n        DO UPDATE SET back = EXCLUDED.back, position = EXCLUDED.position\n        RETURNING (xmax = 0) AS inserted")
 
 	type returnedRow struct {
 		Inserted bool `gorm:"column:inserted"`
