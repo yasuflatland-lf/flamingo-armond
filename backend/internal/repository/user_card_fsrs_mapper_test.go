@@ -21,7 +21,11 @@ import (
 
 // validUserCardFSRSRow returns a row every guard in userCardFSRSToDomain
 // accepts. Each reject case mutates exactly one column so the failure is
-// attributable to that column's guard.
+// attributable to that column's guard. Every numeric and time column carries a
+// distinct value: the mapper copies thirteen same-typed fields across in one
+// struct literal, and equal fixture values would let a transposed pair
+// (elapsed/scheduled days, created/updated timestamps) satisfy the accept-path
+// assertion.
 func validUserCardFSRSRow() gormUserCardFSRS {
 	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
 	good := int(domain.RatingGood)
@@ -29,16 +33,16 @@ func validUserCardFSRSRow() gormUserCardFSRS {
 		UserID:        "00000000-0000-0000-0000-000000000001",
 		CardID:        "00000000-0000-0000-0000-000000000002",
 		State:         int(domain.FSRSPhaseReview),
-		Due:           now.Add(24 * time.Hour),
+		Due:           now.Add(120 * time.Hour),
 		Stability:     domain.NewCardStability,
 		Difficulty:    domain.NewCardDifficulty,
 		Reps:          3,
 		Lapses:        1,
-		LastReview:    now,
+		LastReview:    now.Add(-48 * time.Hour),
 		LastRating:    &good,
-		ElapsedDays:   1,
-		ScheduledDays: 1,
-		CreatedAt:     now,
+		ElapsedDays:   2,
+		ScheduledDays: 5,
+		CreatedAt:     now.Add(-72 * time.Hour),
 		UpdatedAt:     now,
 	}
 }
@@ -107,7 +111,10 @@ func TestUserCardFSRSToDomain_RejectsCorruptColumns(t *testing.T) {
 
 // TestUserCardFSRSToDomain_AcceptsValidRow guards the accept side. A narrowed
 // predicate would hard-fail a whole read for a legitimately persisted row, so
-// the reject cases above are only half the contract.
+// the reject cases above are only half the contract. The whole struct is
+// compared rather than a field subset: an unasserted field is one a transposed
+// or dropped assignment could corrupt with only the Docker-gated integration
+// tests to catch it.
 func TestUserCardFSRSToDomain_AcceptsValidRow(t *testing.T) {
 	t.Parallel()
 
@@ -116,12 +123,24 @@ func TestUserCardFSRSToDomain_AcceptsValidRow(t *testing.T) {
 	got, err := userCardFSRSToDomain(row)
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	require.Equal(t, domain.UserID(row.UserID), got.UserID)
-	require.Equal(t, row.CardID, got.CardID)
-	require.Equal(t, domain.FSRSPhaseReview, got.State.Phase)
-	require.Equal(t, row.Stability, got.State.Stability)
-	require.Equal(t, row.Difficulty, got.State.Difficulty)
-	require.Equal(t, domain.RatingGood, got.State.LastRating)
+	require.Equal(t, &domain.UserCardFSRS{
+		UserID: domain.UserID(row.UserID),
+		CardID: row.CardID,
+		State: domain.FSRSState{
+			Due:           row.Due,
+			Stability:     row.Stability,
+			Difficulty:    row.Difficulty,
+			ElapsedDays:   row.ElapsedDays,
+			ScheduledDays: row.ScheduledDays,
+			Reps:          row.Reps,
+			Lapses:        row.Lapses,
+			Phase:         domain.FSRSPhaseReview,
+			LastReview:    row.LastReview,
+			LastRating:    domain.RatingGood,
+		},
+		CreatedAt: row.CreatedAt,
+		UpdatedAt: row.UpdatedAt,
+	}, got)
 }
 
 // TestUserCardFSRSToDomain_NullLastRatingMapsToZero pins the nullable column's
