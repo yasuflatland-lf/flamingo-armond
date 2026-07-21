@@ -7,6 +7,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestFSRSPhaseIsValid pins the recognised-phase predicate. Every consumer of a
+// persisted phase gates on it: the repository read guard rejects the row, and
+// FSRSScheduler.Apply panics rather than feeding an unrecognised value to a
+// library dispatch that has no default arm. Widening the range would let a
+// corrupt column reach both.
+func TestFSRSPhaseIsValid(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input FSRSPhase
+		want  bool
+	}{
+		{"new", FSRSPhaseNew, true},
+		{"learning", FSRSPhaseLearning, true},
+		{"review", FSRSPhaseReview, true},
+		{"relearning", FSRSPhaseRelearning, true},
+		{"below the lowest constant", -1, false},
+		{"one past the highest constant", 4, false},
+		{"far out of range", 99, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, tc.input.IsValid())
+		})
+	}
+}
+
 // TestIsValidStability pins both sides of the stability predicate. The accept
 // side matters as much as the reject side: the repository read guard hard-fails
 // a whole query on a false negative, so a narrowing of the predicate must break
