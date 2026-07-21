@@ -67,7 +67,7 @@ func TestLearnDisplayModeDownUpRoundtrip(t *testing.T) {
 	// below re-applies add_learn_display_mode, and the t.Cleanup restores the
 	// rest. Bump this count when adding migrations after
 	// add_learn_display_mode_to_user_preferences.
-	if err := m.Steps(-11); err != nil {
+	if err := m.Steps(-12); err != nil {
 		t.Fatalf("migrate down to before add_learn_display_mode_to_user_preferences: %v", err)
 	}
 

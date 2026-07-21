@@ -19,6 +19,7 @@ import type { LearnNextDueCardsQuery } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { learnDayKey } from "@/lib/learn/learn-day";
+import { mergePrefetchedCards } from "./learn-queue";
 import { PracticeClient } from "./practice-client";
 
 type LearnCard = LearnNextDueCardsQuery["learnNextDueCards"][number];
@@ -160,37 +161,21 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
   }, []);
 
   const prefetchInFlightRef = useRef(false);
-  // Ids of every card swiped in this session. The optimistic queue removal in
-  // `onSwipe` shrinks the queue and can re-fire the prefetch below WHILE the
-  // swipe mutation has not yet committed its FSRS write; a network-only read
-  // that beats that write still sees the card as "due" and returns it in the
-  // batch. The merge filters `incoming` against this set so a swiped card is
-  // never re-appended, which would let the learner rate it twice and record a
-  // duplicate same-day FSRS review.
-  //
-  // Ids are never pruned card-by-card. Both server-side REVIEW windows require
-  // `last_review < StartOfLearnDay(now)` (see the contract on `StartOfLearnDay`
-  // in `backend/internal/domain/learn_day.go`), and the new-card window carries
-  // no `last_review` predicate at all — it matches only cards with no FSRS row,
-  // which the swipe itself creates. So once a swipe commits, no window can
-  // return that card again WITHIN THE SAME JST LEARN DAY: any prefetched batch
-  // carrying one of these ids is a stale read that predates the commit.
-  //
-  // That invariant expires at the learn-day rollover. `StartOfLearnDay` advances
-  // at JST midnight, so a session held open past it sees the server legitimately
-  // re-serve cards swiped on the previous day. The set is therefore keyed by the
-  // JST learn day (`learnDayRef`) as well as by the cardgroup, and is discarded
-  // whenever either key changes.
+  // Ids of every card swiped in this session, scoped to the cardgroup and to the
+  // JST learn day tracked by `learnDayRef`. `mergePrefetchedCards` filters each
+  // prefetched batch against this set; the reasoning for why an already-swiped
+  // card can come back from the server at all, and why the ids stay in the set
+  // for a whole learn day rather than being pruned one by one, lives with the
+  // policy in `./learn-queue`.
   //
   // A transport failure keeps its id here too, which is harmless: the catch
-  // handler puts the card back at the queue head, so `seen` covers it for as
-  // long as it is queued and the learner can re-swipe it.
+  // handler puts the card back at the queue head, so the queue itself covers it
+  // for as long as it is queued and the learner can re-swipe it.
   const swipedThisSessionRef = useRef<Set<string>>(new Set());
-  // Set once a prefetch resolves and the dedup merge adds zero new cards: the
-  // due pool is exhausted, so every subsequent tail swipe would otherwise fire a
-  // redundant network-only query that returns nothing new. A stale batch whose
-  // ids were all swiped this session lands here too, and that verdict is correct
-  // for the same-day queue. The effect short-circuits while this is set.
+  // The exhaustion verdict returned by the last resolved merge: the due pool
+  // added nothing, so every subsequent tail swipe would otherwise fire a
+  // redundant network-only query that returns nothing new. The effect
+  // short-circuits while this is set.
   //
   // Cleared after a swipe mutation succeeds, on cardgroup change, and at the JST
   // learn-day rollover (which refills the due pool wholesale). The reset is
@@ -248,24 +233,20 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
       .then((result) => {
         if (!isMountedRef.current) return;
         const incoming = result.data?.learnNextDueCards ?? [];
-        if (incoming.length === 0) {
-          exhaustedRef.current = true;
-          return;
-        }
+        // The merge runs inside the updater so it always sees the freshest
+        // queue: `onSwipe`'s optimistic delete can land between this request
+        // being issued and its response arriving. Writing `exhaustedRef` here
+        // is idempotent, so Strict Mode's double-invoke of the updater is
+        // harmless. All queue policy lives in `mergePrefetchedCards`.
         setQueue((current) => {
-          const seen = new Set(current.map((c) => c.id));
-          const swiped = swipedThisSessionRef.current;
-          // Drop cards already queued (`seen`) and cards already swiped this
-          // session (`swiped`) — the latter can only reach us from a read that
-          // predates the swipe's FSRS commit.
-          const additions = incoming.filter((card) => !seen.has(card.id) && !swiped.has(card.id));
-          if (additions.length === 0) {
-            // Nothing new survived the merge — mark the pool exhausted so tail
-            // swipes stop re-firing this query until a swipe succeeds.
-            exhaustedRef.current = true;
-            return current;
-          }
-          return [...current, ...additions];
+          const merged = mergePrefetchedCards(
+            current,
+            incoming,
+            { dayKey: learnDayRef.current, ids: swipedThisSessionRef.current },
+            learnDayRef.current,
+          );
+          exhaustedRef.current = merged.exhausted;
+          return merged.queue;
         });
       })
       .catch((err) => {

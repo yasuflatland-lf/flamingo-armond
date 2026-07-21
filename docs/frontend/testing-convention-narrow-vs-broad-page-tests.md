@@ -64,7 +64,7 @@ Pre-15 patterns that pass `{ params: { id } }` directly will not type-check or w
 
 `createSupabaseServerClient` is server-only. The repo has no MSW; the `server-only` import is stubbed at the Vitest config level (`vitest.config.ts`) so any module that pulls it in transitively does not crash the test runner. Page-level tests no longer stub `@/lib/supabase/server` for the auth gate — every protected page (including `app/admin/*` and `app/login/page.tsx`) reads the middleware-forwarded `x-auth-status` header rather than calling `getUser()` at render time (see below). A direct `vi.mock("@/lib/supabase/server", ...)` factory survives only in route-handler and library tests that genuinely invoke the server client — e.g. `frontend/src/app/auth/callback/route.test.ts` and `frontend/src/lib/apollo/server.test.ts`.
 
-Protected pages read the middleware-forwarded `x-auth-status` header via `readAuthContext(await headers())` and do not call `getUser()` at render time. Their tests mock `next/headers`:
+Protected pages read the middleware-forwarded `x-auth-status` header via `requireAuthenticated(target)` (which wraps `readAuthContext(await headers())`) and do not call `getUser()` at render time. Their tests still mock `next/headers` — not the auth-status module, so the helper's own redirect logic stays under test:
 
 ```ts
 vi.mock("next/headers", () => ({
@@ -78,7 +78,7 @@ Non-authenticated cases override the mock per-test:
 vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "anonymous" }));
 ```
 
-Do not reach for `@/lib/supabase/server` stubs when testing a page that uses `readAuthContext`; the `getUser()` path is not exercised and the factory mock is unused overhead.
+Do not reach for `@/lib/supabase/server` stubs when testing a page that uses `requireAuthenticated`; the `getUser()` path is not exercised and the factory mock is unused overhead.
 
 ### Auth-gate migration touches both the narrow and broad test
 

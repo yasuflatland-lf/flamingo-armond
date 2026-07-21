@@ -1,11 +1,7 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { graphql } from "@/generated";
 import type { AdminRolesPageQuery as AdminRolesPageQueryType } from "@/generated/graphql";
-import {
-  isForbiddenGraphQLError,
-  isUnauthenticatedGraphQLError,
-} from "@/lib/apollo/graphql-errors";
+import { redirectIfAuthError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { AdminRolesClient, type RoleItem } from "./admin-roles-client";
 
@@ -40,7 +36,7 @@ export default async function AdminRolesPage() {
     // Admin pages redirect to "/" (not "/login"), matching admin/layout.tsx
     // and admin/users/page.tsx. UNAUTHENTICATED / FORBIDDEN fold into the same
     // redirect path; everything else is logged (PII-redacted) and rethrown.
-    if (isUnauthenticatedGraphQLError(err) || isForbiddenGraphQLError(err)) redirect("/");
+    redirectIfAuthError(err, "/", { forbidden: true });
     console.error("[admin/roles] gqlFetch failed:", {
       name: err instanceof Error ? err.name : "unknown",
     });

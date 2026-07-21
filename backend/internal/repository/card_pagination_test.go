@@ -23,7 +23,6 @@ func insertCards(t *testing.T, ctx context.Context, repo repository.CardReposito
 		c := newCard(cgID, fmt.Sprintf("front-%d", i), "back")
 		// Stagger timestamps by 1 hour so ordering is unambiguous.
 		c.CreatedAt = now.Add(time.Duration(i) * time.Hour)
-		c.UpdatedAt = c.CreatedAt
 		require.NoError(t, repo.Create(ctx, c))
 		cards[i] = c
 	}
@@ -169,7 +168,7 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue(t *testing.T) {
 		return nil
 	}))
 
-	got, total, err := repo.FindPageByCardgroupForUser(
+	got, total, keys, err := repo.FindPageByCardgroupForUser(
 		ctx, ownerID, string(cg.ID), nil, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
@@ -178,12 +177,24 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue(t *testing.T) {
 	require.Equal(t, cards[0].ID, got[0].ID)
 	require.Equal(t, cards[1].ID, got[1].ID)
 
+	// The DUE ordering key is projected out of the page query itself
+	// (COALESCE(ucs.due, cards.created_at) AS order_key) so the usecase can mint a
+	// v2 cursor from the same snapshot that ordered the page. This is the only
+	// test that exercises that scan against a real database — the usecase-level
+	// fakes derive their keys in Go — so a broken alias or a mistyped column would
+	// surface nowhere else.
+	require.Len(t, keys, 2, "the page query must report an ordering key per returned row")
+	require.True(t, keys[cards[0].ID].Equal(dueValues[0]),
+		"order_key for %s = %v, want the viewer's due %v", cards[0].ID, keys[cards[0].ID], dueValues[0])
+	require.True(t, keys[cards[1].ID].Equal(dueValues[1]),
+		"order_key for %s = %v, want the viewer's due %v", cards[1].ID, keys[cards[1].ID], dueValues[1])
+
 	// Advance via cursor populated with the second card's Due value.
 	cursor := &repository.CardCursor{
 		ID:  cards[1].ID,
 		Due: &dueValues[1],
 	}
-	got, _, err = repo.FindPageByCardgroupForUser(
+	got, _, _, err = repo.FindPageByCardgroupForUser(
 		ctx, ownerID, string(cg.ID), cursor, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
@@ -250,6 +261,51 @@ func TestCardRepository_FindPageByCardgroup_TotalCountIsScopedToCardgroup(t *tes
 // TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue
 // verifies the secondary `id` key keeps order deterministic when multiple
 // cards share the same Due value — pages must not skip or duplicate.
+// TestCardRepository_FindPageByCardgroup_OrderByDue_StatelessCardKeyFallsBackToCreatedAt
+// covers the NULL branch of the projected ordering key. A card the viewer has
+// never reviewed has no user_card_fsrs row, so the LEFT JOIN yields NULL and
+// COALESCE falls back to cards.created_at — for both the ORDER BY and the
+// order_key the page reports. A cursor minted from that key must therefore
+// compare against the same value the row sorted by.
+//
+// This branch only exists in SQL: the usecase-level fakes model the fallback in
+// Go, so a projection that dropped the COALESCE (or aliased the raw ucs.due)
+// would still pass every unit test and would emit a zero-time cursor here.
+func TestCardRepository_FindPageByCardgroup_OrderByDue_StatelessCardKeyFallsBackToCreatedAt(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	// No FSRS rows are written at all: every card is stateless for this viewer.
+	insertCards(t, ctx, repo, cg.ID, 2)
+
+	got, _, keys, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg.ID), nil, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
+	)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Len(t, keys, 2)
+	for _, card := range got {
+		require.True(t, keys[card.ID].Equal(card.CreatedAt),
+			"stateless card %s: order_key = %v, want its created_at %v (the COALESCE fallback)",
+			card.ID, keys[card.ID], card.CreatedAt)
+	}
+
+	// Feed the reported key back as a cursor: it must land exactly after the row
+	// it was taken from, proving the emitted key and the SQL comparison agree.
+	boundary := keys[got[0].ID]
+	next, _, _, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg.ID),
+		&repository.CardCursor{ID: got[0].ID, Due: &boundary},
+		nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
+	)
+	require.NoError(t, err)
+	require.Len(t, next, 1)
+	require.Equal(t, got[1].ID, next[0].ID)
+}
+
 func TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -263,7 +319,6 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue(t *tes
 	for i := 0; i < 3; i++ {
 		c := newCard(cg.ID, fmt.Sprintf("front-%d", i), "back")
 		c.CreatedAt = now
-		c.UpdatedAt = now
 		require.NoError(t, repo.Create(ctx, c))
 		cards[i] = c
 	}
@@ -288,7 +343,7 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue(t *tes
 		return nil
 	}))
 
-	page1, total, err := repo.FindPageByCardgroupForUser(
+	page1, total, _, err := repo.FindPageByCardgroupForUser(
 		ctx, ownerID, string(cg.ID), nil, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
@@ -301,7 +356,7 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue(t *tes
 		ID:  page1[1].ID,
 		Due: &dueT,
 	}
-	page2, _, err := repo.FindPageByCardgroupForUser(
+	page2, _, _, err := repo.FindPageByCardgroupForUser(
 		ctx, ownerID, string(cg.ID), cursor, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
@@ -395,7 +450,6 @@ func TestCardRepo_FindPageByCardgroup_Search_WithAfter(t *testing.T) {
 	for i, front := range matchingFronts {
 		c := newCard(cg.ID, front, "back")
 		c.CreatedAt = now.Add(time.Duration(i) * time.Hour)
-		c.UpdatedAt = c.CreatedAt
 		require.NoError(t, repo.Create(ctx, c))
 		matching[i] = c
 	}
@@ -406,7 +460,6 @@ func TestCardRepo_FindPageByCardgroup_Search_WithAfter(t *testing.T) {
 	for i, front := range []string{"front-cherry", "front-banana"} {
 		c := newCard(cg.ID, front, "back")
 		c.CreatedAt = now.Add(time.Duration(3+i) * time.Hour)
-		c.UpdatedAt = c.CreatedAt
 		require.NoError(t, repo.Create(ctx, c))
 		nonMatching[i] = c
 	}

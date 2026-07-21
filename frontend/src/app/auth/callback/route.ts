@@ -1,13 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+// The post-exchange destination is always `/` — HomePage owns the routing
+// decision (see docs/frontend/routing-topology.md). If a return-to is ever
+// wired here, route the caller-supplied value through `sanitizeReturnTo`
+// (`@/lib/sanitize-return-to`) rather than re-deriving an inline guard.
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
-  const rawNext = url.searchParams.get("next") ?? "/";
-  const isSafeNext =
-    rawNext.startsWith("/") && !rawNext.startsWith("//") && !rawNext.includes("\\");
-  const safeNext = isSafeNext ? rawNext : "/";
 
   if (!code) {
     const loginUrl = new URL("/login", url.origin);
@@ -24,5 +24,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.redirect(new URL(safeNext, url.origin));
+  return NextResponse.redirect(new URL("/", url.origin));
 }

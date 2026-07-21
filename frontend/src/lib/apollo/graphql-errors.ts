@@ -3,14 +3,17 @@
  * `Error` that gqlFetch (server.ts) throws and read extensions.code
  * (isUnauthenticatedGraphQLError / isForbiddenGraphQLError /
  * isBadUserInputGraphQLError). liftGraphQLCodes additionally lifts codes from an
- * Apollo-runtime CombinedGraphQLErrors for warn payloads.
+ * Apollo-runtime CombinedGraphQLErrors for warn payloads. redirectIfAuthError
+ * packages the classify-and-redirect half of an RSC catch arm.
  *
  * @see ./errors.ts for the parallel form-facing Apollo Client runtime
  * (CombinedGraphQLErrors) helpers (getBackendFieldErrors / getBackendErrorBanner
  * / classifyQueryError). The two modules are a deliberate, CI-tested split — do
  * not merge them.
  */
+
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
+import { redirect } from "next/navigation";
 
 /**
  * Lift GraphQL extension codes from an arbitrary Apollo / network error for
@@ -61,4 +64,33 @@ export function isForbiddenGraphQLError(err: unknown): boolean {
 
 export function isBadUserInputGraphQLError(err: unknown): boolean {
   return parseGqlErrors(err)?.some((e) => e?.extensions?.code === "BAD_USER_INPUT") ?? false;
+}
+
+/**
+ * The auth half of an RSC `catch` arm: redirects to `target` when the rejected
+ * gqlFetch carries UNAUTHENTICATED, and — when `options.forbidden` is set — also
+ * when it carries FORBIDDEN. The admin surfaces are the only callers that fold
+ * FORBIDDEN in, because a signed-in non-admin has to land in-app rather than at
+ * sign-in; see
+ * docs/frontend/rsc-error-handling/unauthenticated-redirect-target-must-be-login.md
+ * for why the ordinary target is `/login` and why the admin surfaces diverge.
+ *
+ * The helper deliberately owns ONLY the classify-and-redirect decision. Logging,
+ * re-throwing and any degrade-to-a-default fallback stay at the call site,
+ * because the arms are not uniform: most log the redacted error name and
+ * re-throw, while the secondary admin-only fetch in `app/profile/page.tsx`
+ * degrades the slider to its default instead of re-throwing. A wrapper that also
+ * owned the logging and the re-throw could not express that without a flag.
+ *
+ * `redirect()` throws a Next.js control-flow error, so nothing after a matched
+ * classification runs; the `void` return keeps the call site readable as a plain
+ * guard statement rather than an assignment.
+ */
+export function redirectIfAuthError(
+  err: unknown,
+  target: string,
+  options?: { forbidden?: boolean },
+): void {
+  if (isUnauthenticatedGraphQLError(err)) redirect(target);
+  if (options?.forbidden === true && isForbiddenGraphQLError(err)) redirect(target);
 }

@@ -3,6 +3,7 @@
 import type { OperationVariables, TypedDocumentNode } from "@apollo/client";
 import { useCallback, useMemo } from "react";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { makeMergeConnection } from "@/lib/pagination/make-merge-connection";
 import {
   type UseConnectionPaginationResult,
   useConnectionPagination,
@@ -148,19 +149,11 @@ export function useEntityCardsConnection<
   );
 
   // Concatenate the next page's edges onto the cached connection under the
-  // config's connection field.
-  const mergeConnection = useCallback(
-    (prev: TData, more: TData): TData => {
-      const prevConn = prev[connectionField] as ConnectionShape<TEdge, TPageInfo>;
-      const moreConn = more[connectionField] as ConnectionShape<TEdge, TPageInfo>;
-      return {
-        ...more,
-        [connectionField]: {
-          ...moreConn,
-          edges: [...prevConn.edges, ...moreConn.edges],
-        },
-      } as TData;
-    },
+  // config's connection field. Memoized on `connectionField` so the reducer
+  // identity stays stable across renders — `useConnectionPagination` feeds it
+  // into a `useCallback` dependency array.
+  const mergeConnection = useMemo(
+    () => makeMergeConnection<TData>(connectionField),
     [connectionField],
   );
 

@@ -25,7 +25,7 @@ type gormUserCardFSRS struct {
 	ElapsedDays   int       `gorm:"column:elapsed_days"`
 	ScheduledDays int       `gorm:"column:scheduled_days"`
 	CreatedAt     time.Time `gorm:"column:created_at"`
-	UpdatedAt     time.Time `gorm:"column:updated_at"`
+	UpdatedAt     time.Time `gorm:"column:updated_at;->"`
 }
 
 func (gormUserCardFSRS) TableName() string { return "user_card_fsrs" }
@@ -52,6 +52,7 @@ func NewUserCardFSRSRepository(db *gorm.DB) UserCardFSRSRepository {
 }
 
 func (r *userCardFSRSRepo) UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.UserCardFSRS) error {
+	row := userCardFSRSToRow(u)
 	if err := tx.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "user_id"}, {Name: "card_id"}},
 		DoUpdates: clause.Assignments(map[string]any{
@@ -65,17 +66,25 @@ func (r *userCardFSRSRepo) UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.
 			"last_rating":    userCardFSRSLastRating(u.State),
 			"elapsed_days":   u.State.ElapsedDays,
 			"scheduled_days": u.State.ScheduledDays,
-			"updated_at":     gorm.Expr("now()"),
 		}),
-	}).Create(userCardFSRSToRow(u)).Error; err != nil {
+	}, clause.Returning{Columns: []clause.Column{{Name: "updated_at"}}}).Create(row).Error; err != nil {
 		return eris.Wrap(err, "repository: user card fsrs: upsert")
 	}
+	u.UpdatedAt = row.UpdatedAt
 	return nil
 }
 
 // ListFSRSStatesByUser returns one row per studied card for userID, joined to
 // cards for the owning cardgroup. WHERE user_card_fsrs.user_id = ? is backed by
 // the (user_id, card_id) PK.
+//
+// Phase and stability are re-checked per row, mirroring the userCardFSRSToDomain
+// guards used by FindByUserAndCardIDs. Stability is the load-bearing one on this
+// path: domain.ClassifyMastery is fed exclusively from this projection, and a
+// NaN stability falls through both of its comparisons and is reported as the
+// Learned mastery tier, besides breaking JSON marshalling of the GraphQL Float
+// StrugglingCard.stability feeds. FSRSStat carries no difficulty column, so
+// there is nothing to check for it here.
 func (r *userCardFSRSRepo) ListFSRSStatesByUser(ctx context.Context, userID string) ([]domain.FSRSStat, error) {
 	var rows []domain.FSRSStat
 	err := r.db.WithContext(ctx).
@@ -90,6 +99,9 @@ func (r *userCardFSRSRepo) ListFSRSStatesByUser(ctx context.Context, userID stri
 	for i := range rows {
 		if !rows[i].Phase.IsValid() {
 			return nil, eris.Errorf("repository: user card fsrs: invalid FSRSPhase value %d for card %s", int(rows[i].Phase), rows[i].CardID)
+		}
+		if !domain.IsValidStability(rows[i].Stability) {
+			return nil, eris.Errorf("repository: user card fsrs: invalid stability value %v for card %s", rows[i].Stability, rows[i].CardID)
 		}
 	}
 	return rows, nil
@@ -198,10 +210,25 @@ func userCardFSRSLastRating(state domain.FSRSState) *int {
 	return &rating
 }
 
+// userCardFSRSToDomain reconstitutes a persisted row into the domain aggregate.
+// Every column that the domain constrains is re-checked here rather than trusted:
+// the table carries no CHECK constraints, so a row edited outside the application
+// is the one way an out-of-range value can reach the domain. Rejecting is
+// deliberate — a corrupted stability or difficulty would otherwise reach the
+// UserCardState GraphQL Floats it feeds and break JSON marshalling of the whole
+// response, which is harder to diagnose than a failed read. The sibling
+// ListFSRSStatesByUser carries the matching stability guard for the /stats
+// projection, which is the path domain.ClassifyMastery consumes.
 func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
 	state := domain.FSRSPhase(row.State)
 	if !state.IsValid() {
 		return nil, eris.Errorf("repository: invalid FSRSPhase value %d for card %s", row.State, row.CardID)
+	}
+	if !domain.IsValidStability(row.Stability) {
+		return nil, eris.Errorf("repository: invalid stability value %v for card %s", row.Stability, row.CardID)
+	}
+	if !domain.IsValidDifficulty(row.Difficulty) {
+		return nil, eris.Errorf("repository: invalid difficulty value %v for card %s", row.Difficulty, row.CardID)
 	}
 	lastRating := domain.Rating(0)
 	if row.LastRating != nil {

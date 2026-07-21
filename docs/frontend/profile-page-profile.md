@@ -6,7 +6,7 @@
 
 `frontend/src/app/profile/page.tsx` is a React Server Component. It:
 
-1. Reads the middleware-forwarded `x-auth-status` header via `readAuthContext(await headers())` and redirects to `/login` when the status is not `authenticated`.
+1. Calls `await requireAuthenticated("/login")` (`@/lib/supabase/auth-status`), which reads the middleware-forwarded `x-auth-status` header and redirects to `/login` when the status is not `authenticated`. The returned `AuthContext` is bound because the page also reads `auth.email` and `auth.isAdmin`.
 2. Calls `gqlFetch(MeQuery, { revalidate: 0 })` — the `Me` query selects `id`, `displayName`, `bio`, and `avatarUrl`; `revalidate: 0` opts the response out of the Next cache to avoid serving stale PII.
 3. Renders the client wrapper `ProfilePageClient`, passing the user's `email` and an `initial` object (`{ displayName, bio }` derived from `data.me`) as props.
 
@@ -22,36 +22,36 @@
 
 ### RSC UNAUTHENTICATED redirect pattern
 
-`gqlFetch` throws when the backend returns GraphQL errors. RSC pages wrap the call in `try/catch` and use `isUnauthenticatedGraphQLError(err)` from `@/lib/apollo/graphql-errors` to branch on the result:
+`gqlFetch` throws when the backend returns GraphQL errors. RSC pages wrap the call in `try/catch` and call `redirectIfAuthError(err, target)` from `@/lib/apollo/graphql-errors` — never a hand-rolled classify-and-redirect arm:
 
 ```ts
-import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
+import { redirectIfAuthError } from "@/lib/apollo/graphql-errors";
 
 try {
   data = await gqlFetch(MyQuery, { variables, revalidate: 0 });
 } catch (err) {
-  if (isUnauthenticatedGraphQLError(err)) redirect("/login");
+  redirectIfAuthError(err, "/login");
   throw err;
 }
 ```
 
-The helper structurally parses `extensions.code` in the GraphQL error payload and returns `true` only for `UNAUTHENTICATED`; all other errors are rethrown to the nearest error boundary. Two redirect targets are in use: `/login` for session-expired or no-session cases (checked before `gqlFetch` via `readAuthContext(await headers())`), and `/cardgroups` for cross-user-access on inner pages. See [Backend error-code contract](#backend-error-code-contract) for why these two cases both surface as `UNAUTHENTICATED`.
+The helper structurally parses `extensions.code` in the GraphQL error payload and redirects only for `UNAUTHENTICATED` (and, with `{ forbidden: true }`, for `FORBIDDEN`); all other errors fall through to the call site's own logging and rethrow. The session-expired / no-session case is caught earlier by the `requireAuthenticated("/login")` gate. See [Backend error-code contract](#backend-error-code-contract) for why both a missing session and a cross-user access surface as `UNAUTHENTICATED`.
 
 ### Unified admin layout: server-side gate + sidebar
 
 `frontend/src/app/admin/layout.tsx` is the single source of truth for admin access. The RSC layout runs three checks in order before rendering any child route, so a non-admin never sees a flash of admin content:
 
-1. `createSupabaseServerClient().auth.getUser()` — destructure both `data.user` and `error`. A non-null `error` is `throw`n; a null `user` calls `redirect("/")`.
-2. `gqlFetch(AdminLayoutMeQuery, { revalidate: 0 })` inside `try/catch` — the catch matches `UNAUTHENTICATED` **and** `FORBIDDEN` substrings on the error message and folds both into `redirect("/")`. Anything else is rethrown to the nearest error boundary.
+1. `await requireAuthenticated("/")` — the middleware-forwarded `x-auth-status` gate, redirecting to `/` rather than `/login`.
+2. `gqlFetch(AdminLayoutMeQuery, { revalidate: 0 })` inside `try/catch` — the catch calls `redirectIfAuthError(err, "/", { forbidden: true })`, which structurally folds `UNAUTHENTICATED` **and** `FORBIDDEN` into `redirect("/")`. Anything else is logged and rethrown to the nearest error boundary.
 3. `meData.me?.roles.some((r) => r.name === "admin")` — false ⇒ `redirect("/")`.
 
 Both unauthenticated and non-admin paths redirect to `/` (not `/login`). Sending a logged-in non-admin to `/login` is awkward UX; the home page already routes anonymous visitors through a sign-in CTA.
 
 `redirect()` throws `NEXT_REDIRECT`. Calling it inside a `try/catch` block is fine — Next's error boundary identifies the special throw and acts on it after the catch runs, so `redirect()` may live inside the `catch` arm of step 2 (and does, in the current implementation).
 
-Per-page `getUser()` checks under admin child pages such as `admin/users/page.tsx` are intentionally retained as **defence in depth**. The layout gate is the primary; the per-page check is the belt-and-braces guard against a future refactor that accidentally renders an admin page outside the layout.
+Per-page `requireAuthenticated("/")` checks under admin child pages such as `admin/users/page.tsx` are intentionally retained as **defence in depth**. The layout gate is the primary; the per-page check is the belt-and-braces guard against a future refactor that accidentally renders an admin page outside the layout.
 
-The string-match approach (`msg.includes("UNAUTHENTICATED")`) in the admin layout folds `UNAUTHENTICATED` and `FORBIDDEN` into the same `redirect("/")` branch — a deliberate simplification for the gate layer. Replacing it with a typed error envelope is a separate concern; do not introduce a one-off classifier inside the admin layout.
+Folding `UNAUTHENTICATED` and `FORBIDDEN` into the same `redirect("/")` branch is a deliberate simplification for the gate layer, expressed by the `{ forbidden: true }` option on `redirectIfAuthError`. Do not introduce a one-off classifier — and never a message substring match — inside the admin layout; see [`.claude/rules/frontend-rsc-error-handling.md`](../../.claude/rules/frontend-rsc-error-handling.md).
 
 There is no `app/admin/page.tsx` — direct hits on `/admin` (no sub-route) return Next's 404. This is a deliberate accepted tradeoff: every internal entry point links to a specific `/admin/<sub>` route (e.g. the rail's admin items link directly to `/admin/users` and `/admin/roles`), so a redirect-shim page would have no callers. The two preconditions for keeping `/admin` as a 404: (a) every internal caller links to a specific sub-route (verify with `grep -rn "\"/admin\"\|'/admin'" frontend/src/`); (b) no operator runbook instructs a human to type `/admin` as the entry. If either condition is added later, restore `app/admin/page.tsx` as a server-side `redirect("/admin/users")` shim — the layout gate above runs before the shim, so security posture is unchanged.
 
@@ -91,16 +91,15 @@ The fallback to `toMessage(err)` ensures the user is never shown a silent failur
 
 ### RSC FORBIDDEN redirect pattern
 
-Admin-only pages (e.g. `/admin/users`, `/admin/users/[id]`) must explicitly handle the `FORBIDDEN` code in their RSC `try/catch`. Unlike `UNAUTHENTICATED` (where `isUnauthenticatedGraphQLError` from `@/lib/apollo/graphql-errors` covers it), an unhandled `FORBIDDEN` rethrows to the nearest error boundary and Next.js renders a 500 — wrong UX for "you are signed in but lack the role". RSC pages call `redirect("/")` (or `/admin` if the user might still belong somewhere) on `FORBIDDEN`:
+Admin-only pages (e.g. `/admin/users`, `/admin/users/[id]`) must explicitly handle the `FORBIDDEN` code in their RSC `try/catch`. An unhandled `FORBIDDEN` rethrows to the nearest error boundary and Next.js renders a 500 — wrong UX for "you are signed in but lack the role". Admin RSC pages therefore pass `{ forbidden: true }`, which folds `FORBIDDEN` into the same `redirect("/")` as `UNAUTHENTICATED`:
 
 ```ts
-import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
+import { redirectIfAuthError } from "@/lib/apollo/graphql-errors";
 
 try {
   data = await gqlFetch(AdminUsersQuery, { variables, revalidate: 0 });
 } catch (err) {
-  if (isUnauthenticatedGraphQLError(err)) redirect("/login");
-  if (isForbidden(err)) redirect("/");
+  redirectIfAuthError(err, "/", { forbidden: true });
   throw err;
 }
 ```

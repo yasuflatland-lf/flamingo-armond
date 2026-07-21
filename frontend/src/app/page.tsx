@@ -1,23 +1,20 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { MeWithLastViewedQuery } from "@/app/queries";
 import type { MeWithLastViewedQuery as MeWithLastViewedQueryType } from "@/generated/graphql";
-import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
+import { redirectIfAuthError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { isUserOnboarded } from "@/lib/auth/onboarding";
-import { readAuthContext } from "@/lib/supabase/auth-status";
+import { requireAuthenticated } from "@/lib/supabase/auth-status";
 
 // Root redirect — see docs/frontend/routing-topology.md.
 export default async function HomePage() {
-  if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
+  await requireAuthenticated("/login");
 
   let data: MeWithLastViewedQueryType;
   try {
     data = await gqlFetch(MeWithLastViewedQuery, { revalidate: 0 });
   } catch (err) {
-    if (isUnauthenticatedGraphQLError(err)) {
-      redirect("/login");
-    }
+    redirectIfAuthError(err, "/login");
     console.error("[home] gqlFetch failed:", {
       name: err instanceof Error ? err.name : "unknown",
     });

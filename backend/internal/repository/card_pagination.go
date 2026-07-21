@@ -56,7 +56,8 @@ func (r *cardRepo) FindPageByCardgroup(
 	dir SortOrder,
 	search *string,
 ) ([]*domain.Card, int64, error) {
-	return r.FindPageByCardgroupForUser(ctx, "", cardgroupID, after, before, first, last, orderBy, dir, search)
+	cards, total, _, err := r.FindPageByCardgroupForUser(ctx, "", cardgroupID, after, before, first, last, orderBy, dir, search)
+	return cards, total, err
 }
 
 func (r *cardRepo) FindPageByCardgroupForUser(
@@ -67,7 +68,7 @@ func (r *cardRepo) FindPageByCardgroupForUser(
 	orderBy CardOrderBy,
 	dir SortOrder,
 	search *string,
-) ([]*domain.Card, int64, error) {
+) ([]*domain.Card, int64, map[string]time.Time, error) {
 	userID = coalesceUserIDForJoin(userID)
 	first = ClampPageSize(first)
 	last = ClampPageSize(last)
@@ -87,11 +88,11 @@ func (r *cardRepo) FindPageByCardgroupForUser(
 	// callers passing first=0 still observe the real count.
 	var total int64
 	if err := base.Count(&total).Error; err != nil {
-		return nil, 0, eris.Wrap(err, "repository: count cards by cardgroup")
+		return nil, 0, nil, eris.Wrap(err, "repository: count cards by cardgroup")
 	}
 
 	if first == 0 && last == 0 {
-		return []*domain.Card{}, total, nil
+		return []*domain.Card{}, total, nil, nil
 	}
 
 	// Backward paging executes the query with the inverted direction and
@@ -100,7 +101,11 @@ func (r *cardRepo) FindPageByCardgroupForUser(
 
 	q := base
 	if orderBy == CardOrderByDue {
-		q = q.Select("cards.*").
+		// Project the ordering expression alongside the row so the caller can
+		// mint a cursor from the SAME snapshot that ordered the page. The DUE
+		// key lives on no card column, and recovering it afterwards would read a
+		// different snapshot.
+		q = q.Select("cards.*, "+cardCursorSpec(CardOrderByDue, nil).orderCol+" AS order_key").
 			Joins("LEFT JOIN user_card_fsrs ucs ON ucs.user_id = ? AND ucs.card_id = cards.id", userID).
 			Order(orderClause(orderBy, effectiveDir))
 	} else {
@@ -110,7 +115,7 @@ func (r *cardRepo) FindPageByCardgroupForUser(
 	if cursor != nil {
 		clauseStr, args, err := cursorWhere(orderBy, effectiveDir, cursor)
 		if err != nil {
-			return nil, 0, eris.Wrap(err, "repository: build cursor where")
+			return nil, 0, nil, eris.Wrap(err, "repository: build cursor where")
 		}
 		q = q.Where(clauseStr, args...)
 	}
@@ -119,7 +124,7 @@ func (r *cardRepo) FindPageByCardgroupForUser(
 
 	var rows []gormCard
 	if err := q.Find(&rows).Error; err != nil {
-		return nil, 0, eris.Wrap(err, "repository: find page by cardgroup")
+		return nil, 0, nil, eris.Wrap(err, "repository: find page by cardgroup")
 	}
 
 	if reverse {
@@ -130,7 +135,38 @@ func (r *cardRepo) FindPageByCardgroupForUser(
 	for i := range rows {
 		out[i] = cardToDomain(rows[i])
 	}
-	return out, total, nil
+	return out, total, cardPageOrderKeys(orderBy, rows), nil
+}
+
+// cardPageOrderKeys reports the value the page query ORDERED BY for each row it
+// returned, keyed by card id. Every value comes out of the result set that
+// produced the page, so a caller minting a v2 cursor embeds the boundary the
+// page was actually served under — not a value re-read afterwards, which would
+// come from a later snapshot and could disagree.
+//
+// The DUE key is read from the projected order_key alias because it is a
+// COALESCE over a LEFT JOIN and lives on no card column. CREATED_AT and
+// UPDATED_AT read their own column off the same row, which is the same snapshot
+// by construction. ID returns nil: its ordering key IS the id, which the cursor
+// already carries.
+func cardPageOrderKeys(orderBy CardOrderBy, rows []gormCard) map[string]time.Time {
+	if orderBy == CardOrderByID {
+		return nil
+	}
+	keys := make(map[string]time.Time, len(rows))
+	for _, row := range rows {
+		switch orderBy {
+		case CardOrderByDue:
+			if row.OrderKey != nil {
+				keys[row.ID] = *row.OrderKey
+			}
+		case CardOrderByCreatedAt:
+			keys[row.ID] = row.CreatedAt
+		case CardOrderByUpdatedAt:
+			keys[row.ID] = row.UpdatedAt
+		}
+	}
+	return keys
 }
 
 // cardCursorSpec describes the card aggregate's cursor geometry. The primary

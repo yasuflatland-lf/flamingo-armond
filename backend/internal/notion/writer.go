@@ -24,7 +24,7 @@ func NewWriter(token string, cfg RetryConfig) *Writer {
 	return &Writer{blocks: client.Block}
 }
 
-func NewWriterFromService(blocks blockAppendService) *Writer {
+func newWriterFromService(blocks blockAppendService) *Writer {
 	return &Writer{blocks: blocks}
 }
 

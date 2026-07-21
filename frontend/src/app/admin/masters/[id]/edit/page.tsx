@@ -1,16 +1,12 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import type {
   AdminMasterCardsConnectionQuery as AdminMasterCardsConnectionQueryType,
   AdminMasterQuery,
 } from "@/generated/graphql";
-import {
-  isForbiddenGraphQLError,
-  isUnauthenticatedGraphQLError,
-} from "@/lib/apollo/graphql-errors";
+import { redirectIfAuthError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
-import { readAuthContext } from "@/lib/supabase/auth-status";
+import { requireAuthenticated } from "@/lib/supabase/auth-status";
 import { AdminMasterCardsConnectionQuery, masterCardsDefaultVars } from "./cards/queries";
 import { MasterManagementClient } from "./master-management-client";
 import { AdminMasterQueryDocument } from "./queries";
@@ -24,7 +20,7 @@ export default async function EditMasterPage({ params }: Props) {
   const { id } = await params;
 
   // Defense-in-depth under the admin layout: redirect to / for stale/anonymous.
-  if (readAuthContext(await headers()).status !== "authenticated") redirect("/");
+  await requireAuthenticated("/");
 
   let deckData: AdminMasterQuery | null = null;
   let connectionData: AdminMasterCardsConnectionQueryType | null = null;
@@ -37,7 +33,7 @@ export default async function EditMasterPage({ params }: Props) {
       }),
     ]);
   } catch (err) {
-    if (isUnauthenticatedGraphQLError(err) || isForbiddenGraphQLError(err)) redirect("/");
+    redirectIfAuthError(err, "/", { forbidden: true });
     console.error("[admin/masters/:id/edit] gqlFetch failed:", {
       name: err instanceof Error ? err.name : "unknown",
     });

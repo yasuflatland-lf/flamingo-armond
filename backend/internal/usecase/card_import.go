@@ -278,9 +278,10 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 		if err != nil {
 			return ImportCardsOutput{}, translateCardErr(err)
 		}
-		// NewCardFromValidated stamps per-card timestamps; pin the whole batch to one now.
+		// NewCardFromValidated stamps per-card timestamps; pin the whole batch to
+		// one created_at. updated_at is database-owned, so the constructor's value
+		// is neither sent nor pinned here.
 		c.CreatedAt = now
-		c.UpdatedAt = now
 		cards = append(cards, c)
 	}
 

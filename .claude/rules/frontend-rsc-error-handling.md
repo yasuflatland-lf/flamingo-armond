@@ -20,14 +20,15 @@ if (error && error.name !== "AuthSessionMissingError") {
 // `user` is `User | null` here — branch on it.
 ```
 
-The filter is keyed on `error.name` (string), not on `instanceof` — Supabase's class identity does not survive serialization across the SDK's internal boundaries reliably. The pattern applies to every caller of `supabase.auth.getUser()`. No production code currently calls `getUser()` directly — the middleware (`frontend/src/lib/supabase/middleware.ts`) verifies the JWT via `getClaims()`, and every protected page reads the middleware-forwarded `x-auth-status` header via `readAuthContext(await headers())` (`frontend/src/lib/supabase/auth-status.ts`) and redirects when the status is not `authenticated`. Most pages redirect to `/login`; the admin pages (`app/admin/layout.tsx`, `app/admin/users/page.tsx`) redirect to `/` instead; and `app/login/page.tsx` inverts the check — an `authenticated` status redirects the visitor away to `/` (HomePage, the single post-login decision point — never an app surface directly), while `anonymous`, `stale`, and `error` statuses all render the login form:
+The filter is keyed on `error.name` (string), not on `instanceof` — Supabase's class identity does not survive serialization across the SDK's internal boundaries reliably. The pattern applies to every caller of `supabase.auth.getUser()`. No production code currently calls `getUser()` directly — the middleware (`frontend/src/lib/supabase/middleware.ts`) verifies the JWT via `getClaims()`, and every protected page gates on the middleware-forwarded `x-auth-status` header through the shared `requireAuthenticated(target)` helper (`frontend/src/lib/supabase/auth-status.ts`), which reads the header and redirects when the status is not `authenticated`. The redirect target is an explicit argument: `/login` for the ordinary signed-in surfaces, `/` for the admin surfaces. Do **not** re-inline the header read plus the status comparison at a page — the helper is the contract:
 
 ```ts
-import { headers } from "next/headers";
-import { readAuthContext } from "@/lib/supabase/auth-status";
+import { requireAuthenticated } from "@/lib/supabase/auth-status";
 // ...
-if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
+await requireAuthenticated("/login"); // returns the AuthContext for pages that also need email / isAdmin
 ```
+
+The lower-level `readAuthContext(headers)` stays exported for the two sites that must not redirect on a non-`authenticated` status: `app/layout.tsx` reads the context purely to derive the shell props, and `app/login/page.tsx` inverts the check — an `authenticated` status redirects the visitor away to `/` (HomePage, the single post-login decision point — never an app surface directly), while `anonymous`, `stale`, and `error` statuses all render the login form.
 
 To verify the current set of direct `getUser()` callers: `grep -rn "auth.getUser\|auth.getSession\|auth.getClaims" frontend/src/`. The result set is the middleware plus any Apollo server/link helpers that call `getSession()`. Any new file in those results that calls `auth.getUser()` during server render must include the `AuthSessionMissingError` filter; the `getSession()` hits in the Apollo helpers (`lib/apollo/server.ts`, `lib/apollo/auth-link.ts`) fetch the bearer token rather than gate on identity, and the filter does not apply to them.
 
@@ -56,20 +57,24 @@ This is why `app/<route>/error.tsx` cannot rescue layout-level throws — the sa
 
 Code that needs to branch on a specific error code (e.g. swallowing `UNAUTHENTICATED` in the Header, or distinguishing `UNAUTHENTICATED` from a real failure on a HomePage redirect) MUST parse the JSON and read `extensions.code`, not substring-match the message. Substring matches conflate a real `UNAUTHENTICATED` extension with any error whose message text happens to contain the word, including user-supplied input echoed by the backend, future telemetry strings, or stack-trace fragments.
 
-Use the shared helper `isUnauthenticatedGraphQLError` from `@/lib/apollo/graphql-errors` — do **not** re-inline the JSON-parse logic at each call site. Lifting it to one module ensures every consumer applies the same `prefix.startsWith` check, the same JSON shape assumption, and the same `try/catch` for malformed payloads. The same structural check also runs inside `gqlFetch` for partial-response auth errors, ensuring consistent classification. Today's call sites include `frontend/src/app/page.tsx`, `frontend/src/app/cards/new/page.tsx`, `frontend/src/app/cardgroups/page.tsx`, `frontend/src/app/profile/page.tsx`, and several others — run `grep -rln 'isUnauthenticatedGraphQLError' frontend/src/` to get the current list.
+The classification lives in `@/lib/apollo/graphql-errors` — do **not** re-inline the JSON-parse logic at each call site. Lifting it to one module ensures every consumer applies the same `prefix.startsWith` check, the same JSON shape assumption, and the same `try/catch` for malformed payloads. The same structural check also runs inside `gqlFetch` for partial-response auth errors, ensuring consistent classification.
+
+An RSC `catch` arm does not call the predicates directly either: `redirectIfAuthError(err, target, { forbidden? })` packages the classify-and-redirect half, with the target as an explicit argument so a wrong target is a reviewable diff rather than a copy-paste typo:
 
 ```ts
-import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
+import { redirectIfAuthError } from "@/lib/apollo/graphql-errors";
 
 try {
   data = await gqlFetch(MyQuery, { revalidate: 0 });
 } catch (err) {
-  if (isUnauthenticatedGraphQLError(err)) redirect("/login");
-  // ...other branches
+  redirectIfAuthError(err, "/login");
+  // ...logging / re-throw / degrade — these stay at the call site, they are not uniform
 }
 ```
 
-Use `isUnauthenticatedGraphQLError` for all code paths — including simple redirect-only cases — as it performs a structural `extensions.code` check rather than substring matching and avoids false positives from user-supplied content or stack traces. When `UNAUTHENTICATED` and `FORBIDDEN` collapse to the same outcome, combine both helpers in one guard — `if (isUnauthenticatedGraphQLError(err) || isForbiddenGraphQLError(err)) redirect("/")` — as `app/admin/layout.tsx` does, where a logged-out session and a non-admin role both redirect to `/`. Where the two codes diverge in user-facing copy, keep them split (see [`docs/frontend/rsc-error-handling/unauthenticated-vs-forbidden-message-asymmetry.md`](../../docs/frontend/rsc-error-handling/unauthenticated-vs-forbidden-message-asymmetry.md)).
+The helper owns only the redirect decision, because the surrounding arms are not uniform: most log the redacted error name and re-throw, while the secondary admin-only fetch in `app/profile/page.tsx` degrades to a default instead of re-throwing.
+
+Route every auth code path through `redirectIfAuthError` — including simple redirect-only cases — as it performs a structural `extensions.code` check rather than substring matching and avoids false positives from user-supplied content or stack traces. When `UNAUTHENTICATED` and `FORBIDDEN` collapse to the same outcome, pass `{ forbidden: true }` — `redirectIfAuthError(err, "/", { forbidden: true })` — as `app/admin/layout.tsx`, `app/admin/roles/page.tsx` and `app/admin/masters/[id]/edit/page.tsx` do, where a logged-out session and a non-admin role both redirect to `/`. The underlying `isUnauthenticatedGraphQLError` / `isForbiddenGraphQLError` predicates stay exported for code that must branch without redirecting. Where the two codes diverge in user-facing copy, keep them split (see [`docs/frontend/rsc-error-handling/unauthenticated-vs-forbidden-message-asymmetry.md`](../../docs/frontend/rsc-error-handling/unauthenticated-vs-forbidden-message-asymmetry.md)).
 
 ## Detailed cases (on-demand)
 

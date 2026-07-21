@@ -84,8 +84,8 @@ func TestCardRepository_UpsertManyTx(t *testing.T) {
 		require.Equal(t, int64(3), result.Updated)
 
 		// All three existing rows have their `back` text replaced; the row id
-		// (the original PK) stays intact because ON CONFLICT only updates the
-		// `back` and `updated_at` columns.
+		// (the original PK) stays intact because ON CONFLICT only updates `back`
+		// and `position`; the database trigger advances updated_at.
 		for _, original := range []*domain.Card{pre1, pre2, pre3} {
 			got, err := repo.FindByID(ctx, original.ID)
 			require.NoError(t, err)
