@@ -10,6 +10,7 @@ import (
 	"backend/graph/model"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
+	"backend/internal/gqlerr/gqlerrtest"
 	"backend/internal/usecase"
 	"backend/internal/usecase/ucerr"
 )
@@ -96,7 +97,7 @@ func TestMergeMasterCardgroup_UsecaseError_Wrapped(t *testing.T) {
 				t.Fatalf("expected nil union on error, got %T", res)
 			}
 			require.Error(t, err)
-			assert.True(t, gqlerr.IsCode(err, tc.want), "want wire code %s", tc.want)
+			assert.True(t, gqlerrtest.IsCode(err, tc.want), "want wire code %s", tc.want)
 		})
 	}
 }
@@ -116,7 +117,7 @@ func TestMergeMasterCardgroup_XORInvariantViolation(t *testing.T) {
 	if res != nil {
 		t.Fatalf("expected nil union on invariant violation, got %T", res)
 	}
-	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+	if !gqlerrtest.IsCode(err, gqlerr.CodeInternal) {
 		t.Fatalf("expected INTERNAL wire error, got %v", err)
 	}
 }

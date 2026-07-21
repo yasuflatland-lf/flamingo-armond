@@ -1408,7 +1408,7 @@ func TestMasterCatalogUsecase_MergeMaster_DestVanishedAfterCommit_NotNotFoundOut
 			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Master"), Status: domain.MasterStatusPublished}, nil
 		},
 	}
-	deck := NewMasterDeckUsecaseWithTx(
+	deck := newMasterDeckUsecaseWithTx(
 		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}},
 		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
 			masterID: {masterCard("mc-1", masterID, "alpha", "first", 0)},

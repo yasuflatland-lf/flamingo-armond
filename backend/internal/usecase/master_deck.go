@@ -170,10 +170,10 @@ func NewMasterDeckUsecase(
 	}
 }
 
-// NewMasterDeckUsecaseWithTx is the test-time constructor that injects an
+// newMasterDeckUsecaseWithTx is the test-time constructor that injects an
 // explicit transaction runner. Production callers must use NewMasterDeckUsecase.
 // Panics when any dependency, the tx runner, or the logger is nil.
-func NewMasterDeckUsecaseWithTx(
+func newMasterDeckUsecaseWithTx(
 	masterCG masterDeckCardgroupRepo,
 	masterCard masterDeckCardRepo,
 	userCard masterDeckUserCardRepo,

@@ -10,6 +10,7 @@ import (
 	"backend/graph/model"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
+	"backend/internal/gqlerr/gqlerrtest"
 	"backend/internal/usecase"
 	"backend/internal/usecase/ucerr"
 )
@@ -106,7 +107,7 @@ func TestAdminCreateMasterCardgroup_WrapsForbidden(t *testing.T) {
 
 	_, err := mr.AdminCreateMasterCardgroup(context.Background(), model.CreateMasterCardgroupInput{Name: "Deck"})
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
 }
 
 // TestAdminPublishMasterCardgroup_EmptyVariant verifies a zero-card publish
@@ -178,7 +179,7 @@ func TestAdminUnpublishMasterCardgroup_WrapsValidation(t *testing.T) {
 
 	_, err := mr.AdminUnpublishMasterCardgroup(context.Background(), "missing")
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeBadUserInput), "want BAD_USER_INPUT wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeBadUserInput), "want BAD_USER_INPUT wire code")
 }
 
 // TestAdminDeleteMasterCardgroup_Success verifies the scalar Boolean! resolver
@@ -200,7 +201,7 @@ func TestAdminDeleteMasterCardgroup_WrapsForbidden(t *testing.T) {
 
 	_, err := mr.AdminDeleteMasterCardgroup(context.Background(), "m1")
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
 }
 
 // TestAdminMasters_Success verifies the admin list resolver maps the usecase
@@ -233,5 +234,5 @@ func TestAdminMasters_WrapsForbidden(t *testing.T) {
 
 	_, err := qr.AdminMasters(context.Background(), nil, nil, nil, nil, nil, nil, nil)
 	require.Error(t, err)
-	assert.True(t, gqlerr.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
+	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
 }

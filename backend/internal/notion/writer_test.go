@@ -30,7 +30,7 @@ func TestWriterAppendParagraphHappyPath(t *testing.T) {
 	stub := &stubBlockAppendService{
 		response: &notionapi.AppendBlockChildrenResponse{},
 	}
-	w := NewWriterFromService(stub)
+	w := newWriterFromService(stub)
 
 	err := w.AppendParagraph(context.Background(), "page-abc", "front back")
 	if err != nil {
@@ -70,7 +70,7 @@ func TestWriterAppendParagraphErrorPath(t *testing.T) {
 	stub := &stubBlockAppendService{
 		err: sentinel,
 	}
-	w := NewWriterFromService(stub)
+	w := newWriterFromService(stub)
 
 	err := w.AppendParagraph(context.Background(), "page-xyz", "some text")
 	if err == nil {

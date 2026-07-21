@@ -114,7 +114,7 @@ func TestMasterNotionSyncUsecase_DiffMerge(t *testing.T) {
 		upsertResult:   repository.UpsertManyTxResult{Inserted: 1, Updated: 1},
 	}
 	tx, txCalls := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	out, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{" page-1 ", "page-1"},
@@ -163,7 +163,7 @@ func TestMasterNotionSyncUsecase_DuplicateFrontLastWins(t *testing.T) {
 	cardgroups := &mockMasterCardgroupRepo{cg: &domain.MasterCardgroup{ID: "mcg-target"}}
 	cards := &mockMasterCardRepo{upsertResult: repository.UpsertManyTxResult{Inserted: 1}}
 	tx, txCalls := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	out, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1", "page-2"},
@@ -220,7 +220,7 @@ func TestMasterNotionSyncUsecase_DuplicateFrontSamePageLastWins(t *testing.T) {
 	cardgroups := &mockMasterCardgroupRepo{cg: &domain.MasterCardgroup{ID: "mcg-target"}}
 	cards := &mockMasterCardRepo{upsertResult: repository.UpsertManyTxResult{Inserted: 1}}
 	tx, txCalls := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	out, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},
@@ -275,7 +275,7 @@ func TestMasterNotionSyncUsecase_CaseInsensitiveDedupe(t *testing.T) {
 	cardgroups := &mockMasterCardgroupRepo{cg: &domain.MasterCardgroup{ID: "mcg-target"}}
 	cards := &mockMasterCardRepo{upsertResult: repository.UpsertManyTxResult{Inserted: 1}}
 	tx, txCalls := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	out, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},
@@ -325,7 +325,7 @@ func TestMasterNotionSyncUsecase_CaseInsensitivePrune(t *testing.T) {
 		upsertResult:   repository.UpsertManyTxResult{Updated: 1},
 	}
 	tx, _ := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},
@@ -407,7 +407,7 @@ func TestMasterNotionSyncUsecase_InputValidation(t *testing.T) {
 
 func newMasterValidationUsecase() *MasterNotionSyncUsecase {
 	tx, _ := dictTxRunner()
-	return NewMasterNotionSyncUsecaseWithTx(
+	return newMasterNotionSyncUsecaseWithTx(
 		&stubNotionFetcher{},
 		&mockMasterCardgroupRepo{},
 		&mockMasterCardRepo{},
@@ -429,7 +429,7 @@ func TestMasterNotionSyncUsecase_SoftParseFailure(t *testing.T) {
 	cardgroups := &mockMasterCardgroupRepo{}
 	cards := &mockMasterCardRepo{}
 	tx, txCalls := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},
@@ -460,7 +460,7 @@ func TestMasterNotionSyncUsecase_MixedSkipAndLexerErrorIsNotSkipOnly(t *testing.
 	cardgroups := &mockMasterCardgroupRepo{}
 	cards := &mockMasterCardRepo{}
 	tx, txCalls := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},
@@ -492,7 +492,7 @@ func TestMasterNotionSyncUsecase_LoneFrontDoesNotOverwriteExistingBack(t *testin
 	cardgroups := &mockMasterCardgroupRepo{cg: &domain.MasterCardgroup{ID: "mcg-target"}}
 	cards := &mockMasterCardRepo{existingFronts: []string{"apple"}}
 	tx, txCalls := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	out, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},
@@ -530,7 +530,7 @@ func TestMasterNotionSyncUsecase_FetchErrorSkipsPersistence(t *testing.T) {
 	cardgroups := &mockMasterCardgroupRepo{}
 	cards := &mockMasterCardRepo{}
 	tx, txCalls := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},
@@ -552,7 +552,7 @@ func TestMasterNotionSyncUsecase_PersistError(t *testing.T) {
 	cardgroups := &mockMasterCardgroupRepo{cg: &domain.MasterCardgroup{ID: "mcg-target"}}
 	cards := &mockMasterCardRepo{upsertErr: boom}
 	tx, _ := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},
@@ -576,7 +576,7 @@ func TestMasterNotionSyncUsecase_CardgroupEnsureError(t *testing.T) {
 	cardgroups := &mockMasterCardgroupRepo{err: dbErr}
 	cards := &mockMasterCardRepo{}
 	tx, txCalls := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},
@@ -614,7 +614,7 @@ func TestMasterNotionSyncUsecase_ListFrontsError(t *testing.T) {
 	cardgroups := &mockMasterCardgroupRepo{cg: &domain.MasterCardgroup{ID: "mcg-target"}}
 	cards := &mockMasterCardRepo{listErr: listErr}
 	tx, txCalls := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},
@@ -660,7 +660,7 @@ func TestMasterNotionSyncUsecase_SkipOnlyLogFields(t *testing.T) {
 	cardgroups := &mockMasterCardgroupRepo{}
 	cards := &mockMasterCardRepo{}
 	tx, txCalls := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, logger)
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, logger)
 
 	out, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},
@@ -785,7 +785,7 @@ func TestMasterNotionSyncUsecase_WarnBranchLogFields(t *testing.T) {
 	cardgroups := &mockMasterCardgroupRepo{}
 	cards := &mockMasterCardRepo{}
 	tx, txCalls := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, logger)
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, logger)
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},
@@ -951,7 +951,7 @@ func TestMasterNotionSyncUsecase_SkippedRowWarnFields(t *testing.T) {
 	tx, _ := dictTxRunner()
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, logger)
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, logger)
 
 	if _, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},
@@ -1016,7 +1016,7 @@ func TestMasterNotionSyncUsecase_DeleteError(t *testing.T) {
 	// frontsToDelete yields ["stale"] and the prune-stale delete runs.
 	cards := &mockMasterCardRepo{existingFronts: []string{"apple", "stale"}, deleteErr: deleteErr}
 	tx, txCalls := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},
@@ -1065,7 +1065,7 @@ func TestMasterNotionSyncUsecase_OverCapRejected(t *testing.T) {
 	cardgroups := &mockMasterCardgroupRepo{}
 	cards := &mockMasterCardRepo{}
 	tx, txCalls := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},
@@ -1107,7 +1107,7 @@ func TestMasterNotionSyncUsecase_NoDeletions(t *testing.T) {
 		upsertResult:   repository.UpsertManyTxResult{Updated: 2},
 	}
 	tx, txCalls := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	out, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},
@@ -1151,7 +1151,7 @@ func TestMasterNotionSyncUsecase_AllRowsFailDomainValidation(t *testing.T) {
 	tx, txCalls := dictTxRunner()
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, logger)
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, logger)
 
 	_, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},
@@ -1196,7 +1196,7 @@ func TestMasterNotionSyncUsecase_PartiallyInvalidBatchStillPrunes(t *testing.T) 
 	cardgroups := &mockMasterCardgroupRepo{cg: &domain.MasterCardgroup{ID: "mcg-target"}}
 	cards := &mockMasterCardRepo{existingFronts: []string{"apple", "banana"}}
 	tx, txCalls := dictTxRunner()
-	uc := NewMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	out, err := uc.Sync(context.Background(), SyncToMasterInput{
 		PageIDs:             []string{"page-1"},

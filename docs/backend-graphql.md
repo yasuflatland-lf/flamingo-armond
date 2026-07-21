@@ -477,8 +477,11 @@ resolvers or usecases. The `Code` type in `gqlerr` is a string alias that
 makes ad-hoc code strings a compile error, and grep should always return zero
 raw `gqlerror.Error` literals outside the `gqlerr` package itself.
 
-`gqlerr.IsCode(err, gqlerr.CodeUnauthenticated)` is the canonical way to
-inspect codes in tests and middleware.
+`gqlerr` itself exposes only constructors — nothing in production inspects a
+returned code. Tests that need to assert on the wire code use
+`gqlerrtest.IsCode(err, gqlerr.CodeUnauthenticated)` from
+`backend/internal/gqlerr/gqlerrtest`, a test-only helper package kept out of
+the production surface.
 
 **Why `gqlerr.Internal` is mandatory for repo/DB errors:** gqlgen's default error presenter forwards any error whose message is not already masked directly into the GraphQL response body. Unwrapped repository or database errors therefore leak internal details (table names, SQL, driver messages) to clients. Always wrap with `gqlerr.Internal(ctx, err)` before returning from a resolver or usecase — the helper logs the original error via `slog.ErrorContext` and replaces the message with the fixed string `"internal server error"`.
 

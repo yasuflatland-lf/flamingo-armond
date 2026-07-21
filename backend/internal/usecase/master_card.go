@@ -185,10 +185,10 @@ func NewMasterCardUsecase(
 	return uc
 }
 
-// NewMasterCardUsecaseWithTx constructs a MasterCardUsecase with an explicit
+// newMasterCardUsecaseWithTx constructs a MasterCardUsecase with an explicit
 // transaction runner. Intended for unit tests that exercise ImportMasterCards
 // without a real database. Production code must use NewMasterCardUsecase.
-func NewMasterCardUsecaseWithTx(
+func newMasterCardUsecaseWithTx(
 	masterCard masterCardRepoForMasterCard,
 	masterCardgroup masterCardgroupRepoForMasterCard,
 	tx txRunner,

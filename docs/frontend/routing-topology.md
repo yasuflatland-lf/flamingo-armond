@@ -8,7 +8,7 @@
 |---|---|---|
 | `/` (`app/page.tsx`) | `/login` | redirect chain (see below) |
 | `/login` (`app/login/page.tsx`) | render `LoginButton` | `/` (delegating the post-login routing decision back to HomePage) |
-| `/auth/callback?code=...` (`app/auth/callback/route.ts`) | n/a | `next` query value, defaulting to `/` (so HomePage owns the post-OAuth landing decision) |
+| `/auth/callback?code=...` (`app/auth/callback/route.ts`) | n/a | always `/` (so HomePage owns the post-OAuth landing decision) |
 | `/onboarding` (`app/onboarding/page.tsx`) | `/login` | render `OnboardingForm`; already-onboarded users redirect to `/` (self-guard via `isUserOnboarded`) |
 | `/onboarding/start` (`app/onboarding/start/page.tsx`) | `/login` | first-deck chooser: import a master-catalog deck (→ `/learn/{id}`) or start with the default decks (seeds the `is_default_starter` decks → `/cardgroups`, or → `/cardgroups/new?welcome=1` when zero were seeded); not-onboarded self-guard → `/onboarding`; empty catalog → `/cardgroups/new?welcome=1` |
 | `/cards/new?cardgroup=<id>` | `/login` | render chip + `CardForm`; resolves cardgroup via 4-priority chain (see `/cards/new` below) |
@@ -36,7 +36,7 @@ The completion predicate is `isUserOnboarded(me)` in `frontend/src/lib/auth/onbo
 
 Loop prevention: HomePage only redirects *outward* — never to `/` — so the chain terminates in one hop. `/learn/[id]`, `/cardgroups`, and `/onboarding` do not redirect back to `/`, so a returning user's two-hop login flow is `/login → / → /learn/[id]`. `/onboarding` itself redirects already-onboarded users *outward* to `/`, where the chain runs again and lands them on the right screen.
 
-The OAuth callback at `/auth/callback` defaults its post-exchange redirect to `/` (not directly to `/cardgroups`) so the post-sign-in routing decision lives in exactly one place — HomePage. A second branching site in the callback would have to repeat both the `lastViewedCardgroup` lookup and the onboarding check, and would silently rot whenever HomePage's logic evolves.
+The OAuth callback at `/auth/callback` sends its post-exchange redirect unconditionally to `/` (not directly to `/cardgroups`) so the post-sign-in routing decision lives in exactly one place — HomePage. A second branching site in the callback would have to repeat both the `lastViewedCardgroup` lookup and the onboarding check, and would silently rot whenever HomePage's logic evolves. The callback accepts no return-to parameter and the sole OAuth entry point (`app/login/login-button.tsx`) sends none; if one is ever added it must route through `sanitizeReturnTo` (`frontend/src/lib/sanitize-return-to.ts`), the tree's only open-redirect policy.
 
 ### `/cards/new` cardgroup resolution (4-priority chain)
 
