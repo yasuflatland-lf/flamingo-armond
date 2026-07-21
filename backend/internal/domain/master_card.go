@@ -31,6 +31,38 @@ func (m *MasterCard) BelongsToMasterCardgroup(masterCardgroupID string) bool {
 	return masterCardgroupID != "" && m.MasterCardgroupID == masterCardgroupID
 }
 
+// NewMasterCardFromValidated mirrors NewCardFromValidated for the master
+// aggregate: it builds a MasterCard from already-parsed CardText value objects
+// and skips the ParseCardText re-validation NewMasterCard would perform. Callers
+// must pass VOs produced by a prior Parse; the zero-value CardText is rejected
+// via the field-specific sentinel because the newtype's zero value is invalid by
+// contract. A fresh UUID v7 ID is generated and CreatedAt/UpdatedAt are stamped
+// with the current UTC time; batch callers may override both with a shared
+// timestamp before persisting. Use NewMasterCard for the untrusted string-input
+// path that still needs grapheme-bounds validation.
+func NewMasterCardFromValidated(masterCardgroupID string, front, back CardText, position int) (*MasterCard, error) {
+	if front == "" {
+		return nil, ErrCardFrontRequired
+	}
+	if back == "" {
+		return nil, ErrCardBackRequired
+	}
+	id, err := NewID()
+	if err != nil {
+		return nil, eris.Wrap(err, "master card: new id")
+	}
+	now := time.Now().UTC()
+	return &MasterCard{
+		ID:                id,
+		MasterCardgroupID: masterCardgroupID,
+		Front:             front,
+		Back:              back,
+		Position:          position,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}, nil
+}
+
 // UpdateFront updates the master card's front text to the supplied value and
 // returns an error if the value is the zero CardText. The zero-value guard is
 // defense-in-depth: production callers parse the input through ParseCardText
