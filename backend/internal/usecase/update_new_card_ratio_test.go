@@ -163,10 +163,10 @@ func TestUpdateNewCardRatio_RefetchCancelled(t *testing.T) {
 
 // TestUpdateNewCardRatio_InvalidRatio_FieldAttribution pins the wire field a bad
 // ratio faults on to the reduced fraction domain.ParseNewCardRatio actually
-// checks: a new-card share outside (0, denominator) faults the numerator; a
-// non-positive or over-cap (reduced) denominator faults the denominator. The
-// "3/303" case reduces to 1/101, so its over-cap denominator is only visible on
-// the reduced fraction. No write runs for any invalid ratio.
+// checks: a new-card share outside (0, denominator) or above 4/5 faults the
+// numerator; a non-positive or over-cap (reduced) denominator faults the
+// denominator. The "3/303" case reduces to 1/101, so its over-cap denominator
+// is only visible on the reduced fraction. No write runs for any invalid ratio.
 func TestUpdateNewCardRatio_InvalidRatio_FieldAttribution(t *testing.T) {
 	t.Parallel()
 
@@ -179,6 +179,9 @@ func TestUpdateNewCardRatio_InvalidRatio_FieldAttribution(t *testing.T) {
 		{"numerator exceeds denominator", 7, 5, "numerator"},
 		{"zero numerator", 0, 5, "numerator"},
 		{"negative numerator", -1, 5, "numerator"},
+		{"new share above cap 85%", 85, 100, "numerator"},
+		{"new share above cap 90%", 90, 100, "numerator"},
+		{"new share above cap 95%", 95, 100, "numerator"},
 		{"non-positive denominator", 1, 0, "denominator"},
 		{"reduced denominator over cap", 1, 101, "denominator"},
 		{"reduced denominator over cap after reduction", 3, 303, "denominator"},
@@ -198,6 +201,38 @@ func TestUpdateNewCardRatio_InvalidRatio_FieldAttribution(t *testing.T) {
 			}
 			if users.calls != 0 {
 				t.Fatalf("FindByID must not run for an invalid ratio; got %d calls", users.calls)
+			}
+		})
+	}
+}
+
+func TestUpdateNewCardRatio_BoundaryAndLowNewShareSucceed(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name             string
+		num, den         int
+		wantNum, wantDen int
+	}{
+		{"boundary 80% reduces to 4/5", 80, 100, 4, 5},
+		{"low 5% reduces to 1/20", 5, 100, 1, 20},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			prefs := &mockNewCardRatioPrefRepo{}
+			users := &mockNewCardRatioUserRepo{user: &domain.User{ID: "u1"}}
+			uc := newUpdateNewCardRatioWithDeps(prefs, users, newTestLogger())
+
+			if _, err := uc.Set(authedCtx("u1"), tc.num, tc.den); err != nil {
+				t.Fatalf("Set(%d, %d): unexpected error: %v", tc.num, tc.den, err)
+			}
+			if prefs.called != 1 {
+				t.Fatalf("expected 1 UpsertNewCardRatio call, got %d", prefs.called)
+			}
+			if prefs.gotNum != tc.wantNum || prefs.gotDen != tc.wantDen {
+				t.Fatalf("persisted %d/%d, want reduced %d/%d",
+					prefs.gotNum, prefs.gotDen, tc.wantNum, tc.wantDen)
 			}
 		})
 	}

@@ -85,3 +85,38 @@ func TestToDomainUserPreference_LearnDisplayMode(t *testing.T) {
 		t.Fatalf("empty column: got %q, want default", gotEmpty.LearnDisplayMode)
 	}
 }
+
+// TestToDomainUserPreference_NewCardRatioAboveCapFallsBackToDefault pins the
+// read-path auto-heal: a stored ratio whose new share exceeds the 80% review floor
+// (19/20 = 95% new) is structurally valid against the column CHECK but rejected by
+// domain.ParseNewCardRatio, so toDomainUserPreference normalizes it to
+// DefaultNewCardRatio on read — existing FSRS-breaking rows self-heal with no DB
+// migration. A within-cap stored ratio is preserved. No live DB required.
+func TestToDomainUserPreference_NewCardRatioAboveCapFallsBackToDefault(t *testing.T) {
+	t.Parallel()
+
+	healed := toDomainUserPreference(gormUserPreference{
+		UserID:          "u1",
+		NewCardRatioNum: 19,
+		NewCardRatioDen: 20,
+	})
+	if healed.NewCardRatio != domain.DefaultNewCardRatio {
+		t.Fatalf("stored 19/20 (95%% new): got %d/%d, want default %d/%d",
+			healed.NewCardRatio.Numerator(), healed.NewCardRatio.Denominator(),
+			domain.DefaultNewCardRatio.Numerator(), domain.DefaultNewCardRatio.Denominator())
+	}
+	if healed.EffectiveNewCardRatio() != domain.DefaultNewCardRatio {
+		t.Fatalf("EffectiveNewCardRatio after auto-heal: got %d/%d, want default",
+			healed.EffectiveNewCardRatio().Numerator(), healed.EffectiveNewCardRatio().Denominator())
+	}
+
+	kept := toDomainUserPreference(gormUserPreference{
+		UserID:          "u1",
+		NewCardRatioNum: 3,
+		NewCardRatioDen: 7,
+	})
+	if kept.NewCardRatio.Numerator() != 3 || kept.NewCardRatio.Denominator() != 7 {
+		t.Fatalf("stored 3/7 (within cap): got %d/%d, want 3/7 preserved",
+			kept.NewCardRatio.Numerator(), kept.NewCardRatio.Denominator())
+	}
+}
