@@ -72,8 +72,8 @@ func buildPageInfo(hasNext, hasPrev bool, start, end *string) *model.PageInfo {
 // inside the loop, preserving the "cursor encoding happens exactly once"
 // invariant in .claude/rules/pagination.md. All five to*ConnectionModel shims
 // below pass their encoder, node-mapper, id accessor, and edge constructor:
-// cursor.Encode for the connections still on v1, orderedCursorEncoder for the
-// migrated ones whose ordering key can be edited between two page fetches.
+// cursor.Encode for the one connection still on v1, orderedCursorEncoder for
+// the migrated ones whose ordering key can be edited between two page fetches.
 func buildEdges[Item any, Node any, Edge any](
 	ctx context.Context,
 	items []Item,
