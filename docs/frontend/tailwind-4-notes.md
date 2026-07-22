@@ -63,7 +63,7 @@ Tailwind v4's `hover:` variant compiles to `@media (hover: hover)` and does not 
 <li className="... hover:bg-accent transition-colors">
 ```
 
-When the existing string carries both `hover:bg-X` and `hover:text-X`, pair both with their `active:` counterparts. Group the hover-pair before the active-pair, matching the precedent in `frontend/src/components/ui/sidebar.tsx:370`:
+When the existing string carries both `hover:bg-X` and `hover:text-X`, pair both with their `active:` counterparts. Group the hover-pair before the active-pair, matching the precedent set by the `sidebarMenuButtonVariants` base class string in `frontend/src/components/ui/sidebar.tsx`, which lists `hover:bg-sidebar-accent hover:text-sidebar-accent-foreground` ahead of `active:bg-sidebar-accent active:text-sidebar-accent-foreground`:
 
 ```tsx
 // Correct — hover-pair first, active-pair second.
