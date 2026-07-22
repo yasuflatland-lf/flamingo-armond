@@ -7,9 +7,11 @@ on:
 
 jobs:
   check-claude-md:
-    name: CLAUDE.md hierarchy
+    name: Docs conventions
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - name: Verify hierarchical CLAUDE.md scheme
         run: bash scripts/check-claude-md-hierarchy.sh
+      - name: Verify no line-number citations in docs
+        run: bash scripts/check-doc-line-citations.sh
