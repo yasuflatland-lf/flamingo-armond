@@ -176,6 +176,28 @@ func TestUpdateNewCardRatio_UsecaseValidationErrorMapsToBadUserInput(t *testing.
 	}
 }
 
+// TestUpdateNewCardRatio_NewShareAboveCap_MapsToBadUserInput wires the real usecase
+// so a >80% new-card share flows through the domain clamp and surfaces on the wire
+// as BAD_USER_INPUT / field numerator. The ratio is rejected before any repo call,
+// so nil repos are safe.
+func TestUpdateNewCardRatio_NewShareAboveCap_MapsToBadUserInput(t *testing.T) {
+	t.Parallel()
+
+	realUC := usecase.NewUpdateNewCardRatio(nil, nil, newDiscardLogger())
+	srv := newNewCardRatioSrv(&mockUserRepository{}, realUC)
+	body := `{"query":"mutation { updateNewCardRatio(numerator: 95, denominator: 100) { id } }"}`
+
+	resp := gqlRequest(t, srv, authedCtx("u-1"), body)
+
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeBadUserInput) {
+		t.Fatalf("expected BAD_USER_INPUT, got %q; response: %v", code, resp)
+	}
+	if field, _ := errExtensions(t, resp)["field"].(string); field != "numerator" {
+		t.Fatalf("expected extensions.field = numerator, got %q; response: %v", field, resp)
+	}
+}
+
 // meNewCardRatio extracts data.me.newCardRatio from a GraphQL response, failing
 // the test if the path is absent.
 func meNewCardRatio(t *testing.T, resp map[string]any) map[string]any {

@@ -48,11 +48,50 @@ func TestParseNewCardRatio_RejectsOutOfBounds(t *testing.T) {
 func TestParseNewCardRatio_AllowsMaxDenominator(t *testing.T) {
 	t.Parallel()
 
-	// 99/100 is irreducible with den == NewCardRatioDenMax, so it is accepted.
-	r, err := ParseNewCardRatio(99, NewCardRatioDenMax)
+	// 79/100 is irreducible with den == NewCardRatioDenMax and a new share <= 80%,
+	// so it is accepted.
+	r, err := ParseNewCardRatio(79, NewCardRatioDenMax)
 	require.NoError(t, err)
-	require.Equal(t, 99, r.NewShare())
-	require.Equal(t, 1, r.ReviewShare())
+	require.Equal(t, 79, r.NewShare())
+	require.Equal(t, 21, r.ReviewShare())
+}
+
+func TestParseNewCardRatio_RejectsNewShareAboveCap(t *testing.T) {
+	t.Parallel()
+
+	// Every case has a reduced new share strictly above 4/5 (80%).
+	cases := []struct {
+		name     string
+		num, den int
+	}{
+		{"95% reduces to 19/20", 95, 100},
+		{"90% reduces to 9/10", 90, 100},
+		{"85% reduces to 17/20", 85, 100},
+		{"81/100 irreducible", 81, 100},
+		{"99/100 irreducible", 99, 100},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := ParseNewCardRatio(tc.num, tc.den)
+			require.ErrorIs(t, err, ErrNewCardRatioNewShareTooHigh)
+		})
+	}
+}
+
+func TestParseNewCardRatio_AllowsBoundaryAndBelowNewShare(t *testing.T) {
+	t.Parallel()
+
+	// 4/5 (80%) is the inclusive boundary; 3/4 (75%) and 1/20 (5%) sit below it.
+	cases := []struct{ num, den int }{
+		{4, 5},
+		{3, 4},
+		{1, 20},
+	}
+	for _, tc := range cases {
+		_, err := ParseNewCardRatio(tc.num, tc.den)
+		require.NoError(t, err, "ParseNewCardRatio(%d, %d)", tc.num, tc.den)
+	}
 }
 
 func TestDefaultNewCardRatio_IsFourFifths(t *testing.T) {
