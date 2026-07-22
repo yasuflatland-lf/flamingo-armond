@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"log/slog"
 	"strconv"
@@ -444,102 +443,42 @@ func (u *masterCardUsecase) ImportMasterCards(ctx context.Context, in ImportMast
 	if _, err := u.adminGate.Require(ctx, "usecase: master card: import"); err != nil {
 		return ImportMasterCardsOutput{}, err
 	}
+
 	if in.MasterCardgroupID == "" {
 		return ImportMasterCardsOutput{}, ucerr.NewValidationError("masterCardgroupId", "masterCardgroupId is required")
 	}
-	if in.Payload == "" {
-		return ImportMasterCardsOutput{}, ucerr.NewValidationError("payload", "payload must not be empty")
-	}
-	decoded, err := base64.StdEncoding.DecodeString(in.Payload)
+	// No ownership check: master decks are owner-less and the admin gate above
+	// already authorizes the write against every one of them.
+
+	res, err := runCardImport(ctx, in.Payload, cardImportPipeline[*domain.MasterCard]{
+		wrap:    "usecase: master card: import",
+		process: u.processCardImport,
+		// master_cards.front is citext, so the conflict key is case-insensitive —
+		// frontMatchKey case-folds it (unlike the plain-text cards.front mirror)
+		// so "Apple" and "apple" collapse to one row rather than both reaching the
+		// ON CONFLICT INSERT (which would trip Postgres error 21000).
+		dedupeKey: frontMatchKey,
+		newRow: func(front, back domain.CardText, now time.Time) (*domain.MasterCard, error) {
+			c, err := domain.NewMasterCardFromValidated(in.MasterCardgroupID, front, back, 0)
+			if err != nil {
+				return nil, err
+			}
+			// NewMasterCardFromValidated stamps per-card timestamps; pin the whole
+			// batch to one created_at. updated_at is database-owned, so the
+			// constructor's value is neither sent nor pinned here.
+			c.CreatedAt = now
+			return c, nil
+		},
+		tx: u.tx,
+		upsert: func(ctx context.Context, tx *gorm.DB, cards []*domain.MasterCard) (repository.UpsertManyTxResult, error) {
+			return u.masterCardRepo.UpsertManyTx(ctx, tx, cards)
+		},
+		translateTxErr: translateMasterCardgroupNotFound,
+	})
 	if err != nil {
-		return ImportMasterCardsOutput{}, ucerr.NewValidationError("payload", "payload must be standard base64-encoded text")
+		return ImportMasterCardsOutput{}, err
 	}
-
-	process := u.processCardImport
-	if process == nil {
-		process = textdic.Process
-	}
-	words, parseErrs, perr := process(string(decoded))
-	if perr != nil {
-		return ImportMasterCardsOutput{}, eris.Wrap(perr, "usecase: master card: import: parse")
-	}
-
-	// Enforce the same caps the user path (card_import.go) reports, via the shared
-	// checker, so the master import cannot diverge from the batch-import preview.
-	// Checked on the raw parsed words (before dedup) so both the parsed-row cap and
-	// the per-side grapheme cap reject identically. The first violation aborts the
-	// whole batch (all-or-nothing). The build loop below keeps domain.NewMasterCard,
-	// so validateImportRows' returned VOs are discarded here.
-	if _, caps := validateImportRows(words); len(caps) > 0 {
-		return ImportMasterCardsOutput{}, ucerr.NewValidationError(caps[0].Field, caps[0].Message)
-	}
-
-	mappedErrs := cardImportErrorsFromTextdic(parseErrs)
-
-	// Deduplicate parsed words by front within this payload (last occurrence
-	// wins); earlier occurrences are dropped and reported. master_cards.front is
-	// citext, so the conflict key is case-insensitive — frontMatchKey case-folds
-	// the dedupe key (unlike the plain-text cards.front mirror in card_import.go)
-	// so "Apple" and "apple" collapse to one row rather than both reaching the
-	// ON CONFLICT INSERT (which would trip Postgres error 21000).
-	deduped, dupErrs := dedupeParsedWords(words, frontMatchKey)
-	words = deduped
-	mappedErrs = append(mappedErrs, dupErrs...)
-
-	// Empty (but well-formed) parse: nothing to persist; surface the parser's
-	// per-line diagnostics so the caller can act on them.
-	if len(words) == 0 {
-		return ImportMasterCardsOutput{Errors: mappedErrs}, nil
-	}
-
-	now := time.Now().UTC()
-	cards := make([]*domain.MasterCard, 0, len(words))
-	for _, w := range words {
-		// Build through the enforcing constructor so an over-length front/back
-		// cannot reach the repository. textdic guarantees both fields are present,
-		// so the realistic failure is the length cap; surface it as a typed
-		// validation error.
-		c, err := domain.NewMasterCard(in.MasterCardgroupID, w.Front, w.Back, 0)
-		if err != nil {
-			return ImportMasterCardsOutput{}, translateCardErr(err)
-		}
-		// NewMasterCard stamps per-card timestamps; pin the whole batch to one
-		// created_at. updated_at is database-owned, so the constructor's value is
-		// neither sent nor pinned here.
-		c.CreatedAt = now
-		cards = append(cards, c)
-	}
-
-	if u.tx == nil {
-		return ImportMasterCardsOutput{}, eris.New("usecase: master card: import tx runner not configured")
-	}
-
-	var result repository.UpsertManyTxResult
-	if err := u.tx(ctx, func(tx *gorm.DB) error {
-		r, err := u.masterCardRepo.UpsertManyTx(ctx, tx, cards)
-		if err != nil {
-			return eris.Wrap(err, "usecase: master card: import: repo")
-		}
-		result = r
-		return nil
-	}); err != nil {
-		if errors.Is(err, repository.ErrMasterCardgroupNotFound) {
-			return ImportMasterCardsOutput{}, ucerr.NewValidationError("masterCardgroupId", "master cardgroup not found")
-		}
-		if translated := translateTextLengthViolation(err); translated != nil {
-			return ImportMasterCardsOutput{}, translated
-		}
-		if isContextDone(err) {
-			return ImportMasterCardsOutput{}, err
-		}
-		return ImportMasterCardsOutput{}, eris.Wrap(err, "usecase: master card: import: tx")
-	}
-
-	return ImportMasterCardsOutput{
-		Inserted: result.Inserted,
-		Updated:  result.Updated,
-		Errors:   mappedErrs,
-	}, nil
+	return ImportMasterCardsOutput(res), nil
 }
 
 // AdminMaster returns the master cardgroup (incl. DRAFT) with the given id plus

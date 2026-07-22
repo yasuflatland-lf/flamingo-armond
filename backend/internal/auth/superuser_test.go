@@ -667,6 +667,13 @@ func TestSuperUserPromoter_CachesConfirmedAdmin(t *testing.T) {
 // TestSuperUserPromoter_CachesAfterPromotion verifies a cold cache still promotes
 // correctly, and that once a sub has been promoted the confirmed-sub cache halts
 // every subsequent IsAdmin query and AssignRoleToUser call for that sub.
+//
+// This is also the demoted-account scenario: a still-listed, verified sub with no
+// confirmedAdmins entry whose IsAdmin returns false is exactly what a process
+// restart after an out-of-band demotion produces. The promoter keeps no record of
+// prior admin-ness, so a first-promotion cold cache and a post-demotion cold cache
+// are the same code path — the fixture below (IsAdmin always false, fresh
+// promoter) covers both, and the first request re-promotes.
 func TestSuperUserPromoter_CachesAfterPromotion(t *testing.T) {
 	t.Parallel()
 	var isAdminCalls, assignCalls atomic.Int64

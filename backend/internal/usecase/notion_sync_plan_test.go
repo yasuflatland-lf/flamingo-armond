@@ -150,7 +150,7 @@ func TestComputeSyncPlan_AllInvalid(t *testing.T) {
 }
 
 // TestComputeSyncPlan_CaseVariantDuplicateFronts pins the citext matching the
-// plan inherits from dedupeParsedRows and frontMatchKey: fronts differing only
+// plan inherits from its dedupeByKey step and frontMatchKey: fronts differing only
 // in case collapse to one row (later wins, keeping its own case) with a
 // DUPLICATE diagnostic and a single keep-set key.
 func TestComputeSyncPlan_CaseVariantDuplicateFronts(t *testing.T) {

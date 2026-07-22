@@ -359,10 +359,10 @@ func TestValidateCardImport_ResolverKindAndSnippet(t *testing.T) {
 }
 
 // TestImportCards_ResolverKindHardSnippetNull verifies that the
-// importCards resolver maps a hard payload-level error (HARD kind)
-// with an empty snippet. The empty base64 payload triggers a BAD_USER_INPUT
-// before the resolver is reached, so this test uses the mock usecase to
-// inject a HARD-kind error directly.
+// importCards resolver maps a hard parser error (HARD kind) with an empty
+// snippet. Every whole-payload reject is a top-level BAD_USER_INPUT that never
+// reaches the resolver's mapper, so this test uses the mock usecase to inject a
+// HARD-kind error directly.
 func TestImportCards_ResolverKindHardSnippetNull(t *testing.T) {
 	t.Parallel()
 
@@ -373,7 +373,7 @@ func TestImportCards_ResolverKindHardSnippetNull(t *testing.T) {
 			Errors: []usecase.CardImportError{
 				{
 					Line:    0,
-					Message: "payload exceeds 1048576 bytes",
+					Message: "unrecoverable parse failure",
 					Kind:    usecase.CardImportErrKindHard,
 					Snippet: "",
 				},
