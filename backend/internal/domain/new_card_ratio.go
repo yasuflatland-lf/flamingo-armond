@@ -22,16 +22,28 @@ type NewCardRatio struct {
 // interleave loop counts.
 const NewCardRatioDenMax = 100
 
+// NewCardRatioMaxNewShareNum / NewCardRatioMaxNewShareDen cap the new-card
+// share at 4/5 (80%) so the review share stays >= 20% — the discovery-first
+// floor. Above it review slots starve and the backlog grows unbounded; proven in
+// docs/backend/ddd-patterns/discovery-first-due-ordering.md and the formal study.
+const (
+	NewCardRatioMaxNewShareNum = 4
+	NewCardRatioMaxNewShareDen = 5
+)
+
 // ParseNewCardRatio's rejection reasons, one sentinel per rule so callers can
 // attribute the fault to a field with errors.Is instead of re-deriving the
 // bounds. The bound-free reasons use plain errors.New so errors.Is matches by
-// identity rather than by eris's message equality; the cap reason follows the
-// bound-carrying sibling precedent (ErrRoleNameTooLong) and interpolates
-// NewCardRatioDenMax so the exported bound and the message cannot drift apart.
+// identity rather than by eris's message equality; the bound-carrying reasons
+// follow the sibling precedent (ErrRoleNameTooLong) and interpolate their
+// exported bounds so the constants and messages cannot drift apart.
 var (
 	ErrNewCardRatioDenominatorNotPositive = errors.New("domain: new card ratio: denominator must be positive")
 	ErrNewCardRatioShareOutOfRange        = errors.New("domain: new card ratio: numerator must satisfy 0 < num < den")
 	ErrNewCardRatioDenominatorTooLarge    = eris.Errorf("domain: new card ratio: reduced denominator exceeds max %d", NewCardRatioDenMax)
+	ErrNewCardRatioNewShareTooHigh        = eris.Errorf(
+		"domain: new card ratio: new share must not exceed %d/%d",
+		NewCardRatioMaxNewShareNum, NewCardRatioMaxNewShareDen)
 )
 
 // DefaultNewCardRatio (4/5) is applied when a user has no stored preference.
@@ -43,9 +55,11 @@ var DefaultNewCardRatio = mustNewCardRatio(4, 5)
 // It returns a sentinel (not a silent fallback) on failure:
 // ErrNewCardRatioDenominatorNotPositive for a non-positive denominator,
 // ErrNewCardRatioShareOutOfRange for a share outside (0, den) — which covers a
-// zero or negative numerator — and ErrNewCardRatioDenominatorTooLarge for a
-// reduced denominator above NewCardRatioDenMax. The checks run in that order and
-// return on the first failure, so exactly one sentinel is ever produced.
+// zero or negative numerator — ErrNewCardRatioDenominatorTooLarge for a reduced
+// denominator above NewCardRatioDenMax, and ErrNewCardRatioNewShareTooHigh for a
+// reduced new share above 4/5 (the discovery-first review floor). The checks run
+// in that order and return on the first failure, so exactly one sentinel is ever
+// produced.
 func ParseNewCardRatio(num, den int) (NewCardRatio, error) {
 	if den <= 0 {
 		return NewCardRatio{}, ErrNewCardRatioDenominatorNotPositive
@@ -57,6 +71,9 @@ func ParseNewCardRatio(num, den int) (NewCardRatio, error) {
 	rnum, rden := num/g, den/g
 	if rden > NewCardRatioDenMax {
 		return NewCardRatio{}, ErrNewCardRatioDenominatorTooLarge
+	}
+	if rnum*NewCardRatioMaxNewShareDen > NewCardRatioMaxNewShareNum*rden {
+		return NewCardRatio{}, ErrNewCardRatioNewShareTooHigh
 	}
 	return NewCardRatio{num: rnum, den: rden}, nil
 }

@@ -1,6 +1,8 @@
 """The per-user new-vs-review interleave ratio for a learn session, as a reduced
 fraction: numerator new cards per (denominator) total, so the review share is
-denominator - numerator. Defaults to 4/5 (80% new) when never set."""
+denominator - numerator. Defaults to 4/5 (80% new) when never set; the new-card
+share is capped at 80% so the review share stays >= 20% (the FSRS
+discovery-first floor)."""
 type NewCardRatio {
   numerator: Int!
   denominator: Int!
@@ -17,9 +19,10 @@ extend type Mutation {
   """
   Sets the authenticated caller's new-card ratio. numerator/denominator are
   reduced and validated server-side (1 <= numerator < denominator <= 100 after
-  reduction); an out-of-range ratio returns extensions.code = "BAD_USER_INPUT".
-  Unauthenticated callers receive extensions.code = "UNAUTHENTICATED". Returns
-  the updated user. Idempotent.
+  reduction, and the new-card share must not exceed 80% so the review share
+  stays >= 20% — the FSRS discovery-first floor); an out-of-range ratio returns
+  extensions.code = "BAD_USER_INPUT". Unauthenticated callers receive
+  extensions.code = "UNAUTHENTICATED". Returns the updated user. Idempotent.
   """
   updateNewCardRatio(numerator: Int!, denominator: Int!): User!
 }
