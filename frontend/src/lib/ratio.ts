@@ -11,8 +11,12 @@
 
 /** Lowest new-card share the 5%-step control can select, in percent. */
 export const MIN = 5;
-/** Highest new-card share the 5%-step control can select, in percent. */
-export const MAX = 95;
+/**
+ * Highest new-card share the 5%-step control can select, in percent. Capped at
+ * 80% so the review share stays >= 20% — the FSRS discovery-first floor; the
+ * backend `NewCardRatio` value object enforces the same bound authoritatively.
+ */
+export const MAX = 80;
 /** Granularity of the 5%-step control, in percentage points. */
 export const STEP = 5;
 
@@ -33,10 +37,11 @@ export function shareTenths({ numerator, denominator }: Ratio): number {
 }
 
 /**
- * True when the exact share 100n/d is a whole multiple of 5, which happens
- * exactly when d divides 20n. n < d keeps the share strictly inside (0, 100),
- * so an on-grid share always lands within [MIN, MAX] and the clamp never
- * interacts with this test.
+ * True when the exact share 100n/d is a whole multiple of 5, which happens exactly
+ * when d divides 20n. This tests 5%-grid alignment only: an on-grid share is NOT
+ * necessarily within [MIN, MAX] — 85/90/95% are multiples of 5 but exceed MAX = 80,
+ * so callers deciding whether the control can represent a share compare the stored
+ * value against gridPercent (which clamps) rather than testing isOnGrid alone.
  */
 export function isOnGrid({ numerator, denominator }: Ratio): boolean {
   return (20 * numerator) % denominator === 0;
