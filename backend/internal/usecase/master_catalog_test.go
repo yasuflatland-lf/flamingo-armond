@@ -1390,6 +1390,111 @@ func TestMasterCatalogUsecase_MergeMaster_MasterUnpublishedMidFlight_ReturnsNotF
 	}
 }
 
+// TestMasterCatalogUsecase_MergeMaster_UnpublishCommitsAfterGate_NoCardsImported
+// wires the real master-deck usecase and sequences the unpublish exactly where
+// the race used to live: the catalog gate reads the master and finds it
+// published, the admin's unpublish commits the instant that read returns, and
+// only then does the merge transaction open. The merge's in-transaction probe
+// must see the unpublished deck, so the caller gets the non-disclosure not-found
+// outcome and not one card is written. Pre-existing coverage starts from an
+// already-unpublished deck; this one starts from a published gate, which is the
+// interleaving the pooled probe used to admit.
+func TestMasterCatalogUsecase_MergeMaster_UnpublishCommitsAfterGate_NoCardsImported(t *testing.T) {
+	t.Parallel()
+	const ownerID = "u1"
+	const destID = "22222222-2222-7222-8222-222222222222"
+	const masterID = "master-id"
+
+	deckCG := &fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}}
+	userCard := &fakeUserCardRepo{}
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			// The gate observes a published deck, and the unpublish commits the
+			// moment it returns — before the merge transaction body runs.
+			delete(deckCG.byID, id)
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Master"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	deck := newMasterDeckUsecaseWithTx(
+		deckCG,
+		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
+			// The master cards outlive the unpublish, so only the published probe
+			// can stop the merge here.
+			masterID: {masterCard("mc-1", masterID, "alpha", "first", 0)},
+		}},
+		userCard,
+		&fakeUserCG{byID: map[string]*domain.Cardgroup{destID: mustCardgroup(t, destID, ownerID, "My Deck")}},
+		stubTxRunner,
+		newTestLogger(),
+	)
+	uc := NewMasterCatalogUsecase(repo, deck, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
+
+	out, err := uc.MergeMaster(authedCtx(ownerID), masterID, destID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !out.NotFound {
+		t.Fatal("an unpublish committed after the gate must yield the not-found outcome")
+	}
+	if out.Cardgroup != nil {
+		t.Fatal("expected nil cardgroup on NotFound")
+	}
+	if userCard.upsertCall != 0 || len(userCard.captured) != 0 {
+		t.Fatalf("no cards may be imported, got %d upsert calls", userCard.upsertCall)
+	}
+	if len(deckCG.txHandles) != 1 {
+		t.Fatalf("the merge must probe the master on its transaction exactly once, got %d", len(deckCG.txHandles))
+	}
+	if deckCG.pooledCalls != 0 {
+		t.Fatalf("the merge must not probe the master on a pooled connection, got %d calls", deckCG.pooledCalls)
+	}
+}
+
+// TestMasterCatalogUsecase_PreviewMergeMaster_UnpublishCommitsAfterGate_ReturnsNotFoundOutcome
+// is the dry-run half of the parity decision: the same interleaving that makes
+// the merge report not-found must make the preview report not-found too, so a
+// learner is never shown a tally for a deck the confirm will refuse.
+func TestMasterCatalogUsecase_PreviewMergeMaster_UnpublishCommitsAfterGate_ReturnsNotFoundOutcome(t *testing.T) {
+	t.Parallel()
+	const ownerID = "u1"
+	const destID = "22222222-2222-7222-8222-222222222222"
+	const masterID = "master-id"
+
+	deckCG := &fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}}
+	userCard := &fakeUserCardRepo{}
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			delete(deckCG.byID, id)
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Master"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	deck := newMasterDeckUsecaseWithTx(
+		deckCG,
+		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
+			masterID: {masterCard("mc-1", masterID, "alpha", "first", 0)},
+		}},
+		userCard,
+		&fakeUserCG{byID: map[string]*domain.Cardgroup{destID: mustCardgroup(t, destID, ownerID, "My Deck")}},
+		stubTxRunner,
+		newTestLogger(),
+	)
+	uc := NewMasterCatalogUsecase(repo, deck, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
+
+	out, err := uc.PreviewMergeMaster(authedCtx(ownerID), masterID, destID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !out.NotFound {
+		t.Fatal("the dry run must report not-found for the same state the merge refuses")
+	}
+	if out.Added != 0 || out.Updated != 0 {
+		t.Fatalf("no tally may be reported on the not-found path, got %+v", out)
+	}
+	if userCard.countFrontsCalls != 0 {
+		t.Fatalf("no overlap tally may be computed, got %d calls", userCard.countFrontsCalls)
+	}
+}
+
 // TestMasterCatalogUsecase_MergeMaster_DestVanishedAfterCommit_NotNotFoundOutcome
 // wires the real master-deck usecase so the post-commit destination read-back is
 // exercised end to end. The merge commits, then the destination cardgroup is

@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -11,10 +12,13 @@ import (
 // messages without duplicating the constant.
 const CardgroupNameMax = 100
 
-// Sentinel errors for cardgroup name validation. Callers should use
-// errors.Is to match them rather than comparing message strings.
+// Sentinel errors for cardgroup name validation. Callers should use errors.Is to
+// match them rather than comparing message strings. The bound-free reason uses
+// plain errors.New so errors.Is matches by identity rather than by eris's message
+// equality; the bound-carrying reason stays on eris.Errorf so the exported
+// CardgroupNameMax and the message cannot drift apart.
 var (
-	ErrCardgroupNameRequired = eris.New("cardgroup: name is required")
+	ErrCardgroupNameRequired = errors.New("cardgroup: name is required")
 	ErrCardgroupNameTooLong  = eris.Errorf("cardgroup: name exceeds %d characters", CardgroupNameMax)
 )
 
