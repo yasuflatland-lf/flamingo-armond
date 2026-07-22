@@ -69,8 +69,9 @@ extend type Query {
   and the payload may not parse to more than 5,000 rows. On this query both
   violations use the same channel — the call succeeds, `valid` is false,
   `parsedCards` is empty, and `errors` carries a `HARD` entry on `line: 0`.
-  `importCards` reports the same two caps through different channels; see its
-  description before treating a clean preview as a guaranteed import.
+  `importCards` enforces the same two caps but reports both as top-level
+  `BAD_USER_INPUT` on `payload`, so a preview that reports either cap will fail
+  the import outright rather than importing a subset.
   """
   validateCardImport(input: ValidateCardImportInput!): CardImportValidationResult!
 }
@@ -104,12 +105,11 @@ extend type Mutation {
   Persist parsed cards into the target cardgroup. Only authenticated owners of
   the target cardgroup may import. Conflict key is (cardgroup_id, front);
   conflicting rows have their `back` text re-written, others are inserted.
-  Two payload caps apply, and they fail through different channels. A payload
-  parsing to more than 5,000 rows returns a top-level BAD_USER_INPUT and imports
-  nothing. Decoded text larger than 1 MiB (1,048,576 bytes) never reaches the
-  parser: the call succeeds with `inserted: 0`, `updated: 0`, and a single `HARD`
-  entry on `line: 0` in `errors`, so a client must inspect `errors` rather than
-  assume a non-error response means cards were written.
+  Two payload caps apply and both fail the same way: decoded text larger than
+  1 MiB (1,048,576 bytes) and a payload parsing to more than 5,000 rows each
+  return a top-level BAD_USER_INPUT on `payload` and import nothing. Per-line
+  parse diagnostics are different — they do NOT block the import, so a client
+  must still inspect `errors` on a successful response.
   """
   importCards(input: ImportCardsInput!): ImportCardsPayload!
 }

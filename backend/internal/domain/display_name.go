@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/rivo/uniseg"
@@ -9,10 +10,14 @@ import (
 
 const DisplayNameMax = 50
 
+// Display name validation sentinels. The bound-free reasons use plain errors.New
+// so errors.Is matches by identity rather than by eris's message equality; the
+// bound-carrying reason stays on eris.Errorf so the exported DisplayNameMax and
+// the message cannot drift apart.
 var (
-	ErrDisplayNameRequired = eris.New("user: display name is required")
+	ErrDisplayNameRequired = errors.New("user: display name is required")
 	ErrDisplayNameTooLong  = eris.Errorf("user: display name exceeds %d characters", DisplayNameMax)
-	ErrDisplayNameReserved = eris.New("user: display name is reserved")
+	ErrDisplayNameReserved = errors.New("user: display name is reserved")
 )
 
 // reservedDisplayNames is the set of lowercased display names that users may not

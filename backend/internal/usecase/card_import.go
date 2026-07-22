@@ -106,6 +106,11 @@ type ImportCardsOutput struct {
 // allowed.
 const cardImportParsedRowCap = 5000
 
+// cardImportPayloadByteCap caps a single import payload at 1 MiB. The limit
+// applies to the DECODED text, not to the base64 envelope; 1 MiB already
+// represents tens of thousands of entries.
+const cardImportPayloadByteCap = 1 << 20
+
 // cardImportUsecase wires auth, ownership, the textdic parser, the card
 // repository, and the transaction runner that persists the import.
 type cardImportUsecase struct {
@@ -155,6 +160,12 @@ func (u *cardImportUsecase) Validate(ctx context.Context, payload string) (Valid
 	decoded, err := base64.StdEncoding.DecodeString(payload)
 	if err != nil {
 		return ValidateCardImportOutcome{}, ucerr.NewValidationError("payload", "payload must be standard base64-encoded text")
+	}
+	// Whole-payload reject (byte cap): same channel as the row cap below — the
+	// call succeeds, Valid is false, and the violation is a HARD line-0 entry
+	// with no preview rows. An over-size payload is never parsed.
+	if v := validateImportPayloadSize(len(decoded)); v != nil {
+		return ValidateCardImportOutcome{Valid: false, Errors: []CardImportError{{Line: v.Line, Message: v.Message, Kind: CardImportErrKindHard}}}, nil
 	}
 
 	process := u.processCardImport
@@ -211,107 +222,32 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 		return ImportCardsOutput{}, err
 	}
 
-	if input.Payload == "" {
-		return ImportCardsOutput{}, ucerr.NewValidationError("payload", "payload must not be empty")
-	}
-	decoded, err := base64.StdEncoding.DecodeString(input.Payload)
+	res, err := runCardImport(ctx, input.Payload, cardImportPipeline[*domain.Card]{
+		wrap:    "usecase: card import",
+		process: u.processCardImport,
+		// cards.front is plain text, so the in-payload conflict key is the front
+		// verbatim.
+		dedupeKey: identityKey,
+		newRow: func(front, back domain.CardText, now time.Time) (*domain.Card, error) {
+			c, err := domain.NewCardFromValidated(domain.CardgroupID(input.CardgroupID), front, back, 0)
+			if err != nil {
+				return nil, err
+			}
+			// NewCardFromValidated stamps per-card timestamps; pin the whole batch
+			// to one created_at. updated_at is database-owned, so the constructor's
+			// value is neither sent nor pinned here.
+			c.CreatedAt = now
+			return c, nil
+		},
+		tx: u.tx,
+		upsert: func(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (repository.UpsertManyTxResult, error) {
+			return u.cardRepo.UpsertManyTx(ctx, tx, cards)
+		},
+	})
 	if err != nil {
-		return ImportCardsOutput{}, ucerr.NewValidationError("payload", "payload must be standard base64-encoded text")
+		return ImportCardsOutput{}, err
 	}
-
-	process := u.processCardImport
-	if process == nil {
-		process = textdic.Process
-	}
-	words, parseErrs, perr := process(string(decoded))
-	if perr != nil {
-		return ImportCardsOutput{}, eris.Wrap(perr, "usecase: card import: parse")
-	}
-
-	// Enforce the same caps the Validate preview reports, via the shared
-	// checker, so the two paths cannot diverge. Checked on the raw parsed words
-	// (before dedup) so Import and Validate agree exactly. The first violation
-	// aborts the whole batch (all-or-nothing); the row cap short-circuits ahead
-	// of any per-row length error inside the helper. On the pass path the checker
-	// hands back the already-parsed CardText VOs so the build loop below can reuse
-	// them instead of grapheme-scanning every row a second time.
-	validated, caps := validateImportRows(words)
-	if len(caps) > 0 {
-		return ImportCardsOutput{}, ucerr.NewValidationError(caps[0].Field, caps[0].Message)
-	}
-
-	mappedErrs := cardImportErrorsFromTextdic(parseErrs)
-
-	// validated is parallel to the raw words; key each row's VOs by the dedup key
-	// (last occurrence wins, matching dedupeParsedWords' survivor) so the post-dedup
-	// build loop can look up the already-parsed VOs for the surviving rows.
-	identityKey := func(s string) string { return s }
-	voByKey := make(map[string]validatedCard, len(words))
-	for i, w := range words {
-		voByKey[identityKey(w.Front)] = validated[i]
-	}
-
-	// Deduplicate parsed words by front within this payload. cards.front is
-	// plain text, so the conflict key is the front verbatim (identity key).
-	deduped, dupErrs := dedupeParsedWords(words, identityKey)
-	words = deduped
-	mappedErrs = append(mappedErrs, dupErrs...)
-
-	// Empty (but well-formed) parse: nothing to persist; surface the parser's
-	// per-line diagnostics so the caller can act on them.
-	if len(words) == 0 {
-		return ImportCardsOutput{Errors: mappedErrs}, nil
-	}
-
-	now := time.Now().UTC()
-	cards := make([]*domain.Card, 0, len(words))
-	for _, w := range words {
-		// Build from the CardText VOs validateImportRows already parsed for this row
-		// (single grapheme scan per row). NewCardFromValidated skips the re-scan
-		// domain.NewCard would perform; the per-side length cap was enforced
-		// upstream by validateImportRows, and the realistic remaining failure is ID
-		// generation. Surface any error as a typed validation error rather than
-		// letting a bad value reach the repository / DB CHECK as an opaque
-		// constraint violation.
-		vc := voByKey[identityKey(w.Front)]
-		c, err := domain.NewCardFromValidated(domain.CardgroupID(input.CardgroupID), vc.front, vc.back, 0)
-		if err != nil {
-			return ImportCardsOutput{}, translateCardErr(err)
-		}
-		// NewCardFromValidated stamps per-card timestamps; pin the whole batch to
-		// one created_at. updated_at is database-owned, so the constructor's value
-		// is neither sent nor pinned here.
-		c.CreatedAt = now
-		cards = append(cards, c)
-	}
-
-	if u.tx == nil {
-		return ImportCardsOutput{}, eris.New("usecase: card import tx runner not configured")
-	}
-
-	var result repository.UpsertManyTxResult
-	if err := u.tx(ctx, func(tx *gorm.DB) error {
-		r, err := u.cardRepo.UpsertManyTx(ctx, tx, cards)
-		if err != nil {
-			return eris.Wrap(err, "usecase: card import: repo")
-		}
-		result = r
-		return nil
-	}); err != nil {
-		if isContextDone(err) {
-			return ImportCardsOutput{}, err
-		}
-		if translated := translateTextLengthViolation(err); translated != nil {
-			return ImportCardsOutput{}, translated
-		}
-		return ImportCardsOutput{}, eris.Wrap(err, "usecase: card import: tx")
-	}
-
-	return ImportCardsOutput{
-		Inserted: result.Inserted,
-		Updated:  result.Updated,
-		Errors:   mappedErrs,
-	}, nil
+	return ImportCardsOutput(res), nil
 }
 
 func cardImportErrorsFromTextdic(errs []textdic.ValidationError) []CardImportError {
@@ -346,10 +282,27 @@ type validatedCard struct {
 	back  domain.CardText
 }
 
-// validateImportRows enforces the two import caps shared by Validate and Import: the
-// parsed-row cap (cardImportParsedRowCap) and the per-side grapheme cap
-// (domain.CardTextMax). It is the single source of cap logic for both paths so
-// they cannot re-diverge.
+// validateImportPayloadSize enforces the decoded-payload byte cap
+// (cardImportPayloadByteCap), the one import cap that can be checked without
+// parsing. It returns nil when the payload fits, so callers use it as a
+// pre-filter immediately after base64 decoding and before textdic.Process.
+//
+// The violation is payload-scoped (Line 0) and shaped exactly like the row cap's,
+// so each consumer routes both whole-payload rejects through one channel: Import
+// returns a top-level ucerr.ValidationError on "payload"; Validate reports a HARD
+// line-0 entry with an empty preview.
+func validateImportPayloadSize(decodedBytes int) *capViolation {
+	if decodedBytes <= cardImportPayloadByteCap {
+		return nil
+	}
+	return &capViolation{Line: 0, Field: "payload", Message: fmt.Sprintf("payload exceeds %d bytes", cardImportPayloadByteCap)}
+}
+
+// validateImportRows enforces the two per-parse import caps shared by Validate and
+// Import: the parsed-row cap (cardImportParsedRowCap) and the per-side grapheme cap
+// (domain.CardTextMax). Together with validateImportPayloadSize — which covers the
+// third cap, on the decoded payload's byte length — it is the single source of cap
+// logic for both paths, so they cannot re-diverge.
 //
 // The row cap takes precedence and short-circuits: an over-cap payload returns a
 // nil VO slice and only the row-cap violation (the caller must cut rows before any
@@ -377,39 +330,4 @@ func validateImportRows(words []textdic.ParsedWord) ([]validatedCard, []capViola
 		validated[i] = validatedCard{front: front, back: back}
 	}
 	return validated, out
-}
-
-// dedupeParsedWords drops earlier duplicates by key(front), last occurrence wins,
-// and reports each dropped row as a CardImportErrKindDuplicate error.
-//
-// Postgres error 21000 ("ON CONFLICT DO UPDATE command cannot affect row a second
-// time") fires when the same conflict key appears more than once in a single
-// INSERT statement, so this dedupe must run before UpsertManyTx. The key function
-// adapts the conflict-key semantics to the target column: identity for plain-text
-// cards.front, frontMatchKey (case-fold) for citext master_cards.front so case
-// variants collapse to one row.
-func dedupeParsedWords(words []textdic.ParsedWord, key func(string) string) ([]textdic.ParsedWord, []CardImportError) {
-	lastIndex := make(map[string]int, len(words))
-	for i, w := range words {
-		lastIndex[key(w.Front)] = i
-	}
-	deduped := make([]textdic.ParsedWord, 0, len(words))
-	var dropErrors []CardImportError
-	for i, w := range words {
-		if lastIndex[key(w.Front)] != i {
-			// w is the earlier (dropped) occurrence; the row that survives is at
-			// lastIndex, so its Back is the value that overrode this one.
-			winningBack := words[lastIndex[key(w.Front)]].Back
-			dropErrors = append(dropErrors, CardImportError{
-				Line:    w.Line,
-				Message: fmt.Sprintf("duplicated front (%s) was overridden with the new back (%s)", w.Front, winningBack),
-				Kind:    CardImportErrKindDuplicate,
-				Front:   w.Front,
-				Back:    w.Back,
-			})
-			continue
-		}
-		deduped = append(deduped, w)
-	}
-	return deduped, dropErrors
 }

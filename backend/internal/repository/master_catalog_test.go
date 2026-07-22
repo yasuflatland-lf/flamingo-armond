@@ -268,6 +268,74 @@ func TestMasterCardgroupRepository_FindPublishedByID_EmptyDeckNotFound(t *testin
 	require.Equal(t, empty.ID, got.ID)
 }
 
+// TestMasterCardgroupRepository_FindPublishedByIDTx_MatchesPooledVisibility pins
+// that the transaction-scoped read applies the identical catalog-visibility
+// filter as the pooled one: published-with-cards resolves, draft and unknown
+// collapse to ErrNotFound. The two share one private helper precisely so this
+// cannot drift.
+func TestMasterCardgroupRepository_FindPublishedByIDTx_MatchesPooledVisibility(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewMasterCardgroupRepository(testDB.GORM)
+
+	base := uuid.NewString()
+	pub := insertCatalogVisibleMCG(t, ctx, "FindPubTx "+base, 1)
+	draft := insertDraftMCG(t, ctx, "FindDraftTx "+base)
+	empty := insertPublishedMCG(t, ctx, "FindEmptyTx "+base, 2)
+
+	tx := testDB.GORM.WithContext(ctx).Begin()
+	require.NoError(t, tx.Error)
+	defer tx.Rollback()
+
+	got, err := repo.FindPublishedByIDTx(ctx, tx, pub.ID)
+	require.NoError(t, err)
+	require.Equal(t, pub.ID, got.ID)
+
+	_, err = repo.FindPublishedByIDTx(ctx, tx, draft.ID)
+	require.True(t, errors.Is(err, repository.ErrNotFound), "draft id must return ErrNotFound")
+
+	_, err = repo.FindPublishedByIDTx(ctx, tx, empty.ID)
+	require.True(t, errors.Is(err, repository.ErrNotFound), "published card-less deck must return ErrNotFound")
+
+	_, err = repo.FindPublishedByIDTx(ctx, tx, uuid.NewString())
+	require.True(t, errors.Is(err, repository.ErrNotFound), "absent id must return ErrNotFound")
+}
+
+// TestMasterCardgroupRepository_FindPublishedByIDTx_LocksRowForShare proves the
+// lock that closes the unpublish window: while the reading transaction is open,
+// a second transaction cannot take the exclusive lock an unpublish needs
+// (Unpublish loads the row FOR UPDATE), while another catalog-visibility read
+// still proceeds because FOR SHARE is compatible with itself. Two concurrent
+// imports of the same deck therefore do not serialise against each other.
+func TestMasterCardgroupRepository_FindPublishedByIDTx_LocksRowForShare(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewMasterCardgroupRepository(testDB.GORM)
+
+	pub := insertCatalogVisibleMCG(t, ctx, "LockShare "+uuid.NewString(), 1)
+
+	tx1 := testDB.GORM.WithContext(ctx).Begin()
+	require.NoError(t, tx1.Error)
+	defer tx1.Rollback()
+	_, err := repo.FindPublishedByIDTx(ctx, tx1, pub.ID)
+	require.NoError(t, err)
+
+	tx2 := testDB.GORM.WithContext(ctx).Begin()
+	require.NoError(t, tx2.Error)
+	defer tx2.Rollback()
+	var id string
+	err = tx2.Raw("SELECT id FROM master_cardgroups WHERE id = ? FOR UPDATE NOWAIT", pub.ID).Scan(&id).Error
+	require.Error(t, err, "an unpublish (FOR UPDATE) must not acquire the row while the read transaction holds FOR SHARE")
+
+	// NOWAIT on the compatibility probe too: a regression to FOR UPDATE would
+	// otherwise hang this test instead of failing it.
+	tx3 := testDB.GORM.WithContext(ctx).Begin()
+	require.NoError(t, tx3.Error)
+	defer tx3.Rollback()
+	err = tx3.Raw("SELECT id FROM master_cardgroups WHERE id = ? FOR SHARE NOWAIT", pub.ID).Scan(&id).Error
+	require.NoError(t, err, "two concurrent catalog-visibility reads share the lock and do not serialise")
+}
+
 // ---------------------------------------------------------------------------
 // Forward + backward pagination round-trip
 // ---------------------------------------------------------------------------
