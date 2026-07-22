@@ -183,11 +183,11 @@ func (l *lexer) lexDefinition(lval *yySymType) int {
 
 // recoverLineForUnrecognized captures first plus every subsequent rune on the
 // malformed line (up to but not including the terminating newline or EOF) and
-// returns the snippet text together with the appropriate token: NEWLINE when a
-// line terminator is found, and NEWLINE again at EOF so the grammar's
-// `error NEWLINE` recovery rule can fire even when the malformed line is the
-// last in the payload (no trailing newline). The next Lex call will return 0
-// at EOF on its own. The returned snippet does NOT include the trailing
+// returns the snippet text together with the token to emit: NEWLINE on both
+// exits, so the grammar's blank-line production `entry: NEWLINE` shifts it and
+// the parser never enters error mode — the malformed line is recovered here in
+// the lexer, not by the `entries: error NEWLINE` rule. At EOF the next Lex call
+// returns 0 on its own. The returned snippet does NOT include the trailing
 // newline character.
 func (l *lexer) recoverLineForUnrecognized(first rune) (string, int) {
 	var b strings.Builder

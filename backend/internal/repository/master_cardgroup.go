@@ -131,6 +131,20 @@ type MasterCardgroupRepository interface {
 	// cards, which the catalog treats as absent. Used by the usecase to hydrate
 	// a pagination cursor.
 	FindPublishedByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
+	// FindPublishedByIDTx is the transaction-scoped sibling of FindPublishedByID:
+	// identical visibility filter and identical ErrNotFound semantics, but the
+	// read runs on the caller's transaction handle and locks the matched
+	// master_cardgroups row FOR SHARE. Unpublish loads the same row FOR UPDATE,
+	// so a concurrent unpublish blocks until the caller's transaction ends and
+	// can no longer slip between the published verdict and the write that
+	// depends on it. When the unpublish commits first, the blocked read
+	// re-evaluates against the new row version under READ COMMITTED, the
+	// status filter rejects it, and the caller gets ErrNotFound.
+	//
+	// The lock is deliberately narrow: one row in master_cardgroups. The deck's
+	// master cards are NOT locked — write paths derive emptiness from the card
+	// enumeration they actually consume, which no interleaving can defeat.
+	FindPublishedByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.MasterCardgroup, error)
 	// FindPageAnyStatus returns a window of master cardgroups of ANY status (draft
 	// or published) and ANY card count, each bundled with its card count, plus
 	// the search-aware total of all matching rows. Unlike FindPublishedPage it
@@ -345,8 +359,27 @@ func (r *masterCardgroupRepo) ListPublishedDefaultStarters(ctx context.Context) 
 // cards have all been deleted — an empty deck is nothing a learner can import,
 // merge or study, so the catalog treats it as absent.
 func (r *masterCardgroupRepo) FindPublishedByID(ctx context.Context, id string) (*domain.MasterCardgroup, error) {
+	return findPublishedMasterCardgroupByID(r.db.WithContext(ctx), id)
+}
+
+// FindPublishedByIDTx runs the same catalog-visibility read on the caller's
+// transaction handle and takes a FOR SHARE lock on the matched row, so a
+// concurrent unpublish (which loads the row FOR UPDATE) cannot commit until the
+// caller's transaction ends. Callers that snapshot a master deck use this rather
+// than FindPublishedByID so the published verdict and the copy cannot be
+// separated by an unpublish.
+func (r *masterCardgroupRepo) FindPublishedByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.MasterCardgroup, error) {
+	return findPublishedMasterCardgroupByID(
+		tx.WithContext(ctx).Clauses(clause.Locking{Strength: "SHARE"}), id)
+}
+
+// findPublishedMasterCardgroupByID is the single catalog-visibility read shared
+// by the pooled and transaction-scoped entry points, so the two can never drift
+// on what "catalog-visible" means. The caller supplies a prepared session: the
+// tx variant adds the FOR SHARE locking clause before handing it over.
+func findPublishedMasterCardgroupByID(db *gorm.DB, id string) (*domain.MasterCardgroup, error) {
 	var row gormMasterCardgroup
-	err := r.db.WithContext(ctx).
+	err := db.
 		Where("id = ? AND status = ?", id, string(domain.MasterStatusPublished)).
 		Where(masterCardsExistPredicate("master_cardgroups")).
 		Take(&row).Error

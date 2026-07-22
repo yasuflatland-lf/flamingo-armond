@@ -176,6 +176,10 @@ func (panicMasterCardgroupRepo) FindPublishedByID(_ context.Context, _ string) (
 	panic("not used in this test")
 }
 
+func (panicMasterCardgroupRepo) FindPublishedByIDTx(_ context.Context, _ *gorm.DB, _ string) (*domain.MasterCardgroup, error) {
+	panic("not used in this test")
+}
+
 func (panicMasterCardgroupRepo) FindPageAnyStatus(
 	_ context.Context, _, _ *repository.MasterCatalogCursor, _, _ int,
 	_ repository.MasterCatalogOrderBy, _ repository.SortOrder, _ *string,

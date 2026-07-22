@@ -1,6 +1,15 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import { env } from "@/env";
+import {
+  ONBOARDING_COOKIE_NAME,
+  ONBOARDING_COOKIE_TTL_SECONDS,
+} from "@/lib/auth/onboarding-cookie";
+import {
+  ALLOW_ONBOARDING_GATE,
+  CLEAR_ONBOARDING_HINT,
+  resolveOnboardingGate,
+} from "@/lib/auth/onboarding-gate";
 import { buildHtmlCsp } from "@/lib/security/csp";
 import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
 import {
@@ -21,6 +30,22 @@ function generateNonce(): string {
 
 function createMiddlewareResponse(requestHeaders: Headers, cspPolicy: string | null) {
   const response = NextResponse.next({ request: { headers: requestHeaders } });
+  if (cspPolicy != null) {
+    response.headers.set("Content-Security-Policy", cspPolicy);
+  }
+  return response;
+}
+
+/**
+ * Redirect built off the incoming URL so the origin follows the deployment. The
+ * query string is dropped: the target is a self-contained form, and forwarding an
+ * arbitrary caller-controlled search onto it only widens the reflected-input surface.
+ */
+function createRedirectResponse(request: NextRequest, cspPolicy: string | null, target: string) {
+  const url = request.nextUrl.clone();
+  url.pathname = target;
+  url.search = "";
+  const response = NextResponse.redirect(url);
   if (cspPolicy != null) {
     response.headers.set("Content-Security-Policy", cspPolicy);
   }
@@ -93,6 +118,7 @@ export async function updateSession(request: NextRequest) {
   let authStatus: AuthStatus = "anonymous";
   let email = "";
   let isAdmin = false;
+  let sub = "";
   try {
     // getClaims() has a three-way return: success ({ data: { claims }, error: null }),
     // failure ({ data: null, error }), and anonymous ({ data: null, error: null }).
@@ -118,6 +144,10 @@ export async function updateSession(request: NextRequest) {
       authStatus = "authenticated";
       email = claimsData.claims.email ?? "";
       isAdmin = claimsData.claims.app_metadata?.role === "admin";
+      // `?? ""` is not dead: the claim is typed non-null, but a token minted by a
+      // non-conforming issuer would leave it undefined and the gate must then
+      // decline to bind a cookie rather than bind one to "undefined".
+      sub = claimsData.claims.sub ?? "";
     }
   } catch (err) {
     // getClaims() can throw non-AuthError exceptions (plain Error from validateExp,
@@ -135,11 +165,51 @@ export async function updateSession(request: NextRequest) {
   requestHeaders.set(USER_EMAIL_HEADER, email);
   requestHeaders.set(USER_IS_ADMIN_HEADER, isAdmin ? "true" : "false");
 
+  // The display-name gate. It runs here, after the identity is verified and before
+  // any RSC work, so every route the matcher covers is guarded — including routes
+  // added later, which an authenticated-layout gate would silently miss. The
+  // per-request cost is a signed-cookie verify; only a cookie miss pays a backend
+  // lookup. See docs/frontend/onboarding-gate.md.
+  let gate = ALLOW_ONBOARDING_GATE;
+  if (authStatus === "authenticated") {
+    gate = await resolveOnboardingGate({
+      pathname: request.nextUrl.pathname,
+      sub,
+      cookieValue: request.cookies.get(ONBOARDING_COOKIE_NAME)?.value,
+      secret: env.ONBOARDING_GATE_SECRET,
+      backendUrl: env.BACKEND_URL,
+      getAccessToken: async () => {
+        const { data } = await supabase.auth.getSession();
+        return data.session?.access_token ?? null;
+      },
+    });
+  } else if (request.cookies.has(ONBOARDING_COOKIE_NAME)) {
+    // Sign-out, session expiry, or a cleared browser session: drop the hint so the
+    // next signed-in visitor on this browser is re-checked from scratch. An account
+    // switch needs no explicit clear — the MAC is bound to the previous `sub` and
+    // simply stops verifying.
+    gate = CLEAR_ONBOARDING_HINT;
+  }
+
   // Rebuild the forwarded response from the now-complete request headers,
   // preserving any auth cookies the token refresh wrote.
-  const finalResponse = createMiddlewareResponse(requestHeaders, cspPolicy);
+  const finalResponse =
+    gate.redirectTo != null
+      ? createRedirectResponse(request, cspPolicy, gate.redirectTo)
+      : createMiddlewareResponse(requestHeaders, cspPolicy);
   for (const cookie of supabaseResponse.cookies.getAll()) {
     finalResponse.cookies.set(cookie);
+  }
+  if (gate.setCookie != null) {
+    finalResponse.cookies.set(ONBOARDING_COOKIE_NAME, gate.setCookie, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: ONBOARDING_COOKIE_TTL_SECONDS,
+    });
+  } else if (gate.clearCookie) {
+    finalResponse.cookies.delete(ONBOARDING_COOKIE_NAME);
   }
   return finalResponse;
 }

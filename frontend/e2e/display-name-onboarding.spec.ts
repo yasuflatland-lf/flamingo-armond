@@ -2,12 +2,20 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { loginAs, seedUser } from "./_auth";
 
-// Scenario: a user whose displayName is empty is redirected from / to /onboarding,
-// fills in a display name, and submits. OnboardingForm pushes /onboarding/start
-// (the first-deck chooser); because the e2e DB seeds no master decks, that route
-// hits its empty-catalog fallback and redirects to /cardgroups/new?welcome=1,
-// which is the URL this test waits for. Seeding a master deck would make the
-// chooser render and stay on /onboarding/start instead.
+// Scenario: a user whose displayName is empty is redirected to /onboarding, fills
+// in a display name, and submits. OnboardingForm pushes /onboarding/start (the
+// first-deck chooser); because the e2e DB seeds no master decks, that route hits
+// its empty-catalog fallback and redirects to /cardgroups/new?welcome=1, which is
+// the URL this test waits for. Seeding a master deck would make the chooser render
+// and stay on /onboarding/start instead.
+//
+// The first hop is now owned by the MIDDLEWARE display-name gate, not by the home
+// RSC: the gate redirects every non-exempt path to /onboarding while displayName is
+// empty, so this user reaches /onboarding from any URL, and / never gets as far as
+// running its own isUserOnboarded branch. /onboarding and /onboarding/start are
+// exempt from the gate, so the form and the chooser stay reachable in that state.
+// /cardgroups/new is gated, and is reached only because the submit has by then made
+// displayName non-empty.
 
 const runId = randomUUID().slice(0, 8);
 const onboarder = {
@@ -18,8 +26,9 @@ const onboarder = {
 test.describe
   .serial("display name onboarding redirect", () => {
     test.beforeAll(async () => {
-      // Seed with displayName: "" so isUserOnboarded() returns false and
-      // the home RSC redirects to /onboarding instead of /cardgroups.
+      // Seed with displayName: "" so isUserOnboarded() returns false and the
+      // middleware gate redirects to /onboarding instead of letting the home RSC
+      // route the user on to /cardgroups.
       await seedUser({
         email: onboarder.email,
         password: onboarder.password,
@@ -28,14 +37,20 @@ test.describe
       });
     });
 
-    test("home redirects to /onboarding, form accepts display name, then lands on /cardgroups/new?welcome=1 via the /onboarding/start chooser fallback", async ({
+    test("the display-name gate redirects to /onboarding, the form accepts a display name, then lands on /cardgroups/new?welcome=1 via the /onboarding/start chooser fallback", async ({
       context,
       page,
     }) => {
       await loginAs(context, onboarder);
 
-      // 1. Home RSC detects empty displayName and redirects to /onboarding.
+      // 1. The middleware gate detects the empty displayName and redirects to
+      //    /onboarding before / renders at all.
       await page.goto("/");
+      await page.waitForURL("**/onboarding", { timeout: 10_000 });
+
+      // 1b. The same gate covers deep links, which the home-RSC branch never did:
+      //     a direct /cardgroups hit lands on /onboarding too.
+      await page.goto("/cardgroups");
       await page.waitForURL("**/onboarding", { timeout: 10_000 });
 
       // 2. Onboarding form is visible. The suite runs in the ja-JP locale, so

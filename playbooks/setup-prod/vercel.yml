@@ -11,7 +11,7 @@
 # (defaults: <repo-root>/.setup-prod.state.yml, confirm: false).
 #
 # Env wiring is automated: after the operator imports the project from GitHub
-# (the import wizard cannot be driven via API), this phase POSTs the three
+# (the import wizard cannot be driven via API), this phase POSTs the four
 # required env vars to /v10/projects/{id}/env?upsert=true. The repoId captured
 # here feeds Phase 6's deploy kick (POST /v13/deployments needs repoId, not the
 # "owner/repo" string). The first build at import time is expected to fail
@@ -79,20 +79,39 @@
     supabase_url: "{{ existing_state.supabase_url }}"
     supabase_anon_key: "{{ existing_state.supabase_anon_key }}"
 
+# --- Reuse ONBOARDING_GATE_SECRET from state, or generate if missing ---
+# HMAC key for the frontend middleware onboarding gate's `fa-onboarded`
+# fast-path cookie. Auto-generated (no external source), like ping_token in
+# Phase 3. `frontend/src/env.ts` requires >= 32 characters; `openssl rand -hex
+# 32` yields 64. The var is optional in the app — unset only means every gated
+# navigation pays a backend display-name lookup — but registering it here keeps
+# the deployed default on the fast path. Idempotent: a non-empty value already
+# in the state file (re-run of Phase 4) is kept, so the secret is stable across
+# deploys and previously issued cookies keep verifying.
+- name: Reuse or generate ONBOARDING_GATE_SECRET
+  ansible.builtin.set_fact:
+    onboarding_gate_secret: >-
+      {{ existing_state.onboarding_gate_secret
+         if ((existing_state.onboarding_gate_secret | default('') | string | trim | length) > 0)
+         else lookup('pipe', 'openssl rand -hex 32') }}
+  no_log: true
+
 # ---------------------------------------------------------------------------
 # Show env vars the operator can verify after the API registers them.
 # anon_key is publishable (client-side env var), so no_log is not used here.
+# ONBOARDING_GATE_SECRET is a secret, so only its name is printed.
 # ---------------------------------------------------------------------------
 - name: Show env vars that will be registered via the Vercel API
   ansible.builtin.debug:
     msg:
-      - "These three env vars will be registered automatically via the Vercel API"
+      - "These four env vars will be registered automatically via the Vercel API"
       - "after you provide the project ID. SKIP the Environment Variables section"
       - "in the import wizard — leave it empty."
       - ""
       - "  BACKEND_URL                   = {{ backend_url }}            (Production, Preview)"
       - "  NEXT_PUBLIC_SUPABASE_URL      = {{ supabase_url }}           (All Environments)"
       - "  NEXT_PUBLIC_SUPABASE_ANON_KEY = {{ supabase_anon_key }}      (All Environments)"
+      - "  ONBOARDING_GATE_SECRET        = (generated, value hidden)    (Production, Preview)"
 
 - name: Show Vercel import wizard steps
   ansible.builtin.pause:
@@ -105,7 +124,7 @@
          The function region is pinned to sin1 (Singapore) by
          frontend/vercel.json -- no dashboard region step is needed.
       4. SKIP the Environment Variables section -- leave it empty.
-         The playbook registers the three required env vars via the Vercel
+         The playbook registers the four required env vars via the Vercel
          API as soon as you provide the project ID below.
       5. Click Deploy. The first build will fail because env is not yet
          registered -- this is EXPECTED. Phase 6 (postapply) triggers a
@@ -209,8 +228,9 @@
 # GET-then-PATCH-or-POST sidesteps that and stays idempotent across re-runs.
 #
 # `type`:
-#   - BACKEND_URL is server-only -> "encrypted" (not exposed via dashboard
-#     after creation, decrypted only at build/runtime).
+#   - BACKEND_URL and ONBOARDING_GATE_SECRET are server-only -> "encrypted"
+#     (not exposed via dashboard after creation, decrypted only at
+#     build/runtime).
 #   - NEXT_PUBLIC_* are client-bundled -> "plain" (encrypted-type values are
 #     not allowed for vars Next.js inlines into the client bundle).
 # ---------------------------------------------------------------------------
@@ -219,6 +239,10 @@
     vercel_desired_env:
       - key: BACKEND_URL
         value: "{{ backend_url }}"
+        target: [production, preview]
+        type: encrypted
+      - key: ONBOARDING_GATE_SECRET
+        value: "{{ onboarding_gate_secret }}"
         target: [production, preview]
         type: encrypted
       - key: NEXT_PUBLIC_SUPABASE_URL
@@ -400,7 +424,8 @@
 
 # State file is known to exist at this point (assert above would have failed
 # otherwise), so re-reading via lookup is safe without errors='ignore'.
-# no_log on both tasks: the merged dict carries supabase_db_url (DB password).
+# no_log on both tasks: the merged dict carries supabase_db_url (DB password)
+# and onboarding_gate_secret.
 - name: Merge vercel values into state
   ansible.builtin.set_fact:
     state_merged: >-
@@ -409,6 +434,7 @@
              'vercel_project_id': vercel_project_id,
              'vercel_repo_id': vercel_repo_id,
              'production_url': production_url,
+             'onboarding_gate_secret': onboarding_gate_secret,
            }) }}
   no_log: true
 
@@ -430,5 +456,5 @@
       - "  vercel_repo_id    = {{ vercel_repo_id }}"
       - "  production_url    = {{ production_url }}"
       - "Env vars registered via API: BACKEND_URL, NEXT_PUBLIC_SUPABASE_URL,"
-      - "NEXT_PUBLIC_SUPABASE_ANON_KEY."
+      - "NEXT_PUBLIC_SUPABASE_ANON_KEY, ONBOARDING_GATE_SECRET."
       - "Next: run Phase 5 (supabase loopback) to update Site URL and OAuth redirect."

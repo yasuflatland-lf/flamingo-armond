@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HtmlCspOptions } from "@/lib/security/csp";
 import { updateSession } from "./middleware";
+
+const SUB = "11111111-1111-4111-8111-111111111111";
 
 const mockGetUser = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
@@ -9,9 +11,13 @@ const mockGetUser = vi.hoisted(() =>
 
 const mockGetClaims = vi.hoisted(() => vi.fn().mockResolvedValue({ data: null, error: null }));
 
+const mockGetSession = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ data: { session: { access_token: "access-token" } }, error: null }),
+);
+
 vi.mock("@supabase/ssr", () => ({
   createServerClient: vi.fn().mockReturnValue({
-    auth: { getUser: mockGetUser, getClaims: mockGetClaims },
+    auth: { getUser: mockGetUser, getClaims: mockGetClaims, getSession: mockGetSession },
   }),
 }));
 
@@ -29,6 +35,14 @@ function makeRequest(url = "http://localhost/", cookies: Record<string, string> 
     req.cookies.set(name, value);
   }
   return req;
+}
+
+/** The `@supabase/ssr` client shape the middleware exercises. */
+function stubSupabaseClient() {
+  return {
+    auth: { getUser: mockGetUser, getClaims: mockGetClaims, getSession: mockGetSession },
+    // biome-ignore lint/suspicious/noExplicitAny: test-only stub return
+  } as any;
 }
 
 function forwardedRequestHeader(response: NextResponse, name: string) {
@@ -69,8 +83,7 @@ describe("updateSession", () => {
       (_url, _key, opts: any) => {
         // Simulate SDK calling setAll to persist refreshed auth cookies
         opts.cookies.setAll([{ name: "sb-auth-token", value: "refreshed", options: {} }]);
-        // biome-ignore lint/suspicious/noExplicitAny: test-only stub return
-        return { auth: { getUser: mockGetUser, getClaims: mockGetClaims } } as any;
+        return stubSupabaseClient();
       },
     );
 
@@ -136,8 +149,7 @@ describe("updateSession", () => {
       // biome-ignore lint/suspicious/noExplicitAny: test-only cast to drive setAll
       (_url, _key, opts: any) => {
         opts.cookies.setAll([{ name: "sb-auth-token", value: "refreshed", options: {} }]);
-        // biome-ignore lint/suspicious/noExplicitAny: test-only stub return
-        return { auth: { getUser: mockGetUser, getClaims: mockGetClaims } } as any;
+        return stubSupabaseClient();
       },
     );
 
@@ -321,8 +333,7 @@ describe("updateSession", () => {
       // biome-ignore lint/suspicious/noExplicitAny: test-only cast to drive setAll
       (_url, _key, opts: any) => {
         opts.cookies.setAll([{ name: "sb-auth-token", value: "refreshed", options: {} }]);
-        // biome-ignore lint/suspicious/noExplicitAny: test-only stub return
-        return { auth: { getUser: mockGetUser, getClaims: mockGetClaims } } as any;
+        return stubSupabaseClient();
       },
     );
     const response = await updateSession(
@@ -330,5 +341,135 @@ describe("updateSession", () => {
     );
     expect(response.cookies.get("sb-auth-token")?.value).toBe("refreshed");
     expect(forwardedRequestHeader(response, "x-auth-status")).toBe("anonymous");
+  });
+});
+
+/**
+ * The display-name gate wired into the middleware. `resolveOnboardingGate` owns the
+ * decision (and is unit-tested against every route shape in onboarding-gate.test.ts);
+ * these tests prove the middleware actually consults it and turns each outcome into
+ * the right response — a redirect, a cookie write, or a cookie delete.
+ */
+describe("updateSession onboarding gate", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", fetchMock);
+    mockGetClaims.mockResolvedValue({
+      data: { claims: { sub: SUB, email: "u@example.com", app_metadata: {} } },
+      error: null,
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
+    fetchMock.mockReset();
+    mockGetClaims.mockResolvedValue({ data: null, error: null });
+  });
+
+  function meResponse(displayName: string | null) {
+    return {
+      ok: true,
+      json: async () => ({ data: { me: { id: SUB, displayName } } }),
+    } as unknown as Response;
+  }
+
+  it.each([
+    ["/", "http://localhost/"],
+    ["/learn/{id}", "http://localhost/learn/33333333-3333-4333-8333-333333333333"],
+    ["/cardgroups", "http://localhost/cardgroups"],
+    ["/catalog", "http://localhost/catalog"],
+    ["/stats", "http://localhost/stats"],
+    ["/profile", "http://localhost/profile"],
+    ["/admin/users", "http://localhost/admin/users"],
+  ])("redirects a signed-in user with an empty display name from %s", async (_label, url) => {
+    fetchMock.mockResolvedValue(meResponse(""));
+    const response = await updateSession(makeRequest(url));
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("http://localhost/onboarding");
+  });
+
+  it.each([
+    ["/onboarding", "http://localhost/onboarding"],
+    ["/onboarding/start", "http://localhost/onboarding/start"],
+    ["/login", "http://localhost/login"],
+    ["/auth/callback", "http://localhost/auth/callback"],
+  ])("leaves %s reachable in that state — no redirect loop", async (_label, url) => {
+    fetchMock.mockResolvedValue(meResponse(""));
+    const response = await updateSession(makeRequest(url));
+    expect(response.headers.get("location")).toBeNull();
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("authenticated");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("leaves an onboarded user's navigation unchanged and issues the fast-path cookie", async () => {
+    fetchMock.mockResolvedValue(meResponse("Alice"));
+    const response = await updateSession(makeRequest("http://localhost/cardgroups"));
+    expect(response.headers.get("location")).toBeNull();
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("authenticated");
+    const issued = response.cookies.get("fa-onboarded");
+    expect(issued?.value).toMatch(/^v1\./);
+    expect(issued?.httpOnly).toBe(true);
+    expect(issued?.sameSite).toBe("lax");
+    expect(issued?.path).toBe("/");
+  });
+
+  it("skips the backend lookup on the next request once the cookie is issued", async () => {
+    fetchMock.mockResolvedValue(meResponse("Alice"));
+    const first = await updateSession(makeRequest("http://localhost/cardgroups"));
+    const issued = first.cookies.get("fa-onboarded")?.value ?? "";
+    fetchMock.mockClear();
+
+    const second = await updateSession(
+      makeRequest("http://localhost/stats", { "fa-onboarded": issued }),
+    );
+    expect(second.headers.get("location")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("drops the hint cookie on the redirect so a cleared display name re-gates", async () => {
+    fetchMock.mockResolvedValue(meResponse(""));
+    const response = await updateSession(
+      makeRequest("http://localhost/cardgroups", { "fa-onboarded": "stale" }),
+    );
+    expect(response.cookies.get("fa-onboarded")?.value).toBe("");
+  });
+
+  it("drops the hint cookie once the session is gone (sign-out)", async () => {
+    mockGetClaims.mockResolvedValue({ data: null, error: null });
+    const response = await updateSession(
+      makeRequest("http://localhost/cardgroups", { "fa-onboarded": "stale" }),
+    );
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.cookies.get("fa-onboarded")?.value).toBe("");
+  });
+
+  it("preserves refreshed auth cookies on the gate redirect", async () => {
+    const { createServerClient } = await import("@supabase/ssr");
+    vi.mocked(createServerClient).mockImplementationOnce(
+      // biome-ignore lint/suspicious/noExplicitAny: test-only cast to drive setAll
+      (_url, _key, opts: any) => {
+        opts.cookies.setAll([{ name: "sb-auth-token", value: "refreshed", options: {} }]);
+        return stubSupabaseClient();
+      },
+    );
+    fetchMock.mockResolvedValue(meResponse(""));
+    const response = await updateSession(
+      makeRequest("http://localhost/cardgroups", { "sb-auth-token": "old" }),
+    );
+    expect(response.status).toBe(307);
+    expect(response.cookies.get("sb-auth-token")?.value).toBe("refreshed");
+  });
+
+  it("does not gate when the verified claims carry no subject", async () => {
+    mockGetClaims.mockResolvedValue({
+      data: { claims: { email: "u@example.com", app_metadata: {} } },
+      error: null,
+    });
+    const response = await updateSession(makeRequest("http://localhost/cardgroups"));
+    expect(response.headers.get("location")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
