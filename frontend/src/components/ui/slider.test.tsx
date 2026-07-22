@@ -8,11 +8,11 @@ import { Slider } from "./slider";
 // A controlled wrapper mirroring how NewCardRatioSection drives the slider:
 // value is state, and aria-valuetext is recomputed from it on every change.
 function ControlledSlider() {
-  const [value, setValue] = useState(80);
+  const [value, setValue] = useState(70);
   return (
     <Slider
       min={5}
-      max={95}
+      max={80}
       step={5}
       value={[value]}
       aria-label="New card ratio"
@@ -28,8 +28,8 @@ describe("<Slider>", () => {
 
     const slider = screen.getByRole("slider");
     expect(slider).toHaveAttribute("aria-label", "New card ratio");
-    expect(slider).toHaveAttribute("aria-valuetext", "New 80%, review 20%");
-    expect(slider).toHaveAttribute("aria-valuenow", "80");
+    expect(slider).toHaveAttribute("aria-valuetext", "New 70%, review 30%");
+    expect(slider).toHaveAttribute("aria-valuenow", "70");
   });
 
   it("forwards aria-describedby onto the role=slider thumb, not the root", () => {
@@ -37,7 +37,7 @@ describe("<Slider>", () => {
       <>
         <Slider
           min={5}
-          max={95}
+          max={80}
           step={5}
           value={[35]}
           aria-label="New card ratio"
@@ -60,11 +60,11 @@ describe("<Slider>", () => {
     slider.focus();
 
     await user.keyboard("{ArrowRight}");
-    expect(slider).toHaveAttribute("aria-valuenow", "85");
-    expect(slider).toHaveAttribute("aria-valuetext", "New 85%, review 15%");
+    expect(slider).toHaveAttribute("aria-valuenow", "75");
+    expect(slider).toHaveAttribute("aria-valuetext", "New 75%, review 25%");
 
     await user.keyboard("{ArrowLeft}");
-    expect(slider).toHaveAttribute("aria-valuenow", "80");
-    expect(slider).toHaveAttribute("aria-valuetext", "New 80%, review 20%");
+    expect(slider).toHaveAttribute("aria-valuenow", "70");
+    expect(slider).toHaveAttribute("aria-valuetext", "New 70%, review 30%");
   });
 });

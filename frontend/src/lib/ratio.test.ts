@@ -14,7 +14,7 @@ import {
 describe("ratio constants", () => {
   it("pins the 5%-step control range", () => {
     expect(MIN).toBe(5);
-    expect(MAX).toBe(95);
+    expect(MAX).toBe(80);
     expect(STEP).toBe(5);
   });
 });
@@ -56,9 +56,9 @@ describe("isOnGrid", () => {
   });
 
   it("is true at both ends of the selectable range", () => {
-    // 1/20 = 5% = MIN, 19/20 = 95% = MAX.
+    // 1/20 = 5% = MIN, 16/20 = 80% = MAX.
     expect(isOnGrid({ numerator: 1, denominator: 20 })).toBe(true);
-    expect(isOnGrid({ numerator: 19, denominator: 20 })).toBe(true);
+    expect(isOnGrid({ numerator: 16, denominator: 20 })).toBe(true);
   });
 
   it("is false for a share that misses the grid", () => {
@@ -98,15 +98,18 @@ describe("gridPercent", () => {
   });
 
   it("clamps a share above the range down to MAX", () => {
-    // 99% rounds to grid index 20 (100%), which the clamp pulls back to MAX.
+    // 90% and 85% sat inside the old [5, 95] range but now exceed MAX = 80, so they
+    // clamp; 99% rounds to grid index 20 (100%) and clamps too.
+    expect(gridPercent({ numerator: 90, denominator: 100 })).toBe(80);
+    expect(gridPercent({ numerator: 85, denominator: 100 })).toBe(80);
     expect(gridPercent({ numerator: 99, denominator: 100 })).toBe(MAX);
     expect(gridPercent({ numerator: 98, denominator: 100 })).toBe(MAX);
   });
 
   it("leaves the shares just inside the range unclamped", () => {
-    // 3% rounds up to 5% and 97% rounds down to 95% on their own.
+    // 3% rounds up to 5% and 77% rounds down to 75% on their own.
     expect(gridPercent({ numerator: 3, denominator: 100 })).toBe(5);
-    expect(gridPercent({ numerator: 97, denominator: 100 })).toBe(95);
+    expect(gridPercent({ numerator: 77, denominator: 100 })).toBe(75);
   });
 });
 

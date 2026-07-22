@@ -17,12 +17,14 @@ import { NewCardRatioSection } from "./new-card-ratio-section";
 vi.mock("@/components/ui/slider", () => ({
   Slider: ({
     value,
+    max,
     onValueChange,
     onValueCommit,
     "aria-valuetext": ariaValueText,
     "aria-describedby": ariaDescribedBy,
   }: {
     value: number[];
+    max?: number;
     onValueChange?: (value: number[]) => void;
     onValueCommit?: (value: number[]) => void;
     "aria-valuetext"?: string;
@@ -32,15 +34,16 @@ vi.mock("@/components/ui/slider", () => ({
     // the double carries them on one element the assertions can read.
     <div data-testid="slider-root" aria-describedby={ariaDescribedBy}>
       <div data-testid="slider-value">{value[0]}</div>
+      <div data-testid="slider-max">{max}</div>
       <div data-testid="slider-valuetext">{ariaValueText}</div>
-      <button type="button" data-testid="change-90" onClick={() => onValueChange?.([90])}>
-        change to 90
+      <button type="button" data-testid="change-70" onClick={() => onValueChange?.([70])}>
+        change to 70
       </button>
-      <button type="button" data-testid="commit-85" onClick={() => onValueCommit?.([85])}>
-        commit 85
+      <button type="button" data-testid="commit-75" onClick={() => onValueCommit?.([75])}>
+        commit 75
       </button>
-      <button type="button" data-testid="commit-90" onClick={() => onValueCommit?.([90])}>
-        commit 90
+      <button type="button" data-testid="commit-80" onClick={() => onValueCommit?.([80])}>
+        commit 80
       </button>
       <button type="button" data-testid="commit-40" onClick={() => onValueCommit?.([40])}>
         commit 40
@@ -112,6 +115,21 @@ describe("<NewCardRatioSection>", () => {
     // On-grid stored value: nothing to disclose, so nothing to describe either.
     expect(screen.queryByTestId("new-card-ratio-custom-notice")).not.toBeInTheDocument();
     expect(screen.getByTestId("slider-root")).not.toHaveAttribute("aria-describedby");
+  });
+
+  it("renders 5% and 80% as the slider range end labels and passes max=80", () => {
+    renderWithIntl(
+      <MockedProvider mocks={[]}>
+        <NewCardRatioSection initialRatio={{ numerator: 11, denominator: 20 }} />
+      </MockedProvider>,
+    );
+
+    // The section renders <span>{MIN}%</span> and <span>{MAX}%</span> as the range
+    // end labels; MAX is now 80. The 55% value labels ("New 55%"/"Review 45%") keep
+    // these exact-text matches unambiguous.
+    expect(screen.getByText("5%")).toBeInTheDocument();
+    expect(screen.getByText("80%")).toBeInTheDocument();
+    expect(screen.getByTestId("slider-max")).toHaveTextContent("80");
   });
 
   it("treats a reduced on-grid fraction ({11,20} -> 55) as on-grid", () => {
@@ -212,6 +230,27 @@ describe("<NewCardRatioSection>", () => {
     expect(screen.getByTestId("slider-root")).toHaveAttribute("aria-describedby", notice.id);
   });
 
+  it("shows the custom notice for an on-grid share above the 80% cap ({17,20} = 85%)", () => {
+    // 85% is on the 5% grid but above MAX = 80, so the control clamps to 80 while the
+    // labels report the stored 85%. The notice must bridge that mismatch. The former
+    // isOnGrid-based check missed this once MAX dropped below 95, because on-grid no
+    // longer implies in-range.
+    renderWithIntl(
+      <MockedProvider mocks={[]}>
+        <NewCardRatioSection initialRatio={{ numerator: 17, denominator: 20 }} />
+      </MockedProvider>,
+    );
+
+    expect(screen.getByText("New 85%")).toBeInTheDocument();
+    expect(screen.getByText("Review 15%")).toBeInTheDocument();
+    // Exact text, not toHaveTextContent: the control clamps to the 80 max.
+    expect(screen.getByTestId("slider-value").textContent).toBe("80");
+
+    const notice = screen.getByTestId("new-card-ratio-custom-notice");
+    expect(notice).toHaveTextContent("A custom ratio (85%) is set via the API.");
+    expect(screen.getByTestId("slider-root")).toHaveAttribute("aria-describedby", notice.id);
+  });
+
   it("rounds a repeating off-grid ratio ({1,3}) to one decimal", () => {
     renderWithIntl(
       <MockedProvider mocks={[]}>
@@ -226,7 +265,7 @@ describe("<NewCardRatioSection>", () => {
     );
   });
 
-  // The API accepts shares on both sides of the control's [5, 95] span, so the
+  // The API accepts shares on both sides of the control's [5, 80] span, so the
   // position clamps at either end while the labels and the notice keep
   // reporting the stored share. 1/100 rounds to grid step 0 and 39/40 to grid
   // step 100; both are legitimate stored values.
@@ -242,7 +281,7 @@ describe("<NewCardRatioSection>", () => {
     {
       numerator: 39,
       denominator: 40,
-      control: "95",
+      control: "80",
       newLabel: "New 97.5%",
       reviewLabel: "Review 2.5%",
       notice: "A custom ratio (97.5%) is set via the API.",
@@ -277,10 +316,10 @@ describe("<NewCardRatioSection>", () => {
       </MockedProvider>,
     );
 
-    await user.click(screen.getByTestId("change-90"));
+    await user.click(screen.getByTestId("change-70"));
 
-    expect(screen.getByText("New 90%")).toBeInTheDocument();
-    expect(screen.getByText("Review 10%")).toBeInTheDocument();
+    expect(screen.getByText("New 70%")).toBeInTheDocument();
+    expect(screen.getByText("Review 30%")).toBeInTheDocument();
     // The stored value is still the off-grid one until a commit succeeds.
     expect(screen.getByTestId("new-card-ratio-custom-notice")).toBeInTheDocument();
   });
@@ -308,17 +347,17 @@ describe("<NewCardRatioSection>", () => {
     const onCalled = vi.fn();
 
     renderWithIntl(
-      <MockedProvider mocks={[makeUpdateRatioMock(90, { onCalled })]}>
+      <MockedProvider mocks={[makeUpdateRatioMock(70, { onCalled })]}>
         <NewCardRatioSection initialRatio={{ numerator: 4, denominator: 5 }} />
       </MockedProvider>,
     );
 
-    await user.click(screen.getByTestId("change-90"));
+    await user.click(screen.getByTestId("change-70"));
 
     // The label reflects the dragged value immediately.
-    expect(screen.getByText("New 90%")).toBeInTheDocument();
-    expect(screen.getByText("Review 10%")).toBeInTheDocument();
-    expect(screen.getByTestId("slider-valuetext")).toHaveTextContent("New 90%, review 10%");
+    expect(screen.getByText("New 70%")).toBeInTheDocument();
+    expect(screen.getByText("Review 30%")).toBeInTheDocument();
+    expect(screen.getByTestId("slider-valuetext")).toHaveTextContent("New 70%, review 30%");
 
     // No save happens until release, so the mutation must not have fired.
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -360,19 +399,20 @@ describe("<NewCardRatioSection>", () => {
     expect(called55).not.toHaveBeenCalled();
   });
 
-  it("onValueCommit fires updateNewCardRatio with { numerator: percent, denominator: 100 }", async () => {
+  it("onValueCommit at the maximum fires updateNewCardRatio with { numerator: 80, denominator: 100 }", async () => {
     const user = userEvent.setup();
     const onCalled = vi.fn();
 
-    // The mock only matches when the exact { numerator: 85, denominator: 100 }
-    // variables are sent, so a matched call proves the wire format.
+    // 80% is the new maximum new-card share; the mock only matches the exact
+    // { numerator: 80, denominator: 100 } variables, so a matched call proves the
+    // wire format at the cap.
     renderWithIntl(
-      <MockedProvider mocks={[makeUpdateRatioMock(85, { onCalled })]}>
-        <NewCardRatioSection initialRatio={{ numerator: 4, denominator: 5 }} />
+      <MockedProvider mocks={[makeUpdateRatioMock(80, { onCalled })]}>
+        <NewCardRatioSection initialRatio={{ numerator: 3, denominator: 4 }} />
       </MockedProvider>,
     );
 
-    await user.click(screen.getByTestId("commit-85"));
+    await user.click(screen.getByTestId("commit-80"));
 
     await waitFor(() => expect(onCalled).toHaveBeenCalledTimes(1));
   });
@@ -382,33 +422,33 @@ describe("<NewCardRatioSection>", () => {
     const user = userEvent.setup();
     const okCalled = vi.fn();
     // Two MockedResponse entries: a successful commit that advances the
-    // committed value to 85, then a failing commit at 90 that must roll the
-    // slider back to 85 (not the original 80) and surface the banner.
+    // committed value to 75, then a failing commit at 80 that must roll the
+    // slider back to 75 (not the original 55) and surface the banner.
     const mocks = [
-      makeUpdateRatioMock(85, { onCalled: okCalled }),
-      makeUpdateRatioMock(90, { error: true }),
+      makeUpdateRatioMock(75, { onCalled: okCalled }),
+      makeUpdateRatioMock(80, { error: true }),
     ];
 
     renderWithIntl(
       <MockedProvider mocks={mocks}>
-        <NewCardRatioSection initialRatio={{ numerator: 4, denominator: 5 }} />
+        <NewCardRatioSection initialRatio={{ numerator: 11, denominator: 20 }} />
       </MockedProvider>,
     );
 
-    await user.click(screen.getByTestId("commit-85"));
+    await user.click(screen.getByTestId("commit-75"));
     await waitFor(() => expect(okCalled).toHaveBeenCalledTimes(1));
     // Let the in-flight `loading` flag settle back to false before the next commit.
     await new Promise((resolve) => setTimeout(resolve, 0));
-    await waitFor(() => expect(screen.getByTestId("slider-value")).toHaveTextContent("85"));
+    await waitFor(() => expect(screen.getByTestId("slider-value")).toHaveTextContent("75"));
 
-    await user.click(screen.getByTestId("commit-90"));
+    await user.click(screen.getByTestId("commit-80"));
 
     const alert = await screen.findByRole("alert");
     expect(alert).toBe(screen.getByTestId("new-card-ratio-error"));
     expect(alert).toHaveTextContent(/.+/);
 
-    // Rolled back to the last server-confirmed value, not the original 80.
-    await waitFor(() => expect(screen.getByTestId("slider-value")).toHaveTextContent("85"));
+    // Rolled back to the last server-confirmed value, not the original 55.
+    await waitFor(() => expect(screen.getByTestId("slider-value")).toHaveTextContent("75"));
 
     expect(consoleWarnSpy).toHaveBeenCalledWith(
       "[profile] updateNewCardRatio rejected",

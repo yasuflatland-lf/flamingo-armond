@@ -11,7 +11,6 @@ import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import {
   equalsPercent,
   gridPercent,
-  isOnGrid,
   MAX,
   MIN,
   type Ratio,
@@ -24,7 +23,7 @@ type Props = { initialRatio: Ratio };
 
 /**
  * New-card ratio slider on `/profile`: lets the signed-in user pick what share
- * of a learn session is never-seen cards vs. reviews. 5% steps, new 5%-95%.
+ * of a learn session is never-seen cards vs. reviews. 5% steps, new 5%-80%.
  * Auto-saves on release via `updateNewCardRatio` (numerator = percent,
  * denominator = 100; the backend reduces). Optimistic local state, rolled back
  * on failure. No Apollo `optimisticResponse`: the mutation can return
@@ -100,7 +99,12 @@ export function NewCardRatioSection({ initialRatio }: Props) {
   // share sits at least 5/99 of a percentage point from the grid, further than
   // the tenths rounding can travel.
   const noticePercent = tenthsToPercent(shareTenths(confirmedRatio));
-  const isOffGrid = !isOnGrid(confirmedRatio);
+  // The notice discloses that the control cannot represent the stored share. That
+  // is true whenever the clamped grid position does not exactly equal the stored
+  // value — an off-grid share (33%) OR an on-grid share above the 80% cap (85/90/95%
+  // is a 5% multiple but clamps to 80), so compare against gridPercent rather than
+  // testing isOnGrid alone.
+  const isOffGrid = !equalsPercent(confirmedRatio, gridPercent(confirmedRatio));
 
   return (
     <fieldset className="flex flex-col gap-2 border-0 p-0">
