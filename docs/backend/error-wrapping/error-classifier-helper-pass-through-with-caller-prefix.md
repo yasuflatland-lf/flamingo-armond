@@ -85,12 +85,12 @@ func (g *AdminGate) Require(ctx context.Context, callerPrefix string) (callerID 
 Each caller passes its own prefix in one line:
 
 ```go
-// admin_role.go:80
+// admin_role.go — (*adminRoleUsecase).List
 if _, err := u.adminGate.Require(ctx, "usecase: admin role: check admin"); err != nil {
     return ..., err
 }
 
-// admin_user.go:207
+// admin_user.go — (*adminUserUsecase).List
 if _, err := u.adminGate.Require(ctx, "usecase: admin user: check admin"); err != nil {
     return ..., err
 }
