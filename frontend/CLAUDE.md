@@ -23,7 +23,7 @@ The frontend package manager is **pnpm** (pinned via `package.json` engines + `p
 
 - [`docs/frontend/stack.md`](../docs/frontend/stack.md) — Next.js 16, React 19.2, TypeScript 5.9, Tailwind 4, shadcn/ui, Biome 2, Apollo Client.
 - [`docs/frontend/dev-quickstart.md`](../docs/frontend/dev-quickstart.md) — Env-file setup and `pnpm --filter frontend` commands.
-- [`docs/frontend/env-vars.md`](../docs/frontend/env-vars.md) — Validated env vars (`BACKEND_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`).
+- [`docs/frontend/env-vars.md`](../docs/frontend/env-vars.md) — Validated env vars (`BACKEND_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `ONBOARDING_GATE_SECRET`).
 - [`docs/frontend/backend-rewrite-contract.md`](../docs/frontend/backend-rewrite-contract.md) — `/api/graphql` rewrite contract.
 - [`docs/frontend/e2e-tests.md`](../docs/frontend/e2e-tests.md) — Playwright + service-role-key handling.
 - [`docs/frontend/tailwind-4-notes.md`](../docs/frontend/tailwind-4-notes.md) — CSS-first config via `@theme`, no `tailwind.config.ts`.
@@ -32,7 +32,7 @@ The frontend package manager is **pnpm** (pinned via `package.json` engines + `p
 - [`docs/frontend/codegen.md`](../docs/frontend/codegen.md) — `graphql-codegen` wiring and `prebuild` lifecycle.
 - [`docs/frontend/apollo-wiring.md`](../docs/frontend/apollo-wiring.md) — `gqlFetch` for RSC and Apollo client cache patterns.
 - [`docs/frontend/routing-topology.md`](../docs/frontend/routing-topology.md) — HomePage / cardgroup / login / `/cards/new` chains.
-- [`docs/frontend/onboarding-gate.md`](../docs/frontend/onboarding-gate.md) — `displayName`-required gate ownership.
+- [`docs/frontend/onboarding-gate.md`](../docs/frontend/onboarding-gate.md) — `displayName`-required gate ownership: middleware gate, exemptions, signed fast-path cookie.
 - [`docs/frontend/route-handler-conventions.md`](../docs/frontend/route-handler-conventions.md) — Per-route layout for `app/api/**/route.ts`.
 - [`docs/frontend/auth-supabase.md`](../docs/frontend/auth-supabase.md) — Supabase SSR client and middleware cookie rotation.
 - [`docs/frontend/csp.md`](../docs/frontend/csp.md) — CSP builders, middleware nonce flow, static headers, and violation reporting.

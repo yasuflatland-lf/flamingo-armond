@@ -55,7 +55,7 @@ The playbook persists collected values across phases in a YAML file at the repo 
 | Permissions | `0600` (re-asserted on every write) |
 | Backup | `<file>.<pid>.<timestamp>~` siblings created on every write (`copy: backup: yes`). Mode bits are preserved from the source (already `0600`). |
 | Vault | Not encrypted; gitignore + `0600` is the baseline |
-| Tier 1 secrets | `supabase_db_url` (DB password embedded) and `ping_token` (bearer token for `/internal/ping`). Do not share, copy across machines, or print on screen-share. |
+| Tier 1 secrets | `supabase_db_url` (DB password embedded), `ping_token` (bearer token for `/internal/ping`), and `onboarding_gate_secret` (HMAC key for the frontend onboarding gate's fast-path cookie). Do not share, copy across machines, or print on screen-share. |
 | Tier 2 publishable | `supabase_anon_key`. Safe to display on the operator's own screen. |
 | Tier 3 IDs / URLs | `supabase_project_ref`, `*_url`, `render_service_id`, `vercel_project_id`, `production_url`, `backend_url`. Public values, used as `--tags <phase>` re-run inputs. |
 | Out-of-state | API tokens (read from env each run) and the Render deploy-hook URL (consumed once via `gh secret set`, never persisted). |
@@ -244,6 +244,7 @@ Set these env vars (scopes given for the manual path; `make setup-prod` Phase 4 
 | `BACKEND_URL` | Production / Preview | Render service URL from Step 2. |
 | `NEXT_PUBLIC_SUPABASE_URL` | All | `https://<project-ref>.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | All | Publishable key from Step 1.3. |
+| `ONBOARDING_GATE_SECRET` | Production / Preview | HMAC key (≥ 32 chars) for the middleware onboarding gate's fast-path cookie. Generate with `openssl rand -hex 32`; use a distinct value per environment. Optional — unset only costs a backend display-name lookup per gated navigation. See [`frontend/onboarding-gate.md` § "Signed fast-path cookie"](./frontend/onboarding-gate.md#signed-fast-path-cookie). |
 
 Under the automated path the first build (kicked off when the import wizard's **Deploy** button is clicked) **will fail** because env is not yet present — this is expected. Phase 6 (postapply) triggers a fresh deploy via `POST /v13/deployments` after Phase 4 has registered env, and the second build succeeds.
 
