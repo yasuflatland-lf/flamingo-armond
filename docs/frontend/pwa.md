@@ -60,7 +60,7 @@ iOS Safari has no `beforeinstallprompt` event, so installability cannot be surfa
 
 ## Auth middleware excludes the static PWA endpoints
 
-The Supabase auth middleware matcher in `frontend/src/middleware.ts` excludes `sw.js`, `offline.html`, and `manifest.webmanifest`. These are static PWA endpoints with no session to rotate, so running `getUser()` / cookie-rotation on them is wasted work — `sw.js` especially, since `no-cache` makes the browser re-fetch it on every page load. See [`auth-supabase.md` § "Middleware cookie rotation"](auth-supabase.md#middleware-cookie-rotation) for the full matcher rationale.
+The Supabase auth middleware matcher in `frontend/src/middleware.ts` excludes `sw.js`, `offline.html`, and `manifest.webmanifest`. These are static PWA endpoints with no session to rotate, so running `getClaims()` / cookie-rotation on them is wasted work — `sw.js` especially, since `no-cache` makes the browser re-fetch it on every page load. See [`auth-supabase.md` § "Middleware cookie rotation"](auth-supabase.md#middleware-cookie-rotation) for the full matcher rationale.
 
 ## Verification note
 
