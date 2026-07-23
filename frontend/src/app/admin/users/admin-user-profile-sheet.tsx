@@ -18,12 +18,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { mutationAuthBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
-import { FieldError } from "@/lib/forms/field-error";
+import { FormField } from "@/lib/forms/form-field";
 import { submitFormHandler } from "@/lib/forms/submit-handler";
 import { updateProfileSchema } from "@/schemas/profile";
 import type { AdminUserListItem, AdminUserRole } from "./admin-user-row";
@@ -326,19 +323,7 @@ function AdminUserProfileSheetBody({
                 onSubmit: displayNameFieldSchema,
               }}
             >
-              {(field) => (
-                <div className="space-y-2">
-                  <Label htmlFor={field.name}>{t("displayNameLabel")}</Label>
-                  <Input
-                    id={field.name}
-                    name={field.name}
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  />
-                  <FieldError zodErrors={field.state.meta.errors} />
-                </div>
-              )}
+              {(field) => <FormField label={t("displayNameLabel")} field={field} />}
             </form.Field>
 
             <form.Field
@@ -350,19 +335,13 @@ function AdminUserProfileSheetBody({
               }}
             >
               {(field) => (
-                <div className="space-y-2">
-                  <Label htmlFor={field.name}>{t("bioLabel")}</Label>
-                  <Textarea
-                    id={field.name}
-                    name={field.name}
-                    value={field.state.value ?? ""}
-                    onBlur={field.handleBlur}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                    rows={4}
-                    placeholder={t("bioPlaceholder")}
-                  />
-                  <FieldError zodErrors={field.state.meta.errors} />
-                </div>
+                <FormField
+                  kind="textarea"
+                  label={t("bioLabel")}
+                  field={field}
+                  rows={4}
+                  placeholder={t("bioPlaceholder")}
+                />
               )}
             </form.Field>
 
