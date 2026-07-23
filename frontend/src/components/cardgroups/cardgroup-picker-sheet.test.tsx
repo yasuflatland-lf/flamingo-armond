@@ -320,6 +320,8 @@ describe("<CardgroupPickerSheet>", () => {
     await waitFor(() => {
       expect(screen.getByText("Select cardgroup")).toBeInTheDocument();
     });
+    // The sr-only SheetDescription resolves through the Cardgroups catalog.
+    expect(screen.getByText("Choose the cardgroup for this card.")).toBeInTheDocument();
   });
 
   // S9: "Create new cardgroup…" link is present even when there are existing cardgroups.

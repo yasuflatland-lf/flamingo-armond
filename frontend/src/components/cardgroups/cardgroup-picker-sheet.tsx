@@ -77,9 +77,7 @@ export default function CardgroupPickerSheet({
       >
         <SheetHeader className="mb-4">
           <SheetTitle>{t("pickerTitle")}</SheetTitle>
-          <SheetDescription className="sr-only">
-            Choose the cardgroup for this card.
-          </SheetDescription>
+          <SheetDescription className="sr-only">{t("pickerDescription")}</SheetDescription>
         </SheetHeader>
 
         {loading && (
