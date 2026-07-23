@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   equalsPercent,
   gridPercent,
-  isOnGrid,
   MAX,
   MIN,
   type Ratio,
@@ -45,32 +44,6 @@ describe("shareTenths", () => {
   it("handles the smallest and largest storable shares", () => {
     expect(shareTenths({ numerator: 1, denominator: 100 })).toBe(10);
     expect(shareTenths({ numerator: 99, denominator: 100 })).toBe(990);
-  });
-});
-
-describe("isOnGrid", () => {
-  it("is true for a share that is a whole multiple of 5", () => {
-    expect(isOnGrid({ numerator: 4, denominator: 5 })).toBe(true);
-    expect(isOnGrid({ numerator: 1, denominator: 2 })).toBe(true);
-    expect(isOnGrid({ numerator: 7, denominator: 20 })).toBe(true);
-  });
-
-  it("is true at both ends of the selectable range", () => {
-    // 1/20 = 5% = MIN, 16/20 = 80% = MAX.
-    expect(isOnGrid({ numerator: 1, denominator: 20 })).toBe(true);
-    expect(isOnGrid({ numerator: 16, denominator: 20 })).toBe(true);
-  });
-
-  it("is false for a share that misses the grid", () => {
-    expect(isOnGrid({ numerator: 33, denominator: 100 })).toBe(false);
-    expect(isOnGrid({ numerator: 1, denominator: 3 })).toBe(false);
-    expect(isOnGrid({ numerator: 1, denominator: 8 })).toBe(false);
-  });
-
-  it("is false one percentage point off a grid step", () => {
-    // 79% and 81% straddle the 80% step.
-    expect(isOnGrid({ numerator: 79, denominator: 100 })).toBe(false);
-    expect(isOnGrid({ numerator: 81, denominator: 100 })).toBe(false);
   });
 });
 

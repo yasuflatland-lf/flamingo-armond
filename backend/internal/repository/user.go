@@ -333,34 +333,19 @@ func (r *userRepo) ListPage(
 		return []*domain.User{}, total, nil
 	}
 
-	// Backward pagination: invert the SQL order, fetch, then reverse the
-	// slice so the caller still observes (created_at DESC, id ASC).
-	// Forward direction is (created_at DESC, id ASC); for backward we flip
-	// both axes.
-	createdAtAsc := false
-	idAsc := true
-	limit := first
-	cursorID := after
-	reverse := false
-	if last > 0 {
-		createdAtAsc = !createdAtAsc
-		idAsc = !idAsc
-		limit = last
-		cursorID = before
-		reverse = true
-	}
+	effectiveDir, limit, cursorID, reverse := paginateSetup(SortDesc, first, last, after, before)
 
 	q := r.db.WithContext(ctx).Model(&gormUser{})
 	if hasSearch {
 		q = q.Where("display_name ILIKE ?", searchPattern)
 	}
 
+	var cursorRow gormUser
 	if cursorID != nil {
 		// Hydrate the cursor user's created_at so we can build the tuple
 		// comparison. A missing user means the cursor row was deleted between
 		// fetches — surface as ErrCursorNotFound so callers can map to a
 		// BAD_USER_INPUT-shaped error.
-		var cursorRow gormUser
 		err := r.db.WithContext(ctx).Select("id", "created_at").
 			Where("id = ?", *cursorID).Take(&cursorRow).Error
 		if err != nil {
@@ -369,12 +354,21 @@ func (r *userRepo) ListPage(
 			}
 			return nil, 0, eris.Wrap(err, "repository: user: hydrate cursor")
 		}
+	}
 
-		clauseSQL, args := userCursorWhere(createdAtAsc, idAsc, cursorRow)
+	spec := userCursorSpec(cursorRow)
+	if reverse {
+		spec.idDir = InvertDir(spec.idDir)
+	}
+	if cursorID != nil {
+		clauseSQL, args, err := buildCursorWhere(spec, effectiveDir, cursorRow.ID)
+		if err != nil {
+			return nil, 0, eris.Wrap(err, "repository: user: build cursor where")
+		}
 		q = q.Where(clauseSQL, args...)
 	}
 
-	q = q.Order(userOrderClause(createdAtAsc, idAsc)).Limit(limit)
+	q = q.Order(buildOrderClause(spec, effectiveDir)).Limit(limit)
 
 	var rows []gormUser
 	if err := q.Find(&rows).Error; err != nil {
@@ -392,42 +386,15 @@ func (r *userRepo) ListPage(
 	return out, total, nil
 }
 
-// userOrderClause renders the SQL ORDER BY tail for the configured axis
-// directions. The default forward order is (created_at DESC, id ASC).
-func userOrderClause(createdAtAsc, idAsc bool) string {
-	caDir := "DESC"
-	if createdAtAsc {
-		caDir = "ASC"
+// userCursorSpec describes the fixed (created_at DESC, id ASC) user order.
+func userCursorSpec(cursor gormUser) cursorSpec {
+	return cursorSpec{
+		orderCol: "created_at",
+		idDir:    SortAsc,
+		fieldValue: func() (any, error) {
+			return cursor.CreatedAt, nil
+		},
 	}
-	idDir := "ASC"
-	if !idAsc {
-		idDir = "DESC"
-	}
-	return "created_at " + caDir + ", id " + idDir
-}
-
-// userCursorWhere builds the tuple-comparison WHERE for (created_at, id)
-// against the supplied cursor row. The expanded form `field op ? OR (field = ?
-// AND id op ?)` is portable across SQL dialects (the row-constructor
-// `(a, b) > (?, ?)` is Postgres-only).
-//
-// For forward paging (created_at DESC, id ASC) we want rows strictly past the
-// cursor — so we emit:
-//
-//	created_at < cursor.created_at OR (created_at = cursor.created_at AND id > cursor.id)
-//
-// For backward paging the direction flips on both axes.
-func userCursorWhere(createdAtAsc, idAsc bool, cursor gormUser) (string, []any) {
-	caOp := "<"
-	if createdAtAsc {
-		caOp = ">"
-	}
-	idOp := ">"
-	if !idAsc {
-		idOp = "<"
-	}
-	clauseSQL := "(created_at " + caOp + " ? OR (created_at = ? AND id " + idOp + " ?))"
-	return clauseSQL, []any{cursor.CreatedAt, cursor.CreatedAt, cursor.ID}
 }
 
 func userToDomain(g gormUser) *domain.User {

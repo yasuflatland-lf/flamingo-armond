@@ -81,9 +81,7 @@ func masterCardsExistPredicate(alias string) string {
 type MasterCardgroupUpdate struct {
 	Name             *string
 	Description      *string
-	Version          *int
 	SortOrder        *int
-	Status           *string
 	IsDefaultStarter *bool
 }
 
@@ -188,7 +186,8 @@ func (r *masterCardgroupRepo) FindByID(ctx context.Context, id string) (*domain.
 func findMasterCardgroupByID(db *gorm.DB, id string) (*domain.MasterCardgroup, error) {
 	var row gormMasterCardgroup
 	if err := db.Where("id = ?", id).Take(&row).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if errors.Is(err, gorm.ErrRecordNotFound) || pgInvalidTextRepresentation(err) {
 			return nil, ErrNotFound
 		}
 		return nil, eris.Wrap(err, "repository: master cardgroup: find by id")
@@ -286,14 +285,8 @@ func (r *masterCardgroupRepo) Update(ctx context.Context, id string, patch Maste
 	if patch.Description != nil {
 		updates["description"] = *patch.Description
 	}
-	if patch.Version != nil {
-		updates["version"] = *patch.Version
-	}
 	if patch.SortOrder != nil {
 		updates["sort_order"] = *patch.SortOrder
-	}
-	if patch.Status != nil {
-		updates["status"] = *patch.Status
 	}
 	if patch.IsDefaultStarter != nil {
 		updates["is_default_starter"] = *patch.IsDefaultStarter
@@ -384,7 +377,8 @@ func findPublishedMasterCardgroupByID(db *gorm.DB, id string) (*domain.MasterCar
 		Where(masterCardsExistPredicate("master_cardgroups")).
 		Take(&row).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if errors.Is(err, gorm.ErrRecordNotFound) || pgInvalidTextRepresentation(err) {
 			return nil, ErrNotFound
 		}
 		return nil, eris.Wrap(err, "repository: master cardgroup: find published by id")

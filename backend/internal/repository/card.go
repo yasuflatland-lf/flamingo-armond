@@ -176,7 +176,8 @@ func findCardByID(ctx context.Context, db *gorm.DB, id string) (*domain.Card, er
 	var row gormCard
 	err := db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if errors.Is(err, gorm.ErrRecordNotFound) || pgInvalidTextRepresentation(err) {
 			return nil, ErrNotFound
 		}
 		return nil, eris.Wrap(err, "repository: card: find by id")

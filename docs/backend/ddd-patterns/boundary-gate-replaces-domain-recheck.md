@@ -54,9 +54,11 @@ func authorizeCardgroupOrBadInput(ctx context.Context, repo CardgroupOwnershipFi
 }
 ```
 
-An empty `CardgroupID` reaches `repo.FindByID`, which returns `ErrNotFound`,
-which the gate translates into `BAD_USER_INPUT(field=cardgroupId)`. The
-GraphQL caller sees a typed validation error before any `Card` is constructed.
+An empty `CardgroupID` reaches `repo.FindByID`, where PostgreSQL reports the
+malformed UUID bind as SQLSTATE `22P02`. The repository classifies that error as
+`ErrNotFound`, which the gate translates into
+`BAD_USER_INPUT(field=cardgroupId)`. The GraphQL caller sees a typed validation
+error before any `Card` is constructed.
 
 A domain-side `if c.CardgroupID == ""` check inside `NewCard` would
 have been unreachable for every production caller. The check was removed

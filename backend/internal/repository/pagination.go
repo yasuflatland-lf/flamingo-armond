@@ -40,7 +40,7 @@ func ReverseSlice[T any](xs []T) []T {
 
 // paginateSetup computes the backward-paging direction-flip preamble shared by
 // every cursor-paginated repository (card / master_card / cardgroup /
-// master_catalog). Forward paging (last == 0) returns the requested direction,
+// master_catalog / user). Forward paging (last == 0) returns the requested direction,
 // `first` as the limit, the `after` cursor, and reverse == false. Backward
 // paging (last > 0) inverts the ORDER BY direction, uses `last` as the limit,
 // the `before` cursor, and reverse == true so the caller reverses the fetched
@@ -62,13 +62,14 @@ func paginateSetup[C any](dir SortOrder, first, last int, after, before *C) (eff
 // already-qualified primary sort expression (e.g. `cards.created_at`,
 // `COALESCE(ucs.due, cards.created_at)`, `mcg.sort_order`), `alias` is the table
 // alias prefix for the id tie-break column (`cards`, `master_cards`, `mcg`, or
-// `""` for an unaliased `id`), and `op` is `>` for ASC or `<` for DESC.
-func cursorTupleWhere(alias, field, op string, fieldVal, idVal any) (string, []any) {
+// `""` for an unaliased `id`), and the operators are `>` for ASC or `<` for
+// DESC.
+func cursorTupleWhere(alias, field, fieldOp, idOp string, fieldVal, idVal any) (string, []any) {
 	idCol := "id"
 	if alias != "" {
 		idCol = alias + ".id"
 	}
-	return "(" + field + " " + op + " ? OR (" + field + " = ? AND " + idCol + " " + op + " ?))",
+	return "(" + field + " " + fieldOp + " ? OR (" + field + " = ? AND " + idCol + " " + idOp + " ?))",
 		[]any{fieldVal, fieldVal, idVal}
 }
 
@@ -85,6 +86,8 @@ func cursorTupleWhere(alias, field, op string, fieldVal, idVal any) (string, []a
 //   - orderCol: the already-qualified primary sort expression
 //     (`cards.created_at`, `COALESCE(ucs.due, cards.created_at)`,
 //     `mcg.sort_order`, …). Ignored when isIDOrder is true.
+//   - idDir: an optional id tie-break direction. Empty uses the primary
+//     direction.
 //   - isIDOrder: the active orderBy resolves to the id column, so only the id
 //     column is emitted (no tuple). Aggregates whose orderBy enum has no id
 //     member (master_catalog) leave this false.
@@ -93,6 +96,7 @@ func cursorTupleWhere(alias, field, op string, fieldVal, idVal any) (string, []a
 type cursorSpec struct {
 	alias      string
 	orderCol   string
+	idDir      SortOrder
 	isIDOrder  bool
 	fieldValue func() (any, error)
 }
@@ -115,7 +119,11 @@ func buildOrderClause(spec cursorSpec, dir SortOrder) string {
 	if spec.isIDOrder {
 		return idCol + " " + d
 	}
-	return spec.orderCol + " " + d + ", " + idCol + " " + d
+	idDir := d
+	if spec.idDir != "" {
+		idDir = string(spec.idDir)
+	}
+	return spec.orderCol + " " + d + ", " + idCol + " " + idDir
 }
 
 // buildCursorWhere builds the tuple-comparison WHERE for a cursorSpec, cursor id,
@@ -124,18 +132,24 @@ func buildOrderClause(spec cursorSpec, dir SortOrder) string {
 // delegates to cursorTupleWhere. Returns the cursor-missing error from
 // spec.fieldValue unchanged.
 func buildCursorWhere(spec cursorSpec, dir SortOrder, idVal any) (string, []any, error) {
-	op := ">"
+	fieldOp := ">"
 	if dir == SortDesc {
-		op = "<"
+		fieldOp = "<"
 	}
 	if spec.isIDOrder {
-		return spec.idColumn() + " " + op + " ?", []any{idVal}, nil
+		return spec.idColumn() + " " + fieldOp + " ?", []any{idVal}, nil
+	}
+	idOp := fieldOp
+	if spec.idDir == SortAsc {
+		idOp = ">"
+	} else if spec.idDir == SortDesc {
+		idOp = "<"
 	}
 	val, err := spec.fieldValue()
 	if err != nil {
 		return "", nil, err
 	}
-	clause, args := cursorTupleWhere(spec.alias, spec.orderCol, op, val, idVal)
+	clause, args := cursorTupleWhere(spec.alias, spec.orderCol, fieldOp, idOp, val, idVal)
 	return clause, args, nil
 }
 
