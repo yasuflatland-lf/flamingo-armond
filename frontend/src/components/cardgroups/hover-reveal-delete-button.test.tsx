@@ -45,29 +45,35 @@ describe("<HoverRevealDeleteButton>", () => {
     // motion-reduce:opacity-100 is the load-bearing partner to SwipeableRow's
     // reduced-motion early-return: when the swipe layer is absent this is the
     // only delete affordance, so it must reveal under prefers-reduced-motion.
+    // Every opacity arm must carry a matching pointer-events arm ("visible iff
+    // tappable"): opacity-0 alone leaves the hidden button clickable, so a
+    // consumer relying on the base alone would ship an invisible mobile tap
+    // target without the guard here.
     render(<HoverRevealDeleteButton ariaLabel="Delete widget" onDelete={vi.fn()} />);
     const cls = screen.getByRole("button", { name: "Delete widget" }).className;
     expect(cls).toContain("opacity-0");
     expect(cls).toContain("sm:group-hover:opacity-100");
     expect(cls).toContain("motion-reduce:opacity-100");
     expect(cls).toContain("transition-opacity");
+    expect(cls).toContain("pointer-events-none");
+    expect(cls).toContain("sm:group-hover:pointer-events-auto");
+    expect(cls).toContain("sm:group-focus-within:pointer-events-auto");
+    expect(cls).toContain("sm:group-focus-within:opacity-100");
+    expect(cls).toContain("motion-reduce:pointer-events-auto");
   });
 
-  it("appends the per-row className override on top of the base reveal classes", () => {
-    // card-row passes pointer-events / focus-within tokens its overlay needs;
-    // the base reveal classes must survive the merge alongside the override.
+  it("appends the row-specific layout className on top of the base reveal classes", () => {
+    // The reveal + pointer-events guard is base-owned, so the override token
+    // here is a layout token deliberately absent from the base — a guard token
+    // would pass vacuously and prove nothing about additivity.
     render(
-      <HoverRevealDeleteButton
-        ariaLabel="Delete widget"
-        onDelete={vi.fn()}
-        className="pointer-events-none sm:group-focus-within:opacity-100"
-      />,
+      <HoverRevealDeleteButton ariaLabel="Delete widget" onDelete={vi.fn()} className="mt-1" />,
     );
     const cls = screen.getByRole("button", { name: "Delete widget" }).className;
-    expect(cls).toContain("pointer-events-none");
-    expect(cls).toContain("sm:group-focus-within:opacity-100");
-    // Base reveal tokens are not clobbered by the override.
+    expect(cls).toContain("mt-1");
+    // Base reveal + guard tokens are not clobbered by the override.
     expect(cls).toContain("motion-reduce:opacity-100");
+    expect(cls).toContain("pointer-events-none");
   });
 
   it("renders the outline icon-button variant", () => {
