@@ -188,7 +188,8 @@ func (r *masterCardgroupRepo) FindByID(ctx context.Context, id string) (*domain.
 func findMasterCardgroupByID(db *gorm.DB, id string) (*domain.MasterCardgroup, error) {
 	var row gormMasterCardgroup
 	if err := db.Where("id = ?", id).Take(&row).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if errors.Is(err, gorm.ErrRecordNotFound) || pgInvalidTextRepresentation(err) {
 			return nil, ErrNotFound
 		}
 		return nil, eris.Wrap(err, "repository: master cardgroup: find by id")
@@ -384,7 +385,8 @@ func findPublishedMasterCardgroupByID(db *gorm.DB, id string) (*domain.MasterCar
 		Where(masterCardsExistPredicate("master_cardgroups")).
 		Take(&row).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if errors.Is(err, gorm.ErrRecordNotFound) || pgInvalidTextRepresentation(err) {
 			return nil, ErrNotFound
 		}
 		return nil, eris.Wrap(err, "repository: master cardgroup: find published by id")

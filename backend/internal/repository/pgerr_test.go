@@ -61,3 +61,28 @@ func TestPgConstraintViolation(t *testing.T) {
 		})
 	}
 }
+
+func TestPgInvalidTextRepresentation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "invalid text representation", err: &pgconn.PgError{Code: "22P02"}, want: true},
+		{name: "foreign key violation", err: &pgconn.PgError{Code: "23503"}, want: false},
+		{name: "unique violation", err: &pgconn.PgError{Code: "23505"}, want: false},
+		{name: "nil error", err: nil, want: false},
+		{name: "foreign error", err: errors.New("some error"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := pgInvalidTextRepresentation(tt.err); got != tt.want {
+				t.Fatalf("pgInvalidTextRepresentation(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}

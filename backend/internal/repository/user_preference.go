@@ -127,14 +127,15 @@ SET last_viewed_cardgroup_id = EXCLUDED.last_viewed_cardgroup_id,
 	return nil
 }
 
-// classifyUserPreferenceCardgroupFKError maps a Postgres FK violation (code
-// 23503) on the user_preferences.last_viewed_cardgroup_id column to
-// ErrCardgroupNotFound. This shields the usecase from a TOCTOU race where the
-// cardgroup is deleted between the EXISTS subquery and the UPSERT. The
-// constraint name match is anchored on "last_viewed_cardgroup_id" — that
-// column name is unique to this FK in the user_preferences table. Returns nil
-// when err is not a FK violation so callers can fall through to eris.Wrap.
+// classifyUserPreferenceCardgroupFKError maps a last-viewed-cardgroup FK
+// violation or malformed cardgroup id to ErrCardgroupNotFound. The former
+// closes the delete-after-EXISTS race; the latter enforces the id contract.
+// Unrelated errors return nil so the caller can fall through to eris.Wrap.
 func classifyUserPreferenceCardgroupFKError(err error) error {
+	// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; cardgroupID is the only one here.
+	if pgInvalidTextRepresentation(err) {
+		return ErrCardgroupNotFound
+	}
 	if pgConstraintViolation(err, "23503", "last_viewed_cardgroup_id") {
 		return ErrCardgroupNotFound
 	}
