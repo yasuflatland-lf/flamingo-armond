@@ -100,7 +100,7 @@ func (r *mutationResolver) AdminImportMasterCards(ctx context.Context, input mod
 
 // AdminMaster is the resolver for the adminMaster field.
 func (r *queryResolver) AdminMaster(ctx context.Context, id string) (*model.MasterCardgroup, error) {
-	out, err := r.MasterCardUC.AdminMaster(ctx, id)
+	out, err := r.MasterCatalogUC.AdminMaster(ctx, id)
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -94,31 +95,53 @@ type fakeUserCardRepo struct {
 	// result, when Inserted or Updated is non-zero, overrides the default
 	// Inserted=len(cards) return. Used by merge tests to inject specific tallies.
 	result repository.UpsertManyTxResult
-	// existingFronts backs CountExistingFronts: maps cardgroupID -> front -> present.
-	// Case-sensitive plain map lookup mirrors the text unique index the merge upserts against.
+	// existingFronts backs CountMatchingFrontsFold: maps cardgroupID -> stored
+	// front -> present.
 	existingFronts map[string]map[string]bool
-	// countFrontsCalls counts CountExistingFronts so a preview test can assert the
+	// countFrontsCalls counts CountMatchingFrontsFold so a preview test can assert the
 	// tally step is skipped once the published probe rejects the deck.
-	countFrontsCalls int
+	countFrontsCalls  int
+	countFrontsInputs [][]string
+	foldErr           error
+	foldCalls         int
+	foldFronts        [][]string
+	foldTxHandles     []*gorm.DB
+	writeEvents       []string
 	// upsertTxHandles records the *gorm.DB each UpsertManyTx call received, so a
 	// test can compare it against the handle the published probe was given.
 	upsertTxHandles []*gorm.DB
 }
 
-func (f *fakeUserCardRepo) CountExistingFronts(_ context.Context, cardgroupID string, fronts []string) (int64, error) {
+func (f *fakeUserCardRepo) CountMatchingFrontsFold(_ context.Context, cardgroupID string, loweredFronts []string) (int64, error) {
 	f.countFrontsCalls++
+	f.countFrontsInputs = append(f.countFrontsInputs, append([]string(nil), loweredFronts...))
 	present := f.existingFronts[cardgroupID]
 	var n int64
-	for _, fr := range fronts {
-		if present[fr] {
-			n++
+	for _, lowered := range loweredFronts {
+		for front := range present {
+			if strings.ToLower(front) == lowered {
+				n++
+				break
+			}
 		}
 	}
 	return n, nil
 }
 
+func (f *fakeUserCardRepo) FoldFrontCaseToTx(_ context.Context, tx *gorm.DB, _ string, fronts []string) (int64, error) {
+	f.foldCalls++
+	f.writeEvents = append(f.writeEvents, "fold")
+	f.foldTxHandles = append(f.foldTxHandles, tx)
+	f.foldFronts = append(f.foldFronts, append([]string(nil), fronts...))
+	if f.foldErr != nil {
+		return 0, f.foldErr
+	}
+	return 0, nil
+}
+
 func (f *fakeUserCardRepo) UpsertManyTx(_ context.Context, tx *gorm.DB, cards []*domain.Card) (repository.UpsertManyTxResult, error) {
 	f.upsertCall++
+	f.writeEvents = append(f.writeEvents, "upsert")
 	f.upsertTxHandles = append(f.upsertTxHandles, tx)
 	batch := make([]*domain.Card, len(cards))
 	for i, c := range cards {
@@ -820,11 +843,12 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_AddsAndUpdates(t *testing.T)
 		masterCard("mc-2", masterID, "beta", "second", 1),
 	}
 	destCG := mustCardgroup(t, destID, ownerID, "My Deck")
+	user := &fakeUserCardRepo{result: repository.UpsertManyTxResult{Inserted: 1, Updated: 1}}
 
 	uc := newMasterDeckUsecaseWithTx(
 		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}}, // published-scoped re-read (runs outside the tx)
 		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: masterCards}},
-		&fakeUserCardRepo{result: repository.UpsertManyTxResult{Inserted: 1, Updated: 1}},
+		user,
 		&fakeUserCG{byID: map[string]*domain.Cardgroup{destID: destCG}},
 		stubTxRunner,
 		newTestLogger(),
@@ -836,6 +860,9 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_AddsAndUpdates(t *testing.T)
 	assert.Equal(t, int64(1), res.Added)
 	assert.Equal(t, int64(1), res.Updated)
 	assert.Equal(t, domain.CardgroupID(destID), res.Cardgroup.ID)
+	require.Equal(t, 1, user.foldCalls)
+	require.Equal(t, []string{"alpha", "beta"}, user.foldFronts[0])
+	require.Equal(t, []string{"fold", "upsert"}, user.writeEvents)
 }
 
 func TestMasterDeckUsecase_MergeMasterIntoCardgroup_NotOwned_Unauthenticated(t *testing.T) {
@@ -884,6 +911,9 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_PublishedProbeRunsOnTxHandle
 	assert.Zero(t, cg.pooledCalls, "the merge must not probe the master on a pooled connection")
 	require.Len(t, cg.txHandles, 1, "the merge probes the published master exactly once, on its transaction")
 	require.Len(t, user.upsertTxHandles, 1)
+	require.Len(t, user.foldTxHandles, 1)
+	assert.Same(t, user.foldTxHandles[0], cg.txHandles[0],
+		"the published probe and case fold must share one transaction handle")
 	assert.Same(t, user.upsertTxHandles[0], cg.txHandles[0],
 		"the published probe and the card upsert must share one transaction handle")
 }
@@ -908,6 +938,7 @@ func TestMasterDeckUsecase_CopyMasterToUser_PublishedProbeRunsOnTxHandle(t *test
 	require.NoError(t, err)
 
 	assert.Zero(t, cg.pooledCalls, "the copy must not probe the master on a pooled connection")
+	assert.Zero(t, user.foldCalls, "a fresh destination has no case variants to fold")
 	require.Len(t, cg.txHandles, 1)
 	require.Len(t, user.upsertTxHandles, 1)
 	assert.Same(t, user.upsertTxHandles[0], cg.txHandles[0],
@@ -995,7 +1026,57 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_EmptyDeck_ReturnsNotFound(t 
 	require.ErrorIs(t, err, repository.ErrNotFound,
 		"an empty master must collapse into the same not-found the catalog uses for an unknown id")
 	assert.Nil(t, res)
+	assert.Zero(t, userCard.foldCalls, "an empty catalog deck must not trigger a fold")
 	assert.Zero(t, userCard.upsertCall, "the destination must not be written for a deck that left the catalog")
+}
+
+func TestMasterDeckUsecase_MergeMasterIntoCardgroup_FoldError_PropagatesChain(t *testing.T) {
+	t.Parallel()
+	const ownerID = "11111111-1111-7111-8111-111111111111"
+	const destID = "22222222-2222-7222-8222-222222222222"
+	const masterID = "master-id"
+
+	user := &fakeUserCardRepo{foldErr: errors.New("fold failed")}
+	uc := newMasterDeckUsecaseWithTx(
+		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}},
+		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
+			masterID: {masterCard("mc-1", masterID, "Apple", "new", 0)},
+		}},
+		user,
+		&fakeUserCG{byID: map[string]*domain.Cardgroup{
+			destID: mustCardgroup(t, destID, ownerID, "My Deck"),
+		}},
+		stubTxRunner,
+		newTestLogger(),
+	)
+
+	_, err := uc.MergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID(ownerID))
+	require.Error(t, err)
+	assertInternalChain(t, err, "usecase: master deck: merge master into cardgroup: fold case variants")
+	assert.Zero(t, user.upsertCall, "the upsert must not run after a failed case fold")
+}
+
+func TestMasterDeckUsecase_MergeMasterIntoCardgroup_FoldCancellation_PassesThrough(t *testing.T) {
+	t.Parallel()
+	const ownerID = "11111111-1111-7111-8111-111111111111"
+	const destID = "22222222-2222-7222-8222-222222222222"
+	const masterID = "master-id"
+
+	uc := newMasterDeckUsecaseWithTx(
+		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}},
+		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
+			masterID: {masterCard("mc-1", masterID, "Apple", "new", 0)},
+		}},
+		&fakeUserCardRepo{foldErr: context.Canceled},
+		&fakeUserCG{byID: map[string]*domain.Cardgroup{
+			destID: mustCardgroup(t, destID, ownerID, "My Deck"),
+		}},
+		stubTxRunner,
+		newTestLogger(),
+	)
+
+	_, err := uc.MergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID(ownerID))
+	require.Equal(t, context.Canceled, err)
 }
 
 func TestMasterDeckUsecase_MergeMasterIntoCardgroup_ListCardsError_PropagatesChain(t *testing.T) {
@@ -1183,10 +1264,10 @@ func TestPreviewMergeMasterIntoCardgroup_CountsAddedAndUpdated(t *testing.T) {
 			masterCard("mc3", masterID, "Cherry", "c", 2),
 		},
 	}}
-	// Destination already has "Apple" and "Banana" (case-sensitive). "cherry" lower
-	// is NOT present, so all three master fronts: 2 updated, 1 added.
+	// Destination has case variants of two catalog fronts. Folded matching counts
+	// those as updates while Cherry remains an add.
 	user := &fakeUserCardRepo{existingFronts: map[string]map[string]bool{
-		destID: {"Apple": true, "Banana": true},
+		destID: {"apple": true, "BANANA": true},
 	}}
 	userCG := &fakeUserCG{byID: map[string]*domain.Cardgroup{
 		destID: {ID: domain.CardgroupID(destID), OwnerID: "owner-1", Name: domain.CardgroupName("My Deck")},
@@ -1199,6 +1280,7 @@ func TestPreviewMergeMasterIntoCardgroup_CountsAddedAndUpdated(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), got.Added, "Cherry is new")
 	require.Equal(t, int64(2), got.Updated, "Apple + Banana already present")
+	require.Equal(t, []string{"apple", "banana", "cherry"}, user.countFrontsInputs[0])
 	assert.Equal(t, 1, cg.pooledCalls, "the dry run verifies published status on a pooled connection")
 	assert.Empty(t, cg.txHandles, "a read-only dry run opens no transaction and takes no row lock")
 }

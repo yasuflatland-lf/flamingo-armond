@@ -23,7 +23,7 @@ vi.mock("next/navigation", () => ({
 // The rail's footer Logout row calls useLogout() for its onClick. Mock the hook
 // so the click can be asserted without reaching into Supabase/router.
 const mockLogout = vi.fn();
-vi.mock("@/app/_components/use-logout", () => ({
+vi.mock("./use-logout", () => ({
   useLogout: () => mockLogout,
 }));
 

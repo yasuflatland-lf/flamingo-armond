@@ -17,7 +17,7 @@ import {
   STEP,
   shareTenths,
   tenthsToPercent,
-} from "@/lib/ratio";
+} from "@/lib/learn/ratio";
 
 type Props = { initialRatio: Ratio };
 
@@ -103,7 +103,7 @@ export function NewCardRatioSection({ initialRatio }: Props) {
   // is true whenever the clamped grid position does not exactly equal the stored
   // value — an off-grid share (33%) OR an on-grid share above the 80% cap (85/90/95%
   // is a 5% multiple but clamps to 80), so compare against gridPercent rather than
-  // testing isOnGrid alone.
+  // checking grid alignment alone.
   const isOffGrid = !equalsPercent(confirmedRatio, gridPercent(confirmedRatio));
 
   return (

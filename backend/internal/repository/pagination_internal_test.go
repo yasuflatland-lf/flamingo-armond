@@ -18,6 +18,43 @@ import (
 func ptrTime(t time.Time) *time.Time { return &t }
 func ptrInt(i int) *int              { return &i }
 
+func TestCursorSpec_IDDirection(t *testing.T) {
+	t.Parallel()
+	now := time.Now().UTC()
+	cases := []struct {
+		name      string
+		dir       SortOrder
+		userSpec  bool
+		invertID  bool
+		wantOrder string
+		wantWhere string
+	}{
+		{"default forward", SortAsc, false, false, "created_at ASC, id ASC", "(created_at > ? OR (created_at = ? AND id > ?))"},
+		{"default backward", SortDesc, false, false, "created_at DESC, id DESC", "(created_at < ? OR (created_at = ? AND id < ?))"},
+		{"overridden forward", SortDesc, true, false, "created_at DESC, id ASC", "(created_at < ? OR (created_at = ? AND id > ?))"},
+		{"overridden backward", SortAsc, true, true, "created_at ASC, id DESC", "(created_at > ? OR (created_at = ? AND id < ?))"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			spec := cursorSpec{
+				orderCol:   "created_at",
+				fieldValue: func() (any, error) { return now, nil },
+			}
+			if c.userSpec {
+				spec = userCursorSpec(gormUser{ID: "uid", CreatedAt: now})
+			}
+			if c.invertID {
+				spec.idDir = InvertDir(spec.idDir)
+			}
+			require.Equal(t, c.wantOrder, buildOrderClause(spec, c.dir))
+			clause, args, err := buildCursorWhere(spec, c.dir, "uid")
+			require.NoError(t, err)
+			require.Equal(t, c.wantWhere, clause)
+			require.Equal(t, []any{now, now, "uid"}, args)
+		})
+	}
+}
+
 func TestOrderClause_Card(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

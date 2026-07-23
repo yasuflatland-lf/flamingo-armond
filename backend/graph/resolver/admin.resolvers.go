@@ -7,8 +7,6 @@ package resolver
 
 import (
 	"backend/graph/model"
-	"backend/internal/auth"
-	"backend/internal/domain"
 	"backend/internal/gqlerr"
 	"backend/internal/usecase"
 	"context"
@@ -156,32 +154,13 @@ func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Rol
 	if gqlErr != nil {
 		return nil, gqlErr
 	}
-	caller := auth.UserFrom(ctx)
-	if caller == nil || caller.Sub == "" {
-		return nil, gqlerr.Unauthenticated()
-	}
 
 	// Register the target-roles load before the admin-status load so both keys
 	// share one batch window; the caller's key then joins the page's batch.
 	rolesThunk := loaders.RoleByUserID.Load(ctx, obj.ID)
 
-	if caller.Sub != obj.ID {
-		callerRoles, err := loaders.RoleByUserID.Load(ctx, caller.Sub)()
-		if err != nil {
-			return nil, classifyLoaderErr(ctx, err, "resolver: user roles: admin check")
-		}
-		// Reuse the domain admin-membership predicate rather than a resolver-local
-		// role loop, mirroring the adapter in usecase/admin_user.go. Nil entries
-		// from the batch loader are skipped defensively before dereferencing.
-		callerSet := make(domain.RoleSet, 0, len(callerRoles))
-		for _, role := range callerRoles {
-			if role != nil {
-				callerSet = append(callerSet, *role)
-			}
-		}
-		if !callerSet.ContainsAdmin() {
-			return nil, gqlerr.NewForbidden("admin only")
-		}
+	if gqlErr := requireSelfOrAdmin(ctx, loaders, obj.ID, "resolver: user roles: admin check"); gqlErr != nil {
+		return nil, gqlErr
 	}
 
 	roles, err := rolesThunk()
@@ -205,32 +184,13 @@ func (r *userResolver) LastSignInAt(ctx context.Context, obj *model.User) (*time
 	if gqlErr != nil {
 		return nil, gqlErr
 	}
-	caller := auth.UserFrom(ctx)
-	if caller == nil || caller.Sub == "" {
-		return nil, gqlerr.Unauthenticated()
-	}
 
 	// Register the target load before the admin-status load so both keys share
 	// one batch window; the page's auth.users keys then resolve in one read.
 	lastSignInThunk := loaders.LastSignInByUserID.Load(ctx, obj.ID)
 
-	if caller.Sub != obj.ID {
-		callerRoles, err := loaders.RoleByUserID.Load(ctx, caller.Sub)()
-		if err != nil {
-			return nil, classifyLoaderErr(ctx, err, "resolver: last sign in: admin check")
-		}
-		// Reuse the domain admin-membership predicate rather than a resolver-local
-		// role loop, mirroring Roles above. Nil entries from the batch loader are
-		// skipped defensively before dereferencing.
-		callerSet := make(domain.RoleSet, 0, len(callerRoles))
-		for _, role := range callerRoles {
-			if role != nil {
-				callerSet = append(callerSet, *role)
-			}
-		}
-		if !callerSet.ContainsAdmin() {
-			return nil, gqlerr.NewForbidden("admin only")
-		}
+	if gqlErr := requireSelfOrAdmin(ctx, loaders, obj.ID, "resolver: last sign in: admin check"); gqlErr != nil {
+		return nil, gqlErr
 	}
 
 	t, err := lastSignInThunk()
