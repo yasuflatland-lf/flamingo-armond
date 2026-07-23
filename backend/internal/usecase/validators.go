@@ -227,8 +227,5 @@ func classifyRepoErr(err error, wrap string, mappings []SentinelMapping) (*Input
 			return NewInputValidationInfo(m.Field, m.Message), nil
 		}
 	}
-	if isContextDone(err) {
-		return nil, err
-	}
-	return nil, eris.Wrap(err, wrap)
+	return nil, wrapInfraErr(err, wrap)
 }

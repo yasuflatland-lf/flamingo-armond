@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 
-	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 
 	"backend/internal/domain"
@@ -36,10 +35,7 @@ type AdminCounter interface {
 // .claude/rules/error-wrapping.md.
 func acquireAdminRoleLock(ctx context.Context, tx *gorm.DB, counter AdminCounter, wrapPrefix string) error {
 	if err := counter.AcquireAdminRoleLockTx(ctx, tx); err != nil {
-		if isContextDone(err) {
-			return err
-		}
-		return eris.Wrap(err, wrapPrefix)
+		return wrapInfraErr(err, wrapPrefix)
 	}
 	return nil
 }
@@ -74,10 +70,7 @@ func guardNotLastAdmin(
 	}
 	n, err := counter.CountAdminsTx(ctx, tx)
 	if err != nil {
-		if isContextDone(err) {
-			return err
-		}
-		return eris.Wrap(err, wrapPrefix)
+		return wrapInfraErr(err, wrapPrefix)
 	}
 	if domain.IsLastAdmin(n) {
 		return ucerr.NewForbiddenError(forbidMsg)

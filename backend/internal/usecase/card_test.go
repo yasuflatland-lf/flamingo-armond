@@ -620,6 +620,25 @@ func TestCardUsecase_Card_UnknownAndForeignAreIndistinguishable(t *testing.T) {
 	}
 }
 
+func TestCardUsecase_Card_FindByID_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+
+	uc := NewCardUsecase(nil, &mockCardRepository{findErr: context.Canceled},
+		&mockCardgroupRepoForCard{},
+		nil, nil, newTestLogger(),
+	)
+
+	card, err := uc.Card(authedCtx("u1"), "card1")
+
+	if card != nil {
+		t.Fatalf("expected nil card, got %+v", card)
+	}
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %T: %v", err, err)
+	}
+}
+
 func TestCardUsecase_RepoErrorsBecomeInternal(t *testing.T) {
 	t.Parallel()
 

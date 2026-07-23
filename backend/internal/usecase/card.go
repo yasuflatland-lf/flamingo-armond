@@ -249,7 +249,7 @@ func (u *cardUsecase) Card(ctx context.Context, id string) (*domain.Card, error)
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ucerr.ErrUnauthenticated
 		}
-		return nil, eris.Wrap(err, "usecase: card: find by id")
+		return nil, wrapInfraErr(err, "usecase: card: find by id")
 	}
 	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, card.CardgroupID, domain.UserID(user.Sub)); err != nil {
 		return nil, err
@@ -292,7 +292,7 @@ func (u *cardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 		if translated := translateTextLengthViolation(err); translated != nil {
 			return CreateCardOutcome{}, translated
 		}
-		return CreateCardOutcome{}, eris.Wrap(err, "usecase: card: create: repo create")
+		return CreateCardOutcome{}, wrapInfraErr(err, "usecase: card: create: repo create")
 	}
 	u.observer.OnCardCreated(ctx, card)
 	return CreateCardOutcome{Card: card}, nil
@@ -308,14 +308,14 @@ func (u *cardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 		if errors.Is(err, repository.ErrNotFound) {
 			return UpdateCardOutcome{}, ucerr.ErrUnauthenticated
 		}
-		return UpdateCardOutcome{}, eris.Wrap(err, "usecase: card: update: find by id")
+		return UpdateCardOutcome{}, wrapInfraErr(err, "usecase: card: update: find by id")
 	}
 	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, existing.CardgroupID, domain.UserID(user.Sub)); err != nil {
 		return UpdateCardOutcome{}, err
 	}
 
 	// Validate and stage each requested field through the shared stageCardText helper.
-	// UpdateFront/UpdateBack errors are routed through eris.Wrap inside each apply
+	// UpdateFront/UpdateBack errors are routed through wrapInfraErr inside each apply
 	// closure, not translateCardErr: ParseCardText (run inside stageCardText) already
 	// returns the sentinel for empty/zero input on the validation channel. If
 	// UpdateFront/UpdateBack still rejects the parsed VO, the invariant has been
@@ -326,7 +326,7 @@ func (u *cardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 		domain.ErrCardFrontRequired, domain.ErrCardFrontTooLong,
 		func(text domain.CardText) (string, error) {
 			if err := existing.UpdateFront(text); err != nil {
-				return "", eris.Wrap(err, "usecase: card: update front")
+				return "", wrapInfraErr(err, "usecase: card: update front")
 			}
 			return existing.Front.String(), nil
 		})
@@ -343,7 +343,7 @@ func (u *cardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 		domain.ErrCardBackRequired, domain.ErrCardBackTooLong,
 		func(text domain.CardText) (string, error) {
 			if err := existing.UpdateBack(text); err != nil {
-				return "", eris.Wrap(err, "usecase: card: update back")
+				return "", wrapInfraErr(err, "usecase: card: update back")
 			}
 			return existing.Back.String(), nil
 		})
@@ -371,7 +371,7 @@ func (u *cardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 		if translated := translateTextLengthViolation(err); translated != nil {
 			return UpdateCardOutcome{}, translated
 		}
-		return UpdateCardOutcome{}, eris.Wrap(err, "usecase: card: update: repo update")
+		return UpdateCardOutcome{}, wrapInfraErr(err, "usecase: card: update: repo update")
 	}
 	u.observer.OnCardUpdated(ctx, updated)
 	return UpdateCardOutcome{Card: updated}, nil
@@ -387,13 +387,13 @@ func (u *cardUsecase) Delete(ctx context.Context, id string) error {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ucerr.ErrUnauthenticated
 		}
-		return eris.Wrap(err, "usecase: card: delete: find by id")
+		return wrapInfraErr(err, "usecase: card: delete: find by id")
 	}
 	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, card.CardgroupID, domain.UserID(user.Sub)); err != nil {
 		return err
 	}
 	if err := u.cardRepo.Delete(ctx, id); err != nil {
-		return eris.Wrap(err, "usecase: card: delete: repo delete")
+		return wrapInfraErr(err, "usecase: card: delete: repo delete")
 	}
 	return nil
 }
@@ -449,7 +449,7 @@ func (u *cardUsecase) ListCardsByCardgroupConnection(
 				ctx, user.Sub, in.CardgroupID, after, before, wantFirst, wantLast, orderBy, dir, search,
 			)
 			if e != nil {
-				return nil, eris.Wrap(e, "usecase: card: list by cardgroup: find page")
+				return nil, wrapInfraErr(e, "usecase: card: list by cardgroup: find page")
 			}
 			total = t
 			pageKeys = k
@@ -532,10 +532,7 @@ func (u *cardUsecase) dueOrderValues(ctx context.Context, cards []*domain.Card) 
 
 	byCardID, err := u.userFSRSRepo.FindByUserAndCardIDs(ctx, user.Sub, ids)
 	if err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: card: resolve due order values")
+		return nil, wrapInfraErr(err, "usecase: card: resolve due order values")
 	}
 	for id, ucs := range byCardID {
 		if ucs == nil {
@@ -707,10 +704,7 @@ func (u *cardUsecase) resolveCardCursor(
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ucerr.NewValidationError(field, "cursor not found")
 		}
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: card: resolve cursor: find by id")
+		return nil, wrapInfraErr(err, "usecase: card: resolve cursor: find by id")
 	}
 	if !card.BelongsToCardgroup(domain.CardgroupID(cardgroupID)) {
 		return nil, ucerr.NewValidationError(field, "cursor not found")
@@ -775,7 +769,7 @@ func (u *cardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, erro
 		return nil
 	})
 	if err != nil {
-		return 0, eris.Wrap(err, "usecase: card: bulk delete: transaction")
+		return 0, wrapInfraErr(err, "usecase: card: bulk delete: transaction")
 	}
 	if deleted < int64(len(ids)) {
 		u.logger.LogAttrs(ctx, slog.LevelInfo, "bulk delete: partial match",

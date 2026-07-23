@@ -7,8 +7,6 @@ import (
 	"backend/internal/domain"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
-
-	"github.com/rotisserie/eris"
 )
 
 // CardgroupOwnershipFinder is the narrow repo surface ownership checks need.
@@ -44,10 +42,7 @@ func findOwnedCardgroup(
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, notFoundErr
 		}
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: authorize cardgroup: find by id")
+		return nil, wrapInfraErr(err, "usecase: authorize cardgroup: find by id")
 	}
 	if !cg.IsOwnedBy(userID) {
 		return nil, ucerr.ErrUnauthenticated

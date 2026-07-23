@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 
 	"backend/internal/domain"
@@ -230,10 +229,7 @@ func (u *adminUserUsecase) List(
 					}
 					return nil, ucerr.NewValidationError(field, "cursor not found")
 				}
-				if isContextDone(e) {
-					return nil, e
-				}
-				return nil, eris.Wrap(e, "usecase: admin user: list")
+				return nil, wrapInfraErr(e, "usecase: admin user: list")
 			}
 			total = t
 			return rows, nil
@@ -266,10 +262,7 @@ func (u *adminUserUsecase) Get(ctx context.Context, id string) (*domain.User, er
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, nil
 		}
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: admin user get")
+		return nil, wrapInfraErr(err, "usecase: admin user get")
 	}
 	return user, nil
 }
@@ -336,10 +329,7 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 		if len(roleIDs) > 0 {
 			roles, lerr := u.roles.FindByIDsTx(ctx, tx, roleIDs)
 			if lerr != nil {
-				if isContextDone(lerr) {
-					return lerr
-				}
-				return eris.Wrap(lerr, "usecase: admin user edit: lookup roles")
+				return wrapInfraErr(lerr, "usecase: admin user edit: lookup roles")
 			}
 			// An unknown submitted roleId is a validation failure, not a
 			// self-demotion: the downstream SetUserRolesTx would also reject it,
@@ -372,10 +362,7 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 			}
 			isAdmin, herr := u.userRoles.HasRoleTx(ctx, tx, id, domain.AdminRoleName)
 			if herr != nil {
-				if isContextDone(herr) {
-					return herr
-				}
-				return eris.Wrap(herr, "usecase: admin user edit: check admin role")
+				return wrapInfraErr(herr, "usecase: admin user edit: check admin role")
 			}
 			if gerr := guardNotLastAdmin(
 				ctx,
@@ -391,16 +378,10 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 		}
 
 		if uerr := u.users.UpdateTxVersioned(ctx, tx, id, patch, input.ExpectedVersion); uerr != nil {
-			if isContextDone(uerr) {
-				return uerr
-			}
-			return eris.Wrap(uerr, "usecase: admin user edit: update profile")
+			return wrapInfraErr(uerr, "usecase: admin user edit: update profile")
 		}
 		if serr := u.userRoles.SetUserRolesTx(ctx, tx, id, roleIDs); serr != nil {
-			if isContextDone(serr) {
-				return serr
-			}
-			return eris.Wrap(serr, "usecase: admin user edit: replace roles")
+			return wrapInfraErr(serr, "usecase: admin user edit: replace roles")
 		}
 		return nil
 	})
@@ -469,10 +450,7 @@ func (u *adminUserUsecase) DeleteUser(ctx context.Context, id string) error {
 		}
 		isAdmin, herr := u.userRoles.HasRoleTx(ctx, tx, id, domain.AdminRoleName)
 		if herr != nil {
-			if isContextDone(herr) {
-				return herr
-			}
-			return eris.Wrap(herr, "usecase: admin user: delete: check admin role")
+			return wrapInfraErr(herr, "usecase: admin user: delete: check admin role")
 		}
 		if gerr := guardNotLastAdmin(
 			ctx,
@@ -489,10 +467,7 @@ func (u *adminUserUsecase) DeleteUser(ctx context.Context, id string) error {
 			if errors.Is(derr, repository.ErrNotFound) {
 				return ucerr.NewValidationError("id", "user not found")
 			}
-			if isContextDone(derr) {
-				return derr
-			}
-			return eris.Wrap(derr, "usecase: admin user: delete")
+			return wrapInfraErr(derr, "usecase: admin user: delete")
 		}
 		return nil
 	})

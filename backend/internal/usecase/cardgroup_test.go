@@ -221,6 +221,23 @@ func TestCardgroupUsecase_Cardgroup_OwnerSeesOwn(t *testing.T) {
 	}
 }
 
+func TestCardgroupUsecase_Cardgroup_FindByID_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockCardgroupRepository{findErr: context.Canceled}
+	uc := NewCardgroupUsecase(repo, cgDefaultAdmin(), newTestLogger())
+
+	cardgroup, err := uc.Cardgroup(cgAuthedCtx("user-1"), "cg1")
+
+	if cardgroup != nil {
+		t.Fatalf("expected nil cardgroup, got %+v", cardgroup)
+	}
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %T: %v", err, err)
+	}
+}
+
 // TestCardgroupUsecase_Cardgroup_NonOwner_ReturnsNilNoError pins the
 // non-disclosure collapse: a foreign-owned cardgroup returns the same (nil, nil)
 // shape as a missing row (TestCardgroupUsecase_Cardgroup_NotFound_ReturnsNilNoError),

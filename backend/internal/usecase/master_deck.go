@@ -523,18 +523,12 @@ func (u *masterDeckUsecase) PreviewMergeMasterIntoCardgroup(
 	// PreviewMergeMaster collapses it into the same non-disclosure not-found
 	// outcome MergeMaster returns for the identical state.
 	if _, err := u.masterCG.FindPublishedByID(ctx, masterID); err != nil {
-		if isContextDone(err) {
-			return PreviewMergeResult{}, err
-		}
-		return PreviewMergeResult{}, eris.Wrap(err, "usecase: master deck: preview merge: verify published master")
+		return PreviewMergeResult{}, wrapInfraErr(err, "usecase: master deck: preview merge: verify published master")
 	}
 
 	cards, err := u.masterCard.ListByMasterCardgroup(ctx, masterID)
 	if err != nil {
-		if isContextDone(err) {
-			return PreviewMergeResult{}, err
-		}
-		return PreviewMergeResult{}, eris.Wrap(err, "usecase: master deck: preview merge: list master cards")
+		return PreviewMergeResult{}, wrapInfraErr(err, "usecase: master deck: preview merge: list master cards")
 	}
 
 	fronts := make([]string, len(cards))
@@ -544,10 +538,7 @@ func (u *masterDeckUsecase) PreviewMergeMasterIntoCardgroup(
 
 	overlap, err := u.userCard.CountExistingFronts(ctx, string(destCardgroupID), fronts)
 	if err != nil {
-		if isContextDone(err) {
-			return PreviewMergeResult{}, err
-		}
-		return PreviewMergeResult{}, eris.Wrap(err, "usecase: master deck: preview merge: count existing fronts")
+		return PreviewMergeResult{}, wrapInfraErr(err, "usecase: master deck: preview merge: count existing fronts")
 	}
 
 	total := int64(len(cards))
