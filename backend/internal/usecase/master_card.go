@@ -137,12 +137,11 @@ type masterCardUsecase struct {
 	logger              *slog.Logger
 }
 
-// NewMasterCardUsecase constructs a MasterCardUsecase. db is the database handle used
-// to open the transaction that backs ImportMasterCards; passing a nil db defers
-// transaction wiring (Import then returns INTERNAL when invoked without a tx
-// runner). adminGate gates every method. Panics when any required dependency
-// (other than db) is nil — a nil required dependency is a wiring bug that must
-// fail at startup, not at first use.
+// NewMasterCardUsecase constructs a MasterCardUsecase. db is the database handle
+// used to open the transaction that backs ImportMasterCards; production must pass
+// a non-nil db — with a nil db, runInTx hands the import closure a nil handle,
+// which panics inside GORM. adminGate gates every method. Panics when any required
+// dependency (other than db) is nil — a wiring bug must fail at startup.
 func NewMasterCardUsecase(
 	db repository.Tx,
 	masterCard masterCardRepoForMasterCard,
