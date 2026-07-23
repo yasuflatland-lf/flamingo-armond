@@ -233,7 +233,16 @@ describe("AdminRolesClient", () => {
 
     renderRoles([CUSTOM_ROLE], mocks);
 
-    await user.click(screen.getByTestId(`admin-role-delete-btn-${CUSTOM_ROLE.id}`));
+    // Regression pin: the role row passes no className, so the mobile tap
+    // guard must arrive from HoverRevealDeleteButton's base — without it an
+    // invisible Delete button below the sm breakpoint fires this optimistic
+    // delete on a stray tap. Tailwind CSS is not compiled under vitest, so the
+    // class has no computed-style effect here and the click below still lands.
+    const deleteBtn = screen.getByTestId(`admin-role-delete-btn-${CUSTOM_ROLE.id}`);
+    expect(deleteBtn.className).toContain("pointer-events-none");
+    expect(deleteBtn.className).toContain("motion-reduce:pointer-events-auto");
+
+    await user.click(deleteBtn);
 
     await waitFor(() => {
       expect(screen.queryByTestId(`admin-role-row-${CUSTOM_ROLE.id}`)).toBeNull();
