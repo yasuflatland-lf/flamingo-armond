@@ -18,14 +18,11 @@ type mockLearnCardRepo struct {
 	rows []domain.DueCard
 	err  error
 
-	cardgroupID          string
-	userID               string
-	now                  time.Time
-	reviewedBefore       time.Time
-	rescueDueBefore      time.Time
-	rescueReviewedBefore time.Time
-	limit                int
-	calls                int
+	cardgroupID string
+	userID      string
+	window      domain.LearnWindow
+	limit       int
+	calls       int
 
 	// Practice-mode capture fields, separate from the due-mode captures so a
 	// test exercising one window cannot read a value written by the other.
@@ -38,14 +35,11 @@ type mockLearnCardRepo struct {
 	practiceCalls         int
 }
 
-func (m *mockLearnCardRepo) FindDueCardsForUser(_ context.Context, userID, cardgroupID string, now, reviewedBefore, rescueDueBefore, rescueReviewedBefore time.Time, limit int) ([]domain.DueCard, error) {
+func (m *mockLearnCardRepo) FindDueCardsForUser(_ context.Context, userID, cardgroupID string, window domain.LearnWindow, limit int) ([]domain.DueCard, error) {
 	m.calls++
 	m.userID = userID
 	m.cardgroupID = cardgroupID
-	m.now = now
-	m.reviewedBefore = reviewedBefore
-	m.rescueDueBefore = rescueDueBefore
-	m.rescueReviewedBefore = rescueReviewedBefore
+	m.window = window
 	m.limit = limit
 	return m.rows, m.err
 }
@@ -120,13 +114,13 @@ func TestLearnUsecaseNextDueCards(t *testing.T) {
 	require.Equal(t, 1, cardRepo.calls)
 	require.Equal(t, "u-1", cardRepo.userID)
 	require.Equal(t, "cg-1", cardRepo.cardgroupID)
-	require.Equal(t, now, cardRepo.now)
+	require.Equal(t, now, cardRepo.window.Now)
 	require.Equal(t, 5, cardRepo.limit)
-	require.True(t, cardRepo.reviewedBefore.Equal(time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC)),
+	require.True(t, cardRepo.window.ReviewedBefore.Equal(time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC)),
 		"JST start-of-day for 2026-05-13T09:00Z")
-	require.True(t, cardRepo.rescueDueBefore.Equal(time.Date(2026, 5, 13, 15, 0, 0, 0, time.UTC)),
+	require.True(t, cardRepo.window.RescueDueBefore.Equal(time.Date(2026, 5, 13, 15, 0, 0, 0, time.UTC)),
 		"JST end-of-day for 2026-05-13T09:00Z")
-	require.True(t, cardRepo.rescueReviewedBefore.Equal(time.Date(2026, 5, 12, 9, 0, 0, 0, time.UTC)),
+	require.True(t, cardRepo.window.RescueReviewedBefore.Equal(time.Date(2026, 5, 12, 9, 0, 0, 0, time.UTC)),
 		"rescue early-serve floor is exactly 24h before now")
 	require.ElementsMatch(t, []string{"repo-first", "repo-second"}, learnCardIDs(got))
 }
@@ -226,7 +220,7 @@ func TestLearnUsecaseNextDueCardsLimitClampAndEmpty(t *testing.T) {
 			require.NoError(t, err)
 			require.Empty(t, got)
 			require.Equal(t, tc.wantLimit, cardRepo.limit)
-			require.Equal(t, now, cardRepo.now)
+			require.Equal(t, now, cardRepo.window.Now)
 		})
 	}
 }
@@ -822,8 +816,8 @@ func TestLearnUsecaseNextDueCards_PassesJSTStartOfDayAsReviewedBefore(t *testing
 			)
 			_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
 			require.NoError(t, err)
-			require.True(t, cardRepo.reviewedBefore.Equal(tc.want),
-				"reviewedBefore: got %v, want instant %v", cardRepo.reviewedBefore, tc.want)
+			require.True(t, cardRepo.window.ReviewedBefore.Equal(tc.want),
+				"reviewedBefore: got %v, want instant %v", cardRepo.window.ReviewedBefore, tc.want)
 		})
 	}
 }
