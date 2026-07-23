@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/rotisserie/eris"
-	"gorm.io/gorm"
 
 	"backend/internal/domain"
 	"backend/internal/repository"
@@ -54,7 +53,7 @@ type cardImportPipeline[R any] struct {
 	// internal error rather than a panic.
 	tx txRunner
 	// upsert performs the batch write inside the transaction.
-	upsert func(ctx context.Context, tx *gorm.DB, rows []R) (repository.UpsertManyTxResult, error)
+	upsert func(ctx context.Context, tx repository.Tx, rows []R) (repository.UpsertManyTxResult, error)
 	// translateTxErr is the path-specific transaction-error translation, applied
 	// before the shared classifiers. It returns nil for an error it does not
 	// recognise. nil when the path has no extra translation.
@@ -143,7 +142,7 @@ func runCardImport[R any](ctx context.Context, payload string, p cardImportPipel
 	}
 
 	var result repository.UpsertManyTxResult
-	if err := runInTx(ctx, p.tx, func(tx *gorm.DB) error {
+	if err := runInTx(ctx, p.tx, func(tx repository.Tx) error {
 		r, err := p.upsert(ctx, tx, rows)
 		if err != nil {
 			return eris.Wrap(err, p.wrap+": repo")

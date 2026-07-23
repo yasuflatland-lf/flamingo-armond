@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/rotisserie/eris"
-	"gorm.io/gorm"
 
 	"backend/internal/auth"
 	"backend/internal/domain"
@@ -23,7 +22,7 @@ import (
 // existing mockCardRepository in card_test.go satisfy it without a separate
 // double.
 type CardImportCardRepository interface {
-	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (repository.UpsertManyTxResult, error)
+	UpsertManyTx(ctx context.Context, tx repository.Tx, cards []*domain.Card) (repository.UpsertManyTxResult, error)
 }
 
 // CardImportUsecase exposes authenticated card import validation and owner-only
@@ -121,11 +120,11 @@ type cardImportUsecase struct {
 	logger            *slog.Logger
 }
 
-// NewCardImportUsecase constructs a CardImportUsecase. db is the gorm handle
-// used to open transactions; pass the same *gorm.DB used by the other usecase
+// NewCardImportUsecase constructs a CardImportUsecase. db is the database handle
+// used to open transactions; pass the same repository.Tx used by the other usecase
 // constructors. Passing a nil db defers transaction wiring; the usecase will
 // return INTERNAL when Import is invoked without a tx runner.
-func NewCardImportUsecase(cardgroupRepo CardgroupOwnershipFinder, cardRepo CardImportCardRepository, db *gorm.DB, logger *slog.Logger) *cardImportUsecase {
+func NewCardImportUsecase(cardgroupRepo CardgroupOwnershipFinder, cardRepo CardImportCardRepository, db repository.Tx, logger *slog.Logger) *cardImportUsecase {
 	if cardgroupRepo == nil {
 		panic("usecase: card import: cardgroupRepo is required")
 	}
@@ -240,7 +239,7 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 			return c, nil
 		},
 		tx: u.tx,
-		upsert: func(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (repository.UpsertManyTxResult, error) {
+		upsert: func(ctx context.Context, tx repository.Tx, cards []*domain.Card) (repository.UpsertManyTxResult, error) {
 			return u.cardRepo.UpsertManyTx(ctx, tx, cards)
 		},
 	})

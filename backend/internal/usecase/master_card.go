@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/rotisserie/eris"
-	"gorm.io/gorm"
 
 	"backend/internal/auth"
 	"backend/internal/domain"
@@ -116,7 +115,7 @@ type masterCardRepoForMasterCard interface {
 	Update(ctx context.Context, id string, patch repository.MasterCardUpdate) (*domain.MasterCard, error)
 	Delete(ctx context.Context, id string) error
 	DeleteMany(ctx context.Context, ids []string) (int64, error)
-	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.MasterCard) (repository.UpsertManyTxResult, error)
+	UpsertManyTx(ctx context.Context, tx repository.Tx, cards []*domain.MasterCard) (repository.UpsertManyTxResult, error)
 	FindPageByMasterCardgroup(
 		ctx context.Context,
 		masterCardgroupID string,
@@ -148,14 +147,14 @@ type masterCardUsecase struct {
 	logger              *slog.Logger
 }
 
-// NewMasterCardUsecase constructs a MasterCardUsecase. db is the gorm handle used
+// NewMasterCardUsecase constructs a MasterCardUsecase. db is the database handle used
 // to open the transaction that backs ImportMasterCards; passing a nil db defers
 // transaction wiring (Import then returns INTERNAL when invoked without a tx
 // runner). adminGate gates every method. Panics when any required dependency
 // (other than db) is nil — a nil required dependency is a wiring bug that must
 // fail at startup, not at first use.
 func NewMasterCardUsecase(
-	db *gorm.DB,
+	db repository.Tx,
 	masterCard masterCardRepoForMasterCard,
 	masterCardgroup masterCardgroupRepoForMasterCard,
 	adminGate *AdminGate,
@@ -458,7 +457,7 @@ func (u *masterCardUsecase) ImportMasterCards(ctx context.Context, in ImportMast
 			return c, nil
 		},
 		tx: u.tx,
-		upsert: func(ctx context.Context, tx *gorm.DB, cards []*domain.MasterCard) (repository.UpsertManyTxResult, error) {
+		upsert: func(ctx context.Context, tx repository.Tx, cards []*domain.MasterCard) (repository.UpsertManyTxResult, error) {
 			return u.masterCardRepo.UpsertManyTx(ctx, tx, cards)
 		},
 		translateTxErr: translateMasterCardgroupNotFound,

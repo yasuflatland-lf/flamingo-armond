@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/rotisserie/eris"
-	"gorm.io/gorm"
 
 	"backend/internal/domain"
 	"backend/internal/repository"
@@ -38,7 +37,7 @@ import (
 // SeedForNewUser treats as "skip this starter".
 type masterDeckCardgroupRepo interface {
 	FindPublishedByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
-	FindPublishedByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.MasterCardgroup, error)
+	FindPublishedByIDTx(ctx context.Context, tx repository.Tx, id string) (*domain.MasterCardgroup, error)
 	ListPublishedDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error)
 }
 
@@ -53,7 +52,7 @@ type masterDeckCardRepo interface {
 // transaction, and count how many fronts already exist in the destination
 // cardgroup for the read-only preview path.
 type masterDeckUserCardRepo interface {
-	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (repository.UpsertManyTxResult, error)
+	UpsertManyTx(ctx context.Context, tx repository.Tx, cards []*domain.Card) (repository.UpsertManyTxResult, error)
 	CountExistingFronts(ctx context.Context, cardgroupID string, fronts []string) (int64, error)
 }
 
@@ -68,11 +67,11 @@ type masterDeckUserCardRepo interface {
 type masterDeckUserCardgroupRepo interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
 	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
-	CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Cardgroup) error
+	CreateTx(ctx context.Context, tx repository.Tx, cg *domain.Cardgroup) error
 	// AcquireUserSeedLockTx takes a per-user transaction-scoped advisory lock so
 	// two concurrent seed-for-new-user calls for the same user serialize. The
 	// dialect detail (the advisory-lock SQL) lives in the repository.
-	AcquireUserSeedLockTx(ctx context.Context, tx *gorm.DB, userID string) error
+	AcquireUserSeedLockTx(ctx context.Context, tx repository.Tx, userID string) error
 }
 
 // SeedForNewUserUsecase provisions the published default-starter master decks
@@ -137,14 +136,14 @@ type masterDeckUsecase struct {
 }
 
 // NewMasterDeckUsecase constructs a masterDeckUsecase for production use. db is
-// the gorm handle used to open transactions; pass the same *gorm.DB used by the
+// the database handle used to open transactions; pass the same repository.Tx used by the
 // other usecase constructors. Panics when any dependency or the logger is nil.
 func NewMasterDeckUsecase(
 	masterCG masterDeckCardgroupRepo,
 	masterCard masterDeckCardRepo,
 	userCard masterDeckUserCardRepo,
 	userCG masterDeckUserCardgroupRepo,
-	db *gorm.DB,
+	db repository.Tx,
 	logger *slog.Logger,
 ) *masterDeckUsecase {
 	if masterCG == nil {
@@ -220,7 +219,7 @@ func newMasterDeckUsecaseWithTx(
 // deck do not propagate.
 func (u *masterDeckUsecase) CopyMasterToUser(ctx context.Context, masterID, ownerID string) (*domain.Cardgroup, error) {
 	var out *domain.Cardgroup
-	if err := u.tx(ctx, func(tx *gorm.DB) error {
+	if err := u.tx(ctx, func(tx repository.Tx) error {
 		cg, err := u.copyMasterToUserTx(ctx, tx, masterID, ownerID)
 		if err != nil {
 			return err
@@ -256,7 +255,7 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) (
 	// empty container rather than nil (matches the repo's empty-return symmetry
 	// convention; callers receive `[]` regardless of which path fired).
 	seeded := []*domain.Cardgroup{}
-	if err := u.tx(ctx, func(tx *gorm.DB) error {
+	if err := u.tx(ctx, func(tx repository.Tx) error {
 		// Take a per-user transaction-scoped advisory lock so two concurrent seed
 		// attempts for the same user serialize. The advisory-lock SQL (a Postgres
 		// dialect detail) lives in the repository; the lock releases at tx end.
@@ -323,7 +322,7 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) (
 // public callers apply their own wrap so the error_chain attributes the failure
 // to the calling operation.
 func (u *masterDeckUsecase) copyMasterCardsIntoTx(
-	ctx context.Context, tx *gorm.DB, masterCards []*domain.MasterCard, destCG domain.CardgroupID, pin *time.Time,
+	ctx context.Context, tx repository.Tx, masterCards []*domain.MasterCard, destCG domain.CardgroupID, pin *time.Time,
 ) (repository.UpsertManyTxResult, error) {
 	userCards := make([]*domain.Card, 0, len(masterCards))
 	for _, mc := range masterCards {
@@ -368,7 +367,7 @@ func (u *masterDeckUsecase) copyMasterCardsIntoTx(
 // Cards are deep-copied with fresh ids and the new cardgroup id; FSRS/swipe
 // state is left empty by construction (no rows are written to the per-user FSRS
 // table).
-func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx *gorm.DB, masterID, ownerID string) (*domain.Cardgroup, error) {
+func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx repository.Tx, masterID, ownerID string) (*domain.Cardgroup, error) {
 	master, err := u.masterCG.FindPublishedByIDTx(ctx, tx, masterID)
 	if err != nil {
 		return nil, eris.Wrap(err, "find published master cardgroup")
@@ -435,7 +434,7 @@ func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 	}
 
 	var res repository.UpsertManyTxResult
-	if err := u.tx(ctx, func(tx *gorm.DB) error {
+	if err := u.tx(ctx, func(tx repository.Tx) error {
 		// Re-probe the master through the catalog-scoped method so an unpublish
 		// landing after MasterCatalogUsecase.MergeMaster's FindPublishedByID gate
 		// is caught (TOCTOU). The probe runs on this transaction's connection and

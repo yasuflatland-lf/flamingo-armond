@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"gorm.io/gorm"
-
 	"backend/internal/domain"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
@@ -67,7 +65,7 @@ type AdminUserUsecase interface {
 // usecase test scaffolding small.
 type adminUserRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.User, error)
-	UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string, patch repository.UserUpdate, expectedVersion int64) error
+	UpdateTxVersioned(ctx context.Context, tx repository.Tx, id string, patch repository.UserUpdate, expectedVersion int64) error
 	ListPage(
 		ctx context.Context,
 		after, before *string,
@@ -77,7 +75,7 @@ type adminUserRepository interface {
 	// DeleteAuthUserTx deletes the target's auth.users row inside the caller's
 	// transaction, cascading to all associated data. See
 	// repository.UserRepository.DeleteAuthUserTx for details.
-	DeleteAuthUserTx(ctx context.Context, tx *gorm.DB, id string) error
+	DeleteAuthUserTx(ctx context.Context, tx repository.Tx, id string) error
 }
 
 // adminRoleRepository is the subset of repository.RoleRepository used by the
@@ -85,7 +83,7 @@ type adminUserRepository interface {
 // UPDATE) so role names are read without risk of a concurrent rename/delete
 // between the guard check and the role-set write.
 type adminRoleRepository interface {
-	FindByIDsTx(ctx context.Context, tx *gorm.DB, ids []string) (map[string]*domain.Role, error)
+	FindByIDsTx(ctx context.Context, tx repository.Tx, ids []string) (map[string]*domain.Role, error)
 }
 
 // adminUserRoleRepository is the subset of repository.UserRoleRepository used
@@ -94,18 +92,18 @@ type adminRoleRepository interface {
 // DeleteUser). The lock + count pair is the AdminCounter port consumed by
 // guardNotLastAdmin.
 type adminUserRoleRepository interface {
-	SetUserRolesTx(ctx context.Context, tx *gorm.DB, userID string, roleIDs []string) error
+	SetUserRolesTx(ctx context.Context, tx repository.Tx, userID string, roleIDs []string) error
 	// HasRoleTx reports whether the user holds the named role, read inside the
 	// caller's transaction. Used to decide whether the last-admin guard applies
 	// to the target; it must be read under AcquireAdminRoleLockTx so a
 	// concurrent promotion cannot make the answer stale before the mutation.
-	HasRoleTx(ctx context.Context, tx *gorm.DB, userID string, roleName domain.RoleName) (bool, error)
+	HasRoleTx(ctx context.Context, tx repository.Tx, userID string, roleName domain.RoleName) (bool, error)
 	// AcquireAdminRoleLockTx serializes admin-count-changing mutations; see
 	// repository.UserRoleRepository for the race it closes.
-	AcquireAdminRoleLockTx(ctx context.Context, tx *gorm.DB) error
+	AcquireAdminRoleLockTx(ctx context.Context, tx repository.Tx) error
 	// CountAdminsTx returns the number of users holding the admin role, read
 	// inside the caller's transaction under the lock above.
-	CountAdminsTx(ctx context.Context, tx *gorm.DB) (int64, error)
+	CountAdminsTx(ctx context.Context, tx repository.Tx) (int64, error)
 }
 
 // adminUserUsecase wires the admin gate, the user repository, the role
@@ -125,7 +123,7 @@ type adminUserUsecase struct {
 // repository.UserRoleRepository implementations; tests may pass narrower stubs
 // that satisfy the package-private interfaces.
 func NewAdminUser(
-	db *gorm.DB,
+	db repository.Tx,
 	users repository.UserRepository,
 	roles repository.RoleRepository,
 	userRoles repository.UserRoleRepository,
@@ -321,7 +319,7 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 	// surfaces it without going through the mutation-error classifier.
 	var guardErr error
 
-	err = runInTx(ctx, u.tx, func(tx *gorm.DB) error {
+	err = runInTx(ctx, u.tx, func(tx repository.Tx) error {
 		// No write may be inserted ahead of these guards: a guard blocks via an
 		// early `return nil`, which commits the transaction, so any prior write
 		// would be persisted despite the block.
@@ -440,7 +438,7 @@ func (u *adminUserUsecase) DeleteUser(ctx context.Context, id string) error {
 		return ucerr.NewForbiddenError("cannot delete your own account from the admin panel; use deleteMyAccount")
 	}
 
-	return runInTx(ctx, u.tx, func(tx *gorm.DB) error {
+	return runInTx(ctx, u.tx, func(tx repository.Tx) error {
 		// The admin-role lock is taken before the membership read so a target
 		// promoted concurrently cannot be read as a non-admin and bypass the
 		// count entirely; only then is the global admin count consulted, and

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/rotisserie/eris"
-	"gorm.io/gorm"
 
 	"backend/internal/auth"
 	"backend/internal/domain"
@@ -22,7 +21,7 @@ const (
 )
 
 type CardRepoForSwipe interface {
-	FindByIDForUpdateTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
+	FindByIDForUpdateTx(ctx context.Context, tx repository.Tx, id string) (*domain.Card, error)
 }
 
 type CardgroupRepoForSwipe interface {
@@ -30,14 +29,14 @@ type CardgroupRepoForSwipe interface {
 }
 
 type SwipeRecordRepoForSwipe interface {
-	CreateTx(ctx context.Context, tx *gorm.DB, sr *domain.SwipeRecord) error
+	CreateTx(ctx context.Context, tx repository.Tx, sr *domain.SwipeRecord) error
 	ListRecentByUser(ctx context.Context, userID string, limit int) ([]*domain.SwipeRecord, error)
 }
 
 type UserCardFSRSRepoForSwipe interface {
-	UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.UserCardFSRS) error
+	UpsertTx(ctx context.Context, tx repository.Tx, u *domain.UserCardFSRS) error
 	FindByUserAndCardIDs(ctx context.Context, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
-	FindByUserAndCardIDsTx(ctx context.Context, tx *gorm.DB, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
+	FindByUserAndCardIDsTx(ctx context.Context, tx repository.Tx, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
 }
 
 // SwipeUsecase processes a single card swipe and advances the FSRS schedule.
@@ -84,7 +83,7 @@ type HandleSwipeOutcome struct {
 }
 
 func NewSwipeUsecase(
-	db *gorm.DB,
+	db repository.Tx,
 	cardRepo CardRepoForSwipe,
 	cardgroupRepo CardgroupRepoForSwipe,
 	swipeRepo SwipeRecordRepoForSwipe,
@@ -156,7 +155,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 	if u.userFSRSRepo == nil {
 		return HandleSwipeOutcome{}, eris.New("usecase: swipe: user card fsrs repository is not configured")
 	}
-	err = runInTx(ctx, u.tx, func(tx *gorm.DB) error {
+	err = runInTx(ctx, u.tx, func(tx repository.Tx) error {
 		card, err := u.cardRepo.FindByIDForUpdateTx(ctx, tx, in.CardID)
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
