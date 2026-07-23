@@ -34,12 +34,7 @@ export function CardgroupListItem({
             {t("updatedAt", { date: formatMediumDate(updatedAt, locale) })}
           </span>
         </Link>
-        <HoverRevealDeleteButton
-          className="pointer-events-none sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 motion-reduce:pointer-events-auto"
-          onDelete={requestDelete}
-          disabled={busy}
-          ariaLabel={deleteLabel}
-        />
+        <HoverRevealDeleteButton onDelete={requestDelete} disabled={busy} ariaLabel={deleteLabel} />
       </li>
     </SwipeableRow>
   );

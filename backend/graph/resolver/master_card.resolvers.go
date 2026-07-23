@@ -145,13 +145,12 @@ func (r *queryResolver) MasterCardsConnection(ctx context.Context, masterCardgro
 
 // MasterCardgroup is the resolver for the masterCardgroup field.
 func (r *queryResolver) MasterCardgroup(ctx context.Context, id string) (*model.MasterCardgroup, error) {
-	deck, err := r.MasterCatalogUC.FindPublishedMaster(ctx, id)
+	out, err := r.MasterCatalogUC.FindPublishedMaster(ctx, id)
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	if deck == nil {
+	if out == nil {
 		return nil, nil
 	}
-	// cardCount=0 here; the frontend reads the live count from masterCardsConnection.totalCount.
-	return toMasterCardgroupModelFromParts(deck, cardCountResolvedElsewhere), nil
+	return toMasterCardgroupModelFromParts(out.Master, int(out.CardCount)), nil
 }

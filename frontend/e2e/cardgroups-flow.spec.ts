@@ -179,11 +179,8 @@ test.describe
       await expect(page.locator('input[name="front"]')).toBeVisible();
 
       // The chip must reflect the newly created cardgroup.
-      await expect(
-        page.getByRole("button", {
-          name: `Change cardgroup (currently "${newCgName}")`,
-        }),
-      ).toBeVisible();
+      // Use data-testid to avoid locale-dependent aria-label text (Playwright runs ja-JP).
+      await expect(page.getByTestId("cardgroup-chip")).toContainText(newCgName);
     });
 
     // ── Scenario 4 ──────────────────────────────────────────────────────────────

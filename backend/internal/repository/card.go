@@ -128,11 +128,11 @@ type CardPageRepository interface {
 // CardPageRepository these are non-paginated, limit-capped session fetches:
 // no cursor, no orderBy, no totalCount.
 type CardSessionRepository interface {
-	// FindDueCardsForUser returns rescue reviews due before rescueDueBefore,
-	// filler reviews due by now, and never-seen cards in independent windows.
-	// A rescue review is served early only once its last_review is at or before
-	// rescueReviewedBefore, the caller's minimum-elapsed floor.
-	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now, reviewedBefore, rescueDueBefore, rescueReviewedBefore time.Time, limit int) ([]domain.DueCard, error)
+	// FindDueCardsForUser returns rescue reviews due before window.RescueDueBefore,
+	// filler reviews due by window.Now, and never-seen cards in independent
+	// windows. A rescue review is served early only once its last_review is at
+	// or before window.RescueReviewedBefore, the minimum-elapsed floor.
+	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, window domain.LearnWindow, limit int) ([]domain.DueCard, error)
 	// FindPracticeCardsForUser returns the FSRS-safe practice pool: cards the
 	// user already reviewed at or after reviewedAfter (the start-of-day cutoff).
 	// This is the inverse window of FindDueCardsForUser's review window — it

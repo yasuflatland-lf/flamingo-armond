@@ -20,11 +20,9 @@ const (
 )
 
 type CardRepoForLearn interface {
-	// FindDueCardsForUser receives both ends of the current JST learn day. Rescue
-	// reviews use rescueDueBefore; filler reviews use now; both exclude rows
-	// reviewed at or after reviewedBefore. rescueReviewedBefore additionally
-	// floors the rescue window's early serve at a whole day of elapsed time.
-	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now, reviewedBefore, rescueDueBefore, rescueReviewedBefore time.Time, limit int) ([]domain.DueCard, error)
+	// FindDueCardsForUser fetches one learn-queue batch bounded by window; see
+	// domain.LearnWindow for the field-to-SQL-comparator mapping.
+	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, window domain.LearnWindow, limit int) ([]domain.DueCard, error)
 	// FindPracticeCardsForUser returns cards the user reviewed today (the inverse
 	// window of FindDueCardsForUser): last_review at or after reviewedAfter. The
 	// server randomizes row order; the usecase preserves it verbatim.
@@ -163,10 +161,10 @@ func (u *learnUsecase) NextDueCards(ctx context.Context, cardgroupID string, lim
 	}
 	n = u.clampLimit(n)
 	now := u.clock.Now().UTC()
-	// domain.RescueReviewedBefore(now) is the minimum-elapsed floor for the
+	// LearnWindow.RescueReviewedBefore is the minimum-elapsed floor for the
 	// rescue window: a card repeated inside the same 24 hours earns zero FSRS
 	// scheduling credit, so it must not be served early.
-	due, err := u.cardRepo.FindDueCardsForUser(ctx, user.Sub, cardgroupID, now, domain.StartOfLearnDay(now), domain.EndOfLearnDay(now), domain.RescueReviewedBefore(now), n)
+	due, err := u.cardRepo.FindDueCardsForUser(ctx, user.Sub, cardgroupID, domain.NewLearnWindow(now), n)
 	if err != nil {
 		return nil, wrapInfraErr(err, "usecase: learn: find due cards")
 	}
