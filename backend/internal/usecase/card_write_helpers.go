@@ -3,8 +3,6 @@ package usecase
 import (
 	"fmt"
 
-	"github.com/rotisserie/eris"
-
 	"backend/internal/domain"
 	"backend/internal/usecase/ucerr"
 )
@@ -32,10 +30,7 @@ func recoverDuplicateFront(
 ) (*DuplicateCardInfo, error) {
 	existingID, existingBack, err := lookup()
 	if err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, wrapPrefix)
+		return nil, wrapInfraErr(err, wrapPrefix)
 	}
 	return &DuplicateCardInfo{
 		ExistingID:   existingID,

@@ -270,10 +270,7 @@ func (u *swipeUsecase) performanceSnapshot(ctx context.Context, userID string, n
 // wrapSwipeErr passes a context cancellation through unwrapped and wraps any
 // other error with the caller-supplied chain prefix.
 func wrapSwipeErr(err error, msg string) error {
-	if isContextDone(err) {
-		return err
-	}
-	return eris.Wrap(err, msg)
+	return wrapInfraErr(err, msg)
 }
 
 func swipeRecordsByValue(swipes []*domain.SwipeRecord) []domain.SwipeRecord {

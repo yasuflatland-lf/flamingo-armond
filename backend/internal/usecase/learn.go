@@ -8,8 +8,6 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/rotisserie/eris"
-
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/domain/service"
@@ -170,10 +168,7 @@ func (u *learnUsecase) NextDueCards(ctx context.Context, cardgroupID string, lim
 	// scheduling credit, so it must not be served early.
 	due, err := u.cardRepo.FindDueCardsForUser(ctx, user.Sub, cardgroupID, now, domain.StartOfLearnDay(now), domain.EndOfLearnDay(now), domain.RescueReviewedBefore(now), n)
 	if err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: learn: find due cards")
+		return nil, wrapInfraErr(err, "usecase: learn: find due cards")
 	}
 	// Load the caller's per-user new-vs-review ratio. A missing preference row
 	// (ErrNotFound), a nil pref, or a zero-value ratio all fall back to the
@@ -185,10 +180,7 @@ func (u *learnUsecase) NextDueCards(ctx context.Context, cardgroupID string, lim
 	case err == nil && pref != nil:
 		ratio = pref.EffectiveNewCardRatio()
 	case err != nil && !errors.Is(err, repository.ErrNotFound):
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: learn: load user preference")
+		return nil, wrapInfraErr(err, "usecase: learn: load user preference")
 	}
 	ordered := u.ordering.Apply(due, u.randSource(), ratio)
 	if len(ordered) > n {
@@ -216,10 +208,7 @@ func (u *learnUsecase) PracticeTodaysCards(ctx context.Context, cardgroupID stri
 	boundary := domain.StartOfLearnDay(now)
 	rows, err := u.cardRepo.FindPracticeCardsForUser(ctx, user.Sub, cardgroupID, boundary, n)
 	if err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: learn: find practice cards")
+		return nil, wrapInfraErr(err, "usecase: learn: find practice cards")
 	}
 	// Preserve repository order (already randomized server-side); do not apply
 	// OrderingPolicy and do not truncate beyond the clamp. Empty stays non-nil.

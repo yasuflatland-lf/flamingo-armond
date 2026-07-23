@@ -123,7 +123,7 @@ func (u *cardgroupUsecase) Cardgroup(ctx context.Context, id string) (*domain.Ca
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, nil
 		}
-		return nil, eris.Wrap(err, "usecase: cardgroup: find by id")
+		return nil, wrapInfraErr(err, "usecase: cardgroup: find by id")
 	}
 	if !cg.IsOwnedBy(domain.UserID(user.Sub)) {
 		// Foreign-owned reads collapse to the same (nil, nil) not-found shape as
@@ -171,20 +171,14 @@ type cardgroupOwnerCounter interface {
 func checkCardgroupLimit(ctx context.Context, counter cardgroupOwnerCounter, admin AdminChecker, ownerID string) (*CardgroupLimitInfo, error) {
 	isAdmin, err := admin.IsAdmin(ctx, ownerID)
 	if err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: cardgroup: check admin")
+		return nil, wrapInfraErr(err, "usecase: cardgroup: check admin")
 	}
 	if isAdmin {
 		return nil, nil
 	}
 	count, err := counter.CountByOwner(ctx, ownerID, nil)
 	if err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: cardgroup: count by owner")
+		return nil, wrapInfraErr(err, "usecase: cardgroup: count by owner")
 	}
 	if domain.GeneralUserCardgroupQuotaReached(count) {
 		return &CardgroupLimitInfo{Limit: domain.GeneralUserCardgroupLimit, Current: int(count)}, nil
@@ -221,7 +215,7 @@ func (u *cardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 
 	cg, err := domain.NewCardgroup(domain.UserID(user.Sub), name)
 	if err != nil {
-		return CreateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: new cardgroup")
+		return CreateCardgroupOutcome{}, wrapInfraErr(err, "usecase: cardgroup: new cardgroup")
 	}
 
 	if err := u.repo.Create(ctx, cg); err != nil {
@@ -238,7 +232,7 @@ func (u *cardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 			}
 			return CreateCardgroupOutcome{Validation: info}, nil
 		}
-		return CreateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: create")
+		return CreateCardgroupOutcome{}, wrapInfraErr(err, "usecase: cardgroup: create")
 	}
 	return CreateCardgroupOutcome{Cardgroup: cg}, nil
 }
@@ -290,7 +284,7 @@ func (u *cardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 	}
 
 	if err := existing.Rename(name); err != nil {
-		return UpdateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: rename")
+		return UpdateCardgroupOutcome{}, wrapInfraErr(err, "usecase: cardgroup: rename")
 	}
 
 	nameStr := existing.Name.String()
@@ -303,7 +297,7 @@ func (u *cardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 			}
 			return UpdateCardgroupOutcome{Validation: info}, nil
 		}
-		return UpdateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: update")
+		return UpdateCardgroupOutcome{}, wrapInfraErr(err, "usecase: cardgroup: update")
 	}
 	return UpdateCardgroupOutcome{Cardgroup: updated}, nil
 }
@@ -324,7 +318,7 @@ func (u *cardgroupUsecase) Delete(ctx context.Context, id string) error {
 	}
 
 	if err := u.repo.Delete(ctx, id); err != nil {
-		return eris.Wrap(err, "usecase: cardgroup: delete")
+		return wrapInfraErr(err, "usecase: cardgroup: delete")
 	}
 	return nil
 }
@@ -377,7 +371,7 @@ func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 				ctx, user.Sub, after, before, wantFirst, wantLast, orderBy, dir, in.Search,
 			)
 			if e != nil {
-				return nil, eris.Wrap(e, "usecase: cardgroup: find page by owner")
+				return nil, wrapInfraErr(e, "usecase: cardgroup: find page by owner")
 			}
 			total = t
 			return rows, nil
@@ -536,10 +530,7 @@ func (u *cardgroupUsecase) resolveCardgroupCursor(
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ucerr.NewValidationError(field, "cursor not found")
 		}
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: cardgroup: hydrate cursor")
+		return nil, wrapInfraErr(err, "usecase: cardgroup: hydrate cursor")
 	}
 	if !cg.IsOwnedBy(domain.UserID(ownerID)) {
 		return nil, ucerr.NewValidationError(field, "cursor not found")

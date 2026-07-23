@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/rotisserie/eris"
-
 	"backend/internal/domain"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
@@ -82,10 +80,7 @@ func (u *adminRoleUsecase) List(ctx context.Context) ([]*domain.Role, error) {
 	}
 	roles, err := u.roles.ListAll(ctx)
 	if err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: admin role list")
+		return nil, wrapInfraErr(err, "usecase: admin role list")
 	}
 	return roles, nil
 }
@@ -102,10 +97,7 @@ func (u *adminRoleUsecase) Get(ctx context.Context, id string) (*domain.Role, er
 		if errors.Is(err, repository.ErrRoleNotFound) {
 			return nil, nil
 		}
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: admin role get")
+		return nil, wrapInfraErr(err, "usecase: admin role get")
 	}
 	return role, nil
 }

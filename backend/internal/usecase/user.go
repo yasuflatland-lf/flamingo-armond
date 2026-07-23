@@ -94,7 +94,7 @@ func (u *userUsecase) Me(ctx context.Context) (*domain.User, error) {
 		// means the provisioning race, which keeps the empty-user degrade.
 		exists, existsErr := u.repo.AuthUserExists(ctx, user.Sub)
 		if existsErr != nil {
-			return nil, eris.Wrap(existsErr, "usecase: user: me: auth user exists")
+			return nil, wrapInfraErr(existsErr, "usecase: user: me: auth user exists")
 		}
 		if !exists {
 			return nil, ucerr.ErrUnauthenticated
@@ -103,7 +103,7 @@ func (u *userUsecase) Me(ctx context.Context) (*domain.User, error) {
 			"user_id", user.Sub)
 		return &domain.User{ID: domain.UserID(user.Sub)}, nil
 	}
-	return nil, eris.Wrap(err, "usecase: user: me: find user by ID")
+	return nil, wrapInfraErr(err, "usecase: user: me: find user by ID")
 }
 
 type UpdateUserInput struct {
@@ -142,7 +142,7 @@ func (u *userUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (Updat
 
 	appUser, err := u.repo.Update(ctx, user.Sub, patch)
 	if err != nil {
-		return UpdateProfileOutcome{}, eris.Wrap(err, "usecase: user: update: update user")
+		return UpdateProfileOutcome{}, wrapInfraErr(err, "usecase: user: update: update user")
 	}
 
 	return UpdateProfileOutcome{User: appUser}, nil
@@ -227,10 +227,7 @@ func (u *userUsecase) DeleteMyAccount(ctx context.Context) error {
 		// would skip the guard and could empty the admin set.
 		isAdmin, aerr := u.auth.IsAdmin(ctx, caller.Sub)
 		if aerr != nil {
-			if isContextDone(aerr) {
-				return aerr
-			}
-			return eris.Wrap(aerr, "usecase: user: delete my account: check admin")
+			return wrapInfraErr(aerr, "usecase: user: delete my account: check admin")
 		}
 		if gerr := guardNotLastAdmin(
 			ctx,
@@ -247,10 +244,7 @@ func (u *userUsecase) DeleteMyAccount(ctx context.Context) error {
 			if errors.Is(derr, repository.ErrNotFound) {
 				return nil
 			}
-			if isContextDone(derr) {
-				return derr
-			}
-			return eris.Wrap(derr, "usecase: user: delete my account")
+			return wrapInfraErr(derr, "usecase: user: delete my account")
 		}
 		return nil
 	})

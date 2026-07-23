@@ -228,17 +228,11 @@ func (u *masterCatalogUsecase) AdminMaster(ctx context.Context, id string) (*Mas
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ucerr.NewValidationError("id", "master cardgroup not found")
 		}
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: master card: admin master: find by id")
+		return nil, wrapInfraErr(err, "usecase: master card: admin master: find by id")
 	}
 	count, err := u.repo.CountCards(ctx, id)
 	if err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: master card: admin master: count cards")
+		return nil, wrapInfraErr(err, "usecase: master card: admin master: count cards")
 	}
 	return &MasterWithCount{Master: master, CardCount: count}, nil
 }
@@ -465,10 +459,7 @@ func (u *masterCatalogUsecase) resolveMasterCatalogCursor(
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ucerr.NewValidationError(field, "cursor not found")
 		}
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: master catalog: hydrate cursor")
+		return nil, wrapInfraErr(err, "usecase: master catalog: hydrate cursor")
 	}
 
 	c := &repository.MasterCatalogCursor{ID: p.ID}
@@ -518,10 +509,7 @@ func (u *masterCatalogUsecase) verifyPublishedMaster(
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, true, nil
 		}
-		if isContextDone(err) {
-			return nil, false, err
-		}
-		return nil, false, eris.Wrap(err, opPrefix)
+		return nil, false, wrapInfraErr(err, opPrefix)
 	}
 	return deck, false, nil
 }

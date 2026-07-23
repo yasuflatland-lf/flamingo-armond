@@ -558,6 +558,23 @@ func TestUserUsecase_UpdateUser_RepoError_InfraChannel(t *testing.T) {
 	assertInternalChain(t, err, "usecase: user: update: update user")
 }
 
+func TestUserUsecase_UpdateUser_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockUserRepository{updateErr: context.Canceled}
+	uc := NewUserUsecase(nil, repo, nil, nil, newTestLogger())
+
+	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: "Alice"})
+
+	if outcome.User != nil || outcome.Validation != nil {
+		t.Fatalf("expected empty outcome, got %+v", outcome)
+	}
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %T: %v", err, err)
+	}
+}
+
 // TestUserUsecase_DeleteMyAccount exercises the self-service account-deletion
 // guard chain and the happy path.
 func TestUserUsecase_DeleteMyAccount(t *testing.T) {

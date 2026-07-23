@@ -73,10 +73,7 @@ func setUserPreference(
 	}
 
 	if err := upsert(ctx, caller.Sub); err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, wrapPrefix)
+		return nil, wrapInfraErr(err, wrapPrefix)
 	}
 
 	return refetchUser(ctx, users, caller.Sub, wrapPrefix+": refetch own user row")

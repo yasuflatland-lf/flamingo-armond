@@ -299,10 +299,7 @@ func (u *masterCardUsecase) CreateMasterCard(ctx context.Context, in CreateMaste
 		if translated := translateTextLengthViolation(err); translated != nil {
 			return CreateMasterCardOutcome{}, translated
 		}
-		if isContextDone(err) {
-			return CreateMasterCardOutcome{}, err
-		}
-		return CreateMasterCardOutcome{}, eris.Wrap(err, "usecase: master card: create: repo create")
+		return CreateMasterCardOutcome{}, wrapInfraErr(err, "usecase: master card: create: repo create")
 	}
 	return CreateMasterCardOutcome{Card: card}, nil
 }
@@ -370,10 +367,7 @@ func (u *masterCardUsecase) UpdateMasterCard(ctx context.Context, id string, in 
 		if translated := translateTextLengthViolation(err); translated != nil {
 			return UpdateMasterCardOutcome{}, translated
 		}
-		if isContextDone(err) {
-			return UpdateMasterCardOutcome{}, err
-		}
-		return UpdateMasterCardOutcome{}, eris.Wrap(err, "usecase: master card: update: repo update")
+		return UpdateMasterCardOutcome{}, wrapInfraErr(err, "usecase: master card: update: repo update")
 	}
 	return UpdateMasterCardOutcome{Card: updated}, nil
 }
@@ -388,10 +382,7 @@ func (u *masterCardUsecase) DeleteMasterCard(ctx context.Context, id string) err
 		if errors.Is(err, repository.ErrNotFound) {
 			return ucerr.NewValidationError("id", "master card not found")
 		}
-		if isContextDone(err) {
-			return err
-		}
-		return eris.Wrap(err, "usecase: master card: delete: repo delete")
+		return wrapInfraErr(err, "usecase: master card: delete: repo delete")
 	}
 	return nil
 }
@@ -411,10 +402,7 @@ func (u *masterCardUsecase) DeleteMasterCards(ctx context.Context, ids []string)
 	}
 	n, err := u.masterCardRepo.DeleteMany(ctx, ids)
 	if err != nil {
-		if isContextDone(err) {
-			return 0, err
-		}
-		return 0, eris.Wrap(err, "usecase: master card: bulk delete: repo delete many")
+		return 0, wrapInfraErr(err, "usecase: master card: bulk delete: repo delete many")
 	}
 	if n < int64(len(ids)) {
 		u.logger.LogAttrs(ctx, slog.LevelInfo, "master card bulk delete: partial match",
@@ -508,10 +496,7 @@ func (u *masterCardUsecase) ListPublicMasterCards(
 			if errors.Is(err, repository.ErrNotFound) {
 				return ucerr.NewValidationError("masterCardgroupId", "master deck not found")
 			}
-			if isContextDone(err) {
-				return err
-			}
-			return eris.Wrap(err, "usecase: master card: public list: find published by id")
+			return wrapInfraErr(err, "usecase: master card: public list: find published by id")
 		}
 		return nil
 	})
@@ -568,10 +553,7 @@ func (u *masterCardUsecase) listMasterCardsCore(
 				ctx, in.MasterCardgroupID, after, before, wantFirst, wantLast, orderBy, dir, search,
 			)
 			if e != nil {
-				if isContextDone(e) {
-					return nil, e
-				}
-				return nil, eris.Wrap(e, opPrefix+": find page")
+				return nil, wrapInfraErr(e, opPrefix+": find page")
 			}
 			total = t
 			return rows, nil
@@ -747,10 +729,7 @@ func (u *masterCardUsecase) resolveMasterCardCursor(
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ucerr.NewValidationError(field, "cursor not found")
 		}
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: master card: resolve cursor: find by id")
+		return nil, wrapInfraErr(err, "usecase: master card: resolve cursor: find by id")
 	}
 	// FindByID is group-agnostic — reject a cursor whose card belongs to a
 	// different master cardgroup so the cursor cannot reference rows outside the
