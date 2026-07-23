@@ -55,7 +55,7 @@ type stubMasterCatalogUC struct {
 	seedErr error
 
 	gotFindPublishedID string
-	findPublishedDeck  *domain.MasterCardgroup
+	findPublishedRes   *usecase.MasterWithCount
 	findPublishedErr   error
 }
 
@@ -66,9 +66,9 @@ func (s *stubMasterCatalogUC) ListPublishedConnection(
 	return s.out, s.err
 }
 
-func (s *stubMasterCatalogUC) FindPublishedMaster(_ context.Context, id string) (*domain.MasterCardgroup, error) {
+func (s *stubMasterCatalogUC) FindPublishedMaster(_ context.Context, id string) (*usecase.MasterWithCount, error) {
 	s.gotFindPublishedID = id
-	return s.findPublishedDeck, s.findPublishedErr
+	return s.findPublishedRes, s.findPublishedErr
 }
 
 func (s *stubMasterCatalogUC) ListAdminConnection(_ context.Context, _ usecase.MasterCatalogConnectionInput) (*usecase.MasterCatalogConnectionOutput, error) {
@@ -185,15 +185,19 @@ func TestQueryResolver_MasterCatalog_WrapsUsecaseError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestQueryResolver_MasterCardgroup_Success verifies the resolver maps the
-// published deck to *model.MasterCardgroup. cardCount is 0 here by design — the
-// frontend reads the live count from masterCardsConnection.totalCount.
+// published deck to *model.MasterCardgroup, including the live cardCount the
+// usecase hydrates.
 func TestQueryResolver_MasterCardgroup_Success(t *testing.T) {
 	t.Parallel()
-	stub := &stubMasterCatalogUC{findPublishedDeck: &domain.MasterCardgroup{
-		ID:      "m1",
-		Name:    domain.CardgroupName("Deck"),
-		Status:  domain.MasterStatusPublished,
-		Version: 1,
+	stub := &stubMasterCatalogUC{findPublishedRes: &usecase.MasterWithCount{
+		Master: &domain.MasterCardgroup{
+			ID:      "m1",
+			Name:    domain.CardgroupName("Deck"),
+			Status:  domain.MasterStatusPublished,
+			Version: 1,
+		},
+		// Non-zero so a resolver that drops the hydrated count fails the assertion.
+		CardCount: 7,
 	}}
 	qr := &queryResolver{&Resolver{MasterCatalogUC: stub}}
 
@@ -202,7 +206,7 @@ func TestQueryResolver_MasterCardgroup_Success(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, "m1", got.ID)
 	assert.Equal(t, model.MasterCardgroupStatusPublished, got.Status)
-	assert.Equal(t, 0, got.CardCount)
+	assert.Equal(t, 7, got.CardCount)
 	assert.Equal(t, "m1", stub.gotFindPublishedID)
 }
 
@@ -211,7 +215,7 @@ func TestQueryResolver_MasterCardgroup_Success(t *testing.T) {
 // the non-disclosure gate must not leak draft existence as an error.
 func TestQueryResolver_MasterCardgroup_NotFoundReturnsNil(t *testing.T) {
 	t.Parallel()
-	stub := &stubMasterCatalogUC{} // findPublishedDeck nil, findPublishedErr nil
+	stub := &stubMasterCatalogUC{} // findPublishedRes nil, findPublishedErr nil
 	qr := &queryResolver{&Resolver{MasterCatalogUC: stub}}
 
 	got, err := qr.MasterCardgroup(context.Background(), "missing")
