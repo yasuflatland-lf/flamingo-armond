@@ -26,7 +26,12 @@ the composition *only under full pools*; the mechanics below degrade it toward
 review whenever either pool runs short. The skew is deliberate, not a bug:
 review cards are due and time-critical (skipping them decays memory and FSRS
 scheduling), while new cards are discretionary (deferrable at no cost), so
-favoring review under a shallow pool is correct spaced-repetition behavior.
+favoring review under a shallow pool is correct spaced-repetition behavior. The
+80% ceiling on new-card share binds only while the review bucket is non-empty;
+once reviews are exhausted, the interleave appends all remaining new cards, so a
+session with no reviews due is 100% new cards by design (a fresh learner has
+nothing to review); exhaustive small-scope enumeration confirms zero
+over-ceiling prefixes while reviews remain.
 
 Three mechanisms shape the actual mix, each biased toward review:
 

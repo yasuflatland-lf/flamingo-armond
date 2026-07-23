@@ -69,12 +69,14 @@ Three properties make the parity real, not just nominal:
 
 ## The parity is conditioned on two textdic output properties
 
-The "preview `valid: true` ⇒ commit succeeds" claim is **not unconditional**. A
-single shared validator removes *nominal* divergence, but `validateImportRows` and
-the downstream commit-path constructors are two consumers that read *different
-branches* of the same `domain.ParseCardText` result — so they can still disagree
-on inputs the shared helper never sees. The parity holds today only because
-`textdic.Process` guarantees two properties of every `ParsedWord` it returns:
+The "preview `valid: true` ⇒ commit succeeds under the shared caps" claim is
+**not unconditional**. A single shared validator removes *nominal* divergence,
+but `validateImportRows` and the downstream commit-path constructors are two
+consumers that read *different branches* of the same `domain.ParseCardText`
+result — so they can still disagree on inputs the shared helper never sees. The
+shared-cap parity holds today only because `textdic.Process` guarantees two
+properties of every `ParsedWord` it returns — plus one DB backstop that no
+parser property covers:
 
 - **A1 — non-empty.** Each returned word's front and back are non-empty. The
   goyacc grammar only builds a node for the `WORD DEFINITION` production, and
@@ -83,8 +85,15 @@ on inputs the shared helper never sees. The parity holds today only because
 - **A2 — edge-trimmed.** Each returned word's front and back are already
   whitespace-trimmed (`lexWord` / `lexRun` apply `TrimRightFunc`, `skipWhiteSpace`
   drops leading whitespace), so `strings.TrimSpace(x) == x` for both sides.
+- **DB code-point backstop — outside the shared-cap parity.** The DB
+  `char_length` CHECK allows 10,000 code points per side, while
+  `validateImportRows` counts grapheme clusters. A pathological payload above
+  roughly 20 code points per grapheme can therefore preview as valid but fail
+  commit with SQLSTATE 23514, surfaced as `BAD_USER_INPUT` ("&lt;field&gt; is too
+  long"); migration `20260722000000_widen_text_length_checks` documents this as
+  an accepted residue.
 
-Why each property is load-bearing for the parity:
+Why each parser property is load-bearing for the parity:
 
 - **A1 guards the preview↔commit verdict.** `validateImportRows` records *only* the
   `ErrCardFrontTooLong` / `ErrCardBackTooLong` branch of `ParseCardText` — it
