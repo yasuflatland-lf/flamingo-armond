@@ -120,9 +120,10 @@ describe("<CardgroupListItem>", () => {
   it("gates pointer-events on the same variants as opacity (hidden button is non-clickable)", () => {
     // The hover Delete affordance is opacity-0 by default. opacity:0 alone does
     // not block clicks, so on a narrow viewport (sm: hover variant inactive) the
-    // invisible button would still steal a row click and delete the row. Pairing
-    // pointer-events-none/auto with the exact opacity variants keeps "visible ⟺
-    // clickable" true at every breakpoint.
+    // invisible button would still steal a row click and delete the row. The
+    // guard tokens are base-provided by HoverRevealDeleteButton; this
+    // consumer-level pin proves they survive the cn merge so "visible ⟺
+    // clickable" stays true at every breakpoint.
     renderItem({ id: "cg-1", name: "My Flashcards", updatedAt: fixedDate });
     const deleteBtn = screen.getByRole("button", { name: /delete cardgroup my flashcards/i });
     expect(deleteBtn.className).toContain("pointer-events-none");
