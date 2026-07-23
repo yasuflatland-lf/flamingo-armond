@@ -3,6 +3,7 @@ package resolver_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/99designs/gqlgen/graphql/handler"
@@ -243,8 +244,8 @@ func TestResolver_HandleSwipe_Unauthenticated(t *testing.T) {
 }
 
 // TestResolver_HandleSwipe_InfrastructureError_ReturnsInternal verifies that an
-// infrastructure error from HandleSwipe (e.g. a nil tx runner) maps to INTERNAL
-// via gqlerr.FromUsecaseError. The nil-variant guard at the resolver
+// infrastructure error from HandleSwipe (a failing in-tx card lookup) maps to
+// INTERNAL via gqlerr.FromUsecaseError. The nil-variant guard at the resolver
 // (if outcome.Swipe == nil) is structurally unreachable through the real usecase
 // — HandleSwipe never returns a zero-value HandleSwipeOutcome alongside nil error
 // — so the guard itself has no test, only this nearest reachable proxy for the
@@ -252,16 +253,17 @@ func TestResolver_HandleSwipe_Unauthenticated(t *testing.T) {
 func TestResolver_HandleSwipe_InfrastructureError_ReturnsInternal(t *testing.T) {
 	t.Parallel()
 
-	// Build the SwipeUsecase directly with a nil tx to trigger the
-	// "transaction runner is not configured" INTERNAL error path.
+	// The card repo fails inside the tx closure. A nil tx runner is fine here:
+	// runInTx invokes the closure directly with a nil handle, which the fakes
+	// ignore, so the injected lookup error is what surfaces as INTERNAL.
 	swipeUC := usecase.NewSwipeUsecaseWithTx(
-		&swipeCardRepo{},
+		&swipeCardRepo{findByIDForUpdateTxErr: errors.New("card lookup failed")},
 		&swipeCGRepo{
 			findByIDResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"},
 		},
 		&swipeRecordRepo{},
 		nil,
-		nil, // nil tx runner → INTERNAL
+		nil,
 		&userCardFSRSRepo{},
 		newDiscardLogger(),
 	)
@@ -269,7 +271,7 @@ func TestResolver_HandleSwipe_InfrastructureError_ReturnsInternal(t *testing.T) 
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 
-	// Rating 1 is valid — passes rating validation, reaches tx-runner check.
+	// Rating 1 is valid — passes rating validation, reaches the tx closure.
 	resp := gqlRequest(t, srv, authedCtx("u-1"), handleSwipeMutation("c-1", "cg-1", 1))
 
 	code := errCode(t, resp)

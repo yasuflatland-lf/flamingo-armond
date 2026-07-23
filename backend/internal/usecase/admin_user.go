@@ -281,11 +281,6 @@ func (u *adminUserUsecase) Get(ctx context.Context, id string) (*domain.User, er
 // the profile update and role replacement; the returned user is refetched
 // after the transaction commits so role loaders see the final state.
 //
-// The transaction runner is required for any patch that goes past validation.
-// NewAdminUser leaves tx unwired when constructed with a nil db; in that case
-// EditUser surfaces a wrapped 'tx runner not configured' error rather than
-// panicking, since the wiring gap is recoverable per-request.
-//
 // The role-set guards run at the front of the transaction and read role names
 // with a FOR UPDATE lock (FindByIDsTx), so the role-name read is atomic with
 // the role-set write. This closes the TOCTOU window where a concurrent admin
@@ -322,10 +317,6 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 		return AdminEditUserOutcome{Validation: validation}, nil
 	}
 
-	if u.tx == nil {
-		return AdminEditUserOutcome{}, eris.New("usecase: admin user edit: tx runner not configured")
-	}
-
 	// earlyOutcome carries a pre-write guard result (self-demotion blocked, or an
 	// unknown submitted role) out of the tx closure. The guard runs before any
 	// write, so blocking is an early `return nil` — there is nothing to roll back,
@@ -337,7 +328,7 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 	// surfaces it without going through the mutation-error classifier.
 	var guardErr error
 
-	err = u.tx(ctx, func(tx *gorm.DB) error {
+	err = runInTx(ctx, u.tx, func(tx *gorm.DB) error {
 		// No write may be inserted ahead of these guards: a guard blocks via an
 		// early `return nil`, which commits the transaction, so any prior write
 		// would be persisted despite the block.

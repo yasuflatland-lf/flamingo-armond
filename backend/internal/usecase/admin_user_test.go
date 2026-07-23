@@ -1884,24 +1884,6 @@ func TestAdminUser_EditUser_Self_UnknownRoleViaTxLookup(t *testing.T) {
 	}
 }
 
-// TestAdminUser_EditUser_TxRunnerNotConfigured covers the defensive branch
-// triggered when NewAdminUser is constructed with a nil *gorm.DB. EditUser
-// surfaces a wrapped 'tx runner not configured' error rather than panicking.
-func TestAdminUser_EditUser_TxRunnerNotConfigured(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{}
-	userRoles := &mockAdminUserRoleRepository{}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	// Pass tx=nil explicitly to mirror NewAdminUser(db=nil) behaviour.
-	uc, _, _, _ := buildAdminUCWithTx(users, nil, userRoles, nil, authChk)
-
-	_, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
-		RoleIDs: []string{"r-general"},
-	})
-	assertInternalChain(t, err, "usecase: admin user edit: tx runner not configured")
-}
-
 // TestAdminUser_EditUser_RefetchUserDisappeared covers the unusual race
 // between tx-commit and refetch: the row vanished after the mutation
 // succeeded. The error chain preserves ErrNotFound for downstream checks.
