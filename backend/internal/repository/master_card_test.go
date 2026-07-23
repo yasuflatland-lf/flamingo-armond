@@ -429,6 +429,49 @@ func TestMasterCardRepository_Create_DuplicateFront_CaseInsensitive(t *testing.T
 	require.Len(t, stored, 1)
 }
 
+// TestMasterCardRepository_Update_DuplicateFront verifies Update classifies the
+// uq_master_cards_cg_front 23505 conflict into repository.ErrCardDuplicateFront
+// (mirroring cardRepo.Update) so renaming a master card's front onto an existing
+// front surfaces as a typed duplicate rather than an opaque internal error.
+func TestMasterCardRepository_Update_DuplicateFront(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "UpdDupFront-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	first := newMasterCard(mcg.ID, "UpdDup-front-one", "back-one", 0)
+	require.NoError(t, repo.Create(ctx, first))
+	second := newMasterCard(mcg.ID, "UpdDup-front-two", "back-two", 1)
+	require.NoError(t, repo.Create(ctx, second))
+
+	front := "UpdDup-front-one"
+	_, err := repo.Update(ctx, second.ID, repository.MasterCardUpdate{Front: &front})
+	require.ErrorIs(t, err, repository.ErrCardDuplicateFront,
+		"Update onto an existing (master_cardgroup_id, front) must return ErrCardDuplicateFront")
+}
+
+// TestMasterCardRepository_Update_DuplicateFront_CaseInsensitive proves the
+// Update-path duplicate classification is case-insensitive: master_cards.front
+// is citext, so renaming onto "upddupci-cat" after "UpdDupCI-Cat" exists
+// violates uq_master_cards_cg_front and Update returns ErrCardDuplicateFront.
+func TestMasterCardRepository_Update_DuplicateFront_CaseInsensitive(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "UpdDupFront-CI-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	first := newMasterCard(mcg.ID, "UpdDupCI-Cat", "back-cap", 0)
+	require.NoError(t, repo.Create(ctx, first))
+	second := newMasterCard(mcg.ID, "UpdDupCI-Dog", "back-dog", 1)
+	require.NoError(t, repo.Create(ctx, second))
+
+	// Differs only by letter case from the first card's front.
+	front := "upddupci-cat"
+	_, err := repo.Update(ctx, second.ID, repository.MasterCardUpdate{Front: &front})
+	require.ErrorIs(t, err, repository.ErrCardDuplicateFront,
+		"case-only-differing rename must collide on the citext unique index")
+}
+
 // TestMasterCardRepository_Update verifies the field-patch semantics: a non-nil
 // Front/Back is written and the updated row returned; an all-nil patch is a no-op
 // that returns the current row; a missing id returns ErrNotFound.

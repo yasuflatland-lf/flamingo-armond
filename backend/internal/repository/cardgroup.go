@@ -5,7 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -115,7 +114,6 @@ type CardgroupRepository interface {
 	// AcquireUserSeedLockTx takes a per-user advisory lock (released at tx end)
 	// so concurrent seed-for-new-user calls for the same user do not race.
 	AcquireUserSeedLockTx(ctx context.Context, tx *gorm.DB, userID string) error
-	EnsureByName(ctx context.Context, ownerID, name string) (*domain.Cardgroup, error)
 	Update(ctx context.Context, id string, patch CardgroupUpdate) (*domain.Cardgroup, error)
 	Delete(ctx context.Context, id string) error
 }
@@ -361,58 +359,10 @@ func (r *cardgroupRepo) CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Ca
 // the user within a fixed namespace where unrelated callers do not contend; the
 // lock releases automatically at transaction end.
 func (r *cardgroupRepo) AcquireUserSeedLockTx(ctx context.Context, tx *gorm.DB, userID string) error {
-	if err := tx.Exec("SELECT pg_advisory_xact_lock(0, hashtext(?))", userID).Error; err != nil {
+	if err := tx.WithContext(ctx).Exec("SELECT pg_advisory_xact_lock(0, hashtext(?))", userID).Error; err != nil {
 		return eris.Wrap(err, "repository: cardgroup: acquire user seed lock")
 	}
 	return nil
-}
-
-// EnsureByName returns the existing (owner_id, name) cardgroup or creates it
-// when absent. The cardgroups table has no UNIQUE(owner_id, name) constraint,
-// so two concurrent callers could otherwise insert duplicate (owner_id, name)
-// rows. This method takes a transaction-scoped advisory lock keyed on
-// (owner_id, name) to serialize lookup-then-insert without adding a DB-level
-// constraint that would change the public duplicate-name semantics.
-func (r *cardgroupRepo) EnsureByName(ctx context.Context, ownerID, name string) (*domain.Cardgroup, error) {
-	var out *domain.Cardgroup
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))", ownerID, name).Error; err != nil {
-			return eris.Wrap(err, "repository: cardgroup: ensure by name: advisory lock")
-		}
-
-		var row gormCardgroup
-		err := tx.Where("owner_id = ? AND name = ?", ownerID, name).Take(&row).Error
-		if err == nil {
-			out = cardgroupToDomain(row)
-			return nil
-		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return eris.Wrap(err, "repository: cardgroup: ensure by name: lookup")
-		}
-
-		id, err := uuid.NewV7()
-		if err != nil {
-			return eris.Wrap(err, "repository: cardgroup: ensure by name: uuid")
-		}
-		now := time.Now().UTC()
-		row = gormCardgroup{
-			ID:        id.String(),
-			OwnerID:   ownerID,
-			Name:      name,
-			CreatedAt: now,
-		}
-		if err := tx.
-			Clauses(clause.Returning{Columns: []clause.Column{{Name: "updated_at"}}}).
-			Create(&row).Error; err != nil {
-			return eris.Wrap(err, "repository: cardgroup: ensure by name: create")
-		}
-		out = cardgroupToDomain(row)
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 // Update applies a partial patch to the cardgroup identified by id. If the

@@ -144,6 +144,14 @@ func TestClassifyMalformedClientIDAtRepositoryLookups(t *testing.T) {
 			want: ErrNotFound,
 		},
 		{
+			name: "master card FindByID",
+			run: func(ctx context.Context, db *gorm.DB) error {
+				_, err := NewMasterCardRepository(db).FindByID(ctx, "malformed")
+				return err
+			},
+			want: ErrNotFound,
+		},
+		{
 			name: "user preference UpsertLastViewedCardgroup",
 			run: func(ctx context.Context, db *gorm.DB) error {
 				return NewUserPreferenceRepository(db).UpsertLastViewedCardgroup(ctx, "user-id", "malformed")

@@ -37,6 +37,18 @@ func classifyMasterCardFKError(err error) error {
 	return nil
 }
 
+// classifyMasterCardDuplicateFront maps a Postgres unique violation on the
+// (master_cardgroup_id, front) citext index to ErrCardDuplicateFront, and
+// returns nil for any other error. Both write paths — INSERT (Create) and
+// UPDATE (Update) — can hit the same constraint, so they share this
+// classifier rather than each spelling out the code/constraint pair.
+func classifyMasterCardDuplicateFront(err error) error {
+	if pgConstraintViolation(err, "23505", "uq_master_cards_cg_front") {
+		return ErrCardDuplicateFront
+	}
+	return nil
+}
+
 // gormMasterCard is the row mapping for public.master_cards. Package-private so
 // callers cannot bypass the domain conversion. It is intentionally NOT embedded
 // in any outer scan target: gormMasterCard carries a TableName() method that
@@ -107,8 +119,10 @@ type MasterCardRepository interface {
 	// 23505 collision.
 	FindByMasterCardgroupAndFront(ctx context.Context, masterCardgroupID, front string) (*domain.MasterCard, error)
 	// Update applies a field patch and returns the updated row, or ErrNotFound
-	// when no row matches the id. An all-nil patch is a no-op that returns the
-	// current row. Mirrors cardRepo.Update.
+	// when no row matches the id. Renaming front onto an existing
+	// (master_cardgroup_id, front) returns ErrCardDuplicateFront — the column is
+	// citext, so the collision is case-insensitive. An all-nil patch is a no-op
+	// that returns the current row. Mirrors cardRepo.Update.
 	Update(ctx context.Context, id string, patch MasterCardUpdate) (*domain.MasterCard, error)
 	// DeleteMany hard-deletes the master cards whose ids are in the list and
 	// returns the number of rows actually deleted. Master decks are admin-owned
@@ -176,7 +190,8 @@ func (r *masterCardRepo) FindByID(ctx context.Context, id string) (*domain.Maste
 	var row gormMasterCard
 	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if errors.Is(err, gorm.ErrRecordNotFound) || pgInvalidTextRepresentation(err) {
 			return nil, ErrNotFound
 		}
 		return nil, eris.Wrap(err, "repository: master card: find by id")
@@ -320,8 +335,8 @@ func (r *masterCardRepo) Create(ctx context.Context, c *domain.MasterCard) error
 	if err := r.db.WithContext(ctx).
 		Clauses(clause.Returning{Columns: []clause.Column{{Name: "updated_at"}}}).
 		Create(row).Error; err != nil {
-		if pgConstraintViolation(err, "23505", "uq_master_cards_cg_front") {
-			return ErrCardDuplicateFront
+		if classified := classifyMasterCardDuplicateFront(err); classified != nil {
+			return classified
 		}
 		if classified := classifyMasterCardFKError(err); classified != nil {
 			return classified
@@ -369,6 +384,9 @@ func (r *masterCardRepo) Update(ctx context.Context, id string, patch MasterCard
 
 	res := r.db.WithContext(ctx).Model(&gormMasterCard{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
+		if classified := classifyMasterCardDuplicateFront(res.Error); classified != nil {
+			return nil, classified
+		}
 		if classified := classifyTextLengthViolation(res.Error); classified != nil {
 			return nil, classified
 		}

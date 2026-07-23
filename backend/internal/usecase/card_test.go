@@ -315,6 +315,25 @@ func TestCardUsecase_Create_BackTooLong(t *testing.T) {
 	assertValidationError(t, err, "back", "")
 }
 
+// A cardgroup deleted between the authorizeCardgroupOrBadInput gate and the
+// insert surfaces from the repo as ErrCardCardgroupNotFound (FK 23503) and must
+// map to the gate's own validation error on "cardgroupId", not an INTERNAL
+// chain.
+func TestCardUsecase_Create_CardgroupDeletedValidation(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &mockCardRepository{createErr: repository.ErrCardCardgroupNotFound}
+	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}}
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil, nil, newTestLogger())
+
+	_, err := uc.Create(authedCtx("u1"), CreateCardInput{
+		CardgroupID: "cg1",
+		Front:       "front",
+		Back:        "back",
+	})
+	assertValidationError(t, err, "cardgroupId", "cardgroup not found")
+}
+
 func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 	t.Parallel()
 

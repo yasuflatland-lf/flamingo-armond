@@ -288,6 +288,12 @@ func (u *cardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 			}
 			return CreateCardOutcome{Duplicate: dup}, nil
 		}
+		// A cardgroup deleted between authorizeCardgroupOrBadInput and the insert
+		// surfaces as an FK violation; map it to the gate's own message rather
+		// than INTERNAL.
+		if translated := translateCardCardgroupNotFound(err); translated != nil {
+			return CreateCardOutcome{}, translated
+		}
 		if translated := translateTextLengthViolation(err); translated != nil {
 			return CreateCardOutcome{}, translated
 		}
@@ -743,9 +749,10 @@ func (u *cardUsecase) resolveCardCursor(
 // BulkDelete removes the cards in `ids` whose cardgroup is owned by the
 // authenticated caller. Ownership is enforced exclusively by the SQL subselect
 // in DeleteByIDsTx (one DELETE scoped to cardgroups owned by the caller);
-// foreign-owned ids are silently skipped at the SQL layer. Returns the number
-// of rows actually deleted. At most maxBulkDelete ids may be supplied per call;
-// exceeding the cap returns BAD_USER_INPUT.
+// foreign-owned ids are silently skipped at the SQL layer. Malformed (non-UUID)
+// ids cannot exist and are silently dropped before the SQL runs. Returns the
+// number of rows actually deleted. At most maxBulkDelete ids may be supplied
+// per call; exceeding the cap returns BAD_USER_INPUT.
 func (u *cardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, error) {
 	user := auth.UserFrom(ctx)
 	if err := requireCallerSub(user); err != nil {
@@ -757,10 +764,14 @@ func (u *cardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, erro
 	if len(ids) == 0 {
 		return 0, nil
 	}
+	valid := filterParseableIDs(ids)
+	if len(valid) == 0 {
+		return 0, nil
+	}
 
 	var deleted int64
 	err := runInTx(ctx, u.tx, func(tx repository.Tx) error {
-		n, err := u.cardRepo.DeleteByIDsTx(ctx, tx, user.Sub, ids)
+		n, err := u.cardRepo.DeleteByIDsTx(ctx, tx, user.Sub, valid)
 		if err != nil {
 			return err
 		}

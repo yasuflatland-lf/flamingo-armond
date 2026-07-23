@@ -1,10 +1,14 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
+	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -72,7 +76,7 @@ func TestCardUsecase_BulkDelete_AllOwn(t *testing.T) {
 	tx, calls := fakeTxRunner()
 	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: newTestLogger()}
 
-	n, err := uc.BulkDelete(authedCtx("u1"), []string{"c1", "c2", "c3"})
+	n, err := uc.BulkDelete(authedCtx("u1"), []string{uuid.NewString(), uuid.NewString(), uuid.NewString()})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -103,7 +107,7 @@ func TestCardUsecase_BulkDelete_SilentlySkipsForeign(t *testing.T) {
 	tx, calls := fakeTxRunner()
 	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: newTestLogger()}
 
-	n, err := uc.BulkDelete(authedCtx("u1"), []string{"c1", "foreign"})
+	n, err := uc.BulkDelete(authedCtx("u1"), []string{uuid.NewString(), uuid.NewString()})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -134,7 +138,7 @@ func TestCardUsecase_BulkDelete_PartialMatchSucceeds(t *testing.T) {
 	tx, calls := fakeTxRunner()
 	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: newTestLogger()}
 
-	ids := []string{"own1", "own2", "foreign1", "foreign2", "foreign3"}
+	ids := []string{uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()}
 	n, err := uc.BulkDelete(authedCtx("u1"), ids)
 	if err != nil {
 		t.Fatalf("unexpected error on partial match: %v", err)
@@ -144,6 +148,71 @@ func TestCardUsecase_BulkDelete_PartialMatchSucceeds(t *testing.T) {
 	}
 	if *calls != 1 {
 		t.Fatalf("expected 1 tx invocation, got %d", *calls)
+	}
+}
+
+// TestCardUsecase_BulkDelete_DropsMalformedIDs verifies malformed (non-UUID)
+// ids are dropped before the SQL runs: the repo receives only the parseable ids
+// in order, and the partial-match log still compares against the ORIGINAL
+// request count so dropped malformed ids surface in the log exactly like
+// foreign-owned skips. The id column is uuid-typed, so a malformed id cannot
+// match any row; aborting the whole batch with SQLSTATE 22P02 would contradict
+// the documented silent-skip semantics.
+func TestCardUsecase_BulkDelete_DropsMalformedIDs(t *testing.T) {
+	t.Parallel()
+	cardRepo := &mockCardRepository{deleteByIDsResult: 2}
+	cgRepo := &mockCardgroupRepoForCard{}
+	tx, calls := fakeTxRunner()
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: logger}
+
+	valid1 := uuid.NewString()
+	valid2 := uuid.NewString()
+	n, err := uc.BulkDelete(authedCtx("u1"), []string{valid1, "not-a-uuid", valid2})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("expected 2 deleted, got %d", n)
+	}
+	if *calls != 1 {
+		t.Fatalf("expected 1 tx invocation, got %d", *calls)
+	}
+	if len(cardRepo.capturedDeleteIDs) != 2 ||
+		cardRepo.capturedDeleteIDs[0] != valid1 || cardRepo.capturedDeleteIDs[1] != valid2 {
+		t.Fatalf("expected repo to receive only the valid ids in order, got %v", cardRepo.capturedDeleteIDs)
+	}
+	// deleted (2) < requested (3): the partial-match log fires against the
+	// original count, so the dropped malformed id is observable.
+	logged := buf.String()
+	if !strings.Contains(logged, "bulk delete: partial match") || !strings.Contains(logged, `"requested":3`) {
+		t.Fatalf("expected partial-match log against the original count of 3, got %q", logged)
+	}
+}
+
+// TestCardUsecase_BulkDelete_AllMalformedIDs verifies an all-malformed batch
+// short-circuits to (0, nil) without opening a transaction or touching the
+// repository.
+func TestCardUsecase_BulkDelete_AllMalformedIDs(t *testing.T) {
+	t.Parallel()
+	cardRepo := &mockCardRepository{}
+	cgRepo := &mockCardgroupRepoForCard{}
+	tx, calls := fakeTxRunner()
+	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: newTestLogger()}
+
+	n, err := uc.BulkDelete(authedCtx("u1"), []string{"not-a-uuid", "also-junk"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("expected 0 deleted, got %d", n)
+	}
+	if *calls != 0 {
+		t.Fatalf("expected 0 tx invocations, got %d", *calls)
+	}
+	if cardRepo.deleteByIDsCalls != 0 {
+		t.Fatalf("expected 0 DeleteByIDsTx invocations, got %d", cardRepo.deleteByIDsCalls)
 	}
 }
 
