@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
+import { Input } from "@/components/ui/input";
 import { mutationAuthBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -119,14 +120,13 @@ export function DeleteAccountSection() {
             <label htmlFor="delete-account-confirm" className="block text-sm">
               {t("deleteAccountTypeToConfirm", { phrase: confirmPhrase })}
             </label>
-            <input
+            <Input
               id="delete-account-confirm"
               type="text"
               value={confirmInput}
               onChange={(event) => setConfirmInput(event.target.value)}
               placeholder={confirmPhrase}
               autoComplete="off"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               data-testid="delete-account-confirm-input"
               aria-label={t("deleteAccountConfirmInputLabel")}
             />
