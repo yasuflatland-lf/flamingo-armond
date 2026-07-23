@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef } from "react";
-import { useLogout } from "@/app/_components/use-logout";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import {
   Sidebar,
@@ -27,6 +26,7 @@ import {
   matchesRoute,
   resolveActiveItem,
 } from "./nav-items";
+import { useLogout } from "./use-logout";
 
 interface GlobalRailProps {
   /** Required user record. Callers must pass a value or explicit null. */

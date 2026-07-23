@@ -1,8 +1,9 @@
 "use client";
 
-import { ArrowLeft, Search, X } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef } from "react";
+import { SearchInput } from "@/components/search/search-input";
 
 interface SearchTakeoverBarProps {
   /** Whether the bar is shown. When false the component renders nothing. */
@@ -74,20 +75,16 @@ export function SearchTakeoverBar({
       >
         <ArrowLeft className="h-5 w-5" aria-hidden="true" />
       </button>
-      <div className="relative flex-1">
-        <Search
-          className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-          aria-hidden="true"
-        />
-        <input
+      <div className="flex-1">
+        <SearchInput
+          icon
           ref={inputRef}
-          type="search"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           aria-label={ariaLabel}
           data-testid="search-takeover-input"
-          className="w-full rounded-md border border-input bg-background py-2.5 pl-8 pr-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="py-2.5"
         />
       </div>
       {value !== "" && (

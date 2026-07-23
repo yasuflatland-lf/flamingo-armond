@@ -233,11 +233,14 @@ func (r *countingCardRepo) DeleteByCardgroupAndFrontsTx(_ context.Context, _ *go
 func (r *countingCardRepo) UpsertManyTx(_ context.Context, _ *gorm.DB, _ []*domain.Card) (repository.UpsertManyTxResult, error) {
 	panic("countingCardRepo.UpsertManyTx not configured")
 }
+func (r *countingCardRepo) FoldFrontCaseToTx(_ context.Context, _ *gorm.DB, _ string, _ []string) (int64, error) {
+	panic("countingCardRepo.FoldFrontCaseToTx not configured")
+}
 func (r *countingCardRepo) FindByCardgroupAndFront(_ context.Context, _, _ string) (*domain.Card, error) {
 	panic("countingCardRepo.FindByCardgroupAndFront not configured")
 }
-func (r *countingCardRepo) CountExistingFronts(_ context.Context, _ string, _ []string) (int64, error) {
-	panic("countingCardRepo.CountExistingFronts not configured")
+func (r *countingCardRepo) CountMatchingFrontsFold(_ context.Context, _ string, _ []string) (int64, error) {
+	panic("countingCardRepo.CountMatchingFrontsFold not configured")
 }
 
 func emptyCardRepo() *countingCardRepo {

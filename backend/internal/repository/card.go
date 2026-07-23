@@ -69,11 +69,10 @@ type CardReadRepository interface {
 	// front) unique key, or ErrNotFound when no such row exists. The front value
 	// is matched exactly; trimming is the caller's responsibility.
 	FindByCardgroupAndFront(ctx context.Context, cardgroupID, front string) (*domain.Card, error)
-	// CountExistingFronts returns how many of fronts already exist in the
-	// destination cardgroup's cards, matched case-sensitively (plain text
-	// equality, mirroring the uq_cards_cardgroup_front unique index the merge
-	// upserts against). Empty fronts returns 0 without a query.
-	CountExistingFronts(ctx context.Context, cardgroupID string, fronts []string) (int64, error)
+	// CountMatchingFrontsFold returns the number of distinct case-folded fronts
+	// in the cardgroup that match the caller-supplied lowercase fronts. It counts
+	// multiple stored case variants once. Empty fronts returns 0 without a query.
+	CountMatchingFrontsFold(ctx context.Context, cardgroupID string, loweredFronts []string) (int64, error)
 }
 
 type CardPageRepository interface {
@@ -148,6 +147,10 @@ type CardWriteRepository interface {
 	// advances updated_at. Returns the per-row split between Inserted and Updated.
 	// Empty input is a no-op.
 	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (UpsertManyTxResult, error)
+	// FoldFrontCaseToTx renames one case-insensitive match per incoming front to
+	// the incoming casing so a following UpsertManyTx updates it. Empty fronts
+	// returns 0 without touching the database.
+	FoldFrontCaseToTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
 }
 
 type CardRepository interface {
@@ -173,7 +176,8 @@ func findCardByID(ctx context.Context, db *gorm.DB, id string) (*domain.Card, er
 	var row gormCard
 	err := db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if errors.Is(err, gorm.ErrRecordNotFound) || pgInvalidTextRepresentation(err) {
 			return nil, ErrNotFound
 		}
 		return nil, eris.Wrap(err, "repository: card: find by id")
@@ -251,16 +255,17 @@ func (r *cardRepo) FindByCardgroupAndFront(ctx context.Context, cardgroupID, fro
 	return cardToDomain(row), nil
 }
 
-func (r *cardRepo) CountExistingFronts(ctx context.Context, cardgroupID string, fronts []string) (int64, error) {
-	if len(fronts) == 0 {
+func (r *cardRepo) CountMatchingFrontsFold(ctx context.Context, cardgroupID string, loweredFronts []string) (int64, error) {
+	if len(loweredFronts) == 0 {
 		return 0, nil
 	}
 	var count int64
-	if err := r.db.WithContext(ctx).
-		Model(&gormCard{}).
-		Where("cardgroup_id = ? AND front IN ?", cardgroupID, fronts).
-		Count(&count).Error; err != nil {
-		return 0, eris.Wrap(err, "repository: card: count existing fronts")
+	if err := r.db.WithContext(ctx).Raw(
+		`SELECT COUNT(DISTINCT LOWER(front)) FROM cards
+		 WHERE cardgroup_id = ? AND LOWER(front) IN ?`,
+		cardgroupID, loweredFronts,
+	).Scan(&count).Error; err != nil {
+		return 0, eris.Wrap(err, "repository: card: count matching fronts fold")
 	}
 	return count, nil
 }

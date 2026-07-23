@@ -279,21 +279,19 @@ func TestMasterCardgroupRepository_Update_PartialPatch(t *testing.T) {
 	m := newMasterCardgroupMinimal("Update Patch " + uuid.NewString())
 	require.NoError(t, repo.Create(ctx, m))
 
-	statusPublished := string(domain.MasterStatusPublished)
 	sortOrder := 5
 	got, err := repo.Update(ctx, m.ID, repository.MasterCardgroupUpdate{
-		Status:    &statusPublished,
 		SortOrder: &sortOrder,
 	})
 	require.NoError(t, err)
 
 	// Changed fields.
-	require.Equal(t, domain.MasterStatusPublished, got.Status)
 	require.Equal(t, 5, got.SortOrder)
 
 	// Unchanged fields should be preserved.
 	require.Equal(t, m.Name.String(), got.Name.String())
 	require.Equal(t, m.Version, got.Version)
+	require.Equal(t, m.Status, got.Status)
 	require.Nil(t, got.Description.Ptr())
 	require.False(t, got.IsDefaultStarter)
 
@@ -309,9 +307,9 @@ func TestMasterCardgroupRepository_Update_NotFound(t *testing.T) {
 	ctx := context.Background()
 	repo := repository.NewMasterCardgroupRepository(testDB.GORM)
 
-	statusDraft := string(domain.MasterStatusDraft)
+	sortOrder := 5
 	_, err := repo.Update(ctx, uuid.NewString(), repository.MasterCardgroupUpdate{
-		Status: &statusDraft,
+		SortOrder: &sortOrder,
 	})
 	require.True(t, errors.Is(err, repository.ErrNotFound),
 		"want ErrNotFound for non-existent id, got %v", err)

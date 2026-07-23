@@ -27,17 +27,19 @@ type stubMasterCatalogUC struct {
 	// Settable canned returns for the admin-management methods, exercised by
 	// master_catalog_admin_resolver_test.go. Each defaults to its zero value so
 	// the existing query tests (which never touch these) keep working.
-	adminOut     *usecase.MasterCatalogConnectionOutput
-	adminErr     error
-	createOut    usecase.CreateMasterOutcome
-	createErr    error
-	updateOut    usecase.UpdateMasterOutcome
-	updateErr    error
-	publishOut   usecase.PublishMasterOutcome
-	publishErr   error
-	unpublishRes *usecase.MasterWithCount
-	unpublishErr error
-	deleteErr    error
+	adminOut       *usecase.MasterCatalogConnectionOutput
+	adminErr       error
+	adminMaster    *usecase.MasterWithCount
+	adminMasterErr error
+	createOut      usecase.CreateMasterOutcome
+	createErr      error
+	updateOut      usecase.UpdateMasterOutcome
+	updateErr      error
+	publishOut     usecase.PublishMasterOutcome
+	publishErr     error
+	unpublishRes   *usecase.MasterWithCount
+	unpublishErr   error
+	deleteErr      error
 
 	importOut usecase.ImportMasterOutcome
 	importErr error
@@ -71,6 +73,10 @@ func (s *stubMasterCatalogUC) FindPublishedMaster(_ context.Context, id string) 
 
 func (s *stubMasterCatalogUC) ListAdminConnection(_ context.Context, _ usecase.MasterCatalogConnectionInput) (*usecase.MasterCatalogConnectionOutput, error) {
 	return s.adminOut, s.adminErr
+}
+
+func (s *stubMasterCatalogUC) AdminMaster(_ context.Context, _ string) (*usecase.MasterWithCount, error) {
+	return s.adminMaster, s.adminMasterErr
 }
 
 func (s *stubMasterCatalogUC) CreateMaster(_ context.Context, _ usecase.CreateMasterInput) (usecase.CreateMasterOutcome, error) {

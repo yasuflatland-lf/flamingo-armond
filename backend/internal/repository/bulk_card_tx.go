@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -53,6 +54,52 @@ func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domai
 		return UpsertManyTxResult{}, eris.Wrap(err, "repository: card: upsert many")
 	}
 	return res, nil
+}
+
+// FoldFrontCaseToTx renames one case-insensitive match per front, choosing the
+// oldest created_at then smallest id; extra matches stay untouched. LOWER-distinct
+// input, NOT EXISTS, and DISTINCT ON prevent uq_cards_cardgroup_front conflicts.
+// Stable ids preserve FSRS/swipes; the DB-owned updated_at trigger fires [#1112].
+// Empty fronts returns without touching the database.
+func (r *cardRepo) FoldFrontCaseToTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error) {
+	if len(fronts) == 0 {
+		return 0, nil
+	}
+
+	var sb strings.Builder
+	sb.WriteString("WITH incoming(front) AS (VALUES ")
+	args := make([]any, 0, len(fronts)+1)
+	for i, front := range fronts {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString("(?)")
+		args = append(args, front)
+	}
+	sb.WriteString(`),
+targets AS (
+  SELECT DISTINCT ON (LOWER(c.front)) c.id, i.front AS new_front
+  FROM cards c
+  JOIN incoming i
+    ON LOWER(c.front) = LOWER(i.front) AND c.front <> i.front
+  WHERE c.cardgroup_id = ?
+    AND NOT EXISTS (
+      SELECT 1 FROM cards e
+      WHERE e.cardgroup_id = c.cardgroup_id AND e.front = i.front
+    )
+  ORDER BY LOWER(c.front), c.created_at ASC, c.id ASC
+)
+UPDATE cards SET front = t.new_front FROM targets t WHERE cards.id = t.id`)
+	args = append(args, cardgroupID)
+
+	res := tx.WithContext(ctx).Exec(sb.String(), args...)
+	if res.Error != nil {
+		if errors.Is(res.Error, context.Canceled) || errors.Is(res.Error, context.DeadlineExceeded) {
+			return 0, res.Error
+		}
+		return 0, eris.Wrap(res.Error, "repository: card: fold front case")
+	}
+	return res.RowsAffected, nil
 }
 
 func (r *cardRepo) DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error) {

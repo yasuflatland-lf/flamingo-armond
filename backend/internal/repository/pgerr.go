@@ -20,6 +20,13 @@ func pgConstraintViolation(err error, code, constraintSubstr string) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == code && strings.Contains(pgErr.ConstraintName, constraintSubstr)
 }
 
+// pgInvalidTextRepresentation reports whether err unwraps to a
+// *pgconn.PgError for SQLSTATE 22P02 (invalid_text_representation).
+func pgInvalidTextRepresentation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "22P02"
+}
+
 // textLengthConstraintSuffix is the naming convention every text-length CHECK
 // constraint in the schema follows: "<table>_<column>_length", e.g.
 // cards_front_length, cardgroups_name_length, master_cards_back_length.

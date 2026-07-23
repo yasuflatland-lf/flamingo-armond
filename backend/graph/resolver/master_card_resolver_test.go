@@ -22,9 +22,6 @@ import (
 // the resolver's input mapping and error wrapping can be unit-tested without a
 // real usecase or database.
 type stubMasterCardUC struct {
-	adminOut *usecase.MasterWithCount
-	adminErr error
-
 	gotListInput usecase.MasterCardConnectionInput
 	listOut      *usecase.MasterCardConnectionOutput
 	listErr      error
@@ -52,10 +49,6 @@ type stubMasterCardUC struct {
 	gotImportInput usecase.ImportMasterCardsInput
 	importOut      usecase.ImportMasterCardsOutput
 	importErr      error
-}
-
-func (s *stubMasterCardUC) AdminMaster(_ context.Context, _ string) (*usecase.MasterWithCount, error) {
-	return s.adminOut, s.adminErr
 }
 
 func (s *stubMasterCardUC) ListMasterCards(_ context.Context, in usecase.MasterCardConnectionInput) (*usecase.MasterCardConnectionOutput, error) {
@@ -98,7 +91,7 @@ func (s *stubMasterCardUC) ImportMasterCards(_ context.Context, in usecase.Impor
 // to *model.MasterCardgroup including the cardCount field.
 func TestAdminMaster_Success(t *testing.T) {
 	t.Parallel()
-	stub := &stubMasterCardUC{adminOut: &usecase.MasterWithCount{
+	stub := &stubMasterCatalogUC{adminMaster: &usecase.MasterWithCount{
 		Master: &domain.MasterCardgroup{
 			ID:      "m1",
 			Name:    domain.CardgroupName("Deck"),
@@ -107,7 +100,7 @@ func TestAdminMaster_Success(t *testing.T) {
 		},
 		CardCount: 5,
 	}}
-	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
+	qr := &queryResolver{&Resolver{MasterCatalogUC: stub}}
 
 	got, err := qr.AdminMaster(context.Background(), "m1")
 	require.NoError(t, err)
@@ -121,8 +114,8 @@ func TestAdminMaster_Success(t *testing.T) {
 // gqlerr.FromUsecaseError into a FORBIDDEN-coded wire error.
 func TestAdminMaster_WrapsForbidden(t *testing.T) {
 	t.Parallel()
-	stub := &stubMasterCardUC{adminErr: ucerr.NewForbiddenError("admin only")}
-	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
+	stub := &stubMasterCatalogUC{adminMasterErr: ucerr.NewForbiddenError("admin only")}
+	qr := &queryResolver{&Resolver{MasterCatalogUC: stub}}
 
 	_, err := qr.AdminMaster(context.Background(), "m1")
 	require.Error(t, err)
@@ -133,8 +126,8 @@ func TestAdminMaster_WrapsForbidden(t *testing.T) {
 // missing master row) is wrapped into a BAD_USER_INPUT wire error.
 func TestAdminMaster_WrapsValidation(t *testing.T) {
 	t.Parallel()
-	stub := &stubMasterCardUC{adminErr: ucerr.NewValidationError("id", "master cardgroup not found")}
-	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
+	stub := &stubMasterCatalogUC{adminMasterErr: ucerr.NewValidationError("id", "master cardgroup not found")}
+	qr := &queryResolver{&Resolver{MasterCatalogUC: stub}}
 
 	_, err := qr.AdminMaster(context.Background(), "missing")
 	require.Error(t, err)
@@ -205,8 +198,8 @@ func TestAdminMasterCardsConnection_WrapsForbidden(t *testing.T) {
 // is wrapped via gqlerr.FromUsecaseError into an UNAUTHENTICATED-coded wire error.
 func TestAdminMaster_WrapsUnauthenticated(t *testing.T) {
 	t.Parallel()
-	stub := &stubMasterCardUC{adminErr: ucerr.ErrUnauthenticated}
-	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
+	stub := &stubMasterCatalogUC{adminMasterErr: ucerr.ErrUnauthenticated}
+	qr := &queryResolver{&Resolver{MasterCatalogUC: stub}}
 
 	_, err := qr.AdminMaster(context.Background(), "m1")
 	require.Error(t, err)
@@ -233,8 +226,8 @@ func TestAdminMasterCardsConnection_WrapsUnauthenticated(t *testing.T) {
 // eris-wrapped) is promoted to an INTERNAL-coded wire error by FromUsecaseError.
 func TestAdminMaster_WrapsInternal(t *testing.T) {
 	t.Parallel()
-	stub := &stubMasterCardUC{adminErr: eris.New("usecase: db: connection reset")}
-	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
+	stub := &stubMasterCatalogUC{adminMasterErr: eris.New("usecase: db: connection reset")}
+	qr := &queryResolver{&Resolver{MasterCatalogUC: stub}}
 
 	_, err := qr.AdminMaster(context.Background(), "m1")
 	require.Error(t, err)
