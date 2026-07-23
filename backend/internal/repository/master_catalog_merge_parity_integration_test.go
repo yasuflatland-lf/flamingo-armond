@@ -10,9 +10,11 @@ import (
 	"context"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 
 	"backend/internal/auth"
 	"backend/internal/domain"
@@ -65,67 +67,159 @@ func seedOwnedCardgroupWithCards(
 	return cg.ID
 }
 
-// TestMergePreviewEqualsMergeTally_CaseSensitive is the load-bearing parity
-// invariant test. It asserts that PreviewMergeMaster and MergeMaster compute
-// identical Add/Update tallies for the same fixture, and pins the expected
-// case-sensitive split:
-//
-//   - "Apple"  (exact match)  → Updated = 1
-//   - "banana" (case differs) → does NOT match master "Banana" → master Banana is Added
-//   - "Cherry" (absent)       → Added
-//
-// Total: Added = 2, Updated = 1.
-func TestMergePreviewEqualsMergeTally_CaseSensitive(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	ownerID := insertAuthUser(t, ctx)
-	authedCtx := auth.ContextWithUser(ctx, &auth.AuthUser{
+func authenticatedContext(ctx context.Context, ownerID string) context.Context {
+	return auth.ContextWithUser(ctx, &auth.AuthUser{
 		Sub:           ownerID,
 		Email:         ownerID + "@test.example",
 		EmailVerified: true,
 	})
+}
 
-	// Seed a PUBLISHED master deck with three cards.
-	masterID := seedMasterDeck(t, authedCtx, "Parity Master "+uuid.NewString(), []*domain.MasterCard{
-		{ID: uuid.NewString(), Front: domain.CardText("Apple"), Back: domain.CardText("apple-back"), Position: 0},
-		{ID: uuid.NewString(), Front: domain.CardText("Banana"), Back: domain.CardText("banana-back"), Position: 1},
-		{ID: uuid.NewString(), Front: domain.CardText("Cherry"), Back: domain.CardText("cherry-back"), Position: 2},
+func requirePreviewMergeParity(t *testing.T, previewAdded, previewUpdated, mergeAdded, mergeUpdated int64) {
+	t.Helper()
+	require.Equal(t, mergeAdded, previewAdded, "preview.Added must equal merge.Added")
+	require.Equal(t, mergeUpdated, previewUpdated, "preview.Updated must equal merge.Updated")
+}
+
+// TestMergeCaseFold_PreservesCardIDAndFSRS proves a case-only catalog match is
+// renamed in place before upsert. The preview and merge tally it as one update,
+// and the scheduling row remains byte-for-byte attached to the original card id.
+func TestMergeCaseFold_PreservesCardIDAndFSRS(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	ownerID := insertAuthUser(t, ctx)
+	authedCtx := authenticatedContext(ctx, ownerID)
+	masterID := seedMasterDeck(t, authedCtx, "Fold Master "+uuid.NewString(), []*domain.MasterCard{
+		{ID: uuid.NewString(), Front: domain.CardText("Apple"), Back: domain.CardText("catalog-back"), Position: 0},
 	})
-
-	// Seed the destination cardgroup:
-	//   "Apple"  → exact front match with master "Apple"  → Updated
-	//   "banana" → LOWERCASE; cards front is case-sensitive, so this is NOT a match
-	//              for master "Banana"; master "Banana" will be Added.
 	destID := seedOwnedCardgroupWithCards(t, ctx, ownerID, "My Deck "+uuid.NewString(), []struct{ front, back string }{
-		{front: "Apple", back: "old-apple"},
-		{front: "banana", back: "old-banana"},
+		{front: "apple", back: "learner-back"},
 	})
+
+	cardRepo := repository.NewCardRepository(testDB.GORM)
+	fsrsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	original, err := cardRepo.FindByCardgroupAndFront(ctx, string(destID), "apple")
+	require.NoError(t, err)
+	studiedAt := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	state := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), original.ID, studiedAt)
+	state.State = domain.FSRSState{
+		Due:           studiedAt.Add(21 * 24 * time.Hour),
+		Stability:     19.5,
+		Difficulty:    4.2,
+		ElapsedDays:   14,
+		ScheduledDays: 21,
+		Reps:          8,
+		Lapses:        1,
+		Phase:         domain.FSRSPhaseReview,
+		LastReview:    studiedAt,
+		LastRating:    domain.RatingGood,
+	}
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return fsrsRepo.UpsertTx(ctx, tx, state)
+	}))
+	before, err := fsrsRepo.FindByUserAndCardIDs(ctx, ownerID, []string{original.ID})
+	require.NoError(t, err)
+	require.Contains(t, before, original.ID)
 
 	uc := newMasterCatalogUsecaseForParityTest(t)
-
-	// --- preview (dry run) ---
 	preview, err := uc.PreviewMergeMaster(authedCtx, masterID, string(destID))
 	require.NoError(t, err)
-	require.False(t, preview.NotFound, "master deck must be found")
-
-	// Pin the case-sensitive expectation before calling the real merge.
-	// Added = 2: master "Banana" + master "Cherry" are new (banana != Banana).
-	// Updated = 1: master "Apple" overwrites dest "Apple" (exact match).
-	require.Equal(t, int64(2), preview.Added, "preview: Added must be 2 (Banana + Cherry)")
-	require.Equal(t, int64(1), preview.Updated, "preview: Updated must be 1 (Apple exact)")
-
-	// --- real merge ---
+	require.Equal(t, int64(0), preview.Added)
+	require.Equal(t, int64(1), preview.Updated)
 	merge, err := uc.MergeMaster(authedCtx, masterID, string(destID))
 	require.NoError(t, err)
-	require.False(t, merge.NotFound, "master deck must be found")
+	requirePreviewMergeParity(t, preview.Added, preview.Updated, merge.Added, merge.Updated)
 
-	// Parity invariant: preview tally MUST equal merge tally.
-	require.Equal(t, merge.Added, preview.Added, "preview.Added must equal merge.Added")
-	require.Equal(t, merge.Updated, preview.Updated, "preview.Updated must equal merge.Updated")
+	stored, err := cardRepo.ListByCardgroup(ctx, string(destID))
+	require.NoError(t, err)
+	require.Len(t, stored, 1)
+	require.Equal(t, original.ID, stored[0].ID)
+	require.Equal(t, domain.CardText("Apple"), stored[0].Front)
+	require.Equal(t, domain.CardText("catalog-back"), stored[0].Back)
+	after, err := fsrsRepo.FindByUserAndCardIDs(ctx, ownerID, []string{original.ID})
+	require.NoError(t, err)
+	require.Equal(t, before[original.ID], after[original.ID])
+}
 
-	// Belt-and-suspenders: confirm merge itself also matches the pin.
-	require.Equal(t, int64(2), merge.Added, "merge: Added must be 2")
-	require.Equal(t, int64(1), merge.Updated, "merge: Updated must be 1")
+// TestMergeCaseFold_ExactVariantWins proves an exact catalog front suppresses
+// folding even when another stored case variant exists. Only the exact row is
+// updated, both rows remain, and preview counts one distinct folded update.
+func TestMergeCaseFold_ExactVariantWins(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	authedCtx := authenticatedContext(ctx, ownerID)
+	masterID := seedMasterDeck(t, authedCtx, "Exact Master "+uuid.NewString(), []*domain.MasterCard{
+		{ID: uuid.NewString(), Front: domain.CardText("Apple"), Back: domain.CardText("catalog-back"), Position: 0},
+	})
+	destID := seedOwnedCardgroupWithCards(t, ctx, ownerID, "Exact Deck "+uuid.NewString(), []struct{ front, back string }{
+		{front: "apple", back: "lower-back"},
+		{front: "Apple", back: "exact-back"},
+	})
+	cardRepo := repository.NewCardRepository(testDB.GORM)
+	lower, err := cardRepo.FindByCardgroupAndFront(ctx, string(destID), "apple")
+	require.NoError(t, err)
+	exact, err := cardRepo.FindByCardgroupAndFront(ctx, string(destID), "Apple")
+	require.NoError(t, err)
 
+	uc := newMasterCatalogUsecaseForParityTest(t)
+	preview, err := uc.PreviewMergeMaster(authedCtx, masterID, string(destID))
+	require.NoError(t, err)
+	merge, err := uc.MergeMaster(authedCtx, masterID, string(destID))
+	require.NoError(t, err)
+	requirePreviewMergeParity(t, preview.Added, preview.Updated, merge.Added, merge.Updated)
+	require.Equal(t, int64(0), merge.Added)
+	require.Equal(t, int64(1), merge.Updated)
+
+	stored, err := cardRepo.ListByCardgroup(ctx, string(destID))
+	require.NoError(t, err)
+	require.Len(t, stored, 2)
+	gotLower, err := cardRepo.FindByID(ctx, lower.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.CardText("apple"), gotLower.Front)
+	require.Equal(t, domain.CardText("lower-back"), gotLower.Back)
+	gotExact, err := cardRepo.FindByID(ctx, exact.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.CardText("Apple"), gotExact.Front)
+	require.Equal(t, domain.CardText("catalog-back"), gotExact.Back)
+}
+
+// TestMergeCaseFold_OldestVariantWins proves the deterministic boundary when
+// several case variants exist and none is exact. Only the oldest row is renamed
+// and updated; the newer variant remains untouched and preview stays in parity.
+func TestMergeCaseFold_OldestVariantWins(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	authedCtx := authenticatedContext(ctx, ownerID)
+	masterID := seedMasterDeck(t, authedCtx, "Oldest Master "+uuid.NewString(), []*domain.MasterCard{
+		{ID: uuid.NewString(), Front: domain.CardText("Apple"), Back: domain.CardText("catalog-back"), Position: 0},
+	})
+	destID := seedOwnedCardgroupWithCards(t, ctx, ownerID, "Oldest Deck "+uuid.NewString(), nil)
+	cardRepo := repository.NewCardRepository(testDB.GORM)
+	older := newCard(destID, "APPLE", "older-back")
+	older.CreatedAt = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	newer := newCard(destID, "apple", "newer-back")
+	newer.CreatedAt = older.CreatedAt.Add(time.Hour)
+	require.NoError(t, cardRepo.Create(ctx, older))
+	require.NoError(t, cardRepo.Create(ctx, newer))
+
+	uc := newMasterCatalogUsecaseForParityTest(t)
+	preview, err := uc.PreviewMergeMaster(authedCtx, masterID, string(destID))
+	require.NoError(t, err)
+	merge, err := uc.MergeMaster(authedCtx, masterID, string(destID))
+	require.NoError(t, err)
+	requirePreviewMergeParity(t, preview.Added, preview.Updated, merge.Added, merge.Updated)
+	require.Equal(t, int64(0), merge.Added)
+	require.Equal(t, int64(1), merge.Updated)
+
+	gotOlder, err := cardRepo.FindByID(ctx, older.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.CardText("Apple"), gotOlder.Front)
+	require.Equal(t, domain.CardText("catalog-back"), gotOlder.Back)
+	gotNewer, err := cardRepo.FindByID(ctx, newer.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.CardText("apple"), gotNewer.Front)
+	require.Equal(t, domain.CardText("newer-back"), gotNewer.Back)
 }

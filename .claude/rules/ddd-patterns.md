@@ -241,4 +241,4 @@ boundary (`string(id)` / `domain.UserID(user.Sub)`).
 - [Append-only extension of a classification with a secondary, independently-graded source](../../docs/backend/ddd-patterns/append-only-classification-extension.md)
 - [Collapse "unknown" and "exists-but-hidden" into one not-found (non-disclosure gate)](../../docs/backend/ddd-patterns/notfound-collapse-non-disclosure.md)
 - [Typed bare-newtype IDs for the authorization-confusable pair](../../docs/backend/ddd-patterns/typed-id-newtype-for-authz-confusable-pair.md)
-- [Catalog and user decks disagree on front case-sensitivity (deliberate)](../../docs/backend/ddd-patterns/catalog-user-deck-front-case-asymmetry.md)
+- [Catalog/user front case asymmetry with merge reconciliation](../../docs/backend/ddd-patterns/catalog-user-deck-front-case-asymmetry.md)
