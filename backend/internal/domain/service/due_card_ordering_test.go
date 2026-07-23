@@ -172,6 +172,39 @@ func TestOrderingPolicy_Apply_MixedNewRescueAndFillerPreservesReviewBandPriority
 	}
 }
 
+func TestOrderingPolicy_Apply_InterleavedRescueFillerInput_RescueStillFirst(t *testing.T) {
+	t.Parallel()
+
+	// Deliberately interleaved, filler-leading review input: the policy must
+	// enforce rescue-before-filler itself, without relying on the repository
+	// emitting rescue rows ahead of filler rows.
+	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
+	in := []domain.DueCard{
+		dueCard("filler-1", domain.FSRSPhaseReview, base),
+		rescueDueCard("rescue-1", domain.FSRSPhaseReview, base.Add(time.Minute)),
+		dueCard("filler-2", domain.FSRSPhaseReview, base.Add(2*time.Minute)),
+		rescueDueCard("rescue-2", domain.FSRSPhaseReview, base.Add(3*time.Minute)),
+	}
+	rescueIDs := map[string]bool{"rescue-1": true, "rescue-2": true}
+	fillerIDs := map[string]bool{"filler-1": true, "filler-2": true}
+
+	for _, seed := range []int64{1, 7, 42, 99} {
+		got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(seed)), domain.DefaultNewCardRatio)
+		require.Len(t, got, len(in))
+
+		seenFiller := false
+		for _, card := range got {
+			if fillerIDs[card.ID] {
+				seenFiller = true
+			}
+			if rescueIDs[card.ID] {
+				require.False(t, seenFiller,
+					"seed %d: rescue card %q appeared after a filler card", seed, card.ID)
+			}
+		}
+	}
+}
+
 func TestOrderingPolicy_Apply_NonDefaultRatioInterleavesOneToOne(t *testing.T) {
 	t.Parallel()
 

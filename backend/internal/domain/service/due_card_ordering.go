@@ -20,10 +20,10 @@ func NewOrderingPolicy() *OrderingPolicy { return &OrderingPolicy{} }
 //  1. The new partition is fully shuffled — the repository samples WHICH new
 //     cards enter the batch (uniformly, via SQL random()); this shuffle
 //     randomises their arrangement deterministically under an injected rng.
-//     The review partition is shuffled within same-band runs: the repository
-//     concatenates rescue rows ahead of filler rows, and shuffling never crosses
-//     that boundary, so a filler can never displace a rescue card from the
-//     review slots.
+//     The review partition is stable-partitioned by Rescue (rescue first)
+//     and each sub-partition is shuffled independently, so a filler can
+//     never displace a rescue card from the review slots regardless of
+//     input order.
 //  2. New and review cards are interleaved at the caller-supplied ratio
 //     (ratio.NewShare new per ratio.ReviewShare review) with review-first
 //     emission. When one bucket empties, the remaining cards from the other
@@ -50,14 +50,12 @@ func (p *OrderingPolicy) Apply(due []domain.DueCard, rng *rand.Rand, ratio domai
 	rng.Shuffle(len(newCards), func(a, b int) {
 		newCards[a], newCards[b] = newCards[b], newCards[a]
 	})
-	shuffleWithinBand(reviewCards, rng)
+	shuffleRescueFirst(reviewCards, rng)
 	return interleave(newCards, reviewCards, ratio.NewShare(), ratio.ReviewShare())
 }
 
 // partition splits due into new (FSRSPhaseNew) vs review (everything else),
-// preserving the input order. The repository concatenates rescue rows before
-// filler rows and randomizes each window; new rows arrive in random() sample
-// order.
+// preserving the input order. New rows arrive in random() sample order.
 func partition(due []domain.DueCard) (newC, reviewC []domain.DueCard) {
 	for _, d := range due {
 		if d.Phase == domain.FSRSPhaseNew {
@@ -69,23 +67,24 @@ func partition(due []domain.DueCard) (newC, reviewC []domain.DueCard) {
 	return
 }
 
-// shuffleWithinBand shuffles contiguous same-band runs in place using rng.
-// The repository concatenates rescue cards before filler cards, so a single
-// linear pass detects each band run. Scoping the shuffle to a run preserves
-// the priority: a filler card can never move ahead of a rescue card.
-func shuffleWithinBand(cards []domain.DueCard, rng *rand.Rand) {
-	start := 0
-	// Loop runs through len(cards) inclusive so the trailing run is flushed
-	// without a tail handler.
-	for i := 1; i <= len(cards); i++ {
-		if i == len(cards) || cards[i].Rescue != cards[start].Rescue {
-			if i-start > 1 {
-				run := cards[start:i]
-				rng.Shuffle(len(run), func(a, b int) { run[a], run[b] = run[b], run[a] })
-			}
-			start = i
+// shuffleRescueFirst stable-partitions cards by Rescue (rescue first) and
+// shuffles each partition independently in place, so a filler card can never
+// move ahead of a rescue card regardless of input order. Rescue is shuffled
+// before filler to keep rng consumption stable for already-partitioned input.
+func shuffleRescueFirst(cards []domain.DueCard, rng *rand.Rand) {
+	rescue := make([]domain.DueCard, 0, len(cards))
+	filler := make([]domain.DueCard, 0, len(cards))
+	for _, c := range cards {
+		if c.Rescue {
+			rescue = append(rescue, c)
+		} else {
+			filler = append(filler, c)
 		}
 	}
+	rng.Shuffle(len(rescue), func(a, b int) { rescue[a], rescue[b] = rescue[b], rescue[a] })
+	rng.Shuffle(len(filler), func(a, b int) { filler[a], filler[b] = filler[b], filler[a] })
+	copy(cards, rescue)
+	copy(cards[len(rescue):], filler)
 }
 
 // interleave emits rRatio review cards then nRatio new cards in a loop until
