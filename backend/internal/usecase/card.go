@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/rotisserie/eris"
-	"gorm.io/gorm"
 
 	"backend/internal/auth"
 	"backend/internal/domain"
@@ -34,7 +33,7 @@ type CardRepository interface {
 	FindByCardgroupAndFront(ctx context.Context, cardgroupID, front string) (*domain.Card, error)
 	Update(ctx context.Context, id string, patch repository.CardUpdate) (*domain.Card, error)
 	Delete(ctx context.Context, id string) error
-	DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error)
+	DeleteByIDsTx(ctx context.Context, tx repository.Tx, ownerID string, ids []string) (int64, error)
 }
 
 type CardgroupRepositoryForCard interface {
@@ -82,7 +81,7 @@ type cardUsecase struct {
 }
 
 func NewCardUsecase(
-	db *gorm.DB,
+	db repository.Tx,
 	cardRepo CardRepository,
 	cardgroupRepo CardgroupRepositoryForCard,
 	userCardFSRSRepo UserCardFSRSRepositoryForCard,
@@ -109,7 +108,7 @@ func NewCardUsecase(
 func NewCardUsecaseWithTx(
 	cardRepo CardRepository,
 	cardgroupRepo CardgroupRepositoryForCard,
-	tx func(ctx context.Context, fn func(tx *gorm.DB) error) error,
+	tx func(ctx context.Context, fn func(tx repository.Tx) error) error,
 	userCardFSRSRepo UserCardFSRSRepositoryForCard,
 	observer CardObserver,
 	logger *slog.Logger,
@@ -760,7 +759,7 @@ func (u *cardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, erro
 	}
 
 	var deleted int64
-	err := runInTx(ctx, u.tx, func(tx *gorm.DB) error {
+	err := runInTx(ctx, u.tx, func(tx repository.Tx) error {
 		n, err := u.cardRepo.DeleteByIDsTx(ctx, tx, user.Sub, ids)
 		if err != nil {
 			return err

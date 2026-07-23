@@ -3,9 +3,8 @@ package usecase
 import (
 	"context"
 
-	"gorm.io/gorm"
-
 	"backend/internal/domain"
+	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
 )
 
@@ -16,8 +15,8 @@ import (
 // (DeleteMyAccount) satisfy it via their AcquireAdminRoleLockTx and
 // CountAdminsTx methods.
 type AdminCounter interface {
-	AcquireAdminRoleLockTx(ctx context.Context, tx *gorm.DB) error
-	CountAdminsTx(ctx context.Context, tx *gorm.DB) (int64, error)
+	AcquireAdminRoleLockTx(ctx context.Context, tx repository.Tx) error
+	CountAdminsTx(ctx context.Context, tx repository.Tx) (int64, error)
 }
 
 // acquireAdminRoleLock takes the admin-role advisory lock inside the caller's
@@ -33,7 +32,7 @@ type AdminCounter interface {
 // wrapPrefix is caller-supplied so the repository failure is attributed to the
 // calling module, not this helper, per the shared-helper rule in
 // .claude/rules/error-wrapping.md.
-func acquireAdminRoleLock(ctx context.Context, tx *gorm.DB, counter AdminCounter, wrapPrefix string) error {
+func acquireAdminRoleLock(ctx context.Context, tx repository.Tx, counter AdminCounter, wrapPrefix string) error {
 	if err := counter.AcquireAdminRoleLockTx(ctx, tx); err != nil {
 		return wrapInfraErr(err, wrapPrefix)
 	}
@@ -59,7 +58,7 @@ func acquireAdminRoleLock(ctx context.Context, tx *gorm.DB, counter AdminCounter
 // as isTargetAdmin. wrapPrefix and forbidMsg are likewise caller-supplied.
 func guardNotLastAdmin(
 	ctx context.Context,
-	tx *gorm.DB,
+	tx repository.Tx,
 	isTargetAdmin bool,
 	counter AdminCounter,
 	wrapPrefix string,

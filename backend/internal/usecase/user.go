@@ -8,7 +8,6 @@ import (
 	"log/slog"
 
 	"github.com/rotisserie/eris"
-	"gorm.io/gorm"
 
 	"backend/internal/auth"
 	"backend/internal/domain"
@@ -24,7 +23,7 @@ type UserRepository interface {
 	// DeleteAuthUserTx deletes the caller's auth.users row inside the caller's
 	// transaction, cascading to all associated data. See
 	// repository.UserRepository.DeleteAuthUserTx for details.
-	DeleteAuthUserTx(ctx context.Context, tx *gorm.DB, id string) error
+	DeleteAuthUserTx(ctx context.Context, tx repository.Tx, id string) error
 	// AuthUserExists reports whether an auth.users row with the given id still
 	// exists. Me uses it to tell a deleted account apart from a public.users row
 	// the handle_new_user trigger has not written yet.
@@ -35,11 +34,11 @@ type UserRolesRepository interface {
 	ListByUser(ctx context.Context, userID string) ([]*domain.Role, error)
 	// AcquireAdminRoleLockTx serializes admin-count-changing mutations; see
 	// repository.UserRoleRepository for the race it closes.
-	AcquireAdminRoleLockTx(ctx context.Context, tx *gorm.DB) error
+	AcquireAdminRoleLockTx(ctx context.Context, tx repository.Tx) error
 	// CountAdminsTx returns the number of users holding the admin role, read
 	// inside the caller's transaction under the lock above. Used by
 	// DeleteMyAccount's last-admin guard.
-	CountAdminsTx(ctx context.Context, tx *gorm.DB) (int64, error)
+	CountAdminsTx(ctx context.Context, tx repository.Tx) (int64, error)
 }
 
 // UserUsecase is the authenticated user profile and role-query surface.
@@ -67,7 +66,7 @@ type userUsecase struct {
 // NewUserUsecase constructs the user profile usecase. db backs the transaction
 // runner that scopes DeleteMyAccount's last-admin guard together with the
 // delete; tests that inject repository fakes may pass nil (see runInTx).
-func NewUserUsecase(db *gorm.DB, repo UserRepository, roles UserRolesRepository, authSvc AdminChecker, logger *slog.Logger) UserUsecase {
+func NewUserUsecase(db repository.Tx, repo UserRepository, roles UserRolesRepository, authSvc AdminChecker, logger *slog.Logger) UserUsecase {
 	if logger == nil {
 		panic("usecase: user: logger is required")
 	}
@@ -218,7 +217,7 @@ func (u *userUsecase) DeleteMyAccount(ctx context.Context) error {
 	if u.auth == nil || u.roles == nil {
 		return eris.New("usecase: user: delete my account: admin guard deps not configured")
 	}
-	return runInTx(ctx, u.tx, func(tx *gorm.DB) error {
+	return runInTx(ctx, u.tx, func(tx repository.Tx) error {
 		if lerr := acquireAdminRoleLock(ctx, tx, u.roles, "usecase: user: delete my account: count admins"); lerr != nil {
 			return lerr
 		}

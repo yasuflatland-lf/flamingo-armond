@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/rotisserie/eris"
-	"gorm.io/gorm"
 
 	"backend/internal/domain"
 	"backend/internal/notion"
@@ -36,9 +35,9 @@ type NotionSyncMasterCardgroupRepository interface {
 // master-targeted sync needs from the master card repository: the bulk upsert
 // plus the diff-prune pair (list current fronts, delete the stale ones).
 type NotionSyncMasterCardRepository interface {
-	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.MasterCard) (repository.UpsertManyTxResult, error)
-	ListFrontsByMasterCardgroupTx(ctx context.Context, tx *gorm.DB, masterCardgroupID string) ([]string, error)
-	DeleteByMasterCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, masterCardgroupID string, fronts []string) (int64, error)
+	UpsertManyTx(ctx context.Context, tx repository.Tx, cards []*domain.MasterCard) (repository.UpsertManyTxResult, error)
+	ListFrontsByMasterCardgroupTx(ctx context.Context, tx repository.Tx, masterCardgroupID string) ([]string, error)
+	DeleteByMasterCardgroupAndFrontsTx(ctx context.Context, tx repository.Tx, masterCardgroupID string, fronts []string) (int64, error)
 }
 
 // MasterNotionSyncUsecase syncs Notion pages into the admin-only master_*
@@ -80,7 +79,7 @@ func NewMasterNotionSyncUsecase(
 	fetcher notion.Fetcher,
 	masterCardgroupRepo NotionSyncMasterCardgroupRepository,
 	masterCardRepo NotionSyncMasterCardRepository,
-	db *gorm.DB,
+	db repository.Tx,
 	logger *slog.Logger,
 ) *MasterNotionSyncUsecase {
 	if logger == nil {
@@ -208,7 +207,7 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 		Parsed:      plan.Rows,
 		ParseErrors: plan.ParseErrors,
 	}
-	err = runInTx(ctx, u.tx, func(tx *gorm.DB) error {
+	err = runInTx(ctx, u.tx, func(tx repository.Tx) error {
 		upserted, err := u.masterCardRepo.UpsertManyTx(ctx, tx, plan.Cards)
 		if err != nil {
 			return eris.Wrap(err, "upsert master cards")

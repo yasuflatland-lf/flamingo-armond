@@ -3,24 +3,20 @@ package usecase
 import (
 	"context"
 
-	"gorm.io/gorm"
+	"backend/internal/repository"
 )
 
-// txRunner is the function the usecase calls to run fn inside a database
-// transaction. The composition root (cmd/server) wires the real
-// *gorm.DB.Transaction-backed implementation; unit tests pass a fake that
-// invokes fn with a sentinel *gorm.DB. Callers whose runner may be nil in
-// tests go through runInTx; constructors that panic on nil call it directly.
-type txRunner func(ctx context.Context, fn func(tx *gorm.DB) error) error
+// txRunner runs fn inside a database transaction. The composition root wires
+// the production implementation; tests may use a fake with a sentinel
+// repository.Tx. Callers whose runner may be nil go through runInTx;
+// constructors that panic on nil call it directly.
+type txRunner func(ctx context.Context, fn func(tx repository.Tx) error) error
 
-// runInTx executes fn inside run's transaction. A nil run — the shape
-// newTxRunner produces when the composition root has no *gorm.DB, which happens
-// only in tests that inject repository fakes — invokes fn directly with a nil
-// handle: the fakes ignore it, and production always wires a real runner. Use
-// this from methods whose transaction is a correctness requirement rather than
-// an optional optimisation, so a test constructor without a database does not
-// have to fabricate one.
-func runInTx(ctx context.Context, run txRunner, fn func(tx *gorm.DB) error) error {
+// runInTx executes fn inside run's transaction. A nil run invokes fn with a nil
+// handle for tests that inject repository fakes; production always wires a real
+// runner. Use this from methods whose transaction is a correctness requirement,
+// so test constructors without a database do not need to fabricate one.
+func runInTx(ctx context.Context, run txRunner, fn func(tx repository.Tx) error) error {
 	if run == nil {
 		return fn(nil)
 	}
@@ -29,11 +25,11 @@ func runInTx(ctx context.Context, run txRunner, fn func(tx *gorm.DB) error) erro
 
 // newTxRunner returns the production txRunner backed by db, or nil when db is
 // nil so callers can leave the field unset for explicit-tx test constructors.
-func newTxRunner(db *gorm.DB) txRunner {
+func newTxRunner(db repository.Tx) txRunner {
 	if db == nil {
 		return nil
 	}
-	return func(ctx context.Context, fn func(tx *gorm.DB) error) error {
+	return func(ctx context.Context, fn func(tx repository.Tx) error) error {
 		return db.WithContext(ctx).Transaction(fn)
 	}
 }
