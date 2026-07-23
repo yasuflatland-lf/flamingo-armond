@@ -282,7 +282,6 @@ func TestHandlerErrorMapping(t *testing.T) {
 		{name: "invalid input", err: errors.Join(usecase.ErrNotionSyncInvalidInput, errors.New("boom")), want: http.StatusUnprocessableEntity},
 		{name: "parse", err: errors.Join(usecase.ErrNotionSyncParse, errors.New("boom")), want: http.StatusUnprocessableEntity},
 		{name: "cap exceeded", err: eris.Wrap(usecase.ErrNotionSyncInvalidInput, "parsed rows exceed cap"), want: http.StatusUnprocessableEntity},
-		{name: "deps not configured", err: eris.Wrap(usecase.ErrNotionSyncInvalidInput, "dependencies are not configured"), want: http.StatusUnprocessableEntity},
 		{name: "persist", err: errors.Join(usecase.ErrNotionSyncPersist, errors.New("boom")), want: http.StatusInternalServerError},
 	}
 	for _, tc := range cases {

@@ -18,6 +18,7 @@ func newLoadersForLastSignIn(userRepo repository.UserRepository) *loader.Loaders
 		emptyCardgroupRepo(),
 		emptyCardRepo(),
 		emptyUserPreferenceRepo(),
+		nil,
 	)
 }
 

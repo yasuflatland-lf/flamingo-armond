@@ -70,13 +70,17 @@ function FormSheet({
   description,
   dirty = false,
   confirmOnDismiss = false,
-  confirmMessage = "Your unsaved changes will be lost.",
+  confirmMessage,
   submitting = false,
   size = "md",
   children,
 }: FormSheetProps) {
   const t = useTranslations("Common");
-  const a11yDescription = description ?? (typeof title === "string" ? `${title} form` : "Form");
+  const a11yDescription =
+    description ??
+    (typeof title === "string"
+      ? t("formSheetDescription", { title })
+      : t("formSheetDescriptionFallback"));
   const isMobile = useIsMobile();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
 
@@ -173,7 +177,9 @@ function FormSheet({
         <AlertDialogContent className="z-[60]">
           <AlertDialogHeader>
             <AlertDialogTitle>{t("discardChanges")}</AlertDialogTitle>
-            <AlertDialogDescription>{confirmMessage}</AlertDialogDescription>
+            <AlertDialogDescription>
+              {confirmMessage ?? t("discardChangesDescription")}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("keepEditing")}</AlertDialogCancel>

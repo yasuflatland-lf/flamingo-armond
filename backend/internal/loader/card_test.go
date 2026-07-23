@@ -52,7 +52,7 @@ func TestCardLoader_BatchesNCallsIntoOne(t *testing.T) {
 	for i := range ids {
 		ids[i] = fmt.Sprintf("card-%03d", i)
 	}
-	results, errs := loadAllCards(context.Background(), loader.New(emptyUser, emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), cardRepo, emptyUserPreferenceRepo()), ids)
+	results, errs := loadAllCards(context.Background(), loader.New(emptyUser, emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), cardRepo, emptyUserPreferenceRepo(), nil), ids)
 
 	for i, err := range errs {
 		if err != nil {
@@ -87,7 +87,7 @@ func TestCardLoader_PartialNotFound(t *testing.T) {
 		},
 	}
 
-	results, errs := loadAllCards(context.Background(), loader.New(emptyUser, emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), cardRepo, emptyUserPreferenceRepo()), []string{"present", "missing"})
+	results, errs := loadAllCards(context.Background(), loader.New(emptyUser, emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), cardRepo, emptyUserPreferenceRepo(), nil), []string{"present", "missing"})
 	if errs[0] != nil || results[0] == nil || results[0].ID != "present" {
 		t.Fatalf("present: result=%+v err=%v", results[0], errs[0])
 	}

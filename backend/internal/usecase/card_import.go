@@ -121,9 +121,10 @@ type cardImportUsecase struct {
 }
 
 // NewCardImportUsecase constructs a CardImportUsecase. db is the database handle
-// used to open transactions; pass the same repository.Tx used by the other usecase
-// constructors. Passing a nil db defers transaction wiring; the usecase will
-// return INTERNAL when Import is invoked without a tx runner.
+// used to open transactions; production must pass a non-nil db — with a nil db,
+// runInTx hands the import closure a nil handle, which panics inside GORM at the
+// first Import. Panics on nil cardgroupRepo or logger; cardRepo and db stay
+// unguarded because tests without a database use NewCardImportUsecaseWithTx.
 func NewCardImportUsecase(cardgroupRepo CardgroupOwnershipFinder, cardRepo CardImportCardRepository, db repository.Tx, logger *slog.Logger) *cardImportUsecase {
 	if cardgroupRepo == nil {
 		panic("usecase: card import: cardgroupRepo is required")

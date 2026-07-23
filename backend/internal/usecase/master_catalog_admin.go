@@ -1,7 +1,7 @@
 // master_catalog_admin.go holds the admin-author surface of the master catalog:
 // the carrier types for the admin mutations, the mapMasterAdminErr repository-error
-// classifier, and the admin-gated management methods (create, update, publish,
-// unpublish, delete, admin list). Every method here passes through
+// classifier, and the admin-gated management methods (admin single get, create,
+// update, publish, unpublish, delete, admin list). Every method here passes through
 // AdminGate.Require first, and a missing deck is a validation error on "id" rather
 // than the non-disclosure not-found the public reader surface uses.
 
@@ -9,11 +9,13 @@ package usecase
 
 import (
 	"context"
+	"errors"
 
 	"github.com/rotisserie/eris"
 
 	"backend/internal/domain"
 	"backend/internal/repository"
+	"backend/internal/usecase/ucerr"
 )
 
 // MasterWithCount bundles a master cardgroup with its current card count so the
@@ -77,6 +79,28 @@ func mapMasterAdminErr(err error, notFoundField, wrap string) (*InputValidationI
 	return classifyRepoErr(err, wrap, []SentinelMapping{
 		{repository.ErrNotFound, notFoundField, "master cardgroup not found"},
 	})
+}
+
+// AdminMaster returns the master cardgroup (incl. DRAFT) with the given id plus
+// its card count. Admin-only: the gate rejects non-admin / anonymous callers
+// before any repository access. FindByID returns ANY status, so DRAFT decks are
+// included. A missing row surfaces as a validation error on "id".
+func (u *masterCatalogUsecase) AdminMaster(ctx context.Context, id string) (*MasterWithCount, error) {
+	if _, err := u.adminGate.Require(ctx, "usecase: master catalog: admin master"); err != nil {
+		return nil, err
+	}
+	master, err := u.repo.FindByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ucerr.NewValidationError("id", "master cardgroup not found")
+		}
+		return nil, wrapInfraErr(err, "usecase: master catalog: admin master: find by id")
+	}
+	count, err := u.repo.CountCards(ctx, id)
+	if err != nil {
+		return nil, wrapInfraErr(err, "usecase: master catalog: admin master: count cards")
+	}
+	return &MasterWithCount{Master: master, CardCount: count}, nil
 }
 
 // CreateMaster creates a new DRAFT master cardgroup. Admin-only. Name validation

@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -10,9 +11,10 @@ type CardgroupChipProps = {
 };
 
 export function CardgroupChip({ name, onChangeRequested }: CardgroupChipProps) {
+  const t = useTranslations("Cardgroups");
   // Truthy coalescing (||) intentionally treats "" the same as null — see test
   // "renders placeholder for empty-string name (treated as no name)".
-  const displayName = name || "Select cardgroup";
+  const displayName = name || t("pickerTitle");
   const isMuted = !name;
 
   return (
@@ -20,7 +22,8 @@ export function CardgroupChip({ name, onChangeRequested }: CardgroupChipProps) {
       type="button"
       variant="outline"
       onClick={onChangeRequested}
-      aria-label={name ? `Change cardgroup (currently "${name}")` : "Select cardgroup"}
+      aria-label={name ? t("chipChangeAriaLabel", { name }) : t("pickerTitle")}
+      data-testid="cardgroup-chip"
       className="inline-flex items-center gap-2"
     >
       <span

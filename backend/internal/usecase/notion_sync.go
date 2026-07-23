@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"reflect"
 	"strings"
@@ -85,6 +86,9 @@ func NewMasterNotionSyncUsecase(
 	if logger == nil {
 		panic("usecase: notion sync: logger is required")
 	}
+	if fetcher == nil || masterCardgroupRepo == nil || masterCardRepo == nil {
+		panic("usecase: notion sync: fetcher and master repositories are required")
+	}
 	uc := &MasterNotionSyncUsecase{
 		fetcher:             fetcher,
 		masterCardgroupRepo: masterCardgroupRepo,
@@ -104,6 +108,9 @@ func newMasterNotionSyncUsecaseWithTx(
 ) *MasterNotionSyncUsecase {
 	if logger == nil {
 		panic("usecase: notion sync: logger is required")
+	}
+	if fetcher == nil || masterCardgroupRepo == nil || masterCardRepo == nil {
+		panic("usecase: notion sync: fetcher and master repositories are required")
 	}
 	return &MasterNotionSyncUsecase{
 		fetcher:             fetcher,
@@ -129,16 +136,12 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 			"cardgroup name is invalid",
 		)
 	}
-	if u.fetcher == nil || u.masterCardgroupRepo == nil || u.masterCardRepo == nil {
-		return MasterNotionSyncOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "dependencies are not configured")
-	}
-
 	pages, err := u.fetcher.FetchPages(ctx, pageIDs)
 	if err != nil {
 		return MasterNotionSyncOutput{}, eris.Wrap(errors.Join(ErrNotionSyncFetch, err), "fetch pages")
 	}
 
-	rows, parseErrs, err := parseNotionPages(ctx, u.logger, pages)
+	rows, parseErrs, skippedPages, err := parseNotionPages(ctx, u.logger, pages)
 	if err != nil {
 		return MasterNotionSyncOutput{}, eris.Wrap(errors.Join(ErrNotionSyncParse, err), "parse pages")
 	}
@@ -177,7 +180,7 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 		return MasterNotionSyncOutput{}, eris.Wrap(errors.Join(ErrNotionSyncPersist, err), "ensure master cardgroup")
 	}
 
-	plan := computeSyncPlan(rows, parseErrs, cardgroup.ID, time.Now().UTC())
+	plan := computeSyncPlan(rows, parseErrs, skippedPages, cardgroup.ID, time.Now().UTC())
 	// computeSyncPlan does not log, so the warns are emitted here rather than
 	// where the rows are dropped: that keeps it pure and testable without fakes.
 	for _, skip := range plan.DomainSkips {
@@ -212,6 +215,13 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 		if err != nil {
 			return eris.Wrap(err, "upsert master cards")
 		}
+		out.Inserted = upserted.Inserted
+		out.Updated = upserted.Updated
+		// A skipped page leaves its cards out of the keep-set, so pruning here
+		// would delete them from the published deck; the upsert alone is safe.
+		if !plan.PruneSafe() {
+			return nil
+		}
 		currentFronts, err := u.masterCardRepo.ListFrontsByMasterCardgroupTx(ctx, tx, cardgroup.ID)
 		if err != nil {
 			return eris.Wrap(err, "list current fronts")
@@ -221,13 +231,25 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 		if err != nil {
 			return eris.Wrap(err, "delete stale master cards")
 		}
-		out.Inserted = upserted.Inserted
-		out.Updated = upserted.Updated
 		out.Deleted = deleted
 		return nil
 	})
 	if err != nil {
 		return MasterNotionSyncOutput{}, eris.Wrap(errors.Join(ErrNotionSyncPersist, err), "persist master cards")
+	}
+	// Appended after computeSyncPlan and after the transaction — never into the
+	// parseErrs slice that allCardImportErrorsSkipped classifies — so the
+	// classifier-check-ordering invariant holds.
+	if !plan.PruneSafe() {
+		out.ParseErrors = append(out.ParseErrors, CardImportError{
+			Line:    0,
+			Message: fmt.Sprintf("stale-card pruning deferred: %d page(s) skipped; deletion resumes on the next fully-parsed sync", plan.SkippedPages),
+			Kind:    CardImportErrKindHard,
+		})
+		u.logger.WarnContext(ctx, "notion sync: stale-card prune deferred",
+			"cardgroup_id", cardgroup.ID,
+			"skipped_pages", plan.SkippedPages,
+		)
 	}
 
 	u.logger.InfoContext(ctx, "notion sync complete",
@@ -274,9 +296,10 @@ func normalizePageIDs(ids []string) []string {
 	return out
 }
 
-func parseNotionPages(ctx context.Context, logger *slog.Logger, pages []notion.Page) ([]ParsedRow, []CardImportError, error) {
+func parseNotionPages(ctx context.Context, logger *slog.Logger, pages []notion.Page) ([]ParsedRow, []CardImportError, int, error) {
 	rows := make([]ParsedRow, 0, len(pages))
 	errs := make([]CardImportError, 0, len(pages))
+	skippedPages := 0
 	for i, page := range pages {
 		// The byte cap lives in the usecase layer alongside the other import caps,
 		// so every textdic.Process caller applies it explicitly. An over-size page
@@ -284,6 +307,7 @@ func parseNotionPages(ctx context.Context, logger *slog.Logger, pages []notion.P
 		// sync.
 		if v := validateImportPayloadSize(len(page.Text)); v != nil {
 			errs = append(errs, CardImportError{Line: v.Line, Message: v.Message, Kind: CardImportErrKindHard})
+			skippedPages++
 			continue
 		}
 		words, parseErrs, err := textdic.Process(page.Text)
@@ -298,7 +322,7 @@ func parseNotionPages(ctx context.Context, logger *slog.Logger, pages []notion.P
 				"error_name", reflect.TypeOf(err).String(),
 				"error", err.Error(),
 			)
-			return nil, nil, err
+			return nil, nil, 0, err
 		}
 		for _, word := range words {
 			rows = append(rows, ParsedRow{
@@ -317,7 +341,7 @@ func parseNotionPages(ctx context.Context, logger *slog.Logger, pages []notion.P
 			})
 		}
 	}
-	return rows, errs, nil
+	return rows, errs, skippedPages, nil
 }
 
 // frontMatchKey is the case-insensitive key used to match Notion fronts against

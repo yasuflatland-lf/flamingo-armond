@@ -123,10 +123,10 @@ type masterDeckUsecaseFacade interface {
 type MasterCatalogUsecase interface {
 	ListPublishedConnection(ctx context.Context, in MasterCatalogConnectionInput) (*MasterCatalogConnectionOutput, error)
 	// FindPublishedMaster returns a single PUBLISHED, non-empty master deck by id
-	// for any authenticated caller. Returns (nil, nil) for an unknown id, a DRAFT
-	// id, or a published deck holding zero cards (non-disclosure gate). Anonymous
-	// callers receive UNAUTHENTICATED.
-	FindPublishedMaster(ctx context.Context, id string) (*domain.MasterCardgroup, error)
+	// for any authenticated caller, bundled with its live card count. Returns
+	// (nil, nil) for an unknown id, a DRAFT id, or a published deck holding zero
+	// cards (non-disclosure gate). Anonymous callers receive UNAUTHENTICATED.
+	FindPublishedMaster(ctx context.Context, id string) (*MasterWithCount, error)
 	ImportMaster(ctx context.Context, masterID string) (ImportMasterOutcome, error)
 	MergeMaster(ctx context.Context, masterID, cardgroupID string) (MergeMasterOutcome, error)
 	PreviewMergeMaster(ctx context.Context, masterID, cardgroupID string) (PreviewMergeOutcome, error)
@@ -213,28 +213,6 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 		},
 		u.repo.FindPublishedPage,
 	)
-}
-
-// AdminMaster returns the master cardgroup (incl. DRAFT) with the given id plus
-// its card count. Admin-only: the gate rejects non-admin / anonymous callers
-// before any repository access. FindByID returns ANY status, so DRAFT decks are
-// included. A missing row surfaces as a validation error on "id".
-func (u *masterCatalogUsecase) AdminMaster(ctx context.Context, id string) (*MasterWithCount, error) {
-	if _, err := u.adminGate.Require(ctx, "usecase: master card: admin master"); err != nil {
-		return nil, err
-	}
-	master, err := u.repo.FindByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ucerr.NewValidationError("id", "master cardgroup not found")
-		}
-		return nil, wrapInfraErr(err, "usecase: master card: admin master: find by id")
-	}
-	count, err := u.repo.CountCards(ctx, id)
-	if err != nil {
-		return nil, wrapInfraErr(err, "usecase: master card: admin master: count cards")
-	}
-	return &MasterWithCount{Master: master, CardCount: count}, nil
 }
 
 // listMasterCatalogCore holds the shared page-assembly body for
@@ -515,13 +493,13 @@ func (u *masterCatalogUsecase) verifyPublishedMaster(
 }
 
 // FindPublishedMaster returns a single PUBLISHED, non-empty master deck by id
-// for any authenticated caller. The shared verifyPublishedMaster gate collapses
-// unknown ids, draft decks and published decks holding zero cards into the same
-// not-found signal, so neither draft existence nor an empty deck is ever
-// disclosed — all three surface as a (nil, nil) result that the resolver maps to
-// GraphQL null (non-disclosure gate). Unauthenticated callers receive
-// ucerr.ErrUnauthenticated.
-func (u *masterCatalogUsecase) FindPublishedMaster(ctx context.Context, id string) (*domain.MasterCardgroup, error) {
+// for any authenticated caller, bundled with its live card count. The shared
+// verifyPublishedMaster gate collapses unknown ids, draft decks and published
+// decks holding zero cards into the same not-found signal, so neither draft
+// existence nor an empty deck is ever disclosed — all three surface as a
+// (nil, nil) result that the resolver maps to GraphQL null (non-disclosure
+// gate). Unauthenticated callers receive ucerr.ErrUnauthenticated.
+func (u *masterCatalogUsecase) FindPublishedMaster(ctx context.Context, id string) (*MasterWithCount, error) {
 	if err := requireCallerSub(auth.UserFrom(ctx)); err != nil {
 		return nil, err
 	}
@@ -532,5 +510,9 @@ func (u *masterCatalogUsecase) FindPublishedMaster(ctx context.Context, id strin
 	if notFound {
 		return nil, nil // unknown, draft or card-less → GraphQL null (non-disclosure)
 	}
-	return deck, nil
+	count, err := u.repo.CountCards(ctx, id)
+	if err != nil {
+		return nil, wrapInfraErr(err, "usecase: master catalog: find published master: count cards")
+	}
+	return &MasterWithCount{Master: deck, CardCount: count}, nil
 }

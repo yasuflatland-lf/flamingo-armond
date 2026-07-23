@@ -505,13 +505,18 @@ func TestMasterNotionSyncUsecase_OverSizePageIsHardErrorAndSiblingStillSyncs(t *
 	if err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
-	if len(out.ParseErrors) != 1 {
-		t.Fatalf("ParseErrors = %+v, want exactly one over-size entry", out.ParseErrors)
+	if len(out.ParseErrors) != 2 {
+		t.Fatalf("ParseErrors = %+v, want the over-size entry plus the prune-deferral diagnostic", out.ParseErrors)
 	}
 	got := out.ParseErrors[0]
 	if got.Line != 0 || got.Kind != CardImportErrKindHard || got.Message != oversizeMessage() {
 		t.Fatalf("ParseErrors[0] = %+v, want {Line: 0, Kind: %s, Message: %q}",
 			got, CardImportErrKindHard, oversizeMessage())
+	}
+	deferral := out.ParseErrors[1]
+	if deferral.Line != 0 || deferral.Kind != CardImportErrKindHard || deferral.Message != pruneDeferredMessage(1) {
+		t.Fatalf("ParseErrors[1] = %+v, want {Line: 0, Kind: %s, Message: %q}",
+			deferral, CardImportErrKindHard, pruneDeferredMessage(1))
 	}
 	// A HARD entry is not a soft skip, so the skip-only short-circuit must not
 	// fire and the sibling page's row must still reach persistence.
@@ -521,8 +526,155 @@ func TestMasterNotionSyncUsecase_OverSizePageIsHardErrorAndSiblingStillSyncs(t *
 	if len(cards.upserted) != 1 || cards.upserted[0].Front != "apple" {
 		t.Fatalf("upserted = %+v, want the single apple card from page-ok", cards.upserted)
 	}
+	// The skipped page makes the keep-set incomplete, so the prune is deferred:
+	// no list, no delete, and the output reports zero deletions.
+	if out.Deleted != 0 {
+		t.Fatalf("out.Deleted = %d, want 0 (prune deferred)", out.Deleted)
+	}
+	if cards.listCalls != 0 || cards.deleteCalls != 0 {
+		t.Fatalf("prune ran: list=%d delete=%d, want both zero", cards.listCalls, cards.deleteCalls)
+	}
+	if len(cards.deletedFronts) != 0 {
+		t.Fatalf("deletedFronts = %v, want none (prune deferred)", cards.deletedFronts)
+	}
 	if *txCalls != 1 {
 		t.Fatalf("tx calls = %d, want 1", *txCalls)
+	}
+}
+
+// pruneDeferredMessage is the diagnostic Sync appends when a skipped page
+// defers the stale-card prune, parameterized by the skipped-page count.
+func pruneDeferredMessage(skippedPages int) string {
+	return fmt.Sprintf("stale-card pruning deferred: %d page(s) skipped; deletion resumes on the next fully-parsed sync", skippedPages)
+}
+
+// TestMasterNotionSyncUsecase_SkippedPageDefersPrune pins the data-loss guard:
+// a card previously synced from the now-skipped page must survive the sync.
+// The upsert of the surviving page still runs; only the diff-prune is deferred.
+func TestMasterNotionSyncUsecase_SkippedPageDefersPrune(t *testing.T) {
+	t.Parallel()
+
+	fetcher := &stubNotionFetcher{pages: []notion.Page{
+		{ID: "page-oversize", Text: overCapPayload()},
+		{ID: "page-ok", Text: "apple " + uniqueBack(1) + "\n"},
+	}}
+	cardgroups := &mockMasterCardgroupRepo{cg: &domain.MasterCardgroup{ID: "mcg-target"}}
+	// "stale-from-skipped" was synced from the now-skipped page; a prune against
+	// the incomplete keep-set would delete it.
+	cards := &mockMasterCardRepo{
+		existingFronts: []string{"apple", "stale-from-skipped"},
+		upsertResult:   repository.UpsertManyTxResult{Updated: 1},
+	}
+	tx, txCalls := dictTxRunner()
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
+
+	out, err := uc.Sync(context.Background(), SyncToMasterInput{
+		PageIDs:             []string{"page-oversize", "page-ok"},
+		MasterCardgroupName: "English",
+	})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if cards.upsertCalls != 1 {
+		t.Fatalf("upsert calls = %d, want 1 (surviving page still syncs)", cards.upsertCalls)
+	}
+	if len(cards.upserted) != 1 || cards.upserted[0].Front.String() != "apple" {
+		t.Fatalf("upserted = %+v, want the single apple card from page-ok", cards.upserted)
+	}
+	if cards.deleteCalls != 0 {
+		t.Fatalf("delete calls = %d, want 0 (prune must be deferred)", cards.deleteCalls)
+	}
+	if len(cards.deletedFronts) != 0 {
+		t.Fatalf("deletedFronts = %v, want none (stale-from-skipped must survive)", cards.deletedFronts)
+	}
+	if out.Deleted != 0 {
+		t.Fatalf("out.Deleted = %d, want 0", out.Deleted)
+	}
+	found := false
+	for _, e := range out.ParseErrors {
+		if e.Message == pruneDeferredMessage(1) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("ParseErrors = %+v, want the prune-deferral diagnostic %q",
+			out.ParseErrors, pruneDeferredMessage(1))
+	}
+	if *txCalls != 1 {
+		t.Fatalf("tx calls = %d, want 1", *txCalls)
+	}
+}
+
+// TestMasterNotionSyncUsecase_PruneDeferredLogFields pins the structured warn
+// the deferral emits, keyed on cardgroup_id and skipped_pages. Not parallel:
+// injects a logger directly into the usecase.
+func TestMasterNotionSyncUsecase_PruneDeferredLogFields(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	fetcher := &stubNotionFetcher{pages: []notion.Page{
+		{ID: "page-oversize", Text: overCapPayload()},
+		{ID: "page-ok", Text: "apple " + uniqueBack(1) + "\n"},
+	}}
+	cardgroups := &mockMasterCardgroupRepo{cg: &domain.MasterCardgroup{ID: "mcg-target"}}
+	cards := &mockMasterCardRepo{}
+	tx, _ := dictTxRunner()
+	uc := newMasterNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, logger)
+
+	if _, err := uc.Sync(context.Background(), SyncToMasterInput{
+		PageIDs:             []string{"page-oversize", "page-ok"},
+		MasterCardgroupName: "English",
+	}); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	var deferRec map[string]any
+	for _, rec := range decodeJSONRecords(t, buf.Bytes()) {
+		if rec["msg"] == "notion sync: stale-card prune deferred" {
+			deferRec = rec
+			break
+		}
+	}
+	if deferRec == nil {
+		t.Fatalf("no warn record with msg %q found in log output:\n%s",
+			"notion sync: stale-card prune deferred", buf.String())
+	}
+	if deferRec["cardgroup_id"] != "mcg-target" {
+		t.Errorf("cardgroup_id = %v, want %q", deferRec["cardgroup_id"], "mcg-target")
+	}
+	// skipped_pages: JSON numbers decode as float64 in map[string]any.
+	if sp, ok := deferRec["skipped_pages"].(float64); !ok || int(sp) != 1 {
+		t.Errorf("skipped_pages = %v (%T), want 1", deferRec["skipped_pages"], deferRec["skipped_pages"])
+	}
+}
+
+// TestNewMasterNotionSyncUsecase_NilDepPanics pins the constructor guard: the
+// route is mounted only when every Notion dependency is wired, so a nil
+// fetcher or repository is a composition-root bug, never caller input.
+func TestNewMasterNotionSyncUsecase_NilDepPanics(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name       string
+		fetcher    notion.Fetcher
+		cardgroups NotionSyncMasterCardgroupRepository
+		cards      NotionSyncMasterCardRepository
+	}{
+		{name: "nil fetcher", fetcher: nil, cardgroups: &mockMasterCardgroupRepo{}, cards: &mockMasterCardRepo{}},
+		{name: "nil master cardgroup repo", fetcher: &stubNotionFetcher{}, cardgroups: nil, cards: &mockMasterCardRepo{}},
+		{name: "nil master card repo", fetcher: &stubNotionFetcher{}, cardgroups: &mockMasterCardgroupRepo{}, cards: nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			defer func() {
+				if r := recover(); r == nil {
+					t.Fatal("expected panic on nil dependency")
+				}
+			}()
+			NewMasterNotionSyncUsecase(tc.fetcher, tc.cardgroups, tc.cards, nil, newTestLogger())
+		})
 	}
 }
 
