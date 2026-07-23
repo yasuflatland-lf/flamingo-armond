@@ -8,11 +8,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/graph-gophers/dataloader/v7"
 	"github.com/rotisserie/eris"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"backend/graph/model"
+	"backend/internal/auth"
 	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
@@ -361,6 +363,115 @@ func TestLoadersOrInternal_InstalledReturnsRegistry(t *testing.T) {
 
 	assert.Nil(t, gqlErr, "want nil error when middleware is installed")
 	assert.Same(t, want, loaders, "want the installed registry returned unchanged")
+}
+
+// ---------------------------------------------------------------------------
+// requireSelfOrAdmin — shared User field authorization gate
+// ---------------------------------------------------------------------------
+
+type roleBatchStub struct {
+	roles map[string][]*domain.Role
+	err   error
+	calls int
+}
+
+func (s *roleBatchStub) batch(_ context.Context, keys []string) []*dataloader.Result[[]*domain.Role] {
+	s.calls++
+	out := make([]*dataloader.Result[[]*domain.Role], len(keys))
+	for i, key := range keys {
+		if s.err != nil {
+			out[i] = &dataloader.Result[[]*domain.Role]{Error: s.err}
+			continue
+		}
+		out[i] = &dataloader.Result[[]*domain.Role]{Data: s.roles[key]}
+	}
+	return out
+}
+
+func loadersWithRoleBatch(stub *roleBatchStub) *loader.Loaders {
+	return &loader.Loaders{RoleByUserID: dataloader.NewBatchedLoader(stub.batch)}
+}
+
+// TestRequireSelfOrAdmin_SelfSkipsRoleLoad verifies that the self path returns
+// nil without batching an admin-role lookup.
+func TestRequireSelfOrAdmin_SelfSkipsRoleLoad(t *testing.T) {
+	t.Parallel()
+
+	stub := &roleBatchStub{}
+	ctx := auth.ContextWithUser(context.Background(), &auth.AuthUser{Sub: "u-self"})
+
+	got := requireSelfOrAdmin(ctx, loadersWithRoleBatch(stub), "u-self", "resolver: test: admin check")
+
+	assert.Nil(t, got)
+	assert.Zero(t, stub.calls, "self path must skip the admin role load")
+}
+
+// TestRequireSelfOrAdmin_AdminNonSelfAllowed verifies that an admin caller can
+// access another user's protected field.
+func TestRequireSelfOrAdmin_AdminNonSelfAllowed(t *testing.T) {
+	t.Parallel()
+
+	stub := &roleBatchStub{roles: map[string][]*domain.Role{
+		"u-admin": {nil, {ID: "r-admin", Name: domain.AdminRoleName}},
+	}}
+	ctx := auth.ContextWithUser(context.Background(), &auth.AuthUser{Sub: "u-admin"})
+
+	got := requireSelfOrAdmin(ctx, loadersWithRoleBatch(stub), "u-target", "resolver: test: admin check")
+
+	assert.Nil(t, got)
+}
+
+// TestRequireSelfOrAdmin_NonAdminNonSelfForbidden verifies the existing wire
+// code and message for a non-admin caller targeting another user.
+func TestRequireSelfOrAdmin_NonAdminNonSelfForbidden(t *testing.T) {
+	t.Parallel()
+
+	stub := &roleBatchStub{roles: map[string][]*domain.Role{
+		"u-caller": {{ID: "r-general", Name: domain.GeneralRoleName}},
+	}}
+	ctx := auth.ContextWithUser(context.Background(), &auth.AuthUser{Sub: "u-caller"})
+
+	got := requireSelfOrAdmin(ctx, loadersWithRoleBatch(stub), "u-target", "resolver: test: admin check")
+
+	require.NotNil(t, got)
+	assert.True(t, gqlerrtest.IsCode(got, gqlerr.CodeForbidden),
+		"want FORBIDDEN wire code, got %v", got)
+	assert.Equal(t, "admin only", got.Message)
+}
+
+// TestRequireSelfOrAdmin_NilCallerUnauthenticated verifies that a missing auth
+// user returns the existing UNAUTHENTICATED wire error.
+func TestRequireSelfOrAdmin_NilCallerUnauthenticated(t *testing.T) {
+	t.Parallel()
+
+	got := requireSelfOrAdmin(context.Background(), loadersWithRoleBatch(&roleBatchStub{}), "u-target", "resolver: test: admin check")
+
+	require.NotNil(t, got)
+	assert.True(t, gqlerrtest.IsCode(got, gqlerr.CodeUnauthenticated),
+		"want UNAUTHENTICATED wire code, got %v", got)
+}
+
+// TestRequireSelfOrAdmin_RoleLoadFailureInternalWithLabel verifies that an
+// admin-check load failure is INTERNAL and retains the caller's wrap label.
+func TestRequireSelfOrAdmin_RoleLoadFailureInternalWithLabel(t *testing.T) {
+	// Not parallel: mutates the global slog default.
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	const label = "resolver: shared gate test: admin check"
+	stub := &roleBatchStub{err: errors.New("db down")}
+	ctx := auth.ContextWithUser(context.Background(), &auth.AuthUser{Sub: "u-caller"})
+
+	got := requireSelfOrAdmin(ctx, loadersWithRoleBatch(stub), "u-target", label)
+
+	require.NotNil(t, got)
+	assert.True(t, gqlerrtest.IsCode(got, gqlerr.CodeInternal),
+		"want INTERNAL wire code, got %v", got)
+	assert.Equal(t, "internal server error", got.Message)
+	assert.Contains(t, buf.String(), label,
+		"expected the caller label in the logged error_chain, got %q", buf.String())
 }
 
 // ---------------------------------------------------------------------------
