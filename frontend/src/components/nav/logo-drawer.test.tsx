@@ -19,7 +19,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 // Mock LogoutButton — it reaches into Supabase/router which are not needed here.
-vi.mock("@/app/_components/logout-button", () => ({
+vi.mock("./logout-button", () => ({
   LogoutButton: () => (
     <button type="button" data-testid="logout-button">
       Sign out

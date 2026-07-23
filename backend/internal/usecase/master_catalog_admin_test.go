@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -32,6 +33,106 @@ func masterCardgroup(id string) *domain.MasterCardgroup {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+}
+
+// ---------------------------------------------------------------------------
+// AdminMaster
+// ---------------------------------------------------------------------------
+
+func TestMasterCatalog_AdminMaster_NonAdminForbidden(t *testing.T) {
+	t.Parallel()
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(false), newTestLogger())
+	_, err := uc.AdminMaster(authedCtx("u1"), "id-1")
+	assertForbidden(t, err, "admin only")
+}
+
+func TestMasterCatalog_AdminMaster_Unauthenticated(t *testing.T) {
+	t.Parallel()
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
+	_, err := uc.AdminMaster(anonCtx(), "id-1")
+	assertUnauthenticated(t, err)
+}
+
+func TestMasterCatalog_AdminMaster_Success_IncludesDraft(t *testing.T) {
+	t.Parallel()
+	draft := masterCardgroup("id-1")
+	repo := &mockMasterCatalogRepository{
+		findByIDFn:    func(string) (*domain.MasterCardgroup, error) { return draft, nil },
+		countCardsRes: 42,
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
+	got, err := uc.AdminMaster(authedCtx("admin1"), "id-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil || got.Master == nil {
+		t.Fatalf("expected non-nil MasterWithCount, got %+v", got)
+	}
+	if got.Master.Status != domain.MasterStatusDraft {
+		t.Fatalf("expected DRAFT deck, got %s", got.Master.Status)
+	}
+	if got.CardCount != 42 {
+		t.Fatalf("expected CardCount 42, got %d", got.CardCount)
+	}
+}
+
+func TestMasterCatalog_AdminMaster_NotFound(t *testing.T) {
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{
+		findByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, repository.ErrNotFound },
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
+	_, err := uc.AdminMaster(authedCtx("admin1"), "missing")
+	assertValidationError(t, err, "id", "")
+}
+
+func TestMasterCatalog_AdminMaster_FindByIDInfraErrorWrapped(t *testing.T) {
+	t.Parallel()
+	boom := eris.New("db down")
+	repo := &mockMasterCatalogRepository{
+		findByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, boom },
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
+	_, err := uc.AdminMaster(authedCtx("admin1"), "id-1")
+	assertInternalChain(t, err, "usecase: master card: admin master")
+}
+
+func TestMasterCatalog_AdminMaster_CountCardsInfraErrorWrapped(t *testing.T) {
+	t.Parallel()
+	draft := masterCardgroup("id-1")
+	repo := &mockMasterCatalogRepository{
+		findByIDFn:    func(string) (*domain.MasterCardgroup, error) { return draft, nil },
+		countCardsErr: eris.New("count down"),
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
+	_, err := uc.AdminMaster(authedCtx("admin1"), "id-1")
+	assertInternalChain(t, err, "usecase: master card: admin master")
+}
+
+func TestMasterCatalog_AdminMaster_FindByID_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{
+		findByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, context.Canceled },
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
+	_, err := uc.AdminMaster(authedCtx("admin1"), "id-1")
+
+	assertCancelled(t, err)
+	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
+}
+
+func TestMasterCatalog_AdminMaster_CountCards_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+	draft := masterCardgroup("id-1")
+	repo := &mockMasterCatalogRepository{
+		findByIDFn:    func(string) (*domain.MasterCardgroup, error) { return draft, nil },
+		countCardsErr: context.Canceled,
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
+	_, err := uc.AdminMaster(authedCtx("admin1"), "id-1")
+
+	assertCancelled(t, err)
+	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
 }
 
 // ---------------------------------------------------------------------------

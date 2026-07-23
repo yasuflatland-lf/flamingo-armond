@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
-import { LogoutButton } from "@/app/_components/logout-button";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import { MobileMenuTrigger } from "@/components/nav/mobile-menu-trigger";
 import {
@@ -20,6 +19,7 @@ import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { type DeckAddMenu, resolveHeaderCreateAction } from "./header-create-action";
 import { shouldShowHeaderSearch } from "./header-search-action";
 import { HeaderSignInLink } from "./header-sign-in-link";
+import { LogoutButton } from "./logout-button";
 import { ADMIN_NAV_ITEMS, CORE_NAV_ITEMS, FOOTER_NAV_ITEMS } from "./nav-items";
 
 interface LogoDrawerProps {
