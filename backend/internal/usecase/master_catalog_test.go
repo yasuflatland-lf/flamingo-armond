@@ -1068,6 +1068,8 @@ func TestFindPublishedMaster_Success(t *testing.T) {
 			}
 			return want, nil
 		},
+		// Non-zero so a dropped CountCards hydration fails the assertion below.
+		countCardsRes: 7,
 	}
 	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 
@@ -1075,8 +1077,11 @@ func TestFindPublishedMaster_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got != want {
+	if got == nil || got.Master != want {
 		t.Fatalf("expected the published deck, got %+v", got)
+	}
+	if got.CardCount != 7 {
+		t.Fatalf("expected CardCount 7, got %d", got.CardCount)
 	}
 }
 
@@ -1098,6 +1103,37 @@ func TestFindPublishedMaster_ContextCancelled_PassesThrough(t *testing.T) {
 	// CANCELLED). An eris.Wrap here would break the == identity contract.
 	repo := &mockMasterCatalogRepository{
 		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, context.Canceled },
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.FindPublishedMaster(authedCtx("u1"), "m1")
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %v", err)
+	}
+}
+
+// A CountCards failure after the published gate passes is an infrastructure
+// error wrapped with the count-cards prefix, not the nil-data non-disclosure path.
+func TestFindPublishedMaster_CountCardsInfraError_Wrapped(t *testing.T) {
+	deck := &domain.MasterCardgroup{ID: "m1", Name: domain.CardgroupName("Deck"), Status: domain.MasterStatusPublished, Version: 1}
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) { return deck, nil },
+		countCardsErr:       eris.New("count down"),
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
+
+	_, err := uc.FindPublishedMaster(authedCtx("u1"), "m1")
+	assertInternalChain(t, err, "usecase: master catalog: find published master: count cards")
+}
+
+func TestFindPublishedMaster_CountCards_PropagatesCancelled(t *testing.T) {
+	// context.Canceled from CountCards must propagate unwrapped for the same
+	// identity contract as the published-check pass-through above.
+	deck := &domain.MasterCardgroup{ID: "m1", Name: domain.CardgroupName("Deck"), Status: domain.MasterStatusPublished, Version: 1}
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) { return deck, nil },
+		countCardsErr:       context.Canceled,
 	}
 	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 

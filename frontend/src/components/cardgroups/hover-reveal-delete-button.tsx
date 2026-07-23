@@ -12,9 +12,8 @@ export type HoverRevealDeleteButtonProps = {
   /** Disables the control (e.g. while a sibling mutation is in flight). */
   disabled?: boolean;
   /**
-   * Per-row class overrides. The base reveal logic (opacity + motion-reduce
-   * fallback + transition) is always applied; callers append the
-   * pointer-events / focus-within / overlay-interplay tokens their row needs.
+   * Additive row-specific layout overrides. The reveal + pointer-events
+   * guard is wholly base-owned — callers must not re-pass guard tokens.
    */
   className?: string;
   /** Forwarded to the rendered `<button>` (e.g. `card-delete-${id}`). */
@@ -24,7 +23,7 @@ export type HoverRevealDeleteButtonProps = {
 /**
  * Trailing Delete control shared by the swipe-to-delete list rows
  * (card / cardgroup / role). It is an `outline` icon button that stays
- * `opacity-0` until `sm:group-hover` / `group-focus-within` on its row's
+ * `opacity-0` until `sm:group-hover` / `sm:group-focus-within` on its row's
  * `group` wrapper, with a `motion-reduce:opacity-100` fallback so it is always
  * visible when the swipe layer is not rendered (the reduced-motion early-return
  * in `SwipeableRow`). It sits OUTSIDE the row link/edit-target so an outer click
@@ -35,10 +34,11 @@ export type HoverRevealDeleteButtonProps = {
  * the only delete affordance, so this button must reveal under
  * `prefers-reduced-motion`. Keep `motion-reduce:opacity-100` in the base.
  *
- * Callers pass `className` to add row-specific behaviour that must NOT live in
- * the shared default — e.g. `card-row.tsx`'s `pointer-events-none
- * sm:pointer-events-auto` mobile tap-fallthrough and its `after:inset-0`
- * edit-overlay interplay.
+ * Every `opacity` arm carries a matching `pointer-events` arm ("visible iff
+ * tappable"): `opacity-0` alone leaves the hidden button clickable, so below
+ * the `sm` breakpoint a stray tap at the row's right edge would fire an
+ * invisible delete. The guard lives in the base, never at call sites — a
+ * consumer that omits it silently reintroduces the invisible-tap bug.
  */
 export function HoverRevealDeleteButton({
   onDelete,
@@ -57,7 +57,7 @@ export function HoverRevealDeleteButton({
       aria-label={ariaLabel}
       data-testid={dataTestid}
       className={cn(
-        "opacity-0 sm:group-hover:opacity-100 motion-reduce:opacity-100 transition-opacity",
+        "pointer-events-none opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 motion-reduce:pointer-events-auto motion-reduce:opacity-100 transition-opacity",
         className,
       )}
     >

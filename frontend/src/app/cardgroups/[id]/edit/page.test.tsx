@@ -90,6 +90,23 @@ describe("EditCardgroupPage", () => {
     await expect(EditCardgroupPage(makeParams("cg-1"))).rejects.toThrow("REDIRECT:/login");
   });
 
+  it("redirects to /cardgroups when the connection query returns BAD_USER_INPUT (unknown cardgroup)", async () => {
+    vi.mocked(headers).mockResolvedValue(
+      new Headers({ "x-auth-status": "authenticated" }) as never,
+    );
+    vi.mocked(gqlFetch).mockRejectedValue(
+      new Error(
+        `GraphQL errors: ${JSON.stringify([
+          { extensions: { code: "BAD_USER_INPUT", field: "cardgroupId" } },
+        ])}`,
+      ),
+    );
+
+    await expect(EditCardgroupPage(makeParams("cg-missing"))).rejects.toThrow(
+      "REDIRECT:/cardgroups",
+    );
+  });
+
   it("renders the management client with cardgroup data and initial connection counts", async () => {
     vi.mocked(headers).mockResolvedValue(
       new Headers({ "x-auth-status": "authenticated" }) as never,

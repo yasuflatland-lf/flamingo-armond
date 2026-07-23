@@ -277,6 +277,42 @@ describe("<FormSheet>", () => {
     expect(screen.getByText("Discard your changes?")).toBeInTheDocument();
   });
 
+  it("renders the catalog-driven default discard body when confirmMessage is omitted", async () => {
+    const user = userEvent.setup();
+
+    renderWithIntl(
+      <FormSheet open onOpenChange={vi.fn()} title="Add card" dirty confirmOnDismiss>
+        <ContextCancelButton />
+      </FormSheet>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.getByText("Your unsaved changes will be lost.")).toBeInTheDocument();
+  });
+
+  it("renders an explicit confirmMessage over the catalog default", async () => {
+    const user = userEvent.setup();
+
+    renderWithIntl(
+      <FormSheet
+        open
+        onOpenChange={vi.fn()}
+        title="Add card"
+        dirty
+        confirmOnDismiss
+        confirmMessage="custom"
+      >
+        <ContextCancelButton />
+      </FormSheet>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.getByText("custom")).toBeInTheDocument();
+    expect(screen.queryByText("Your unsaved changes will be lost.")).not.toBeInTheDocument();
+  });
+
   it("keeps editing from the discard confirmation", async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();

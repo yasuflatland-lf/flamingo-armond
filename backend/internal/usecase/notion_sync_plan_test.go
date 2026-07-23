@@ -30,7 +30,7 @@ func TestComputeSyncPlan_AllValid(t *testing.T) {
 		{Front: "carrot", Back: "vegetable", SourcePageID: "page-2", Line: 1},
 	}
 
-	plan := computeSyncPlan(rows, nil, testPlanCardgroupID, testSyncNow)
+	plan := computeSyncPlan(rows, nil, 0, testPlanCardgroupID, testSyncNow)
 
 	if len(plan.Rows) != 3 {
 		t.Fatalf("len(plan.Rows) = %d, want 3", len(plan.Rows))
@@ -82,7 +82,7 @@ func TestComputeSyncPlan_PartiallyInvalid(t *testing.T) {
 		{Front: "carrot", Back: "vegetable", SourcePageID: "page-1", Line: 3},
 	}
 
-	plan := computeSyncPlan(rows, nil, testPlanCardgroupID, testSyncNow)
+	plan := computeSyncPlan(rows, nil, 0, testPlanCardgroupID, testSyncNow)
 
 	if plan.NothingValidToPersist() {
 		t.Error("NothingValidToPersist() = true, want false (two rows produced cards)")
@@ -128,7 +128,7 @@ func TestComputeSyncPlan_AllInvalid(t *testing.T) {
 		{Front: "banana", Back: "   ", SourcePageID: "page-1", Line: 2},
 	}
 
-	plan := computeSyncPlan(rows, nil, testPlanCardgroupID, testSyncNow)
+	plan := computeSyncPlan(rows, nil, 0, testPlanCardgroupID, testSyncNow)
 
 	if !plan.NothingValidToPersist() {
 		t.Fatal("NothingValidToPersist() = false, want true (no row produced a card)")
@@ -161,7 +161,7 @@ func TestComputeSyncPlan_CaseVariantDuplicateFronts(t *testing.T) {
 		{Front: "drive", Back: "to propel forward", SourcePageID: "page-1", Line: 2},
 	}
 
-	plan := computeSyncPlan(rows, nil, testPlanCardgroupID, testSyncNow)
+	plan := computeSyncPlan(rows, nil, 0, testPlanCardgroupID, testSyncNow)
 
 	if len(plan.Rows) != 1 || plan.Rows[0].Front != "drive" {
 		t.Fatalf("plan.Rows = %+v, want only the later 'drive' row", plan.Rows)
@@ -195,7 +195,7 @@ func TestComputeSyncPlan_CaseVariantDuplicateFronts(t *testing.T) {
 func TestComputeSyncPlan_EmptyInput(t *testing.T) {
 	t.Parallel()
 
-	plan := computeSyncPlan(nil, nil, testPlanCardgroupID, testSyncNow)
+	plan := computeSyncPlan(nil, nil, 0, testPlanCardgroupID, testSyncNow)
 
 	if len(plan.Rows) != 0 || len(plan.Cards) != 0 || len(plan.DomainSkips) != 0 {
 		t.Fatalf("plan = %+v, want empty rows, cards and skips", plan)
@@ -205,5 +205,38 @@ func TestComputeSyncPlan_EmptyInput(t *testing.T) {
 	}
 	if plan.NothingValidToPersist() {
 		t.Error("NothingValidToPersist() = true, want false (an empty payload is not a wipe)")
+	}
+}
+
+// TestComputeSyncPlan_SkippedPagesDeferPrune pins prune safety as a property of
+// the plan value: a batch with no skipped pages may prune, while any skipped
+// page makes the keep-set incomplete and blocks the diff-prune.
+func TestComputeSyncPlan_SkippedPagesDeferPrune(t *testing.T) {
+	t.Parallel()
+
+	rows := []ParsedRow{
+		{Front: "apple", Back: "fruit", SourcePageID: "page-1", Line: 1},
+	}
+
+	cases := []struct {
+		name         string
+		skippedPages int
+		wantSafe     bool
+	}{
+		{name: "no skipped pages", skippedPages: 0, wantSafe: true},
+		{name: "one skipped page", skippedPages: 1, wantSafe: false},
+		{name: "two skipped pages", skippedPages: 2, wantSafe: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			plan := computeSyncPlan(rows, nil, tc.skippedPages, testPlanCardgroupID, testSyncNow)
+			if plan.SkippedPages != tc.skippedPages {
+				t.Fatalf("plan.SkippedPages = %d, want %d", plan.SkippedPages, tc.skippedPages)
+			}
+			if got := plan.PruneSafe(); got != tc.wantSafe {
+				t.Fatalf("PruneSafe() = %v, want %v", got, tc.wantSafe)
+			}
+		})
 	}
 }

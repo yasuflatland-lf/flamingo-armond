@@ -36,7 +36,8 @@ func (r *mutationResolver) AdminCreateMasterCardgroup(ctx context.Context, input
 	if out.Master == nil {
 		return nil, newNoVariantSetError(ctx, "CreateMasterOutcome")
 	}
-	return model.CreateMasterCardgroupSuccess{Master: toMasterCardgroupModelFromParts(out.Master, cardCountResolvedElsewhere)}, nil
+	// A freshly created deck genuinely holds zero cards — 0 is the true count, not a sentinel.
+	return model.CreateMasterCardgroupSuccess{Master: toMasterCardgroupModelFromParts(out.Master, 0)}, nil
 }
 
 // AdminUpdateMasterCardgroup is the resolver for the adminUpdateMasterCardgroup field.
