@@ -30,6 +30,27 @@ func classifyCardDuplicateFront(err error) error {
 	return nil
 }
 
+// ErrCardCardgroupNotFound is returned by Create / UpsertManyTx when the
+// target cardgroup_id does not exist — a Postgres FK violation (23503) on
+// cards_cardgroup_id_fkey. Joined with ErrNotFound so callers matching the
+// general sentinel keep working. Named with the Card aggregate prefix because
+// ErrCardgroupNotFound is owned by the user-preference aggregate.
+var ErrCardCardgroupNotFound = errors.Join(
+	errors.New("repository: card: cardgroup not found"),
+	ErrNotFound,
+)
+
+// classifyCardFKError maps a Postgres FK violation (code 23503) on the
+// cards.cardgroup_id foreign key to ErrCardCardgroupNotFound. Returns nil for
+// any other error so callers can use it as a pre-filter before falling through
+// to eris.Wrap (mirrors classifyMasterCardFKError).
+func classifyCardFKError(err error) error {
+	if pgConstraintViolation(err, "23503", "cardgroup_id") {
+		return ErrCardCardgroupNotFound
+	}
+	return nil
+}
+
 type gormCard struct {
 	ID          string    `gorm:"column:id;primaryKey;type:uuid"`
 	CardgroupID string    `gorm:"column:cardgroup_id"`
@@ -230,6 +251,9 @@ func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {
 		Clauses(clause.Returning{Columns: []clause.Column{{Name: "updated_at"}}}).
 		Create(row).Error; err != nil {
 		if classified := classifyCardDuplicateFront(err); classified != nil {
+			return classified
+		}
+		if classified := classifyCardFKError(err); classified != nil {
 			return classified
 		}
 		if classified := classifyTextLengthViolation(err); classified != nil {

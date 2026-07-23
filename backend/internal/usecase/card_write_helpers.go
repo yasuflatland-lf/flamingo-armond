@@ -3,6 +3,8 @@ package usecase
 import (
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"backend/internal/domain"
 	"backend/internal/usecase/ucerr"
 )
@@ -92,4 +94,19 @@ func checkBulkDeleteCap(ids []string) error {
 		return ucerr.NewValidationError("ids", fmt.Sprintf("at most %d ids per call", maxBulkDelete))
 	}
 	return nil
+}
+
+// filterParseableIDs drops ids that are not valid UUIDs. The id columns are
+// uuid-typed, so a malformed id cannot match any row; dropping it preserves
+// the documented silent-skip semantics instead of aborting the whole batch
+// with SQLSTATE 22P02. Uses uuid.Validate because domain deliberately ships
+// no ID parser (opaque-handle contract, domain/id_types.go).
+func filterParseableIDs(ids []string) []string {
+	valid := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if uuid.Validate(id) == nil {
+			valid = append(valid, id)
+		}
+	}
+	return valid
 }

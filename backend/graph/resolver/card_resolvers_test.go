@@ -179,7 +179,9 @@ func TestResolver_DeleteCards_HappyPath(t *testing.T) {
 		cardFakeTx(),
 	)
 
-	body := `{"query":"mutation { deleteCards(ids: [\"c1\",\"c2\"]) }"}`
+	// Valid UUIDs: the usecase drops malformed ids before the SQL runs, so a
+	// non-UUID fixture would short-circuit to 0 without reaching the repo.
+	body := `{"query":"mutation { deleteCards(ids: [\"018f0000-0000-7000-8000-000000000001\",\"018f0000-0000-7000-8000-000000000002\"]) }"}`
 	resp := gqlRequest(t, srv, authedCtx("u1"), body)
 
 	if _, hasErrs := resp["errors"]; hasErrs {

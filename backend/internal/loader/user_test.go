@@ -147,9 +147,6 @@ func (r *countingCardgroupRepo) CreateTx(_ context.Context, _ *gorm.DB, _ *domai
 func (r *countingCardgroupRepo) AcquireUserSeedLockTx(_ context.Context, _ *gorm.DB, _ string) error {
 	panic("countingCardgroupRepo.AcquireUserSeedLockTx not configured")
 }
-func (r *countingCardgroupRepo) EnsureByName(_ context.Context, _, _ string) (*domain.Cardgroup, error) {
-	panic("countingCardgroupRepo.EnsureByName not configured")
-}
 func (r *countingCardgroupRepo) Update(_ context.Context, _ string, _ repository.CardgroupUpdate) (*domain.Cardgroup, error) {
 	panic("countingCardgroupRepo.Update not configured")
 }

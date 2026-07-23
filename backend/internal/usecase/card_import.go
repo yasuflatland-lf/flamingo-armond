@@ -242,6 +242,7 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 		upsert: func(ctx context.Context, tx repository.Tx, cards []*domain.Card) (repository.UpsertManyTxResult, error) {
 			return u.cardRepo.UpsertManyTx(ctx, tx, cards)
 		},
+		translateTxErr: translateCardCardgroupNotFound,
 	})
 	if err != nil {
 		return ImportCardsOutput{}, err
