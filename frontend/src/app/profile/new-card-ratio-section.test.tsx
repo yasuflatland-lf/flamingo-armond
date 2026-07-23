@@ -233,8 +233,8 @@ describe("<NewCardRatioSection>", () => {
   it("shows the custom notice for an on-grid share above the 80% cap ({17,20} = 85%)", () => {
     // 85% is on the 5% grid but above MAX = 80, so the control clamps to 80 while the
     // labels report the stored 85%. The notice must bridge that mismatch. The former
-    // isOnGrid-based check missed this once MAX dropped below 95, because on-grid no
-    // longer implies in-range.
+    // grid-alignment-only check missed this once MAX dropped below 95, because on-grid
+    // no longer implies in-range.
     renderWithIntl(
       <MockedProvider mocks={[]}>
         <NewCardRatioSection initialRatio={{ numerator: 17, denominator: 20 }} />
