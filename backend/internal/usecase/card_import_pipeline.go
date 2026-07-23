@@ -49,8 +49,9 @@ type cardImportPipeline[R any] struct {
 	// newRow builds one persistence row from the CardText VOs
 	// validateImportRows already parsed, stamping the batch-wide created_at.
 	newRow func(front, back domain.CardText, now time.Time) (R, error)
-	// tx is the transaction runner. A nil runner is a wiring bug surfaced as an
-	// internal error rather than a panic.
+	// tx is the transaction runner. A nil runner is the explicit-tx test seam:
+	// runInTx invokes the closure with a nil handle, so production paths must
+	// wire a real runner or the nil handle panics inside GORM at the upsert.
 	tx txRunner
 	// upsert performs the batch write inside the transaction.
 	upsert func(ctx context.Context, tx repository.Tx, rows []R) (repository.UpsertManyTxResult, error)
