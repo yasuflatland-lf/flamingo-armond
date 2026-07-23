@@ -17,17 +17,11 @@ import (
 	"backend/internal/usecase/ucerr"
 )
 
-// MasterCardUsecase is the admin-only surface for master cards. Reads: a single
-// master deck (incl. DRAFT) with its card count, and the deck's cards as a
-// Relay-style paginated connection. Writes: create, update, delete, bulk-delete,
-// and batch import. Master cards carry no per-viewer / FSRS state, so no method
-// takes a user-card argument. Every method requires the AdminGate to pass;
-// non-admin callers receive FORBIDDEN, anonymous callers receive UNAUTHENTICATED.
+// MasterCardUsecase owns master-card CRUD and listing. Master cards carry no
+// per-viewer / FSRS state, so no method takes a user-card argument. Admin
+// methods require AdminGate; the public listing requires authentication and a
+// catalog-visible deck.
 type MasterCardUsecase interface {
-	// AdminMaster returns the master cardgroup with the given id INCLUDING DRAFT
-	// decks, bundled with its current card count. Admin-only. A missing row is a
-	// validation error on "id".
-	AdminMaster(ctx context.Context, id string) (*MasterWithCount, error)
 	// ListMasterCards paginates a master deck's cards with Relay-style forward
 	// (first/after) or backward (last/before) cursors. Admin-only.
 	ListMasterCards(ctx context.Context, in MasterCardConnectionInput) (*MasterCardConnectionOutput, error)
@@ -129,13 +123,9 @@ type masterCardRepoForMasterCard interface {
 	FindByID(ctx context.Context, id string) (*domain.MasterCard, error)
 }
 
-// masterCardgroupRepoForMasterCard is the narrow consumer interface for master-
-// cardgroup reads used by masterCardUsecase: the admin deck lookup (incl. DRAFT),
-// its card count, and the catalog-visibility gate (published AND non-empty).
-// Satisfied implicitly by repository.MasterCardgroupRepository.
+// masterCardgroupRepoForMasterCard is the catalog-visibility gate used by
+// masterCardUsecase. Satisfied implicitly by repository.MasterCardgroupRepository.
 type masterCardgroupRepoForMasterCard interface {
-	FindByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
-	CountCards(ctx context.Context, masterCardgroupID string) (int64, error)
 	FindPublishedByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 }
 
@@ -479,34 +469,6 @@ func (u *masterCardUsecase) ImportMasterCards(ctx context.Context, in ImportMast
 		return ImportMasterCardsOutput{}, err
 	}
 	return ImportMasterCardsOutput(res), nil
-}
-
-// AdminMaster returns the master cardgroup (incl. DRAFT) with the given id plus
-// its card count. Admin-only: the gate rejects non-admin / anonymous callers
-// before any repository access. FindByID returns ANY status, so DRAFT decks are
-// included. A missing row surfaces as a validation error on "id".
-func (u *masterCardUsecase) AdminMaster(ctx context.Context, id string) (*MasterWithCount, error) {
-	if _, err := u.adminGate.Require(ctx, "usecase: master card: admin master"); err != nil {
-		return nil, err
-	}
-	master, err := u.masterCardgroupRepo.FindByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ucerr.NewValidationError("id", "master cardgroup not found")
-		}
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: master card: admin master: find by id")
-	}
-	count, err := u.masterCardgroupRepo.CountCards(ctx, id)
-	if err != nil {
-		if isContextDone(err) {
-			return nil, err
-		}
-		return nil, eris.Wrap(err, "usecase: master card: admin master: count cards")
-	}
-	return &MasterWithCount{Master: master, CardCount: count}, nil
 }
 
 // ListMasterCards paginates a master deck's cards using Relay-style forward
