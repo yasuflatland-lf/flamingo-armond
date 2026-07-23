@@ -133,6 +133,10 @@ type MasterCatalogUsecase interface {
 	SeedDefaultStarters(ctx context.Context) ([]*domain.Cardgroup, error)
 
 	// admin-gated management surface
+	// AdminMaster returns the master cardgroup with the given id INCLUDING DRAFT
+	// decks, bundled with its current card count. Admin-only. A missing row is a
+	// validation error on "id".
+	AdminMaster(ctx context.Context, id string) (*MasterWithCount, error)
 	ListAdminConnection(ctx context.Context, in MasterCatalogConnectionInput) (*MasterCatalogConnectionOutput, error)
 	CreateMaster(ctx context.Context, in CreateMasterInput) (CreateMasterOutcome, error)
 	UpdateMaster(ctx context.Context, id string, in UpdateMasterInput) (UpdateMasterOutcome, error)
@@ -209,6 +213,28 @@ func (u *masterCatalogUsecase) ListPublishedConnection(
 		},
 		u.repo.FindPublishedPage,
 	)
+}
+
+// AdminMaster returns the master cardgroup (incl. DRAFT) with the given id plus
+// its card count. Admin-only: the gate rejects non-admin / anonymous callers
+// before any repository access. FindByID returns ANY status, so DRAFT decks are
+// included. A missing row surfaces as a validation error on "id".
+func (u *masterCatalogUsecase) AdminMaster(ctx context.Context, id string) (*MasterWithCount, error) {
+	if _, err := u.adminGate.Require(ctx, "usecase: master card: admin master"); err != nil {
+		return nil, err
+	}
+	master, err := u.repo.FindByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ucerr.NewValidationError("id", "master cardgroup not found")
+		}
+		return nil, wrapInfraErr(err, "usecase: master card: admin master: find by id")
+	}
+	count, err := u.repo.CountCards(ctx, id)
+	if err != nil {
+		return nil, wrapInfraErr(err, "usecase: master card: admin master: count cards")
+	}
+	return &MasterWithCount{Master: master, CardCount: count}, nil
 }
 
 // listMasterCatalogCore holds the shared page-assembly body for

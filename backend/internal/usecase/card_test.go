@@ -215,6 +215,14 @@ func TestCardUsecase_Create(t *testing.T) {
 			wantErrField: "cardgroupId",
 		},
 		{
+			name:         "empty cardgroup id",
+			ctx:          authedCtx("u1"),
+			cardgroupErr: repository.ErrNotFound,
+			input:        CreateCardInput{CardgroupID: "", Front: "front", Back: "back"},
+			wantErrCode:  "BAD_USER_INPUT",
+			wantErrField: "cardgroupId",
+		},
+		{
 			name:        "non owner",
 			ctx:         authedCtx("u2"),
 			cardgroup:   &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"},

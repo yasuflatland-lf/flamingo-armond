@@ -197,14 +197,12 @@ union MergeMasterCardgroupResult = MergeMasterCardgroupSuccess | MasterNotFoundE
 """
 Projected tally of `mergeMasterCardgroup` computed WITHOUT writing. `addedCount`
 is the number of catalog cards whose front is not present in the destination;
-`updatedCount` is the number whose front already exists (case-sensitively, matching
-the destination `cards (cardgroup_id, front)` text unique index the merge upserts
-against). The preview equals the tally `mergeMasterCardgroup` produces for the same
-inputs over an unchanged destination and master deck: the preview reads outside a
-transaction while the merge upserts inside one, so a concurrent edit to either deck
-between the two calls can move a card from `addedCount` to `updatedCount`. The
-catalog side is case-INsensitive (`master_cards.front` is `citext`); that asymmetry
-is deliberate — see
+`updatedCount` is the number whose front already exists after case-folding. Merge
+renames at most one case-insensitive match to the catalog casing before its exact-front
+upsert. The preview equals the tally `mergeMasterCardgroup` produces for the same inputs
+over an unchanged destination and master deck: the preview reads outside a transaction
+while the merge writes inside one, so a concurrent edit to either deck can change the
+tally. The catalog side is case-insensitive (`master_cards.front` is `citext`); see
 `docs/backend/ddd-patterns/catalog-user-deck-front-case-asymmetry.md`.
 """
 type MergeMasterCardgroupPreview {

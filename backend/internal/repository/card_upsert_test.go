@@ -3,6 +3,7 @@ package repository_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -214,4 +215,116 @@ func TestCardRepository_UpsertManyTx_UpdatesPositionOnConflict(t *testing.T) {
 		require.Equal(t, 10+i, got.Position,
 			"position for %q must be refreshed by the conflict path", front)
 	}
+}
+
+func TestCardRepository_FoldFrontCaseToTx(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	t.Run("renames single variant before upsert", func(t *testing.T) {
+		t.Parallel()
+		repo := repository.NewCardRepository(testDB.GORM)
+		ownerID := insertAuthUser(t, ctx)
+		cg := insertCardgroup(t, ctx, ownerID)
+		original := newCard(cg.ID, "apple", "old")
+		require.NoError(t, repo.Create(ctx, original))
+
+		var folded int64
+		var result repository.UpsertManyTxResult
+		err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			var txErr error
+			folded, txErr = repo.FoldFrontCaseToTx(ctx, tx, string(cg.ID), []string{"Apple"})
+			if txErr != nil {
+				return txErr
+			}
+			result, txErr = repo.UpsertManyTx(ctx, tx, []*domain.Card{newCard(cg.ID, "Apple", "catalog")})
+			return txErr
+		})
+		require.NoError(t, err)
+		require.Equal(t, int64(1), folded)
+		require.Equal(t, repository.UpsertManyTxResult{Updated: 1}, result)
+
+		stored, err := repo.ListByCardgroup(ctx, string(cg.ID))
+		require.NoError(t, err)
+		require.Len(t, stored, 1)
+		require.Equal(t, original.ID, stored[0].ID)
+		require.Equal(t, domain.CardText("Apple"), stored[0].Front)
+		require.Equal(t, domain.CardText("catalog"), stored[0].Back)
+	})
+
+	t.Run("exact variant prevents rename", func(t *testing.T) {
+		t.Parallel()
+		repo := repository.NewCardRepository(testDB.GORM)
+		ownerID := insertAuthUser(t, ctx)
+		cg := insertCardgroup(t, ctx, ownerID)
+		lower := newCard(cg.ID, "apple", "lower-old")
+		exact := newCard(cg.ID, "Apple", "exact-old")
+		require.NoError(t, repo.Create(ctx, lower))
+		require.NoError(t, repo.Create(ctx, exact))
+
+		var folded int64
+		err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			var txErr error
+			folded, txErr = repo.FoldFrontCaseToTx(ctx, tx, string(cg.ID), []string{"Apple"})
+			if txErr != nil {
+				return txErr
+			}
+			_, txErr = repo.UpsertManyTx(ctx, tx, []*domain.Card{newCard(cg.ID, "Apple", "catalog")})
+			return txErr
+		})
+		require.NoError(t, err)
+		require.Zero(t, folded)
+
+		gotLower, err := repo.FindByID(ctx, lower.ID)
+		require.NoError(t, err)
+		require.Equal(t, domain.CardText("apple"), gotLower.Front)
+		require.Equal(t, domain.CardText("lower-old"), gotLower.Back)
+		gotExact, err := repo.FindByID(ctx, exact.ID)
+		require.NoError(t, err)
+		require.Equal(t, domain.CardText("Apple"), gotExact.Front)
+		require.Equal(t, domain.CardText("catalog"), gotExact.Back)
+	})
+
+	t.Run("renames oldest variant only", func(t *testing.T) {
+		t.Parallel()
+		repo := repository.NewCardRepository(testDB.GORM)
+		ownerID := insertAuthUser(t, ctx)
+		cg := insertCardgroup(t, ctx, ownerID)
+		older := newCard(cg.ID, "APPLE", "older")
+		older.CreatedAt = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		newer := newCard(cg.ID, "apple", "newer")
+		newer.CreatedAt = older.CreatedAt.Add(time.Hour)
+		require.NoError(t, repo.Create(ctx, older))
+		require.NoError(t, repo.Create(ctx, newer))
+
+		var folded int64
+		err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			var txErr error
+			folded, txErr = repo.FoldFrontCaseToTx(ctx, tx, string(cg.ID), []string{"Apple"})
+			if txErr != nil {
+				return txErr
+			}
+			_, txErr = repo.UpsertManyTx(ctx, tx, []*domain.Card{newCard(cg.ID, "Apple", "catalog")})
+			return txErr
+		})
+		require.NoError(t, err)
+		require.Equal(t, int64(1), folded)
+
+		gotOlder, err := repo.FindByID(ctx, older.ID)
+		require.NoError(t, err)
+		require.Equal(t, domain.CardText("Apple"), gotOlder.Front)
+		require.Equal(t, domain.CardText("catalog"), gotOlder.Back)
+		gotNewer, err := repo.FindByID(ctx, newer.ID)
+		require.NoError(t, err)
+		require.Equal(t, domain.CardText("apple"), gotNewer.Front)
+		require.Equal(t, domain.CardText("newer"), gotNewer.Back)
+	})
+
+	t.Run("empty fronts does not access database", func(t *testing.T) {
+		t.Parallel()
+		repo := repository.NewCardRepository(nil)
+		folded, err := repo.FoldFrontCaseToTx(ctx, nil, "unused", nil)
+		require.NoError(t, err)
+		require.Zero(t, folded)
+	})
 }

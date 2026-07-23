@@ -1,12 +1,12 @@
-# Catalog and user decks disagree on front case-sensitivity (deliberate)
+# Catalog and user deck front case asymmetry
 
 > Part of the [DDD patterns](../../../.claude/rules/ddd-patterns.md) rules.
 
 The official catalog treats `"Apple"` and `"apple"` as the same headword; a learner's
-own deck treats them as two different cards. The asymmetry is **deliberate and load-bearing
-on the catalog side**, and changing the user-deck side carries two migration hazards that
-must be solved first. This chapter records the decision so a future reviewer does not
-"fix" the inconsistency in passing.
+own deck can hold them as two different cards. The storage asymmetry remains deliberate,
+but catalog merge is a reconciliation boundary: it folds one matching user card onto the
+catalog's exact casing so learner progress follows the catalog headword. User imports and
+ordinary card writes remain case-sensitive.
 
 ## The asymmetry
 
@@ -40,30 +40,33 @@ Three collaborating pieces implement that, all keyed on the citext semantics:
 - `frontsToDelete` builds the prune keep-set through the same key, so a stored row whose
   case differs from the current Notion line is not mistaken for stale and deleted.
 
-## Consequence 1 — merging the catalog into a user deck can produce a near-duplicate
+## Merge reconciliation — one case variant follows the catalog casing
 
 **Reproducible example.**
 
-1. A learner's own deck already holds a card with front `"apple"`, and has reviewed it
-   several times, so `public.user_card_fsrs` carries scheduling state keyed by *that*
-   card's id.
-2. A published catalog deck holds the same headword capitalised as `"Apple"`.
-3. The learner runs `mergeMasterCardgroup` with that catalog deck and their own deck.
+1. A learner's deck already holds `"apple"`, with scheduling and swipe history keyed by
+   that card's id.
+2. A published catalog deck holds the same headword as `"Apple"`.
+3. The learner runs `mergeMasterCardgroup`.
 
-The merge upserts through `cardRepo.UpsertManyTx`
-(`backend/internal/repository/bulk_card_tx.go`), whose conflict target is
-`ON CONFLICT (cardgroup_id, front)` against the plain-`text` `uq_cards_cardgroup_front`
-index. `"Apple"` does not collide with `"apple"`, so the merge **inserts a second row**
-with a fresh card id. The learner ends up with two visually near-identical cards, and all
-of their accumulated FSRS progress stays attached to the old `"apple"` row while the new
-`"Apple"` row starts unscheduled.
+Inside the merge transaction, `CardRepository.FoldFrontCaseToTx` runs immediately before
+`UpsertManyTx`. When no exact `"Apple"` row exists, it renames one case-insensitive match
+to `"Apple"`: the oldest `created_at` wins, with the smallest id as the deterministic
+tie-breaker. The following exact-front upsert therefore updates that row's catalog content
+instead of inserting a new row. Its id does not change, so `user_card_fsrs.card_id` and
+`swipe_records.card_id` continue to reference it. The database-owned `updated_at` trigger
+correctly records the rename ([#1112]).
 
-The dry run reports this faithfully rather than hiding it: `PreviewMergeMasterIntoCardgroup`
-(`backend/internal/usecase/master_deck.go`) counts the overlap via
-`CardRepository.CountExistingFronts`, documented as matching "case-sensitively (plain text
-equality, mirroring the `uq_cards_cardgroup_front` unique index the merge upserts against)".
-So the preview counts `"Apple"` as an *add*, not an *update* — which is exactly what the
-merge then does. Preview and merge agree; they simply agree on the case-sensitive rule.
+Additional case variants are deliberately left untouched. If the destination already has
+both `"apple"` and an exact `"Apple"`, the exact row wins: no rename occurs, `"Apple"` is
+updated, and `"apple"` remains as an independent user card. If no exact row exists but
+both `"APPLE"` and `"apple"` do, only the deterministic oldest row is renamed and updated.
+Merge does not attempt to reconcile the remaining variants.
+
+`PreviewMergeMasterIntoCardgroup` uses `CardRepository.CountMatchingFrontsFold`, which
+counts distinct `LOWER(front)` values against lowered catalog fronts. Multiple stored case
+variants therefore predict one update, matching the one-row fold and subsequent upsert.
+For an unchanged source and destination, preview `Added`/`Updated` equals the merge tally.
 
 ## Consequence 2 — a case-only admin rename never reaches learners
 
@@ -98,8 +101,9 @@ Both are machine-checked and both must be solved *before* any such migration.
 
 `ALTER COLUMN front TYPE citext` rebuilds `uq_cards_cardgroup_front` with the
 case-insensitive operator class. Any user deck that already holds a case-variant pair
-within one cardgroup — precisely what [consequence 1](#consequence-1--merging-the-catalog-into-a-user-deck-can-produce-a-near-duplicate)
-creates — makes the rebuild fail. The detection query mirrors the precondition the
+within one cardgroup — permitted by ordinary user writes and deliberately not fully
+reconciled by [merge](#merge-reconciliation--one-case-variant-follows-the-catalog-casing)
+— makes the rebuild fail. The detection query mirrors the precondition the
 `master_cards` migration documents:
 
 ```sql
@@ -133,12 +137,16 @@ into a hard import failure.
 
 ## Verdict
 
-**Keep the current behaviour. Do not make `cards.front` case-insensitive without first
-addressing both hazards above** — a reconciliation policy for pre-existing case-variant
-pairs (including their `user_card_fsrs` rows), and a case-folded dedup key across every
-`UpsertManyTx` caller on the user-deck side. Changing only the column type produces a
-failed migration on real data; changing only the migration produces runtime `21000`
-failures on ordinary imports.
+**Keep the storage asymmetry, and reconcile only at catalog merge.** The catalog's exact
+stored casing wins the selected row identity, while the selected card id preserves FSRS
+and swipe history. An already-present exact row prevents any rename, and extra variants
+remain independent.
+
+Do not make `cards.front` case-insensitive without first addressing both migration hazards
+above: a policy for every pre-existing case-variant pair and its progress rows, plus a
+case-folded dedup key across every user-side `UpsertManyTx` caller. Changing only the
+column type fails on existing data; changing the conflict semantics without deduplication
+produces runtime `21000` failures on ordinary imports.
 
 ## Proving it
 
@@ -150,9 +158,10 @@ The asymmetry is pinned on both sides, so a silent flip in either direction brea
   `TestMasterNotionSyncUsecase_CaseInsensitiveDedupe`,
   `TestMasterNotionSyncUsecase_CaseInsensitivePrune`,
   `TestMasterCard_ImportMasterCards_DeduplicatesCaseInsensitiveFront`.
-- User decks are case-sensitive, and the preview agrees with the merge:
-  `TestCardRepo_CountExistingFronts_CaseSensitive`,
-  `TestMergePreviewEqualsMergeTally_CaseSensitive`.
+- User decks retain case-sensitive uniqueness, while catalog merge folds one variant and
+  keeps preview parity: `TestCardRepo_CountMatchingFrontsFold_DistinctCaseVariants`,
+  `TestCardRepository_FoldFrontCaseToTx`, `TestMergeCaseFold_PreservesCardIDAndFSRS`,
+  `TestMergeCaseFold_ExactVariantWins`, and `TestMergeCaseFold_OldestVariantWins`.
 
 See also [`docs/notion-sync.md` § "Behavior"](../../notion-sync.md#behavior) for the sync's
 upsert-and-prune contract that consequence 2 falls out of.

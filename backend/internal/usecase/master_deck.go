@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -48,12 +49,13 @@ type masterDeckCardRepo interface {
 }
 
 // masterDeckUserCardRepo is the subset of repository.CardRepository the master
-// deck usecase consumes: bulk-insert the copied cards inside the caller's
-// transaction, and count how many fronts already exist in the destination
-// cardgroup for the read-only preview path.
+// deck usecase consumes: fold case variants before a merge upsert, bulk-upsert
+// copied cards inside the caller's transaction, and count folded matches for
+// the read-only preview path.
 type masterDeckUserCardRepo interface {
 	UpsertManyTx(ctx context.Context, tx repository.Tx, cards []*domain.Card) (repository.UpsertManyTxResult, error)
-	CountExistingFronts(ctx context.Context, cardgroupID string, fronts []string) (int64, error)
+	FoldFrontCaseToTx(ctx context.Context, tx repository.Tx, cardgroupID string, fronts []string) (int64, error)
+	CountMatchingFrontsFold(ctx context.Context, cardgroupID string, loweredFronts []string) (int64, error)
 }
 
 // masterDeckUserCardgroupRepo is the subset of repository.CardgroupRepository the
@@ -460,6 +462,16 @@ func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 		if len(cards) == 0 {
 			return eris.Wrap(repository.ErrNotFound, "usecase: master deck: merge master into cardgroup: master cardgroup holds no cards")
 		}
+		fronts := make([]string, len(cards))
+		for i, card := range cards {
+			fronts[i] = string(card.Front)
+		}
+		if _, err := u.userCard.FoldFrontCaseToTx(ctx, tx, string(destCardgroupID), fronts); err != nil {
+			if isContextDone(err) {
+				return err
+			}
+			return eris.Wrap(err, "usecase: master deck: merge master into cardgroup: fold case variants")
+		}
 		r, err := u.copyMasterCardsIntoTx(ctx, tx, cards, destCardgroupID, nil)
 		if err != nil {
 			return err
@@ -498,8 +510,8 @@ func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 
 // PreviewMergeMasterIntoCardgroup mirrors MergeMasterIntoCardgroup as a read-only
 // dry run: it runs the same ownership gate, then counts how many of the master
-// deck's fronts already exist in the destination (case-sensitively, matching the
-// cards (cardgroup_id, front) text unique index the merge upserts against).
+// deck's fronts already exist in the destination after case-folding, matching
+// the merge's in-transaction case-variant rename before its exact-front upsert.
 // Added + Updated equals the master deck's card count.
 //
 // It mirrors MergeMasterIntoCardgroup's published re-verification so the dry run
@@ -532,12 +544,12 @@ func (u *masterDeckUsecase) PreviewMergeMasterIntoCardgroup(
 
 	fronts := make([]string, len(cards))
 	for i, c := range cards {
-		fronts[i] = string(c.Front)
+		fronts[i] = strings.ToLower(string(c.Front))
 	}
 
-	overlap, err := u.userCard.CountExistingFronts(ctx, string(destCardgroupID), fronts)
+	overlap, err := u.userCard.CountMatchingFrontsFold(ctx, string(destCardgroupID), fronts)
 	if err != nil {
-		return PreviewMergeResult{}, wrapInfraErr(err, "usecase: master deck: preview merge: count existing fronts")
+		return PreviewMergeResult{}, wrapInfraErr(err, "usecase: master deck: preview merge: count matching fronts fold")
 	}
 
 	total := int64(len(cards))

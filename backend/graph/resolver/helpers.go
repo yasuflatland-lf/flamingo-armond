@@ -7,6 +7,8 @@ import (
 	"github.com/rotisserie/eris"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
+	"backend/internal/auth"
+	"backend/internal/domain"
 	"backend/internal/gqlerr"
 	"backend/internal/loader"
 )
@@ -22,6 +24,36 @@ func loadersOrInternal(ctx context.Context) (*loader.Loaders, *gqlerror.Error) {
 		return nil, gqlerr.Internal(ctx, eris.New("loader: middleware not installed for /query"))
 	}
 	return loaders, nil
+}
+
+// requireSelfOrAdmin returns nil when the caller is the target user or holds
+// the admin role; otherwise it returns the appropriate GraphQL error. It owns
+// the caller check, self short-circuit, role load, RoleSet build, and admin
+// membership check; label attributes loader failures to the caller.
+func requireSelfOrAdmin(ctx context.Context, loaders *loader.Loaders, targetID string, label string) *gqlerror.Error {
+	caller := auth.UserFrom(ctx)
+	if caller == nil || caller.Sub == "" {
+		return gqlerr.Unauthenticated()
+	}
+	if caller.Sub == targetID {
+		return nil
+	}
+
+	callerRoles, err := loaders.RoleByUserID.Load(ctx, caller.Sub)()
+	if err != nil {
+		return classifyLoaderErr(ctx, err, label)
+	}
+	// A resolver-local role loop would duplicate the domain membership rule.
+	callerSet := make(domain.RoleSet, 0, len(callerRoles))
+	for _, role := range callerRoles {
+		if role != nil {
+			callerSet = append(callerSet, *role)
+		}
+	}
+	if !callerSet.ContainsAdmin() {
+		return gqlerr.NewForbidden("admin only")
+	}
+	return nil
 }
 
 // classifyLoaderErr maps a DataLoader Load error to the wire form: CANCELLED for

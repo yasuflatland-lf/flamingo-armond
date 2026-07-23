@@ -53,6 +53,17 @@ func TestClassifyUserPreferenceCardgroupFKError_LastViewedConstraint(t *testing.
 	}
 }
 
+func TestClassifyUserPreferenceCardgroupFKError_MalformedCardgroupID(t *testing.T) {
+	t.Parallel()
+	got := classifyUserPreferenceCardgroupFKError(&pgconn.PgError{Code: "22P02"})
+	if !errors.Is(got, ErrCardgroupNotFound) {
+		t.Fatalf("expected ErrCardgroupNotFound, got %v", got)
+	}
+	if !errors.Is(got, ErrNotFound) {
+		t.Fatalf("expected joined ErrNotFound to also match, got %v", got)
+	}
+}
+
 // TestClassifyUserPreferenceCardgroupFKError_UnknownConstraint verifies that a
 // 23503 on an unrelated constraint returns nil so the caller falls through to
 // eris.Wrap rather than swallowing the violation.
