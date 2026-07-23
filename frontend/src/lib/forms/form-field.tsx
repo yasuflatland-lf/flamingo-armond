@@ -39,6 +39,7 @@ type CommonProps = {
   idOverride?: string;
   disabled?: boolean;
   placeholder?: string;
+  rows?: number;
   /** Forwarded to the rendered control as `data-testid`. */
   testId?: string;
   /** Extra classes for the field wrapper. Default spacing is `space-y-2`. */
@@ -84,6 +85,7 @@ export function FormField(props: FormFieldProps) {
     idOverride,
     disabled,
     placeholder,
+    rows,
     testId,
     className,
     autoFocus,
@@ -124,6 +126,7 @@ export function FormField(props: FormFieldProps) {
         onChange={(e) => field.handleChange(e.target.value)}
         disabled={disabled}
         placeholder={placeholder}
+        rows={rows}
         autoFocus={autoFocus}
       />
     ) : (

@@ -81,9 +81,7 @@ func masterCardsExistPredicate(alias string) string {
 type MasterCardgroupUpdate struct {
 	Name             *string
 	Description      *string
-	Version          *int
 	SortOrder        *int
-	Status           *string
 	IsDefaultStarter *bool
 }
 
@@ -287,14 +285,8 @@ func (r *masterCardgroupRepo) Update(ctx context.Context, id string, patch Maste
 	if patch.Description != nil {
 		updates["description"] = *patch.Description
 	}
-	if patch.Version != nil {
-		updates["version"] = *patch.Version
-	}
 	if patch.SortOrder != nil {
 		updates["sort_order"] = *patch.SortOrder
-	}
-	if patch.Status != nil {
-		updates["status"] = *patch.Status
 	}
 	if patch.IsDefaultStarter != nil {
 		updates["is_default_starter"] = *patch.IsDefaultStarter

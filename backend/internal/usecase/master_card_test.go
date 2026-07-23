@@ -133,86 +133,10 @@ func (m *mockMasterCardReadRepo) FindByID(_ context.Context, id string) (*domain
 	return nil, repository.ErrNotFound
 }
 
-// panicMasterCardgroupRepo satisfies repository.MasterCardgroupRepository with
-// every method panicking; concrete mocks override only what they exercise.
-type panicMasterCardgroupRepo struct{}
-
-func (panicMasterCardgroupRepo) FindByID(_ context.Context, _ string) (*domain.MasterCardgroup, error) {
-	panic("not used in this test")
-}
-
-func (panicMasterCardgroupRepo) EnsureByName(_ context.Context, _ string) (*domain.MasterCardgroup, error) {
-	panic("not used in this test")
-}
-
-func (panicMasterCardgroupRepo) Create(_ context.Context, _ *domain.MasterCardgroup) error {
-	panic("not used in this test")
-}
-
-func (panicMasterCardgroupRepo) Update(_ context.Context, _ string, _ repository.MasterCardgroupUpdate) (*domain.MasterCardgroup, error) {
-	panic("not used in this test")
-}
-
-func (panicMasterCardgroupRepo) Delete(_ context.Context, _ string) error {
-	panic("not used in this test")
-}
-
-func (panicMasterCardgroupRepo) ListPublishedDefaultStarters(_ context.Context) ([]*domain.MasterCardgroup, error) {
-	panic("not used in this test")
-}
-
-func (panicMasterCardgroupRepo) FindPublishedPage(
-	_ context.Context, _, _ *repository.MasterCatalogCursor, _, _ int,
-	_ repository.MasterCatalogOrderBy, _ repository.SortOrder, _ *string,
-) ([]*repository.MasterCatalogItem, int64, error) {
-	panic("not used in this test")
-}
-
-func (panicMasterCardgroupRepo) CountCards(_ context.Context, _ string) (int64, error) {
-	panic("not used in this test")
-}
-
-func (panicMasterCardgroupRepo) FindPublishedByID(_ context.Context, _ string) (*domain.MasterCardgroup, error) {
-	panic("not used in this test")
-}
-
-func (panicMasterCardgroupRepo) FindPublishedByIDTx(_ context.Context, _ *gorm.DB, _ string) (*domain.MasterCardgroup, error) {
-	panic("not used in this test")
-}
-
-func (panicMasterCardgroupRepo) FindPageAnyStatus(
-	_ context.Context, _, _ *repository.MasterCatalogCursor, _, _ int,
-	_ repository.MasterCatalogOrderBy, _ repository.SortOrder, _ *string,
-) ([]*repository.MasterCatalogItem, int64, error) {
-	panic("not used in this test")
-}
-
-func (panicMasterCardgroupRepo) Publish(_ context.Context, _ string) (*domain.MasterCardgroup, error) {
-	panic("not used in this test")
-}
-
-func (panicMasterCardgroupRepo) Unpublish(_ context.Context, _ string) (*domain.MasterCardgroup, error) {
-	panic("not used in this test")
-}
-
-// mockMasterCardgroupReadRepo overrides FindByID (deck incl. DRAFT), CountCards,
-// and FindPublishedByID (catalog-visible deck). FindByID + CountCards back
-// MasterCardUsecase.AdminMaster; FindPublishedByID backs ListPublicMasterCards'
-// catalog-visibility gate (published AND non-empty).
+// mockMasterCardgroupReadRepo backs ListPublicMasterCards' catalog-visibility
+// gate (published AND non-empty).
 type mockMasterCardgroupReadRepo struct {
-	panicMasterCardgroupRepo
-
-	findByIDFn          func(id string) (*domain.MasterCardgroup, error)
 	findPublishedByIDFn func(id string) (*domain.MasterCardgroup, error)
-	countCardsRes       int64
-	countCardsErr       error
-}
-
-func (m *mockMasterCardgroupReadRepo) FindByID(_ context.Context, id string) (*domain.MasterCardgroup, error) {
-	if m.findByIDFn != nil {
-		return m.findByIDFn(id)
-	}
-	return nil, repository.ErrNotFound
 }
 
 func (m *mockMasterCardgroupReadRepo) FindPublishedByID(_ context.Context, id string) (*domain.MasterCardgroup, error) {
@@ -220,13 +144,6 @@ func (m *mockMasterCardgroupReadRepo) FindPublishedByID(_ context.Context, id st
 		return m.findPublishedByIDFn(id)
 	}
 	return nil, repository.ErrNotFound
-}
-
-func (m *mockMasterCardgroupReadRepo) CountCards(_ context.Context, _ string) (int64, error) {
-	if m.countCardsErr != nil {
-		return 0, m.countCardsErr
-	}
-	return m.countCardsRes, nil
 }
 
 // masterCardFixture returns a minimal *domain.MasterCard for assertions.
@@ -243,7 +160,7 @@ func masterCardFixture(id, mcgID string, pos int) *domain.MasterCard {
 	}
 }
 
-func newMasterCardUC(t *testing.T, mc repository.MasterCardRepository, mcg repository.MasterCardgroupRepository, isAdmin bool) MasterCardUsecase {
+func newMasterCardUC(t *testing.T, mc repository.MasterCardRepository, mcg masterCardgroupRepoForMasterCard, isAdmin bool) MasterCardUsecase {
 	t.Helper()
 	return NewMasterCardUsecase(nil, mc, mcg, newTestAdminGate(isAdmin), newTestLogger())
 }
@@ -280,84 +197,6 @@ func TestNewMasterCardUsecase_NilDepsPanic(t *testing.T) {
 			fn()
 		})
 	}
-}
-
-// ---------------------------------------------------------------------------
-// AdminMaster
-// ---------------------------------------------------------------------------
-
-func TestMasterCard_AdminMaster_NonAdminForbidden(t *testing.T) {
-	t.Parallel()
-	uc := newMasterCardUC(t, &mockMasterCardReadRepo{}, &mockMasterCardgroupReadRepo{}, false)
-	_, err := uc.AdminMaster(authedCtx("u1"), "id-1")
-	// FORBIDDEN classification must be the ucerr typed error, never gqlerr.
-	assertForbidden(t, err, "admin only")
-}
-
-func TestMasterCard_AdminMaster_Unauthenticated(t *testing.T) {
-	t.Parallel()
-	uc := newMasterCardUC(t, &mockMasterCardReadRepo{}, &mockMasterCardgroupReadRepo{}, true)
-	_, err := uc.AdminMaster(anonCtx(), "id-1")
-	assertUnauthenticated(t, err)
-}
-
-func TestMasterCard_AdminMaster_Success_IncludesDraft(t *testing.T) {
-	t.Parallel()
-	draft := masterCardgroup("id-1") // masterCardgroup() returns a DRAFT deck
-	mcg := &mockMasterCardgroupReadRepo{
-		findByIDFn:    func(string) (*domain.MasterCardgroup, error) { return draft, nil },
-		countCardsRes: 42,
-	}
-	uc := newMasterCardUC(t, &mockMasterCardReadRepo{}, mcg, true)
-	got, err := uc.AdminMaster(authedCtx("admin1"), "id-1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got == nil || got.Master == nil {
-		t.Fatalf("expected non-nil MasterWithCount, got %+v", got)
-	}
-	if got.Master.Status != domain.MasterStatusDraft {
-		t.Fatalf("expected DRAFT deck, got %s", got.Master.Status)
-	}
-	if got.CardCount != 42 {
-		t.Fatalf("expected CardCount 42, got %d", got.CardCount)
-	}
-}
-
-func TestMasterCard_AdminMaster_NotFound(t *testing.T) {
-	t.Parallel()
-	mcg := &mockMasterCardgroupReadRepo{
-		findByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, repository.ErrNotFound },
-	}
-	uc := newMasterCardUC(t, &mockMasterCardReadRepo{}, mcg, true)
-	_, err := uc.AdminMaster(authedCtx("admin1"), "missing")
-	// Not-found is surfaced as a validation error on "id" (mirrors master-catalog admin reads).
-	assertValidationError(t, err, "id", "")
-}
-
-// A non-NotFound FindByID error wraps into the internal eris chain.
-func TestMasterCard_AdminMaster_FindByIDInfraErrorWrapped(t *testing.T) {
-	t.Parallel()
-	boom := eris.New("db down")
-	mcg := &mockMasterCardgroupReadRepo{
-		findByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, boom },
-	}
-	uc := newMasterCardUC(t, &mockMasterCardReadRepo{}, mcg, true)
-	_, err := uc.AdminMaster(authedCtx("admin1"), "id-1")
-	assertInternalChain(t, err, "usecase: master card: admin master")
-}
-
-// A CountCards error wraps into the internal eris chain.
-func TestMasterCard_AdminMaster_CountCardsInfraErrorWrapped(t *testing.T) {
-	t.Parallel()
-	draft := masterCardgroup("id-1")
-	mcg := &mockMasterCardgroupReadRepo{
-		findByIDFn:    func(string) (*domain.MasterCardgroup, error) { return draft, nil },
-		countCardsErr: eris.New("count down"),
-	}
-	uc := newMasterCardUC(t, &mockMasterCardReadRepo{}, mcg, true)
-	_, err := uc.AdminMaster(authedCtx("admin1"), "id-1")
-	assertInternalChain(t, err, "usecase: master card: admin master")
 }
 
 // ---------------------------------------------------------------------------
@@ -854,44 +693,12 @@ func TestMasterCard_ListMasterCards_CursorBeforeFieldLabel(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Context-cancellation pass-through tests
 //
-// Each of the four isContextDone branches in master_card.go must return the
+// Each of the two isContextDone branches in master_card.go must return the
 // raw context error unwrapped so callers can check identity via
 // errors.Is(err, context.Canceled). The assertion convention mirrors
 // ownership_test.go: assertCancelled (errors.Is chain check) AND
 // require.Equal (pointer-identity check that the error is NOT eris-wrapped).
 // ---------------------------------------------------------------------------
-
-// TestMasterCard_AdminMaster_FindByID_PropagatesCancelled verifies that a
-// context.Canceled returned by masterCardgroupRepo.FindByID passes through
-// unwrapped from AdminMaster so the caller's identity check succeeds.
-func TestMasterCard_AdminMaster_FindByID_PropagatesCancelled(t *testing.T) {
-	t.Parallel()
-	mcg := &mockMasterCardgroupReadRepo{
-		findByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, context.Canceled },
-	}
-	uc := newMasterCardUC(t, &mockMasterCardReadRepo{}, mcg, true)
-	_, err := uc.AdminMaster(authedCtx("admin1"), "id-1")
-
-	assertCancelled(t, err)
-	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
-}
-
-// TestMasterCard_AdminMaster_CountCards_PropagatesCancelled verifies that a
-// context.Canceled returned by masterCardgroupRepo.CountCards passes through
-// unwrapped from AdminMaster so the caller's identity check succeeds.
-func TestMasterCard_AdminMaster_CountCards_PropagatesCancelled(t *testing.T) {
-	t.Parallel()
-	draft := masterCardgroup("id-1")
-	mcg := &mockMasterCardgroupReadRepo{
-		findByIDFn:    func(string) (*domain.MasterCardgroup, error) { return draft, nil },
-		countCardsErr: context.Canceled,
-	}
-	uc := newMasterCardUC(t, &mockMasterCardReadRepo{}, mcg, true)
-	_, err := uc.AdminMaster(authedCtx("admin1"), "id-1")
-
-	assertCancelled(t, err)
-	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
-}
 
 // TestMasterCard_ListMasterCards_FindPage_PropagatesCancelled verifies that a
 // context.Canceled returned by masterCardRepo.FindPageByMasterCardgroup passes

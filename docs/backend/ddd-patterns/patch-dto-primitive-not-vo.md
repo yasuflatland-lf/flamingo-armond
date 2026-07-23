@@ -117,28 +117,26 @@ The rule is: keep the DTO shape aligned with the contract the DTO encodes.
 For three-way patch DTOs, `*<primitive>` matches the contract. For
 two-way constructor DTOs, the VO matches the contract.
 
-## The convention applies to string-enum newtypes, not only struct VOs
+## String-enum patch fields require a wired validation seam
 
-A reviewer unfamiliar with this rule may flag a `*string` field as a
-type-safety regression when the domain type is a string-enum newtype. It is
-not a regression — it is the documented pattern.
+The primitive patch convention can apply to a string-enum newtype, but only
+when a production usecase validates the value before constructing the patch.
+The repository's `Updates(map)` call and a database `CHECK` constraint do not
+replace that usecase boundary.
 
-**Concrete case:** `MasterCardgroupUpdate.Status` is `*string`, even though the
-domain field `MasterCardgroup.Status` is `domain.MasterCardgroupStatus` (a
-`type MasterCardgroupStatus string` enum newtype). The primitive shape is
-deliberate:
+`MasterCardgroupUpdate.Status` was previously documented as an example, but it
+had no production writer or validation seam. Keeping the exported field allowed
+callers to bypass the aggregate's publication state machine, so the field was
+removed. Status and version transitions now remain exclusively behind
+`MasterCardgroupRepository.Publish` and `MasterCardgroupRepository.Unpublish`,
+which delegate the transition rules to `MasterCardgroup.Publish` and
+`MasterCardgroup.Unpublish`.
 
-- The usecase validates the proposed value via `status.IsValid()` before
-  constructing the patch, so the repository receives only pre-validated strings.
-- The repository's `Updates(map)` site takes `any` values; the primitive passes
-  through without an extra demote step.
-- The DB `CHECK (status IN ('draft', 'published'))` constraint backstops any
-  bypass.
-
-The same reasoning applies to any other string-enum newtype used as a patch field:
-validate at the usecase boundary, pass `*string` to the DTO, let the DB constraint
-enforce at the storage layer. (`MasterCardgroupUpdate.Status` is deliberately
-`*string`, not `*domain.MasterCardgroupStatus`, for this reason.)
+For a future string-enum patch field, first establish that patching is part of
+the aggregate's contract. Validate the proposed value at the usecase boundary,
+then pass the primitive representation through the patch DTO. If the value has
+dedicated lifecycle operations or aggregate transition rules, expose those
+operations instead of a general patch field.
 
 ## Reference
 

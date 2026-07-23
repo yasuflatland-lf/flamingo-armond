@@ -37,23 +37,9 @@ export function shareTenths({ numerator, denominator }: Ratio): number {
 }
 
 /**
- * True when the exact share 100n/d is a whole multiple of 5, which happens exactly
- * when d divides 20n. This tests 5%-grid alignment only: an on-grid share is NOT
- * necessarily within [MIN, MAX] — 85/90/95% are multiples of 5 but exceed MAX = 80,
- * so callers deciding whether the control can represent a share compare the stored
- * value against gridPercent (which clamps) rather than testing isOnGrid alone.
- */
-export function isOnGrid({ numerator, denominator }: Ratio): boolean {
-  return (20 * numerator) % denominator === 0;
-}
-
-/**
- * Position of the 5%-step control: the nearest grid step to the exact share,
- * clamped to [MIN, MAX]. The grid index is 20n/d rounded half-up, i.e.
- * `floor((40n + d) / 2d)`. Its `Math.floor` is exact for the same reason as
- * `shareTenths`: these operands put every non-integral quotient at least
- * 1/2d >= 0.005 clear of the nearest integer. The control only positions itself
- * here — it never stands in for the stored value.
+ * Nearest 5%-step position, clamped to [MIN, MAX]. An exact share is on the grid
+ * iff d divides 20n; alignment does not imply it is selectable. The grid index
+ * is `floor((40n + d) / 2d)`, exact for the same reason as `shareTenths`.
  */
 export function gridPercent({ numerator, denominator }: Ratio): number {
   const gridIndex = Math.floor((40 * numerator + denominator) / (2 * denominator));
