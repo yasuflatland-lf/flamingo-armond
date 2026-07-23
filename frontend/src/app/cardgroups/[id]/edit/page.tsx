@@ -9,7 +9,7 @@ import type {
   CardgroupQuery as CardgroupQueryType,
   CardsByCardgroupConnectionQuery as CardsByCardgroupConnectionQueryType,
 } from "@/generated/graphql";
-import { redirectIfAuthError } from "@/lib/apollo/graphql-errors";
+import { isBadUserInputGraphQLError, redirectIfAuthError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { requireAuthenticated } from "@/lib/supabase/auth-status";
 import { CardgroupManagementClient } from "./cardgroup-management-client";
@@ -39,6 +39,13 @@ export default async function EditCardgroupPage({ params }: Props) {
     ]);
   } catch (err) {
     redirectIfAuthError(err, "/login");
+    // The connection query authorizes the cardgroup in the usecase layer
+    // (authorizeCardgroupOrBadInput), so an unknown or deleted cardgroup
+    // surfaces as BAD_USER_INPUT before CardgroupQuery's null result is
+    // observable — redirect a stale bookmark to the listing instead of
+    // crashing to the error boundary. A foreign-owned id surfaces as
+    // UNAUTHENTICATED and is handled by redirectIfAuthError above.
+    if (isBadUserInputGraphQLError(err)) redirect("/cardgroups");
     console.error("[cardgroups/:id/edit] gqlFetch failed:", {
       name: err instanceof Error ? err.name : "unknown",
     });
