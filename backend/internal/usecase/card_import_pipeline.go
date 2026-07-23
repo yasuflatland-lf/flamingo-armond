@@ -142,12 +142,8 @@ func runCardImport[R any](ctx context.Context, payload string, p cardImportPipel
 		rows = append(rows, row)
 	}
 
-	if p.tx == nil {
-		return cardImportResult{}, eris.New(p.wrap + " tx runner not configured")
-	}
-
 	var result repository.UpsertManyTxResult
-	if err := p.tx(ctx, func(tx *gorm.DB) error {
+	if err := runInTx(ctx, p.tx, func(tx *gorm.DB) error {
 		r, err := p.upsert(ctx, tx, rows)
 		if err != nil {
 			return eris.Wrap(err, p.wrap+": repo")

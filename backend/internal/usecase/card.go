@@ -765,11 +765,8 @@ func (u *cardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, erro
 		return 0, nil
 	}
 
-	if u.tx == nil {
-		return 0, eris.New("usecase: card: tx runner not configured")
-	}
 	var deleted int64
-	err := u.tx(ctx, func(tx *gorm.DB) error {
+	err := runInTx(ctx, u.tx, func(tx *gorm.DB) error {
 		n, err := u.cardRepo.DeleteByIDsTx(ctx, tx, user.Sub, ids)
 		if err != nil {
 			return err

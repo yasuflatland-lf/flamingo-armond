@@ -130,7 +130,7 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 			"cardgroup name is invalid",
 		)
 	}
-	if u.fetcher == nil || u.masterCardgroupRepo == nil || u.masterCardRepo == nil || u.tx == nil {
+	if u.fetcher == nil || u.masterCardgroupRepo == nil || u.masterCardRepo == nil {
 		return MasterNotionSyncOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "dependencies are not configured")
 	}
 
@@ -208,7 +208,7 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 		Parsed:      plan.Rows,
 		ParseErrors: plan.ParseErrors,
 	}
-	err = u.tx(ctx, func(tx *gorm.DB) error {
+	err = runInTx(ctx, u.tx, func(tx *gorm.DB) error {
 		upserted, err := u.masterCardRepo.UpsertManyTx(ctx, tx, plan.Cards)
 		if err != nil {
 			return eris.Wrap(err, "upsert master cards")

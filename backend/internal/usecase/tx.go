@@ -9,8 +9,8 @@ import (
 // txRunner is the function the usecase calls to run fn inside a database
 // transaction. The composition root (cmd/server) wires the real
 // *gorm.DB.Transaction-backed implementation; unit tests pass a fake that
-// invokes fn with a sentinel *gorm.DB. Used by CardUsecase, SwipeUsecase,
-// cardImportUsecase, and MasterNotionSyncUsecase.
+// invokes fn with a sentinel *gorm.DB. Callers whose runner may be nil in
+// tests go through runInTx; constructors that panic on nil call it directly.
 type txRunner func(ctx context.Context, fn func(tx *gorm.DB) error) error
 
 // runInTx executes fn inside run's transaction. A nil run — the shape

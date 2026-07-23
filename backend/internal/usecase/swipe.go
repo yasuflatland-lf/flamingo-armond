@@ -153,13 +153,10 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 	}
 
 	var now time.Time
-	if u.tx == nil {
-		return HandleSwipeOutcome{}, eris.New("usecase: swipe: transaction runner is not configured")
-	}
 	if u.userFSRSRepo == nil {
 		return HandleSwipeOutcome{}, eris.New("usecase: swipe: user card fsrs repository is not configured")
 	}
-	err = u.tx(ctx, func(tx *gorm.DB) error {
+	err = runInTx(ctx, u.tx, func(tx *gorm.DB) error {
 		card, err := u.cardRepo.FindByIDForUpdateTx(ctx, tx, in.CardID)
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
