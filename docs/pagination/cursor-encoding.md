@@ -61,14 +61,13 @@ The column named is the one the connection orders by when the client sends no `o
 
 Guaranteed once a connection is on v2:
 
-- **No duplicates when the boundary row's ordering key is edited upward.** The bookmark compares against the value captured at serve time, so the next page starts exactly where the previous one ended instead of after the row's new position.
-- **No skipped rows when the boundary row's ordering key is edited downward.** Under v1 the re-read moved the bookmark past every remaining row, emptying the rest of the walk; the captured value keeps the walk anchored.
+- **No duplicates or skips of unmutated rows when the boundary row's ordering key is edited.** The bookmark compares against the captured value, so the edit never moves the bookmark. The boundary row itself follows the "row whose ordering key crosses the bookmark" non-guarantee below: an edit that moves it into the not-yet-served region (upward under ASC, downward under DESC) means it is met again; an edit into the already-served region means it is not.
 - **No silent mis-page across an ordering change.** A cursor whose embedded `orderBy` / `direction` disagrees with the current request is rejected as `BAD_USER_INPUT` rather than compared against a different column.
 - **No weakening of the scope checks.** A v2 cursor can hydrate its ordering column without the repository, but the owner lookup (cardgroups), the published-scope lookup (catalog) and the cross-deck / cross-cardgroup guards (master cards, cards) still run, so the endpoint never becomes an existence oracle.
 
 Not guaranteed — these are inherent to cursor pagination over a mutable column, and no envelope format fixes them:
 
-- **A row deleted at the page boundary.** Its cursor no longer resolves; the request is rejected as `cursor not found`.
+- **A row deleted at the page boundary.** Under hydrating orderings, and on connections that decline the [`orderBy: ID` shortcut](../../.claude/rules/pagination.md#server-side-design), its cursor no longer resolves and the request is rejected as `cursor not found`. On `card` / `master-card` under `orderBy: ID`, the cursor is accepted and the request serves the correct next page.
 - **A row whose ordering key crosses the bookmark.** An unseen row edited so it sorts above the cursor has moved into a region already served and is skipped; the boundary row edited so it sorts below the cursor has moved into the region not yet served and is met again. The edit moved the row across the bookmark, not the bookmark across the rows.
 - **`totalCount` drift.** The count is a separate query and reflects the moment it ran.
 

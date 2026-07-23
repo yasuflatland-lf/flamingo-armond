@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "description": "Static marketing landing page for flamingo-armond, built with Vite and published to GitHub Pages.",
-  "packageManager": "pnpm@11.11.0",
+  "packageManager": "pnpm@11.13.1",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

@@ -113,6 +113,11 @@ describe("FormField (textarea / number)", () => {
     expect(el.tagName).toBe("TEXTAREA");
   });
 
+  it("forwards rows to a textarea", () => {
+    render(<FormField field={stringField({ name: "bio" })} label="Bio" kind="textarea" rows={4} />);
+    expect(screen.getByLabelText("Bio")).toHaveAttribute("rows", "4");
+  });
+
   it("renders a number input for kind=number", () => {
     render(<FormField field={stringField({ name: "sortOrder" })} label="Order" kind="number" />);
     const el = screen.getByLabelText("Order");
