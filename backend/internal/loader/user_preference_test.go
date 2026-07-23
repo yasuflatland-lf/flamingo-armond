@@ -49,7 +49,7 @@ func TestUserPreferenceLoader_BatchesNCallsIntoOne(t *testing.T) {
 	}
 
 	ids := []string{"u1", "u2", "u3", "u4", "u5"}
-	l := loader.New(emptyUserRepo(), emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), prefRepo)
+	l := loader.New(emptyUserRepo(), emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), prefRepo, nil)
 	results, errs := loadAllUserPreferences(context.Background(), l, ids)
 
 	for i, err := range errs {
@@ -84,7 +84,7 @@ func TestUserPreferenceLoader_EmptyKeySliceShortCircuits(t *testing.T) {
 		},
 	}
 
-	_ = loader.New(emptyUserRepo(), emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), prefRepo)
+	_ = loader.New(emptyUserRepo(), emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), prefRepo, nil)
 
 	if got := calls.Load(); got != 0 {
 		t.Fatalf("FindByUserIDs called %d times before any Load; want 0", got)
@@ -108,7 +108,7 @@ func TestUserPreferenceLoader_MissingUserReturnsNilData(t *testing.T) {
 		},
 	}
 
-	l := loader.New(emptyUserRepo(), emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), prefRepo)
+	l := loader.New(emptyUserRepo(), emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), prefRepo, nil)
 	results, errs := loadAllUserPreferences(context.Background(), l, []string{"present", "missing"})
 
 	if errs[0] != nil {
@@ -137,7 +137,7 @@ func TestUserPreferenceLoader_BatchFuncError(t *testing.T) {
 		},
 	}
 
-	l := loader.New(emptyUserRepo(), emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), prefRepo)
+	l := loader.New(emptyUserRepo(), emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), prefRepo, nil)
 	_, errs := loadAllUserPreferences(context.Background(), l, []string{"x", "y", "z"})
 
 	for i, err := range errs {
