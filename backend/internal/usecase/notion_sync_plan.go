@@ -22,11 +22,12 @@ type masterRowSkip struct {
 // persist a plan that keeps nothing" into a checkable property of that value
 // (NothingValidToPersist) instead of an ad-hoc condition.
 type notionSyncPlan struct {
-	Rows        []ParsedRow
-	ParseErrors []CardImportError
-	Cards       []*domain.MasterCard
-	KeepFronts  map[string]struct{}
-	DomainSkips []masterRowSkip
+	Rows         []ParsedRow
+	ParseErrors  []CardImportError
+	Cards        []*domain.MasterCard
+	KeepFronts   map[string]struct{}
+	DomainSkips  []masterRowSkip
+	SkippedPages int
 }
 
 // NothingValidToPersist reports whether every row survived the grammar and then
@@ -38,6 +39,12 @@ func (p notionSyncPlan) NothingValidToPersist() bool {
 	return len(p.Cards) == 0 && len(p.Rows) > 0
 }
 
+// PruneSafe reports whether the diff-prune may run: a plan built from a
+// batch with one or more skipped pages has an incomplete keep-set, so
+// pruning against it would delete every card sourced from the skipped
+// page(s). Deletion resumes on the next fully-parsed sync.
+func (p notionSyncPlan) PruneSafe() bool { return p.SkippedPages == 0 }
+
 // computeSyncPlan turns grammar-parsed rows into the plan the persistence step
 // executes. It takes no repository, transaction runner, logger or clock — now
 // is injected rather than read here so the batch shares one timestamp and the
@@ -45,6 +52,7 @@ func (p notionSyncPlan) NothingValidToPersist() bool {
 func computeSyncPlan(
 	rows []ParsedRow,
 	parseErrs []CardImportError,
+	skippedPages int,
 	masterCardgroupID string,
 	now time.Time,
 ) notionSyncPlan {
@@ -61,11 +69,12 @@ func computeSyncPlan(
 		keepFronts[frontMatchKey(card.Front.String())] = struct{}{}
 	}
 	return notionSyncPlan{
-		Rows:        dedupedRows,
-		ParseErrors: allErrs,
-		Cards:       cards,
-		KeepFronts:  keepFronts,
-		DomainSkips: skips,
+		Rows:         dedupedRows,
+		ParseErrors:  allErrs,
+		Cards:        cards,
+		KeepFronts:   keepFronts,
+		DomainSkips:  skips,
+		SkippedPages: skippedPages,
 	}
 }
 

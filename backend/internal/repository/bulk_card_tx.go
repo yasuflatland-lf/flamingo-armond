@@ -48,6 +48,9 @@ func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domai
 	}
 	res, err := upsertManyTx(ctx, tx, rows, "cards", "cardgroup_id")
 	if err != nil {
+		if classified := classifyCardFKError(err); classified != nil {
+			return UpsertManyTxResult{}, classified
+		}
 		if classified := classifyTextLengthViolation(err); classified != nil {
 			return UpsertManyTxResult{}, classified
 		}

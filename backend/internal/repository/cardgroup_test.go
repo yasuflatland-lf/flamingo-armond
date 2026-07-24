@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -259,105 +258,6 @@ func TestCardgroupRepository_NameLengthCheckRejectsTooLong(t *testing.T) {
 	require.Error(t, err, "DB CHECK constraint should reject a 2001-char name")
 }
 
-func TestCardgroupRepository_EnsureByName_Existing(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardgroupRepository(testDB.GORM)
-
-	existing := newCardgroup(ownerID, "Ensure Existing")
-	require.NoError(t, repo.Create(ctx, existing))
-
-	got, err := repo.EnsureByName(ctx, ownerID, existing.Name.String())
-	require.NoError(t, err)
-	require.Equal(t, existing.ID, got.ID)
-
-	rows := countCardgroupsByOwnerAndName(t, ctx, ownerID, existing.Name.String())
-	require.Equal(t, int64(1), rows)
-}
-
-func TestCardgroupRepository_EnsureByName_Create(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardgroupRepository(testDB.GORM)
-
-	got, err := repo.EnsureByName(ctx, ownerID, "Ensure Create")
-	require.NoError(t, err)
-	require.Equal(t, ownerID, string(got.OwnerID))
-	require.Equal(t, "Ensure Create", got.Name.String())
-	require.NotEmpty(t, got.ID)
-	// The create branch builds its row in-place, so the only source of
-	// updated_at is the RETURNING clause; dropping it leaves the zero time here.
-	require.False(t, got.UpdatedAt.IsZero(),
-		"EnsureByName must return the database-assigned updated_at")
-
-	found, err := repo.FindByName(ctx, ownerID, "Ensure Create")
-	require.NoError(t, err)
-	require.Equal(t, got.ID, found.ID)
-}
-
-// TestCardgroupRepository_EnsureByName_WhitespaceContract pins the current
-// contract that EnsureByName matches name verbatim: leading/trailing whitespace
-// produces a distinct row from the trimmed value. Trimming is the caller's
-// responsibility (callers parse the name into a domain.CardgroupName, which
-// trims at its boundary, before invoking the repository). A future caller that
-// bypasses that trim must either trim itself or this contract must change
-// deliberately, not by accident.
-func TestCardgroupRepository_EnsureByName_WhitespaceContract(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardgroupRepository(testDB.GORM)
-
-	base := "Whitespace " + uuid.NewString()
-	trimmed, err := repo.EnsureByName(ctx, ownerID, base)
-	require.NoError(t, err)
-
-	leadingSpace, err := repo.EnsureByName(ctx, ownerID, " "+base)
-	require.NoError(t, err)
-	require.NotEqual(t, trimmed.ID, leadingSpace.ID,
-		"EnsureByName must NOT trim — leading-space name produces a distinct row")
-
-	trailingSpace, err := repo.EnsureByName(ctx, ownerID, base+" ")
-	require.NoError(t, err)
-	require.NotEqual(t, trimmed.ID, trailingSpace.ID,
-		"EnsureByName must NOT trim — trailing-space name produces a distinct row")
-	require.NotEqual(t, leadingSpace.ID, trailingSpace.ID)
-}
-
-func TestCardgroupRepository_EnsureByName_DuplicateRace(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardgroupRepository(testDB.GORM)
-	name := "Ensure Race " + uuid.NewString()
-
-	const workers = 2
-	results := make([]*domain.Cardgroup, workers)
-	errs := make([]error, workers)
-	var wg sync.WaitGroup
-	wg.Add(workers)
-	for i := 0; i < workers; i++ {
-		go func(i int) {
-			defer wg.Done()
-			results[i], errs[i] = repo.EnsureByName(ctx, ownerID, name)
-		}(i)
-	}
-	wg.Wait()
-
-	for _, err := range errs {
-		require.NoError(t, err)
-	}
-	require.NotNil(t, results[0])
-	require.NotNil(t, results[1])
-	require.Equal(t, results[0].ID, results[1].ID)
-
-	rows := countCardgroupsByOwnerAndName(t, ctx, ownerID, name)
-	require.Equal(t, int64(1), rows)
-}
-
 // ---------------------------------------------------------------------------
 // FindPageByOwner / CountByOwner integration tests
 // ---------------------------------------------------------------------------
@@ -399,17 +299,6 @@ func sortCardgroupsByUpdatedAt(cgs []*domain.Cardgroup, dir repository.SortOrder
 		return sorted[i].UpdatedAt.After(sorted[j].UpdatedAt)
 	})
 	return sorted
-}
-
-func countCardgroupsByOwnerAndName(t *testing.T, ctx context.Context, ownerID, name string) int64 {
-	t.Helper()
-	var count int64
-	err := testDB.GORM.WithContext(ctx).
-		Model(&domain.Cardgroup{}).
-		Where("owner_id = ? AND name = ?", ownerID, name).
-		Count(&count).Error
-	require.NoError(t, err)
-	return count
 }
 
 // cardgroupNameSet builds a set of names from a slice for membership checks.

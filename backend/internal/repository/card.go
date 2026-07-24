@@ -30,6 +30,27 @@ func classifyCardDuplicateFront(err error) error {
 	return nil
 }
 
+// ErrCardCardgroupNotFound is returned by Create / UpsertManyTx when the
+// target cardgroup_id does not exist — a Postgres FK violation (23503) on
+// cards_cardgroup_id_fkey. Joined with ErrNotFound so callers matching the
+// general sentinel keep working. Named with the Card aggregate prefix because
+// ErrCardgroupNotFound is owned by the user-preference aggregate.
+var ErrCardCardgroupNotFound = errors.Join(
+	errors.New("repository: card: cardgroup not found"),
+	ErrNotFound,
+)
+
+// classifyCardFKError maps a Postgres FK violation (code 23503) on the
+// cards.cardgroup_id foreign key to ErrCardCardgroupNotFound. Returns nil for
+// any other error so callers can use it as a pre-filter before falling through
+// to eris.Wrap (mirrors classifyMasterCardFKError).
+func classifyCardFKError(err error) error {
+	if pgConstraintViolation(err, "23503", "cardgroup_id") {
+		return ErrCardCardgroupNotFound
+	}
+	return nil
+}
+
 type gormCard struct {
 	ID          string    `gorm:"column:id;primaryKey;type:uuid"`
 	CardgroupID string    `gorm:"column:cardgroup_id"`
@@ -107,11 +128,11 @@ type CardPageRepository interface {
 // CardPageRepository these are non-paginated, limit-capped session fetches:
 // no cursor, no orderBy, no totalCount.
 type CardSessionRepository interface {
-	// FindDueCardsForUser returns rescue reviews due before rescueDueBefore,
-	// filler reviews due by now, and never-seen cards in independent windows.
-	// A rescue review is served early only once its last_review is at or before
-	// rescueReviewedBefore, the caller's minimum-elapsed floor.
-	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now, reviewedBefore, rescueDueBefore, rescueReviewedBefore time.Time, limit int) ([]domain.DueCard, error)
+	// FindDueCardsForUser returns rescue reviews due before window.RescueDueBefore,
+	// filler reviews due by window.Now, and never-seen cards in independent
+	// windows. A rescue review is served early only once its last_review is at
+	// or before window.RescueReviewedBefore, the minimum-elapsed floor.
+	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, window domain.LearnWindow, limit int) ([]domain.DueCard, error)
 	// FindPracticeCardsForUser returns the FSRS-safe practice pool: cards the
 	// user already reviewed at or after reviewedAfter (the start-of-day cutoff).
 	// This is the inverse window of FindDueCardsForUser's review window — it
@@ -230,6 +251,9 @@ func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {
 		Clauses(clause.Returning{Columns: []clause.Column{{Name: "updated_at"}}}).
 		Create(row).Error; err != nil {
 		if classified := classifyCardDuplicateFront(err); classified != nil {
+			return classified
+		}
+		if classified := classifyCardFKError(err); classified != nil {
 			return classified
 		}
 		if classified := classifyTextLengthViolation(err); classified != nil {

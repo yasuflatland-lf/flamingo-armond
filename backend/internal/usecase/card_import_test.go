@@ -952,6 +952,29 @@ func TestCardImportUsecase_Import_ContextCancelledDuringUpsert(t *testing.T) {
 	}
 }
 
+// TestCardImportUsecase_Import_CardgroupDeletedValidation verifies that a
+// cardgroup deleted between the ownership gate and the upsert — surfacing from
+// UpsertManyTx as ErrCardCardgroupNotFound (FK 23503), wrapped by the tx
+// closure — maps to a typed validation error on "cardgroupId" rather than
+// INTERNAL, mirroring the master import's translateMasterCardgroupNotFound.
+func TestCardImportUsecase_Import_CardgroupDeletedValidation(t *testing.T) {
+	t.Parallel()
+
+	pairs := [][2]string{{"apple", jpRunes(3)}}
+	payload := buildPayload(t, pairs)
+
+	repo := &mockDictCardRepo{returnErr: repository.ErrCardCardgroupNotFound}
+	tx, _ := dictTxRunner()
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+
+	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
+		CardgroupID: "cg-target",
+		Payload:     payload,
+	})
+
+	assertValidationError(t, err, "cardgroupId", "cardgroup not found")
+}
+
 // stringFront returns a deterministic front string of the form "<prefix>-<n>"
 // using only ASCII so the lexer treats it as a single WORD token.
 func stringFront(prefix string, n int) string {

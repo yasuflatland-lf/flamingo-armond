@@ -113,6 +113,21 @@ func translateMasterCardgroupNotFound(err error) error {
 	return nil
 }
 
+// translateCardCardgroupNotFound maps repository.ErrCardCardgroupNotFound --
+// raised when a user-card write targets a cardgroup deleted between the
+// ownership gate and the insert -- to a field-scoped BAD_USER_INPUT validation
+// error on "cardgroupId", the exact wording of the authorization gate.
+//
+// It returns nil when err is not that sentinel, so callers use it as a
+// pre-filter ahead of their remaining classifiers, mirroring
+// translateMasterCardgroupNotFound's shape.
+func translateCardCardgroupNotFound(err error) error {
+	if errors.Is(err, repository.ErrCardCardgroupNotFound) {
+		return ucerr.NewValidationError("cardgroupId", "cardgroup not found")
+	}
+	return nil
+}
+
 // translateCardgroupNameErr maps domain sentinel errors from ParseCardgroupName
 // to usecase-layer typed errors. Unexpected domain errors are wrapped with eris.
 // Returns nil when err is nil.

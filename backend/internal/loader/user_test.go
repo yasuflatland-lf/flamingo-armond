@@ -147,9 +147,6 @@ func (r *countingCardgroupRepo) CreateTx(_ context.Context, _ *gorm.DB, _ *domai
 func (r *countingCardgroupRepo) AcquireUserSeedLockTx(_ context.Context, _ *gorm.DB, _ string) error {
 	panic("countingCardgroupRepo.AcquireUserSeedLockTx not configured")
 }
-func (r *countingCardgroupRepo) EnsureByName(_ context.Context, _, _ string) (*domain.Cardgroup, error) {
-	panic("countingCardgroupRepo.EnsureByName not configured")
-}
 func (r *countingCardgroupRepo) Update(_ context.Context, _ string, _ repository.CardgroupUpdate) (*domain.Cardgroup, error) {
 	panic("countingCardgroupRepo.Update not configured")
 }
@@ -397,7 +394,7 @@ func TestUserLoader_BatchesNCallsIntoOne(t *testing.T) {
 	}
 
 	ids := []string{"a", "b", "c", "d", "e"}
-	results, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo()), ids)
+	results, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo(), nil), ids)
 
 	for i, err := range errs {
 		if err != nil {
@@ -432,7 +429,7 @@ func TestUserLoader_PartialNotFound(t *testing.T) {
 	}
 
 	ids := []string{"present-1", "missing", "present-2"}
-	results, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo()), ids)
+	results, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo(), nil), ids)
 
 	if errs[0] != nil {
 		t.Fatalf("present-1: unexpected error: %v", errs[0])
@@ -465,7 +462,7 @@ func TestUserLoader_BatchFuncError(t *testing.T) {
 	}
 
 	ids := []string{"x", "y", "z"}
-	_, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo()), ids)
+	_, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo(), nil), ids)
 
 	for i, err := range errs {
 		if !errors.Is(err, wantErr) {
@@ -494,7 +491,7 @@ func TestRoleLoader_BatchesNCallsIntoOne(t *testing.T) {
 		},
 	}
 
-	l := loader.New(userRepo, roleRepo, emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo())
+	l := loader.New(userRepo, roleRepo, emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo(), nil)
 	ids := []string{"r1", "r2", "r3"}
 	var wg sync.WaitGroup
 	for _, id := range ids {
@@ -537,7 +534,7 @@ func TestMiddleware_For_Roundtrip(t *testing.T) {
 		got = loader.For(c.Request().Context())
 		return nil
 	}
-	if err := loader.Middleware(repo, emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo())(handler)(c); err != nil {
+	if err := loader.Middleware(repo, emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo(), nil)(handler)(c); err != nil {
 		t.Fatalf("middleware: %v", err)
 	}
 	if got == nil {

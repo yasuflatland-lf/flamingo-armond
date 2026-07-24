@@ -70,6 +70,9 @@ rather than surfacing at the call site.
 "Tests may pass nil for unused dependencies; do not pass nil from production
 wiring" documents the nil-explicit contract. `backend/cmd/server/main.go` —
 `newRouter` accepts `swipeRecordRepo repository.SwipeRecordRepository` as a
-required positional parameter.
+required positional parameter. `backend/internal/loader/loader.go` — `New` and
+`Middleware` accept `swipeRecordRepo repository.SwipeRecordRepository` as a
+required positional parameter; tests that do not exercise the SwipeRecord
+loader pass `nil` explicitly.
 
 **Sister rule:** [`constructor-panics-for-non-empty-config.md`](constructor-panics-for-non-empty-config.md) — when a dependency is always required (no OFF branch), panic at construction rather than deferring the nil deref to runtime.

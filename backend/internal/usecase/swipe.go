@@ -184,14 +184,14 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		// LastReview with now, so gating on the synthesized state would skip
 		// the very first swipe of every brand-new card.
 		//
-		// The comparison is the exact complement of the serving-side window
-		// (StartOfLearnDay documents "last_review strictly before this
-		// boundary"), so recording and serving agree on the boundary instant.
+		// domain.ReviewedWithinLearnDay is the exact complement of the
+		// serving-side SQL window (repository/card_due.go), so recording and
+		// serving agree on the boundary instant.
 		existing := byCardID[card.ID]
-		if boundary := domain.StartOfLearnDay(now); existing != nil && !existing.State.LastReview.Before(boundary) {
+		if existing != nil && domain.ReviewedWithinLearnDay(existing.State.LastReview, now) {
 			u.logger.InfoContext(ctx, "swipe: repeat review within the same learn day ignored",
 				"card_id", card.ID,
-				"learn_day_start", boundary,
+				"learn_day_start", domain.StartOfLearnDay(now),
 				"last_review", existing.State.LastReview,
 			)
 			return nil

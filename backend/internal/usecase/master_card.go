@@ -137,12 +137,11 @@ type masterCardUsecase struct {
 	logger              *slog.Logger
 }
 
-// NewMasterCardUsecase constructs a MasterCardUsecase. db is the database handle used
-// to open the transaction that backs ImportMasterCards; passing a nil db defers
-// transaction wiring (Import then returns INTERNAL when invoked without a tx
-// runner). adminGate gates every method. Panics when any required dependency
-// (other than db) is nil — a nil required dependency is a wiring bug that must
-// fail at startup, not at first use.
+// NewMasterCardUsecase constructs a MasterCardUsecase. db is the database handle
+// used to open the transaction that backs ImportMasterCards; production must pass
+// a non-nil db — with a nil db, runInTx hands the import closure a nil handle,
+// which panics inside GORM. adminGate gates every method. Panics when any required
+// dependency (other than db) is nil — a wiring bug must fail at startup.
 func NewMasterCardUsecase(
 	db repository.Tx,
 	masterCard masterCardRepoForMasterCard,
@@ -363,6 +362,15 @@ func (u *masterCardUsecase) UpdateMasterCard(ctx context.Context, id string, in 
 		if errors.Is(err, repository.ErrNotFound) {
 			return UpdateMasterCardOutcome{}, ucerr.NewValidationError("id", "master card not found")
 		}
+		// Renaming a front onto one that already exists in the same master deck is
+		// an ordinary, recoverable user mistake, not an infrastructure failure.
+		// UpdateMasterCardResult has no duplicate variant, so it travels the error
+		// channel as a field-level validation error (BAD_USER_INPUT on "front")
+		// rather than defaulting to INTERNAL.
+		if errors.Is(err, repository.ErrCardDuplicateFront) {
+			return UpdateMasterCardOutcome{}, ucerr.NewValidationError("front",
+				"A card with this front already exists in this cardgroup")
+		}
 		if translated := translateTextLengthViolation(err); translated != nil {
 			return UpdateMasterCardOutcome{}, translated
 		}
@@ -388,7 +396,8 @@ func (u *masterCardUsecase) DeleteMasterCard(ctx context.Context, id string) err
 
 // DeleteMasterCards bulk hard-deletes master cards by id and returns the number of
 // rows deleted. At most maxBulkDelete ids may be supplied; exceeding the cap is a
-// validation error on "ids". Admin-only.
+// validation error on "ids". Malformed (non-UUID) ids cannot exist and are silently
+// dropped before the SQL runs. Admin-only.
 func (u *masterCardUsecase) DeleteMasterCards(ctx context.Context, ids []string) (int64, error) {
 	if _, err := u.adminGate.Require(ctx, "usecase: master card: bulk delete"); err != nil {
 		return 0, err
@@ -399,7 +408,11 @@ func (u *masterCardUsecase) DeleteMasterCards(ctx context.Context, ids []string)
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	n, err := u.masterCardRepo.DeleteMany(ctx, ids)
+	valid := filterParseableIDs(ids)
+	if len(valid) == 0 {
+		return 0, nil
+	}
+	n, err := u.masterCardRepo.DeleteMany(ctx, valid)
 	if err != nil {
 		return 0, wrapInfraErr(err, "usecase: master card: bulk delete: repo delete many")
 	}

@@ -94,7 +94,7 @@ func TestMasterCatalog_AdminMaster_FindByIDInfraErrorWrapped(t *testing.T) {
 	}
 	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	_, err := uc.AdminMaster(authedCtx("admin1"), "id-1")
-	assertInternalChain(t, err, "usecase: master card: admin master")
+	assertInternalChain(t, err, "usecase: master catalog: admin master")
 }
 
 func TestMasterCatalog_AdminMaster_CountCardsInfraErrorWrapped(t *testing.T) {
@@ -106,7 +106,7 @@ func TestMasterCatalog_AdminMaster_CountCardsInfraErrorWrapped(t *testing.T) {
 	}
 	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, &stubCardgroupCounter{}, newTestAdminGate(true), newTestLogger())
 	_, err := uc.AdminMaster(authedCtx("admin1"), "id-1")
-	assertInternalChain(t, err, "usecase: master card: admin master")
+	assertInternalChain(t, err, "usecase: master catalog: admin master")
 }
 
 func TestMasterCatalog_AdminMaster_FindByID_PropagatesCancelled(t *testing.T) {

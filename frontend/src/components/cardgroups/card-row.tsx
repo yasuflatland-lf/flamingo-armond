@@ -95,7 +95,6 @@ export const CardRow = memo(function CardRow({
             ariaLabel={t("deleteCardAriaLabel")}
             onDelete={() => onDelete(card.id)}
             data-testid={`card-delete-${card.id}`}
-            className="pointer-events-none sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 motion-reduce:pointer-events-auto"
           />
         </div>
       </div>

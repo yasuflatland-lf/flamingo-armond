@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/rotisserie/eris"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -374,6 +375,19 @@ func TestMasterCard_UpdateMasterCard_NotFound(t *testing.T) {
 	assertValidationError(t, err, "id", "")
 }
 
+// Renaming a master card's front onto an existing front in the same deck
+// surfaces from the repo as ErrCardDuplicateFront (citext 23505 on Update) and
+// must map to a field-level validation error on "front", not an INTERNAL chain
+// — mirroring cardUsecase.Update's duplicate-front branch.
+func TestMasterCard_UpdateMasterCard_DuplicateFrontValidation(t *testing.T) {
+	t.Parallel()
+	mc := &mockMasterCardWriteRepo{updateErr: repository.ErrCardDuplicateFront}
+	uc := newMasterCardWriteUC(t, mc, true)
+	front := "existing-front"
+	_, err := uc.UpdateMasterCard(authedCtx("admin1"), "id-1", UpdateMasterCardInput{Front: &front})
+	assertValidationError(t, err, "front", "A card with this front already exists in this cardgroup")
+}
+
 func TestMasterCard_UpdateMasterCard_RepoErrorWrapped(t *testing.T) {
 	t.Parallel()
 	mc := &mockMasterCardWriteRepo{updateErr: eris.New("db boom")}
@@ -473,7 +487,7 @@ func TestMasterCard_DeleteMasterCards_Success(t *testing.T) {
 	t.Parallel()
 	mc := &mockMasterCardWriteRepo{deleteManyResult: 2}
 	uc := newMasterCardWriteUC(t, mc, true)
-	n, err := uc.DeleteMasterCards(authedCtx("admin1"), []string{"a", "b", "c"})
+	n, err := uc.DeleteMasterCards(authedCtx("admin1"), []string{uuid.NewString(), uuid.NewString(), uuid.NewString()})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -482,6 +496,48 @@ func TestMasterCard_DeleteMasterCards_Success(t *testing.T) {
 	}
 	if !mc.deleteManyCalled {
 		t.Fatal("expected DeleteMany to be called")
+	}
+}
+
+// TestMasterCard_DeleteMasterCards_DropsMalformedIDs verifies malformed
+// (non-UUID) ids are dropped before the SQL runs: the repo receives only the
+// parseable ids, in order. The id column is uuid-typed, so a malformed id
+// cannot match any row; aborting the whole batch with SQLSTATE 22P02 would
+// contradict the silent-skip semantics the user-card sibling documents.
+func TestMasterCard_DeleteMasterCards_DropsMalformedIDs(t *testing.T) {
+	t.Parallel()
+	mc := &mockMasterCardWriteRepo{deleteManyResult: 2}
+	uc := newMasterCardWriteUC(t, mc, true)
+
+	valid1 := uuid.NewString()
+	valid2 := uuid.NewString()
+	n, err := uc.DeleteMasterCards(authedCtx("admin1"), []string{valid1, "not-a-uuid", valid2})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("expected deleted count 2, got %d", n)
+	}
+	if len(mc.deleteManyIDs) != 2 || mc.deleteManyIDs[0] != valid1 || mc.deleteManyIDs[1] != valid2 {
+		t.Fatalf("expected repo to receive only the valid ids in order, got %v", mc.deleteManyIDs)
+	}
+}
+
+// TestMasterCard_DeleteMasterCards_AllMalformedNoOp verifies an all-malformed
+// batch short-circuits to (0, nil) without touching the repository.
+func TestMasterCard_DeleteMasterCards_AllMalformedNoOp(t *testing.T) {
+	t.Parallel()
+	mc := &mockMasterCardWriteRepo{}
+	uc := newMasterCardWriteUC(t, mc, true)
+	n, err := uc.DeleteMasterCards(authedCtx("admin1"), []string{"not-a-uuid", "also-junk"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("expected 0, got %d", n)
+	}
+	if mc.deleteManyCalled {
+		t.Fatal("DeleteMany must not be called for an all-malformed id list")
 	}
 }
 
@@ -516,7 +572,7 @@ func TestMasterCard_DeleteMasterCards_RepoErrorWrapped(t *testing.T) {
 	t.Parallel()
 	mc := &mockMasterCardWriteRepo{deleteManyErr: eris.New("db boom")}
 	uc := newMasterCardWriteUC(t, mc, true)
-	_, err := uc.DeleteMasterCards(authedCtx("admin1"), []string{"a"})
+	_, err := uc.DeleteMasterCards(authedCtx("admin1"), []string{uuid.NewString()})
 	assertInternalChain(t, err, "usecase: master card: bulk delete")
 }
 
@@ -532,7 +588,7 @@ func TestMasterCard_DeleteMasterCards_PropagatesCancelled(t *testing.T) {
 	t.Parallel()
 	mc := &mockMasterCardWriteRepo{deleteManyErr: context.Canceled}
 	uc := newMasterCardWriteUC(t, mc, true)
-	_, err := uc.DeleteMasterCards(authedCtx("admin1"), []string{"a"})
+	_, err := uc.DeleteMasterCards(authedCtx("admin1"), []string{uuid.NewString()})
 	assertCancelled(t, err)
 	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
 }

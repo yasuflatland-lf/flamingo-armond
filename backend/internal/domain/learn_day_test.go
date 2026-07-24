@@ -78,6 +78,63 @@ func TestEndOfLearnDay(t *testing.T) {
 	}
 }
 
+// TestReviewedWithinLearnDay pins the truth table at the boundary instant:
+// the predicate is the exact complement of the serving-side SQL
+// `last_review < StartOfLearnDay(now)`, so a review exactly at the boundary
+// counts as reviewed today while one a nanosecond earlier belongs to the
+// previous learn day.
+func TestReviewedWithinLearnDay(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 5, 3, 0, 0, 0, time.UTC) // 12:00 JST
+	boundary := StartOfLearnDay(now)                   // 2026-06-04T15:00Z (2026-06-05 00:00 JST)
+
+	cases := []struct {
+		name       string
+		lastReview time.Time
+		want       bool
+	}{
+		{
+			name:       "exactly at StartOfLearnDay counts as reviewed today",
+			lastReview: boundary,
+			want:       true,
+		},
+		{
+			name:       "one nanosecond before the boundary is the previous learn day",
+			lastReview: boundary.Add(-time.Nanosecond),
+			want:       false,
+		},
+		{
+			name:       "after the boundary counts as reviewed today",
+			lastReview: boundary.Add(time.Hour),
+			want:       true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, ReviewedWithinLearnDay(tc.lastReview, now))
+		})
+	}
+}
+
+// TestNewLearnWindow pins each field of the canonical window to its boundary
+// formula, all derived from the same now.
+func TestNewLearnWindow(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 5, 3, 0, 0, 0, time.UTC) // 12:00 JST
+	got := NewLearnWindow(now)
+
+	require.True(t, got.Now.Equal(now), "Now must be the input instant")
+	require.True(t, got.ReviewedBefore.Equal(StartOfLearnDay(now)),
+		"ReviewedBefore must be StartOfLearnDay(now)")
+	require.True(t, got.RescueDueBefore.Equal(EndOfLearnDay(now)),
+		"RescueDueBefore must be EndOfLearnDay(now)")
+	require.True(t, got.RescueReviewedBefore.Equal(RescueReviewedBefore(now)),
+		"RescueReviewedBefore must be RescueReviewedBefore(now)")
+}
+
 // TestRescueReviewedBefore pins the rescue window's minimum-elapsed floor at
 // exactly 24 hours before now, and pins its relation to the day boundaries: the
 // floor is never later than the JST start-of-day, so it is always the tighter of
