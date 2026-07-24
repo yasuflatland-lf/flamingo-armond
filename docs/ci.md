@@ -115,6 +115,15 @@ Pin to commit SHAs when you need stronger supply-chain guarantees, at the cost o
 
 `backend/graph/generated/` and `backend/graph/model/models_gen.go` are git-ignored (see `docs/dev-setup.md`). On a fresh CI checkout these files do not exist, so `go vet ./...` — which type-checks the entire module — fails unless the runtime has been regenerated first. Hence the `test` job runs `go tool gqlgen generate` between `Verify modules` and `Vet`, not after. Any future codegen added to the pipeline must land in the same position relative to its consumers.
 
+## govulncheck runs after codegen and gates the merge
+
+The `test` job runs `go tool govulncheck ./...` (step "Scan for known vulnerabilities") after `Build`. govulncheck is pinned as a `go` tool dependency in `backend/go.mod` — the same `tool (...)` directive that pins gqlgen, go-arch-lint, and goyacc — so its version is locked by `go.sum` and installs with `go mod download`. No separate `go install @latest` or marketplace action is used, matching the repo's existing tool-pinning convention.
+
+Two non-obvious points:
+
+- **Positioning.** govulncheck type-checks and builds a call graph over the whole module, so it needs `backend/graph/generated/` and `backend/graph/model/` on disk. Those are gitignored (see § "Codegen must run before Vet and Build"), so the scan must sit **after** the gqlgen generate step — placing it earlier fails to load those packages with `invalid package name: ""`.
+- **Reachability gate.** govulncheck reports only vulnerabilities reachable from our code's call graph, not every advisory touching a dependency in `go.sum`. A non-zero exit therefore means an actually-reachable vuln, so the step is a hard merge gate with no `continue-on-error`. Unreachable advisories do not fail CI, which keeps the signal actionable.
+
 ## Frontend codegen step positioning
 
 `frontend/src/generated/` is gitignored (see `.gitignore`). On a fresh CI checkout the directory does not exist. The `@/generated` import used in `src/app/page.tsx` and `src/lib/apollo/server.test.ts` must resolve before `TypeScript typecheck`, `Build`, or `Vitest` run. Therefore the workflow places a dedicated `Codegen (graphql-codegen)` step immediately after `Install dependencies` and before `Biome check` / `TypeScript typecheck` / `Build` / `Vitest`.
