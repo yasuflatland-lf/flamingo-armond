@@ -132,6 +132,14 @@ jobs:
       - name: Build
         run: go build ./...
 
+      # Reachability-based vulnerability scan. govulncheck's call-graph
+      # analysis only reports vulns actually reachable from our code, so a
+      # non-zero exit is actionable and gates the merge. Runs after the gqlgen
+      # generate step so graph/generated (gitignored) exists on disk; scanning
+      # earlier would fail to load those packages.
+      - name: Scan for known vulnerabilities (govulncheck)
+        run: go tool govulncheck ./...
+
       - name: Test with coverage
         run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
 
