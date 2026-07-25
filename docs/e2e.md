@@ -47,7 +47,18 @@ Each seed call site already randomises the natural key (e.g. `runId = randomUUID
 
 ### `test.describe.serial` for DB-dependent sequences
 
-`fullyParallel: false` in `playwright.config.ts` prevents specs in different files from interleaving, but it is not sufficient to guarantee order within a single file when `test.only` or `--repeat-each` is active. When tests in a file share database state (e.g. a seeded card deck that successive tests consume), wrap them in `test.describe.serial` so Playwright enforces strict sequential execution regardless of flags. Without `serial`, a retry or `test.only` invocation can break the assumed order and cause a test to see a database state that a previous test was meant to set up.
+`fullyParallel: false` in `playwright.config.ts` keeps the tests *inside* one file sequential, but it is not sufficient to guarantee order within a single file when `test.only` or `--repeat-each` is active. When tests in a file share database state (e.g. a seeded card deck that successive tests consume), wrap them in `test.describe.serial` so Playwright enforces strict sequential execution regardless of flags. Without `serial`, a retry or `test.only` invocation can break the assumed order and cause a test to see a database state that a previous test was meant to set up.
+
+`fullyParallel: false` says nothing about *different* files: Playwright's unit of parallelism is the file, so with `workers > 1` two spec files run concurrently against the same Supabase. Cross-file isolation comes from the worker count alone, and CI runs `workers: 2`.
+
+### Global state is shared across workers
+
+Per-spec fixtures are already isolated — every spec derives a `runId` and prefixes its users, cardgroups and cards with it. Two tables are genuinely global and outlive any one file:
+
+- `roles` — `ensureRole()` upserts on the `name` unique. Concurrent `INSERT ... ON CONFLICT DO UPDATE` is safe under READ COMMITTED, and the workflow pre-seeds both canonical rows before Playwright starts.
+- `master_cardgroups` — the published catalog. `/onboarding/start` redirects to `/cardgroups/new?welcome=1` only while `masterCatalog.totalCount === 0`, and `new-user-onboarding.spec.ts` / `display-name-onboarding.spec.ts` both assert that redirect target. The catalog counts decks that are `PUBLISHED` **and** hold at least one card, so the suite stays green only because the one spec that seeds masters (`admin-masters-edit.spec.ts`) seeds them `DRAFT`.
+
+`assertNoPublishedMasters()` in `frontend/e2e/_auth.ts` pins the second precondition from both onboarding specs' `beforeAll`. It is a snapshot, not a lock: it turns a mis-seeded fixture into a named error instead of an opaque `waitForURL` timeout, but it cannot stop a concurrently-running file from publishing a deck after it has run, and it does not see a deck published through the admin UI rather than through `seedMaster`. A spec that genuinely needs a published master should not fight the guard — give it a worker-scoped fixture or a project dependency so it cannot overlap the onboarding specs.
 
 ### Do not assert on optimistic-update intermediate states
 

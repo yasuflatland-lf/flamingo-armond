@@ -1,13 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
-import { loginAs, seedUser } from "./_auth";
+import { assertNoPublishedMasters, loginAs, seedUser } from "./_auth";
 
 // Scenario: a brand-new user (zero cardgroups, no last_viewed) is funnelled by
 // the HomePage chain to /onboarding/start (the first-deck chooser). Because the
-// e2e DB seeds no master decks, that route hits its empty-catalog fallback and
-// redirects to /cardgroups/new?welcome=1, where the user creates their first
-// cardgroup; the nav-header "+" button then opens the inline "Add card"
-// FormSheet on the cardgroup edit page (no navigation to /cards/new).
+// e2e DB holds no PUBLISHED master deck — the only ones any spec seeds are DRAFT —
+// that route hits its empty-catalog fallback and redirects to
+// /cardgroups/new?welcome=1, where the user creates their first cardgroup; the
+// nav-header "+" button then opens the inline "Add card" FormSheet on the
+// cardgroup edit page (no navigation to /cards/new). assertNoPublishedMasters()
+// in beforeAll pins that precondition.
 
 const runId = randomUUID().slice(0, 8);
 const newcomer = {
@@ -29,6 +31,7 @@ test.describe
     test.use({ viewport: { width: 390, height: 844 } });
 
     test.beforeAll(async () => {
+      await assertNoPublishedMasters();
       // Seed only the auth user + role; deliberately NO cardgroup so the home
       // RSC routes the deckless-onboarded user to /onboarding/start on first
       // login (which falls back to /cardgroups/new?welcome=1 — see file header).

@@ -178,7 +178,7 @@ export async function loginAs(
   if (error) {
     if (error.status === 429) {
       throw new Error(
-        `Rate-limited; consider raising rate_limit_email_sent in supabase/config.toml or reusing sessions: ${error.message}`,
+        `Rate-limited; consider raising auth.rate_limit.sign_in_sign_ups in supabase/config.toml or reusing sessions: ${error.message}`,
       );
     }
     throw error;
@@ -232,6 +232,13 @@ type SeedMasterInput = {
   cards?: { front: string; back: string }[];
 };
 
+/**
+ * Seeds a master cardgroup (default DRAFT) with optional cards. Publishing one —
+ * here via status: "PUBLISHED", or through the admin UI in another spec — makes the
+ * catalog non-empty and breaks new-user-onboarding.spec.ts and
+ * display-name-onboarding.spec.ts. assertNoPublishedMasters() catches this seed
+ * path; the UI path and cross-worker timing it cannot. See docs/e2e.md.
+ */
 export async function seedMaster({ name, status = "DRAFT", cards = [] }: SeedMasterInput) {
   const { data, error } = await adminClient
     .from("master_cardgroups")
@@ -251,6 +258,37 @@ export async function seedMaster({ name, status = "DRAFT", cards = [] }: SeedMas
     if (cardErr) throw new Error(`seedMaster cards(${name}): ${cardErr.message}`);
   }
   return data;
+}
+
+/**
+ * Asserts no PUBLISHED master deck exists — the precondition behind
+ * `/onboarding/start`'s fallback to /cardgroups/new?welcome=1, which fires only while
+ * masterCatalog.totalCount === 0. Deliberately stricter than that gate, which also
+ * requires the deck to hold cards. Sampled once in beforeAll, so it catches a bad seed
+ * rather than locking out a concurrently-running worker. See docs/e2e.md.
+ */
+export async function assertNoPublishedMasters() {
+  const { count, error } = await adminClient
+    .from("master_cardgroups")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "published");
+  if (error) throw error;
+  // postgrest-js leaves `count` null when the response carries no parseable
+  // content-range, and leaves `error` null with it; `count ?? 0` would turn that
+  // into a silently passing guard.
+  if (typeof count !== "number") {
+    throw new Error(
+      "assertNoPublishedMasters: Supabase returned no row count for master_cardgroups",
+    );
+  }
+  if (count > 0) {
+    throw new Error(
+      `Expected an empty published master catalog, found ${count}. ` +
+        "/onboarding/start only falls back to /cardgroups/new?welcome=1 when " +
+        "masterCatalog.totalCount === 0; a PUBLISHED master deck breaks " +
+        "new-user-onboarding.spec.ts and display-name-onboarding.spec.ts.",
+    );
+  }
 }
 
 async function ensureRole(role: RoleName) {
