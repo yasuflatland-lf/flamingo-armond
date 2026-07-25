@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
-import { loginAs, seedUser } from "./_auth";
+import { assertNoPublishedMasters, loginAs, seedUser } from "./_auth";
 
 // Scenario: a user whose displayName is empty is redirected to /onboarding, fills
 // in a display name, and submits. OnboardingForm pushes /onboarding/start (the
-// first-deck chooser); because the e2e DB seeds no master decks, that route hits
-// its empty-catalog fallback and redirects to /cardgroups/new?welcome=1, which is
-// the URL this test waits for. Seeding a master deck would make the chooser render
-// and stay on /onboarding/start instead.
+// first-deck chooser); because the e2e DB holds no PUBLISHED master deck — the only
+// ones any spec seeds are DRAFT — that route hits its empty-catalog fallback and
+// redirects to /cardgroups/new?welcome=1, which is the URL this test waits for.
+// Publishing a deck with cards would make the chooser render and stay on
+// /onboarding/start instead; assertNoPublishedMasters() in beforeAll pins that.
 //
 // The first hop is now owned by the MIDDLEWARE display-name gate, not by the home
 // RSC: the gate redirects every non-exempt path to /onboarding while displayName is
@@ -26,6 +27,7 @@ const onboarder = {
 test.describe
   .serial("display name onboarding redirect", () => {
     test.beforeAll(async () => {
+      await assertNoPublishedMasters();
       // Seed with displayName: "" so isUserOnboarded() returns false and the
       // middleware gate redirects to /onboarding instead of letting the home RSC
       // route the user on to /cardgroups.

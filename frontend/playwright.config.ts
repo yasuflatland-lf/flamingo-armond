@@ -7,7 +7,11 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // File-level parallelism only: `fullyParallel: false` above keeps each file's
+  // tests sequential, which the `test.describe.serial` files and the
+  // `beforeAll`-seeded fixtures rely on. 2 rather than 4 because the runner also
+  // hosts postgres, the Next server and the Go backend.
+  workers: process.env.CI ? 2 : undefined,
   reporter: process.env.CI ? [["html"], ["github"], ["list"]] : [["html"], ["list"]],
   use: {
     baseURL,
