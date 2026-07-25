@@ -22,6 +22,18 @@ The job exports Supabase local keys from `supabase status -o env`; no repository
 
 The E2E workflow must trigger on backend file changes in addition to frontend and schema changes. A backend-only change (new endpoint, changed query shape, migration) can silently break the full integration while individual backend unit tests keep passing. Relying on the nightly cron to catch this introduces up to a 24-hour detection window. Add `backend/**` to the workflow's `paths:` filter so any backend push also queues an E2E run.
 
+### Start only the Supabase containers the suite uses
+
+`supabase start` boots every service enabled in `supabase/config.toml`, and on a cold runner the Docker image pulls dominate the E2E job's wall-clock. The suite needs four of them: **postgres** (migrations, seed data, and the `supabase db query --local` role seeding), **kong** (the `API_URL` gateway every Supabase call goes through), **gotrue** (`auth.admin.*` and `signInWithPassword` in `frontend/e2e/_auth.ts`, plus the app's own `auth.getUser()`), and **postgrest** (every `adminClient.from(...)`). The rest are handed to `supabase start -x`.
+
+**`realtime` and `storage-api` must stay out of the exclusion list even though no spec uses them.** When the database volume does not exist — always true on a fresh runner — the CLI runs a one-shot schema-init job built from the realtime and storage images. Those jobs are gated on `config.toml`'s `[realtime] enabled` / `[storage] enabled` flags, **not** on `-x`, so excluding the containers removes the images from the parallel pre-pull while still requiring them moments later. The pull then happens serially, mid-startup, on the critical path. Excluding them is a pessimisation, not a saving.
+
+Keep the exclusion in the workflow only. Flipping `enabled = false` in `supabase/config.toml` would strip Studio, Mailpit and Realtime from every developer's local stack too, which is not the intent — and for realtime/storage it would also change what schema the init jobs install.
+
+`supabase status -o env` still reports `API_URL`, `ANON_KEY`, `SERVICE_ROLE_KEY` and `DB_URL` with the exclusions applied, and `DB_URL` is built from `[db] port` (54322) rather than from a pooler port, so `supavisor` can be excluded without affecting the `Export Supabase local env` step. `supabase db query --local` connects to Postgres directly and does not need `postgres-meta`.
+
+If the stack ever fails to come up, narrow the list rather than reverting it, in this order: `mailpit` (gotrue is configured with an SMTP host pointing at the excluded container; harmless while no spec sends mail, since users are seeded with `email_confirm: true`), then `postgres-meta`, then `supavisor`. Each removal costs back only that image's pull time, so a partial exclusion still banks most of the win.
+
 ### Backend migration step ordering
 
 When the Go backend applies migrations via `golang-migrate` on startup (or via an explicit migrate step), tables created in those migrations — for example a `roles` table — do not exist immediately after `supabase start`. Any CI step that seeds canonical rows into backend-managed tables (e.g. `INSERT INTO roles ...`) must be placed **after** the backend has started and migrations have completed, not immediately after `supabase start`. Use a health-check or wait-on step to confirm the backend is ready before running seed SQL.
