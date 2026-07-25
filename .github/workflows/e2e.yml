@@ -41,6 +41,13 @@ jobs:
     env:
       BACKEND_URL: http://localhost:1323
       E2E_BASE_URL: http://localhost:3000
+      # Pinned local-stack identity so the Next build can start before `supabase start`
+      # finishes. Deterministic for the CLI pinned in .tool-versions together with the
+      # committed supabase/config.toml, which declares neither auth.jwt_secret nor
+      # signing keys — the CLI then signs the anon JWT with its built-in secret and a
+      # fixed expiry. "Export Supabase local env" asserts both still match the stack.
+      E2E_LOCAL_API_URL: http://127.0.0.1:54321
+      E2E_LOCAL_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
       # The e2e suite does not use introspection (__schema / __type); keep it
       # disabled to match the fail-safe production default. Quoted so YAML does
       # not coerce it to a boolean.
@@ -72,13 +79,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # The Playwright browser download (network), the Supabase stack (Docker
-      # image pulls), and the backend build (CPU) are mutually independent and
-      # bottleneck on different resources, so running them concurrently cuts
-      # wall-clock setup time. The browser download and the backend build run as
-      # background steps that overlap with `supabase start`; the job reconverges
-      # at the `wait-all` below, before the backend process needs its binary and
-      # the Supabase DB URL. Each background step keeps its own log stream in the
-      # Actions UI.
+      # image pulls), the backend build (CPU) and the Next.js production build
+      # (CPU) are mutually independent and bottleneck on different resources, so
+      # running them concurrently cuts wall-clock setup time. The browser
+      # download and the two builds run as background steps that overlap with
+      # `supabase start`; the job reconverges at the `wait-all` below, before the
+      # backend process needs its binary and the Supabase DB URL. Each background
+      # step keeps its own log stream in the Actions UI.
       - name: Install Playwright Chromium
         run: pnpm --filter frontend exec playwright install --with-deps chromium
         background: true
@@ -89,6 +96,18 @@ jobs:
           go tool gqlgen generate
           go build -o /tmp/flamingo-backend ./cmd/server
         background: true
+
+      - name: Build frontend
+        # `next build` inlines NEXT_PUBLIC_* into the served bundle, so it needs the
+        # real local values rather than the post-start `supabase status` output —
+        # waiting for that output is exactly what keeps the build on the critical
+        # path. The build contacts neither the backend nor Supabase (codegen reads
+        # ../schema/*.graphql from disk), so running it this early is safe.
+        run: pnpm --filter frontend build
+        background: true
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ env.E2E_LOCAL_API_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.E2E_LOCAL_ANON_KEY }}
 
       - name: Start Supabase
         # E2E needs only postgres + kong + gotrue + postgrest; the rest is image-pull
@@ -112,6 +131,19 @@ jobs:
           : "${API_URL:?supabase status missing API_URL}"
           : "${ANON_KEY:?supabase status missing ANON_KEY}"
           : "${SERVICE_ROLE_KEY:?supabase status missing SERVICE_ROLE_KEY}"
+          # The background "Build frontend" step baked the pinned constants into the
+          # bundle before the stack was up. If the stack disagrees, that bundle is
+          # wrong; fail here with a diagnosable message instead of at the auth gate of
+          # all 14 tests. Print prefix + length only, never a whole key.
+          if [ "$API_URL" != "$E2E_LOCAL_API_URL" ] || [ "$ANON_KEY" != "$E2E_LOCAL_ANON_KEY" ]; then
+            echo "Local Supabase identity drifted from the pinned constants used by the"
+            echo "background 'Build frontend' step; the served bundle has wrong values baked in."
+            echo "  API_URL   expected=$E2E_LOCAL_API_URL actual=$API_URL"
+            echo "  ANON_KEY  expected prefix=$(printf %.12s "$E2E_LOCAL_ANON_KEY") len=${#E2E_LOCAL_ANON_KEY}"
+            echo "            actual   prefix=$(printf %.12s "$ANON_KEY") len=${#ANON_KEY}"
+            echo "Update E2E_LOCAL_API_URL / E2E_LOCAL_ANON_KEY in the job env block."
+            exit 1
+          fi
           {
             echo "E2E_SUPABASE_URL=$API_URL"
             echo "E2E_SUPABASE_ANON_KEY=$ANON_KEY"

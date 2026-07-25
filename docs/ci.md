@@ -34,6 +34,16 @@ Keep the exclusion in the workflow only. Flipping `enabled = false` in `supabase
 
 If the stack ever fails to come up, narrow the list rather than reverting it, in this order: `mailpit` (gotrue is configured with an SMTP host pointing at the excluded container; harmless while no spec sends mail, since users are seeded with `email_confirm: true`), then `postgres-meta`, then `supavisor`. Each removal costs back only that image's pull time, so a partial exclusion still banks most of the win.
 
+### Pin the local Supabase identity when the Next build runs early
+
+The E2E job overlaps its slow setup work with `supabase start` using `background: true` steps that reconverge at `wait-all`. The Next.js production build belongs in that shadow too, but it cannot simply be moved there: `frontend/src/env.ts` declares `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` as client vars, and `next build` **inlines** them into the served bundle. Unlike the frontend workflow's `lint-test-build` job, which builds with dummy values it never serves, this bundle is handed to a real browser that authenticates a seeded session against GoTrue with that key. Reading the values from `supabase status` is exactly what would keep the build on the critical path.
+
+They are therefore pinned as job-level constants (`E2E_LOCAL_API_URL`, `E2E_LOCAL_ANON_KEY`). Both are deterministic: the API URL comes from `supabase/config.toml`'s `[api] port`, and because that file declares neither `auth.jwt_secret` nor signing keys, the CLI signs the anon JWT with its built-in local secret and a fixed expiry constant rather than a wall-clock-derived one. The pin is valid for the CLI version in `.tool-versions`; a CLI bump is the thing most likely to invalidate it.
+
+`Export Supabase local env` re-reads the stack's real values and fails the job if either constant disagrees, printing each key's prefix and length rather than the key itself. Without that assertion a drifted key would surface as all 14 specs failing at the auth gate, with nothing pointing at the build step that baked in the wrong value.
+
+The build is safe this early because it touches neither service: `graphql-codegen` reads `../schema/*.graphql` from disk, and no route fetches at build time.
+
 ### Backend migration step ordering
 
 When the Go backend applies migrations via `golang-migrate` on startup (or via an explicit migrate step), tables created in those migrations — for example a `roles` table — do not exist immediately after `supabase start`. Any CI step that seeds canonical rows into backend-managed tables (e.g. `INSERT INTO roles ...`) must be placed **after** the backend has started and migrations have completed, not immediately after `supabase start`. Use a health-check or wait-on step to confirm the backend is ready before running seed SQL.

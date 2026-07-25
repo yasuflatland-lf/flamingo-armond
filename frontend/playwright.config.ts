@@ -21,13 +21,17 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  // webServer runs `next build` then `next start` so tests exercise the same code
-  // path as production. `reuseExistingServer: !process.env.CI` lets a developer
-  // running `next dev` on :3000 skip both build and start. The `env` block falls
-  // back from NEXT_PUBLIC_SUPABASE_* to E2E_SUPABASE_* so a CI runner exporting
-  // only the E2E_* form still satisfies @t3-oss/env-nextjs build-time validation.
+  // webServer serves a production build so tests exercise the same code path as
+  // production. On CI that build is a background workflow step overlapping
+  // `supabase start`, so webServer only starts it; locally webServer builds first.
+  // `reuseExistingServer: !process.env.CI` lets a developer running `next dev` on
+  // :3000 skip both. The `env` block falls back from NEXT_PUBLIC_SUPABASE_* to
+  // E2E_SUPABASE_* so a CI runner exporting only the E2E_* form still satisfies
+  // @t3-oss/env-nextjs build-time validation.
   webServer: {
-    command: "pnpm --filter frontend build && pnpm --filter frontend start",
+    command: process.env.CI
+      ? "pnpm --filter frontend start"
+      : "pnpm --filter frontend build && pnpm --filter frontend start",
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

@@ -135,7 +135,7 @@ First run downloads Chromium via `pnpm --filter frontend exec playwright install
 
 ## CI
 
-`.github/workflows/e2e.yml` starts Supabase, exports the local keys into the job environment, starts the Go backend, and lets Playwright build/start the Next.js app via `frontend/playwright.config.ts`. See `docs/ci.md` § "E2E workflow" for the trigger, concurrency, and retention policy.
+`.github/workflows/e2e.yml` starts Supabase, exports the local keys into the job environment, starts the Go backend, and runs Playwright. The Next.js production build is a background workflow step rather than part of `webServer`, so on CI `frontend/playwright.config.ts` only *starts* the built app; locally it still builds first. See [`docs/ci.md` § "E2E workflow"](ci.md#e2e-workflow) for the trigger, concurrency, and retention policy, and [§ "Pin the local Supabase identity when the Next build runs early"](ci.md#pin-the-local-supabase-identity-when-the-next-build-runs-early) for why the build needs pinned constants.
 
 Failure artifacts uploaded by the job:
 
