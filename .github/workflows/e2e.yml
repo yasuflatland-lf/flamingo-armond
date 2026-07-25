@@ -91,7 +91,14 @@ jobs:
         background: true
 
       - name: Start Supabase
-        run: supabase start
+        # E2E needs only postgres + kong + gotrue + postgrest; the rest is image-pull
+        # time on the critical path. realtime and storage-api stay OUT of the list on
+        # purpose: on a volume-less runner the CLI still runs their images as one-shot
+        # schema-init jobs, gated on config.toml rather than on -x, so excluding them
+        # would only move the same pulls off compose's parallel path onto a serial one.
+        # CI-only — config.toml is untouched, so a local `supabase start` is unchanged.
+        # See docs/ci.md § "Start only the Supabase containers the suite uses".
+        run: supabase start -x studio,imgproxy,mailpit,postgres-meta,edge-runtime,logflare,vector,supavisor
 
       - name: Export Supabase local env
         shell: bash
