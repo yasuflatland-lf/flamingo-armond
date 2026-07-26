@@ -14,7 +14,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/jomei/notionapi v1.13.3
 	github.com/labstack/echo/v5 v5.3.0
-	github.com/open-spaced-repetition/go-fsrs/v4 v4.0.0
+	github.com/open-spaced-repetition/go-fsrs/v3 v3.3.1
 	github.com/ravilushqa/otelgqlgen v0.19.0
 	github.com/rivo/uniseg v0.4.7
 	github.com/rotisserie/eris v0.5.4
