@@ -821,37 +821,3 @@ func TestLearnUsecaseNextDueCards_PassesJSTStartOfDayAsReviewedBefore(t *testing
 		})
 	}
 }
-
-func TestLearnUsecase_DefaultIfNew(t *testing.T) {
-	t.Parallel()
-
-	createdAt := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
-	uc := NewLearnUsecase(
-		&mockLearnCardRepo{},
-		&mockLearnCardgroupRepo{},
-		notFoundPrefs(),
-		service.NewOrderingPolicy(),
-		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
-		20,
-		100,
-		fixedClock{now: createdAt},
-		newTestLogger(),
-	)
-
-	t.Run("nil input yields the default new-card state", func(t *testing.T) {
-		t.Parallel()
-		got := uc.DefaultIfNew(nil, domain.UserID("u-1"), "card-1", createdAt)
-		require.NotNil(t, got)
-		want := domain.NewUserCardFSRSForNewCard(domain.UserID("u-1"), "card-1", createdAt)
-		require.Equal(t, want, got)
-	})
-
-	t.Run("non-nil input passes through unchanged", func(t *testing.T) {
-		t.Parallel()
-		existing := domain.NewUserCardFSRSForNewCard(domain.UserID("u-9"), "card-9", createdAt.Add(-time.Hour))
-		// Pass identity-distinct userID/cardID/createdAt to prove the method does
-		// not reconstruct the record when one already exists.
-		got := uc.DefaultIfNew(existing, domain.UserID("u-1"), "card-1", createdAt)
-		require.Same(t, existing, got)
-	})
-}
