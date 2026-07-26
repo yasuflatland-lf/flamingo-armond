@@ -890,6 +890,39 @@ describe("AdminRolesClient — delete failure", () => {
     }
   });
 
+  it("uses localized fallback copy for field-level BAD_USER_INPUT", async () => {
+    const user = userEvent.setup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const mocks = [
+        {
+          request: { query: AdminDeleteRoleDocument, variables: { id: CUSTOM_ROLE.id } },
+          result: {
+            errors: [
+              new GraphQLError("role name must be at most 32 characters", {
+                extensions: { code: "BAD_USER_INPUT", field: "name" },
+              }),
+            ],
+          },
+        },
+      ];
+
+      renderRoles([CUSTOM_ROLE], mocks);
+
+      await user.click(screen.getByTestId(`admin-role-delete-btn-${CUSTOM_ROLE.id}`));
+      act(() => vi.advanceTimersByTime(5100));
+      vi.useRealTimers();
+
+      const banner = await screen.findByTestId("admin-roles-error");
+      expect(banner).toHaveTextContent(enMessages.Common.somethingWentWrong);
+      expect(banner.textContent).not.toContain("must be at most");
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   // Regression locks for the deliberate divergence from the shared kind-only
   // classifyMutationAuthError used by the create/update branches: delete passes
   // the server's FORBIDDEN message through verbatim (system-role protection) but
