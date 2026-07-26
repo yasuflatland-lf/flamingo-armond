@@ -229,14 +229,10 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 		// verbatim.
 		dedupeKey: identityKey,
 		newRow: func(front, back domain.CardText, now time.Time) (*domain.Card, error) {
-			c, err := domain.NewCardFromValidated(domain.CardgroupID(input.CardgroupID), front, back, 0)
+			c, err := domain.NewCardFromValidated(domain.CardgroupID(input.CardgroupID), front, back, 0, now)
 			if err != nil {
 				return nil, err
 			}
-			// NewCardFromValidated stamps per-card timestamps; pin the whole batch
-			// to one created_at. updated_at is database-owned, so the constructor's
-			// value is neither sent nor pinned here.
-			c.CreatedAt = now
 			return c, nil
 		},
 		tx: u.tx,
