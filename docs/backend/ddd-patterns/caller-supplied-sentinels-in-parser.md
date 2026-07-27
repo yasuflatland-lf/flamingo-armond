@@ -43,7 +43,7 @@ right sentinel for each field:
 ```go
 // domain/card.go
 
-func NewCard(cardgroupID, front, back string, position int) (*Card, error) {
+func NewCard(cardgroupID CardgroupID, front, back string, position int, now time.Time) (*Card, error) {
     // ...
     if _, err := ParseCardText(front, ErrCardFrontRequired, ErrCardFrontTooLong); err != nil {
         return nil, err
@@ -51,7 +51,7 @@ func NewCard(cardgroupID, front, back string, position int) (*Card, error) {
     if _, err := ParseCardText(back, ErrCardBackRequired, ErrCardBackTooLong); err != nil {
         return nil, err
     }
-    // ... generate ID, stamp timestamps, return &Card{...}, nil
+    // ... generate ID, stamp CreatedAt/UpdatedAt with now, return &Card{...}, nil
 }
 ```
 

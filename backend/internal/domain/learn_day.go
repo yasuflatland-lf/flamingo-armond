@@ -24,13 +24,11 @@ func EndOfLearnDay(now time.Time) time.Time {
 	return StartOfLearnDay(now).Add(24 * time.Hour)
 }
 
-// rescueMinElapsed is the minimum wall-clock time that must pass after a review
-// before the same card may be served early through the rescue window. The FSRS
-// memory model derives elapsed days as floor(hours/24), so a repeat inside the
-// same 24 hours counts as zero elapsed days: retrievability is 1 and the
-// stability growth factor exp((1-r)*W10)-1 is exactly 0. Such a review earns no
-// scheduling credit at all, so serving the card early only burns a rescue slot
-// while leaving the card below the learned threshold.
+// rescueMinElapsed is the minimum wall-clock time before any window may
+// re-serve a card. FSRS derives elapsed days as floor(hours/24), so a sub-24h
+// repeat counts as zero elapsed days and earns no scheduling credit because its
+// stability growth factor is zero. The rescue window was the first consumer of
+// this model-wide floor.
 const rescueMinElapsed = 24 * time.Hour
 
 // RescueReviewedBefore returns the latest last_review instant a card may carry
@@ -51,7 +49,7 @@ func LearnDayKey(t time.Time) string { return StartOfLearnDay(t).Format(time.Dat
 //	Now                  — filler:  ucs.due <= Now
 //	ReviewedBefore       — rescue+filler: ucs.last_review < ReviewedBefore (StartOfLearnDay)
 //	RescueDueBefore      — rescue:  ucs.due < RescueDueBefore (EndOfLearnDay, exclusive)
-//	RescueReviewedBefore — rescue:  ucs.last_review <= RescueReviewedBefore (24h floor)
+//	RescueReviewedBefore — rescue+filler: ucs.last_review <= RescueReviewedBefore (24h floor)
 //
 // Production code must construct via NewLearnWindow; field literals are for
 // tests that need non-canonical windows.
