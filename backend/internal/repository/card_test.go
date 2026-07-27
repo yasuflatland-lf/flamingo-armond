@@ -1296,10 +1296,10 @@ func TestCardRepository_FindDueCards_RescueUsesJSTDayEnd(t *testing.T) {
 }
 
 // TestCardRepository_FindDueCards_RescueRequiresWholeDaySinceLastReview pins the
-// rescue window's minimum-elapsed floor. FSRS derives elapsed days as
-// floor(hours/24), so a repeat inside the same 24 hours yields a stability
-// growth factor of exactly zero: serving such a card early burns a rescue slot
-// for no scheduling credit. The fixtures reproduce the motivating case — a card
+// rescue window's minimum-elapsed floor. FSRS derives elapsed days as a UTC
+// calendar-date difference, so a repeat inside the same 24 hours can yield a
+// stability growth factor of exactly zero: serving such a card early burns a
+// rescue slot for no scheduling credit. The fixtures reproduce the motivating case — a card
 // failed at 23:00 JST and revisited at 09:00 JST the next morning is a new JST
 // learn day (so the reviewedBefore cutoff admits it) yet only 10 hours have
 // elapsed.

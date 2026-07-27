@@ -91,11 +91,10 @@ incoming timestamp reads earlier than the stored last review. The guard is the
 [`backend/internal/domain/service/fsrs_scheduler.go`](../../../backend/internal/domain/service/fsrs_scheduler.go).
 
 The clamp is a domain safety rule, not an implementation convenience. A backward
-clock step — an NTP correction, cross-instance skew — makes the scheduling
-library's elapsed-days float negative, and Go's conversion of a negative float to
-`uint64` is implementation-dependent (Go spec, Conversions). The corrupted count
-is written straight back into the persisted scheduling state, so one skewed
-request permanently damages that card's schedule. Clamping keeps elapsed time
+clock step — an NTP correction, cross-instance skew — leaves `LastReview` after
+`now`, which go-fsrs rejects as an invalid card (`validate.go`). `Apply` panics on
+that error rather than widening its single-value signature, so one skewed request
+would surface as an INTERNAL GraphQL error instead of a review. Clamping keeps elapsed time
 non-negative, at the cost of treating a backward-skewed review as if it happened
 at the instant of the previous one. Any reimplementation of the `ApplyRating`
 path must reproduce it.

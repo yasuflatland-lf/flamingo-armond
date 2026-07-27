@@ -51,10 +51,10 @@ func (s *FSRSScheduler) Apply(state domain.FSRSState, rating domain.Rating, now 
 		panic(fmt.Sprintf("service: fsrs scheduler: invalid Rating %d", int(rating)))
 	}
 
-	// A backward clock step (NTP, cross-instance skew) would make the library's
-	// elapsed-days float negative; the float->uint64 conversion of a negative
-	// value is implementation-dependent (Go spec, Conversions) and corrupts the
-	// persisted state on amd64. Clamp so elapsed time can never be negative.
+	// A backward clock step (NTP, cross-instance skew) leaves LastReview after
+	// now, which the library's card validation rejects — and the error arm below
+	// panics, so an unclamped skew would turn a routine review into an INTERNAL
+	// error. Clamp so elapsed time can never be negative.
 	if now.Before(state.LastReview) {
 		now = state.LastReview
 	}
