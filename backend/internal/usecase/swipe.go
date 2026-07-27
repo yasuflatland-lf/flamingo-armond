@@ -196,10 +196,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			)
 			return nil
 		}
-		current := existing
-		if current == nil {
-			current = domain.NewUserCardFSRSForNewCard(domain.UserID(user.Sub), card.ID, now)
-		}
+		current := domain.UserCardFSRSOrNew(existing, domain.UserID(user.Sub), card.ID, now)
 		// Snapshot the pre-swipe state before applyRating mutates current.State
 		// in place. For a brand-new card current came from
 		// NewUserCardFSRSForNewCard, so before.Phase == FSRSPhaseNew.

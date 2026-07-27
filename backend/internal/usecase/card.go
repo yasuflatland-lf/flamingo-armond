@@ -270,7 +270,8 @@ func (u *cardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 		return CreateCardOutcome{}, err
 	}
 
-	card, err := domain.NewCard(domain.CardgroupID(in.CardgroupID), in.Front, in.Back, 0)
+	now := time.Now().UTC()
+	card, err := domain.NewCard(domain.CardgroupID(in.CardgroupID), in.Front, in.Back, 0, now)
 	if err != nil {
 		return CreateCardOutcome{}, translateCardErr(err)
 	}

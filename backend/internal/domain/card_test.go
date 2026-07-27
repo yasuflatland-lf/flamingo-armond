@@ -38,25 +38,26 @@ func TestNewCard(t *testing.T) {
 	t.Parallel()
 
 	const zwjEmoji = "👨‍👩‍👧‍👦"
+	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
 
 	t.Run("valid input constructs a fully-formed card", func(t *testing.T) {
 		t.Parallel()
 
-		c, err := NewCard("cg-1", "  front  ", "back", 7)
+		c, err := NewCard("cg-1", "  front  ", "back", 7, now)
 		require.NoError(t, err)
 		require.NotEmpty(t, c.ID, "constructor must generate an ID")
 		require.Equal(t, CardgroupID("cg-1"), c.CardgroupID)
 		require.Equal(t, CardText("front"), c.Front, "front must be trimmed via ParseCardText")
 		require.Equal(t, CardText("back"), c.Back)
 		require.Equal(t, 7, c.Position)
-		require.False(t, c.CreatedAt.IsZero(), "constructor must stamp CreatedAt")
-		require.Equal(t, c.CreatedAt, c.UpdatedAt, "CreatedAt and UpdatedAt must match at construction")
+		require.Equal(t, now, c.CreatedAt)
+		require.Equal(t, now, c.UpdatedAt)
 	})
 
 	t.Run("valid at max grapheme length", func(t *testing.T) {
 		t.Parallel()
 
-		c, err := NewCard("cg", strings.Repeat(zwjEmoji, 500), strings.Repeat("b", 500), 0)
+		c, err := NewCard("cg", strings.Repeat(zwjEmoji, 500), strings.Repeat("b", 500), 0, now)
 		require.NoError(t, err)
 		require.Equal(t, CardText(strings.Repeat(zwjEmoji, 500)), c.Front)
 	})
@@ -78,11 +79,20 @@ func TestNewCard(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			c, err := NewCard("cg", tc.front, tc.back, 0)
+			c, err := NewCard("cg", tc.front, tc.back, 0, now)
 			require.Nil(t, c, "no aggregate may be constructed from invalid input")
 			require.ErrorIs(t, err, tc.sentinelErr, "got %v", err)
 		})
 	}
+}
+
+func TestNewCardUsesProvidedTime(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(0, 0).UTC()
+	c, err := NewCard("cg", "front", "back", 0, now)
+	require.NoError(t, err)
+	require.Equal(t, now, c.CreatedAt)
 }
 
 // TestNewCard_IDFailure pins the id-generation failure path through the newV7
@@ -92,7 +102,8 @@ func TestNewCard_IDFailure(t *testing.T) {
 	newV7 = func() (uuid.UUID, error) { return uuid.UUID{}, errors.New("crypto/rand unavailable") }
 	t.Cleanup(func() { newV7 = orig })
 
-	c, err := NewCard("cg", "front", "back", 0)
+	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
+	c, err := NewCard("cg", "front", "back", 0, now)
 	require.Nil(t, c)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "card: new id")
@@ -102,10 +113,12 @@ func TestNewCard_IDFailure(t *testing.T) {
 func TestNewCardFromValidated(t *testing.T) {
 	t.Parallel()
 
+	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
+
 	t.Run("valid VOs construct a fully-formed card without re-validation", func(t *testing.T) {
 		t.Parallel()
 
-		c, err := NewCardFromValidated(CardgroupID("cg-1"), CardText("front"), CardText("back"), 7)
+		c, err := NewCardFromValidated(CardgroupID("cg-1"), CardText("front"), CardText("back"), 7, now)
 		require.NoError(t, err)
 		require.NotEmpty(t, c.ID, "constructor must generate an ID")
 		require.Equal(t, CardgroupID("cg-1"), c.CardgroupID)
@@ -122,7 +135,7 @@ func TestNewCardFromValidated(t *testing.T) {
 		// A CardText VO with surrounding whitespace can only exist if a caller
 		// bypasses ParseCardText; NewCardFromValidated must not trim it, proving
 		// it skips ParseCardText.
-		c, err := NewCardFromValidated(CardgroupID("cg"), CardText("  raw  "), CardText("back"), 0)
+		c, err := NewCardFromValidated(CardgroupID("cg"), CardText("  raw  "), CardText("back"), 0, now)
 		require.NoError(t, err)
 		require.Equal(t, CardText("  raw  "), c.Front, "front must be stored verbatim, not re-trimmed")
 	})
@@ -140,7 +153,7 @@ func TestNewCardFromValidated(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			c, err := NewCardFromValidated(CardgroupID("cg"), tc.front, tc.back, 0)
+			c, err := NewCardFromValidated(CardgroupID("cg"), tc.front, tc.back, 0, now)
 			require.Nil(t, c, "no aggregate may be constructed from a zero-value CardText")
 			require.ErrorIs(t, err, tc.sentinelErr, "got %v", err)
 		})
@@ -154,7 +167,8 @@ func TestNewCardFromValidated_IDFailure(t *testing.T) {
 	newV7 = func() (uuid.UUID, error) { return uuid.UUID{}, errors.New("crypto/rand unavailable") }
 	t.Cleanup(func() { newV7 = orig })
 
-	c, err := NewCardFromValidated(CardgroupID("cg"), CardText("front"), CardText("back"), 0)
+	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
+	c, err := NewCardFromValidated(CardgroupID("cg"), CardText("front"), CardText("back"), 0, now)
 	require.Nil(t, c)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "card: new id")

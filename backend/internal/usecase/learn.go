@@ -49,12 +49,6 @@ type LearnUsecase interface {
 	// schedule ordering is applied and nothing is written. Returns Unauthenticated
 	// when the caller does not own the cardgroup, BadUserInput when the cardgroup is missing.
 	PracticeTodaysCards(ctx context.Context, cardgroupID string, limit *int) ([]*domain.Card, error)
-	// DefaultIfNew returns ucs unchanged when the user already has a scheduling
-	// record for the card, otherwise the default new-card FSRS state. "A missing
-	// FSRS record means a brand-new card with default state" is an application
-	// policy; this method keeps that decision out of the presentation layer while
-	// the resolver retains the DataLoader batch that produces the nil input.
-	DefaultIfNew(ucs *domain.UserCardFSRS, userID domain.UserID, cardID string, createdAt time.Time) *domain.UserCardFSRS
 }
 
 type learnUsecase struct {
@@ -215,18 +209,6 @@ func (u *learnUsecase) PracticeTodaysCards(ctx context.Context, cardgroupID stri
 		cards = append(cards, row.Card)
 	}
 	return cards, nil
-}
-
-// DefaultIfNew implements the new-card FSRS default policy: a nil scheduling
-// record (the DataLoader's documented contract for a card the user has never
-// seen) is synthesized into the default new-card state; a non-nil record passes
-// through unchanged. The resolver calls this after its batched Load so the
-// "missing record means default state" decision lives in the application layer.
-func (u *learnUsecase) DefaultIfNew(ucs *domain.UserCardFSRS, userID domain.UserID, cardID string, createdAt time.Time) *domain.UserCardFSRS {
-	if ucs != nil {
-		return ucs
-	}
-	return domain.NewUserCardFSRSForNewCard(userID, cardID, createdAt)
 }
 
 func (u *learnUsecase) clampLimit(limit int) int {
