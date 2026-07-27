@@ -170,9 +170,13 @@ function EditRoleSheetBody({
   );
 }
 
-/** Convert any thrown value to a user-facing string. */
-function toMessage(err: unknown): string {
-  return getBackendErrorBanner(err) ?? (err instanceof Error ? err.message : String(err));
+/**
+ * Convert a thrown value to a user-facing banner string.
+ * The caller supplies a localized fallback because raw backend messages are
+ * untranslated and may expose text deliberately omitted from console logs.
+ */
+function toMessage(err: unknown, fallback: string): string {
+  return getBackendErrorBanner(err) ?? fallback;
 }
 
 export function AdminRolesClient({ initialRoles }: Props) {
@@ -304,7 +308,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
           name: err instanceof Error ? err.name : "unknown",
           codes,
         });
-        setDeleteError(toMessage(err));
+        setDeleteError(toMessage(err, tCommon("somethingWentWrong")));
       },
     });
   }

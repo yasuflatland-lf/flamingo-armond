@@ -1179,16 +1179,47 @@ func TestCardRepository_FindDueCards_NullLastRatingFallsIntoFiller(t *testing.T)
 	repo := repository.NewCardRepository(testDB.GORM)
 	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
 	now := time.Date(2026, 7, 19, 3, 0, 0, 0, time.UTC)
-	start := domain.StartOfLearnDay(now)
 
 	card := newCard(cg.ID, "null-last-rating", "back")
 	require.NoError(t, repo.Create(ctx, card))
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, card, now, now.Add(-time.Hour), start.Add(-time.Hour), domain.LearnedStabilityDays, 0)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, card, now, now.Add(-time.Hour), now.Add(-25*time.Hour), domain.LearnedStabilityDays, 0)
 
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.NewLearnWindow(now), 10)
 	require.NoError(t, err)
 	require.Equal(t, []string{card.ID}, repoCardIDs(got))
 	require.False(t, got[0].Rescue, "NULL last_rating with learned stability belongs to filler")
+}
+
+// TestCardRepository_FindDueCards_FillerIncludesExactElapsedFloor pins the
+// filler window's inclusive last_review <= now-24h boundary.
+func TestCardRepository_FindDueCards_FillerIncludesExactElapsedFloor(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Date(2026, 7, 19, 3, 0, 0, 0, time.UTC)
+
+	card := newCard(cg.ID, "filler-at-elapsed-floor", "back")
+	require.NoError(t, repo.Create(ctx, card))
+	upsertDueCardState(
+		t,
+		ctx,
+		ucsRepo,
+		ownerID,
+		card,
+		now,
+		now,
+		domain.RescueReviewedBefore(now),
+		domain.LearnedStabilityDays,
+		domain.RatingGood,
+	)
+
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.NewLearnWindow(now), 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{card.ID}, repoCardIDs(got))
+	require.False(t, got[0].Rescue)
 }
 
 func TestCardRepository_FindDueCards_StabilityBoundary(t *testing.T) {

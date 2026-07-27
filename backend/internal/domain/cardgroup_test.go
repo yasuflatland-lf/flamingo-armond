@@ -150,10 +150,9 @@ func TestNewCardgroup(t *testing.T) {
 
 	owner := UserID("owner-001")
 	name := CardgroupName("My Deck")
+	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
 
-	before := time.Now().UTC()
-	cg, err := NewCardgroup(owner, name)
-	after := time.Now().UTC()
+	cg, err := NewCardgroup(owner, name, now)
 
 	require.NoError(t, err)
 	require.NotNil(t, cg)
@@ -165,15 +164,11 @@ func TestNewCardgroup(t *testing.T) {
 	require.Equal(t, owner, cg.OwnerID)
 	require.Equal(t, name, cg.Name)
 
-	// CreatedAt and UpdatedAt are stamped with the current UTC time and are
-	// equal to each other (a freshly constructed aggregate has not been modified).
-	require.Equal(t, cg.CreatedAt, cg.UpdatedAt)
-	require.False(t, cg.CreatedAt.IsZero(), "CreatedAt must be stamped")
-	require.False(t, cg.CreatedAt.Before(before), "CreatedAt must be at or after the construction window start")
-	require.False(t, cg.CreatedAt.After(after), "CreatedAt must be at or before the construction window end")
+	require.Equal(t, now, cg.CreatedAt)
+	require.Equal(t, now, cg.UpdatedAt)
 
 	// Two constructions produce distinct ids.
-	other, err := NewCardgroup(owner, name)
+	other, err := NewCardgroup(owner, name, now)
 	require.NoError(t, err)
 	require.NotEqual(t, cg.ID, other.ID)
 }
