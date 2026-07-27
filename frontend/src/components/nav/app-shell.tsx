@@ -1,4 +1,5 @@
 import { useTranslations } from "next-intl";
+import { OfflineBanner } from "@/components/pwa/offline-banner";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { GlobalRail } from "./global-rail";
 import { LogoDrawer } from "./logo-drawer";
@@ -59,6 +60,7 @@ export function AppShell({ user, isAdmin, children }: AppShellProps) {
           <LogoDrawer user={user} isAdmin={isAdmin} />
         </header>
 
+        <OfflineBanner />
         <SidebarInset>{children}</SidebarInset>
       </div>
     </SidebarProvider>

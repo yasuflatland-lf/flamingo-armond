@@ -255,7 +255,9 @@
     "installHeading": "Install {brand}",
     "installInstruction": "Tap the Share button, then “Add to Home Screen”.",
     "hintLabel": "Install hint",
-    "dismissLabel": "Dismiss install hint"
+    "dismissLabel": "Dismiss install hint",
+    "offlineHeading": "You are offline",
+    "offlineBody": "Changes will not be saved until the connection returns."
   },
   "Profile": {
     "title": "Profile",
