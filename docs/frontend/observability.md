@@ -17,7 +17,7 @@ xxxxxxxx-xxxx-7xxx-yxxx-xxxxxxxxxxxx
 **Browser (Apollo link chain).** `frontend/src/lib/apollo/request-id-link.ts` exports `requestIdLink`, an Apollo `setContext` link. It checks for an existing `X-Request-ID` header case-insensitively; if none is found it generates a fresh UUID v7 and attaches it. The link is prepended as the first link in `makeClient()`:
 
 ```ts
-from([requestIdLink, authLink, makeApqLink(), httpLink])
+from([requestIdLink, makeRetryLink(), authLink, makeApqLink(), httpLink])
 ```
 
 Being first in the chain ensures the ID is present for every subsequent link and for the outbound HTTP request.
