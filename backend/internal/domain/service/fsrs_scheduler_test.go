@@ -62,11 +62,11 @@ func TestFSRSScheduler_Apply_InvalidPhasePanics(t *testing.T) {
 }
 
 // TestFSRSScheduler_Apply_InvalidRatingPanics pins the grade guard at the
-// scheduler boundary. go-fsrs does not reject an out-of-range grade: Scheduler.
-// Review dispatches on it through a map with no default arm and returns a
-// zero-valued SchedulingInfo, so an unguarded call would wipe the card's
-// stability and difficulty while ElapsedDaysAt still reported real elapsed time.
-// That is the same programmer-error guard as the invalid-phase one above.
+// scheduler boundary. v4's validateRating rejects an out-of-range grade, which
+// Apply also turns into a panic, so the guard is what keeps the failure
+// attributable: it names the caller's grade instead of surfacing a library
+// validation string. That is the same programmer-error guard as the
+// invalid-phase one above.
 func TestFSRSScheduler_Apply_InvalidRatingPanics(t *testing.T) {
 	t.Parallel()
 
