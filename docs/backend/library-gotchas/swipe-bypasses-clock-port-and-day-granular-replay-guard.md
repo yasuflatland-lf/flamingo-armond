@@ -8,7 +8,7 @@ constraints, not overlooked defects.
 
 ## `swipeUsecase` bypasses the `Clock` port
 
-**The deviation is asymmetric clock ownership.** `LearnUsecase` and
+**The deviation is asymmetric clock ownership.** `learnUsecase` and
 `statsUsecase` hold the shared `usecase.Clock`, accept it in their constructors,
 default it to `systemClock`, and read `u.clock.Now().UTC()`. `swipeUsecase`
 holds no `Clock`; it reads the ambient wall clock inside its transaction,
@@ -17,9 +17,7 @@ immediately before loading the user's FSRS row:
 ```go
 // backend/internal/usecase/swipe.go
 now = time.Now().UTC()
-byCardID, err := u.userFSRSRepo.FindByUserAndCardIDsTx(
-    ctx, tx, user.Sub, []string{card.ID},
-)
+byCardID, err := u.userFSRSRepo.FindByUserAndCardIDsTx(ctx, tx, user.Sub, []string{card.ID})
 ```
 
 **The main cost is the missing test seam.** The swipe path cannot be exercised
@@ -37,13 +35,11 @@ fall between fixture construction and the usecase's own read and invert the
 boundary assertions. That race window is only microseconds wide, has never
 been observed, and should not be described as an active flake.
 
-**The correctness severity is low today.** The formal skew configuration keeps
-`MinInterval = 24`, permits the swipe read to lead the serve read by one hour,
-and still holds `NoZeroCreditReview`: 7,122 states were generated, 5,924 were
-distinct, and the search depth was 57. See the
-[captured learn-day results](../../superpowers/verification/learn-session-invariants/README.md#learn-day-results).
-That evidence classifies this as a testability and consistency problem under
-current scheduling, not a demonstrated production correctness failure.
+**The correctness severity is low today.** A TLA+ model of the learn day that
+keeps `MinInterval = 24` and permits the swipe read to lead the serve read by
+one hour still holds `NoZeroCreditReview`, across 5,924 distinct states at
+search depth 57. Under current scheduling this is therefore a testability and
+consistency problem, not a demonstrated production correctness failure.
 
 **The risk becomes reachable if time must be shared across operations.** A
 future rule that depends on a reproducible request/session instant, or that
@@ -63,8 +59,8 @@ The recording path treats any repeat within the same JST learn day as a replay:
 
 ```go
 // backend/internal/usecase/swipe.go
-if existing != nil &&
-    domain.ReviewedWithinLearnDay(existing.State.LastReview, now) {
+if existing != nil && domain.ReviewedWithinLearnDay(existing.State.LastReview, now) {
+    // ... structured log of the ignored repeat ...
     return nil
 }
 ```
@@ -91,11 +87,11 @@ a card can become due after the JST date changes but before a whole elapsed day.
 [`backend/internal/domain/mastery_tier.go`](../../../backend/internal/domain/mastery_tier.go)
 already records that the flag may be revisited.
 
-**The model shows the exact failure.** With `MinInterval = 1`,
-`NoZeroCreditReview` fails at State 29. A card is reviewed at hour 23, becomes
-due at hour 24, crosses the learn-day boundary, passes the day-granular
-recording guard, and is reviewed again with `credits=<<24, 1>>`. See the
-[captured counterexample](../../superpowers/verification/learn-session-invariants/README.md#learn-day-results).
+**The model shows the exact failure.** Re-running the same TLA+ model with
+`MinInterval = 1` violates `NoZeroCreditReview` in 29 steps: a card is reviewed
+at hour 23, becomes due at hour 24, crosses the learn-day boundary, passes the
+day-granular recording guard, and is reviewed again — crediting the schedule
+with one hour of elapsed time instead of a whole day.
 
 **The deferred fix belongs on the recording side.** If sub-day intervals return,
 replace `ReviewedWithinLearnDay` in the swipe replay check with a domain-owned
@@ -111,5 +107,3 @@ domain rather than spelling duration arithmetic directly in the usecase.
   the stats-path `Clock` injection.
 - [`backend/internal/usecase/swipe.go`](../../../backend/internal/usecase/swipe.go) —
   the ambient read and recording-side replay guard.
-- [`docs/superpowers/verification/learn-session-invariants/README.md`](../../superpowers/verification/learn-session-invariants/README.md#learn-session-invariant-models) —
-  executable models, captured output, and rerun commands.
