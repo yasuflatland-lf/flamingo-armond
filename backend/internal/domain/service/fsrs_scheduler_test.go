@@ -61,6 +61,41 @@ func TestFSRSScheduler_Apply_InvalidPhasePanics(t *testing.T) {
 	}
 }
 
+// TestFSRSScheduler_Apply_InvalidRatingPanics pins the grade guard at the
+// scheduler boundary. go-fsrs does not reject an out-of-range grade: Scheduler.
+// Review dispatches on it through a map with no default arm and returns a
+// zero-valued SchedulingInfo, so an unguarded call would wipe the card's
+// stability and difficulty while ElapsedDaysAt still reported real elapsed time.
+// That is the same programmer-error guard as the invalid-phase one above.
+func TestFSRSScheduler_Apply_InvalidRatingPanics(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
+	scheduler := NewFSRSScheduler()
+
+	for _, rating := range []domain.Rating{0, 5} {
+		state := domain.NewFSRSStateForNewCard(now.Add(-24 * time.Hour))
+
+		require.Panics(t, func() {
+			scheduler.Apply(state, rating, now)
+		}, "an out-of-range Rating must fail loudly before reaching the scheduler library")
+	}
+
+	// Every recognised rating still schedules normally.
+	for _, rating := range []domain.Rating{
+		domain.RatingAgain,
+		domain.RatingHard,
+		domain.RatingGood,
+		domain.RatingEasy,
+	} {
+		state := domain.NewFSRSStateForNewCard(now.Add(-24 * time.Hour))
+
+		require.NotPanics(t, func() {
+			scheduler.Apply(state, rating, now)
+		})
+	}
+}
+
 func TestFSRSScheduler_Apply_BackwardClockSkewClamped(t *testing.T) {
 	t.Parallel()
 

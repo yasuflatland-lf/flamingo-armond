@@ -3,6 +3,7 @@ package domain
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -96,6 +97,48 @@ func TestIsValidDifficulty(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tc.want, IsValidDifficulty(tc.input))
+		})
+	}
+}
+
+// TestRescueMinElapsedMatchesElapsedDayRollover pins the scheduling-credit
+// boundary to the rescue window's admission floor. A card admitted at exactly
+// rescueMinElapsed must receive one elapsed day of scheduling credit, while a
+// card just below that floor must receive none.
+//
+// The backward-skew row is a full day early on purpose: with a sub-24h skew the
+// unguarded expression truncates to the same 0 the guard returns, so deleting
+// the guard would leave the row green.
+func TestRescueMinElapsedMatchesElapsedDayRollover(t *testing.T) {
+	t.Parallel()
+
+	lastReview := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name       string
+		phase      FSRSPhase
+		lastReview time.Time
+		now        time.Time
+		want       int
+	}{
+		{"23h59m since last review", FSRSPhaseReview, lastReview, lastReview.Add(23*time.Hour + 59*time.Minute), 0},
+		{"exactly 24h since last review", FSRSPhaseReview, lastReview, lastReview.Add(24 * time.Hour), 1},
+		{"47h59m since last review", FSRSPhaseReview, lastReview, lastReview.Add(47*time.Hour + 59*time.Minute), 1},
+		{"exactly 48h since last review", FSRSPhaseReview, lastReview, lastReview.Add(48 * time.Hour), 2},
+		{"new card", FSRSPhaseNew, lastReview, lastReview.Add(48 * time.Hour), 0},
+		{"no last review", FSRSPhaseReview, time.Time{}, lastReview, 0},
+		{"now a second before last review", FSRSPhaseReview, lastReview, lastReview.Add(-time.Second), 0},
+		{"now a full day before last review", FSRSPhaseReview, lastReview, lastReview.Add(-25 * time.Hour), 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			state := FSRSState{
+				Phase:      tc.phase,
+				LastReview: tc.lastReview,
+			}
+			require.Equal(t, tc.want, state.ElapsedDaysAt(tc.now))
 		})
 	}
 }
