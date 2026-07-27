@@ -312,28 +312,25 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) (
 	return seeded, nil
 }
 
-// copyMasterCardsIntoTx deep-copies the supplied master cards into the
-// destination cardgroup with a fresh id and upserts them on (cardgroup_id, front)
-// inside the caller's transaction. Callers list the master cards first and pass
-// them in, so this helper stays free of the listing step and the caller controls
-// the operation order. pin, when non-nil, overrides every copied card's
-// CreatedAt (import pins it to the new cardgroup's CreatedAt; merge passes nil
-// and keeps the constructor's time). The database assigns updated_at uniformly
-// from the transaction timestamp. Returns the insert/update tally. MUST NOT
-// embed a fixed eris layer prefix — the
-// public callers apply their own wrap so the error_chain attributes the failure
-// to the calling operation.
+// copyMasterCardsIntoTx copies master cards into destCG with fresh ids and upserts
+// them on (cardgroup_id, front) in the caller's transaction; the database owns
+// updated_at. A non-nil pin supplies one shared CreatedAt for the batch, nil stamps
+// each card with the current UTC time. MUST NOT embed a fixed eris layer prefix —
+// the public callers wrap so the error_chain names the calling operation.
 func (u *masterDeckUsecase) copyMasterCardsIntoTx(
 	ctx context.Context, tx repository.Tx, masterCards []*domain.MasterCard, destCG domain.CardgroupID, pin *time.Time,
 ) (repository.UpsertManyTxResult, error) {
 	userCards := make([]*domain.Card, 0, len(masterCards))
 	for _, mc := range masterCards {
-		card, err := domain.NewCardFromValidated(destCG, mc.Front, mc.Back, mc.Position)
+		var now time.Time
+		if pin != nil {
+			now = *pin
+		} else {
+			now = time.Now().UTC()
+		}
+		card, err := domain.NewCardFromValidated(destCG, mc.Front, mc.Back, mc.Position, now)
 		if err != nil {
 			return repository.UpsertManyTxResult{}, eris.Wrap(err, "new card from master")
-		}
-		if pin != nil {
-			card.CreatedAt = *pin
 		}
 		userCards = append(userCards, card)
 	}
@@ -389,7 +386,8 @@ func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx repositor
 		return nil, eris.Wrap(repository.ErrNotFound, "master cardgroup holds no cards")
 	}
 
-	newCG, err := domain.NewCardgroup(domain.UserID(ownerID), master.Name)
+	now := time.Now().UTC()
+	newCG, err := domain.NewCardgroup(domain.UserID(ownerID), master.Name, now)
 	if err != nil {
 		return nil, eris.Wrap(err, "new cardgroup")
 	}

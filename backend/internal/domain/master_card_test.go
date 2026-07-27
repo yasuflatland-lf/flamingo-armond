@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -13,11 +14,12 @@ func TestNewMasterCard(t *testing.T) {
 	t.Parallel()
 
 	const zwjEmoji = "👨‍👩‍👧‍👦"
+	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
 
 	t.Run("valid input constructs a fully-formed master card", func(t *testing.T) {
 		t.Parallel()
 
-		c, err := NewMasterCard("mcg", "  front  ", "back", 3)
+		c, err := NewMasterCard("mcg", "  front  ", "back", 3, now)
 		require.NoError(t, err)
 		require.NotEmpty(t, c.ID, "constructor must generate an ID")
 		require.Equal(t, "mcg", c.MasterCardgroupID)
@@ -46,7 +48,7 @@ func TestNewMasterCard(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			c, err := NewMasterCard("mcg", tc.front, tc.back, 0)
+			c, err := NewMasterCard("mcg", tc.front, tc.back, 0, now)
 			require.Nil(t, c, "no aggregate may be constructed from invalid input")
 			require.ErrorIs(t, err, tc.sentinelErr, "got %v", err)
 		})
@@ -60,7 +62,8 @@ func TestNewMasterCard_IDFailure(t *testing.T) {
 	newV7 = func() (uuid.UUID, error) { return uuid.UUID{}, errors.New("crypto/rand unavailable") }
 	t.Cleanup(func() { newV7 = orig })
 
-	c, err := NewMasterCard("mcg", "front", "back", 0)
+	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
+	c, err := NewMasterCard("mcg", "front", "back", 0, now)
 	require.Nil(t, c)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "master card: new id")
@@ -209,18 +212,20 @@ func TestMasterCardUpdateBack(t *testing.T) {
 func TestNewMasterCardFromValidated(t *testing.T) {
 	t.Parallel()
 
+	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
+
 	t.Run("valid VOs construct a fully-formed master card without re-validation", func(t *testing.T) {
 		t.Parallel()
 
-		c, err := NewMasterCardFromValidated("mcg-1", CardText("front"), CardText("back"), 7)
+		c, err := NewMasterCardFromValidated("mcg-1", CardText("front"), CardText("back"), 7, now)
 		require.NoError(t, err)
 		require.NotEmpty(t, c.ID, "constructor must generate an ID")
 		require.Equal(t, "mcg-1", c.MasterCardgroupID)
 		require.Equal(t, CardText("front"), c.Front)
 		require.Equal(t, CardText("back"), c.Back)
 		require.Equal(t, 7, c.Position)
-		require.False(t, c.CreatedAt.IsZero(), "constructor must stamp CreatedAt")
-		require.Equal(t, c.CreatedAt, c.UpdatedAt, "CreatedAt and UpdatedAt must match at construction")
+		require.Equal(t, now, c.CreatedAt)
+		require.Equal(t, now, c.UpdatedAt)
 	})
 
 	t.Run("VOs are stored verbatim, not re-parsed", func(t *testing.T) {
@@ -229,7 +234,7 @@ func TestNewMasterCardFromValidated(t *testing.T) {
 		// A CardText VO with surrounding whitespace can only exist if a caller
 		// bypasses ParseCardText; NewMasterCardFromValidated must not trim it,
 		// proving it skips the second grapheme scan NewMasterCard performs.
-		c, err := NewMasterCardFromValidated("mcg", CardText("  raw  "), CardText("back"), 0)
+		c, err := NewMasterCardFromValidated("mcg", CardText("  raw  "), CardText("back"), 0, now)
 		require.NoError(t, err)
 		require.Equal(t, CardText("  raw  "), c.Front, "front must be stored verbatim, not re-trimmed")
 	})
@@ -247,7 +252,7 @@ func TestNewMasterCardFromValidated(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			c, err := NewMasterCardFromValidated("mcg", tc.front, tc.back, 0)
+			c, err := NewMasterCardFromValidated("mcg", tc.front, tc.back, 0, now)
 			require.Nil(t, c, "no aggregate may be constructed from a zero-value CardText")
 			require.ErrorIs(t, err, tc.sentinelErr, "got %v", err)
 		})
@@ -262,7 +267,8 @@ func TestNewMasterCardFromValidated_IDFailure(t *testing.T) {
 	newV7 = func() (uuid.UUID, error) { return uuid.UUID{}, errors.New("crypto/rand unavailable") }
 	t.Cleanup(func() { newV7 = orig })
 
-	c, err := NewMasterCardFromValidated("mcg", CardText("front"), CardText("back"), 0)
+	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
+	c, err := NewMasterCardFromValidated("mcg", CardText("front"), CardText("back"), 0, now)
 	require.Nil(t, c)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "master card: new id")

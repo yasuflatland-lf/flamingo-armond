@@ -37,7 +37,7 @@ type dueCardRow struct {
 }
 
 // Rescue window:   due IS NOT NULL AND due < learn-day end AND last_review < learn-day start AND last_review <= now-24h.
-// Filler window:   due IS NOT NULL AND due <= now AND last_review < learn-day start.
+// Filler window:   due IS NOT NULL AND due <= now AND last_review < learn-day start AND last_review <= now-24h.
 // Practice window: last_review >= boundary; due not consulted.
 // Both usecase methods (NextDueCards and PracticeTodaysCards) derive the
 // boundaries from the shared domain.StartOfLearnDay and domain.EndOfLearnDay
@@ -65,10 +65,11 @@ type dueCardRow struct {
 // hours earns a stability growth factor of exactly zero and the rescue slot is
 // wasted. random() varies selection within the band.
 //
-// Filler window: the same last-review guard excludes cards swiped today, but
-// only non-rescue cards whose due has arrived (due <= window.Now) qualify. Its
-// predicate is disjoint from the rescue window, so no review row is fetched
-// twice. random() varies selection within the band.
+// Filler window: the same last-review guard and elapsed floor as rescue apply,
+// but only non-rescue cards whose due has arrived (due <= window.Now) qualify.
+// Long-term FSRS scheduling makes the floor implied by due <= now, so it excludes
+// nothing today while preventing a silent dependency on service.NewFSRSScheduler
+// keeping EnableShortTerm = false. random() varies selection within the band.
 //
 // New window: no FSRS row yet; random() samples uniformly across the whole
 // unseen pool so consecutive sessions surface different cards instead of
@@ -105,12 +106,12 @@ func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, window domain.Learn
 	}
 
 	fillerWhere := fmt.Sprintf(
-		"cards.cardgroup_id = ? AND ucs.due IS NOT NULL AND ucs.due <= ? AND ucs.last_review < ? AND (ucs.last_rating IS DISTINCT FROM %d AND ucs.stability >= %g)",
+		"cards.cardgroup_id = ? AND ucs.due IS NOT NULL AND ucs.due <= ? AND ucs.last_review < ? AND ucs.last_review <= ? AND (ucs.last_rating IS DISTINCT FROM %d AND ucs.stability >= %g)",
 		domain.RatingAgain, domain.LearnedStabilityDays,
 	)
 	fillerRows, err := dueRowsOn(db, userID,
 		fillerWhere,
-		[]any{cardgroupID, window.Now, window.ReviewedBefore},
+		[]any{cardgroupID, window.Now, window.ReviewedBefore, window.RescueReviewedBefore},
 		"random()",
 		limit,
 		"repository: card: find due cards")
