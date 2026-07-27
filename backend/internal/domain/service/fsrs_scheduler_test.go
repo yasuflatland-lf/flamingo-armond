@@ -61,6 +61,39 @@ func TestFSRSScheduler_Apply_InvalidPhasePanics(t *testing.T) {
 	}
 }
 
+// TestFSRSScheduler_Apply_InvalidRatingPanics pins the grade guard at the
+// scheduler boundary. An out-of-range grade is a programmer error, so allowing
+// one through would defer the failure to the scheduler library and force the
+// domain.FSRSScheduler interface to represent an unreachable recoverable error.
+func TestFSRSScheduler_Apply_InvalidRatingPanics(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
+	scheduler := NewFSRSScheduler()
+
+	for _, rating := range []domain.Rating{0, 5} {
+		state := domain.NewFSRSStateForNewCard(now.Add(-24 * time.Hour))
+
+		require.Panics(t, func() {
+			scheduler.Apply(state, rating, now)
+		}, "an out-of-range Rating must fail loudly before reaching the scheduler library")
+	}
+
+	// Every recognised rating still schedules normally.
+	for _, rating := range []domain.Rating{
+		domain.RatingAgain,
+		domain.RatingHard,
+		domain.RatingGood,
+		domain.RatingEasy,
+	} {
+		state := domain.NewFSRSStateForNewCard(now.Add(-24 * time.Hour))
+
+		require.NotPanics(t, func() {
+			scheduler.Apply(state, rating, now)
+		})
+	}
+}
+
 func TestFSRSScheduler_Apply_BackwardClockSkewClamped(t *testing.T) {
 	t.Parallel()
 

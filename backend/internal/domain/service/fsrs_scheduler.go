@@ -26,15 +26,23 @@ func NewFSRSScheduler() *FSRSScheduler {
 // It panics when state.Phase is not a recognised FSRSPhase. The fsrs.State cast
 // below feeds a library dispatch that has no default arm, so an unrecognised
 // phase would produce a zero-valued scheduling result and silently wipe the
-// card's state. Panicking rather than returning an error keeps the single-value
-// signature of the domain.FSRSScheduler consumer interface: no caller can build
-// an invalid phase — Phase is only ever set by this method or reconstituted by
-// the repository, whose read guard already rejects an unrecognised persisted
-// value — so this is a programmer-error guard of the same kind as the
-// constructor panic in domain.NewUserCardFSRSForNewCard.
+// card's state. An out-of-range Rating also panics because grades outside the
+// domain constants are a programmer error. Panicking rather than returning an
+// error keeps the single-value signature of the domain.FSRSScheduler consumer
+// interface: no caller can build an invalid phase — Phase is only ever set by
+// this method or reconstituted by the repository, whose read guard already
+// rejects an unrecognised persisted value — so these are programmer-error
+// guards of the same kind as the constructor panic in
+// domain.NewUserCardFSRSForNewCard.
+//
+// ElapsedDays on the returned state is computed by
+// domain.FSRSState.ElapsedDaysAt, not read from the scheduler library.
 func (s *FSRSScheduler) Apply(state domain.FSRSState, rating domain.Rating, now time.Time) domain.FSRSState {
 	if !state.Phase.IsValid() {
 		panic(fmt.Sprintf("service: fsrs scheduler: invalid FSRSPhase %d", int(state.Phase)))
+	}
+	if !rating.IsValid() {
+		panic(fmt.Sprintf("service: fsrs scheduler: invalid Rating %d", int(rating)))
 	}
 
 	// A backward clock step (NTP, cross-instance skew) would make the library's
@@ -49,7 +57,6 @@ func (s *FSRSScheduler) Apply(state domain.FSRSState, rating domain.Rating, now 
 		Due:           state.Due,
 		Stability:     state.Stability,
 		Difficulty:    state.Difficulty,
-		ElapsedDays:   uint64(state.ElapsedDays),
 		ScheduledDays: uint64(state.ScheduledDays),
 		Reps:          uint64(state.Reps),
 		Lapses:        uint64(state.Lapses),
@@ -61,7 +68,7 @@ func (s *FSRSScheduler) Apply(state domain.FSRSState, rating domain.Rating, now 
 		Due:           info.Card.Due,
 		Stability:     info.Card.Stability,
 		Difficulty:    info.Card.Difficulty,
-		ElapsedDays:   int(info.Card.ElapsedDays),
+		ElapsedDays:   state.ElapsedDaysAt(now),
 		ScheduledDays: int(info.Card.ScheduledDays),
 		Reps:          int(info.Card.Reps),
 		Lapses:        int(info.Card.Lapses),
