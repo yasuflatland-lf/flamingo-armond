@@ -61,9 +61,10 @@ type dueCardRow struct {
 // (the exclusive JST end-of-today). The day-granular due bound deliberately
 // surfaces rescue cards due later today. The early serve is floored by
 // window.RescueReviewedBefore (domain.RescueReviewedBefore, 24 hours before now):
-// FSRS counts elapsed days as floor(hours/24), so a repeat inside the same 24
-// hours earns a stability growth factor of exactly zero and the rescue slot is
-// wasted. random() varies selection within the band.
+// the floor is stated against domain.FSRSState.ElapsedDaysAt, the application's
+// own elapsed-days definition, so a repeat inside the same 24 hours counts as
+// zero elapsed days and the rescue slot is wasted. random() varies selection
+// within the band.
 //
 // Filler window: the same last-review guard and elapsed floor as rescue apply,
 // but only non-rescue cards whose due has arrived (due <= window.Now) qualify.
