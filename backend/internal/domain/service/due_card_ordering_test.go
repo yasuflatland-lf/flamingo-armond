@@ -238,6 +238,51 @@ func TestOrderingPolicy_Apply_NonDefaultRatioInterleavesOneToOne(t *testing.T) {
 	}
 }
 
+// TestOrderingPolicy_Apply_EveryAcceptedRatioServesNewCardInSessionPrefix pins
+// that every ratio ParseNewCardRatio accepts yields a new card within the first
+// domain.DefaultLearnSessionSize slots, because den <= that size makes the first
+// whole interleave cycle fit. Divisibility of den into the session size was the
+// originally specified assertion; an upper-bound cap makes it false.
+func TestOrderingPolicy_Apply_EveryAcceptedRatioServesNewCardInSessionPrefix(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
+	in := make([]domain.DueCard, 0, 2*domain.DefaultLearnSessionSize)
+	newSet := make(map[string]bool, domain.DefaultLearnSessionSize)
+	for i := 0; i < domain.DefaultLearnSessionSize; i++ {
+		id := fmt.Sprintf("new-%d", i)
+		newSet[id] = true
+		in = append(in, dueCard(id, domain.FSRSPhaseNew, base.Add(time.Duration(i)*time.Minute)))
+	}
+	for i := 0; i < domain.DefaultLearnSessionSize; i++ {
+		in = append(in, dueCard(
+			fmt.Sprintf("review-%d", i),
+			domain.FSRSPhaseReview,
+			base.Add(time.Duration(domain.DefaultLearnSessionSize+i)*time.Minute),
+		))
+	}
+
+	for den := 2; den <= domain.NewCardRatioDenMax; den++ {
+		for num := 1; num < den; num++ {
+			ratio, err := domain.ParseNewCardRatio(num, den)
+			if err != nil {
+				continue
+			}
+
+			ordered := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)), ratio)
+			hasNew := false
+			for _, card := range ordered[:domain.DefaultLearnSessionSize] {
+				if newSet[card.ID] {
+					hasNew = true
+					break
+				}
+			}
+			require.True(t, hasNew,
+				"accepted ratio %d/%d must serve a new card in the default session prefix", num, den)
+		}
+	}
+}
+
 func TestOrderingPolicy_Apply_SetEquality(t *testing.T) {
 	t.Parallel()
 
