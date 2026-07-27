@@ -237,7 +237,8 @@ func (r *masterCardgroupRepo) EnsureByName(ctx context.Context, name string) (*d
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: lookup")
 		}
 
-		m, err := domain.NewMasterCardgroup(cgName, domain.Description{}, false, 0)
+		now := time.Now().UTC()
+		m, err := domain.NewMasterCardgroup(cgName, domain.Description{}, false, 0, now)
 		if err != nil {
 			return eris.Wrap(err, "repository: master cardgroup: ensure by name: construct")
 		}

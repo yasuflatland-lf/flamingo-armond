@@ -1,13 +1,8 @@
-// Exact-rational arithmetic for the new-card ratio — the share of a learn
-// session that is never-seen cards.
-//
-// `updateNewCardRatio` accepts any reduced fraction with
-// 1 <= numerator < denominator <= 100, so an off-grid ratio (33/100) is a
-// legitimate stored state. That stored value IS a rational number, and every
-// question the UI asks about it — is it on the 5% grid, where does the
-// control sit, what do the labels read — has an exact integer answer, so the
-// helpers below scale to integers before dividing instead of dividing first and
-// rounding the IEEE-754 error away afterwards.
+// Exact-rational arithmetic for the share of a learn session using new cards.
+// `updateNewCardRatio` accepts reduced fractions satisfying
+// 1 <= numerator < denominator <= 20, so the on-grid 13/20 (65%) is a legitimate
+// stored state. Every UI question about its grid position or label has an exact
+// integer answer, so these helpers scale before dividing to avoid rounding error.
 
 /** Lowest new-card share the 5%-step control can select, in percent. */
 export const MIN = 5;

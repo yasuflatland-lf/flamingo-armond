@@ -54,13 +54,14 @@ func seedOwnedCardgroupWithCards(
 	t.Helper()
 	cgRepo := repository.NewCardgroupRepository(testDB.GORM)
 	cardRepo := repository.NewCardRepository(testDB.GORM)
+	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
 
-	cg, err := domain.NewCardgroup(domain.UserID(ownerID), domain.CardgroupName(name))
+	cg, err := domain.NewCardgroup(domain.UserID(ownerID), domain.CardgroupName(name), now)
 	require.NoError(t, err)
 	require.NoError(t, cgRepo.Create(ctx, cg))
 
 	for i, f := range fronts {
-		card, err := domain.NewCard(cg.ID, f.front, f.back, i)
+		card, err := domain.NewCard(cg.ID, f.front, f.back, i, now)
 		require.NoError(t, err)
 		require.NoError(t, cardRepo.Create(ctx, card))
 	}

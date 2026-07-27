@@ -23,6 +23,36 @@ func (s *stubScheduler) Apply(state FSRSState, rating Rating, now time.Time) FSR
 	return s.out
 }
 
+func TestUserCardFSRSOrNew(t *testing.T) {
+	t.Parallel()
+
+	createdAt := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
+	userID := UserID("u-1")
+	cardID := "card-1"
+
+	t.Run("nil record returns the default new-card state", func(t *testing.T) {
+		t.Parallel()
+
+		got := UserCardFSRSOrNew(nil, userID, cardID, createdAt)
+		want := NewUserCardFSRSForNewCard(userID, cardID, createdAt)
+
+		require.Equal(t, want, got)
+		require.Equal(t, userID, got.UserID)
+		require.Equal(t, cardID, got.CardID)
+		require.Equal(t, FSRSPhaseNew, got.State.Phase)
+		require.Equal(t, createdAt, got.State.LastReview)
+	})
+
+	t.Run("non-nil record returns the same pointer", func(t *testing.T) {
+		t.Parallel()
+
+		existing := NewUserCardFSRSForNewCard(UserID("u-9"), "card-9", createdAt.Add(-time.Hour))
+		got := UserCardFSRSOrNew(existing, userID, cardID, createdAt)
+
+		require.Same(t, existing, got)
+	})
+}
+
 func TestUserCardFSRS_ApplyRating_HappyPath(t *testing.T) {
 	t.Parallel()
 
