@@ -96,6 +96,41 @@ func TestFSRSScheduler_Apply_InvalidRatingPanics(t *testing.T) {
 	}
 }
 
+// TestFSRSScheduler_Apply_StabilityBelowLibraryMinimumPanics pins the one v4
+// validation error the domain's own guards cannot rule out. IsValidStability
+// admits any finite positive value, while go-fsrs rejects a non-New card whose
+// stability is under its own minimum, so a corrupt persisted row reaches the
+// error arm of Next. It panics rather than returning: the SchedulingInfo that
+// accompanies the error is zero-valued, so accepting it would overwrite the row
+// with stability 0, difficulty 0 and a zero-time due.
+func TestFSRSScheduler_Apply_StabilityBelowLibraryMinimumPanics(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
+	scheduler := NewFSRSScheduler()
+
+	state := domain.FSRSState{
+		Due:        now,
+		Stability:  0.0009,
+		Difficulty: domain.MinDifficulty,
+		Phase:      domain.FSRSPhaseReview,
+		LastReview: now.Add(-48 * time.Hour),
+	}
+	require.True(t, domain.IsValidStability(state.Stability),
+		"the fixture must be a stability the domain guard admits, or this proves nothing about the gap")
+
+	require.Panics(t, func() {
+		scheduler.Apply(state, domain.RatingGood, now)
+	}, "a stability the library rejects must fail loudly, not schedule from a zero-valued result")
+
+	// The library's floor is 0.001, and the boundary itself is accepted — so the
+	// panic above is the rejection of that specific value, not of the fixture.
+	state.Stability = 0.001
+	require.NotPanics(t, func() {
+		scheduler.Apply(state, domain.RatingGood, now)
+	})
+}
+
 func TestFSRSScheduler_Apply_BackwardClockSkewClamped(t *testing.T) {
 	t.Parallel()
 
