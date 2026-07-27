@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	defaultLearnNextDueLimit = 20
+	defaultLearnNextDueLimit = domain.DefaultLearnSessionSize
 	maxLearnNextDueLimit     = 100
 )
 
