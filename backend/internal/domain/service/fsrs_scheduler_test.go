@@ -62,9 +62,11 @@ func TestFSRSScheduler_Apply_InvalidPhasePanics(t *testing.T) {
 }
 
 // TestFSRSScheduler_Apply_InvalidRatingPanics pins the grade guard at the
-// scheduler boundary. An out-of-range grade is a programmer error, so allowing
-// one through would defer the failure to the scheduler library and force the
-// domain.FSRSScheduler interface to represent an unreachable recoverable error.
+// scheduler boundary. go-fsrs does not reject an out-of-range grade: Scheduler.
+// Review dispatches on it through a map with no default arm and returns a
+// zero-valued SchedulingInfo, so an unguarded call would wipe the card's
+// stability and difficulty while ElapsedDaysAt still reported real elapsed time.
+// That is the same programmer-error guard as the invalid-phase one above.
 func TestFSRSScheduler_Apply_InvalidRatingPanics(t *testing.T) {
 	t.Parallel()
 
