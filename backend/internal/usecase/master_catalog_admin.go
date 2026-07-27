@@ -10,6 +10,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/rotisserie/eris"
 
@@ -129,11 +130,13 @@ func (u *masterCatalogUsecase) CreateMaster(ctx context.Context, in CreateMaster
 		return CreateMasterOutcome{Validation: info}, nil
 	}
 
+	now := time.Now().UTC()
 	m, err := domain.NewMasterCardgroup(
 		name,
 		description,
 		derefOr(in.IsDefaultStarter, false),
 		derefOr(in.SortOrder, 0),
+		now,
 	)
 	if err != nil {
 		return CreateMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: create master: construct")

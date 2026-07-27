@@ -48,14 +48,12 @@ func (c *Card) BelongsToCardgroup(cardgroupID CardgroupID) bool {
 	return cardgroupID != "" && c.CardgroupID == cardgroupID
 }
 
-// NewCard constructs a Card aggregate, enforcing its invariants at construction
-// time: Front and Back are validated and trimmed through ParseCardText and a
-// fresh UUID v7 ID is generated. CreatedAt and UpdatedAt are stamped with the
-// current UTC time; batch callers may override both with a shared timestamp
-// before persisting. Returns the field-specific CardText sentinel (e.g.
-// ErrCardFrontRequired) on invalid input — callers translate it via
-// translateCardErr — or a wrapped error when ID generation fails.
-func NewCard(cardgroupID CardgroupID, front, back string, position int) (*Card, error) {
+// NewCard constructs a Card, validating and trimming Front and Back through
+// ParseCardText and generating a fresh UUID v7 ID. CreatedAt and UpdatedAt are
+// both stamped with now; batch callers pass one shared instant for the whole
+// batch. It returns a field-specific CardText sentinel on invalid input or a
+// wrapped error when ID generation fails.
+func NewCard(cardgroupID CardgroupID, front, back string, position int, now time.Time) (*Card, error) {
 	frontVO, err := ParseCardText(front, ErrCardFrontRequired, ErrCardFrontTooLong)
 	if err != nil {
 		return nil, err
@@ -68,7 +66,6 @@ func NewCard(cardgroupID CardgroupID, front, back string, position int) (*Card, 
 	if err != nil {
 		return nil, eris.Wrap(err, "card: new id")
 	}
-	now := time.Now().UTC()
 	return &Card{
 		ID:          id,
 		CardgroupID: cardgroupID,
@@ -80,15 +77,12 @@ func NewCard(cardgroupID CardgroupID, front, back string, position int) (*Card, 
 	}, nil
 }
 
-// NewCardFromValidated builds a Card from already-parsed CardText value objects,
-// skipping ParseCardText re-validation. Callers must pass VOs produced by a prior
-// Parse (e.g. MasterCard.Front/Back); the zero-value CardText is rejected via the
-// field-specific sentinel because the newtype's zero value is invalid by contract.
-// A fresh UUID v7 ID is generated and CreatedAt/UpdatedAt are stamped with the
-// current UTC time, mirroring NewCard; batch callers may override both with a
-// shared timestamp before persisting. Use NewCard for the untrusted string-input
-// path that still needs grapheme-bounds validation.
-func NewCardFromValidated(cardgroupID CardgroupID, front, back CardText, position int) (*Card, error) {
+// NewCardFromValidated builds a Card from parsed CardText values without
+// re-validation and rejects their invalid zero value. It generates a fresh UUID
+// v7 ID. CreatedAt and UpdatedAt are both stamped with now; batch callers pass
+// one shared instant for the whole batch. Use NewCard for untrusted strings that
+// still need grapheme-bounds validation.
+func NewCardFromValidated(cardgroupID CardgroupID, front, back CardText, position int, now time.Time) (*Card, error) {
 	if front == "" {
 		return nil, ErrCardFrontRequired
 	}
@@ -99,7 +93,6 @@ func NewCardFromValidated(cardgroupID CardgroupID, front, back CardText, positio
 	if err != nil {
 		return nil, eris.Wrap(err, "card: new id")
 	}
-	now := time.Now().UTC()
 	return &Card{
 		ID:          id,
 		CardgroupID: cardgroupID,

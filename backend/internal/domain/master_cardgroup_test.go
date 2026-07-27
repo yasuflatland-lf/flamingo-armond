@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -11,6 +12,8 @@ import (
 
 func TestNewMasterCardgroup(t *testing.T) {
 	t.Parallel()
+
+	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
 
 	t.Run("constructs a draft master cardgroup at version 1 with fields passed through", func(t *testing.T) {
 		t.Parallel()
@@ -20,7 +23,7 @@ func TestNewMasterCardgroup(t *testing.T) {
 
 		desc := "an intro deck"
 
-		m, err := NewMasterCardgroup(name, DescriptionFromPtr(&desc), true, 5)
+		m, err := NewMasterCardgroup(name, DescriptionFromPtr(&desc), true, 5, now)
 		require.NoError(t, err)
 		require.NotNil(t, m)
 
@@ -41,7 +44,7 @@ func TestNewMasterCardgroup(t *testing.T) {
 		name, err := ParseCardgroupName("Minimal")
 		require.NoError(t, err)
 
-		m, err := NewMasterCardgroup(name, Description{}, false, 0)
+		m, err := NewMasterCardgroup(name, Description{}, false, 0, now)
 		require.NoError(t, err)
 		require.Nil(t, m.Description.Ptr())
 		require.Equal(t, 1, m.Version)
@@ -61,6 +64,17 @@ func TestNewMasterCardgroup(t *testing.T) {
 	})
 }
 
+func TestNewMasterCardgroupUsesProvidedTime(t *testing.T) {
+	t.Parallel()
+
+	name, err := ParseCardgroupName("Starter")
+	require.NoError(t, err)
+	now := time.Unix(0, 0).UTC()
+	m, err := NewMasterCardgroup(name, Description{}, false, 0, now)
+	require.NoError(t, err)
+	require.Equal(t, now, m.CreatedAt)
+}
+
 // TestNewMasterCardgroup_IDFailure pins the id-generation failure path through
 // the newV7 test seam. Like TestNewCard_IDFailure it must NOT run in parallel:
 // it swaps the package-level seam (see ids_test.go).
@@ -72,7 +86,8 @@ func TestNewMasterCardgroup_IDFailure(t *testing.T) {
 	name, err := ParseCardgroupName("Starter")
 	require.NoError(t, err)
 
-	m, err := NewMasterCardgroup(name, Description{}, false, 0)
+	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
+	m, err := NewMasterCardgroup(name, Description{}, false, 0, now)
 	require.Nil(t, m)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "master cardgroup: new id")

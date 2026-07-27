@@ -273,7 +273,8 @@ func (u *masterCardUsecase) CreateMasterCard(ctx context.Context, in CreateMaste
 	if in.MasterCardgroupID == "" {
 		return CreateMasterCardOutcome{}, ucerr.NewValidationError("masterCardgroupId", "masterCardgroupId is required")
 	}
-	card, err := domain.NewMasterCard(in.MasterCardgroupID, in.Front, in.Back, 0)
+	now := time.Now().UTC()
+	card, err := domain.NewMasterCard(in.MasterCardgroupID, in.Front, in.Back, 0, now)
 	if err != nil {
 		return CreateMasterCardOutcome{}, translateCardErr(err)
 	}
@@ -449,14 +450,10 @@ func (u *masterCardUsecase) ImportMasterCards(ctx context.Context, in ImportMast
 		// ON CONFLICT INSERT (which would trip Postgres error 21000).
 		dedupeKey: frontMatchKey,
 		newRow: func(front, back domain.CardText, now time.Time) (*domain.MasterCard, error) {
-			c, err := domain.NewMasterCardFromValidated(in.MasterCardgroupID, front, back, 0)
+			c, err := domain.NewMasterCardFromValidated(in.MasterCardgroupID, front, back, 0, now)
 			if err != nil {
 				return nil, err
 			}
-			// NewMasterCardFromValidated stamps per-card timestamps; pin the whole
-			// batch to one created_at. updated_at is database-owned, so the
-			// constructor's value is neither sent nor pinned here.
-			c.CreatedAt = now
 			return c, nil
 		},
 		tx: u.tx,
