@@ -70,9 +70,10 @@ func newUpdateNewCardRatioWithDeps(
 //   - Anonymous (no auth context) → UNAUTHENTICATED. The auth check runs before
 //     validation so an invalid ratio never reveals the bounds to an
 //     unauthenticated caller.
-//   - A ratio outside 1 <= numerator < denominator <= 100 (after reduction), or
-//     one whose new-card share exceeds 4/5 (80%) — the review floor — → a
-//     field-scoped ValidationError the resolver maps to BAD_USER_INPUT.
+//   - A ratio outside 1 <= numerator < denominator <= domain.NewCardRatioDenMax
+//     (after reduction), or one whose new-card share exceeds 4/5 (80%) — the
+//     review floor — → a field-scoped ValidationError the resolver maps to
+//     BAD_USER_INPUT.
 //   - Authenticated caller with a valid ratio → updated preference + refreshed
 //     user row.
 //

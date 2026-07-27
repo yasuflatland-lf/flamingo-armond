@@ -14,13 +14,19 @@ import (
 // ParseNewCardRatio or use DefaultNewCardRatio.
 type NewCardRatio struct {
 	num int // new-card share; invariant 1 <= num < den
-	den int // total; invariant den <= 100, gcd(num, den) == 1
+	den int // total; invariant den <= NewCardRatioDenMax, gcd(num, den) == 1
 }
 
-// NewCardRatioDenMax caps the denominator so a stored ratio stays coarse enough
-// for a human-facing setting (1% resolution is more than enough) and bounds the
-// interleave loop counts.
-const NewCardRatioDenMax = 100
+// DefaultLearnSessionSize is the number of cards served when the caller does
+// not request a size. It bounds NewCardRatioDenMax because interleave emits
+// whole cycles and learn truncates them; a larger denominator allows the
+// leading review run to fill the page and collapse the new-card share to zero.
+// usecase.defaultLearnNextDueLimit uses this constant to prevent drift.
+const DefaultLearnSessionSize = 20
+
+// NewCardRatioDenMax caps the reduced denominator at the default learn-session
+// size so every stored ratio is exactly representable in a default session.
+const NewCardRatioDenMax = DefaultLearnSessionSize
 
 // NewCardRatioMaxNewShareNum / NewCardRatioMaxNewShareDen cap the new-card
 // share at 4/5 (80%) so the review share stays >= 20% — the discovery-first
@@ -51,15 +57,11 @@ var (
 // hard-coded 4:1 new:review interleave this VO replaces.
 var DefaultNewCardRatio = mustNewCardRatio(4, 5)
 
-// ParseNewCardRatio reduces num/den to lowest terms and validates the bounds.
-// It returns a sentinel (not a silent fallback) on failure:
-// ErrNewCardRatioDenominatorNotPositive for a non-positive denominator,
-// ErrNewCardRatioShareOutOfRange for a share outside (0, den) — which covers a
-// zero or negative numerator — ErrNewCardRatioDenominatorTooLarge for a reduced
-// denominator above NewCardRatioDenMax, and ErrNewCardRatioNewShareTooHigh for a
-// reduced new share above 4/5 (the discovery-first review floor). The checks run
-// in that order and return on the first failure, so exactly one sentinel is ever
-// produced.
+// ParseNewCardRatio reduces num/den and validates each bound in check order.
+// ErrNewCardRatioDenominatorTooLarge means the reduced denominator exceeds the
+// default session size; interleave emits whole cycles while learn serves only
+// a session-sized prefix, so such a ratio is not representable. Other sentinels
+// cover a non-positive denominator, an invalid share, or a share above 4/5.
 func ParseNewCardRatio(num, den int) (NewCardRatio, error) {
 	if den <= 0 {
 		return NewCardRatio{}, ErrNewCardRatioDenominatorNotPositive

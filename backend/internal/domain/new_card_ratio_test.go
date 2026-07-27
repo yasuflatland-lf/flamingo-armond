@@ -34,6 +34,9 @@ func TestParseNewCardRatio_RejectsOutOfBounds(t *testing.T) {
 		{"numerator exceeds denominator", 5, 3, ErrNewCardRatioShareOutOfRange},
 		{"reduced denominator over max", 50, 101, ErrNewCardRatioDenominatorTooLarge},
 		{"denominator over max only after reduction", 3, 303, ErrNewCardRatioDenominatorTooLarge},
+		{"73/100 served zero new cards in a 20-card session", 73, 100, ErrNewCardRatioDenominatorTooLarge},
+		{"79/100 the worst den=100 case", 79, 100, ErrNewCardRatioDenominatorTooLarge},
+		{"33/100 the off-grid example the frontend documented", 33, 100, ErrNewCardRatioDenominatorTooLarge},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -48,12 +51,12 @@ func TestParseNewCardRatio_RejectsOutOfBounds(t *testing.T) {
 func TestParseNewCardRatio_AllowsMaxDenominator(t *testing.T) {
 	t.Parallel()
 
-	// 79/100 is irreducible with den == NewCardRatioDenMax and a new share <= 80%,
-	// so it is accepted.
-	r, err := ParseNewCardRatio(79, NewCardRatioDenMax)
+	// 13/20 is irreducible with den == NewCardRatioDenMax and a new share (65%)
+	// below the 80% ceiling, so it is accepted at the boundary.
+	r, err := ParseNewCardRatio(13, NewCardRatioDenMax)
 	require.NoError(t, err)
-	require.Equal(t, 79, r.NewShare())
-	require.Equal(t, 21, r.ReviewShare())
+	require.Equal(t, 13, r.NewShare())
+	require.Equal(t, 7, r.ReviewShare())
 }
 
 func TestParseNewCardRatio_RejectsNewShareAboveCap(t *testing.T) {
@@ -67,8 +70,8 @@ func TestParseNewCardRatio_RejectsNewShareAboveCap(t *testing.T) {
 		{"95% reduces to 19/20", 95, 100},
 		{"90% reduces to 9/10", 90, 100},
 		{"85% reduces to 17/20", 85, 100},
-		{"81/100 irreducible", 81, 100},
-		{"99/100 irreducible", 99, 100},
+		{"7/8 irreducible", 7, 8},
+		{"5/6 irreducible", 5, 6},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
