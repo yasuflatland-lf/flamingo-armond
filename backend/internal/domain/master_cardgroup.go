@@ -47,25 +47,22 @@ type MasterCardgroup struct {
 	UpdatedAt        time.Time
 }
 
-// NewMasterCardgroup constructs a MasterCardgroup aggregate in its initial
-// admin-created state: Version = 1 and Status = MasterStatusDraft. It generates a
-// fresh UUID v7 ID and stamps CreatedAt and UpdatedAt with the current UTC time.
-// The name and description VOs are validated upstream by ParseCardgroupName /
-// ParseDescription; callers pass the parsed value objects so this constructor stays
-// free of validation branching (mirroring NewCardgroup / NewCard). The
-// Draft/Version=1 invariant is sealed here so it cannot drift across the usecase and
-// repository call sites. Returns a wrapped error when ID generation fails.
+// NewMasterCardgroup constructs a MasterCardgroup with a fresh UUID v7 ID.
+// CreatedAt and UpdatedAt are both stamped with now; batch callers pass one
+// shared instant for the whole batch. The Draft/Version=1 invariant is sealed
+// here, while name and description validation happens upstream. It returns a
+// wrapped error when ID generation fails.
 func NewMasterCardgroup(
 	name CardgroupName,
 	description Description,
 	isDefaultStarter bool,
 	sortOrder int,
+	now time.Time,
 ) (*MasterCardgroup, error) {
 	id, err := NewID()
 	if err != nil {
 		return nil, eris.Wrap(err, "master cardgroup: new id")
 	}
-	now := time.Now().UTC()
 	return &MasterCardgroup{
 		ID:               id,
 		Name:             name,

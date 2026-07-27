@@ -89,7 +89,7 @@ func masterCardsFromParsedRows(
 	cards := make([]*domain.MasterCard, 0, len(rows))
 	skipped := make([]masterRowSkip, 0)
 	for i, row := range rows {
-		card, err := domain.NewMasterCard(masterCardgroupID, row.Front, row.Back, i)
+		card, err := domain.NewMasterCard(masterCardgroupID, row.Front, row.Back, i, now)
 		if err != nil {
 			skipped = append(skipped, masterRowSkip{
 				Position: i,
@@ -103,8 +103,6 @@ func masterCardsFromParsedRows(
 			})
 			continue
 		}
-		// updated_at is deliberately not pinned: the DB trigger owns it.
-		card.CreatedAt = now
 		cards = append(cards, card)
 	}
 	return cards, skipped

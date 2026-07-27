@@ -31,16 +31,12 @@ func (m *MasterCard) BelongsToMasterCardgroup(masterCardgroupID string) bool {
 	return masterCardgroupID != "" && m.MasterCardgroupID == masterCardgroupID
 }
 
-// NewMasterCardFromValidated mirrors NewCardFromValidated for the master
-// aggregate: it builds a MasterCard from already-parsed CardText value objects
-// and skips the ParseCardText re-validation NewMasterCard would perform. Callers
-// must pass VOs produced by a prior Parse; the zero-value CardText is rejected
-// via the field-specific sentinel because the newtype's zero value is invalid by
-// contract. A fresh UUID v7 ID is generated and CreatedAt/UpdatedAt are stamped
-// with the current UTC time; batch callers may override both with a shared
-// timestamp before persisting. Use NewMasterCard for the untrusted string-input
-// path that still needs grapheme-bounds validation.
-func NewMasterCardFromValidated(masterCardgroupID string, front, back CardText, position int) (*MasterCard, error) {
+// NewMasterCardFromValidated builds a MasterCard from parsed CardText values
+// without re-validation and rejects their invalid zero value. It generates a
+// fresh UUID v7 ID. CreatedAt and UpdatedAt are both stamped with now; batch
+// callers pass one shared instant for the whole batch. Use NewMasterCard for
+// untrusted strings that still need grapheme-bounds validation.
+func NewMasterCardFromValidated(masterCardgroupID string, front, back CardText, position int, now time.Time) (*MasterCard, error) {
 	if front == "" {
 		return nil, ErrCardFrontRequired
 	}
@@ -51,7 +47,6 @@ func NewMasterCardFromValidated(masterCardgroupID string, front, back CardText, 
 	if err != nil {
 		return nil, eris.Wrap(err, "master card: new id")
 	}
-	now := time.Now().UTC()
 	return &MasterCard{
 		ID:                id,
 		MasterCardgroupID: masterCardgroupID,
@@ -89,14 +84,11 @@ func (m *MasterCard) UpdateBack(back CardText) error {
 	return nil
 }
 
-// NewMasterCard constructs a MasterCard aggregate, mirroring NewCard: Front and
-// Back are validated and trimmed through ParseCardText with the same
-// field-specific sentinels (ErrCardFrontRequired / ErrCardFrontTooLong for
-// Front, ErrCardBackRequired / ErrCardBackTooLong for Back), and a fresh UUID
-// v7 ID is generated. CreatedAt and UpdatedAt are stamped with the current UTC
-// time; batch callers may override both with a shared timestamp before
-// persisting.
-func NewMasterCard(masterCardgroupID, front, back string, position int) (*MasterCard, error) {
+// NewMasterCard constructs a MasterCard, validating and trimming Front and Back
+// through ParseCardText and generating a fresh UUID v7 ID. CreatedAt and
+// UpdatedAt are both stamped with now; batch callers pass one shared instant for
+// the whole batch. It returns the same field-specific sentinels as NewCard.
+func NewMasterCard(masterCardgroupID, front, back string, position int, now time.Time) (*MasterCard, error) {
 	frontVO, err := ParseCardText(front, ErrCardFrontRequired, ErrCardFrontTooLong)
 	if err != nil {
 		return nil, err
@@ -109,7 +101,6 @@ func NewMasterCard(masterCardgroupID, front, back string, position int) (*Master
 	if err != nil {
 		return nil, eris.Wrap(err, "master card: new id")
 	}
-	now := time.Now().UTC()
 	return &MasterCard{
 		ID:                id,
 		MasterCardgroupID: masterCardgroupID,

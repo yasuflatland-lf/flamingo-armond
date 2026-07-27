@@ -36,6 +36,10 @@ vi.mock("./logout-button", () => ({
   ),
 }));
 
+vi.mock("@/components/pwa/offline-banner", () => ({
+  OfflineBanner: () => <div data-testid="offline-banner" />,
+}));
+
 import { AppShell } from "./app-shell";
 
 const SIGNED_IN_USER = { email: "shell-user@example.com" };
@@ -96,6 +100,16 @@ describe("<AppShell>", () => {
         "aria-label",
         enMessages.Nav.primaryNavigation,
       );
+    });
+
+    it("mounts the offline banner in the content column", () => {
+      renderWithIntl(
+        <AppShell user={SIGNED_IN_USER} isAdmin={false}>
+          <div />
+        </AppShell>,
+      );
+
+      expect(screen.getByTestId("offline-banner")).toBeInTheDocument();
     });
 
     it("localizes the rail aria-label so assistive tech matches the page locale", () => {

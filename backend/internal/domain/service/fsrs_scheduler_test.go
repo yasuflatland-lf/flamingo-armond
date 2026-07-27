@@ -87,6 +87,51 @@ func TestFSRSScheduler_Apply_BackwardClockSkewClamped(t *testing.T) {
 	require.GreaterOrEqual(t, skewed.ScheduledDays, 1)
 }
 
+// TestFSRSScheduler_Apply_NeverSchedulesSubDayInterval pins the long-term-mode
+// invariant: service.NewFSRSScheduler keeps EnableShortTerm false, so due is at
+// least 24h after review. findDueCardsOn's rescue and filler windows and the
+// day-granular replay guard in usecase/swipe.go depend on it; flipping the flag
+// reopens the zero-credit repeat prevented by domain.rescueMinElapsed.
+func TestFSRSScheduler_Apply_NeverSchedulesSubDayInterval(t *testing.T) {
+	t.Parallel()
+
+	reviewAt := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
+	ratings := []struct {
+		name   string
+		rating domain.Rating
+	}{
+		{"again", domain.RatingAgain},
+		{"hard", domain.RatingHard},
+		{"good", domain.RatingGood},
+		{"easy", domain.RatingEasy},
+	}
+	phases := []struct {
+		name  string
+		phase domain.FSRSPhase
+	}{
+		{"new", domain.FSRSPhaseNew},
+		{"learning", domain.FSRSPhaseLearning},
+		{"review", domain.FSRSPhaseReview},
+		{"relearning", domain.FSRSPhaseRelearning},
+	}
+
+	for _, phase := range phases {
+		for _, rating := range ratings {
+			t.Run(phase.name+"/"+rating.name, func(t *testing.T) {
+				t.Parallel()
+
+				state := domain.NewFSRSStateForNewCard(reviewAt.Add(-24 * time.Hour))
+				state.Phase = phase.phase
+
+				got := NewFSRSScheduler().Apply(state, rating.rating, reviewAt)
+
+				require.GreaterOrEqual(t, got.Due.Sub(reviewAt), 24*time.Hour)
+				require.GreaterOrEqual(t, got.ScheduledDays, 1)
+			})
+		}
+	}
+}
+
 func TestFSRSSchedulerApplyGoldenTransitions(t *testing.T) {
 	t.Parallel()
 

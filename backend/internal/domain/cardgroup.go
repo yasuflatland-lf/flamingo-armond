@@ -33,17 +33,15 @@ type Cardgroup struct {
 	UpdatedAt time.Time
 }
 
-// NewCardgroup constructs a Cardgroup aggregate, generating a fresh UUID v7 ID
-// and stamping CreatedAt and UpdatedAt with the current UTC time. The name VO is
-// validated upstream by ParseCardgroupName; callers pass the parsed CardgroupName
-// so this constructor stays free of validation branching. Returns a wrapped error
-// when ID generation fails.
-func NewCardgroup(ownerID UserID, name CardgroupName) (*Cardgroup, error) {
+// NewCardgroup constructs a Cardgroup and generates a fresh UUID v7 ID. CreatedAt
+// and UpdatedAt are both stamped with now; batch callers pass one shared instant
+// for the whole batch. The name is validated upstream by ParseCardgroupName. It
+// returns a wrapped error when ID generation fails.
+func NewCardgroup(ownerID UserID, name CardgroupName, now time.Time) (*Cardgroup, error) {
 	id, err := NewID()
 	if err != nil {
 		return nil, eris.Wrap(err, "cardgroup: new id")
 	}
-	now := time.Now().UTC()
 	return &Cardgroup{
 		ID:        CardgroupID(id),
 		OwnerID:   ownerID,
