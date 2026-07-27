@@ -77,7 +77,7 @@ deterministic while the database does the sampling:
 
 | Stage | Owner | Behaviour |
 |---|---|---|
-| Selection (which rows enter each window) | `repository.FindDueCardsForUser` | Three independent `LIMIT` windows, each ordered by `random()`: rescue reviews (`due < rescueDueBefore AND last_review < reviewedBefore AND last_review <= rescueReviewedBefore` plus `last_rating = Again OR stability < LearnedStabilityDays`), disjoint filler reviews (`due <= now` plus the inverse band predicate), then new cards with no FSRS row. |
+| Selection (which rows enter each window) | `repository.FindDueCardsForUser` | Three independent `LIMIT` windows, each ordered by `random()`: rescue reviews (`due < rescueDueBefore AND last_review < reviewedBefore AND last_review <= rescueReviewedBefore` plus `last_rating = Again OR stability < LearnedStabilityDays`), disjoint filler reviews (`due <= now AND last_review < reviewedBefore AND last_review <= rescueReviewedBefore` plus `last_rating IS DISTINCT FROM Again AND stability >= LearnedStabilityDays`), then new cards with no FSRS row. |
 | Arrangement (order within the batch) | `service.OrderingPolicy.Apply` | Injected `*rand.Rand` shuffles the new partition fully and the review partition within same-band runs; then interleaves at the caller-supplied ratio (`domain.DefaultNewCardRatio` = 4:1 absent a stored preference) with review-first emission. |
 | Truncation | `usecase.LearnUsecase.NextDueCards` | Caps the interleaved result to the session limit (`ordered[:n]`). Because the three windows return up to `3*limit` rows, this truncate is load-bearing: it yields the 16/4 split for a 20-card request only when both the combined review pool and new-card pool are full, and skews toward review when the unseen pool is short (see Policy). |
 
@@ -119,10 +119,15 @@ deterministic while the database does the sampling:
   and answers it at 09:00 the next morning earns no scheduling progress, the card
   stays below the learned threshold, and it occupies a rescue slot again in the
   next session. The bound is non-strict: a card last reviewed exactly 24 hours
-  ago is eligible. The floor is always at or before `domain.StartOfLearnDay(now)`,
-  so within the rescue window it is the tighter of the two `last_review` bounds;
-  the day-boundary bound stays in the predicate because it is the sole
-  `last_review` guard for the filler window. The threshold is computed by the
+  ago is eligible. Because `now` always lies in
+  `[StartOfLearnDay(now), StartOfLearnDay(now) + 24h)`, the floor is strictly
+  earlier than `domain.StartOfLearnDay(now)`, so it is the tighter of the two
+  `last_review` bounds in both the rescue and filler windows and the
+  day-boundary bound is logically redundant in both. That bound is retained
+  anyway because it is the exact complement of `domain.ReviewedWithinLearnDay`,
+  the recording-side replay guard in `usecase/swipe.go` — the two comparators
+  must move together — and because it becomes binding again the moment the
+  elapsed floor drops below one learn day. The threshold is computed by the
   usecase and passed as a bound query argument — the repository never reads the
   clock.
 - **The rescue floor narrows, never widens, the windows.** A rescue-band card
@@ -143,10 +148,11 @@ deterministic while the database does the sampling:
   before `UpsertTx` persists the aggregate. Each column carries a different part
   of the partition, and each fails differently if its NOT NULL is relaxed:
   - **`last_review`** is the one whose NULL hides a card completely. Rescue and
-    filler test `ucs.last_review < ?` (rescue also `ucs.last_review <= ?` against
-    the 24-hour floor) and practice tests `ucs.last_review >= ?`, all unknown for NULL, while the new-card window is closed to the row because
-    its `due` is not NULL. The card then satisfies no window and vanishes from
-    every queue with no error surfaced.
+    filler each test `ucs.last_review < ?` (the day boundary) and
+    `ucs.last_review <= ?` (the 24-hour floor), and practice tests
+    `ucs.last_review >= ?` — all unknown for NULL, while the new-card window is
+    closed to the row because its `due` is not NULL. The card then satisfies no
+    window and vanishes from every queue with no error surfaced.
   - **`due`** does not hide the row; it moves it. Rescue and filler guard on
     `ucs.due IS NOT NULL` while the new-card window is exactly `ucs.due IS NULL`,
     so an already-reviewed card would be re-served as unseen and the new/review
@@ -178,7 +184,8 @@ learn ordering — new cards are sampled randomly, not walked in document order.
 ## Reference
 
 - `backend/internal/domain/learn_day.go` — `StartOfLearnDay`, `EndOfLearnDay`,
-  `RescueReviewedBefore` (the rescue window's 24-hour minimum-elapsed floor).
+  `RescueReviewedBefore` (the rescue and filler windows' shared 24-hour
+  minimum-elapsed floor).
 - `backend/internal/domain/mastery_tier.go` — `LearnedStabilityDays`.
 - `backend/internal/domain/due_card.go` — `DueCard.Rescue`.
 - `backend/internal/domain/service/due_card_ordering.go` — `OrderingPolicy.Apply`,
