@@ -14,8 +14,9 @@ import { AllCaughtUp } from "@/components/learn/all-caught-up";
 import { SwipeSession } from "@/components/learn/swipe-session";
 import type { LearnDisplayMode, SwipeDirection } from "@/components/learn/types";
 import { RATING_META, SWIPE_RATING } from "@/components/learn/types";
+import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
-import type { LearnNextDueCardsQuery } from "@/generated/graphql";
+import type { HandleSwipeInput, LearnNextDueCardsQuery } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { learnDayKey } from "@/lib/learn/learn-day";
@@ -23,6 +24,7 @@ import { mergePrefetchedCards } from "./learn-queue";
 import { PracticeClient } from "./practice-client";
 
 type LearnCard = LearnNextDueCardsQuery["learnNextDueCards"][number];
+type Rating = HandleSwipeInput["rating"];
 /**
  * When `queue.length` falls to this value (or below) and is still non-zero,
  * the background prefetch effect fires another `LearnNextDueCards` request
@@ -30,7 +32,7 @@ type LearnCard = LearnNextDueCardsQuery["learnNextDueCards"][number];
  */
 export const PREFETCH_THRESHOLD = 5;
 
-function ratingFromDirection(direction: SwipeDirection): 1 | 2 | 4 {
+function ratingFromDirection(direction: SwipeDirection): Rating {
   return SWIPE_RATING[RATING_META[direction].tone];
 }
 
@@ -42,9 +44,11 @@ type Props = {
 
 export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
   const t = useTranslations("Learn");
+  const tCommon = useTranslations("Common");
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
   const [completedCount, setCompletedCount] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [failedSwipe, setFailedSwipe] = useState<{ card: LearnCard; rating: Rating } | null>(null);
   // Top-level phase switch. "practice" hands the whole screen to PracticeClient
   // (FSRS-safe re-study of today's cards). It is only entered from the
   // AllCaughtUp "Study again" action when the daily learn queue is exhausted.
@@ -262,10 +266,15 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
       });
   }, [queue.length, cardgroupId, client, syncLearnDay]);
 
-  const onSwipe = useCallback(
-    async (card: LearnCard, direction: SwipeDirection) => {
-      const rating = ratingFromDirection(direction);
+  /**
+   * Applies the optimistic queue advance and fires the swipe mutation. Split from
+   * `onSwipe` so a failed swipe can be re-submitted with the rating the user
+   * originally chose instead of deriving a fresh rating from another gesture.
+   */
+  const applySwipe = useCallback(
+    async (card: LearnCard, rating: Rating) => {
       setLocalError(null);
+      setFailedSwipe(null);
       // Record the card as swiped BEFORE the optimistic removal so the prefetch
       // effect (which the removal can re-fire) filters it out of any racing
       // LearnNextDueCards batch. Recording at swipe time rather than on success
@@ -297,6 +306,7 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
         setQueue((current) => [card, ...current.filter((candidate) => candidate.id !== card.id)]);
         setCompletedCount((current) => Math.max(0, current - 1));
         setLocalError(t("swipeSaveFailed"));
+        setFailedSwipe({ card, rating });
         return null;
       });
 
@@ -342,6 +352,12 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
     [cardgroupId, handleSwipe, syncLearnDay, t],
   );
 
+  const onSwipe = useCallback(
+    (card: LearnCard, direction: SwipeDirection) =>
+      applySwipe(card, ratingFromDirection(direction)),
+    [applySwipe],
+  );
+
   if (phase === "practice") {
     return <PracticeClient cardgroupId={cardgroupId} />;
   }
@@ -360,7 +376,18 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
       // leading row so the card and action bar keep their grid rows.
       topSlot={
         visibleError ? (
-          <ErrorBanner className="mx-auto w-full max-w-xl">{visibleError}</ErrorBanner>
+          <ErrorBanner className="mx-auto flex w-full max-w-xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            {visibleError}
+            {failedSwipe ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void applySwipe(failedSwipe.card, failedSwipe.rating)}
+              >
+                {tCommon("retry")}
+              </Button>
+            ) : null}
+          </ErrorBanner>
         ) : undefined
       }
     />

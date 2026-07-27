@@ -13,6 +13,7 @@ import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import type { LearnDisplayMode } from "@/components/learn/types";
 import {
   HandleSwipeDocument,
+  type HandleSwipeMutationVariables,
   LearnNextDueCardsDocument,
   SetLastViewedCardgroupDocument,
 } from "@/generated/graphql";
@@ -512,6 +513,154 @@ describe("<LearnClient>", () => {
     consoleErrorSpy.mockRestore();
   });
 
+  describe("swipe retry", () => {
+    let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      consoleErrorSpy.mockRestore();
+    });
+
+    it("retries with the originally chosen rating", async () => {
+      const user = userEvent.setup();
+      const capturedVariables: HandleSwipeMutationVariables[] = [];
+      const captureVariables = (variables: HandleSwipeMutationVariables) => {
+        capturedVariables.push(variables);
+        return true;
+      };
+      const failedMock = {
+        request: {
+          query: HandleSwipeDocument,
+          variables: captureVariables,
+        },
+        error: new Error("network failure"),
+      };
+      const successMock = {
+        request: {
+          query: HandleSwipeDocument,
+          variables: captureVariables,
+        },
+        result: {
+          data: {
+            handleSwipe: {
+              __typename: "HandleSwipeSuccess" as const,
+              response: {
+                __typename: "SwipeResponse" as const,
+                performanceMode: "DIFFICULT",
+              },
+            },
+          },
+        },
+      };
+      renderLearnClient([failedMock, successMock], [CARD_1, CARD_2]);
+
+      await user.click(screen.getByRole("button", { name: "Rate as Hard" }));
+      await user.click(await screen.findByRole("button", { name: enMessages.Common.retry }));
+
+      await waitFor(() => {
+        expect(capturedVariables).toHaveLength(2);
+      });
+      expect(capturedVariables[0]?.input.rating).toBe(2);
+      expect(capturedVariables[1]?.input.rating).toBe(capturedVariables[0]?.input.rating);
+    });
+
+    it("shows Retry only after a failure and removes it after a successful retry", async () => {
+      const user = userEvent.setup();
+      const request = {
+        query: HandleSwipeDocument,
+        variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, rating: 1 } },
+      };
+      const failedMock = {
+        request,
+        error: new Error("network failure"),
+      };
+      const successMock = {
+        request,
+        result: {
+          data: {
+            handleSwipe: {
+              __typename: "HandleSwipeSuccess" as const,
+              response: {
+                __typename: "SwipeResponse" as const,
+                performanceMode: "DIFFICULT",
+              },
+            },
+          },
+        },
+      };
+      renderLearnClient([failedMock, successMock], [CARD_1, CARD_2]);
+
+      expect(
+        screen.queryByRole("button", { name: enMessages.Common.retry }),
+      ).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Rate as Again" }));
+      const retryButton = await screen.findByRole("button", { name: enMessages.Common.retry });
+      expect(screen.getByRole("alert")).toHaveTextContent(enMessages.Learn.swipeSaveFailed);
+
+      await user.click(retryButton);
+
+      await waitFor(() => {
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: enMessages.Common.retry }),
+        ).not.toBeInTheDocument();
+        expect(screen.queryByText("Hello")).not.toBeInTheDocument();
+        expect(screen.getByText("Bye")).toBeInTheDocument();
+      });
+    });
+
+    it("clears a pending failure when a new card is swiped", async () => {
+      const user = userEvent.setup();
+      const failedMock = {
+        request: {
+          query: HandleSwipeDocument,
+          variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, rating: 1 } },
+        },
+        error: new Error("network failure"),
+      };
+      const successMock = {
+        request: {
+          query: HandleSwipeDocument,
+          variables: { input: { cardId: CARD_2.id, cardgroupId: CG_ID, rating: 4 } },
+        },
+        result: {
+          data: {
+            handleSwipe: {
+              __typename: "HandleSwipeSuccess" as const,
+              response: {
+                __typename: "SwipeResponse" as const,
+                performanceMode: "DIFFICULT",
+              },
+            },
+          },
+        },
+      };
+      renderLearnClient([failedMock, successMock], [CARD_1, CARD_2]);
+
+      await user.click(screen.getByRole("button", { name: "Rate as Again" }));
+      await screen.findByRole("button", { name: enMessages.Common.retry });
+
+      const onCardSwiped = capturedOnCardSwiped.at(-1);
+      expect(onCardSwiped).toBeDefined();
+      await act(async () => {
+        await onCardSwiped?.(CARD_2, "right");
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: enMessages.Common.retry }),
+        ).not.toBeInTheDocument();
+        expect(screen.getByText("Hello")).toBeInTheDocument();
+        expect(screen.queryByText("Bye")).not.toBeInTheDocument();
+      });
+    });
+  });
+
   describe("handleSwipe resolved-without-data branch", () => {
     // Forwarding spy: do NOT call `mockImplementation(() => {})` here. Per
     // docs/pagination/capture-mockedprovider-warn-leaks.md § "Spy stacking",
@@ -584,6 +733,9 @@ describe("<LearnClient>", () => {
 
       // No error banner — the swipe is deliberately non-fatal at the UI level.
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: enMessages.Common.retry }),
+      ).not.toBeInTheDocument();
 
       // The optimistic queue advanced: CARD_1 is no longer the active card.
       // CARD_2 (the next card in the queue) is now shown.
@@ -918,7 +1070,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
     // See .claude/rules/pagination.md § "Drop `optimisticResponse` for mutations
     // that can fail with typed GraphQL errors".
     //
-    // Strategy: the handleSwipe call is in the `onSwipe` callback. Find the
+    // Strategy: the handleSwipe call is in the `applySwipe` callback. Find the
     // region between `handleSwipe({` and the `.catch(` that follows it, and
     // assert no `optimisticResponse` key appears there.
     const source = LearnClient.toString();
@@ -930,6 +1082,9 @@ describe("<LearnClient> persist-last-viewed path", () => {
     expect(swipeCatchIdx).toBeGreaterThan(-1);
 
     const swipeBlock = source.slice(swipeStart, swipeCatchIdx);
+    expect(swipeBlock).not.toHaveLength(0);
+    // The anchor is present by construction; a call-body token proves the slice spans the mutation.
+    expect(swipeBlock).toContain("variables:");
     expect(swipeBlock).not.toContain("optimisticResponse");
   });
 });
