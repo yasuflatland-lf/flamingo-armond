@@ -105,6 +105,10 @@ func TestIsValidDifficulty(t *testing.T) {
 // boundary to the rescue window's admission floor. A card admitted at exactly
 // rescueMinElapsed must receive one elapsed day of scheduling credit, while a
 // card just below that floor must receive none.
+//
+// The backward-skew row is a full day early on purpose: with a sub-24h skew the
+// unguarded expression truncates to the same 0 the guard returns, so deleting
+// the guard would leave the row green.
 func TestRescueMinElapsedMatchesElapsedDayRollover(t *testing.T) {
 	t.Parallel()
 
@@ -122,7 +126,8 @@ func TestRescueMinElapsedMatchesElapsedDayRollover(t *testing.T) {
 		{"exactly 48h since last review", FSRSPhaseReview, lastReview, lastReview.Add(48 * time.Hour), 2},
 		{"new card", FSRSPhaseNew, lastReview, lastReview.Add(48 * time.Hour), 0},
 		{"no last review", FSRSPhaseReview, time.Time{}, lastReview, 0},
-		{"now before last review", FSRSPhaseReview, lastReview, lastReview.Add(-time.Second), 0},
+		{"now a second before last review", FSRSPhaseReview, lastReview, lastReview.Add(-time.Second), 0},
+		{"now a full day before last review", FSRSPhaseReview, lastReview, lastReview.Add(-25 * time.Hour), 0},
 	}
 
 	for _, tc := range tests {
