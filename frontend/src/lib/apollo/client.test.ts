@@ -57,29 +57,33 @@ describe("buildAuthHeaders (authLink)", () => {
 });
 
 describe("makeClient link chain", () => {
-  it("chains requestIdLink -> authLink -> apqLink -> httpLink in order (4 segments)", () => {
+  it("chains requestIdLink -> retryLink -> authLink -> apqLink -> httpLink in order (5 segments)", () => {
     const c = makeClient();
     expect(c.link).toBeDefined();
-    // from([requestIdLink, authLink, apqLink, httpLink]) wraps segments in plain ApolloLink
+    // from([requestIdLink, retryLink, authLink, apqLink, httpLink]) wraps segments in plain ApolloLink
     // glue nodes. collectSegments stops at named sub-classes so we recover the
     // original user-supplied links plus any framework-injected wrappers.
     // @apollo/client-integration-nextjs prepends 2 streaming links, so the
     // full segment list is: [ReadFromReadableStreamLink, TeeToReadableStreamLink,
-    // SetContextLink(requestId), SetContextLink(auth), PersistedQueryLink(apq), HttpLink(http)].
+    // SetContextLink(requestId), RetryLink(retry), SetContextLink(auth),
+    // PersistedQueryLink(apq), HttpLink(http)].
     const links = collectSegments(c.link);
     const names = links.map((l) => l.constructor?.name ?? "");
-    // All four user-supplied link types must be present.
+    // All five user-supplied link types must be present.
     expect(names).toContain("SetContextLink");
+    expect(names).toContain("RetryLink");
     expect(names).toContain("PersistedQueryLink");
     expect(names).toContain("HttpLink");
     // Two SetContextLink instances must exist: requestIdLink and authLink.
     const requestIdIdx = names.indexOf("SetContextLink");
     const authIdx = names.lastIndexOf("SetContextLink");
     expect(requestIdIdx).not.toBe(authIdx); // two distinct SetContextLink instances
+    const retryIdx = names.indexOf("RetryLink");
     const apqIdx = names.indexOf("PersistedQueryLink");
     const httpIdx = names.indexOf("HttpLink");
-    // Order: requestId -> auth -> apq -> http.
-    expect(requestIdIdx).toBeLessThan(authIdx);
+    // Order: requestId -> retry -> auth -> apq -> http.
+    expect(requestIdIdx).toBeLessThan(retryIdx);
+    expect(retryIdx).toBeLessThan(authIdx);
     expect(authIdx).toBeLessThan(apqIdx);
     expect(apqIdx).toBeLessThan(httpIdx);
   });
