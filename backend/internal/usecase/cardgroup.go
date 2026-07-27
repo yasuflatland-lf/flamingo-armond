@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/rotisserie/eris"
 
@@ -213,7 +214,8 @@ func (u *cardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 		return CreateCardgroupOutcome{LimitReached: limit}, nil
 	}
 
-	cg, err := domain.NewCardgroup(domain.UserID(user.Sub), name)
+	now := time.Now().UTC()
+	cg, err := domain.NewCardgroup(domain.UserID(user.Sub), name, now)
 	if err != nil {
 		return CreateCardgroupOutcome{}, wrapInfraErr(err, "usecase: cardgroup: new cardgroup")
 	}
