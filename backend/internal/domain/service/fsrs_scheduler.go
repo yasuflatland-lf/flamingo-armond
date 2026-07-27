@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	fsrs "github.com/open-spaced-repetition/go-fsrs/v3"
+	fsrs "github.com/open-spaced-repetition/go-fsrs/v4"
 
 	"backend/internal/domain"
 )
@@ -35,6 +35,12 @@ func NewFSRSScheduler() *FSRSScheduler {
 // guards of the same kind as the constructor panic in
 // domain.NewUserCardFSRSForNewCard.
 //
+// An error from the v4 Next call also panics. The rating, phase, difficulty,
+// and clock checks above or at repository load make the corresponding input
+// errors unreachable for validated state. A stability underflow or invalid
+// library result has no caller-side remedy, and accepting its zero-valued
+// scheduling result would silently destroy the card's state.
+//
 // ElapsedDays on the returned state is computed by
 // domain.FSRSState.ElapsedDaysAt, not read from the scheduler library.
 func (s *FSRSScheduler) Apply(state domain.FSRSState, rating domain.Rating, now time.Time) domain.FSRSState {
@@ -45,15 +51,15 @@ func (s *FSRSScheduler) Apply(state domain.FSRSState, rating domain.Rating, now 
 		panic(fmt.Sprintf("service: fsrs scheduler: invalid Rating %d", int(rating)))
 	}
 
-	// A backward clock step (NTP, cross-instance skew) would make the library's
-	// elapsed-days float negative; the float->uint64 conversion of a negative
-	// value is implementation-dependent (Go spec, Conversions) and corrupts the
-	// persisted state on amd64. Clamp so elapsed time can never be negative.
+	// A backward clock step (NTP, cross-instance skew) leaves LastReview after
+	// now, which the library's card validation rejects — and the error arm below
+	// panics, so an unclamped skew would turn a routine review into an INTERNAL
+	// error. Clamp so elapsed time can never be negative.
 	if now.Before(state.LastReview) {
 		now = state.LastReview
 	}
 
-	info := s.algo.Next(fsrs.Card{
+	info, err := s.algo.Next(fsrs.Card{
 		Due:           state.Due,
 		Stability:     state.Stability,
 		Difficulty:    state.Difficulty,
@@ -63,6 +69,9 @@ func (s *FSRSScheduler) Apply(state domain.FSRSState, rating domain.Rating, now 
 		State:         fsrs.State(state.Phase),
 		LastReview:    state.LastReview,
 	}, now, fsrs.Rating(rating))
+	if err != nil {
+		panic(fmt.Sprintf("service: fsrs scheduler: v4 rejected a validated input: %v", err))
+	}
 
 	return domain.FSRSState{
 		Due:           info.Card.Due,

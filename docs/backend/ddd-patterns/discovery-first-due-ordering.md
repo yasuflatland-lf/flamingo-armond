@@ -111,12 +111,14 @@ deterministic while the database does the sampling:
 - **A rescue card is served early only after a whole day of elapsed time.** The
   rescue predicate additionally requires `ucs.last_review <= rescueReviewedBefore`,
   where `rescueReviewedBefore` is `domain.RescueReviewedBefore(now)` — exactly 24
-  hours before now. FSRS derives elapsed days as `floor(hours/24)`, so a repeat
-  inside the same 24 hours counts as zero elapsed days: retrievability is 1 and
-  the stability growth factor `exp((1-r)*W10)-1` is bit-exactly 0. Because the
+  hours before now. FSRS derives elapsed days as a UTC calendar-date difference,
+  so a repeat that stays inside one UTC date counts as zero elapsed days:
+  retrievability is 1 and the stability growth factor `exp((1-r)*W10)-1` is
+  bit-exactly 0. Conversely any gap of at least 24 hours spans a date boundary,
+  so the floor is what guarantees non-zero credit. Because the
   early serve deliberately surfaces cards due later today, without this floor the
-  queue manufactures zero-credit reviews — a learner who fails a card at 23:00
-  and answers it at 09:00 the next morning earns no scheduling progress, the card
+  queue manufactures zero-credit reviews — a learner who fails a card at 10:00
+  and answers it again at 22:00 the same day earns no scheduling progress, the card
   stays below the learned threshold, and it occupies a rescue slot again in the
   next session. The bound is non-strict: a card last reviewed exactly 24 hours
   ago is eligible. Because `now` always lies in

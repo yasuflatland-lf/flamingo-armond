@@ -25,10 +25,10 @@ func EndOfLearnDay(now time.Time) time.Time {
 }
 
 // rescueMinElapsed is the minimum wall-clock time before any window may
-// re-serve a card. FSRS derives elapsed days as floor(hours/24), so a sub-24h
-// repeat counts as zero elapsed days and earns no scheduling credit because its
-// stability growth factor is zero. The rescue window was the first consumer of
-// this model-wide floor.
+// re-serve a card. The scheduler counts elapsed days by UTC calendar date, so a
+// gap of at least 24 hours always spans a date boundary and earns a non-zero
+// stability growth factor, while a shorter repeat can earn nothing. The rescue
+// window was the first consumer of this model-wide floor.
 const rescueMinElapsed = 24 * time.Hour
 
 // RescueReviewedBefore returns the latest last_review instant a card may carry

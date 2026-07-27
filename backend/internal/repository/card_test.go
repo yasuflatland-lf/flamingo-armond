@@ -1296,13 +1296,13 @@ func TestCardRepository_FindDueCards_RescueUsesJSTDayEnd(t *testing.T) {
 }
 
 // TestCardRepository_FindDueCards_RescueRequiresWholeDaySinceLastReview pins the
-// rescue window's minimum-elapsed floor. FSRS derives elapsed days as
-// floor(hours/24), so a repeat inside the same 24 hours yields a stability
-// growth factor of exactly zero: serving such a card early burns a rescue slot
-// for no scheduling credit. The fixtures reproduce the motivating case — a card
-// failed at 23:00 JST and revisited at 09:00 JST the next morning is a new JST
-// learn day (so the reviewedBefore cutoff admits it) yet only 10 hours have
-// elapsed.
+// rescue window's minimum-elapsed floor. FSRS derives elapsed days as a UTC
+// calendar-date difference, so a repeat inside the same 24 hours can land on the
+// same UTC date and yield a stability growth factor of exactly zero, while any
+// gap of at least 24 hours always spans a date boundary. The fixtures pin that
+// boundary: a card failed at 23:00 JST and revisited at 09:00 JST the next
+// morning is a new JST learn day (so the reviewedBefore cutoff admits it) yet
+// only 10 hours have elapsed, so the floor is what excludes it.
 //
 // Mutation-proof: flip the new `ucs.last_review <= ?` bound to `<` in
 // card_due.go and exactlyOneDay vanishes from the result; drop the bound
@@ -1345,7 +1345,7 @@ func TestCardRepository_FindDueCards_RescueRequiresWholeDaySinceLastReview(t *te
 	require.ElementsMatch(t, []string{exactlyOneDay.ID, fullDayElapsed.ID}, repoCardIDs(got),
 		"a rescue card is served early only once a whole day has passed since its last review")
 	require.NotContains(t, repoCardIDs(got), sameNight.ID,
-		"a card reviewed 10 hours ago earns zero FSRS credit and must not take a rescue slot")
+		"a card reviewed 10 hours ago is under the whole-day floor and must not take a rescue slot")
 
 	// The excluded row must not leak into the filler or new window either: the
 	// filler predicate is the inverse band and the new window requires a NULL

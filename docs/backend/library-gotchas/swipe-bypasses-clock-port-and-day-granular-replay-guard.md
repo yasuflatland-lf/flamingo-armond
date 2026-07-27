@@ -67,11 +67,12 @@ if existing != nil && domain.ReviewedWithinLearnDay(existing.State.LastReview, n
 
 The underlying FSRS rule in
 [`backend/internal/domain/learn_day.go`](../../../backend/internal/domain/learn_day.go)
-is elapsed-time based. FSRS floors hours divided by 24 to derive elapsed days,
-so a repeat within 24 hours has retrievability 1 and a stability growth factor
-of exactly zero. Calendar-day membership is not the same predicate: a card
-reviewed at 23:00 JST and recorded again after the 00:00 rollover is only one
-hour old, but the day-granular guard no longer fires.
+is elapsed-time based. FSRS derives elapsed days as a UTC calendar-date
+difference, so a repeat that stays inside one UTC date has retrievability 1 and a
+stability growth factor of exactly zero. JST calendar-day membership is not the
+same predicate: a card reviewed at 23:00 JST and recorded again after the 00:00
+JST rollover is only one hour old — both instants fall on the same UTC date, so
+the repeat earns nothing — but the day-granular guard no longer fires.
 
 **The counterexample is unreachable in production today.**
 `service.NewFSRSScheduler` sets `params.EnableShortTerm = false` in
