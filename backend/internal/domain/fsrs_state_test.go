@@ -38,10 +38,10 @@ func TestFSRSPhaseIsValid(t *testing.T) {
 	}
 }
 
-// TestIsValidStability pins both sides of the stability predicate. The accept
-// side matters as much as the reject side: the repository read guard hard-fails
-// a whole query on a false negative, so a narrowing of the predicate must break
-// a test here rather than a persisted user's read.
+// TestIsValidStability pins the closed [MinStability, MaxStability] range,
+// including both inclusive endpoints. Both endpoints are values go-fsrs'
+// constrainStability legitimately emits and persists, so narrowing the bounds
+// to an open range would reject real rows.
 func TestIsValidStability(t *testing.T) {
 	t.Parallel()
 
@@ -51,8 +51,12 @@ func TestIsValidStability(t *testing.T) {
 		want  bool
 	}{
 		{"new card placeholder", NewCardStability, true},
-		{"smallest positive", math.SmallestNonzeroFloat64, true},
-		{"large finite", math.MaxFloat64, true},
+		{"MinStability boundary", MinStability, true},
+		{"MaxStability boundary", MaxStability, true},
+		{"just below MinStability", 0.0009, false},
+		{"just above MaxStability", 36500.1, false},
+		{"below MinStability", math.SmallestNonzeroFloat64, false},
+		{"above MaxStability", math.MaxFloat64, false},
 		{"zero", 0, false},
 		{"negative", -1.5, false},
 		{"NaN", math.NaN(), false},
