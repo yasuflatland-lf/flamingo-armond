@@ -22,7 +22,7 @@ func TestSwipeRecordRepository_CreateTxAndFind(t *testing.T) {
 
 	card := newCard(cg.ID, "front", "back")
 	require.NoError(t, cardRepo.Create(ctx, card))
-	reviewedAt := time.Now().UTC()
+	reviewedAt := time.Now().UTC().Truncate(time.Microsecond)
 	stateBefore := domain.NewFSRSStateForNewCard(reviewedAt)
 	stateBefore.Phase = domain.FSRSPhaseReview
 	stateBefore.ScheduledDays = 3
