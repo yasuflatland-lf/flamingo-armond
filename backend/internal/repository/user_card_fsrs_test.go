@@ -77,8 +77,8 @@ func TestUserCardFSRSRepository_FindByUserAndCardIDs_InvalidLastRating(t *testin
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	_, err := sqlDBHandle(t).ExecContext(ctx,
 		`INSERT INTO public.user_card_fsrs
-			(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, last_rating, elapsed_days, scheduled_days)
-		 VALUES ($1, $2, $3, $4, 6.9, 5.0, 1, 0, $4, 9, 1, 1)`,
+				(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, last_rating, scheduled_days)
+			 VALUES ($1, $2, $3, $4, 6.9, 5.0, 1, 0, $4, 9, 1)`,
 		ownerID, card.ID, int(domain.FSRSPhaseReview), now)
 	require.NoError(t, err, "seed a row with an invalid last_rating value via raw SQL")
 
@@ -132,8 +132,8 @@ func TestUserCardFSRSRepository_FindByUserAndCardIDs_InvalidStabilityOrDifficult
 			now := time.Now().UTC().Truncate(time.Microsecond)
 			_, err := sqlDBHandle(t).ExecContext(ctx,
 				`INSERT INTO public.user_card_fsrs
-					(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, last_rating, elapsed_days, scheduled_days)
-				 VALUES ($1, $2, $3, $4, `+tc.stability+`::double precision, `+tc.difficulty+`::double precision, 1, 0, $4, NULL, 1, 1)`,
+						(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, last_rating, scheduled_days)
+					 VALUES ($1, $2, $3, $4, `+tc.stability+`::double precision, `+tc.difficulty+`::double precision, 1, 0, $4, NULL, 1)`,
 				ownerID, card.ID, int(domain.FSRSPhaseReview), now)
 			require.NoError(t, err, "seed an out-of-range scheduling row via raw SQL")
 
@@ -342,8 +342,8 @@ func TestUserCardFSRSRepository_ListFSRSStatesByUser_InvalidPhaseErrors(t *testi
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	_, err := sqlDB.ExecContext(ctx,
 		`INSERT INTO public.user_card_fsrs
-			(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, elapsed_days, scheduled_days)
-		 VALUES ($1, $2, 99, $3, 0, 0, 0, 0, $3, 0, 0)`,
+				(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, scheduled_days)
+			 VALUES ($1, $2, 99, $3, 0, 0, 0, 0, $3, 0)`,
 		ownerID, card.ID, now)
 	require.NoError(t, err, "seed a row with an invalid FSRSPhase value via raw SQL")
 
@@ -391,8 +391,8 @@ func TestUserCardFSRSRepository_ListFSRSStatesByUser_InvalidStabilityErrors(t *t
 			now := time.Now().UTC().Truncate(time.Microsecond)
 			_, err := sqlDBHandle(t).ExecContext(ctx,
 				`INSERT INTO public.user_card_fsrs
-					(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, elapsed_days, scheduled_days)
-				 VALUES ($1, $2, $3, $4, `+tc.stability+`::double precision, 5.0, 1, 0, $4, 1, 1)`,
+						(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, scheduled_days)
+					 VALUES ($1, $2, $3, $4, `+tc.stability+`::double precision, 5.0, 1, 0, $4, 1)`,
 				ownerID, card.ID, int(domain.FSRSPhaseReview), now)
 			require.NoError(t, err, "seed a row with an invalid stability value via raw SQL")
 

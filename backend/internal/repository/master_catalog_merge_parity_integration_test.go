@@ -108,7 +108,6 @@ func TestMergeCaseFold_PreservesCardIDAndFSRS(t *testing.T) {
 		Due:           studiedAt.Add(21 * 24 * time.Hour),
 		Stability:     19.5,
 		Difficulty:    4.2,
-		ElapsedDays:   14,
 		ScheduledDays: 21,
 		Reps:          8,
 		Lapses:        1,

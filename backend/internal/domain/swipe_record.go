@@ -15,23 +15,20 @@ type SwipeRecord struct {
 	Rating      Rating
 	ReviewedAt  time.Time
 	StateAfter  FSRSState
-	// PhaseBefore is the FSRS phase the card was in when the swipe was made;
-	// nil for rows recorded before the phase_before column existed.
-	PhaseBefore *FSRSPhase
-	// ScheduledDaysBefore is the interval (days) scheduled at the previous
-	// review; nil for legacy rows recorded before the column existed.
-	ScheduledDaysBefore *int
-	// StabilityBefore is the FSRS stability (days) the card held before this
-	// swipe; nil for rows recorded before the column existed.
-	StabilityBefore *float64
+	// PhaseBefore, StabilityBefore and DueBefore are the pre-swipe snapshot: the
+	// phase and stability the card held going in, and the due instant the review is
+	// judged against. All three are NOT NULL columns -- the nullable era ended with
+	// the swipe history that needed the sentinel.
+	PhaseBefore     FSRSPhase
+	StabilityBefore float64
+	DueBefore       time.Time
 }
 
 // NewSwipeRecord creates a swipe event with a fresh UUID v7. stateBefore is the
 // scheduling state captured immediately before the rating was applied; the
-// pre-swipe snapshot (PhaseBefore, ScheduledDaysBefore, StabilityBefore) is
-// populated from it so the metrics layer can distinguish, for example, a
-// Learning->Easy graduation from a genuine review of an already-learned card.
-// stateAfter is the state the swipe advanced the card to.
+// pre-swipe snapshot is populated from it so the metrics layer can distinguish,
+// for example, a Learning->Easy graduation from a genuine review of an
+// already-learned card. stateAfter is the state the swipe advanced the card to.
 func NewSwipeRecord(userID UserID, cardID string, cardgroupID CardgroupID, rating Rating, reviewedAt time.Time, stateBefore, stateAfter FSRSState) (*SwipeRecord, error) {
 	if cardgroupID == "" {
 		return nil, eris.New("swipe record: cardgroupID is required")
@@ -40,21 +37,16 @@ func NewSwipeRecord(userID UserID, cardID string, cardgroupID CardgroupID, ratin
 	if err != nil {
 		return nil, eris.Wrap(err, "swipe record: new id")
 	}
-	// Take the address of independent locals, never &stateBefore.Field: the
-	// snapshot pointers must not alias the caller's FSRSState.
-	phaseBefore := stateBefore.Phase
-	scheduledDaysBefore := stateBefore.ScheduledDays
-	stabilityBefore := stateBefore.Stability
 	return &SwipeRecord{
-		ID:                  id,
-		UserID:              userID,
-		CardID:              cardID,
-		CardgroupID:         cardgroupID,
-		Rating:              rating,
-		ReviewedAt:          reviewedAt,
-		StateAfter:          stateAfter,
-		PhaseBefore:         &phaseBefore,
-		ScheduledDaysBefore: &scheduledDaysBefore,
-		StabilityBefore:     &stabilityBefore,
+		ID:              id,
+		UserID:          userID,
+		CardID:          cardID,
+		CardgroupID:     cardgroupID,
+		Rating:          rating,
+		ReviewedAt:      reviewedAt,
+		StateAfter:      stateAfter,
+		PhaseBefore:     stateBefore.Phase,
+		StabilityBefore: stateBefore.Stability,
+		DueBefore:       stateBefore.Due,
 	}, nil
 }

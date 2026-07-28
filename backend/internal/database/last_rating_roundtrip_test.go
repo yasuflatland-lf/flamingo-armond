@@ -38,12 +38,13 @@ func TestLastRatingDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back five migrations newest-first:
-	// widen_updated_at_triggers_to_insert, widen_text_length_checks,
+	// Step back six migrations newest-first:
+	// realign_fsrs_snapshot_columns_to_v4, widen_updated_at_triggers_to_insert,
+	// widen_text_length_checks,
 	// add_cardgroup_fk_to_swipe_records, add_stability_before_to_swipe_records,
 	// then add_last_rating_to_user_card_fsrs (the target). Bump this count when
 	// adding migrations after add_last_rating_to_user_card_fsrs.
-	if err := m.Steps(-5); err != nil {
+	if err := m.Steps(-6); err != nil {
 		t.Fatalf("migrate down to before last_rating migration: %v", err)
 	}
 	requireColumnMissing(t, ctx, sqlDB, "user_card_fsrs", "last_rating")
@@ -79,14 +80,6 @@ func TestLastRatingUpMigrationBackfillsLatestSwipe(t *testing.T) {
 		}
 	}()
 
-	// Five steps: widen_updated_at_triggers_to_insert, widen_text_length_checks,
-	// add_cardgroup_fk_to_swipe_records and add_stability_before_to_swipe_records
-	// sit above the target.
-	if err := m.Steps(-5); err != nil {
-		t.Fatalf("migrate down to before last_rating migration: %v", err)
-	}
-	requireColumnMissing(t, ctx, sqlDB, "user_card_fsrs", "last_rating")
-
 	userID := insertAuthUserForAdmin(t, ctx, db)
 	cardgroupID := insertRLSCardgroup(t, ctx, sqlDB, userID, "Last Rating Backfill")
 	withHistoryID := insertRLSCard(t, ctx, sqlDB, cardgroupID, "with swipe history")
@@ -97,11 +90,11 @@ func TestLastRatingUpMigrationBackfillsLatestSwipe(t *testing.T) {
 	if _, err := sqlDB.ExecContext(ctx, `
 		INSERT INTO public.user_card_fsrs (
 			user_id, card_id, state, due, stability, difficulty,
-			reps, lapses, last_review, elapsed_days, scheduled_days
+			reps, lapses, last_review, scheduled_days
 		)
 		VALUES
-			($1, $2, 2, $4, 6.9, 5.0, 2, 0, $4, 1, 1),
-			($1, $3, 2, $4, 6.9, 5.0, 1, 0, $4, 1, 1)
+			($1, $2, 2, $4, 6.9, 5.0, 2, 0, $4, 1),
+			($1, $3, 2, $4, 6.9, 5.0, 1, 0, $4, 1)
 	`, userID, withHistoryID, withoutHistoryID, newerReviewedAt); err != nil {
 		t.Fatalf("seed user_card_fsrs rows: %v", err)
 	}
@@ -111,15 +104,24 @@ func TestLastRatingUpMigrationBackfillsLatestSwipe(t *testing.T) {
 	if _, err := sqlDB.ExecContext(ctx, `
 		INSERT INTO public.swipe_records (
 			id, user_id, card_id, cardgroup_id, rating, reviewed_at,
-			due, stability, difficulty, elapsed_days, scheduled_days,
-			reps, lapses, state, last_review
+			due, stability, difficulty, scheduled_days, reps, lapses, state,
+			last_review, due_before, phase_before, stability_before
 		)
 		VALUES
-			($1, $3, $4, $5, 2, $6, $6, 5.0, 5.0, 1, 1, 1, 0, 2, $6),
-			($2, $3, $4, $5, 4, $7, $7, 6.9, 5.0, 1, 1, 2, 0, 2, $7)
+			($1, $3, $4, $5, 2, $6, $6, 5.0, 5.0, 1, 1, 0, 2, $6, $6, 2, 5.0),
+			($2, $3, $4, $5, 4, $7, $7, 6.9, 5.0, 1, 2, 0, 2, $7, $7, 2, 5.0)
 	`, olderSwipeID, newerSwipeID, userID, withHistoryID, cardgroupID, olderReviewedAt, newerReviewedAt); err != nil {
 		t.Fatalf("seed swipe_records rows: %v", err)
 	}
+
+	// Six steps: realign_fsrs_snapshot_columns_to_v4,
+	// widen_updated_at_triggers_to_insert, widen_text_length_checks,
+	// add_cardgroup_fk_to_swipe_records and add_stability_before_to_swipe_records
+	// sit above the target.
+	if err := m.Steps(-6); err != nil {
+		t.Fatalf("migrate down to before last_rating migration: %v", err)
+	}
+	requireColumnMissing(t, ctx, sqlDB, "user_card_fsrs", "last_rating")
 
 	if err := m.Steps(5); err != nil {
 		t.Fatalf("migrate up last_rating migration: %v", err)

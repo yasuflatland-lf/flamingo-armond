@@ -305,75 +305,31 @@ func normalizedDifficulty(difficulty float64) float64 {
 	return difficulty
 }
 
-// isKnownCardReview reports whether a swipe is a review of an already-learned
-// card, i.e. one the mastery tiles would have shown as Learned or Mature when
-// the swipe was made. Three tiers of evidence are consulted, most faithful
-// first.
+// isKnownCardReview reports whether a swipe reviewed an already-learned card, i.e.
+// one the mastery tiles showed as Learned or Mature when the swipe was made. It
+// reads the same value and the same inclusive boundary domain.ClassifyMastery
+// tests, so the gate and the tiles agree by construction.
 //
-//  1. Stability snapshot (StabilityBefore != nil): known iff the pre-swipe phase
-//     was Review and the pre-swipe stability is at or above
-//     domain.LearnedStabilityDays. This is the same value and the same inclusive
-//     boundary ClassifyMastery tests, so the gate and the mastery tiles agree by
-//     construction.
-//  2. Interval heuristic (StabilityBefore == nil, PhaseBefore != nil): rows
-//     recorded after the phase snapshot but before the stability snapshot fall
-//     back to ScheduledDaysBefore at or above the learned boundary. The interval
-//     only approximates stability: go-fsrs clamps each rating's interval to
-//     exceed the previous rating's (hard >= again+1, good >= hard+1,
-//     easy >= good+1), so a recorded interval can outrun the card's stability by
-//     up to three days and admit a card the mastery tiles still call In
-//     progress. The heuristic is kept for these rows so history does not jump
-//     when the stability snapshot became available. A nil ScheduledDaysBefore is
-//     treated as not known defensively, matching isOnTimeRecall.
-//  3. Legacy fallback (PhaseBefore == nil, rows aging out of the 365-day
-//     window): the historical post-swipe heuristic — StateAfter.Phase == Review,
-//     or a Review->Again lapse that landed the card in Relearning with a
-//     non-zero lapse count.
-//
-// PhaseBefore == Review alone stopped being sufficient when long-term
-// scheduling began sending every rating from every state to Review, which is why
-// tiers 1 and 2 both carry a magnitude test.
+// The phase conjunct excludes a card's first-ever swipe, whose PhaseBefore is
+// FSRSPhaseNew and whose stability is the below-boundary new-card placeholder, so
+// both populations exclude it either way. Long-term mode emits no other non-Review
+// phase; service.NewFSRSScheduler asserts that mode at construction.
 func isKnownCardReview(swipe domain.SwipeRecord) bool {
-	if swipe.StabilityBefore != nil {
-		return swipe.PhaseBefore != nil &&
-			*swipe.PhaseBefore == domain.FSRSPhaseReview &&
-			*swipe.StabilityBefore >= domain.LearnedStabilityDays
-	}
-	if swipe.PhaseBefore != nil {
-		return *swipe.PhaseBefore == domain.FSRSPhaseReview &&
-			swipe.ScheduledDaysBefore != nil &&
-			float64(*swipe.ScheduledDaysBefore) >= domain.LearnedStabilityDays
-	}
-	if swipe.StateAfter.Phase == domain.FSRSPhaseReview {
-		return true
-	}
-	return swipe.Rating == domain.RatingAgain &&
-		swipe.StateAfter.Phase == domain.FSRSPhaseRelearning &&
-		swipe.StateAfter.Lapses > 0
+	return swipe.PhaseBefore == domain.FSRSPhaseReview &&
+		swipe.StabilityBefore >= domain.LearnedStabilityDays
 }
 
-// isOnTimeRecall reports whether a swipe is an on-time recall: the card was
-// recalled (Rating != Again) within the interval that was scheduled for it
-// before the swipe. It is only meaningful for reviews of already-learned cards;
-// ComputeMetrics consults it only inside the isKnownCardReview branch.
-//
-// New-format rows (PhaseBefore != nil) compare StateAfter.ElapsedDays against
-// the pre-swipe scheduled interval *ScheduledDaysBefore — the interval the card
-// was actually due within, so a long-overdue but successful review is not
-// counted as on time. A new-format row whose ScheduledDaysBefore is nil is
-// treated as not on time (defensive). Legacy rows (PhaseBefore == nil) fall back
-// to comparing against the post-swipe StateAfter.ScheduledDays, preserving the
-// historical heuristic for rows recorded before the snapshot existed. The
-// boundary is inclusive: ElapsedDays == the scheduled interval is on time.
+// isOnTimeRecall reports whether a swipe recalled the card inside the interval
+// scheduled for it: the review instant is at or before the due instant the card
+// carried going in. Comparing instants rather than truncated day counts is what
+// keeps the statistic on the schedule's own clock -- the due date is a wall-clock
+// offset while go-fsrs counts elapsed days by UTC calendar date, so any day-count
+// comparison drifts from the due date by up to a full day and reports a late
+// review as on time. Only meaningful for reviews of already-learned cards;
+// ComputeMetrics consults it inside the isKnownCardReview branch. The boundary is
+// inclusive: a review exactly at due is on time.
 func isOnTimeRecall(swipe domain.SwipeRecord) bool {
-	if swipe.Rating == domain.RatingAgain {
-		return false
-	}
-	if swipe.PhaseBefore != nil {
-		return swipe.ScheduledDaysBefore != nil &&
-			swipe.StateAfter.ElapsedDays <= *swipe.ScheduledDaysBefore
-	}
-	return swipe.StateAfter.ElapsedDays <= swipe.StateAfter.ScheduledDays
+	return swipe.Rating != domain.RatingAgain && !swipe.ReviewedAt.After(swipe.DueBefore)
 }
 
 // studyStreak counts consecutive JST learn-days ending at the current learn-day,

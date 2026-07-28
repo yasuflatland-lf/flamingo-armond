@@ -44,22 +44,21 @@ func TestCardsPositionDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back past the fifteen migrations newer than add_position_to_cards
-	// (enable_rls_schema_migrations, pin_trigger_function_search_path,
-	// restrict_definer_function_exposure, add_master_tables,
-	// add_learn_display_mode_to_user_preferences,
-	// add_user_card_fsrs_card_id_index, master_cards_front_citext,
-	// drop_master_cardgroup_metadata_columns,
-	// index_hygiene_users_swipe_records,
-	// add_new_card_ratio_to_user_preferences,
-	// add_pre_swipe_snapshot_to_swipe_records,
+	// Step back past the seventeen migrations newer than add_position_to_cards
+	// (realign_fsrs_snapshot_columns_to_v4,
+	// widen_updated_at_triggers_to_insert, widen_text_length_checks,
+	// add_cardgroup_fk_to_swipe_records, add_stability_before_to_swipe_records,
 	// add_last_rating_to_user_card_fsrs,
-	// add_stability_before_to_swipe_records,
-	// add_cardgroup_fk_to_swipe_records, widen_text_length_checks), then past
-	// add_position_to_cards itself. Seventeen steps are required because
-	// add_position_to_cards is no longer near the newest migration; bump this
-	// count when adding migrations after it.
-	if err := m.Steps(-17); err != nil {
+	// add_pre_swipe_snapshot_to_swipe_records,
+	// add_new_card_ratio_to_user_preferences,
+	// index_hygiene_users_swipe_records, drop_master_cardgroup_metadata_columns,
+	// master_cards_front_citext, add_user_card_fsrs_card_id_index,
+	// add_learn_display_mode_to_user_preferences, add_master_tables,
+	// restrict_definer_function_exposure, pin_trigger_function_search_path,
+	// enable_rls_schema_migrations), then past add_position_to_cards itself.
+	// Eighteen steps are required because add_position_to_cards is no longer near
+	// the newest migration; bump this count when adding migrations after it.
+	if err := m.Steps(-18); err != nil {
 		t.Fatalf("migrate down to before add_position_to_cards: %v", err)
 	}
 

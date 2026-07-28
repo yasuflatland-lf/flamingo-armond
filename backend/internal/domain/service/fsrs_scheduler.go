@@ -62,8 +62,6 @@ func NewFSRSScheduler() *FSRSScheduler {
 // library result has no caller-side remedy, and accepting its zero-valued
 // scheduling result would silently destroy the card's state.
 //
-// ElapsedDays on the returned state is computed by
-// domain.FSRSState.ElapsedDaysAt, not read from the scheduler library.
 // fsrs.Card.RemainingSteps is deliberately not carried on FSRSState. The
 // long-term scheduler never reads it and setReviewState zeroes it on every
 // output, so a round trip through the domain is lossless. That holds only while
@@ -104,7 +102,6 @@ func (s *FSRSScheduler) Apply(state domain.FSRSState, rating domain.Rating, now 
 		Due:           info.Card.Due,
 		Stability:     info.Card.Stability,
 		Difficulty:    info.Card.Difficulty,
-		ElapsedDays:   state.ElapsedDaysAt(now),
 		ScheduledDays: int(info.Card.ScheduledDays),
 		Reps:          int(info.Card.Reps),
 		Lapses:        int(info.Card.Lapses),

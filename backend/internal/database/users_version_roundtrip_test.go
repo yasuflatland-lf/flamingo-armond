@@ -38,28 +38,29 @@ func TestUsersVersionDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back through the 18 migrations listed newest-first until
+	// Step back through the 19 migrations listed newest-first until
 	// add_version_to_users (the target) is also rolled back:
-	//   1. widen_updated_at_triggers_to_insert
-	//   2. widen_text_length_checks
-	//   3. add_cardgroup_fk_to_swipe_records
-	//   4. add_stability_before_to_swipe_records
-	//   5. add_last_rating_to_user_card_fsrs
-	//   6. add_pre_swipe_snapshot_to_swipe_records
-	//   7. add_new_card_ratio_to_user_preferences
-	//   8. index_hygiene_users_swipe_records
-	//   9. drop_master_cardgroup_metadata_columns
-	//   10. master_cards_front_citext
-	//   11. add_user_card_fsrs_card_id_index
-	//   12. add_learn_display_mode_to_user_preferences
-	//   13. add_master_tables
-	//   14. restrict_definer_function_exposure
-	//   15. pin_trigger_function_search_path
-	//   16. enable_rls_schema_migrations
-	//   17. add_position_to_cards
-	//   18. add_version_to_users  ← target (rolls back the version column)
+	//   1. realign_fsrs_snapshot_columns_to_v4
+	//   2. widen_updated_at_triggers_to_insert
+	//   3. widen_text_length_checks
+	//   4. add_cardgroup_fk_to_swipe_records
+	//   5. add_stability_before_to_swipe_records
+	//   6. add_last_rating_to_user_card_fsrs
+	//   7. add_pre_swipe_snapshot_to_swipe_records
+	//   8. add_new_card_ratio_to_user_preferences
+	//   9. index_hygiene_users_swipe_records
+	//   10. drop_master_cardgroup_metadata_columns
+	//   11. master_cards_front_citext
+	//   12. add_user_card_fsrs_card_id_index
+	//   13. add_learn_display_mode_to_user_preferences
+	//   14. add_master_tables
+	//   15. restrict_definer_function_exposure
+	//   16. pin_trigger_function_search_path
+	//   17. enable_rls_schema_migrations
+	//   18. add_position_to_cards
+	//   19. add_version_to_users  ← target (rolls back the version column)
 	// Bump the count here when adding migrations after add_version_to_users.
-	if err := m.Steps(-18); err != nil {
+	if err := m.Steps(-19); err != nil {
 		t.Fatalf("migrate down to before add_version_to_users: %v", err)
 	}
 

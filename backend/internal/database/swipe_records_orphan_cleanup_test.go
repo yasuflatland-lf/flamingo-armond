@@ -22,11 +22,26 @@ func insertSwipeRecordWithID(t *testing.T, ctx context.Context, sqlDB *sql.DB, i
 	if _, err := sqlDB.ExecContext(ctx, `
         INSERT INTO public.swipe_records (
             id, user_id, card_id, cardgroup_id, rating, reviewed_at, due, stability, difficulty,
+            scheduled_days, reps, lapses, state, last_review,
+            due_before, phase_before, stability_before
+        )
+        VALUES ($1, $2, $3, $4, 3, $5, $5, 2.5, 5.0, 0, 0, 0, 0, $5, $5, 0, 2.5)
+    `, id, userID, cardID, cardgroupID, now); err != nil {
+		t.Fatalf("insert swipe record %s: %v", id, err)
+	}
+}
+
+func insertLegacySwipeRecordWithID(t *testing.T, ctx context.Context, sqlDB *sql.DB, id, userID, cardID, cardgroupID string) {
+	t.Helper()
+	now := time.Now().UTC()
+	if _, err := sqlDB.ExecContext(ctx, `
+        INSERT INTO public.swipe_records (
+            id, user_id, card_id, cardgroup_id, rating, reviewed_at, due, stability, difficulty,
             elapsed_days, scheduled_days, reps, lapses, state, last_review
         )
         VALUES ($1, $2, $3, $4, 3, $5, $5, 2.5, 5.0, 0, 0, 0, 0, 0, $5)
     `, id, userID, cardID, cardgroupID, now); err != nil {
-		t.Fatalf("insert swipe record %s: %v", id, err)
+		t.Fatalf("insert legacy swipe record %s: %v", id, err)
 	}
 }
 
@@ -101,10 +116,11 @@ func TestSwipeRecordsCardgroupOrphanCleanupRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Three steps reach add_cardgroup_fk_to_swipe_records:
-	// widen_updated_at_triggers_to_insert and widen_text_length_checks sit above
-	// it. Bump this count when adding migrations after any of them.
-	if err := m.Steps(-3); err != nil {
+	// Four steps reach add_cardgroup_fk_to_swipe_records:
+	// realign_fsrs_snapshot_columns_to_v4, widen_updated_at_triggers_to_insert,
+	// and widen_text_length_checks sit above it. Bump this count when adding
+	// migrations after any of them.
+	if err := m.Steps(-4); err != nil {
 		t.Fatalf("migrate down cardgroup fk migration: %v", err)
 	}
 	if got := countSwipeRecordsByID(t, ctx, sqlDB, keepID); got != 1 {
@@ -116,7 +132,7 @@ func TestSwipeRecordsCardgroupOrphanCleanupRoundtrip(t *testing.T) {
 	// migration must clean up.
 	orphanID := uuid.NewString()
 	orphanCardgroupID := uuid.NewString()
-	insertSwipeRecordWithID(t, ctx, sqlDB, orphanID, ownerID, cardID, orphanCardgroupID)
+	insertLegacySwipeRecordWithID(t, ctx, sqlDB, orphanID, ownerID, cardID, orphanCardgroupID)
 	if got := countSwipeRecordsByID(t, ctx, sqlDB, orphanID); got != 1 {
 		t.Fatalf("orphan swipe record count before up migration = %d, want 1", got)
 	}

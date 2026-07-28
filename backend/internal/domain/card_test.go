@@ -235,7 +235,6 @@ func TestNewFSRSStateForNewCard(t *testing.T) {
 	require.Equal(t, now, got.Due)
 	require.Equal(t, 2.5, got.Stability)
 	require.Equal(t, 5.0, got.Difficulty)
-	require.Zero(t, got.ElapsedDays)
 	require.Zero(t, got.ScheduledDays)
 	require.Zero(t, got.Reps)
 	require.Zero(t, got.Lapses)

@@ -152,7 +152,6 @@ func TestFSRSScheduler_Apply_BackwardClockSkewClamped(t *testing.T) {
 	atLastReview := scheduler.Apply(reviewed, domain.RatingGood, reviewAt)
 
 	require.Equal(t, atLastReview, skewed)
-	require.Equal(t, 0, skewed.ElapsedDays)
 	require.GreaterOrEqual(t, skewed.ScheduledDays, 1)
 }
 
@@ -209,7 +208,6 @@ func TestFSRSSchedulerApplyGoldenTransitions(t *testing.T) {
 		Due:           reviewAt.Add(-24 * time.Hour),
 		Stability:     2.5,
 		Difficulty:    5.0,
-		ElapsedDays:   1,
 		ScheduledDays: 1,
 		Reps:          1,
 		Lapses:        0,
@@ -223,7 +221,6 @@ func TestFSRSSchedulerApplyGoldenTransitions(t *testing.T) {
 		dueHours      float64
 		stability     float64
 		difficulty    float64
-		elapsedDays   int
 		scheduledDays int
 		reps          int
 		lapses        int
@@ -233,22 +230,22 @@ func TestFSRSSchedulerApplyGoldenTransitions(t *testing.T) {
 		// whole-day interval and lands in the Review phase — the sub-day Learning /
 		// Relearning steps are skipped, so the learning/review/relearning rows for a
 		// given rating collapse onto identical values.
-		{"new_again", domain.FSRSPhaseNew, domain.RatingAgain, 24, 0.212000000000, 6.413300000000, 0, 1, 2, 0, domain.FSRSPhaseReview},
-		{"new_hard", domain.FSRSPhaseNew, domain.RatingHard, 48, 1.293100000000, 5.112170705601, 0, 2, 2, 0, domain.FSRSPhaseReview},
-		{"new_good", domain.FSRSPhaseNew, domain.RatingGood, 72, 2.306500000000, 2.118103970459, 0, 3, 2, 0, domain.FSRSPhaseReview},
-		{"new_easy", domain.FSRSPhaseNew, domain.RatingEasy, 192, 8.295600000000, 1.000000000000, 0, 8, 2, 0, domain.FSRSPhaseReview},
-		{"learning_again", domain.FSRSPhaseLearning, domain.RatingAgain, 24, 0.569000576174, 8.341762369297, 1, 1, 2, 1, domain.FSRSPhaseReview},
-		{"learning_hard", domain.FSRSPhaseLearning, domain.RatingHard, 120, 4.533552294443, 6.665995369297, 1, 5, 2, 0, domain.FSRSPhaseReview},
-		{"learning_good", domain.FSRSPhaseLearning, domain.RatingGood, 144, 5.881363974797, 4.990228369297, 1, 6, 2, 0, domain.FSRSPhaseReview},
-		{"learning_easy", domain.FSRSPhaseLearning, domain.RatingEasy, 216, 8.832956588396, 3.314461369297, 1, 9, 2, 0, domain.FSRSPhaseReview},
-		{"review_again", domain.FSRSPhaseReview, domain.RatingAgain, 24, 0.569000576174, 8.341762369297, 1, 1, 2, 1, domain.FSRSPhaseReview},
-		{"review_hard", domain.FSRSPhaseReview, domain.RatingHard, 120, 4.533552294443, 6.665995369297, 1, 5, 2, 0, domain.FSRSPhaseReview},
-		{"review_good", domain.FSRSPhaseReview, domain.RatingGood, 144, 5.881363974797, 4.990228369297, 1, 6, 2, 0, domain.FSRSPhaseReview},
-		{"review_easy", domain.FSRSPhaseReview, domain.RatingEasy, 216, 8.832956588396, 3.314461369297, 1, 9, 2, 0, domain.FSRSPhaseReview},
-		{"relearning_again", domain.FSRSPhaseRelearning, domain.RatingAgain, 24, 0.569000576174, 8.341762369297, 1, 1, 2, 1, domain.FSRSPhaseReview},
-		{"relearning_hard", domain.FSRSPhaseRelearning, domain.RatingHard, 120, 4.533552294443, 6.665995369297, 1, 5, 2, 0, domain.FSRSPhaseReview},
-		{"relearning_good", domain.FSRSPhaseRelearning, domain.RatingGood, 144, 5.881363974797, 4.990228369297, 1, 6, 2, 0, domain.FSRSPhaseReview},
-		{"relearning_easy", domain.FSRSPhaseRelearning, domain.RatingEasy, 216, 8.832956588396, 3.314461369297, 1, 9, 2, 0, domain.FSRSPhaseReview},
+		{"new_again", domain.FSRSPhaseNew, domain.RatingAgain, 24, 0.212000000000, 6.413300000000, 1, 2, 0, domain.FSRSPhaseReview},
+		{"new_hard", domain.FSRSPhaseNew, domain.RatingHard, 48, 1.293100000000, 5.112170705601, 2, 2, 0, domain.FSRSPhaseReview},
+		{"new_good", domain.FSRSPhaseNew, domain.RatingGood, 72, 2.306500000000, 2.118103970459, 3, 2, 0, domain.FSRSPhaseReview},
+		{"new_easy", domain.FSRSPhaseNew, domain.RatingEasy, 192, 8.295600000000, 1.000000000000, 8, 2, 0, domain.FSRSPhaseReview},
+		{"learning_again", domain.FSRSPhaseLearning, domain.RatingAgain, 24, 0.569000576174, 8.341762369297, 1, 2, 1, domain.FSRSPhaseReview},
+		{"learning_hard", domain.FSRSPhaseLearning, domain.RatingHard, 120, 4.533552294443, 6.665995369297, 5, 2, 0, domain.FSRSPhaseReview},
+		{"learning_good", domain.FSRSPhaseLearning, domain.RatingGood, 144, 5.881363974797, 4.990228369297, 6, 2, 0, domain.FSRSPhaseReview},
+		{"learning_easy", domain.FSRSPhaseLearning, domain.RatingEasy, 216, 8.832956588396, 3.314461369297, 9, 2, 0, domain.FSRSPhaseReview},
+		{"review_again", domain.FSRSPhaseReview, domain.RatingAgain, 24, 0.569000576174, 8.341762369297, 1, 2, 1, domain.FSRSPhaseReview},
+		{"review_hard", domain.FSRSPhaseReview, domain.RatingHard, 120, 4.533552294443, 6.665995369297, 5, 2, 0, domain.FSRSPhaseReview},
+		{"review_good", domain.FSRSPhaseReview, domain.RatingGood, 144, 5.881363974797, 4.990228369297, 6, 2, 0, domain.FSRSPhaseReview},
+		{"review_easy", domain.FSRSPhaseReview, domain.RatingEasy, 216, 8.832956588396, 3.314461369297, 9, 2, 0, domain.FSRSPhaseReview},
+		{"relearning_again", domain.FSRSPhaseRelearning, domain.RatingAgain, 24, 0.569000576174, 8.341762369297, 1, 2, 1, domain.FSRSPhaseReview},
+		{"relearning_hard", domain.FSRSPhaseRelearning, domain.RatingHard, 120, 4.533552294443, 6.665995369297, 5, 2, 0, domain.FSRSPhaseReview},
+		{"relearning_good", domain.FSRSPhaseRelearning, domain.RatingGood, 144, 5.881363974797, 4.990228369297, 6, 2, 0, domain.FSRSPhaseReview},
+		{"relearning_easy", domain.FSRSPhaseRelearning, domain.RatingEasy, 216, 8.832956588396, 3.314461369297, 9, 2, 0, domain.FSRSPhaseReview},
 	}
 
 	for _, tc := range cases {
@@ -265,7 +262,6 @@ func TestFSRSSchedulerApplyGoldenTransitions(t *testing.T) {
 			require.InDelta(t, tc.dueHours, got.Due.Sub(reviewAt).Hours(), 0.001)
 			require.InDelta(t, tc.stability, got.Stability, 0.000000001)
 			require.InDelta(t, tc.difficulty, got.Difficulty, 0.000000001)
-			require.Equal(t, tc.elapsedDays, got.ElapsedDays)
 			require.Equal(t, tc.scheduledDays, got.ScheduledDays)
 			require.Equal(t, tc.reps, got.Reps)
 			require.Equal(t, tc.lapses, got.Lapses)

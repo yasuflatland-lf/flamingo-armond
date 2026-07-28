@@ -59,7 +59,6 @@ func reviewedCardFSRS(lastReview time.Time) *domain.UserCardFSRS {
 			Due:           lastReview.Add(48 * time.Hour),
 			Stability:     12.5,
 			Difficulty:    5.5,
-			ElapsedDays:   2,
 			ScheduledDays: 2,
 			Reps:          3,
 			Lapses:        1,
@@ -223,6 +222,6 @@ func TestSwipeUsecase_HandleSwipe_BrandNewCard_IsNotSkipped(t *testing.T) {
 	require.NotNil(t, userFSRSRepo.upserted, "the first swipe of a brand-new card must persist its FSRS row")
 	require.NotNil(t, swipeRepo.created, "the first swipe of a brand-new card must write a swipe record")
 	require.Equal(t, 1, userFSRSRepo.upserted.State.Reps)
-	require.Equal(t, domain.FSRSPhaseNew, *swipeRepo.created.PhaseBefore,
+	require.Equal(t, domain.FSRSPhaseNew, swipeRepo.created.PhaseBefore,
 		"the recorded pre-swipe phase must be the synthesized new-card phase")
 }

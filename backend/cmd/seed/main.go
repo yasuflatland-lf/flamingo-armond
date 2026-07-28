@@ -55,7 +55,6 @@ type FSRSEntry struct {
 	Reps          int       `json:"reps"`
 	Lapses        int       `json:"lapses"`
 	LastReview    time.Time `json:"last_review"`
-	ElapsedDays   int       `json:"elapsed_days"`
 	ScheduledDays int       `json:"scheduled_days"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
@@ -149,14 +148,14 @@ func runDump(dbURL, outPath string) error {
 	cardRows.Close()
 
 	var fsrsEntries []FSRSEntry
-	fsrsRows, err := db.Query(`SELECT user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, elapsed_days, scheduled_days, created_at, updated_at FROM public.user_card_fsrs`)
+	fsrsRows, err := db.Query(`SELECT user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, scheduled_days, created_at, updated_at FROM public.user_card_fsrs`)
 	if err != nil {
 		return eris.Wrap(err, "seed: query user_card_fsrs")
 	}
 	defer fsrsRows.Close()
 	for fsrsRows.Next() {
 		var f FSRSEntry
-		if err := fsrsRows.Scan(&f.UserID, &f.CardID, &f.State, &f.Due, &f.Stability, &f.Difficulty, &f.Reps, &f.Lapses, &f.LastReview, &f.ElapsedDays, &f.ScheduledDays, &f.CreatedAt, &f.UpdatedAt); err != nil {
+		if err := fsrsRows.Scan(&f.UserID, &f.CardID, &f.State, &f.Due, &f.Stability, &f.Difficulty, &f.Reps, &f.Lapses, &f.LastReview, &f.ScheduledDays, &f.CreatedAt, &f.UpdatedAt); err != nil {
 			return eris.Wrap(err, "seed: scan user_card_fsrs row")
 		}
 		fsrsEntries = append(fsrsEntries, f)
@@ -352,8 +351,8 @@ func runImport(dbURL, inPath string) (retErr error) {
 		_, err = tx.Exec(`
 			INSERT INTO public.user_card_fsrs
 			  (user_id, card_id, state, due, stability, difficulty, reps, lapses,
-			   last_review, elapsed_days, scheduled_days, created_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+			   last_review, scheduled_days, created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 			ON CONFLICT (user_id, card_id) DO UPDATE
 			  SET state          = EXCLUDED.state,
 			      due            = EXCLUDED.due,
@@ -362,11 +361,9 @@ func runImport(dbURL, inPath string) (retErr error) {
 			      reps           = EXCLUDED.reps,
 			      lapses         = EXCLUDED.lapses,
 			      last_review    = EXCLUDED.last_review,
-			      elapsed_days   = EXCLUDED.elapsed_days,
 			      scheduled_days = EXCLUDED.scheduled_days`,
 			targetUserID, f.CardID, f.State, f.Due, f.Stability, f.Difficulty,
-			f.Reps, f.Lapses, f.LastReview, f.ElapsedDays, f.ScheduledDays,
-			f.CreatedAt,
+			f.Reps, f.Lapses, f.LastReview, f.ScheduledDays, f.CreatedAt,
 		)
 		if err != nil {
 			return eris.Wrapf(err, "seed: upsert user_card_fsrs user=%s card=%s", f.UserID, f.CardID)

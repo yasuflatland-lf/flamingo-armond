@@ -69,7 +69,6 @@ type FSRSState struct {
 	Due           time.Time
 	Stability     float64
 	Difficulty    float64
-	ElapsedDays   int
 	ScheduledDays int
 	Reps          int
 	Lapses        int
@@ -78,25 +77,6 @@ type FSRSState struct {
 	// LastRating is the rating of the swipe that produced this state; the zero
 	// value denotes a synthesized new-card state that no swipe has rated yet.
 	LastRating Rating
-}
-
-// ElapsedDaysAt returns the whole days elapsed since LastReview at now — the
-// value FSRSState.ElapsedDays carries. This is the application's definition, not
-// the scheduler library's: go-fsrs v4 removes Card.ElapsedDays and counts
-// elapsed days internally by UTC calendar date without exposing the result.
-// domain.rescueMinElapsed and service.isOnTimeRecall both read against this
-// definition, so changing the formula moves the 24h rescue floor and the
-// on-time-recall statistic together.
-//
-// A New card and a card with no LastReview both yield 0: neither has a prior
-// review to measure from. The now.Before branch is a clock-skew guard — Apply
-// already clamps now to LastReview before calling this, but the method must be
-// correct on its own.
-func (s FSRSState) ElapsedDaysAt(now time.Time) int {
-	if s.Phase == FSRSPhaseNew || s.LastReview.IsZero() || now.Before(s.LastReview) {
-		return 0
-	}
-	return int(now.Sub(s.LastReview).Hours() / 24)
 }
 
 // NewCardStability and NewCardDifficulty are the placeholder scheduling values a
