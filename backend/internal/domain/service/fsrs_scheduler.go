@@ -12,13 +12,34 @@ import (
 // FSRSScheduler wraps go-fsrs behind a pure domain service.
 type FSRSScheduler struct{ algo *fsrs.FSRS }
 
+// NewFSRSScheduler builds the long-term-mode scheduler the whole domain assumes:
+// whole-day intervals only, and no card ever sitting in Learning or Relearning.
+//
+// Both guards below exist because fsrs.NewFSRS substitutes fsrs.DefaultParam()
+// for the caller's whole Parameters value when validation fails, and DefaultParam
+// sets EnableShortTerm = true. One out-of-range field would therefore swap in the
+// short-term scheduler with no error and no failing test: sub-day intervals would
+// return and domain.LearnedStabilityDays' mastery/statistics parity would break at
+// a site that has no compile-time link to this one.
+//
+// LearningSteps and RelearningSteps are cleared because the long-term scheduler
+// never reads them. They are not inert: clipParameters derives the W17/W18 ceiling
+// from len(RelearningSteps). That ceiling is 2.0 for any length below 2, which is
+// what both the default one-element slice and nil produce, so clearing them moves
+// no golden value — it removes the coupling.
 func NewFSRSScheduler() *FSRSScheduler {
 	params := fsrs.DefaultParam()
-	// Long-term scheduling mode: skip the sub-day (minutes) learning steps so every
-	// review is scheduled in whole-day intervals and cards never sit in the
-	// Learning/Relearning phases. See go-fsrs Parameters.EnableShortTerm.
 	params.EnableShortTerm = false
-	return &FSRSScheduler{algo: fsrs.NewFSRS(params)}
+	params.LearningSteps = nil
+	params.RelearningSteps = nil
+	if err := params.Validate(); err != nil {
+		panic(fmt.Sprintf("service: fsrs scheduler: invalid parameters: %v", err))
+	}
+	algo := fsrs.NewFSRS(params)
+	if algo.EnableShortTerm {
+		panic("service: fsrs scheduler: go-fsrs discarded EnableShortTerm = false")
+	}
+	return &FSRSScheduler{algo: algo}
 }
 
 // Apply returns a fresh state and does not mutate the input state.
@@ -43,6 +64,12 @@ func NewFSRSScheduler() *FSRSScheduler {
 //
 // ElapsedDays on the returned state is computed by
 // domain.FSRSState.ElapsedDaysAt, not read from the scheduler library.
+// fsrs.Card.RemainingSteps is deliberately not carried on FSRSState. The
+// long-term scheduler never reads it and setReviewState zeroes it on every
+// output, so a round trip through the domain is lossless. That holds only while
+// EnableShortTerm is false, which the constructor above now asserts — under
+// short-term mode the basic scheduler reads it to advance the learning step, and
+// every card would restart at step 0.
 func (s *FSRSScheduler) Apply(state domain.FSRSState, rating domain.Rating, now time.Time) domain.FSRSState {
 	if !state.Phase.IsValid() {
 		panic(fmt.Sprintf("service: fsrs scheduler: invalid FSRSPhase %d", int(state.Phase)))
