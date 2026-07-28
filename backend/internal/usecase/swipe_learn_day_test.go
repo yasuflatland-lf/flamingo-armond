@@ -1,6 +1,8 @@
 package usecase
 
 import (
+	"bytes"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -13,11 +15,15 @@ import (
 // newSwipeLearnDayFixture builds a swipe usecase whose card and cardgroup
 // repositories resolve "card-1" in "cg-1" owned by "user-1". existing is the
 // FSRS row FindByUserAndCardIDsTx returns; pass nil for the brand-new-card path
-// where no row exists yet.
-func newSwipeLearnDayFixture(existing *domain.UserCardFSRS) (SwipeUsecase, *mockUserCardFSRSRepository, *mockSwipeRecordRepoForSwipe) {
+// where no row exists yet. The concrete usecase receives the fixed clock after
+// construction so the public constructor signatures remain unchanged.
+func newSwipeLearnDayFixture(existing *domain.UserCardFSRS, now time.Time, logger *slog.Logger) (SwipeUsecase, *mockUserCardFSRSRepository, *mockSwipeRecordRepoForSwipe) {
 	byCardID := map[string]*domain.UserCardFSRS{}
 	if existing != nil {
 		byCardID[existing.CardID] = existing
+	}
+	if logger == nil {
+		logger = newTestLogger()
 	}
 	userFSRSRepo := &mockUserCardFSRSRepository{byCardID: byCardID}
 	swipeRepo := &mockSwipeRecordRepoForSwipe{}
@@ -36,8 +42,9 @@ func newSwipeLearnDayFixture(existing *domain.UserCardFSRS) (SwipeUsecase, *mock
 		service.NewFSRSScheduler(),
 		tx,
 		userFSRSRepo,
-		newTestLogger(),
+		logger,
 	)
+	uc.(*swipeUsecase).clock = fixedClock{now: now}
 	return uc, userFSRSRepo, swipeRepo
 }
 
@@ -79,10 +86,11 @@ func swipeCard1(uc SwipeUsecase) (HandleSwipeOutcome, error) {
 func TestSwipeUsecase_HandleSwipe_SameLearnDayRepeat_IsSuccessShapedNoOp(t *testing.T) {
 	t.Parallel()
 
-	lastReview := domain.StartOfLearnDay(time.Now().UTC()).Add(time.Minute)
+	now := time.Date(2026, 6, 5, 3, 0, 0, 0, time.UTC)
+	lastReview := domain.StartOfLearnDay(now).Add(time.Minute)
 	existing := reviewedCardFSRS(lastReview)
 	before := existing.State
-	uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(existing)
+	uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(existing, now, nil)
 
 	outcome, err := swipeCard1(uc)
 
@@ -105,7 +113,8 @@ func TestSwipeUsecase_HandleSwipe_SameLearnDayRepeat_IsSuccessShapedNoOp(t *test
 func TestSwipeUsecase_HandleSwipe_LearnDayBoundary(t *testing.T) {
 	t.Parallel()
 
-	boundary := domain.StartOfLearnDay(time.Now().UTC())
+	now := time.Date(2026, 6, 5, 3, 0, 0, 0, time.UTC)
+	boundary := domain.StartOfLearnDay(now)
 	cases := []struct {
 		name       string
 		lastReview time.Time
@@ -127,9 +136,9 @@ func TestSwipeUsecase_HandleSwipe_LearnDayBoundary(t *testing.T) {
 			wantSkip:   false,
 		},
 		{
-			name:       "a zero-value last review never trips the guard",
+			name:       "a zero-value last review earns no scheduling credit",
 			lastReview: time.Time{},
-			wantSkip:   false,
+			wantSkip:   true,
 		},
 	}
 
@@ -138,7 +147,7 @@ func TestSwipeUsecase_HandleSwipe_LearnDayBoundary(t *testing.T) {
 			t.Parallel()
 
 			existing := reviewedCardFSRS(tc.lastReview)
-			uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(existing)
+			uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(existing, now, nil)
 
 			outcome, err := swipeCard1(uc)
 
@@ -159,6 +168,44 @@ func TestSwipeUsecase_HandleSwipe_LearnDayBoundary(t *testing.T) {
 	}
 }
 
+// TestSwipeUsecase_HandleSwipe_ZeroCreditRepeatAcrossLearnDayIgnored pins the
+// UTC-date half of the replay guard. A repeat can cross JST midnight while
+// remaining inside one UTC date, so learn-day membership alone is insufficient.
+func TestSwipeUsecase_HandleSwipe_ZeroCreditRepeatAcrossLearnDayIgnored(t *testing.T) {
+	t.Parallel()
+
+	lastReview := time.Date(2026, 4, 26, 0, 30, 0, 0, time.UTC)
+	zeroCreditNow := time.Date(2026, 4, 26, 23, 30, 0, 0, time.UTC)
+	existing := reviewedCardFSRS(lastReview)
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(existing, zeroCreditNow, logger)
+
+	outcome, err := swipeCard1(uc)
+
+	require.NoError(t, err)
+	require.NotNil(t, outcome.Swipe, "an ignored repeat must still return the success variant")
+	require.Nil(t, outcome.Validation, "an ignored repeat is not a user-input error")
+	require.Nil(t, userFSRSRepo.upserted, "a zero-credit repeat must not upsert the FSRS row")
+	require.Nil(t, swipeRepo.created, "a zero-credit repeat must not write a swipe record")
+	require.Contains(t, buf.String(), `"msg":"swipe: repeat review ignored"`)
+	require.Contains(t, buf.String(), `"card_id":"card-1"`)
+
+	creditNow := time.Date(2026, 4, 27, 0, 30, 0, 0, time.UTC)
+	uc.(*swipeUsecase).clock = fixedClock{now: creditNow}
+
+	outcome, err = swipeCard1(uc)
+
+	require.NoError(t, err)
+	require.NotNil(t, outcome.Swipe, "a credited review must return the success variant")
+	require.Nil(t, outcome.Validation)
+	require.NotNil(t, userFSRSRepo.upserted, "a review on a different UTC date must upsert the FSRS row")
+	require.NotNil(t, swipeRepo.created, "a review on a different UTC date must write a swipe record")
+	require.Equal(t, 4, userFSRSRepo.upserted.State.Reps, "the credited review must advance reps")
+	require.True(t, userFSRSRepo.upserted.State.LastReview.Equal(creditNow),
+		"the applied swipe must use the injected clock instant")
+}
+
 // TestSwipeUsecase_HandleSwipe_BrandNewCard_IsNotSkipped guards the trap the
 // same-learn-day check invites: NewUserCardFSRSForNewCard stamps LastReview with
 // now, so a guard reading the synthesized state instead of the loaded row would
@@ -166,7 +213,8 @@ func TestSwipeUsecase_HandleSwipe_LearnDayBoundary(t *testing.T) {
 func TestSwipeUsecase_HandleSwipe_BrandNewCard_IsNotSkipped(t *testing.T) {
 	t.Parallel()
 
-	uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(nil)
+	now := time.Date(2026, 6, 5, 3, 0, 0, 0, time.UTC)
+	uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(nil, now, nil)
 
 	outcome, err := swipeCard1(uc)
 

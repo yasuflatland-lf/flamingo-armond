@@ -7,6 +7,84 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestEarnsSchedulingCredit pins the rule to UTC calendar dates rather than
+// wall-clock distance: 23 hours inside one UTC date earns nothing while one hour
+// across UTC midnight earns credit. The non-UTC row is load-bearing —
+// utcCalendarDay must normalise before truncating, so a fixture whose operands
+// straddle a JST date but share a UTC date would pass an implementation that
+// truncated in the operand's own location. Two rows carry the zero/backward
+// guard: the full-day-backward step and the zero lastReview, both of which the
+// bare date comparison would credit. The one-second-backward step is a boundary
+// case only — it shares a UTC date with lastReview, so the date comparison
+// already rejects it and it cannot distinguish a guarded implementation.
+func TestEarnsSchedulingCredit(t *testing.T) {
+	t.Parallel()
+
+	utcDate := time.Date(2026, 4, 26, 0, 30, 0, 0, time.UTC)
+	cases := []struct {
+		name       string
+		lastReview time.Time
+		now        time.Time
+		want       bool
+	}{
+		{
+			name:       "23 hours apart inside one UTC date earns no credit",
+			lastReview: utcDate,
+			now:        utcDate.Add(23 * time.Hour),
+			want:       false,
+		},
+		{
+			name:       "one hour apart across UTC midnight earns credit",
+			lastReview: time.Date(2026, 4, 26, 23, 30, 0, 0, time.UTC),
+			now:        time.Date(2026, 4, 27, 0, 30, 0, 0, time.UTC),
+			want:       true,
+		},
+		{
+			name:       "exactly 24 hours apart earns credit",
+			lastReview: utcDate,
+			now:        utcDate.Add(24 * time.Hour),
+			want:       true,
+		},
+		{
+			name:       "identical instants earn no credit",
+			lastReview: utcDate,
+			now:        utcDate,
+			want:       false,
+		},
+		{
+			name:       "one-second backward clock step earns no credit",
+			lastReview: utcDate,
+			now:        utcDate.Add(-time.Second),
+			want:       false,
+		},
+		{
+			name:       "full-day backward clock step earns no credit",
+			lastReview: utcDate,
+			now:        utcDate.Add(-24 * time.Hour),
+			want:       false,
+		},
+		{
+			name:       "zero last review earns no credit",
+			lastReview: time.Time{},
+			now:        utcDate,
+			want:       false,
+		},
+		{
+			name:       "non-UTC operands on different local dates but one UTC date earn no credit",
+			lastReview: time.Date(2026, 4, 26, 23, 30, 0, 0, learnDayZone),
+			now:        time.Date(2026, 4, 27, 8, 30, 0, 0, learnDayZone),
+			want:       false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, EarnsSchedulingCredit(tc.lastReview, tc.now))
+		})
+	}
+}
+
 // TestStartOfLearnDay pins the JST (UTC+9) start-of-day boundary used by the
 // learn and practice windows: midnight at or before now, returned as an
 // absolute instant. Only the instant matters, not the input's location.

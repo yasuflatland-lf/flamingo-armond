@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"math"
 	"time"
 )
 
@@ -32,16 +31,30 @@ const (
 	MaxDifficulty = 10.0
 )
 
+// MinStability and MaxStability bound the FSRS stability scale, mirroring
+// go-fsrs' sMin and sMax the way MinDifficulty and MaxDifficulty mirror dMin and
+// dMax. constrainStability clamps every stability the scheduler produces into
+// this closed range.
+//
+// MinStability is the load-bearing end. go-fsrs rejects a non-New card whose
+// stability is below it, and FSRSScheduler.Apply turns that rejection into a
+// panic, so a row under this floor is the one persisted value that can fail a
+// routine swipe. MaxStability is hygiene: the library accepts an over-large
+// stability, it simply cannot have produced one.
+const (
+	MinStability = 0.001
+	MaxStability = 36500.0
+)
+
 // IsValidStability reports whether s is a stability the scheduler can produce:
-// finite and strictly positive. The check exists because NaN and the infinities
-// fail every ordered comparison silently — an unchecked NaN stability falls
-// through both ClassifyMastery comparisons and is reported as the Learned tier,
-// and it breaks JSON marshalling of the GraphQL Float it feeds.
+// finite and within [MinStability, MaxStability]. Both ends matter. Below
+// MinStability, go-fsrs rejects the card and FSRSScheduler.Apply panics, so
+// admitting such a row only defers the failure to the next swipe. NaN and the
+// infinities fail every ordered comparison silently — an unchecked NaN stability
+// falls through both ClassifyMastery comparisons and is reported as the Learned
+// tier, and it breaks JSON marshalling of the GraphQL Float it feeds.
 func IsValidStability(s float64) bool {
-	if math.IsNaN(s) || math.IsInf(s, 0) {
-		return false
-	}
-	return s > 0
+	return s >= MinStability && s <= MaxStability
 }
 
 // IsValidDifficulty reports whether d sits within [MinDifficulty, MaxDifficulty].
