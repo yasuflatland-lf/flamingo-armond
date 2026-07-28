@@ -216,7 +216,10 @@ func userCardFSRSLastRating(state domain.FSRSState) *int {
 // is the one way an out-of-range value can reach the domain. Rejecting is
 // deliberate — a corrupted stability or difficulty would otherwise reach the
 // UserCardState GraphQL Floats it feeds and break JSON marshalling of the whole
-// response, which is harder to diagnose than a failed read. The sibling
+// response, which is harder to diagnose than a failed read. Reps and Lapses are
+// also checked because the scheduler widens them to uint64, where a negative
+// persisted value becomes an enormous unsigned count; ScheduledDays is checked
+// because it is never negative by construction. The sibling
 // ListFSRSStatesByUser carries the matching stability guard for the /stats
 // projection, which is the path domain.ClassifyMastery consumes.
 func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
@@ -236,6 +239,15 @@ func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
 		if !lastRating.IsValid() {
 			return nil, eris.Errorf("repository: invalid last_rating value %d for card %s", *row.LastRating, row.CardID)
 		}
+	}
+	// Reps and Lapses are unvalidated by the table (no CHECK constraints) and are
+	// widened to uint64 on the way into go-fsrs, where a negative value becomes an
+	// enormous unsigned count that the scheduler's own Reps++ then wraps to 0 —
+	// silently destroying the counter with no error. ScheduledDays feeds the
+	// GraphQL Int and the statistics, and is never negative by construction.
+	if row.Reps < 0 || row.Lapses < 0 || row.ScheduledDays < 0 {
+		return nil, eris.Errorf("repository: negative counter for card %s (reps=%d lapses=%d scheduled_days=%d)",
+			row.CardID, row.Reps, row.Lapses, row.ScheduledDays)
 	}
 	return &domain.UserCardFSRS{
 		UserID: domain.UserID(row.UserID),
