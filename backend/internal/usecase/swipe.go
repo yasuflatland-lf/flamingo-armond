@@ -40,9 +40,9 @@ type UserCardFSRSRepoForSwipe interface {
 }
 
 // SwipeUsecase processes a single card swipe and advances the FSRS schedule.
-// A repeat review of the same card within the same JST learn day is accepted
-// and ignored: the schedule is left untouched, no second swipe record is
-// written, and the normal success outcome is still returned.
+// A repeat review within the same JST learn day or without FSRS scheduling
+// credit is accepted and ignored: the schedule is left untouched, no second
+// swipe record is written, and the normal success outcome is still returned.
 type SwipeUsecase interface {
 	HandleSwipe(ctx context.Context, in HandleSwipeInput) (HandleSwipeOutcome, error)
 }
@@ -56,6 +56,7 @@ type swipeUsecase struct {
 	applyRating    func(current *domain.UserCardFSRS, scheduler domain.FSRSScheduler, rating domain.Rating, now time.Time) error
 	newSwipeRecord func(userID domain.UserID, cardID string, cardgroupID domain.CardgroupID, rating domain.Rating, reviewedAt time.Time, stateBefore, stateAfter domain.FSRSState) (*domain.SwipeRecord, error)
 	tx             txRunner
+	clock          Clock
 	logger         *slog.Logger
 }
 
@@ -107,6 +108,7 @@ func NewSwipeUsecase(
 			return current.ApplyRating(scheduler, rating, now)
 		},
 		newSwipeRecord: domain.NewSwipeRecord,
+		clock:          systemClock{},
 		logger:         logger,
 	}
 	uc.tx = newTxRunner(db)
@@ -167,32 +169,40 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			return ucerr.NewValidationError("cardId", "card not found")
 		}
 
-		// Routing this read through usecase.Clock — the port learn.go and
-		// stats.go inject — is deliberately deferred, not an oversight. See
-		// docs/backend/library-gotchas/swipe-bypasses-clock-port-and-day-granular-replay-guard.md.
-		now = time.Now().UTC()
+		// Read the request instant through the injected clock port.
+		now = u.clock.Now().UTC()
 		byCardID, err := u.userFSRSRepo.FindByUserAndCardIDsTx(ctx, tx, user.Sub, []string{card.ID})
 		if err != nil {
 			return wrapSwipeErr(err, "usecase: swipe: find user-card fsrs")
 		}
-		// Same-learn-day repeat guard. The learn queue never serves a card twice
-		// within one JST learn day, so a second swipe of the same card inside
-		// that day is a replay: a retried request on a flaky connection, a
-		// second browser tab, or a reload after a false failure. Accept it and
-		// ignore it — re-applying the rating would inflate the card's next
-		// interval and double-count the review in the learner's statistics.
+		// Repeat-review guard. The learn queue never serves a card twice within
+		// one JST learn day or without FSRS scheduling credit, so a swipe that
+		// violates either rule is a replay: a retried request on a flaky
+		// connection, a second browser tab, or a reload after a false failure.
+		// Accept it and ignore it — re-applying the rating would distort the
+		// schedule and double-count the review in the learner's statistics.
 		//
 		// The check reads the row returned by the repository, never `current`
 		// after the new-card synthesis below: NewUserCardFSRSForNewCard stamps
 		// LastReview with now, so gating on the synthesized state would skip
 		// the very first swipe of every brand-new card.
 		//
+		// Both disjuncts are required. ReviewedWithinLearnDay alone leaves a gap
+		// of up to 23 hours: JST midnight is 15:00 UTC, so a review at 00:30 UTC
+		// (09:30 JST) and a swipe at 23:30 UTC sit in different JST learn days
+		// but the same UTC date and earn no credit. EarnsSchedulingCredit alone
+		// drops the product's spacing rule: a review at 16:00 UTC (01:00 JST)
+		// and a swipe at 01:00 UTC the next day are only nine hours apart and
+		// remain inside one JST learn day even though FSRS grants credit.
+		//
 		// domain.ReviewedWithinLearnDay is the exact complement of the
-		// serving-side SQL window (repository/card_due.go), so recording and
-		// serving agree on the boundary instant.
+		// serving-side SQL window (repository/card_due.go), so its comparator
+		// and the serving comparator must move together.
 		existing := byCardID[card.ID]
-		if existing != nil && domain.ReviewedWithinLearnDay(existing.State.LastReview, now) {
-			u.logger.InfoContext(ctx, "swipe: repeat review within the same learn day ignored",
+		if existing != nil &&
+			(domain.ReviewedWithinLearnDay(existing.State.LastReview, now) ||
+				!domain.EarnsSchedulingCredit(existing.State.LastReview, now)) {
+			u.logger.InfoContext(ctx, "swipe: repeat review ignored",
 				"card_id", card.ID,
 				"learn_day_start", domain.StartOfLearnDay(now),
 				"last_review", existing.State.LastReview,
