@@ -24,11 +24,43 @@ func EndOfLearnDay(now time.Time) time.Time {
 	return StartOfLearnDay(now).Add(24 * time.Hour)
 }
 
-// rescueMinElapsed is the minimum wall-clock time before any window may
-// re-serve a card. The scheduler counts elapsed days by UTC calendar date, so a
-// gap of at least 24 hours always spans a date boundary and earns a non-zero
-// stability growth factor, while a shorter repeat can earn nothing. The rescue
-// window was the first consumer of this model-wide floor.
+// EarnsSchedulingCredit reports whether a review at now advances the FSRS
+// schedule for a card last reviewed at lastReview. go-fsrs counts elapsed days as
+// a UTC calendar-date difference, so credit is earned exactly when the two
+// instants fall on different UTC dates: on the same date retrievability is 1 and
+// the recall stability growth factor exp((1-r)*W10)-1 is bit-exactly 0.
+//
+// Wall-clock distance is not the rule and must not be substituted for it. A
+// repeat one hour apart across UTC midnight earns the same stability growth as
+// one 24 hours apart, while a repeat 23 hours apart inside a single UTC date
+// earns none. A zero LastReview and a backward clock step both earn nothing,
+// mirroring the library's own New-card and hours<0 clamps.
+func EarnsSchedulingCredit(lastReview, now time.Time) bool {
+	if lastReview.IsZero() || now.Before(lastReview) {
+		return false
+	}
+	return !utcCalendarDay(lastReview).Equal(utcCalendarDay(now))
+}
+
+// utcCalendarDay truncates t to UTC midnight, the operation go-fsrs applies to
+// both operands before differencing them. Constructing the date explicitly rather
+// than calling Truncate(24*time.Hour) keeps the mirror obvious: Truncate happens
+// to agree only because Go's zero time is itself a UTC midnight.
+func utcCalendarDay(t time.Time) time.Time {
+	u := t.UTC()
+	y, m, d := u.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+// rescueMinElapsed is the minimum wall-clock time before any window may re-serve
+// a card. It is a SPACING rule, not a scheduling-credit rule.
+// EarnsSchedulingCredit is what decides credit, and it would sanction a repeat one
+// minute after the previous review as long as UTC midnight fell between them — a
+// one-hour gap across that boundary earns the same stability growth as a full day.
+// The floor is strictly stronger than the credit rule (a gap of at least 24 hours
+// always spans a UTC date, so it implies credit) and it is what keeps a rescue
+// slot from being spent on a card the learner has just seen. The rescue window was
+// the first consumer of this model-wide floor.
 const rescueMinElapsed = 24 * time.Hour
 
 // RescueReviewedBefore returns the latest last_review instant a card may carry
