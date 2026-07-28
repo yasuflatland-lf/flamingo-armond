@@ -707,23 +707,26 @@ describe("SwipeCardStack — keyboard triggers all three directions", () => {
     ["ArrowLeft", "left"],
     ["ArrowRight", "right"],
     ["ArrowDown", "down"],
-  ] as const)("commits onCardSwiped with direction '%s' → '%s' on spring rest after the key is pressed", (key, expectedDirection) => {
-    const onCardSwiped = vi.fn();
+  ] as const)(
+    "commits onCardSwiped with direction '%s' → '%s' on spring rest after the key is pressed",
+    (key, expectedDirection) => {
+      const onCardSwiped = vi.fn();
 
-    renderWithIntl(
-      <SwipeCardStack cards={[cardA]} displayMode="ALWAYS_VISIBLE" onCardSwiped={onCardSwiped} />,
-    );
+      renderWithIntl(
+        <SwipeCardStack cards={[cardA]} displayMode="ALWAYS_VISIBLE" onCardSwiped={onCardSwiped} />,
+      );
 
-    fireEvent.keyDown(document, { key });
-    // Commit is deferred to the fly-off spring rest — not yet fired.
-    expect(onCardSwiped).not.toHaveBeenCalled();
-    act(() => {
-      settleFlyOuts();
-    });
+      fireEvent.keyDown(document, { key });
+      // Commit is deferred to the fly-off spring rest — not yet fired.
+      expect(onCardSwiped).not.toHaveBeenCalled();
+      act(() => {
+        settleFlyOuts();
+      });
 
-    expect(onCardSwiped).toHaveBeenCalledTimes(1);
-    expect(onCardSwiped).toHaveBeenCalledWith(cardA, expectedDirection);
-  });
+      expect(onCardSwiped).toHaveBeenCalledTimes(1);
+      expect(onCardSwiped).toHaveBeenCalledWith(cardA, expectedDirection);
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -735,31 +738,34 @@ describe("SwipeCardStack — ignores auto-repeat keydown", () => {
     ["ArrowLeft", "left"],
     ["ArrowRight", "right"],
     ["ArrowDown", "down"],
-  ] as const)("emits no rating for a repeat '%s' keydown, but still rates on a normal press", (key, expectedDirection) => {
-    const onCardSwiped = vi.fn();
+  ] as const)(
+    "emits no rating for a repeat '%s' keydown, but still rates on a normal press",
+    (key, expectedDirection) => {
+      const onCardSwiped = vi.fn();
 
-    renderWithIntl(
-      <SwipeCardStack cards={[cardA]} displayMode="ALWAYS_VISIBLE" onCardSwiped={onCardSwiped} />,
-    );
+      renderWithIntl(
+        <SwipeCardStack cards={[cardA]} displayMode="ALWAYS_VISIBLE" onCardSwiped={onCardSwiped} />,
+      );
 
-    // A held key auto-repeats: the browser fires keydown with repeat = true.
-    // None of those may reach triggerSwipe, so no fly-off is even queued.
-    fireEvent.keyDown(document, { key, repeat: true });
-    fireEvent.keyDown(document, { key, repeat: true });
-    expect(pendingFlyOuts).toHaveLength(0);
-    act(() => {
-      settleFlyOuts();
-    });
-    expect(onCardSwiped).not.toHaveBeenCalled();
+      // A held key auto-repeats: the browser fires keydown with repeat = true.
+      // None of those may reach triggerSwipe, so no fly-off is even queued.
+      fireEvent.keyDown(document, { key, repeat: true });
+      fireEvent.keyDown(document, { key, repeat: true });
+      expect(pendingFlyOuts).toHaveLength(0);
+      act(() => {
+        settleFlyOuts();
+      });
+      expect(onCardSwiped).not.toHaveBeenCalled();
 
-    // A deliberate discrete press still rates the active card.
-    fireEvent.keyDown(document, { key });
-    act(() => {
-      settleFlyOuts();
-    });
-    expect(onCardSwiped).toHaveBeenCalledTimes(1);
-    expect(onCardSwiped).toHaveBeenCalledWith(cardA, expectedDirection);
-  });
+      // A deliberate discrete press still rates the active card.
+      fireEvent.keyDown(document, { key });
+      act(() => {
+        settleFlyOuts();
+      });
+      expect(onCardSwiped).toHaveBeenCalledTimes(1);
+      expect(onCardSwiped).toHaveBeenCalledWith(cardA, expectedDirection);
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------

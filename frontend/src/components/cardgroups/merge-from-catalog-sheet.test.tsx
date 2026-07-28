@@ -275,29 +275,32 @@ describe("<MergeFromCatalogSheet>", () => {
     ["unauthenticated", /session expired/i],
     ["forbidden", /do not have permission/i],
     ["rejected", /merge failed, please try again/i],
-  ] as const)("keeps the sheet open and shows a localized banner for merge %s", async (outcome, copy) => {
-    const user = userEvent.setup();
-    const { onMerged, onOpenChange } = renderSheet({
-      mocks: [
-        BASE_CATALOG,
-        previewMock("master-1", {
-          __typename: "MergeMasterCardgroupPreview",
-          addedCount: 3,
-          updatedCount: 1,
-        }),
-        mergeMock(outcome),
-      ],
-    });
+  ] as const)(
+    "keeps the sheet open and shows a localized banner for merge %s",
+    async (outcome, copy) => {
+      const user = userEvent.setup();
+      const { onMerged, onOpenChange } = renderSheet({
+        mocks: [
+          BASE_CATALOG,
+          previewMock("master-1", {
+            __typename: "MergeMasterCardgroupPreview",
+            addedCount: 3,
+            updatedCount: 1,
+          }),
+          mergeMock(outcome),
+        ],
+      });
 
-    await user.click(await screen.findByTestId("merge-from-catalog-row-master-1"));
-    await user.click(await screen.findByTestId("merge-review-confirm"));
+      await user.click(await screen.findByTestId("merge-from-catalog-row-master-1"));
+      await user.click(await screen.findByTestId("merge-review-confirm"));
 
-    const banner = await screen.findByTestId("merge-from-catalog-error");
-    expect(banner).toHaveTextContent(copy);
-    expect(screen.getByRole("dialog", { name: "Merge from catalog" })).toBeInTheDocument();
-    expect(onOpenChange).not.toHaveBeenCalledWith(false);
-    expect(onMerged).not.toHaveBeenCalled();
-  });
+      const banner = await screen.findByTestId("merge-from-catalog-error");
+      expect(banner).toHaveTextContent(copy);
+      expect(screen.getByRole("dialog", { name: "Merge from catalog" })).toBeInTheDocument();
+      expect(onOpenChange).not.toHaveBeenCalledWith(false);
+      expect(onMerged).not.toHaveBeenCalled();
+    },
+  );
 
   it("disables the confirm button while the merge mutation is in flight", async () => {
     const user = userEvent.setup();

@@ -40,49 +40,43 @@ afterEach(() => {
 
 describe("<ConditionalShell>", () => {
   describe("bare routes (/, /login, /onboarding, /terms, /privacy)", () => {
-    it.each([
-      "/",
-      "/login",
-      "/onboarding",
-      "/onboarding/start",
-      "/terms",
-      "/privacy",
-    ])("renders children directly without the navigation shell on %s", (pathname) => {
-      mockUsePathname.mockReturnValue(pathname);
-      render(
-        <ConditionalShell user={null} isAdmin={false}>
-          <div data-testid="page" />
-        </ConditionalShell>,
-      );
+    it.each(["/", "/login", "/onboarding", "/onboarding/start", "/terms", "/privacy"])(
+      "renders children directly without the navigation shell on %s",
+      (pathname) => {
+        mockUsePathname.mockReturnValue(pathname);
+        render(
+          <ConditionalShell user={null} isAdmin={false}>
+            <div data-testid="page" />
+          </ConditionalShell>,
+        );
 
-      expect(screen.getByTestId("page")).toBeInTheDocument();
-      expect(screen.queryByTestId("app-shell")).toBeNull();
-      expect(screen.queryByTestId("apple-install-hint")).toBeNull();
-    });
+        expect(screen.getByTestId("page")).toBeInTheDocument();
+        expect(screen.queryByTestId("app-shell")).toBeNull();
+        expect(screen.queryByTestId("apple-install-hint")).toBeNull();
+      },
+    );
 
-    it.each([
-      "/",
-      "/login",
-      "/onboarding",
-      "/onboarding/start",
-    ])("keeps the shell hidden on %s even for an authenticated identity", (pathname) => {
-      // A soft navigation can reach a bare route while the layout-computed
-      // identity is still authenticated; the shell must stay hidden regardless
-      // of identity. /onboarding and /onboarding/start are both reached WHILE
-      // authenticated (the display-name gate and the first-deck chooser), and `/`
-      // is the post-login redirect-only dispatcher reached WHILE authenticated —
-      // mounting the shell there flashes the nav rail before `/` redirects (the
-      // first-login `/` → `/onboarding` rail flash). The authenticated case is the
-      // one that matters for all three.
-      mockUsePathname.mockReturnValue(pathname);
-      render(
-        <ConditionalShell user={{ email: "a@b.c" }} isAdmin={true}>
-          <div data-testid="page" />
-        </ConditionalShell>,
-      );
+    it.each(["/", "/login", "/onboarding", "/onboarding/start"])(
+      "keeps the shell hidden on %s even for an authenticated identity",
+      (pathname) => {
+        // A soft navigation can reach a bare route while the layout-computed
+        // identity is still authenticated; the shell must stay hidden regardless
+        // of identity. /onboarding and /onboarding/start are both reached WHILE
+        // authenticated (the display-name gate and the first-deck chooser), and `/`
+        // is the post-login redirect-only dispatcher reached WHILE authenticated —
+        // mounting the shell there flashes the nav rail before `/` redirects (the
+        // first-login `/` → `/onboarding` rail flash). The authenticated case is the
+        // one that matters for all three.
+        mockUsePathname.mockReturnValue(pathname);
+        render(
+          <ConditionalShell user={{ email: "a@b.c" }} isAdmin={true}>
+            <div data-testid="page" />
+          </ConditionalShell>,
+        );
 
-      expect(screen.queryByTestId("app-shell")).toBeNull();
-    });
+        expect(screen.queryByTestId("app-shell")).toBeNull();
+      },
+    );
   });
 
   // Regression lock for the onboarding-404 nav-rail bug: an unknown path renders
@@ -92,23 +86,21 @@ describe("<ConditionalShell>", () => {
   // lands on the 404 page never sees the nav rail. "/cardgroupsX" pins the `/`
   // prefix boundary: a near-miss must NOT match the /cardgroups content route.
   describe("unknown routes (404) render bare", () => {
-    it.each([
-      "/this-route-does-not-exist",
-      "/foobar",
-      "/some/deep/unknown/path",
-      "/cardgroupsX",
-    ])("renders children directly without the navigation shell on %s", (pathname) => {
-      mockUsePathname.mockReturnValue(pathname);
-      render(
-        <ConditionalShell user={{ email: "a@b.c" }} isAdmin={false}>
-          <div data-testid="page" />
-        </ConditionalShell>,
-      );
+    it.each(["/this-route-does-not-exist", "/foobar", "/some/deep/unknown/path", "/cardgroupsX"])(
+      "renders children directly without the navigation shell on %s",
+      (pathname) => {
+        mockUsePathname.mockReturnValue(pathname);
+        render(
+          <ConditionalShell user={{ email: "a@b.c" }} isAdmin={false}>
+            <div data-testid="page" />
+          </ConditionalShell>,
+        );
 
-      expect(screen.getByTestId("page")).toBeInTheDocument();
-      expect(screen.queryByTestId("app-shell")).toBeNull();
-      expect(screen.queryByTestId("apple-install-hint")).toBeNull();
-    });
+        expect(screen.getByTestId("page")).toBeInTheDocument();
+        expect(screen.queryByTestId("app-shell")).toBeNull();
+        expect(screen.queryByTestId("apple-install-hint")).toBeNull();
+      },
+    );
   });
 
   describe("full-shell routes", () => {

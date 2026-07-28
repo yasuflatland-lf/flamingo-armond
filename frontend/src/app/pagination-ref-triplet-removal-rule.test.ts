@@ -93,39 +93,37 @@ function readSource(sourcePath: string): string {
 }
 
 describe("pagination ref-triplet removal regression rule", () => {
-  it.each(
-    ioOwningSites,
-  )("$name: uses useEffectEvent and does not contain deprecated endCursorRef/hasNextPageRef/searchQueryRef identifiers", ({
-    sourcePath,
-  }) => {
-    const source = readSource(sourcePath);
+  it.each(ioOwningSites)(
+    "$name: uses useEffectEvent and does not contain deprecated endCursorRef/hasNextPageRef/searchQueryRef identifiers",
+    ({ sourcePath }) => {
+      const source = readSource(sourcePath);
 
-    // Rule 1: useEffectEvent must be present — confirms the React 19.2
-    // Effect Event pattern is in use for observer-owned latest-value reads.
-    expect(source).toContain("useEffectEvent");
+      // Rule 1: useEffectEvent must be present — confirms the React 19.2
+      // Effect Event pattern is in use for observer-owned latest-value reads.
+      expect(source).toContain("useEffectEvent");
 
-    // Rule 2: the old ref-triplet identifiers must not reappear — these were
-    // the pre-migration stale-value capture refs, replaced by useEffectEvent
-    // latest-value reads, and are now deleted.
-    expect(source).not.toMatch(/\b(endCursorRef|hasNextPageRef|searchQueryRef)\b/);
-  });
+      // Rule 2: the old ref-triplet identifiers must not reappear — these were
+      // the pre-migration stale-value capture refs, replaced by useEffectEvent
+      // latest-value reads, and are now deleted.
+      expect(source).not.toMatch(/\b(endCursorRef|hasNextPageRef|searchQueryRef)\b/);
+    },
+  );
 });
 
 describe("pagination shared-hook extraction regression rule", () => {
-  it.each(
-    migratedSites,
-  )("$name: consumes useConnectionPagination and carries no inline IntersectionObserver IO loop", ({
-    sourcePath,
-  }) => {
-    const source = readSource(sourcePath);
+  it.each(migratedSites)(
+    "$name: consumes useConnectionPagination and carries no inline IntersectionObserver IO loop",
+    ({ sourcePath }) => {
+      const source = readSource(sourcePath);
 
-    // Rule 3: the screen routes its pagination through the shared hook.
-    expect(source).toContain("useConnectionPagination");
+      // Rule 3: the screen routes its pagination through the shared hook.
+      expect(source).toContain("useConnectionPagination");
 
-    // Rule 4: no inline IO loop remains — the observer construction and the
-    // Effect Event live in the shared hook now, and the ref-triplet stays out.
-    expect(source).not.toContain("new IntersectionObserver");
-    expect(source).not.toContain("useEffectEvent");
-    expect(source).not.toMatch(/\b(endCursorRef|hasNextPageRef|searchQueryRef)\b/);
-  });
+      // Rule 4: no inline IO loop remains — the observer construction and the
+      // Effect Event live in the shared hook now, and the ref-triplet stays out.
+      expect(source).not.toContain("new IntersectionObserver");
+      expect(source).not.toContain("useEffectEvent");
+      expect(source).not.toMatch(/\b(endCursorRef|hasNextPageRef|searchQueryRef)\b/);
+    },
+  );
 });
