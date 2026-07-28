@@ -89,20 +89,19 @@ describe("requireAuthenticated", () => {
     expect(redirect).not.toHaveBeenCalled();
   });
 
-  it.each([
-    "anonymous",
-    "stale",
-    "error",
-  ] as const)("redirects to the supplied target for the %s status", async (status) => {
-    vi.mocked(headers).mockResolvedValue(
-      headersWith({ [AUTH_STATUS_HEADER]: status }) as unknown as Awaited<
-        ReturnType<typeof headers>
-      >,
-    );
+  it.each(["anonymous", "stale", "error"] as const)(
+    "redirects to the supplied target for the %s status",
+    async (status) => {
+      vi.mocked(headers).mockResolvedValue(
+        headersWith({ [AUTH_STATUS_HEADER]: status }) as unknown as Awaited<
+          ReturnType<typeof headers>
+        >,
+      );
 
-    await expect(requireAuthenticated("/login")).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
-    expect(redirect).toHaveBeenCalledWith("/login");
-  });
+      await expect(requireAuthenticated("/login")).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
+      expect(redirect).toHaveBeenCalledWith("/login");
+    },
+  );
 
   it("redirects to a missing status header target, honouring the anonymous fallback", async () => {
     vi.mocked(headers).mockResolvedValue(

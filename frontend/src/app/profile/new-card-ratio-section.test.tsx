@@ -172,39 +172,38 @@ describe("<NewCardRatioSection>", () => {
     { numerator: 1, denominator: 7 },
     { numerator: 1, denominator: 6 },
     { numerator: 2, denominator: 3 },
-  ])("keeps the two labels summing to 100 for an off-grid ratio ({$numerator,$denominator})", ({
-    numerator,
-    denominator,
-  }) => {
-    renderWithIntl(
-      <MockedProvider mocks={[]}>
-        <NewCardRatioSection initialRatio={{ numerator, denominator }} />
-      </MockedProvider>,
-    );
+  ])(
+    "keeps the two labels summing to 100 for an off-grid ratio ({$numerator,$denominator})",
+    ({ numerator, denominator }) => {
+      renderWithIntl(
+        <MockedProvider mocks={[]}>
+          <NewCardRatioSection initialRatio={{ numerator, denominator }} />
+        </MockedProvider>,
+      );
 
-    expect(renderedLabelSum()).toBe(100);
-    expect(screen.getByTestId("new-card-ratio-custom-notice")).toBeInTheDocument();
-  });
+      expect(renderedLabelSum()).toBe(100);
+      expect(screen.getByTestId("new-card-ratio-custom-notice")).toBeInTheDocument();
+    },
+  );
 
   it.each([
     { numerator: 3, denominator: 20, percent: 15 },
     { numerator: 1, denominator: 2, percent: 50 },
-  ])("derives the initial percent from a reduced fraction ({$numerator,$denominator} -> $percent)", ({
-    numerator,
-    denominator,
-    percent,
-  }) => {
-    renderWithIntl(
-      <MockedProvider mocks={[]}>
-        <NewCardRatioSection initialRatio={{ numerator, denominator }} />
-      </MockedProvider>,
-    );
+  ])(
+    "derives the initial percent from a reduced fraction ({$numerator,$denominator} -> $percent)",
+    ({ numerator, denominator, percent }) => {
+      renderWithIntl(
+        <MockedProvider mocks={[]}>
+          <NewCardRatioSection initialRatio={{ numerator, denominator }} />
+        </MockedProvider>,
+      );
 
-    expect(screen.getByTestId("slider-value")).toHaveTextContent(String(percent));
-    expect(screen.getByText(`New ${percent}%`)).toBeInTheDocument();
-    expect(screen.getByText(`Review ${100 - percent}%`)).toBeInTheDocument();
-    expect(screen.queryByTestId("new-card-ratio-custom-notice")).not.toBeInTheDocument();
-  });
+      expect(screen.getByTestId("slider-value")).toHaveTextContent(String(percent));
+      expect(screen.getByText(`New ${percent}%`)).toBeInTheDocument();
+      expect(screen.getByText(`Review ${100 - percent}%`)).toBeInTheDocument();
+      expect(screen.queryByTestId("new-card-ratio-custom-notice")).not.toBeInTheDocument();
+    },
+  );
 
   it("shows an off-grid stored ratio ({33,100}) exactly and discloses the overwrite", () => {
     // `updateNewCardRatio` accepts any reduced fraction, so 33/100 is a
@@ -286,26 +285,22 @@ describe("<NewCardRatioSection>", () => {
       reviewLabel: "Review 2.5%",
       notice: "A custom ratio (97.5%) is set via the API.",
     },
-  ])("parks the control at $control for a stored ratio outside the slider's range ({$numerator,$denominator})", ({
-    numerator,
-    denominator,
-    control,
-    newLabel,
-    reviewLabel,
-    notice,
-  }) => {
-    renderWithIntl(
-      <MockedProvider mocks={[]}>
-        <NewCardRatioSection initialRatio={{ numerator, denominator }} />
-      </MockedProvider>,
-    );
+  ])(
+    "parks the control at $control for a stored ratio outside the slider's range ({$numerator,$denominator})",
+    ({ numerator, denominator, control, newLabel, reviewLabel, notice }) => {
+      renderWithIntl(
+        <MockedProvider mocks={[]}>
+          <NewCardRatioSection initialRatio={{ numerator, denominator }} />
+        </MockedProvider>,
+      );
 
-    // Exact text, not toHaveTextContent: "5" also matches a stray 35 or 55.
-    expect(screen.getByTestId("slider-value").textContent).toBe(control);
-    expect(screen.getByText(newLabel)).toBeInTheDocument();
-    expect(screen.getByText(reviewLabel)).toBeInTheDocument();
-    expect(screen.getByTestId("new-card-ratio-custom-notice")).toHaveTextContent(notice);
-  });
+      // Exact text, not toHaveTextContent: "5" also matches a stray 35 or 55.
+      expect(screen.getByTestId("slider-value").textContent).toBe(control);
+      expect(screen.getByText(newLabel)).toBeInTheDocument();
+      expect(screen.getByText(reviewLabel)).toBeInTheDocument();
+      expect(screen.getByTestId("new-card-ratio-custom-notice")).toHaveTextContent(notice);
+    },
+  );
 
   it("shows the dragged grid value while the slider is moving, off-grid stored value or not", async () => {
     const user = userEvent.setup();

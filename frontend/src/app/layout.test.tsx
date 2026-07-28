@@ -203,25 +203,25 @@ describe("RootLayout — shell mounting and identity forwarding", () => {
   // Case: stale/error status — the layout must not expose user or isAdmin even
   // when the x-user-is-admin header is "true". The gate is status === "authenticated"
   // only; all other statuses degrade to anonymous shell regardless of the header.
-  test.each([
-    "stale",
-    "error",
-  ])("%s status yields an anonymous shell even if x-user-is-admin is true", async (authStatus: string) => {
-    const headerMap: Record<string, string> = {
-      "x-auth-status": authStatus,
-      "x-user-email": "a@b.c",
-      "x-user-is-admin": "true",
-    };
-    mockGetHeader.mockImplementation((name: string) => headerMap[name] ?? null);
+  test.each(["stale", "error"])(
+    "%s status yields an anonymous shell even if x-user-is-admin is true",
+    async (authStatus: string) => {
+      const headerMap: Record<string, string> = {
+        "x-auth-status": authStatus,
+        "x-user-email": "a@b.c",
+        "x-user-is-admin": "true",
+      };
+      mockGetHeader.mockImplementation((name: string) => headerMap[name] ?? null);
 
-    const tree = await RootLayout({ children: <p>child</p> });
+      const tree = await RootLayout({ children: <p>child</p> });
 
-    const shellEl = findElement(tree, byName("ConditionalShell"));
-    expect(shellEl).not.toBeNull();
-    const props = shellEl?.props as { user: { email: string | null } | null; isAdmin: boolean };
-    expect(props.user).toBeNull();
-    expect(props.isAdmin).toBe(false);
-  });
+      const shellEl = findElement(tree, byName("ConditionalShell"));
+      expect(shellEl).not.toBeNull();
+      const props = shellEl?.props as { user: { email: string | null } | null; isAdmin: boolean };
+      expect(props.user).toBeNull();
+      expect(props.isAdmin).toBe(false);
+    },
+  );
 
   // Case: absent x-nonce header — nonce is undefined at Providers.
   test("absent x-nonce header passes undefined nonce to Providers", async () => {

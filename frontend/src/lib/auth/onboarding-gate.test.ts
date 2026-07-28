@@ -107,25 +107,25 @@ describe("resolveOnboardingGate", () => {
     fetchMock.mockReset();
   });
 
-  it.each(
-    PROTECTED_PATHS,
-  )("redirects a signed-in user with an empty display name away from %s", async (pathname) => {
-    fetchMock.mockResolvedValue(meResponse(""));
-    const result = await resolveOnboardingGate(gateInput({ pathname }));
-    expect(result.redirectTo).toBe(ONBOARDING_ENTRY_PATH);
-    expect(result.clearCookie).toBe(true);
-    expect(result.setCookie).toBeNull();
-  });
+  it.each(PROTECTED_PATHS)(
+    "redirects a signed-in user with an empty display name away from %s",
+    async (pathname) => {
+      fetchMock.mockResolvedValue(meResponse(""));
+      const result = await resolveOnboardingGate(gateInput({ pathname }));
+      expect(result.redirectTo).toBe(ONBOARDING_ENTRY_PATH);
+      expect(result.clearCookie).toBe(true);
+      expect(result.setCookie).toBeNull();
+    },
+  );
 
-  it.each([
-    "/onboarding",
-    "/onboarding/start",
-    "/login",
-  ])("leaves the same user free to reach %s", async (pathname) => {
-    const result = await resolveOnboardingGate(gateInput({ pathname }));
-    expect(result.redirectTo).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
+  it.each(["/onboarding", "/onboarding/start", "/login"])(
+    "leaves the same user free to reach %s",
+    async (pathname) => {
+      const result = await resolveOnboardingGate(gateInput({ pathname }));
+      expect(result.redirectTo).toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(PROTECTED_PATHS)("does not disturb an onboarded user on %s", async (pathname) => {
     fetchMock.mockResolvedValue(meResponse("Alice"));
