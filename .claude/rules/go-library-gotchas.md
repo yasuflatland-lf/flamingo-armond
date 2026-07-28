@@ -145,7 +145,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Codegen two-pass failure mode: schema field drop blocks regen until production code is fixed](../../docs/backend/library-gotchas/codegen-two-pass-schema-field-drop.md)
 - [CI bash glob `for $(ls)` silently passes on zero matches under `set -e` — use `nullglob` array form](../../docs/backend/library-gotchas/ci-bash-glob-nullglob-silent-pass.md)
 - [Inject `AdminChecker` (bool) for admin-exempt business rules, not `AdminGate.Require`](../../docs/backend/library-gotchas/admin-checker-inject-for-admin-exempt-business-logic.md)
-- [`swipeUsecase` deliberately bypasses `Clock`, and its replay guard is learn-day granular](../../docs/backend/library-gotchas/swipe-bypasses-clock-port-and-day-granular-replay-guard.md)
+- [`swipeUsecase` uses the `Clock` port and combines both replay rules](../../docs/backend/library-gotchas/swipe-replay-guard-combines-learn-day-and-utc-credit.md)
 
 ## DDD patterns (on-demand)
 

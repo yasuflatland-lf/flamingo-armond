@@ -111,27 +111,32 @@ deterministic while the database does the sampling:
 - **A rescue card is served early only after a whole day of elapsed time.** The
   rescue predicate additionally requires `ucs.last_review <= rescueReviewedBefore`,
   where `rescueReviewedBefore` is `domain.RescueReviewedBefore(now)` — exactly 24
-  hours before now. FSRS derives elapsed days as a UTC calendar-date difference,
-  so a repeat that stays inside one UTC date counts as zero elapsed days:
-  retrievability is 1 and the stability growth factor `exp((1-r)*W10)-1` is
-  bit-exactly 0. Conversely any gap of at least 24 hours spans a date boundary,
-  so the floor is what guarantees non-zero credit. Because the
-  early serve deliberately surfaces cards due later today, without this floor the
-  queue manufactures zero-credit reviews — a learner who fails a card at 10:00
-  and answers it again at 22:00 the same day earns no scheduling progress, the card
-  stays below the learned threshold, and it occupies a rescue slot again in the
-  next session. The bound is non-strict: a card last reviewed exactly 24 hours
-  ago is eligible. Because `now` always lies in
+  hours before now. This is a spacing rule: it keeps an early-serve rescue slot
+  from being spent on a card the learner has just seen. Scheduling credit follows
+  a different rule, `domain.EarnsSchedulingCredit`, because FSRS derives elapsed
+  days from the UTC calendar dates of the two instants. Any gap of at least 24
+  hours necessarily spans a UTC date boundary and therefore earns credit, but the
+  reverse implication is false: even a one-minute gap can earn credit if UTC
+  midnight falls between the reviews. The floor is deliberately stricter.
+  Without that spacing floor, a learner who fails a card at 10:00 and answers it
+  again at 22:00 on the same UTC date earns no scheduling progress. At measured
+  stability 6.9 and difficulty 5.0, rating that 12-hour repeat `Again` collapses
+  stability to 0.9701 (down 86%), raises difficulty to 8.34, and moves a
+  seven-day due interval to one day. The repeat is destructive, not merely a
+  wasted rescue slot. The bound is non-strict: a card last reviewed exactly 24
+  hours ago is eligible. Because `now` always lies in
   `[StartOfLearnDay(now), StartOfLearnDay(now) + 24h)`, the floor is strictly
   earlier than `domain.StartOfLearnDay(now)`, so it is the tighter of the two
   `last_review` bounds in both the rescue and filler windows and the
   day-boundary bound is logically redundant in both. That bound is retained
-  anyway because it is the exact complement of `domain.ReviewedWithinLearnDay`,
-  the recording-side replay guard in `usecase/swipe.go` — the two comparators
-  must move together — and because it becomes binding again the moment the
-  elapsed floor drops below one learn day. The threshold is computed by the
-  usecase and passed as a bound query argument — the repository never reads the
-  clock.
+  anyway because it is the exact complement of
+  `domain.ReviewedWithinLearnDay`, one disjunct of the recording-side replay
+  guard in `usecase/swipe.go` — the two comparators must move together — and
+  because it becomes binding again the moment the elapsed floor drops below one
+  learn day. The other disjunct, `domain.EarnsSchedulingCredit`, closes the
+  different-learner-day/same-UTC-date gap on direct swipes. The threshold is
+  computed by the usecase and passed as a bound query argument — the repository
+  never reads the clock.
 - **The rescue floor narrows, never widens, the windows.** A rescue-band card
   blocked by the floor does not fall through to filler: the filler predicate
   requires the inverse band (`last_rating IS DISTINCT FROM Again AND stability >=
@@ -175,8 +180,11 @@ deterministic while the database does the sampling:
 Discovery is bought at the cost of review efficiency. Rescue-band cards claim
 the review slots before filler reviews, and rescue cards due later in the JST
 day may be served before their exact due time — but never within 24 hours of
-their last review, because such a repeat earns no FSRS credit at all and would
-consume a rescue slot for nothing. A large filler backlog therefore
+their last review, because the spacing floor prevents a just-seen card from
+consuming a rescue slot and protects vulnerable rescue cards from destructive
+early repeats. A whole-day gap also necessarily earns FSRS scheduling credit,
+although credit alone can be earned across UTC midnight after a much shorter
+gap. A large filler backlog therefore
 drains more slowly than a pure due-date order would drain it. This is deliberate:
 queue's primary job became surfacing the unseen backlog, not maximising
 retention throughput. `cards.position` remains Notion-sync metadata (assigned
@@ -187,7 +195,7 @@ learn ordering — new cards are sampled randomly, not walked in document order.
 
 - `backend/internal/domain/learn_day.go` — `StartOfLearnDay`, `EndOfLearnDay`,
   `RescueReviewedBefore` (the rescue and filler windows' shared 24-hour
-  minimum-elapsed floor).
+  minimum-elapsed floor), and `EarnsSchedulingCredit`.
 - `backend/internal/domain/mastery_tier.go` — `LearnedStabilityDays`.
 - `backend/internal/domain/due_card.go` — `DueCard.Rescue`.
 - `backend/internal/domain/service/due_card_ordering.go` — `OrderingPolicy.Apply`,
