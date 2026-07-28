@@ -138,18 +138,17 @@
          <column autoUpdated="false" defaultValue="null" digits="6" id="5" name="due" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
          <column autoUpdated="false" defaultValue="null" digits="17" id="6" name="stability" nullable="false" remarks="" size="17" type="float8" typeCode="8"/>
          <column autoUpdated="false" defaultValue="null" digits="17" id="7" name="difficulty" nullable="false" remarks="" size="17" type="float8" typeCode="8"/>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="8" name="elapsed_days" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="9" name="scheduled_days" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="10" name="reps" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="11" name="lapses" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="12" name="state" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
-         <column autoUpdated="false" defaultValue="null" digits="6" id="13" name="last_review" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="14" name="cardgroup_id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
+         <column autoUpdated="false" defaultValue="null" digits="0" id="8" name="scheduled_days" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="9" name="reps" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="10" name="lapses" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="11" name="state" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="null" digits="6" id="12" name="last_review" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="13" name="cardgroup_id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
             <parent column="id" foreignKey="swipe_records_cardgroup_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="cardgroups"/>
          </column>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="15" name="phase_before" nullable="true" remarks="" size="5" type="int2" typeCode="5"/>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="16" name="scheduled_days_before" nullable="true" remarks="" size="10" type="int4" typeCode="4"/>
-         <column autoUpdated="false" defaultValue="null" digits="17" id="17" name="stability_before" nullable="true" remarks="" size="17" type="float8" typeCode="8"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="14" name="phase_before" nullable="false" remarks="" size="5" type="int2" typeCode="5"/>
+         <column autoUpdated="false" defaultValue="null" digits="17" id="15" name="stability_before" nullable="false" remarks="" size="17" type="float8" typeCode="8"/>
+         <column autoUpdated="false" defaultValue="null" digits="6" id="16" name="due_before" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
          <primaryKey column="id" sequenceNumberInPK="1"/>
          <index name="swipe_records_pkey" unique="true">
             <column ascending="true" name="id"/>
@@ -185,11 +184,10 @@
          <column autoUpdated="false" defaultValue="null" digits="0" id="6" name="reps" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
          <column autoUpdated="false" defaultValue="null" digits="0" id="7" name="lapses" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
          <column autoUpdated="false" defaultValue="null" digits="6" id="8" name="last_review" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="9" name="elapsed_days" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="10" name="scheduled_days" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
-         <column autoUpdated="false" defaultValue="now()" digits="6" id="11" name="created_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
-         <column autoUpdated="false" defaultValue="now()" digits="6" id="12" name="updated_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
-         <column autoUpdated="false" defaultValue="null" digits="0" id="13" name="last_rating" nullable="true" remarks="FSRS rating (1=Again, 2=Hard, 3=Good, 4=Easy) of the swipe that produced this row's state. NULL only when the backfill found no swipe history." size="5" type="int2" typeCode="5"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="9" name="scheduled_days" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="10" name="created_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="11" name="updated_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="12" name="last_rating" nullable="true" remarks="FSRS rating (1=Again, 2=Hard, 3=Good, 4=Easy) of the swipe that produced this row's state. NULL only when the backfill found no swipe history." size="5" type="int2" typeCode="5"/>
          <primaryKey column="user_id" sequenceNumberInPK="1"/>
          <primaryKey column="card_id" sequenceNumberInPK="2"/>
          <index name="user_card_fsrs_pkey" unique="true">
