@@ -146,6 +146,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [CI bash glob `for $(ls)` silently passes on zero matches under `set -e` — use `nullglob` array form](../../docs/backend/library-gotchas/ci-bash-glob-nullglob-silent-pass.md)
 - [Inject `AdminChecker` (bool) for admin-exempt business rules, not `AdminGate.Require`](../../docs/backend/library-gotchas/admin-checker-inject-for-admin-exempt-business-logic.md)
 - [`swipeUsecase` deliberately bypasses `Clock`, and its replay guard is learn-day granular](../../docs/backend/library-gotchas/swipe-bypasses-clock-port-and-day-granular-replay-guard.md)
+- [go-fsrs v4's two elapsed-day clocks](../../docs/backend/library-gotchas/go-fsrs-v4-elapsed-day-clocks.md)
 
 ## DDD patterns (on-demand)
 
