@@ -78,6 +78,16 @@ func TestUserCardFSRSToDomain_RejectsCorruptColumns(t *testing.T) {
 			wantMsg: "repository: invalid stability value -1.5 for card 00000000-0000-0000-0000-000000000002",
 		},
 		{
+			name:    "stability below MinStability",
+			mutate:  func(r *gormUserCardFSRS) { r.Stability = 0.0009 },
+			wantMsg: "repository: invalid stability value 0.0009 for card 00000000-0000-0000-0000-000000000002",
+		},
+		{
+			name:    "stability above MaxStability",
+			mutate:  func(r *gormUserCardFSRS) { r.Stability = 36500.1 },
+			wantMsg: "repository: invalid stability value 36500.1 for card 00000000-0000-0000-0000-000000000002",
+		},
+		{
 			name:    "difficulty below the minimum",
 			mutate:  func(r *gormUserCardFSRS) { r.Difficulty = domain.MinDifficulty - 0.5 },
 			wantMsg: "repository: invalid difficulty value 0.5 for card 00000000-0000-0000-0000-000000000002",
@@ -91,6 +101,21 @@ func TestUserCardFSRSToDomain_RejectsCorruptColumns(t *testing.T) {
 			name:    "last_rating outside the FSRS range",
 			mutate:  func(r *gormUserCardFSRS) { r.LastRating = &badRating },
 			wantMsg: "repository: invalid last_rating value 7 for card 00000000-0000-0000-0000-000000000002",
+		},
+		{
+			name:    "negative reps",
+			mutate:  func(r *gormUserCardFSRS) { r.Reps = -1 },
+			wantMsg: "repository: negative counter for card 00000000-0000-0000-0000-000000000002 (reps=-1 lapses=1 scheduled_days=5)",
+		},
+		{
+			name:    "negative lapses",
+			mutate:  func(r *gormUserCardFSRS) { r.Lapses = -1 },
+			wantMsg: "repository: negative counter for card 00000000-0000-0000-0000-000000000002 (reps=3 lapses=-1 scheduled_days=5)",
+		},
+		{
+			name:    "negative scheduled_days",
+			mutate:  func(r *gormUserCardFSRS) { r.ScheduledDays = -1 },
+			wantMsg: "repository: negative counter for card 00000000-0000-0000-0000-000000000002 (reps=3 lapses=1 scheduled_days=-1)",
 		},
 	}
 

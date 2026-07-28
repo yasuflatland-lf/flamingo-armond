@@ -96,13 +96,12 @@ func TestFSRSScheduler_Apply_InvalidRatingPanics(t *testing.T) {
 	}
 }
 
-// TestFSRSScheduler_Apply_StabilityBelowLibraryMinimumPanics pins the one v4
-// validation error the domain's own guards cannot rule out. IsValidStability
-// admits any finite positive value, while go-fsrs rejects a non-New card whose
-// stability is under its own minimum, so a corrupt persisted row reaches the
-// error arm of Next. It panics rather than returning: the SchedulingInfo that
-// accompanies the error is zero-valued, so accepting it would overwrite the row
-// with stability 0, difficulty 0 and a zero-time due.
+// TestFSRSScheduler_Apply_StabilityBelowLibraryMinimumPanics pins Apply's
+// independent behaviour for a sub-minimum stability. The repository guard now
+// rejects this value at load time, so the panic is unreachable through the
+// application. Apply is also reachable from in-process callers that never went
+// through the repository, and swallowing the error would persist a zero-valued
+// SchedulingInfo with stability 0, difficulty 0 and a zero-time due.
 func TestFSRSScheduler_Apply_StabilityBelowLibraryMinimumPanics(t *testing.T) {
 	t.Parallel()
 
@@ -116,8 +115,8 @@ func TestFSRSScheduler_Apply_StabilityBelowLibraryMinimumPanics(t *testing.T) {
 		Phase:      domain.FSRSPhaseReview,
 		LastReview: now.Add(-48 * time.Hour),
 	}
-	require.True(t, domain.IsValidStability(state.Stability),
-		"the fixture must be a stability the domain guard admits, or this proves nothing about the gap")
+	require.False(t, domain.IsValidStability(state.Stability),
+		"the fixture must be a stability the repository read guard now rejects, which is what makes Apply's own guard the last line of defence")
 
 	require.Panics(t, func() {
 		scheduler.Apply(state, domain.RatingGood, now)
