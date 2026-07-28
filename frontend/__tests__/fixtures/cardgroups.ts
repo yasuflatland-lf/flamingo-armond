@@ -18,7 +18,6 @@ const userCardState = (due: string) => ({
   __typename: "UserCardState" as const,
   due,
   difficulty: 0.3,
-  elapsedDays: 0,
   lapses: 0,
   lastReview: "2026-01-15T00:00:00Z",
   reps: 1,

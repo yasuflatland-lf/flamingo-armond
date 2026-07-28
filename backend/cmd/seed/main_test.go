@@ -120,9 +120,9 @@ func TestDump_WritesValidJSON(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = pool.Exec(ctx, `
-		INSERT INTO public.user_card_fsrs
-		(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, elapsed_days, scheduled_days)
-		VALUES ($1, $2, 0, now(), 1.0, 5.0, 0, 0, now(), 0, 0)`,
+			INSERT INTO public.user_card_fsrs
+			(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, scheduled_days)
+			VALUES ($1, $2, 0, now(), 1.0, 5.0, 0, 0, now(), 0)`,
 		userID, cardID)
 	require.NoError(t, err)
 
@@ -168,9 +168,9 @@ func TestImport_Idempotent(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = pool.Exec(ctx, `
-		INSERT INTO public.user_card_fsrs
-		(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, elapsed_days, scheduled_days)
-		VALUES ($1, $2, 0, now(), 1.0, 5.0, 0, 0, now(), 0, 0)`,
+			INSERT INTO public.user_card_fsrs
+			(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, scheduled_days)
+			VALUES ($1, $2, 0, now(), 1.0, 5.0, 0, 0, now(), 0)`,
 		userID, cardID)
 	require.NoError(t, err)
 
@@ -349,8 +349,8 @@ func TestImport_RemapsFSRSUserID(t *testing.T) {
 			UserID: sourceID, CardID: cardID, State: 0,
 			Due: now, Stability: 1.0, Difficulty: 5.0,
 			Reps: 0, Lapses: 0, LastReview: now,
-			ElapsedDays: 0, ScheduledDays: 0,
-			CreatedAt: now, UpdatedAt: now,
+			ScheduledDays: 0,
+			CreatedAt:     now, UpdatedAt: now,
 		}},
 	}
 
@@ -404,15 +404,15 @@ func TestImport_SkipsCascade(t *testing.T) {
 				UserID: unknownUserID, CardID: cardID, State: 0,
 				Due: now, Stability: 1.0, Difficulty: 5.0,
 				Reps: 0, Lapses: 0, LastReview: now,
-				ElapsedDays: 0, ScheduledDays: 0,
-				CreatedAt: now, UpdatedAt: now,
+				ScheduledDays: 0,
+				CreatedAt:     now, UpdatedAt: now,
 			},
 			{
 				UserID: knownUserID, CardID: cardID, State: 0,
 				Due: now, Stability: 1.0, Difficulty: 5.0,
 				Reps: 0, Lapses: 0, LastReview: now,
-				ElapsedDays: 0, ScheduledDays: 0,
-				CreatedAt: now, UpdatedAt: now,
+				ScheduledDays: 0,
+				CreatedAt:     now, UpdatedAt: now,
 			},
 		},
 	}

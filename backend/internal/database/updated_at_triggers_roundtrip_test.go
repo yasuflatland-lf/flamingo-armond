@@ -136,7 +136,9 @@ func TestUpdatedAtTriggersDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	require.NoError(t, m.Steps(-1))
+	// realign_fsrs_snapshot_columns_to_v4 sits above the trigger migration. Bump
+	// this count when adding later migrations.
+	require.NoError(t, m.Steps(-2))
 	requireUpdatedAtTriggerEvents(t, ctx, sqlDB, false)
 	_, legacyInsertedAt := insertCardgroupWithUpdatedAt(t, ctx, sqlDB, ownerID, sentinel)
 	require.True(t, sentinel.Equal(legacyInsertedAt), "down migration must preserve supplied updated_at")

@@ -22,10 +22,9 @@ import (
 // validUserCardFSRSRow returns a row every guard in userCardFSRSToDomain
 // accepts. Each reject case mutates exactly one column so the failure is
 // attributable to that column's guard. Every numeric and time column carries a
-// distinct value: the mapper copies thirteen same-typed fields across in one
-// struct literal, and equal fixture values would let a transposed pair
-// (elapsed/scheduled days, created/updated timestamps) satisfy the accept-path
-// assertion.
+// distinct value: the mapper copies same-typed fields across in one struct
+// literal, and equal fixture values would let a transposed pair (for example,
+// created/updated timestamps) satisfy the accept-path assertion.
 func validUserCardFSRSRow() gormUserCardFSRS {
 	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
 	good := int(domain.RatingGood)
@@ -40,7 +39,6 @@ func validUserCardFSRSRow() gormUserCardFSRS {
 		Lapses:        1,
 		LastReview:    now.Add(-48 * time.Hour),
 		LastRating:    &good,
-		ElapsedDays:   2,
 		ScheduledDays: 5,
 		CreatedAt:     now.Add(-72 * time.Hour),
 		UpdatedAt:     now,
@@ -155,7 +153,6 @@ func TestUserCardFSRSToDomain_AcceptsValidRow(t *testing.T) {
 			Due:           row.Due,
 			Stability:     row.Stability,
 			Difficulty:    row.Difficulty,
-			ElapsedDays:   row.ElapsedDays,
 			ScheduledDays: row.ScheduledDays,
 			Reps:          row.Reps,
 			Lapses:        row.Lapses,

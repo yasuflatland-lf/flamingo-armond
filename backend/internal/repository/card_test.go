@@ -399,8 +399,8 @@ func TestCardRepository_FindDueCards_InvalidState(t *testing.T) {
 	require.NoError(t, err)
 	_, err = sqlDB.ExecContext(ctx,
 		`INSERT INTO user_card_fsrs
-		 (user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, elapsed_days, scheduled_days, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, 0, 5.0, 0, 0, $5, 0, 0, now(), now())`,
+			 (user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, scheduled_days, created_at, updated_at)
+			 VALUES ($1, $2, $3, $4, 0, 5.0, 0, 0, $5, 0, now(), now())`,
 		ownerID, card.ID, 99, now.Add(-time.Minute), now.Add(-25*time.Hour),
 	)
 	require.NoError(t, err)

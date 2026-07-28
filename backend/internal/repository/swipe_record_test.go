@@ -27,6 +27,7 @@ func TestSwipeRecordRepository_CreateTxAndFind(t *testing.T) {
 	stateBefore.Phase = domain.FSRSPhaseReview
 	stateBefore.ScheduledDays = 3
 	stateBefore.Stability = 6.6
+	stateBefore.Due = reviewedAt.Add(3 * 24 * time.Hour)
 	state := domain.NewFSRSStateForNewCard(reviewedAt)
 	state.Reps = 1
 	sr, err := domain.NewSwipeRecord(domain.UserID(ownerID), card.ID, cg.ID, domain.RatingEasy, reviewedAt, stateBefore, state)
@@ -44,12 +45,9 @@ func TestSwipeRecordRepository_CreateTxAndFind(t *testing.T) {
 	require.Equal(t, domain.RatingEasy, byID[sr.ID].Rating)
 	require.Equal(t, state.Reps, byID[sr.ID].StateAfter.Reps)
 	// The pre-swipe snapshot survives the CreateTx -> read roundtrip.
-	require.NotNil(t, byID[sr.ID].PhaseBefore)
-	require.Equal(t, domain.FSRSPhaseReview, *byID[sr.ID].PhaseBefore)
-	require.NotNil(t, byID[sr.ID].ScheduledDaysBefore)
-	require.Equal(t, 3, *byID[sr.ID].ScheduledDaysBefore)
-	require.NotNil(t, byID[sr.ID].StabilityBefore)
-	require.InDelta(t, 6.6, *byID[sr.ID].StabilityBefore, 0.000000001)
+	require.Equal(t, domain.FSRSPhaseReview, byID[sr.ID].PhaseBefore)
+	require.InDelta(t, 6.6, byID[sr.ID].StabilityBefore, 0.000000001)
+	require.True(t, stateBefore.Due.Equal(byID[sr.ID].DueBefore))
 
 	history, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cg.ID))
 	require.NoError(t, err)
@@ -299,45 +297,8 @@ func TestSwipeRecordRepository_OutOfRangeState_ReturnsError(t *testing.T) {
 	}
 }
 
-// TestSwipeRecordRepository_LegacyRowWithoutSnapshot_ReadsBackNil proves a row
-// inserted without the phase_before / scheduled_days_before / stability_before
-// columns (a legacy row recorded before the migrations) reads back with every
-// snapshot pointer nil — the sentinel the metrics layer branches on.
-func TestSwipeRecordRepository_LegacyRowWithoutSnapshot_ReadsBackNil(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	cg := insertCardgroup(t, ctx, ownerID)
-	cardRepo := repository.NewCardRepository(testDB.GORM)
-	swipeRepo := repository.NewSwipeRecordRepository(testDB.GORM)
-
-	card := newCard(cg.ID, "legacy snapshot front", "back")
-	require.NoError(t, cardRepo.Create(ctx, card))
-
-	reviewedAt := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
-	const rowID = "00000000-0000-0000-0000-0000000000d1"
-	// Raw insert omitting phase_before / scheduled_days_before / stability_before;
-	// all three default to NULL.
-	require.NoError(t, testDB.GORM.WithContext(ctx).Exec(
-		`INSERT INTO swipe_records
-		   (id, user_id, card_id, cardgroup_id, rating, reviewed_at,
-		    due, stability, difficulty, elapsed_days, scheduled_days,
-		    reps, lapses, state, last_review)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		rowID, ownerID, card.ID, string(cg.ID), int(domain.RatingGood), reviewedAt,
-		reviewedAt, 2.5, 5.0, 0, 0, 0, 0, int(domain.FSRSPhaseNew), reviewedAt,
-	).Error)
-
-	byID, err := swipeRepo.FindByIDs(ctx, []string{rowID})
-	require.NoError(t, err)
-	require.Len(t, byID, 1)
-	require.Nil(t, byID[rowID].PhaseBefore, "legacy row's phase_before reads back as nil")
-	require.Nil(t, byID[rowID].ScheduledDaysBefore, "legacy row's scheduled_days_before reads back as nil")
-	require.Nil(t, byID[rowID].StabilityBefore, "legacy row's stability_before reads back as nil")
-}
-
-// TestSwipeRecordRepository_OutOfRangePhaseBefore_ReturnsError proves a non-nil
-// phase_before holding a value outside domain.FSRSPhase.IsValid surfaces a
+// TestSwipeRecordRepository_OutOfRangePhaseBefore_ReturnsError proves a
+// phase_before value outside domain.FSRSPhase.IsValid surfaces a
 // repository error rather than reconstituting a SwipeRecord with an invalid
 // snapshot phase.
 func TestSwipeRecordRepository_OutOfRangePhaseBefore_ReturnsError(t *testing.T) {
@@ -357,11 +318,11 @@ func TestSwipeRecordRepository_OutOfRangePhaseBefore_ReturnsError(t *testing.T) 
 	require.NoError(t, testDB.GORM.WithContext(ctx).Exec(
 		`INSERT INTO swipe_records
 		   (id, user_id, card_id, cardgroup_id, rating, reviewed_at,
-		    due, stability, difficulty, elapsed_days, scheduled_days,
-		    reps, lapses, state, last_review, phase_before, scheduled_days_before)
+		    due, stability, difficulty, scheduled_days, reps, lapses, state,
+		    last_review, phase_before, stability_before, due_before)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		rowID, ownerID, card.ID, string(cg.ID), int(domain.RatingGood), reviewedAt,
-		reviewedAt, 2.5, 5.0, 0, 0, 0, 0, int(domain.FSRSPhaseNew), reviewedAt, 99, 3,
+		reviewedAt, 2.5, 5.0, 0, 0, 0, int(domain.FSRSPhaseNew), reviewedAt, 99, 2.5, reviewedAt,
 	).Error)
 
 	_, err := swipeRepo.FindByIDs(ctx, []string{rowID})

@@ -131,7 +131,6 @@ func toUserCardStateModel(ucs *domain.UserCardFSRS) *model.UserCardState {
 		Reps:          ucs.State.Reps,
 		Lapses:        ucs.State.Lapses,
 		LastReview:    ucs.State.LastReview,
-		ElapsedDays:   ucs.State.ElapsedDays,
 		ScheduledDays: ucs.State.ScheduledDays,
 	}
 }

@@ -22,7 +22,6 @@ type gormUserCardFSRS struct {
 	Lapses        int       `gorm:"column:lapses"`
 	LastReview    time.Time `gorm:"column:last_review"`
 	LastRating    *int      `gorm:"column:last_rating"`
-	ElapsedDays   int       `gorm:"column:elapsed_days"`
 	ScheduledDays int       `gorm:"column:scheduled_days"`
 	CreatedAt     time.Time `gorm:"column:created_at"`
 	UpdatedAt     time.Time `gorm:"column:updated_at;->"`
@@ -64,7 +63,6 @@ func (r *userCardFSRSRepo) UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.
 			"lapses":         u.State.Lapses,
 			"last_review":    u.State.LastReview,
 			"last_rating":    userCardFSRSLastRating(u.State),
-			"elapsed_days":   u.State.ElapsedDays,
 			"scheduled_days": u.State.ScheduledDays,
 		}),
 	}, clause.Returning{Columns: []clause.Column{{Name: "updated_at"}}}).Create(row).Error; err != nil {
@@ -195,7 +193,6 @@ func userCardFSRSToRow(u *domain.UserCardFSRS) *gormUserCardFSRS {
 		Lapses:        u.State.Lapses,
 		LastReview:    u.State.LastReview,
 		LastRating:    userCardFSRSLastRating(u.State),
-		ElapsedDays:   u.State.ElapsedDays,
 		ScheduledDays: u.State.ScheduledDays,
 		CreatedAt:     u.CreatedAt,
 		UpdatedAt:     u.UpdatedAt,
@@ -256,7 +253,6 @@ func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
 			Due:           row.Due,
 			Stability:     row.Stability,
 			Difficulty:    row.Difficulty,
-			ElapsedDays:   row.ElapsedDays,
 			ScheduledDays: row.ScheduledDays,
 			Reps:          row.Reps,
 			Lapses:        row.Lapses,

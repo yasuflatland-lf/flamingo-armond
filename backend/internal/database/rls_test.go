@@ -391,9 +391,10 @@ func insertSwipeSQL() string {
 	return `
         INSERT INTO public.swipe_records (
             user_id, card_id, cardgroup_id, rating, reviewed_at, due, stability, difficulty,
-            elapsed_days, scheduled_days, reps, lapses, state, last_review
+            scheduled_days, reps, lapses, state, last_review,
+            due_before, phase_before, stability_before
         )
-        VALUES ($1, $2, $3, 3, $4, $4, 2.5, 5.0, 0, 0, 0, 0, 0, $4)
+        VALUES ($1, $2, $3, 3, $4, $4, 2.5, 5.0, 0, 0, 0, 0, $4, $4, 0, 2.5)
     `
 }
 
@@ -409,9 +410,9 @@ func insertUserCardFSRSSQL() string {
 	return `
         INSERT INTO public.user_card_fsrs (
             user_id, card_id, state, due, stability, difficulty,
-            reps, lapses, last_review, elapsed_days, scheduled_days
+            reps, lapses, last_review, scheduled_days
         )
-        VALUES ($1, $2, 0, $3, 2.5, 5.0, 0, 0, $3, 0, 0)
+        VALUES ($1, $2, 0, $3, 2.5, 5.0, 0, 0, $3, 0)
         ON CONFLICT (user_id, card_id) DO NOTHING
     `
 }
