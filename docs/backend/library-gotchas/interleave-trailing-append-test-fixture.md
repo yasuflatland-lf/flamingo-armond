@@ -70,8 +70,8 @@ domain.DueCard{Card: &domain.Card{ID: "next-1"}, Phase: domain.FSRSPhaseReview}
 ```
 
 **Reference:** `backend/internal/domain/service/due_card_ordering_test.go` —
-`TestOrderingPolicy_Apply_TrailingReviewAppend` (1N+7R fixture) and
-`TestOrderingPolicy_Apply_TrailingNewAppend` (10N+2R fixture) cover the two
+`TestInterleave_TrailingReviewAppend` (1N+7R fixture) and
+`TestInterleave_TrailingNewAppend` (10N+2R fixture) cover the two
 trailing paths. `backend/internal/usecase/swipe_performance_test.go` carries
 the inline comment `Phase: FSRSPhaseReview exercises the review-bucket path`
 at every `findDueRows` fixture that needs the review bucket populated.
