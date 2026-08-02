@@ -356,7 +356,8 @@ func bootstrapSuperUserPromoter(
 			return nil, eris.Wrap(err, "run: lookup admin role for super-user bootstrap")
 		}
 		logger.Info("super-user bootstrap enabled", "email_count", len(superUserEmails))
-		return auth.NewSuperUserPromoter(superUserEmails, adminRole.ID, authSvc, userRoleRepo, logger), nil
+		var roleAsg auth.RoleAssigner = userRoleRepo
+		return auth.NewSuperUserPromoter(superUserEmails, adminRole.ID, authSvc, roleAsg, logger), nil
 	}
 	// No SUPER_USER_EMAILS configured. Check whether at least one admin
 	// already exists in the DB; if not, the operator has no escape hatch
@@ -425,7 +426,9 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 
 	repos := newAppRepos(db)
-	authSvc := auth.NewService(repos.userRole)
+	// Passing the concrete repository directly makes deepScan infer auth -> repository.
+	var roleChk auth.RoleChecker = repos.userRole
+	authSvc := auth.NewService(roleChk)
 	adminGate := usecase.NewAdminGate(authSvc)
 
 	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, repos.role, repos.userRole, os.Getenv("SUPER_USER_EMAILS"))
