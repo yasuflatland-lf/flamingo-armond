@@ -120,8 +120,8 @@ func TestLearnUsecaseNextDueCards(t *testing.T) {
 		"JST start-of-day for 2026-05-13T09:00Z")
 	require.True(t, cardRepo.window.RescueDueBefore.Equal(time.Date(2026, 5, 13, 15, 0, 0, 0, time.UTC)),
 		"JST end-of-day for 2026-05-13T09:00Z")
-	require.True(t, cardRepo.window.RescueReviewedBefore.Equal(time.Date(2026, 5, 12, 9, 0, 0, 0, time.UTC)),
-		"rescue early-serve floor is exactly 24h before now")
+	require.True(t, cardRepo.window.RescueReviewedBefore.Equal(time.Date(2026, 5, 13, 0, 0, 0, 0, time.UTC)),
+		"rescue early-serve bound is UTC midnight of now's UTC calendar date")
 	require.ElementsMatch(t, []string{"repo-first", "repo-second"}, learnCardIDs(got))
 }
 
