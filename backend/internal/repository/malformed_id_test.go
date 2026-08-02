@@ -154,7 +154,7 @@ func TestClassifyMalformedClientIDAtRepositoryLookups(t *testing.T) {
 		{
 			name: "user preference UpsertLastViewedCardgroup",
 			run: func(ctx context.Context, db *gorm.DB) error {
-				return NewUserPreferenceRepository(db).UpsertLastViewedCardgroup(ctx, "user-id", "malformed")
+				return NewUserPreferenceRepository(db, nil).UpsertLastViewedCardgroup(ctx, "user-id", "malformed")
 			},
 			want: ErrCardgroupNotFound,
 		},

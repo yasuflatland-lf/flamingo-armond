@@ -38,13 +38,13 @@ func TestLastRatingDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back six migrations newest-first:
-	// realign_fsrs_snapshot_columns_to_v4, widen_updated_at_triggers_to_insert,
-	// widen_text_length_checks,
+	// Step back seven migrations newest-first:
+	// tighten_new_card_ratio_check, realign_fsrs_snapshot_columns_to_v4,
+	// widen_updated_at_triggers_to_insert, widen_text_length_checks,
 	// add_cardgroup_fk_to_swipe_records, add_stability_before_to_swipe_records,
 	// then add_last_rating_to_user_card_fsrs (the target). Bump this count when
 	// adding migrations after add_last_rating_to_user_card_fsrs.
-	if err := m.Steps(-6); err != nil {
+	if err := m.Steps(-7); err != nil {
 		t.Fatalf("migrate down to before last_rating migration: %v", err)
 	}
 	requireColumnMissing(t, ctx, sqlDB, "user_card_fsrs", "last_rating")
@@ -114,11 +114,12 @@ func TestLastRatingUpMigrationBackfillsLatestSwipe(t *testing.T) {
 		t.Fatalf("seed swipe_records rows: %v", err)
 	}
 
-	// Six steps: realign_fsrs_snapshot_columns_to_v4,
+	// Seven steps: tighten_new_card_ratio_check,
+	// realign_fsrs_snapshot_columns_to_v4,
 	// widen_updated_at_triggers_to_insert, widen_text_length_checks,
 	// add_cardgroup_fk_to_swipe_records and add_stability_before_to_swipe_records
 	// sit above the target.
-	if err := m.Steps(-6); err != nil {
+	if err := m.Steps(-7); err != nil {
 		t.Fatalf("migrate down to before last_rating migration: %v", err)
 	}
 	requireColumnMissing(t, ctx, sqlDB, "user_card_fsrs", "last_rating")

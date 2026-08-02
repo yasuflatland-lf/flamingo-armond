@@ -3,12 +3,14 @@ package repository
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 
 	"backend/internal/domain"
+	"backend/internal/logging"
 )
 
 // gormUserPreference is the row mapping for public.user_preferences.
@@ -63,10 +65,20 @@ type UserPreferenceRepository interface {
 	UpsertNewCardRatio(ctx context.Context, userID string, num, den int) error
 }
 
-type userPreferenceRepo struct{ db *gorm.DB }
+type userPreferenceRepo struct {
+	db     *gorm.DB
+	logger *slog.Logger
+}
 
-func NewUserPreferenceRepository(db *gorm.DB) UserPreferenceRepository {
-	return &userPreferenceRepo{db: db}
+// NewUserPreferenceRepository builds the repository. logger receives the
+// read-path WARN emitted when a stored new-card ratio fails domain validation;
+// a nil logger falls back to slog.Default() so callers that do not thread one
+// keep working.
+func NewUserPreferenceRepository(db *gorm.DB, logger *slog.Logger) UserPreferenceRepository {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &userPreferenceRepo{db: db, logger: logger}
 }
 
 func (r *userPreferenceRepo) FindByUserID(ctx context.Context, userID string) (*domain.UserPreference, error) {
@@ -78,7 +90,7 @@ func (r *userPreferenceRepo) FindByUserID(ctx context.Context, userID string) (*
 		}
 		return nil, eris.Wrap(err, "repository: user preference: find by user_id")
 	}
-	return toDomainUserPreference(row), nil
+	return toDomainUserPreference(ctx, r.logger, row), nil
 }
 
 func (r *userPreferenceRepo) FindByUserIDs(ctx context.Context, userIDs []string) ([]*domain.UserPreference, error) {
@@ -92,7 +104,7 @@ func (r *userPreferenceRepo) FindByUserIDs(ctx context.Context, userIDs []string
 	}
 	out := make([]*domain.UserPreference, len(rows))
 	for i := range rows {
-		out[i] = toDomainUserPreference(rows[i])
+		out[i] = toDomainUserPreference(ctx, r.logger, rows[i])
 	}
 	return out, nil
 }
@@ -185,7 +197,11 @@ SET new_card_ratio_num = EXCLUDED.new_card_ratio_num,
 // the normalization here means a corrupt or legacy stored value never leaves
 // the repository as an invalid zero; the domain method is the backstop for any
 // UserPreference not constructed through this mapper.
-func toDomainUserPreference(g gormUserPreference) *domain.UserPreference {
+//
+// A rejected ratio is now logged at WARN with the offending num/den pair through
+// the injected logger, so a corrupt or out-of-range row is discoverable in logs
+// instead of vanishing into the default.
+func toDomainUserPreference(ctx context.Context, logger *slog.Logger, g gormUserPreference) *domain.UserPreference {
 	mode := domain.DefaultLearnDisplayMode
 	if parsed, err := domain.ParseLearnDisplayMode(g.LearnDisplayMode); err == nil {
 		mode = parsed
@@ -193,6 +209,16 @@ func toDomainUserPreference(g gormUserPreference) *domain.UserPreference {
 	ratio := domain.DefaultNewCardRatio
 	if parsed, err := domain.ParseNewCardRatio(g.NewCardRatioNum, g.NewCardRatioDen); err == nil {
 		ratio = parsed
+	} else if g.NewCardRatioNum != 0 || g.NewCardRatioDen != 0 {
+		// Zero is the legacy "unset" sentinel, absorbed silently; anything else is a row
+		// the CHECK should have rejected and is worth surfacing.
+		logging.LogWarn(ctx, logger,
+			"repository: user preference: stored new card ratio rejected",
+			err,
+			slog.String("user_id", g.UserID),
+			slog.Int("new_card_ratio_num", g.NewCardRatioNum),
+			slog.Int("new_card_ratio_den", g.NewCardRatioDen),
+		)
 	}
 	return &domain.UserPreference{
 		UserID:                domain.UserID(g.UserID),

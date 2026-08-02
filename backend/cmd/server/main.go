@@ -107,7 +107,7 @@ type appRepos struct {
 	userPreference  repository.UserPreferenceRepository
 }
 
-func newAppRepos(db *database.DB) *appRepos {
+func newAppRepos(db *database.DB, logger *slog.Logger) *appRepos {
 	return &appRepos{
 		gorm:            db.GORM,
 		user:            repository.NewUserRepository(db.GORM),
@@ -120,7 +120,7 @@ func newAppRepos(db *database.DB) *appRepos {
 		swipeRecord:     repository.NewSwipeRecordRepository(db.GORM),
 		pingRecord:      repository.NewPingRecordRepository(db.GORM),
 		userRole:        repository.NewUserRoleRepository(db.GORM),
-		userPreference:  repository.NewUserPreferenceRepository(db.GORM),
+		userPreference:  repository.NewUserPreferenceRepository(db.GORM, logger),
 	}
 }
 
@@ -424,7 +424,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		return eris.Wrap(err, "run: db open")
 	}
 
-	repos := newAppRepos(db)
+	repos := newAppRepos(db, logger)
 	authSvc := auth.NewService(repos.userRole)
 	adminGate := usecase.NewAdminGate(authSvc)
 

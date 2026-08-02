@@ -64,7 +64,7 @@ deps:
   logging:            { anyVendorDeps: true }           # leaf: vendor-only deps (eris, slog)
   middleware:         { anyVendorDeps: true }           # leaf: vendor-only deps (echo, uuid)
   notion:             { mayDependOn: [domain] }
-  repository:         { mayDependOn: [domain] }
+  repository:         { mayDependOn: [domain, logging] }
   telemetry:          { anyVendorDeps: true }           # leaf: vendor-only deps (otel, eris)
   textdic:            { anyVendorDeps: true }           # leaf: vendor-only deps (eris)
   ucerr:              { anyVendorDeps: true }           # leaf: go-arch-lint requires at least one allow setting; ucerr imports stdlib only
