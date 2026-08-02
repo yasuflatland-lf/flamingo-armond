@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"testing"
 	"time"
@@ -115,9 +116,10 @@ func TestOrderingPolicy_Apply_RescueBoundaryHoldsAcrossSeeds(t *testing.T) {
 func TestOrderingPolicy_Apply_MixedCompositionSlots(t *testing.T) {
 	t.Parallel()
 
-	// 5 review + 20 new. Interleave emits 1 review then 4 new per cycle, so
-	// review cards occupy exactly slots 0, 5, 10, 15, 20 regardless of how
-	// the shuffles permute identities WITHIN each partition.
+	// 5 review + 20 new. Largest-remainder distribution at 4/5 hands every
+	// fifth slot from index 2 to the review bucket, so review cards occupy
+	// exactly slots 2, 7, 12, 17, 22 regardless of how the shuffles permute
+	// identities WITHIN each partition.
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
 	in := make([]domain.DueCard, 0, 25)
 	reviewSet := make(map[string]bool, 5)
@@ -134,7 +136,7 @@ func TestOrderingPolicy_Apply_MixedCompositionSlots(t *testing.T) {
 	require.Len(t, got, 25)
 
 	for i, c := range got {
-		if i%5 == 0 {
+		if i%5 == 2 {
 			require.True(t, reviewSet[c.ID], "slot %d must be a review card, got %q", i, c.ID)
 		} else {
 			require.False(t, reviewSet[c.ID], "slot %d must be a new card, got %q", i, c.ID)
@@ -208,9 +210,9 @@ func TestOrderingPolicy_Apply_InterleavedRescueFillerInput_RescueStillFirst(t *t
 func TestOrderingPolicy_Apply_NonDefaultRatioInterleavesOneToOne(t *testing.T) {
 	t.Parallel()
 
-	// 3 new + 3 review. The default 4/5 ratio would emit [R,N,N,N,R,R]; a 1/2
-	// ratio (new share 1, review share 1) interleaves 1:1 review-first, so
-	// review cards land in the even slots and new cards in the odd slots. The
+	// 3 new + 3 review. The default 4/5 ratio emits [N,N,R,N,R,R]; a 1/2 ratio
+	// (new share 1, review share 1) alternates 1:1 starting with new, so new
+	// cards land in the even slots and review cards in the odd slots. The
 	// distinct slot composition proves the caller-supplied ratio reaches Apply.
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
 	in := []domain.DueCard{
@@ -231,18 +233,16 @@ func TestOrderingPolicy_Apply_NonDefaultRatioInterleavesOneToOne(t *testing.T) {
 
 	for i, c := range got {
 		if i%2 == 0 {
-			require.True(t, reviewSet[c.ID], "slot %d must be a review card, got %q", i, c.ID)
-		} else {
 			require.False(t, reviewSet[c.ID], "slot %d must be a new card, got %q", i, c.ID)
+		} else {
+			require.True(t, reviewSet[c.ID], "slot %d must be a review card, got %q", i, c.ID)
 		}
 	}
 }
 
 // TestOrderingPolicy_Apply_EveryAcceptedRatioServesNewCardInSessionPrefix pins
 // that every ratio ParseNewCardRatio accepts yields a new card within the first
-// domain.DefaultLearnSessionSize slots, because den <= that size makes the first
-// whole interleave cycle fit. Divisibility of den into the session size was the
-// originally specified assertion; an upper-bound cap makes it false.
+// domain.DefaultLearnSessionSize slots.
 func TestOrderingPolicy_Apply_EveryAcceptedRatioServesNewCardInSessionPrefix(t *testing.T) {
 	t.Parallel()
 
@@ -351,10 +351,9 @@ func TestInterleave_TrailingReviewAppend(t *testing.T) {
 
 	got := interleave(newC, reviewC, 4, 1)
 
-	// Cycle 1 emits rev-0 then new-0 (new bucket exhausts the 4-slot k-loop
-	// at 1 card); the outer loop exits and the trailing-review path appends
-	// rev-1..rev-6.
-	want := []string{"rev-0", "new-0", "rev-1", "rev-2", "rev-3", "rev-4", "rev-5", "rev-6"}
+	// Slot 1 goes to the new bucket (round(1*4/5) = 1) and empties it; the main
+	// loop exits and the trailing-review path appends rev-0..rev-6.
+	want := []string{"new-0", "rev-0", "rev-1", "rev-2", "rev-3", "rev-4", "rev-5", "rev-6"}
 	require.Equal(t, want, cardIDs(got))
 }
 
@@ -373,12 +372,11 @@ func TestInterleave_TrailingNewAppend(t *testing.T) {
 
 	got := interleave(newC, reviewC, 4, 1)
 
-	// Cycle 1: rev-0, new-0..new-3. Cycle 2: rev-1, new-4..new-7. Review
-	// bucket is now empty so the outer loop exits; trailing-new appends
-	// new-8, new-9.
+	// round(k*4/5) hands slots 3 and 8 to the review bucket, emptying it; the
+	// main loop exits and trailing-new appends new-6..new-9.
 	want := []string{
-		"rev-0", "new-0", "new-1", "new-2", "new-3",
-		"rev-1", "new-4", "new-5", "new-6", "new-7",
+		"new-0", "new-1", "rev-0", "new-2", "new-3",
+		"new-4", "new-5", "rev-1", "new-6", "new-7",
 		"new-8", "new-9",
 	}
 	require.Equal(t, want, cardIDs(got))
@@ -395,4 +393,114 @@ func TestInterleave_PanicsOnNonPositiveRatios(t *testing.T) {
 		"zero nRatio must panic")
 	require.Panics(t, func() { interleave(newC, reviewC, 4, 0) },
 		"zero rRatio must panic")
+}
+
+// deepBuckets builds one new and one review bucket of depth n plus the set of
+// new-card ids, for interleave tests that must never hit a trailing-append path.
+func deepBuckets(n int) (newC, reviewC []domain.DueCard, newSet map[string]bool) {
+	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
+	newSet = make(map[string]bool, n)
+	newC = make([]domain.DueCard, 0, n)
+	reviewC = make([]domain.DueCard, 0, n)
+	for i := 0; i < n; i++ {
+		id := fmt.Sprintf("new-%d", i)
+		newSet[id] = true
+		newC = append(newC, dueCard(id, domain.FSRSPhaseNew, base.Add(time.Duration(i)*time.Minute)))
+		reviewC = append(reviewC, dueCard(
+			fmt.Sprintf("rev-%d", i),
+			domain.FSRSPhaseReview,
+			base.Add(time.Duration(n+i)*time.Minute),
+		))
+	}
+	return newC, reviewC, newSet
+}
+
+// TestInterleave_PrefixFidelityAcrossAcceptedRatios pins the property the
+// largest-remainder distribution buys: for every accepted ratio and every prefix
+// length, the served new-card count stays within half a card of the nominal
+// share. Both buckets stay deep so no trailing-append path is reached.
+func TestInterleave_PrefixFidelityAcrossAcceptedRatios(t *testing.T) {
+	t.Parallel()
+
+	const bucketDepth = 120
+	const maxPrefix = 100
+
+	newC, reviewC, newSet := deepBuckets(bucketDepth)
+
+	for den := 2; den <= domain.NewCardRatioDenMax; den++ {
+		for num := 1; num < den; num++ {
+			ratio, err := domain.ParseNewCardRatio(num, den)
+			if err != nil {
+				continue
+			}
+
+			ids := cardIDs(interleave(newC, reviewC, ratio.NewShare(), ratio.ReviewShare()))
+			served := 0
+			for k := 1; k <= maxPrefix; k++ {
+				if newSet[ids[k-1]] {
+					served++
+				}
+				nominal := float64(k) * float64(num) / float64(den)
+				require.LessOrEqual(t, math.Abs(float64(served)-nominal), 0.5+1e-9,
+					"ratio %d/%d prefix k=%d: served %d new, nominal %.4f", num, den, k, served, nominal)
+			}
+		}
+	}
+}
+
+// TestInterleave_ServesNewCardEarlierThanTheOldCycle is the P1a regression: the
+// removed cycle emission put den-num review cards ahead of the first new card,
+// so the shipped 4/5 default served none in a one-card session. The first new
+// card now lands at slot 1 for the default and at worst slot den-num elsewhere.
+func TestInterleave_ServesNewCardEarlierThanTheOldCycle(t *testing.T) {
+	t.Parallel()
+
+	const bucketDepth = 120
+
+	newC, reviewC, newSet := deepBuckets(bucketDepth)
+
+	firstNewSlot := func(ratio domain.NewCardRatio) int {
+		for i, id := range cardIDs(interleave(newC, reviewC, ratio.NewShare(), ratio.ReviewShare())) {
+			if newSet[id] {
+				return i + 1
+			}
+		}
+		return -1
+	}
+
+	require.Equal(t, 1, firstNewSlot(domain.DefaultNewCardRatio),
+		"the shipped 4/5 default must serve a new card in a one-card session")
+
+	for den := 2; den <= domain.NewCardRatioDenMax; den++ {
+		for num := 1; num < den; num++ {
+			ratio, err := domain.ParseNewCardRatio(num, den)
+			if err != nil {
+				continue
+			}
+			require.LessOrEqual(t,
+				firstNewSlot(ratio), ratio.Denominator()-ratio.Numerator(),
+				"ratio %d/%d must serve its first new card no later than slot den-num", num, den)
+		}
+	}
+}
+
+// TestInterleave_AdvertisedDefaultSessionSplit pins the advertised composition:
+// a full-pool default session is exactly 16 new / 4 review, the split the
+// removed cycle emission also produced at whole multiples of the denominator.
+func TestInterleave_AdvertisedDefaultSessionSplit(t *testing.T) {
+	t.Parallel()
+
+	newC, reviewC, newSet := deepBuckets(2 * domain.DefaultLearnSessionSize)
+	ratio := domain.DefaultNewCardRatio
+
+	ids := cardIDs(interleave(newC, reviewC, ratio.NewShare(), ratio.ReviewShare()))
+	served := 0
+	for _, id := range ids[:domain.DefaultLearnSessionSize] {
+		if newSet[id] {
+			served++
+		}
+	}
+
+	require.Equal(t, 16, served, "a default 20-card session must serve 16 new cards")
+	require.Equal(t, 4, domain.DefaultLearnSessionSize-served, "and 4 review cards")
 }
