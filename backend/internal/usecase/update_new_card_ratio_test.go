@@ -161,12 +161,11 @@ func TestUpdateNewCardRatio_RefetchCancelled(t *testing.T) {
 	}
 }
 
-// TestUpdateNewCardRatio_InvalidRatio_FieldAttribution pins the wire field a bad
-// ratio faults on to the reduced fraction domain.ParseNewCardRatio actually
-// checks: a new-card share outside (0, denominator) or above 4/5 faults the
-// numerator; a non-positive or over-cap (reduced) denominator faults the
-// denominator. The "3/303" case reduces to 1/101, so its over-cap denominator
-// is only visible on the reduced fraction. No write runs for any invalid ratio.
+// TestUpdateNewCardRatio_InvalidRatio_FieldAttribution pins wire attribution:
+// an invalid or over-cap share faults the numerator; a non-positive, over-cap, or
+// non-dividing reduced denominator faults the denominator. The "3/303" case
+// exposes an over-cap denominator only after reduction. No write runs for any
+// invalid ratio.
 func TestUpdateNewCardRatio_InvalidRatio_FieldAttribution(t *testing.T) {
 	t.Parallel()
 
@@ -185,6 +184,9 @@ func TestUpdateNewCardRatio_InvalidRatio_FieldAttribution(t *testing.T) {
 		{"non-positive denominator", 1, 0, "denominator"},
 		{"reduced denominator over cap", 1, 101, "denominator"},
 		{"reduced denominator over cap after reduction", 3, 303, "denominator"},
+		{"denominator does not divide the default session", 5, 17, "denominator"},
+		{"denominator 3 does not divide the default session", 1, 3, "denominator"},
+		{"denominator 7 does not divide the default session", 2, 7, "denominator"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -43,6 +43,7 @@ var domainSentinels = []domainSentinel{
 	{"ErrNewCardRatioShareOutOfRange", ErrNewCardRatioShareOutOfRange, true},
 	{"ErrNewCardRatioDenominatorTooLarge", ErrNewCardRatioDenominatorTooLarge, false},
 	{"ErrNewCardRatioNewShareTooHigh", ErrNewCardRatioNewShareTooHigh, false},
+	{"ErrNewCardRatioDenominatorNotRepresentable", ErrNewCardRatioDenominatorNotRepresentable, false},
 }
 
 func TestDomainSentinels_DoNotCrossMatch(t *testing.T) {

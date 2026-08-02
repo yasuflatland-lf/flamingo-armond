@@ -388,7 +388,7 @@ func TestUserPreferenceRepository_UpsertNewCardRatio_CreateRow(t *testing.T) {
 	userID := insertAuthUser(t, ctx)
 
 	repo := repository.NewUserPreferenceRepository(testDB.GORM)
-	if err := repo.UpsertNewCardRatio(ctx, userID, 3, 7); err != nil {
+	if err := repo.UpsertNewCardRatio(ctx, userID, 3, 10); err != nil {
 		t.Fatalf("UpsertNewCardRatio (create): %v", err)
 	}
 
@@ -396,8 +396,8 @@ func TestUserPreferenceRepository_UpsertNewCardRatio_CreateRow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindByUserID after create: %v", err)
 	}
-	if got.NewCardRatio.Numerator() != 3 || got.NewCardRatio.Denominator() != 7 {
-		t.Fatalf("after create: NewCardRatio = %d/%d, want 3/7",
+	if got.NewCardRatio.Numerator() != 3 || got.NewCardRatio.Denominator() != 10 {
+		t.Fatalf("after create: NewCardRatio = %d/%d, want 3/10",
 			got.NewCardRatio.Numerator(), got.NewCardRatio.Denominator())
 	}
 }
@@ -411,10 +411,10 @@ func TestUserPreferenceRepository_UpsertNewCardRatio_UpdateRow(t *testing.T) {
 	userID := insertAuthUser(t, ctx)
 
 	repo := repository.NewUserPreferenceRepository(testDB.GORM)
-	if err := repo.UpsertNewCardRatio(ctx, userID, 3, 7); err != nil {
+	if err := repo.UpsertNewCardRatio(ctx, userID, 3, 10); err != nil {
 		t.Fatalf("UpsertNewCardRatio (first): %v", err)
 	}
-	if err := repo.UpsertNewCardRatio(ctx, userID, 2, 9); err != nil {
+	if err := repo.UpsertNewCardRatio(ctx, userID, 2, 5); err != nil {
 		t.Fatalf("UpsertNewCardRatio (second): %v", err)
 	}
 
@@ -422,8 +422,8 @@ func TestUserPreferenceRepository_UpsertNewCardRatio_UpdateRow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindByUserID after update: %v", err)
 	}
-	if got.NewCardRatio.Numerator() != 2 || got.NewCardRatio.Denominator() != 9 {
-		t.Fatalf("after update: NewCardRatio = %d/%d, want 2/9",
+	if got.NewCardRatio.Numerator() != 2 || got.NewCardRatio.Denominator() != 5 {
+		t.Fatalf("after update: NewCardRatio = %d/%d, want 2/5",
 			got.NewCardRatio.Numerator(), got.NewCardRatio.Denominator())
 	}
 

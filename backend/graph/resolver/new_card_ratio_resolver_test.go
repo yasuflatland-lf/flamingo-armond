@@ -90,7 +90,7 @@ func TestUserNewCardRatio_StoredPreferenceReturnsStoredFraction(t *testing.T) {
 	}
 	srv := newNewCardRatioSrv(userMock, nil)
 	prefs := map[string]*domain.UserPreference{
-		"u-1": {UserID: "u-1", NewCardRatio: mustNewCardRatio(t, 3, 7)},
+		"u-1": {UserID: "u-1", NewCardRatio: mustNewCardRatio(t, 3, 10)},
 	}
 	ctx := ctxWithBothLoaders(authedCtx("u-1"), prefs, map[string]*domain.Cardgroup{})
 	body := `{"query":"{ me { id newCardRatio { numerator denominator } } }"}`
@@ -101,8 +101,8 @@ func TestUserNewCardRatio_StoredPreferenceReturnsStoredFraction(t *testing.T) {
 		t.Fatalf("unexpected errors: %v", errs)
 	}
 	ratio := meNewCardRatio(t, resp)
-	if ratio["numerator"] != float64(3) || ratio["denominator"] != float64(7) {
-		t.Fatalf("newCardRatio = %v, want stored 3/7", ratio)
+	if ratio["numerator"] != float64(3) || ratio["denominator"] != float64(10) {
+		t.Fatalf("newCardRatio = %v, want stored 3/10", ratio)
 	}
 }
 
@@ -113,7 +113,7 @@ func TestUpdateNewCardRatio_ReturnsUpdatedRatio(t *testing.T) {
 	mock := &mockUpdateNewCardRatioUsecase{
 		user: &domain.User{ID: "u-1"},
 		onSet: func(num, den int) {
-			// 3/7 is already reduced, so ParseNewCardRatio round-trips it.
+			// 3/10 is already reduced, so ParseNewCardRatio round-trips it.
 			ratio := mustNewCardRatio(t, num, den)
 			prefs["u-1"] = &domain.UserPreference{UserID: "u-1", NewCardRatio: ratio}
 		},
@@ -123,7 +123,7 @@ func TestUpdateNewCardRatio_ReturnsUpdatedRatio(t *testing.T) {
 	}
 	srv := newNewCardRatioSrv(userMock, mock)
 	ctx := ctxWithBothLoaders(authedCtx("u-1"), prefs, map[string]*domain.Cardgroup{})
-	body := `{"query":"mutation { updateNewCardRatio(numerator: 3, denominator: 7) { id newCardRatio { numerator denominator } } }"}`
+	body := `{"query":"mutation { updateNewCardRatio(numerator: 3, denominator: 10) { id newCardRatio { numerator denominator } } }"}`
 
 	resp := gqlRequest(t, srv, ctx, body)
 
@@ -133,8 +133,8 @@ func TestUpdateNewCardRatio_ReturnsUpdatedRatio(t *testing.T) {
 	if mock.calls != 1 {
 		t.Fatalf("expected 1 Set call, got %d", mock.calls)
 	}
-	if mock.lastNum != 3 || mock.lastDen != 7 {
-		t.Fatalf("Set called with %d/%d, want 3/7", mock.lastNum, mock.lastDen)
+	if mock.lastNum != 3 || mock.lastDen != 10 {
+		t.Fatalf("Set called with %d/%d, want 3/10", mock.lastNum, mock.lastDen)
 	}
 	data, _ := resp["data"].(map[string]any)
 	payload, _ := data["updateNewCardRatio"].(map[string]any)
@@ -145,8 +145,8 @@ func TestUpdateNewCardRatio_ReturnsUpdatedRatio(t *testing.T) {
 		t.Fatalf("id = %v, want u-1", payload["id"])
 	}
 	ratio, _ := payload["newCardRatio"].(map[string]any)
-	if ratio == nil || ratio["numerator"] != float64(3) || ratio["denominator"] != float64(7) {
-		t.Fatalf("newCardRatio = %v, want 3/7", ratio)
+	if ratio == nil || ratio["numerator"] != float64(3) || ratio["denominator"] != float64(10) {
+		t.Fatalf("newCardRatio = %v, want 3/10", ratio)
 	}
 }
 
