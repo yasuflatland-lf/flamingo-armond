@@ -33,6 +33,11 @@ func TestNewCardRatioCheckDownUpRoundtrip(t *testing.T) {
 	requireRatioRejected(t, ctx, sqlDB, 1, 21)  // reduced denominator above the cap
 	requireRatioRejected(t, ctx, sqlDB, 19, 20) // new share above 4/5
 	requireRatioRejected(t, ctx, sqlDB, 20, 21) // admitted by the previous loose CHECK
+	// SQL does not guarantee AND short-circuits, so a zero denominator may be
+	// rejected by `num < den` (23514) or by evaluating `20 % 0` (22012). Only the
+	// rejection is pinned; asserting one SQLSTATE would pin an evaluation order
+	// the planner is free to change.
+	requireRatioRejected(t, ctx, sqlDB, 1, 0)
 
 	m, err := database.NewMigrateInstanceForTest(testDSN)
 	if err != nil {
