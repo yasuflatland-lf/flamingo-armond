@@ -27,6 +27,7 @@ func TestComputeMetrics(t *testing.T) {
 				SuccessRate:   0.5,
 				AvgDifficulty: 0.5,
 				RetentionRate: 0.5,
+				LapseRate:     0.5,
 			},
 		},
 		{
@@ -258,14 +259,27 @@ func TestComputeMetrics(t *testing.T) {
 }
 
 // TestComputeMetrics_KnownReviewCount pins the denominator behind RetentionRate
-// and LapseRate as a separate wire field. A window can carry swipes while no
-// swipe passes the known-card gate, and the two rates are then 0 for lack of a
-// population rather than for measured failure — consumers distinguish the two
-// cases by KnownReviewCount, not by ReviewCount.
+// and LapseRate as a separate wire field, and the two branches that leave it at
+// zero: an empty window, where both rates carry the neutral 0.5 placeholder, and
+// a window whose swipes all fail the known-card gate, where both rates are a
+// real 0. Consumers distinguish the two by KnownReviewCount, not by ReviewCount.
 func TestComputeMetrics_KnownReviewCount(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 4, 30, 3, 0, 0, 0, time.UTC)
+
+	t.Run("an empty window carries the placeholder on every rate", func(t *testing.T) {
+		t.Parallel()
+
+		got := ComputeMetrics(nil, now)
+
+		require.InDelta(t, 0.5, got.SuccessRate, 0.000000001)
+		require.InDelta(t, 0.5, got.AvgDifficulty, 0.000000001)
+		require.InDelta(t, 0.5, got.RetentionRate, 0.000000001)
+		require.InDelta(t, 0.5, got.LapseRate, 0.000000001)
+		require.Equal(t, 0, got.ReviewCount)
+		require.Equal(t, 0, got.KnownReviewCount)
+	})
 
 	t.Run("swipes without gated reviews leave the known-review count at zero", func(t *testing.T) {
 		t.Parallel()
@@ -414,14 +428,14 @@ func TestComputeWindowedMetrics(t *testing.T) {
 		}, now)
 
 		require.Equal(t, 1, got.Days365.ReviewCount)
-		require.Equal(t, PerformanceMetrics{SuccessRate: 0.5, AvgDifficulty: 0.5, RetentionRate: 0.5}, got.Days30)
-		require.Equal(t, PerformanceMetrics{SuccessRate: 0.5, AvgDifficulty: 0.5, RetentionRate: 0.5}, got.Days7)
+		require.Equal(t, PerformanceMetrics{SuccessRate: 0.5, AvgDifficulty: 0.5, RetentionRate: 0.5, LapseRate: 0.5}, got.Days30)
+		require.Equal(t, PerformanceMetrics{SuccessRate: 0.5, AvgDifficulty: 0.5, RetentionRate: 0.5, LapseRate: 0.5}, got.Days7)
 	})
 
 	t.Run("returns neutral snapshots for fully empty input", func(t *testing.T) {
 		t.Parallel()
 
-		neutral := PerformanceMetrics{SuccessRate: 0.5, AvgDifficulty: 0.5, RetentionRate: 0.5}
+		neutral := PerformanceMetrics{SuccessRate: 0.5, AvgDifficulty: 0.5, RetentionRate: 0.5, LapseRate: 0.5}
 		require.Equal(t, WindowedMetrics{Days365: neutral, Days30: neutral, Days7: neutral}, ComputeWindowedMetrics(nil, now))
 	})
 }
