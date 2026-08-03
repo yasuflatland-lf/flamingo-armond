@@ -226,7 +226,7 @@ func TestBuildResolver_WiresResolverAndHandlers(t *testing.T) {
 	}
 	t.Cleanup(db.Close)
 
-	repos := newAppRepos(db)
+	repos := newAppRepos(db, slog.New(slog.DiscardHandler))
 	authSvc := auth.NewService(repos.userRole)
 	adminGate := usecase.NewAdminGate(authSvc)
 
@@ -264,7 +264,7 @@ func TestBuildResolver_NotionEnabledRetryConfigError(t *testing.T) {
 	}
 	t.Cleanup(db.Close)
 
-	repos := newAppRepos(db)
+	repos := newAppRepos(db, slog.New(slog.DiscardHandler))
 	authSvc := auth.NewService(repos.userRole)
 	adminGate := usecase.NewAdminGate(authSvc)
 
@@ -717,7 +717,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
-	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
+	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM, logger)
 	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil, nil), loaderDeps{
 		user:           userRepo,
 		role:           roleRepo,
@@ -1949,8 +1949,8 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 	cardRepo := repository.NewCardRepository(db.GORM)
 	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
-	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
 	logger := slog.New(slog.DiscardHandler)
+	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM, logger)
 	userUC := usecase.NewUserUsecase(nil, userRepo, userRoleRepo, nil, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, nil, logger)

@@ -5,9 +5,12 @@
 -- The default 4/5 (new share 4, review share 1 -> interleave 4:1) keeps the
 -- ordering behaviour identical to the historical fixed 4:1 constants.
 --
--- The CHECK is a backstop for direct DB writes; the domain value object
--- enforces the same bounds plus gcd-reduction (which the CHECK cannot express)
--- in application code.
+-- The CHECK here is a LOOSE backstop for direct DB writes: it bounds the
+-- fraction's shape but not the domain value object's real limits (the reduced
+-- denominator cap and the 80% new-card share ceiling), and it cannot express
+-- gcd-reduction at all. Migration 20260802000000_tighten_new_card_ratio_check
+-- supersedes it with the value object's actual bounds; gcd-reduction stays
+-- application-only.
 --
 -- golang-migrate pgx/v5 does NOT auto-wrap migrations in a transaction; the
 -- explicit BEGIN/COMMIT below ensures all-or-nothing execution.

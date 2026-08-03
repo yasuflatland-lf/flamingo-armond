@@ -5,6 +5,7 @@ package repository_test
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -61,7 +62,7 @@ func TestUserPreferenceRepository_Upsert_CreateRow(t *testing.T) {
 	userID := insertAuthUser(t, ctx)
 	cgID := insertCardgroupForUser(t, ctx, userID, "owned-cg")
 
-	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	repo := repository.NewUserPreferenceRepository(testDB.GORM, slog.New(slog.DiscardHandler))
 	if err := repo.UpsertLastViewedCardgroup(ctx, userID, cgID); err != nil {
 		t.Fatalf("UpsertLastViewedCardgroup: %v", err)
 	}
@@ -78,7 +79,7 @@ func TestUserPreferenceRepository_Upsert_UpdateRow(t *testing.T) {
 	cg1 := insertCardgroupForUser(t, ctx, userID, "first-cg")
 	cg2 := insertCardgroupForUser(t, ctx, userID, "second-cg")
 
-	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	repo := repository.NewUserPreferenceRepository(testDB.GORM, slog.New(slog.DiscardHandler))
 	if err := repo.UpsertLastViewedCardgroup(ctx, userID, cg1); err != nil {
 		t.Fatalf("UpsertLastViewedCardgroup (first): %v", err)
 	}
@@ -116,7 +117,7 @@ func TestUserPreferenceRepository_Upsert_UnownedCardgroup(t *testing.T) {
 	userB := insertAuthUser(t, ctx)
 	cgOwnedByB := insertCardgroupForUser(t, ctx, userB, "b-cg")
 
-	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	repo := repository.NewUserPreferenceRepository(testDB.GORM, slog.New(slog.DiscardHandler))
 	err := repo.UpsertLastViewedCardgroup(ctx, userA, cgOwnedByB)
 	if !errors.Is(err, repository.ErrCardgroupNotFound) {
 		t.Fatalf("want ErrCardgroupNotFound for unowned cardgroup, got %v", err)
@@ -137,7 +138,7 @@ func TestUserPreferenceRepository_Upsert_NonExistentCardgroup(t *testing.T) {
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
 
-	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	repo := repository.NewUserPreferenceRepository(testDB.GORM, slog.New(slog.DiscardHandler))
 	err := repo.UpsertLastViewedCardgroup(ctx, userID, uuid.NewString())
 	if !errors.Is(err, repository.ErrCardgroupNotFound) {
 		t.Fatalf("want ErrCardgroupNotFound for non-existent cardgroup, got %v", err)
@@ -161,7 +162,7 @@ func TestUserPreferenceRepository_CrossTenant_UpsertBlocked(t *testing.T) {
 	// but B's does not" — removes any doubt about setup correctness.
 	cgA := insertCardgroupForUser(t, ctx, userA, "tenant-a-cg")
 
-	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	repo := repository.NewUserPreferenceRepository(testDB.GORM, slog.New(slog.DiscardHandler))
 
 	if err := repo.UpsertLastViewedCardgroup(ctx, userA, cgA); err != nil {
 		t.Fatalf("A upsert own cardgroup: %v", err)
@@ -195,7 +196,7 @@ func TestUserPreferenceRepository_FindByUserID_Found(t *testing.T) {
 	userID := insertAuthUser(t, ctx)
 	cgID := insertCardgroupForUser(t, ctx, userID, "lookup-cg")
 
-	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	repo := repository.NewUserPreferenceRepository(testDB.GORM, slog.New(slog.DiscardHandler))
 	if err := repo.UpsertLastViewedCardgroup(ctx, userID, cgID); err != nil {
 		t.Fatalf("UpsertLastViewedCardgroup: %v", err)
 	}
@@ -218,7 +219,7 @@ func TestUserPreferenceRepository_FindByUserID_Found(t *testing.T) {
 func TestUserPreferenceRepository_FindByUserID_NotFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	repo := repository.NewUserPreferenceRepository(testDB.GORM, slog.New(slog.DiscardHandler))
 	_, err := repo.FindByUserID(ctx, uuid.NewString())
 	if !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
@@ -233,7 +234,7 @@ func TestUserPreferenceRepository_FindByUserIDs_Found(t *testing.T) {
 	cgA := insertCardgroupForUser(t, ctx, userA, "ids-cg-a")
 	cgB := insertCardgroupForUser(t, ctx, userB, "ids-cg-b")
 
-	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	repo := repository.NewUserPreferenceRepository(testDB.GORM, slog.New(slog.DiscardHandler))
 	if err := repo.UpsertLastViewedCardgroup(ctx, userA, cgA); err != nil {
 		t.Fatalf("upsert A: %v", err)
 	}
@@ -265,7 +266,7 @@ func TestUserPreferenceRepository_FindByUserIDs_MissingUser(t *testing.T) {
 	userID := insertAuthUser(t, ctx)
 	cgID := insertCardgroupForUser(t, ctx, userID, "partial-cg")
 
-	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	repo := repository.NewUserPreferenceRepository(testDB.GORM, slog.New(slog.DiscardHandler))
 	if err := repo.UpsertLastViewedCardgroup(ctx, userID, cgID); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
@@ -289,7 +290,7 @@ func TestUserPreferenceRepository_FindByUserIDs_EmptyInput(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	repo := repository.NewUserPreferenceRepository(testDB.GORM, slog.New(slog.DiscardHandler))
 	prefs, err := repo.FindByUserIDs(ctx, []string{})
 	if err != nil {
 		t.Fatalf("FindByUserIDs(empty): %v", err)
@@ -310,7 +311,7 @@ func TestUserPreferenceRepository_OnDeleteUser_CascadesPreferenceRow(t *testing.
 	userID := insertAuthUser(t, ctx)
 	cgID := insertCardgroupForUser(t, ctx, userID, "fk-cascade-user-cg")
 
-	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	repo := repository.NewUserPreferenceRepository(testDB.GORM, slog.New(slog.DiscardHandler))
 	if err := repo.UpsertLastViewedCardgroup(ctx, userID, cgID); err != nil {
 		t.Fatalf("UpsertLastViewedCardgroup: %v", err)
 	}
@@ -338,7 +339,7 @@ func TestUserPreferenceRepository_UpsertLearnDisplayMode_CreateRow(t *testing.T)
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
 
-	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	repo := repository.NewUserPreferenceRepository(testDB.GORM, slog.New(slog.DiscardHandler))
 	if err := repo.UpsertLearnDisplayMode(ctx, userID, "always_visible"); err != nil {
 		t.Fatalf("UpsertLearnDisplayMode (create): %v", err)
 	}
@@ -360,7 +361,7 @@ func TestUserPreferenceRepository_UpsertLearnDisplayMode_UpdateRow(t *testing.T)
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
 
-	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	repo := repository.NewUserPreferenceRepository(testDB.GORM, slog.New(slog.DiscardHandler))
 	if err := repo.UpsertLearnDisplayMode(ctx, userID, "always_visible"); err != nil {
 		t.Fatalf("UpsertLearnDisplayMode (first): %v", err)
 	}
@@ -387,7 +388,7 @@ func TestUserPreferenceRepository_UpsertNewCardRatio_CreateRow(t *testing.T) {
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
 
-	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	repo := repository.NewUserPreferenceRepository(testDB.GORM, slog.New(slog.DiscardHandler))
 	if err := repo.UpsertNewCardRatio(ctx, userID, 3, 10); err != nil {
 		t.Fatalf("UpsertNewCardRatio (create): %v", err)
 	}
@@ -410,7 +411,7 @@ func TestUserPreferenceRepository_UpsertNewCardRatio_UpdateRow(t *testing.T) {
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
 
-	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	repo := repository.NewUserPreferenceRepository(testDB.GORM, slog.New(slog.DiscardHandler))
 	if err := repo.UpsertNewCardRatio(ctx, userID, 3, 10); err != nil {
 		t.Fatalf("UpsertNewCardRatio (first): %v", err)
 	}
@@ -450,7 +451,7 @@ func TestUserPreferenceRepository_OnDeleteCardgroup_SetsNull(t *testing.T) {
 	userID := insertAuthUser(t, ctx)
 	cgID := insertCardgroupForUser(t, ctx, userID, "fk-set-null-cg")
 
-	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	repo := repository.NewUserPreferenceRepository(testDB.GORM, slog.New(slog.DiscardHandler))
 	if err := repo.UpsertLastViewedCardgroup(ctx, userID, cgID); err != nil {
 		t.Fatalf("UpsertLastViewedCardgroup: %v", err)
 	}
