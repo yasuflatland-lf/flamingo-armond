@@ -352,10 +352,10 @@ The resolver layer for these operations lives in `backend/graph/resolver/card_im
 Next batch of cards for a learning session: randomly sampled never-seen cards
 interleaved with review cards at the caller's own `User.newCardRatio` setting
 (see `updateNewCardRatio`), which defaults to 4/5 — four new cards per five
-slots — until the caller changes it. Each interleave cycle emits its review
-cards first, so the ratio is honoured exactly only when `limit` is a multiple
-of the ratio's `denominator`; a `limit` at or below `denominator - numerator`
-returns review cards only and no new cards at all.
+slots — until the caller changes it. Slots are filled by largest-remainder
+distribution, so the ratio holds on every prefix rather than only on whole
+cycles: any `limit` yields the nearest whole number of new cards to
+`limit * numerator / denominator`, subject to how many of each kind are due.
 The review side is drawn from cards whose due time has arrived or passed, plus
 cards you failed on their last review or whose memory stability is still below
 the learned threshold; those are served ahead of the rest and may be served

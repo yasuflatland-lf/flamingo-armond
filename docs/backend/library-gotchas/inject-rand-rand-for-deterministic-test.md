@@ -15,7 +15,7 @@ pass a fixed seed and can assert an exact output order.
 //  1. The new partition is fully shuffled; the review partition is shuffled
 //     within same-band runs (shuffleWithinBand) using rng.
 //  2. New and review cards are interleaved at the caller-supplied ratio
-//     (ratio.NewShare new per ratio.ReviewShare review), review-first.
+//     (ratio.NewShare new per ratio.ReviewShare review) by largest remainder.
 //
 // rng must be non-nil. Tests inject a seeded *rand.Rand for deterministic
 // order; production constructs one per session. ratio is the per-user

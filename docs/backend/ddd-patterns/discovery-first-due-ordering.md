@@ -22,32 +22,35 @@ full — the deck has at least 16 never-seen cards *and* at least 4 eligible
 prior-day reviews — a default 20-card session composes as **16 uniformly-sampled
 never-seen cards (80%)** interleaved with **4 prior-day review cards (20%)**
 (16/4 at `n = 20` under `domain.DefaultNewCardRatio` = 4/5). That 16/4 split is
-the composition *only under full pools*; the mechanics below degrade it toward
-review whenever either pool runs short. The skew is deliberate, not a bug:
-review cards are due and time-critical (skipping them decays memory and FSRS
-scheduling), while new cards are discretionary (deferrable at no cost), so
-favoring review under a shallow pool is correct spaced-repetition behavior. The
-80% ceiling on new-card share binds only while the review bucket is non-empty;
-once reviews are exhausted, the interleave appends all remaining new cards, so a
-session with no reviews due is 100% new cards by design (a fresh learner has
-nothing to review); exhaustive small-scope enumeration confirms zero
-over-ceiling prefixes while reviews remain.
+the composition *only under full pools*. When both buckets remain available,
+every prefix gets the closest whole-card split to the configured ratio, with
+half-card ties assigned to new. A short bucket skews the remainder toward the
+bucket that still has cards: a shallow unseen pool makes the session more
+review-heavy, while a shallow review pool makes it more new-heavy. Once reviews
+are exhausted, the interleave appends all remaining new cards, so a session
+with no reviews due is 100% new cards by design (a fresh learner has nothing to
+review). The 80% new share is therefore a nominal target, not a literal ceiling
+on every rounded prefix; at the default ratio, a one-card session contains one
+new card.
 
-Three mechanisms shape the actual mix, each biased toward review:
+Three mechanisms shape the actual mix:
 
-- **Review-first per-cycle emission.** `interleave` emits `ratio.ReviewShare()`
-  review cards *before* `ratio.NewShare()` new cards on every cycle. At the 4/5
-  default that is 1 review then 4 new per cycle (`OrderingPolicy.Apply` →
-  `interleave` in `due_card_ordering.go`).
-- **Review-favoring rounding on non-divisible sizes.** When the session limit is
-  not a multiple of the ratio denominator, the trailing partial cycle emits its
-  review portion first, so the review count rounds *up* by at most one
-  `ReviewShare` rather than down. A full-pool request for 22 cards under 4/5
-  yields 5 review + 17 new (not 4 review + 18 new).
-- **Drain back-fill toward review.** The rescue-review, filler-review, and new
-  windows are independent `LIMIT` selections that together return up to
-  `3*limit` rows; the caller then truncates the interleaved result to the session limit (`ordered[:n]`
-  in `LearnUsecase.NextDueCards`). As the unseen pool empties, the new bucket
+- **Largest-remainder slot distribution.** `interleave` fills one slot at a time
+  from whichever bucket is furthest behind its share, so after `k` slots the
+  new-card count is `round(k * num / den)` (halves up) and the ratio holds on
+  every prefix, not only on whole multiples of the denominator
+  (`OrderingPolicy.Apply` → `interleave` in `due_card_ordering.go`). At the 4/5
+  default a 20-card session is 16 new + 4 review and a 1-card session is 1 new.
+- **Nearest-whole-card rounding on non-divisible sizes.** A session length that
+  is not a multiple of the denominator gets the closest whole-card split rather
+  than a review-padded partial cycle: a full-pool request for 22 cards under 4/5
+  yields 18 new + 4 review, and the served new count never differs from the
+  nominal `k * num / den` by more than half a card.
+- **Drain back-fill toward the available bucket.** The rescue-review,
+  filler-review, and new windows are independent `LIMIT` selections that
+  together return up to `3*limit` rows; the caller then truncates the
+  interleaved result to the session limit (`ordered[:n]` in
+  `LearnUsecase.NextDueCards`). As the unseen pool empties, the new bucket
   runs out after its early contributions and `interleave` appends the remaining
   review cards, so the session skews toward review. Near deck completion, with a
   single never-seen card left, a 20-card session becomes 1 new + 19 review — the
@@ -78,7 +81,7 @@ deterministic while the database does the sampling:
 | Stage | Owner | Behaviour |
 |---|---|---|
 | Selection (which rows enter each window) | `repository.FindDueCardsForUser` | Three independent `LIMIT` windows, each ordered by `random()`: rescue reviews (`due < rescueDueBefore AND last_review < reviewedBefore AND last_review < rescueReviewedBefore` plus `last_rating = Again OR stability < LearnedStabilityDays`), disjoint filler reviews (`due <= now AND last_review < reviewedBefore AND last_review < rescueReviewedBefore` plus `last_rating IS DISTINCT FROM Again AND stability >= LearnedStabilityDays`), then new cards with no FSRS row. |
-| Arrangement (order within the batch) | `service.OrderingPolicy.Apply` | Injected `*rand.Rand` shuffles the new partition fully and the review partition within same-band runs; then interleaves at the caller-supplied ratio (`domain.DefaultNewCardRatio` = 4:1 absent a stored preference) with review-first emission. |
+| Arrangement (order within the batch) | `service.OrderingPolicy.Apply` | Injected `*rand.Rand` shuffles the new partition fully and the review partition within same-band runs; then interleaves at the caller-supplied ratio (`domain.DefaultNewCardRatio` = 4:1 absent a stored preference) by largest-remainder slot distribution. |
 | Truncation | `usecase.LearnUsecase.NextDueCards` | Caps the interleaved result to the session limit (`ordered[:n]`). Because the three windows return up to `3*limit` rows, this truncate is load-bearing: it yields the 16/4 split for a 20-card request only when both the combined review pool and new-card pool are full, and skews toward review when the unseen pool is short (see Policy). |
 
 `random()` runs in Postgres and cannot be seeded from Go, so it decides only
