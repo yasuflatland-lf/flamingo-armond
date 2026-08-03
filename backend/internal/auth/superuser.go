@@ -18,9 +18,10 @@ type adminChecker interface {
 	IsAdmin(ctx context.Context, userID string) (bool, error)
 }
 
-// roleAssigner grants a role to a user. Satisfied by repository.UserRoleRepository.
-// Idempotent via ON CONFLICT DO NOTHING.
-type roleAssigner interface {
+// RoleAssigner is the narrow role-assignment port required by SuperUserPromoter.
+// It is exported so the composition root can widen concrete repositories
+// before injecting them, preserving the intended component boundary.
+type RoleAssigner interface {
 	AssignRoleToUser(ctx context.Context, userID, roleID string) error
 }
 
@@ -30,7 +31,7 @@ type SuperUserPromoter struct {
 	emails      map[string]struct{} // canonicalised
 	adminRoleID string
 	checker     adminChecker
-	assigner    roleAssigner
+	assigner    RoleAssigner
 	logger      *slog.Logger
 
 	// confirmedAdmins is the process-lifetime set of subs already known to hold the
@@ -90,7 +91,7 @@ func NewSuperUserPromoter(
 	emails map[string]struct{},
 	adminRoleID string,
 	checker adminChecker,
-	assigner roleAssigner,
+	assigner RoleAssigner,
 	logger *slog.Logger,
 ) *SuperUserPromoter {
 	if len(emails) > 0 {
