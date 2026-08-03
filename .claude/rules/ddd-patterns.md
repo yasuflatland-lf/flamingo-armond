@@ -168,8 +168,9 @@ cards whose latest rating was Again or whose stability is below
 `LearnedStabilityDays`; other reviews act as filler. Rescue is day-granular up
 to the exclusive JST learn-day end, while filler must be due now, and both
 exclude cards swiped today via the JST start-of-day cutoff; both windows also
-require a whole elapsed day as a spacing rule that keeps just-seen cards out of
-rescue slots; that floor also implies FSRS scheduling credit. SQL `random()`
+require the previous review to fall on a different UTC calendar date — the exact
+rule `domain.EarnsSchedulingCredit` uses to grant FSRS credit, so the serving and
+recording sides test the same predicate. SQL `random()`
 decides *which* rows enter each window (selection); the injected `*rand.Rand` in
 `OrderingPolicy.Apply` decides their arrangement (deterministic in tests) and
 interleaves at the caller-supplied `domain.NewCardRatio` (`domain.DefaultNewCardRatio`

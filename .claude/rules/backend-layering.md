@@ -46,9 +46,35 @@ The backend follows a DDD/layered architecture. Domain is the core: nothing in `
 
 ### Application imports Infrastructure, and that is intentional
 
-`internal/usecase` lists `auth`, `notion`, `repository` and `textdic` in its `mayDependOn` in [`backend/.go-arch-lint.yml`](../../backend/.go-arch-lint.yml). The runtime dependency *is* inverted — each usecase declares its own narrow consumer interface (`CardRepoForLearn`, `statsFSRSRepo`, …) and the concrete repository satisfies it implicitly (see [`docs/backend/library-gotchas/consumer-defined-narrow-repo-interface.md`](../../docs/backend/library-gotchas/consumer-defined-narrow-repo-interface.md)) — but the compile-time import remains, because those interface signatures name infrastructure types: `repository.Tx` in the transactional repo interfaces, and `repository.ErrNotFound` in the sentinel comparisons at `usecase/learn.go` and `usecase/ownership.go`.
+`internal/usecase` lists the four infrastructure components `auth`, `notion`, `repository` and `textdic` among its `mayDependOn` entries in [`backend/.go-arch-lint.yml`](../../backend/.go-arch-lint.yml); the other five entries (`cursor`, `domain`, `domain_service`, `logging`, `ucerr`) are cross-cutting, domain or application. The runtime dependency *is* inverted — each usecase declares its own narrow consumer interface (`CardRepoForLearn`, `statsFSRSRepo`, …) and the concrete repository satisfies it implicitly (see [`docs/backend/library-gotchas/consumer-defined-narrow-repo-interface.md`](../../docs/backend/library-gotchas/consumer-defined-narrow-repo-interface.md)) — but the compile-time import remains, because those interface signatures name infrastructure types.
 
-Completing the inversion would mean relocating `Tx` and `ErrNotFound` into a shared kernel the way `usecase/ucerr` already holds the typed error constructors. That is a deliberate non-goal today: the pair is small, stable, and the narrow-interface pattern already buys the substitutability the inversion exists for. Treat a `usecase → repository` import as normal; treat a `repository → usecase` import as the violation (it is, and the archfile rejects it).
+**The coupling surface is not a pair.** As of 2026-08-02 the production files under `internal/usecase` (excluding `_test.go`, excluding docstring prose) carry **279 `repository.*` references across 50 distinct symbols**. The heaviest are `repository.Tx` (57), `repository.ErrNotFound` (30), `repository.SortOrder` (14), `repository.UpsertManyTxResult` (11), `repository.MasterCatalogOrderBy` (9) and `repository.UserUpdate` (8). By kind: 22 ordering symbols (`SortOrder` / `SortAsc` / `SortDesc` plus four per-aggregate `*OrderBy` enums and their constants), 11 sentinels (`ErrNotFound` plus ten specific ones), 5 update DTOs, 4 cursor types, 4 concrete repository interface types, and `Tx`, `UpsertManyTxResult`, `MasterCatalogItem`, `TextLengthViolationError`. `ErrNotFound` alone is compared in thirteen production files, not the two this section used to name. Re-derive the figure rather than trusting it:
+
+```bash
+cd backend
+for f in internal/usecase/*.go; do
+  case "$f" in *_test.go) continue;; esac
+  sed 's|//.*||' "$f" | grep -ho 'repository\.[A-Z][A-Za-z_]*'
+done | sort | uniq -c | sort -rn
+```
+
+The `sed` strips line comments before counting. Without it the total also picks up the narrow-interface docstrings ("… is the subset of `repository.CardRepository` the …") and bare English sentences ending in "the repository." — prose, not compile-time coupling.
+
+**The concrete repository interface types are the part in tension with the narrow-interface rule.** Four of them — `repository.UserRepository`, `repository.UserPreferenceRepository`, `repository.RoleRepository`, `repository.UserRoleRepository` — sit in constructor parameter positions across `NewAdminRole`, `NewAdminUser`, `NewLastViewedCardgroup`, `NewUpdateLearnDisplayMode` and `NewUpdateNewCardRatio`, ten references in all. This section teaches consumer-defined narrow interfaces as the pattern, and naming a fat repository interface in a usecase constructor is exactly what that pattern exists to avoid. Those five constructors are the bounded follow-up: replace each parameter with a narrow interface declared next to its consumer, the way `admin_user.go` already declares `adminUserRepository` / `adminRoleRepository` / `adminUserRoleRepository` for its own struct fields. That work is independent of relocating `Tx` or the sentinels.
+
+**The onion violation is one localized edge set.** An Alloy model of the declared archfile against the real import graph finds `usecase → {repository, auth, notion, textdic}` to be the only outward-pointing dependency in the tree; `resolver`, `gqlerr`, `auth`, `loader` and the domain packages are all inward-only. Confirm against the toolchain:
+
+```bash
+cd backend
+for p in $(go list ./internal/... ./graph/...); do
+  echo "$p:"
+  go list -f '{{join .Imports "\n"}}' "$p" | grep '^backend/' | sed 's/^/  /'
+done
+```
+
+The remaining inversion work therefore has one owner, not five.
+
+Completing the inversion would mean relocating `Tx`, the sentinels and the ordering / cursor / DTO vocabulary into a shared kernel the way `usecase/ucerr` already holds the typed error constructors. That is still a deliberate non-goal today: the surface is large but stable, it is concentrated in a vocabulary no second adapter is competing to redefine, and the narrow-interface pattern already buys the substitutability the inversion exists for. Treat a `usecase → repository` import as normal; treat a `repository → usecase` import as the violation (it is, and the archfile rejects it).
 
 ## What `go-arch-lint` covers vs. doesn't
 

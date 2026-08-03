@@ -47,7 +47,7 @@ commonComponents:
   - graph_model
 
 deps:
-  auth:               { mayDependOn: [domain, logging, repository] }
+  auth:               { mayDependOn: [domain, logging] }
   cefr:               { mayDependOn: [domain] }
   cursor:             { anyVendorDeps: true }           # leaf: vendor-only deps (eris, std)
   database:           { anyVendorDeps: true }           # leaf: vendor-only deps (gorm, pgx, migrate, eris)
@@ -88,7 +88,6 @@ deps:
       - domain_service
       - gqlerr
       - loader
-      - textdic
       - usecase
   cmd_server:
     anyProjectDeps: true        # composition root
