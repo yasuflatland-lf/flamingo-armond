@@ -120,8 +120,8 @@ func TestLearnUsecaseNextDueCards(t *testing.T) {
 		"JST start-of-day for 2026-05-13T09:00Z")
 	require.True(t, cardRepo.window.RescueDueBefore.Equal(time.Date(2026, 5, 13, 15, 0, 0, 0, time.UTC)),
 		"JST end-of-day for 2026-05-13T09:00Z")
-	require.True(t, cardRepo.window.RescueReviewedBefore.Equal(time.Date(2026, 5, 12, 9, 0, 0, 0, time.UTC)),
-		"rescue early-serve floor is exactly 24h before now")
+	require.True(t, cardRepo.window.RescueReviewedBefore.Equal(time.Date(2026, 5, 13, 0, 0, 0, 0, time.UTC)),
+		"rescue early-serve bound is UTC midnight of now's UTC calendar date")
 	require.ElementsMatch(t, []string{"repo-first", "repo-second"}, learnCardIDs(got))
 }
 
@@ -305,8 +305,8 @@ func TestLearnUsecaseNextDueCards_TruncatesToDueLimit(t *testing.T) {
 
 	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
 	// 3 new + 3 review cards. With the default ratio (new share 4 : review
-	// share 1) the interleave emits one review, then up to four new cards, so
-	// the first three slots are [review, new, new]. Truncating at limit=3 keeps
+	// share 1) largest-remainder distribution emits [new, new, review, ...], so
+	// the first three slots are [new, new, review]. Truncating at limit=3 keeps
 	// that composition; the exact ids within a phase are shuffled, so assert the
 	// SHAPE (which slot is review vs new), not specific ids.
 	rows := []domain.DueCard{
@@ -336,9 +336,9 @@ func TestLearnUsecaseNextDueCards_TruncatesToDueLimit(t *testing.T) {
 	require.Len(t, got, 3, "result must be truncated to the requested limit")
 	reviewSet := map[string]bool{"rev-1": true, "rev-2": true, "rev-3": true}
 	ids := learnCardIDs(got)
-	require.True(t, reviewSet[ids[0]], "slot 0 must be a review card, got %q", ids[0])
+	require.False(t, reviewSet[ids[0]], "slot 0 must be a new card, got %q", ids[0])
 	require.False(t, reviewSet[ids[1]], "slot 1 must be a new card, got %q", ids[1])
-	require.False(t, reviewSet[ids[2]], "slot 2 must be a new card, got %q", ids[2])
+	require.True(t, reviewSet[ids[2]], "slot 2 must be a review card, got %q", ids[2])
 }
 
 // TestLearnUsecaseNextDueCards_HappyPathReviewOnly verifies the simple path
@@ -390,9 +390,9 @@ func ratioRows(now time.Time) []domain.DueCard {
 }
 
 // TestLearnUsecaseNextDueCards_UsesStoredRatio verifies that a stored non-default
-// ratio (1/2) reaches OrderingPolicy.Apply: the 1:1 review-first interleave puts
-// review cards in the even slots and new cards in the odd slots, distinct from
-// the default 4:1 order [R,N,N,N,R,R].
+// ratio (1/2) reaches OrderingPolicy.Apply: the 1:1 alternation puts new cards in
+// the even slots and review cards in the odd slots, distinct from the default
+// 4:1 order [N,N,R,N,R,R].
 func TestLearnUsecaseNextDueCards_UsesStoredRatio(t *testing.T) {
 	t.Parallel()
 
@@ -425,16 +425,16 @@ func TestLearnUsecaseNextDueCards_UsesStoredRatio(t *testing.T) {
 	ids := learnCardIDs(got)
 	for i, id := range ids {
 		if i%2 == 0 {
-			require.True(t, reviewSet[id], "slot %d must be a review card, got %q", i, id)
-		} else {
 			require.False(t, reviewSet[id], "slot %d must be a new card, got %q", i, id)
+		} else {
+			require.True(t, reviewSet[id], "slot %d must be a review card, got %q", i, id)
 		}
 	}
 }
 
 // TestLearnUsecaseNextDueCards_ErrNotFoundUsesDefaultRatio verifies that a
 // missing preference row falls back to domain.DefaultNewCardRatio (4:1), yielding
-// the default [R,N,N,N,R,R] order for the 3-new/3-review fixture.
+// the default [N,N,R,N,R,R] order for the 3-new/3-review fixture.
 func TestLearnUsecaseNextDueCards_ErrNotFoundUsesDefaultRatio(t *testing.T) {
 	t.Parallel()
 
@@ -458,10 +458,10 @@ func TestLearnUsecaseNextDueCards_ErrNotFoundUsesDefaultRatio(t *testing.T) {
 	require.Len(t, got, 6)
 	reviewSet := map[string]bool{"rev-1": true, "rev-2": true, "rev-3": true}
 	ids := learnCardIDs(got)
-	// Default 4:1 review-first: [R, N, N, N, R, R].
-	require.True(t, reviewSet[ids[0]], "slot 0 must be a review card, got %q", ids[0])
+	// Default 4:1 largest remainder: [N, N, R, N, R, R].
+	require.False(t, reviewSet[ids[0]], "slot 0 must be a new card, got %q", ids[0])
 	require.False(t, reviewSet[ids[1]], "slot 1 must be a new card, got %q", ids[1])
-	require.False(t, reviewSet[ids[2]], "slot 2 must be a new card, got %q", ids[2])
+	require.True(t, reviewSet[ids[2]], "slot 2 must be a review card, got %q", ids[2])
 	require.False(t, reviewSet[ids[3]], "slot 3 must be a new card, got %q", ids[3])
 	require.True(t, reviewSet[ids[4]], "slot 4 must be a review card, got %q", ids[4])
 	require.True(t, reviewSet[ids[5]], "slot 5 must be a review card, got %q", ids[5])
