@@ -36,8 +36,8 @@ type dueCardRow struct {
 	Due         *time.Time `gorm:"column:due"`
 }
 
-// Rescue window:   due IS NOT NULL AND due < learn-day end AND last_review < learn-day start AND last_review <= now-24h.
-// Filler window:   due IS NOT NULL AND due <= now AND last_review < learn-day start AND last_review <= now-24h.
+// Rescue window:   due IS NOT NULL AND due < learn-day end AND last_review < learn-day start AND last_review < UTC-date midnight.
+// Filler window:   due IS NOT NULL AND due <= now AND last_review < learn-day start AND last_review < UTC-date midnight.
 // Practice window: last_review >= boundary; due not consulted.
 // Both usecase methods (NextDueCards and PracticeTodaysCards) derive the
 // boundaries from the shared domain.StartOfLearnDay and domain.EndOfLearnDay
@@ -59,17 +59,24 @@ type dueCardRow struct {
 // caller's JST start-of-today), its latest rating was Again or its stability is
 // below domain.LearnedStabilityDays, and its due is before window.RescueDueBefore
 // (the exclusive JST end-of-today). The day-granular due bound deliberately
-// surfaces rescue cards due later today. The early serve is floored by
-// window.RescueReviewedBefore (domain.RescueReviewedBefore, 24 hours before now):
-// FSRS counts elapsed days by UTC calendar date, so a repeat inside the same 24
-// hours can land on the same date, earn a stability growth factor of exactly
-// zero, and waste the rescue slot. random() varies selection within the band.
+// surfaces rescue cards due later today. The early serve is bounded by
+// window.RescueReviewedBefore (domain.RescueReviewedBefore, UTC midnight of now's
+// UTC calendar date): FSRS counts elapsed days by UTC calendar date, so a repeat
+// on the same UTC date earns a stability growth factor of exactly zero and would
+// waste the rescue slot. Not a 24-hour rolling floor: that approximation also
+// withheld cards that had already crossed a UTC date in under a day, which since
+// 09:00 JST is exactly 00:00 UTC is most of a JST learner's evening reviews.
+// Which of the two last_review bounds binds depends on the session's JST hour:
+// at or after 09:00 JST the day cutoff is the tighter one, before 09:00 JST the
+// credit bound is. random() varies selection within the band.
 //
-// Filler window: the same last-review guard and elapsed floor as rescue apply,
+// Filler window: the same last-review guard and credit bound as rescue apply,
 // but only non-rescue cards whose due has arrived (due <= window.Now) qualify.
-// Long-term FSRS scheduling makes the floor implied by due <= now, so it excludes
-// nothing today while preventing a silent dependency on service.NewFSRSScheduler
-// keeping EnableShortTerm = false. random() varies selection within the band.
+// Long-term FSRS scheduling floors ScheduledDays at 1, so due <= now already
+// puts last_review at or before now-24h, which is strictly before UTC midnight
+// of now's UTC date; the bound therefore excludes nothing today while preventing
+// a silent dependency on service.NewFSRSScheduler keeping EnableShortTerm =
+// false. random() varies selection within the band.
 //
 // New window: no FSRS row yet; random() samples uniformly across the whole
 // unseen pool so consecutive sessions surface different cards instead of
@@ -82,10 +89,10 @@ func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, window domain.Learn
 
 	// Only domain.RatingAgain and domain.LearnedStabilityDays are formatted into
 	// the predicate: both are compile-time constants. Every caller-supplied
-	// instant — including the window.RescueReviewedBefore floor — travels as a
-	// bound query argument.
+	// instant — including the window.RescueReviewedBefore credit bound — travels
+	// as a bound query argument.
 	rescueWhere := fmt.Sprintf(
-		"cards.cardgroup_id = ? AND ucs.due IS NOT NULL AND ucs.due < ? AND ucs.last_review < ? AND ucs.last_review <= ? AND (ucs.last_rating = %d OR ucs.stability < %g)",
+		"cards.cardgroup_id = ? AND ucs.due IS NOT NULL AND ucs.due < ? AND ucs.last_review < ? AND ucs.last_review < ? AND (ucs.last_rating = %d OR ucs.stability < %g)",
 		domain.RatingAgain, domain.LearnedStabilityDays,
 	)
 	rescueRows, err := dueRowsOn(db, userID,
@@ -106,7 +113,7 @@ func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, window domain.Learn
 	}
 
 	fillerWhere := fmt.Sprintf(
-		"cards.cardgroup_id = ? AND ucs.due IS NOT NULL AND ucs.due <= ? AND ucs.last_review < ? AND ucs.last_review <= ? AND (ucs.last_rating IS DISTINCT FROM %d AND ucs.stability >= %g)",
+		"cards.cardgroup_id = ? AND ucs.due IS NOT NULL AND ucs.due <= ? AND ucs.last_review < ? AND ucs.last_review < ? AND (ucs.last_rating IS DISTINCT FROM %d AND ucs.stability >= %g)",
 		domain.RatingAgain, domain.LearnedStabilityDays,
 	)
 	fillerRows, err := dueRowsOn(db, userID,

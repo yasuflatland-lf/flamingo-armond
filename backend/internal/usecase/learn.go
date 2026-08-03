@@ -155,9 +155,9 @@ func (u *learnUsecase) NextDueCards(ctx context.Context, cardgroupID string, lim
 	}
 	n = u.clampLimit(n)
 	now := u.clock.Now().UTC()
-	// LearnWindow.RescueReviewedBefore is the minimum-elapsed floor for the
-	// rescue window: a card repeated inside the same 24 hours can earn zero FSRS
-	// scheduling credit, so it must not be served early.
+	// LearnWindow.RescueReviewedBefore is the UTC-date credit bound shared by the
+	// rescue and filler windows: a card repeated on the same UTC calendar date
+	// earns zero FSRS scheduling credit, so it must not be served.
 	due, err := u.cardRepo.FindDueCardsForUser(ctx, user.Sub, cardgroupID, domain.NewLearnWindow(now), n)
 	if err != nil {
 		return nil, wrapInfraErr(err, "usecase: learn: find due cards")

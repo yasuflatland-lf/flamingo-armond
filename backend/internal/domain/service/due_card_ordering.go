@@ -25,9 +25,11 @@ func NewOrderingPolicy() *OrderingPolicy { return &OrderingPolicy{} }
 //     never displace a rescue card from the review slots regardless of
 //     input order.
 //  2. New and review cards are interleaved at the caller-supplied ratio
-//     (ratio.NewShare new per ratio.ReviewShare review) with review-first
-//     emission. When one bucket empties, the remaining cards from the other
-//     bucket are appended in their post-shuffle order.
+//     (ratio.NewShare new per ratio.ReviewShare review) by largest-remainder
+//     distribution: each slot goes to whichever bucket is furthest behind its
+//     share, so the ratio holds on every prefix and not only on whole cycles.
+//     When one bucket empties, the remaining cards from the other bucket are
+//     appended in their post-shuffle order.
 //
 // The caller is responsible for truncating to a per-session limit. Apply
 // returns all cards from due without imposing a length cap; the input slice
@@ -87,23 +89,28 @@ func shuffleRescueFirst(cards []domain.DueCard, rng *rand.Rand) {
 	copy(cards[len(rescue):], filler)
 }
 
-// interleave emits rRatio review cards then nRatio new cards in a loop until
-// one bucket empties, then appends the remaining bucket in its current order.
-// Returns the flattened []*Card extracted from DueCard.Card.
+// interleave fills one output slot at a time from whichever bucket is furthest
+// behind its share (largest remainder), so the ratio holds on every prefix and
+// not only on whole cycles. When one bucket empties, the remainder of the other
+// is appended in its current order. Returns the flattened []*Card extracted
+// from DueCard.Card.
 func interleave(newC, reviewC []domain.DueCard, nRatio, rRatio int) []*domain.Card {
 	if nRatio <= 0 || rRatio <= 0 {
 		panic(fmt.Sprintf("domain/service: interleave requires positive ratios, got nRatio=%d rRatio=%d", nRatio, rRatio))
 	}
+	den := nRatio + rRatio
 	out := make([]*domain.Card, 0, len(newC)+len(reviewC))
 	i, j := 0, 0
 	for i < len(newC) && j < len(reviewC) {
-		for k := 0; k < rRatio && j < len(reviewC); k++ {
-			out = append(out, reviewC[j].Card)
-			j++
-		}
-		for k := 0; k < nRatio && i < len(newC); k++ {
+		// An exact half-card tie goes to the new bucket, not review: a
+		// review-biased tie-break leaves a one-card session at ratio 1/2 with
+		// no new card at all.
+		if targetNewCount(len(out)+1, nRatio, den) > i {
 			out = append(out, newC[i].Card)
 			i++
+		} else {
+			out = append(out, reviewC[j].Card)
+			j++
 		}
 	}
 	for ; j < len(reviewC); j++ {
@@ -113,4 +120,11 @@ func interleave(newC, reviewC []domain.DueCard, nRatio, rRatio int) []*domain.Ca
 		out = append(out, newC[i].Card)
 	}
 	return out
+}
+
+// targetNewCount is round(slot*nRatio/den) in integer arithmetic, halves up.
+// Float division is rejected: a float round would tie-break on representation
+// error, and 2*slot*nRatio never approaches the int range here.
+func targetNewCount(slot, nRatio, den int) int {
+	return (2*slot*nRatio + den) / (2 * den)
 }

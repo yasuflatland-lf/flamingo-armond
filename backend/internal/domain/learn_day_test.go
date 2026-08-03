@@ -213,29 +213,91 @@ func TestNewLearnWindow(t *testing.T) {
 		"RescueReviewedBefore must be RescueReviewedBefore(now)")
 }
 
-// TestRescueReviewedBefore pins the rescue window's minimum-elapsed floor at
-// exactly 24 hours before now, and pins its relation to the day boundaries: the
-// floor is never later than the JST start-of-day, so it is always the tighter of
-// the two last_review bounds the rescue predicate applies.
+// TestRescueReviewedBefore pins the rescue and filler windows' exclusive credit
+// bound to UTC midnight on now's UTC calendar date.
 func TestRescueReviewedBefore(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
 		name string
 		now  time.Time
+		want time.Time
 	}{
-		{name: "JST noon", now: time.Date(2026, 6, 5, 3, 0, 0, 0, time.UTC)},
-		{name: "exactly JST midnight", now: time.Date(2026, 6, 5, 15, 0, 0, 0, time.UTC)},
-		{name: "just before JST midnight", now: time.Date(2026, 6, 5, 14, 59, 59, 0, time.UTC)},
+		{
+			name: "08:00 JST maps to the previous UTC date's midnight",
+			now:  time.Date(2026, 7, 18, 23, 0, 0, 0, time.UTC),
+			want: time.Date(2026, 7, 18, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "09:00 JST is exactly UTC midnight",
+			now:  time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC),
+			want: time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "JST noon",
+			now:  time.Date(2026, 7, 19, 3, 0, 0, 0, time.UTC),
+			want: time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "just before JST midnight",
+			now:  time.Date(2026, 7, 19, 14, 59, 59, 0, time.UTC),
+			want: time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "non-UTC input is normalised to UTC before truncation",
+			now:  time.Date(2026, 7, 19, 12, 0, 0, 0, learnDayZone),
+			want: time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC),
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := RescueReviewedBefore(tc.now)
-			require.True(t, got.Equal(tc.now.Add(-24*time.Hour)),
-				"got %v, want exactly 24h before %v", got, tc.now)
-			require.False(t, got.After(StartOfLearnDay(tc.now)),
-				"the rescue floor must never be later than the JST start-of-day")
+			require.True(t, got.Equal(tc.want), "got %v, want %v", got, tc.want)
 		})
+	}
+}
+
+func TestRescueReviewedBefore_AdmitsOvernightReviewUnderTwentyFourHours(t *testing.T) {
+	t.Parallel()
+
+	lastReview := time.Date(2026, 7, 18, 23, 0, 0, 0, learnDayZone)
+	now := time.Date(2026, 7, 19, 9, 0, 0, 0, learnDayZone)
+
+	require.True(t, lastReview.Before(RescueReviewedBefore(now)))
+	require.True(t, EarnsSchedulingCredit(lastReview, now))
+	require.Less(t, now.Sub(lastReview), 24*time.Hour)
+	require.True(t, lastReview.Before(StartOfLearnDay(now)))
+}
+
+func TestRescueReviewedBefore_WithholdsSameUTCDateReview(t *testing.T) {
+	t.Parallel()
+
+	lastReview := time.Date(2026, 7, 18, 9, 0, 0, 0, learnDayZone)
+	now := time.Date(2026, 7, 19, 0, 0, 0, 0, learnDayZone)
+
+	require.False(t, lastReview.Before(RescueReviewedBefore(now)))
+	require.False(t, EarnsSchedulingCredit(lastReview, now))
+	require.True(t, lastReview.Before(StartOfLearnDay(now)))
+	require.Equal(t, 15*time.Hour, now.Sub(lastReview))
+}
+
+// TestRescueReviewedBefore_AgreesWithEarnsSchedulingCredit pins the invariant
+// this boundary buys: drift on either serving or recording side must fail over
+// every forward pair in a 48-hour grid.
+func TestRescueReviewedBefore_AgreesWithEarnsSchedulingCredit(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 7, 18, 0, 0, 0, 0, time.UTC)
+	for i := 0; i <= 48; i++ {
+		for j := i; j <= 48; j++ {
+			lastReview := base.Add(time.Duration(i) * time.Hour)
+			now := base.Add(time.Duration(j) * time.Hour)
+			require.Equal(t,
+				EarnsSchedulingCredit(lastReview, now),
+				lastReview.Before(RescueReviewedBefore(now)),
+				"serving-side bound and recording-side credit rule must agree at (+%dh, +%dh)", i, j,
+			)
+		}
 	}
 }
