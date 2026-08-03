@@ -14,18 +14,20 @@ import (
 // ParseNewCardRatio or use DefaultNewCardRatio.
 type NewCardRatio struct {
 	num int // new-card share; invariant 1 <= num < den
-	den int // total; invariant den <= NewCardRatioDenMax, gcd(num, den) == 1
+	den int // total; invariant den divides DefaultLearnSessionSize, gcd(num, den) == 1
 }
 
 // DefaultLearnSessionSize is the number of cards served when the caller does
-// not request a size. It bounds NewCardRatioDenMax because interleave emits
-// whole cycles and learn truncates them; a larger denominator allows the
-// leading review run to fill the page and collapse the new-card share to zero.
-// usecase.defaultLearnNextDueLimit uses this constant to prevent drift.
+// not request a size. Every accepted NewCardRatio denominator must divide it, so
+// a default session splits into the stored ratio exactly; NewCardRatioDenMax is
+// the upper bound that follows. usecase.defaultLearnNextDueLimit uses this
+// constant to prevent drift.
 const DefaultLearnSessionSize = 20
 
 // NewCardRatioDenMax caps the reduced denominator at the default learn-session
-// size so every stored ratio is exactly representable in a default session.
+// size. The cap is implied by the divisibility rule ParseNewCardRatio enforces —
+// no denominator above the session size can divide it — and is kept as its own
+// check so an out-of-range denominator reports the coarser reason first.
 const NewCardRatioDenMax = DefaultLearnSessionSize
 
 // NewCardRatioMaxNewShareNum / NewCardRatioMaxNewShareDen cap the new-card
@@ -50,6 +52,14 @@ var (
 	ErrNewCardRatioNewShareTooHigh        = eris.Errorf(
 		"domain: new card ratio: new share must not exceed %d/%d",
 		NewCardRatioMaxNewShareNum, NewCardRatioMaxNewShareDen)
+	// ErrNewCardRatioDenominatorNotRepresentable is returned when the reduced
+	// denominator does not divide the default session size. learn serves a
+	// session-sized prefix, and that prefix splits into the stored ratio exactly
+	// only when the denominator divides the session size; any other denominator
+	// serves a share that differs from the stored ratio.
+	ErrNewCardRatioDenominatorNotRepresentable = eris.Errorf(
+		"domain: new card ratio: reduced denominator must divide the %d-card default session",
+		DefaultLearnSessionSize)
 )
 
 // DefaultNewCardRatio (4/5) is applied when a user has no stored preference.
@@ -58,10 +68,10 @@ var (
 var DefaultNewCardRatio = mustNewCardRatio(4, 5)
 
 // ParseNewCardRatio reduces num/den and validates each bound in check order.
-// ErrNewCardRatioDenominatorTooLarge means the reduced denominator exceeds the
-// default session size; interleave emits whole cycles while learn serves only
-// a session-sized prefix, so such a ratio is not representable. Other sentinels
-// cover a non-positive denominator, an invalid share, or a share above 4/5.
+// The reduced denominator must not exceed the default session size and must
+// divide it, so the session splits into the stored ratio exactly; the two
+// denominator sentinels report those in that order. Other sentinels cover a
+// non-positive denominator, an invalid share, or a share above 4/5.
 func ParseNewCardRatio(num, den int) (NewCardRatio, error) {
 	if den <= 0 {
 		return NewCardRatio{}, ErrNewCardRatioDenominatorNotPositive
@@ -73,6 +83,9 @@ func ParseNewCardRatio(num, den int) (NewCardRatio, error) {
 	rnum, rden := num/g, den/g
 	if rden > NewCardRatioDenMax {
 		return NewCardRatio{}, ErrNewCardRatioDenominatorTooLarge
+	}
+	if DefaultLearnSessionSize%rden != 0 {
+		return NewCardRatio{}, ErrNewCardRatioDenominatorNotRepresentable
 	}
 	if rnum*NewCardRatioMaxNewShareDen > NewCardRatioMaxNewShareNum*rden {
 		return NewCardRatio{}, ErrNewCardRatioNewShareTooHigh
@@ -88,10 +101,10 @@ func mustNewCardRatio(num, den int) NewCardRatio {
 	return r
 }
 
-// NewShare is the number of new cards per interleave cycle (interleave nRatio).
+// NewShare is the new-card share of the ratio (interleave nRatio).
 func (r NewCardRatio) NewShare() int { return r.num }
 
-// ReviewShare is the number of review cards per interleave cycle (rRatio).
+// ReviewShare is the review-card share of the ratio (interleave rRatio).
 func (r NewCardRatio) ReviewShare() int { return r.den - r.num }
 
 // Numerator / Denominator expose the reduced fraction for persistence and the

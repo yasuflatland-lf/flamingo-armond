@@ -70,10 +70,10 @@ func newUpdateNewCardRatioWithDeps(
 //   - Anonymous (no auth context) → UNAUTHENTICATED. The auth check runs before
 //     validation so an invalid ratio never reveals the bounds to an
 //     unauthenticated caller.
-//   - A ratio outside 1 <= numerator < denominator <= domain.NewCardRatioDenMax
-//     (after reduction), or one whose new-card share exceeds 4/5 (80%) — the
-//     review floor — → a field-scoped ValidationError the resolver maps to
-//     BAD_USER_INPUT.
+//   - A ratio outside 1 <= numerator < denominator (after reduction), one whose
+//     reduced denominator does not divide domain.DefaultLearnSessionSize, or one
+//     whose new-card share exceeds 4/5 (80%) — the review floor — → a
+//     field-scoped ValidationError the resolver maps to BAD_USER_INPUT.
 //   - Authenticated caller with a valid ratio → updated preference + refreshed
 //     user row.
 //
@@ -101,12 +101,10 @@ func (u *updateNewCardRatioUsecase) Set(ctx context.Context, numerator, denomina
 }
 
 // translateNewCardRatioErr maps domain NewCardRatio sentinels into usecase-layer
-// typed errors, attributing each rejection to the field the caller can fix: a
-// share outside the open interval (0, denominator), or above the 4/5 review-floor
-// cap, faults the numerator; a non-positive or over-cap reduced denominator
-// faults the denominator. The wire message stays generic so the internal bounds
-// phrasing never leaks. Unexpected errors are wrapped with eris. Returns nil
-// when err is nil.
+// typed errors: a bad share faults the numerator; a non-positive, over-cap, or
+// non-dividing reduced denominator faults the denominator. The wire message stays
+// generic so the internal bounds phrasing never leaks; unexpected errors are
+// eris-wrapped, and a nil error passes through.
 func translateNewCardRatioErr(err error) error {
 	if err == nil {
 		return nil
@@ -116,7 +114,8 @@ func translateNewCardRatioErr(err error) error {
 		errors.Is(err, domain.ErrNewCardRatioNewShareTooHigh):
 		return ucerr.NewValidationError("numerator", "invalid new-card ratio")
 	case errors.Is(err, domain.ErrNewCardRatioDenominatorNotPositive),
-		errors.Is(err, domain.ErrNewCardRatioDenominatorTooLarge):
+		errors.Is(err, domain.ErrNewCardRatioDenominatorTooLarge),
+		errors.Is(err, domain.ErrNewCardRatioDenominatorNotRepresentable):
 		return ucerr.NewValidationError("denominator", "invalid new-card ratio")
 	default:
 		return eris.Wrap(err, "usecase: update new card ratio: translate ratio error")

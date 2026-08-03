@@ -1,9 +1,10 @@
 """The per-user new-vs-review interleave ratio for a learn session, as a reduced
 fraction: numerator new cards per (denominator) total, so the review share is
 denominator - numerator. Defaults to 4/5 (80% new) when never set. The reduced
-denominator must not exceed the 20-card default session size, so the ratio is
-exactly representable in one session; the new-card share is capped at 80% so the
-review share stays >= 20% (the FSRS discovery-first floor)."""
+denominator must divide the 20-card default session size — admitting 2, 4, 5, 10
+and 20 — so the ratio is exactly representable in one session; the new-card share
+is capped at 80% so the review share stays >= 20% (the FSRS discovery-first
+floor)."""
 type NewCardRatio {
   numerator: Int!
   denominator: Int!
@@ -19,12 +20,14 @@ extend type User {
 extend type Mutation {
   """
   Sets the authenticated caller's new-card ratio. numerator/denominator are
-  reduced and validated server-side (1 <= numerator < denominator <= 20 after
-  reduction, so the ratio is exactly representable in the 20-card default
-  session; and the new-card share must not exceed 80% so the review share stays
-  >= 20% — the FSRS discovery-first floor); an out-of-range ratio returns
-  extensions.code = "BAD_USER_INPUT". Unauthenticated callers receive
-  extensions.code = "UNAUTHENTICATED". Returns the updated user. Idempotent.
+  reduced and validated server-side (after reduction: 1 <= numerator <
+  denominator, and denominator must divide the 20-card default session size — so
+  the ratio is exactly representable in one default session — which admits
+  denominators 2, 4, 5, 10 and 20; and the new-card share must not exceed 80% so
+  the review share stays >= 20% — the FSRS discovery-first floor); a rejected
+  ratio returns extensions.code = "BAD_USER_INPUT". Unauthenticated callers
+  receive extensions.code = "UNAUTHENTICATED". Returns the updated user.
+  Idempotent.
   """
   updateNewCardRatio(numerator: Int!, denominator: Int!): User!
 }

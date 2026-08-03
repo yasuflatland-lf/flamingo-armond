@@ -102,7 +102,7 @@ func TestToDomainUserPreference_LearnDisplayMode(t *testing.T) {
 // (19/20 = 95% new) is structurally valid against the column CHECK but rejected by
 // domain.ParseNewCardRatio, so toDomainUserPreference normalizes it to
 // DefaultNewCardRatio on read — existing FSRS-breaking rows self-heal with no DB
-// migration. A within-cap stored ratio is preserved. No live DB required.
+// migration. An accepted stored ratio is preserved. No live DB required.
 func TestToDomainUserPreference_NewCardRatioAboveCapFallsBackToDefault(t *testing.T) {
 	t.Parallel()
 
@@ -124,10 +124,30 @@ func TestToDomainUserPreference_NewCardRatioAboveCapFallsBackToDefault(t *testin
 	kept := toDomainUserPreference(gormUserPreference{
 		UserID:          "u1",
 		NewCardRatioNum: 3,
+		NewCardRatioDen: 10,
+	})
+	if kept.NewCardRatio.Numerator() != 3 || kept.NewCardRatio.Denominator() != 10 {
+		t.Fatalf("stored 3/10 (accepted): got %d/%d, want 3/10 preserved",
+			kept.NewCardRatio.Numerator(), kept.NewCardRatio.Denominator())
+	}
+}
+
+// TestToDomainUserPreference_NewCardRatioNonDivisibleDenominatorFallsBackToDefault
+// pins the read-path auto-heal for the divisibility rule: a legacy row storing 3/7
+// is structurally valid against the column CHECK but rejected by
+// domain.ParseNewCardRatio, so toDomainUserPreference normalizes it to
+// DefaultNewCardRatio on read rather than failing the read.
+func TestToDomainUserPreference_NewCardRatioNonDivisibleDenominatorFallsBackToDefault(t *testing.T) {
+	t.Parallel()
+
+	healed := toDomainUserPreference(gormUserPreference{
+		UserID:          "u1",
+		NewCardRatioNum: 3,
 		NewCardRatioDen: 7,
 	})
-	if kept.NewCardRatio.Numerator() != 3 || kept.NewCardRatio.Denominator() != 7 {
-		t.Fatalf("stored 3/7 (within cap): got %d/%d, want 3/7 preserved",
-			kept.NewCardRatio.Numerator(), kept.NewCardRatio.Denominator())
+	if healed.NewCardRatio != domain.DefaultNewCardRatio {
+		t.Fatalf("stored 3/7 (denominator does not divide the default session): got %d/%d, want default %d/%d",
+			healed.NewCardRatio.Numerator(), healed.NewCardRatio.Denominator(),
+			domain.DefaultNewCardRatio.Numerator(), domain.DefaultNewCardRatio.Denominator())
 	}
 }

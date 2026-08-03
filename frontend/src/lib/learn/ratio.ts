@@ -1,8 +1,8 @@
 // Exact-rational arithmetic for the share of a learn session using new cards.
-// `updateNewCardRatio` accepts reduced fractions satisfying
-// 1 <= numerator < denominator <= 20, so the on-grid 13/20 (65%) is a legitimate
-// stored state. Every UI question about its grid position or label has an exact
-// integer answer, so these helpers scale before dividing to avoid rounding error.
+// `updateNewCardRatio` accepts reduced fractions whose denominator divides the
+// 20-card default session, so the on-grid 13/20 (65%) is a legitimate stored
+// state. Every UI question about its grid position or label has an exact integer
+// answer, so these helpers scale before dividing to avoid rounding error.
 
 /** Lowest new-card share the 5%-step control can select, in percent. */
 export const MIN = 5;
