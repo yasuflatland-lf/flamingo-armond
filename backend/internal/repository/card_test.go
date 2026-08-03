@@ -224,8 +224,8 @@ func TestCardRepository_FindDueCards_ScopedAndLimited(t *testing.T) {
 	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	// Fixtures are stamped with a LastReview well beyond the rescue window's
-	// 24-hour minimum-elapsed floor, so the band assertions below exercise the
-	// due/limit predicates rather than the floor. A cutoff strictly after now
+	// UTC-date credit bound, so the band assertions below exercise the due/limit
+	// predicates rather than the bound. A cutoff strictly after now
 	// keeps every due review inside the reviewedBefore window.
 	reviewedBefore := now.Add(time.Second)
 	lastReview := now.Add(-25 * time.Hour)
@@ -348,7 +348,7 @@ func TestCardRepository_FindDueCards_FSRSStateMapping(t *testing.T) {
 			ucs.State.Phase = tc.state
 			ucs.State.Due = now.Add(-time.Minute) // ensure it is due
 			// Default stability (2.5) puts these rows in the rescue band, so the
-			// last review must clear the 24-hour minimum-elapsed floor.
+			// last review must fall on an earlier UTC calendar date to clear the credit bound.
 			ucs.State.LastReview = now.Add(-25 * time.Hour)
 			if err := ucsRepo.UpsertTx(ctx, tx, ucs); err != nil {
 				return err
@@ -393,8 +393,8 @@ func TestCardRepository_FindDueCards_InvalidState(t *testing.T) {
 
 	// Insert a user_card_fsrs row directly with an invalid state value (99) so
 	// that the IsValid gate in findDueCardsOn is exercised. stability 0 puts the
-	// row in the rescue band, so last_review is stamped beyond the 24-hour
-	// minimum-elapsed floor to keep the row inside the rescue window.
+	// row in the rescue band, so last_review is stamped on an earlier UTC
+	// calendar date to clear the credit bound and keep the row inside the rescue window.
 	sqlDB, err := testDB.GORM.DB()
 	require.NoError(t, err)
 	_, err = sqlDB.ExecContext(ctx,
@@ -938,7 +938,7 @@ func TestCardRepository_FindDueCards_ReviewRowsPrecedeNewRows(t *testing.T) {
 
 	// Upsert the FSRS row for reviewEarly so its effective due is now-2h. Its
 	// default stability puts it in the rescue band, so LastReview is stamped 25h
-	// back to clear the rescue window's 24-hour minimum-elapsed floor; a cutoff
+	// back to clear the rescue window's UTC-date credit bound; a cutoff
 	// strictly after now keeps the review row inside the reviewedBefore window.
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		state := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), reviewEarly.ID, now)
@@ -1041,7 +1041,7 @@ func TestCardRepository_FindDueCards_ReviewsNotStarvedByNewBacklog(t *testing.T)
 	// limit=2 is smaller than the new-card backlog. Reviews and new cards use
 	// separate LIMIT windows, so both due reviews still surface. Both review
 	// rows sit in the rescue band, so their LastReview is stamped 25h back to
-	// clear the 24-hour minimum-elapsed floor; a cutoff strictly after now keeps
+	// clear the UTC-date credit bound; a cutoff strictly after now keeps
 	// them inside the reviewedBefore window.
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
@@ -1108,17 +1108,17 @@ func TestCardRepository_FindDueCards_ExcludesCardsReviewedToday(t *testing.T) {
 	}))
 
 	// This test isolates the reviewedBefore cutoff, so the rescue window's
-	// minimum-elapsed floor is passed wide open and every fixture clears it. The
-	// floor is a strictly tighter bound than the JST start-of-day in production,
-	// so leaving it at its real value would mask a mutation of the strict `<`
-	// here; it is pinned on its own by
-	// TestCardRepository_FindDueCards_RescueRequiresWholeDaySinceLastReview.
-	openRescueFloor := now.Add(time.Second)
+	// UTC-date credit bound is passed wide open and every fixture clears it.
+	// In production that bound can be tighter or looser than the JST
+	// start-of-day depending on the session's JST hour, so leaving it at its real
+	// value could mask a mutation of the strict `<` here; it is pinned on its own
+	// by TestCardRepository_FindDueCards_RescueUsesUTCCreditBound.
+	openRescueBound := now.Add(time.Second)
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       startOfToday,
 		RescueDueBefore:      domain.EndOfLearnDay(now),
-		RescueReviewedBefore: openRescueFloor,
+		RescueReviewedBefore: openRescueBound,
 	}, 10)
 	require.NoError(t, err)
 	require.Equal(t, []string{reviewedYesterday.ID}, repoCardIDs(got),
@@ -1137,8 +1137,8 @@ func TestCardRepository_FindDueCards_RescueOutranksFiller(t *testing.T) {
 	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
 	now := time.Date(2026, 7, 19, 3, 0, 0, 0, time.UTC)
 
-	// Every fixture was last reviewed more than a whole day ago, so the rescue
-	// window's minimum-elapsed floor admits the rescue-band rows and the band
+	// Every fixture was last reviewed on an earlier UTC calendar date, so the
+	// rescue window's credit bound admits the rescue-band rows and the band
 	// ordering is the only thing under test.
 	lastReview := now.Add(-25 * time.Hour)
 	mk := func(front string, stability float64, rating domain.Rating) *domain.Card {
@@ -1190,35 +1190,43 @@ func TestCardRepository_FindDueCards_NullLastRatingFallsIntoFiller(t *testing.T)
 	require.False(t, got[0].Rescue, "NULL last_rating with learned stability belongs to filler")
 }
 
-// TestCardRepository_FindDueCards_FillerIncludesExactElapsedFloor pins the
-// filler window's inclusive last_review <= now-24h boundary.
-func TestCardRepository_FindDueCards_FillerIncludesExactElapsedFloor(t *testing.T) {
+// TestCardRepository_FindDueCards_FillerExcludesExactCreditBound pins the
+// strict filler boundary. Changing its last_review `<` back to `<=` makes the
+// card at the credit bound appear and fails this mutation proof.
+func TestCardRepository_FindDueCards_FillerExcludesExactCreditBound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
 	cg := insertCardgroup(t, ctx, ownerID)
 	repo := repository.NewCardRepository(testDB.GORM)
 	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
-	now := time.Date(2026, 7, 19, 3, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 7, 18, 23, 0, 0, 0, time.UTC) // 08:00 JST on 2026-07-19
+	start := domain.StartOfLearnDay(now)
+	end := domain.EndOfLearnDay(now)
+	bound := domain.RescueReviewedBefore(now)
+	require.True(t, bound.Before(start),
+		"before 09:00 JST the UTC-date credit bound is the tighter of the two last_review bounds")
+	due := now.Add(-time.Hour)
 
-	card := newCard(cg.ID, "filler-at-elapsed-floor", "back")
-	require.NoError(t, repo.Create(ctx, card))
-	upsertDueCardState(
-		t,
-		ctx,
-		ucsRepo,
-		ownerID,
-		card,
-		now,
-		now,
-		domain.RescueReviewedBefore(now),
-		domain.LearnedStabilityDays,
-		domain.RatingGood,
-	)
+	atBound := newCard(cg.ID, "filler-at-credit-bound", "back")
+	justBefore := newCard(cg.ID, "filler-one-second-before-bound", "back")
+	for _, card := range []*domain.Card{atBound, justBefore} {
+		require.NoError(t, repo.Create(ctx, card))
+	}
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, atBound, now, due, bound,
+		domain.LearnedStabilityDays, domain.RatingGood)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, justBefore, now, due, bound.Add(-time.Second),
+		domain.LearnedStabilityDays, domain.RatingGood)
 
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.NewLearnWindow(now), 10)
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
+		Now:                  now,
+		ReviewedBefore:       start,
+		RescueDueBefore:      end,
+		RescueReviewedBefore: bound,
+	}, 10)
 	require.NoError(t, err)
-	require.Equal(t, []string{card.ID}, repoCardIDs(got))
+	require.Equal(t, []string{justBefore.ID}, repoCardIDs(got),
+		"the filler credit bound is exclusive: a card last reviewed exactly at UTC midnight of today's UTC date is withheld")
 	require.False(t, got[0].Rescue)
 }
 
@@ -1237,8 +1245,8 @@ func TestCardRepository_FindDueCards_StabilityBoundary(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, below))
 	require.NoError(t, repo.Create(ctx, nullBelow))
 	require.NoError(t, repo.Create(ctx, at))
-	// More than a whole day since the last review, so the rescue rows clear the
-	// minimum-elapsed floor and stability alone decides the band.
+	// An earlier UTC calendar date than now, so the rescue rows clear the credit
+	// bound and stability alone decides the band.
 	lastReview := now.Add(-25 * time.Hour)
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, below, now, now.Add(-time.Hour), lastReview, 6.9, domain.RatingGood)
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, nullBelow, now, now.Add(-time.Hour), lastReview, 6.9, 0)
@@ -1276,8 +1284,8 @@ func TestCardRepository_FindDueCards_RescueUsesJSTDayEnd(t *testing.T) {
 	for _, card := range []*domain.Card{rescueToday, fillerToday, atBoundary} {
 		require.NoError(t, repo.Create(ctx, card))
 	}
-	// More than a whole day since the last review, so the rescue rows clear the
-	// minimum-elapsed floor and the due cutoff alone decides inclusion.
+	// An earlier UTC calendar date than now, so the rescue rows clear the credit
+	// bound and the due cutoff alone decides inclusion.
 	lastReview := now.Add(-25 * time.Hour)
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, rescueToday, now, dueAt23JST, lastReview, 20, domain.RatingAgain)
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, fillerToday, now, dueAt23JST, lastReview, 20, domain.RatingGood)
@@ -1295,68 +1303,104 @@ func TestCardRepository_FindDueCards_RescueUsesJSTDayEnd(t *testing.T) {
 	require.True(t, got[0].Rescue)
 }
 
-// TestCardRepository_FindDueCards_RescueRequiresWholeDaySinceLastReview pins the
-// rescue window's minimum-elapsed floor. FSRS derives elapsed days as a UTC
-// calendar-date difference, so a repeat inside the same 24 hours can land on the
-// same UTC date and yield a stability growth factor of exactly zero, while any
-// gap of at least 24 hours always spans a date boundary. The fixtures pin that
-// boundary: a card failed at 23:00 JST and revisited at 09:00 JST the next
-// morning is a new JST learn day (so the reviewedBefore cutoff admits it) yet
-// only 10 hours have elapsed, so the floor is what excludes it.
-//
-// Mutation-proof: flip the new `ucs.last_review <= ?` bound to `<` in
-// card_due.go and exactlyOneDay vanishes from the result; drop the bound
-// entirely and sameNight appears.
-func TestCardRepository_FindDueCards_RescueRequiresWholeDaySinceLastReview(t *testing.T) {
+// TestCardRepository_FindDueCards_RescueUsesUTCCreditBound pins the strict UTC
+// boundary. Changing `<` to `<=` admits atBound; dropping the bound admits
+// sameUTCDate, so either mutation fails loudly.
+func TestCardRepository_FindDueCards_RescueUsesUTCCreditBound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
 	cg := insertCardgroup(t, ctx, ownerID)
 	repo := repository.NewCardRepository(testDB.GORM)
 	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
-	// 2026-07-19 09:00 JST. The JST learn day started at 2026-07-18T15:00Z, so
-	// last_review values between 2026-07-18T00:00Z (the 24h floor) and that
-	// instant are "yesterday" for the day cutoff but under a day of elapsed time.
-	now := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 7, 18, 23, 0, 0, 0, time.UTC) // 08:00 JST on 2026-07-19
 	start := domain.StartOfLearnDay(now)
 	end := domain.EndOfLearnDay(now)
-	floor := domain.RescueReviewedBefore(now)
-	require.True(t, floor.Before(start), "the 24h floor is the tighter of the two last_review bounds")
+	bound := domain.RescueReviewedBefore(now)
+	require.True(t, bound.Before(start),
+		"before 09:00 JST the UTC-date credit bound is the tighter of the two last_review bounds")
+	due := now.Add(-time.Hour)
 
-	sameNight := newCard(cg.ID, "failed-at-23-jst", "back")
-	exactlyOneDay := newCard(cg.ID, "reviewed-exactly-24h-ago", "back")
+	sameUTCDate := newCard(cg.ID, "same-utc-date-18-jst", "back")
+	atBound := newCard(cg.ID, "at-credit-bound", "back")
+	oneSecondBefore := newCard(cg.ID, "one-second-before-bound", "back")
 	fullDayElapsed := newCard(cg.ID, "reviewed-25h-ago", "back")
-	for _, card := range []*domain.Card{sameNight, exactlyOneDay, fullDayElapsed} {
+	for _, card := range []*domain.Card{sameUTCDate, atBound, oneSecondBefore, fullDayElapsed} {
 		require.NoError(t, repo.Create(ctx, card))
 	}
-	// All three are rescue-band rows (last rating Again) whose due has arrived.
-	due := now.Add(-time.Hour)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, sameNight, now, due, now.Add(-10*time.Hour), 20, domain.RatingAgain)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, exactlyOneDay, now, due, floor, 20, domain.RatingAgain)
+	oneSecondBeforeLastReview := bound.Add(-time.Second)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, sameUTCDate, now, due,
+		time.Date(2026, 7, 18, 9, 0, 0, 0, time.UTC), 20, domain.RatingAgain)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, atBound, now, due, bound, 20, domain.RatingAgain)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, oneSecondBefore, now, due,
+		oneSecondBeforeLastReview, 20, domain.RatingAgain)
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, fullDayElapsed, now, due, now.Add(-25*time.Hour), 20, domain.RatingAgain)
 
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       start,
 		RescueDueBefore:      end,
-		RescueReviewedBefore: floor,
+		RescueReviewedBefore: bound,
 	}, 10)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []string{exactlyOneDay.ID, fullDayElapsed.ID}, repoCardIDs(got),
-		"a rescue card is served early only once a whole day has passed since its last review")
-	require.NotContains(t, repoCardIDs(got), sameNight.ID,
-		"a card reviewed 10 hours ago is under the whole-day floor and must not take a rescue slot")
+	require.ElementsMatch(t,
+		[]string{oneSecondBefore.ID, fullDayElapsed.ID}, repoCardIDs(got),
+		"a rescue card is served early exactly when its last review fell on an earlier UTC calendar date")
+	require.NotContains(t, repoCardIDs(got), sameUTCDate.ID,
+		"a repeat on the same UTC date earns zero stability growth and must not take a rescue slot")
+	require.NotContains(t, repoCardIDs(got), atBound.ID,
+		"the credit bound is exclusive")
+	require.Less(t, now.Sub(oneSecondBeforeLastReview), 24*time.Hour)
 
-	// The excluded row must not leak into the filler or new window either: the
-	// filler predicate is the inverse band and the new window requires a NULL
-	// due, so the three windows stay pairwise disjoint under the narrowed rescue
-	// predicate and the row simply has no window today.
 	seen := map[string]bool{}
 	for _, dueCard := range got {
 		require.False(t, seen[dueCard.Card.ID], "the three windows must not return a card twice")
 		seen[dueCard.Card.ID] = true
 		require.True(t, dueCard.Rescue, "both surviving rows come from the rescue window")
 	}
+}
+
+// TestCardRepository_FindDueCards_RescueAdmitsOvernightReviewButNotSameLearnDay
+// pins both halves of the rule: UTC credit admits the overnight review, while
+// the JST cutoff still prevents a second serve within one learn day.
+func TestCardRepository_FindDueCards_RescueAdmitsOvernightReviewButNotSameLearnDay(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC) // 09:00 JST on 2026-07-19
+	start := domain.StartOfLearnDay(now)
+	end := domain.EndOfLearnDay(now)
+	bound := domain.RescueReviewedBefore(now)
+	require.True(t, start.Before(bound),
+		"at or after 09:00 JST the JST day cutoff is the tighter of the two last_review bounds")
+	due := now.Add(-time.Hour)
+
+	overnight := newCard(cg.ID, "failed-at-23-jst-last-night", "back")
+	sameLearnDay := newCard(cg.ID, "failed-at-00-30-jst-today", "back")
+	for _, card := range []*domain.Card{overnight, sameLearnDay} {
+		require.NoError(t, repo.Create(ctx, card))
+	}
+	overnightLastReview := time.Date(2026, 7, 18, 14, 0, 0, 0, time.UTC)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, overnight, now, due,
+		overnightLastReview, 20, domain.RatingAgain)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, sameLearnDay, now, due,
+		time.Date(2026, 7, 18, 15, 30, 0, 0, time.UTC), 20, domain.RatingAgain)
+
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
+		Now:                  now,
+		ReviewedBefore:       start,
+		RescueDueBefore:      end,
+		RescueReviewedBefore: bound,
+	}, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{overnight.ID}, repoCardIDs(got),
+		"a review that crossed UTC midnight is served the next morning even under 24 hours elapsed")
+	require.True(t, got[0].Rescue)
+	require.Less(t, now.Sub(overnightLastReview), 24*time.Hour,
+		"the old 24-hour rolling floor withheld exactly this row")
 }
 
 // TestCardRepository_FindDueCards_SamplesNewCardsUnderLimit replaces the old
@@ -1447,14 +1491,13 @@ func TestCardRepository_FindPracticeCards_BoundaryComplementarity(t *testing.T) 
 		return ucsRepo.UpsertTx(ctx, tx, today)
 	}))
 
-	// This test isolates the shared boundary, so the rescue window's
-	// minimum-elapsed floor is passed wide open and every fixture clears it. The
-	// floor is a strictly tighter bound than the boundary used here, so leaving
-	// it at its real value would keep reviewedAtBoundary out of the learn window
-	// even under a mutation of the strict `<`, silently killing the documented
-	// mutation proof; the floor is pinned on its own by
-	// TestCardRepository_FindDueCards_RescueRequiresWholeDaySinceLastReview.
-	openRescueFloor := now.Add(time.Second)
+	// This test isolates the shared boundary, so the rescue window's UTC-date
+	// credit bound is passed wide open and every fixture clears it. At its real
+	// value the bound could keep reviewedAtBoundary out of the learn window even
+	// under a mutation of the strict `<`, silently killing the documented
+	// mutation proof; the bound is pinned on its own by
+	// TestCardRepository_FindDueCards_RescueUsesUTCCreditBound.
+	openRescueBound := now.Add(time.Second)
 
 	// Learn window: cards reviewed strictly before the boundary, plus the
 	// never-reviewed card via the new-card window. reviewedAtBoundary and
@@ -1463,7 +1506,7 @@ func TestCardRepository_FindPracticeCards_BoundaryComplementarity(t *testing.T) 
 		Now:                  now,
 		ReviewedBefore:       boundary,
 		RescueDueBefore:      domain.EndOfLearnDay(now),
-		RescueReviewedBefore: openRescueFloor,
+		RescueReviewedBefore: openRescueBound,
 	}, 10)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{reviewedYesterday.ID, neverReviewed.ID}, repoCardIDs(learn),
