@@ -43,6 +43,11 @@ fix is a one-line interface-typed local at the composition root — **not** an
 archfile change. Reaching for a `mayDependOn` widening would instead punch a
 permanent hole in the layer model to paper over a fixable wiring detail.
 
+The `auth` wiring also shows why a consumer-defined port may need to be
+exported. `RoleChecker` and `RoleAssigner` are named by `cmd/server` so concrete
+`repository.UserRoleRepository` values can be widened before entering auth
+constructors, avoiding an `auth.mayDependOn: repository` exception.
+
 This refines the blanket "import statement only" framing in
 [`go-arch-lint-violation-output-and-scope.md`](go-arch-lint-violation-output-and-scope.md):
 with `deepScan: true`, a *value-flow* edge can appear where no import-level

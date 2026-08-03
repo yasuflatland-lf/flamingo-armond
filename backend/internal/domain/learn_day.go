@@ -52,23 +52,17 @@ func utcCalendarDay(t time.Time) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }
 
-// rescueMinElapsed is the minimum wall-clock time before any window may re-serve
-// a card. It is a SPACING rule, not a scheduling-credit rule.
-// EarnsSchedulingCredit is what decides credit, and it would sanction a repeat one
-// minute after the previous review as long as UTC midnight fell between them — a
-// one-hour gap across that boundary earns the same stability growth as a full day.
-// The floor is strictly stronger than the credit rule (a gap of at least 24 hours
-// always spans a UTC date, so it implies credit) and it is what keeps a rescue
-// slot from being spent on a card the learner has just seen. The rescue window was
-// the first consumer of this model-wide floor.
-const rescueMinElapsed = 24 * time.Hour
-
-// RescueReviewedBefore returns the latest last_review instant a card may carry
-// and still be served early through the rescue window: exactly rescueMinElapsed
-// before now. The repository compares with `<=`, so a card last reviewed exactly
-// 24 hours ago is eligible while one reviewed 23 hours ago is not.
+// RescueReviewedBefore returns the exclusive upper bound on last_review for the
+// rescue and filler windows: UTC midnight of now's UTC calendar date. go-fsrs
+// counts elapsed days by UTC calendar date, so a card last reviewed strictly
+// before this instant earns stability growth at now — the exact condition
+// EarnsSchedulingCredit tests on the recording side.
+//
+// Not a 24-hour rolling floor: that approximation never admitted a zero-credit
+// repeat, but it also withheld every card a JST learner reviewed after 09:00 the
+// previous day, which has already crossed a UTC date boundary.
 func RescueReviewedBefore(now time.Time) time.Time {
-	return now.Add(-rescueMinElapsed)
+	return utcCalendarDay(now)
 }
 
 // LearnDayKey returns the canonical JST learn-day key (YYYY-MM-DD) for t.
@@ -81,7 +75,7 @@ func LearnDayKey(t time.Time) string { return StartOfLearnDay(t).Format(time.Dat
 //	Now                  — filler:  ucs.due <= Now
 //	ReviewedBefore       — rescue+filler: ucs.last_review < ReviewedBefore (StartOfLearnDay)
 //	RescueDueBefore      — rescue:  ucs.due < RescueDueBefore (EndOfLearnDay, exclusive)
-//	RescueReviewedBefore — rescue+filler: ucs.last_review <= RescueReviewedBefore (24h floor)
+//	RescueReviewedBefore — rescue+filler: ucs.last_review < RescueReviewedBefore (UTC-date credit bound)
 //
 // Production code must construct via NewLearnWindow; field literals are for
 // tests that need non-canonical windows.

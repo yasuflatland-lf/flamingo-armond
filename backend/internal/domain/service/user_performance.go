@@ -167,12 +167,11 @@ type PerformanceMetrics struct {
 	StudyStreak   int
 	LapseRate     float64
 	ReviewCount   int
-	// KnownReviewCount is the denominator behind RetentionRate and LapseRate:
-	// the number of swipes in the window that passed the known-card gate. When
-	// the window has swipes but none of them pass the gate, both rates are 0;
-	// when the window holds no swipes at all, RetentionRate instead carries the
-	// neutral 0.5 placeholder. Either way, consumers must treat a 0 count as "no
-	// eligible reviews" rather than as a measured rate.
+	// KnownReviewCount is the denominator behind RetentionRate and LapseRate: the
+	// swipes in the window that passed the known-card gate. Swipes present but
+	// none gated leaves both rates at a real 0; a window with no swipes at all
+	// gives both the neutral 0.5 placeholder. Either way, a 0 count means "no
+	// eligible reviews", never a measured rate.
 	KnownReviewCount int
 }
 
@@ -223,6 +222,7 @@ func ComputeMetrics(swipes []domain.SwipeRecord, now time.Time) PerformanceMetri
 			SuccessRate:   0.5,
 			AvgDifficulty: 0.5,
 			RetentionRate: 0.5,
+			LapseRate:     0.5,
 		}
 	}
 

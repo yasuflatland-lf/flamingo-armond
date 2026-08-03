@@ -8,9 +8,10 @@ import (
 	"backend/internal/domain"
 )
 
-// roleChecker is the narrow interface auth.Service requires from the repository
-// layer. Only HasRole is needed; callers may pass any repository.UserRoleRepository.
-type roleChecker interface {
+// RoleChecker is the narrow role-query port required by Service.
+// It is exported so the composition root can widen concrete repositories
+// before injecting them, preserving the intended component boundary.
+type RoleChecker interface {
 	HasRole(ctx context.Context, userID string, roleName domain.RoleName) (bool, error)
 }
 
@@ -19,11 +20,11 @@ type roleChecker interface {
 // on role membership. Keeping this struct distinct from the request-scoped
 // AuthUser lets us inject a mock in tests.
 type Service struct {
-	userRoles roleChecker
+	userRoles RoleChecker
 }
 
 // NewService wires the auth.Service against a role-checking repository.
-func NewService(userRoles roleChecker) *Service {
+func NewService(userRoles RoleChecker) *Service {
 	return &Service{userRoles: userRoles}
 }
 

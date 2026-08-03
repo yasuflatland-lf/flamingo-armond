@@ -30,7 +30,7 @@ type PerformanceMetrics {
   studyStreak: Int!
   lapseRate: Float!
   reviewCount: Int!
-  """Number of reviews in the window that qualified for retentionRate/lapseRate (reviews of already-learned cards). When the window has swipes but none of them are gated reviews, retentionRate and lapseRate are both 0; when the window is empty (reviewCount is 0 too), retentionRate instead carries a neutral 0.5 placeholder. Either way, render an explicit empty state instead of trusting those values."""
+  """Number of reviews in the window that qualified for retentionRate/lapseRate (reviews of already-learned cards). When the window has swipes but none of them are gated reviews, retentionRate and lapseRate are both 0; when the window is empty (reviewCount is 0 too), both instead carry a neutral 0.5 placeholder. Either way, render an explicit empty state instead of trusting those values."""
   knownReviewCount: Int!
 }
 
