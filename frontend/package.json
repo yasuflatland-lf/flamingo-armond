@@ -46,7 +46,7 @@
     "class-variance-authority": "^0.7.1",
     "graphql": "^17.0.0",
     "lucide-react": "^1.14.0",
-    "next": "16.3.0",
+    "next": "16.3.1",
     "next-intl": "^4.13.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
@@ -55,7 +55,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.7",
+    "@biomejs/biome": "2.5.8",
     "@graphql-codegen/cli": "^7.0.0",
     "@graphql-codegen/client-preset": "^6.0.0",
     "@graphql-codegen/typescript": "^6.0.1",
