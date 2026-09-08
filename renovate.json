@@ -66,13 +66,13 @@
       "groupName": "go toolchain"
     },
     {
-      "description": "Bundle the pnpm pin in .tool-versions with the packageManager field in root package.json into a single PR. Vercel reads packageManager (no mise on Vercel), CI reads .tool-versions; both must move together. `asdf` is load-bearing here and is NOT interchangeable with `mise`: Renovate routes `.tool-versions` through its asdf manager (default pattern `(^|/)\\.tool-versions$`), while its mise manager only matches `mise.toml` / `.mise.toml` / `.config/mise/**`. With `mise` alone this rule silently matched nothing on the .tool-versions side and the two halves shipped as separate PRs, which is exactly the drift it exists to prevent.",
+      "description": "Bundle the pnpm pin in .tool-versions with the packageManager fields into one PR: Vercel reads packageManager (no mise there), CI reads .tool-versions, and the two must not drift. `asdf` is load-bearing and not interchangeable with `mise` — Renovate routes .tool-versions through its asdf manager, while mise matches only mise.toml.",
       "matchManagers": ["asdf", "mise", "npm"],
       "matchPackageNames": ["pnpm"],
       "groupName": "pnpm toolchain"
     },
     {
-      "description": "Hold pnpm at 11.x: Vercel cannot run pnpm 12. From v12 the npm package ships `pnpm.exe` as a plain-text placeholder that the `preinstall` script (`node install.js`) replaces with the native binary from the `@pnpm/exe.<platform>` optional deps. Vercel materialises the version named in package.json#packageManager into its package-manager-store WITHOUT running lifecycle scripts, so the shell execs the placeholder and the deploy dies with `pnpm.exe: line 4: syntax error near unexpected token ')'` -> `Command \"pnpm install\" exited with 2`. pnpm 11 has no such script (its bin is a plain `bin/pnpm.mjs`), which is why 11.x works even though Vercel's docs only list pnpm 6-10. mise installs pnpm from GitHub release binaries, so local dev and GitHub Actions stay green and never surface the break — only Vercel does. Lift this cap once https://github.com/vercel/vercel/issues/17434 is closed. matchManagers must list `asdf` as well as `npm` — the .tool-versions pin is an asdf-manager dependency, and a cap that omits it leaves Renovate free to keep reproposing pnpm 12 there.",
+      "description": "Hold pnpm at 11.x: Vercel cannot run pnpm 12. Since v12 the npm package ships `pnpm.exe` as a text placeholder that a preinstall script swaps for the real native binary, and Vercel installs the packageManager version without running lifecycle scripts, so the shell execs the placeholder and `pnpm install` fails. Only Vercel is affected — mise installs pnpm from release binaries, so local dev and CI stay green. Lift once Vercel supports pnpm 12. `asdf` is required alongside `npm`: the .tool-versions pin is an asdf-manager dependency.",
       "matchManagers": ["asdf", "mise", "npm"],
       "matchPackageNames": ["pnpm"],
       "allowedVersions": "<12"
