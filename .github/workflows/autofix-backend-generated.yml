@@ -50,7 +50,6 @@ on:
       - 'backend/go.sum'
       - 'backend/gqlgen.yml'
       - 'schema/**'
-      - '.tool-versions'
       - 'mise.toml'
 
 # The push uses the app installation token, so the default GITHUB_TOKEN only
@@ -100,7 +99,7 @@ jobs:
           # App token so the auto-commit re-triggers the required backend CI on the new SHA.
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Set up mise (Go from .tool-versions)
+      - name: Set up mise (Go from backend/mise.toml)
         uses: jdx/mise-action@v4
         with:
           working_directory: backend

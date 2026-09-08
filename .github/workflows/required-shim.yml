@@ -42,7 +42,7 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'package.json'
-              - '.tool-versions'
+              - 'mise.toml'
               - '.github/workflows/frontend.yml'
 
   build-test-shim:
