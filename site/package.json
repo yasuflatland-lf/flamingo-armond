@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "description": "Static marketing landing page for flamingo-armond, built with Vite and published to GitHub Pages.",
-  "packageManager": "pnpm@11.19.0",
+  "packageManager": "pnpm@11.25.0",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -19,7 +19,7 @@
     "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.6",
+    "@biomejs/biome": "2.5.11",
     "@tailwindcss/postcss": "4.3.3",
     "@vitejs/plugin-react": "^6.0.0",
     "knip": "^6.14.0",
