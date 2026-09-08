@@ -1,6 +1,6 @@
 # Supabase configuration for flamingo-armond
 # Reference: https://supabase.com/docs/guides/local-development/cli/config
-# Schema is pinned to Supabase CLI 2.90.0 (see .tool-versions).
+# Schema is pinned to Supabase CLI 2.90.0 (see mise.toml).
 
 project_id = "flamingo-armond"
 

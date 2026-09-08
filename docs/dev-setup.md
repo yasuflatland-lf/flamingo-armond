@@ -2,14 +2,18 @@
 
 ## Tools
 
-- mise (`curl https://mise.run | sh`) — manages Go (`backend/.tool-versions`), Node + pnpm + Supabase CLI (`./.tool-versions`), and dev runtime tooling (`./mise.toml`: Rust + mprocs).
-- Supabase CLI — local Postgres / Auth emulation. Pinned to a specific version in `./.tool-versions` (do not switch back to `supabase latest`: the CLI breaks `supabase/config.toml` across major upgrades, so the version that everyone runs must be exact).
+- mise (`curl https://mise.run | sh`) — manages Go (`backend/mise.toml`) and Node + pnpm + Supabase CLI + Python/Ansible + dev runtime tooling (`./mise.toml`).
+- Supabase CLI — local Postgres / Auth emulation. Pinned to a specific version in `./mise.toml` (do not switch back to `supabase latest`: the CLI breaks `supabase/config.toml` across major upgrades, so the version that everyone runs must be exact).
 
 ## First-time setup
 
 ```bash
-# Install Go 1.26.4 (backend/.tool-versions), Node 24.x + pnpm 11.5.3 + Supabase CLI (./.tool-versions).
+# Node + pnpm + Supabase CLI + Python/Ansible, from ./mise.toml.
 mise install
+
+# Go, from backend/mise.toml. Needed as a separate step: mise resolves upward
+# from the working directory, so a root `mise install` never sees this file.
+mise -C backend install
 
 # Install workspace deps. The frontend workspace is populated with a Next.js 16 App Router scaffold (see `frontend/CLAUDE.md`).
 pnpm install
@@ -19,7 +23,7 @@ Verify:
 
 ```bash
 node --version        # v24.x.y
-pnpm --version        # 11.5.3  (resolved by mise from .tool-versions)
+pnpm --version        # 11.25.0 (resolved by mise from mise.toml)
 which pnpm            # ~/.local/share/mise/shims/pnpm
 ```
 
@@ -70,17 +74,25 @@ Do **not** reach for `experimental.isolatedDevBuild: false` to "fix" the toggle:
 
 > **Note**: `backend/graph/resolver/*.resolvers.go` are resolver stubs, not generated output. They are **committed** and CI verifies they are up-to-date via `git diff --exit-code -- graph/resolver/*.resolvers.go` in `backend.yml`. This is orthogonal to the "generated files are ignored" policy above.
 
-## `.tool-versions` hierarchy (mise)
+## `mise.toml` hierarchy
 
-mise resolves tool config hierarchically. Three scopes coexist without conflict:
+mise resolves tool config hierarchically. Two scopes compose without conflict:
 
 | Scope | File | Tools |
 |---|---|---|
-| Backend | `backend/.tool-versions` | Go |
-| Repo root (frontend + dev) | `./.tool-versions` | Node, pnpm, Supabase CLI, Python + Ansible |
-| Repo root (dev runtime) | `./mise.toml` | Rust + mprocs (paired with `[env]`) |
+| Backend | `backend/mise.toml` | Go |
+| Repo root | `./mise.toml` | Node, pnpm, Supabase CLI, Python + pipx/Ansible, Rust + mprocs; also carries `[env]` |
 
-Backend CI sets `working_directory: backend` and sees only Go. Frontend CI runs from the repo root — NOT `working_directory: frontend` — because Node and pnpm are declared in the root `.tool-versions`.
+Use the mise **registry** names in these files — `node` and `go` — not the asdf plugin names `nodejs` and `golang`. Both spellings resolve: mise aliases the asdf names inside `mise.toml` too, so `golang = "1.27.0"` installs Go 1.27.0 without complaint. The registry names are still the ones to write, because they are what the registry itself answers to:
+
+```console
+$ mise registry go       # core:go
+$ mise registry golang   # mise ERROR tool not found in registry: golang
+```
+
+Anything that looks a tool up by name — `mise use`, `mise registry`, and Renovate's mise manager, whose supported-backend table is keyed on registry names — sees only the canonical form.
+
+Resolution walks **up** from the working directory, never down into subdirectories. Backend CI sets `working_directory: backend`, so it sees Go plus everything the root file declares. The reverse is not true: `mise install` at the repo root does **not** install Go, because `backend/mise.toml` is below it. Frontend CI runs from the repo root — NOT `working_directory: frontend` — because Node and pnpm are declared in the root `mise.toml`.
 
 ## `mise` exports `.env` into the shell
 
@@ -90,7 +102,7 @@ Practical consequence: when adding new required env vars consumed by a playbook 
 
 ## Why mise-managed pnpm, not global pnpm or Corepack
 
-The `[tools]` entries in `.tool-versions` are the single source of truth for pnpm in local dev and GitHub Actions. mise downloads the exact pinned version on demand, so every contributor and every CI runner uses the same pnpm — no drift, no "works on my machine". The `packageManager` field in root `package.json` is kept aligned and is **load-bearing for Vercel and for pnpm itself**: Vercel does not run mise and reads this field to install the matching pnpm on its build image, and pnpm 11 uses it as a self-consistency check that refuses execution when the declared and running versions disagree. Treat the two pins as one unit — bump them together.
+The `[tools]` entries in `mise.toml` are the single source of truth for pnpm in local dev and GitHub Actions. mise downloads the exact pinned version on demand, so every contributor and every CI runner uses the same pnpm — no drift, no "works on my machine". The `packageManager` field in root `package.json` is kept aligned and is **load-bearing for Vercel and for pnpm itself**: Vercel does not run mise and reads this field to install the matching pnpm on its build image, and pnpm 11 uses it as a self-consistency check that refuses execution when the declared and running versions disagree. Treat the two pins as one unit — bump them together.
 
 Do **not** install pnpm via `npm i -g pnpm` or `brew install pnpm`. Those paths compete with the mise shim on PATH, and whichever wins is timing-dependent. Corepack is no longer used in this repo — `corepack enable` is unnecessary and can be skipped or disabled.
 
@@ -129,7 +141,7 @@ Sync logic lives in `playbooks/setup.yml` as declarative Ansible tasks. To wire 
 
 ### First-time setup
 
-1. The Supabase CLI is already installed by `mise install` from the root `.tool-versions`. No separate step is needed.
+1. The Supabase CLI is already installed by `mise install` from the root `mise.toml`. No separate step is needed.
 2. Create an OAuth 2.0 client ID in Google Cloud Console (Application type: **Web application**). Use `127.0.0.1`, not `localhost` — Google validates these as distinct origins:
    - Add `http://127.0.0.1:54321/auth/v1/callback` to **Authorized redirect URIs**.
    - Add `http://127.0.0.1:3000` to **Authorized JavaScript origins**.

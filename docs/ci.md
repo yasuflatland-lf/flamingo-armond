@@ -38,7 +38,7 @@ If the stack ever fails to come up, narrow the list rather than reverting it, in
 
 The E2E job overlaps its slow setup work with `supabase start` using `background: true` steps that reconverge at `wait-all`. The Next.js production build belongs in that shadow too, but it cannot simply be moved there: `frontend/src/env.ts` declares `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` as client vars, and `next build` **inlines** them into the served bundle. Unlike the frontend workflow's `lint-test-build` job, which builds with dummy values it never serves, this bundle is handed to a real browser that authenticates a seeded session against GoTrue with that key. Reading the values from `supabase status` is exactly what would keep the build on the critical path.
 
-They are therefore pinned as job-level constants (`E2E_LOCAL_API_URL`, `E2E_LOCAL_ANON_KEY`). Both are deterministic: the API URL comes from `supabase/config.toml`'s `[api] port`, and because that file declares neither `auth.jwt_secret` nor signing keys, the CLI signs the anon JWT with its built-in local secret and a fixed expiry constant rather than a wall-clock-derived one. The pin is valid for the CLI version in `.tool-versions`; a CLI bump is the thing most likely to invalidate it.
+They are therefore pinned as job-level constants (`E2E_LOCAL_API_URL`, `E2E_LOCAL_ANON_KEY`). Both are deterministic: the API URL comes from `supabase/config.toml`'s `[api] port`, and because that file declares neither `auth.jwt_secret` nor signing keys, the CLI signs the anon JWT with its built-in local secret and a fixed expiry constant rather than a wall-clock-derived one. The pin is valid for the CLI version in `mise.toml`; a CLI bump is the thing most likely to invalidate it.
 
 `Export Supabase local env` re-reads the stack's real values and fails the job if either constant disagrees, printing each key's prefix and length rather than the key itself. Without that assertion a drifted key would surface as all 14 specs failing at the auth gate, with nothing pointing at the build step that baked in the wrong value.
 
@@ -205,7 +205,7 @@ This is the canonical form used in `.github/workflows/readiness-ping.yml`. Apply
 
 CI always runs `pnpm install --frozen-lockfile` (never plain `pnpm install`). With the `--frozen-lockfile` flag, pnpm refuses to mutate `pnpm-lock.yaml` and exits non-zero if the lockfile and the declared dependencies disagree. This is the only mechanism that catches "I edited `package.json` but forgot to re-run `pnpm install` locally" — without it, CI would silently regenerate the lockfile in-place and the drift would reach main.
 
-For the same reason, the frontend workflow's `paths:` filter includes `pnpm-lock.yaml`, `pnpm-workspace.yaml`, root `package.json`, and `.tool-versions` alongside `frontend/**` and `schema/**`. A change to any of those can invalidate the frozen-lockfile invariant, so the workflow must run on those edits even when no file under `frontend/` changed.
+For the same reason, the frontend workflow's `paths:` filter includes `pnpm-lock.yaml`, `pnpm-workspace.yaml`, root `package.json`, and `mise.toml` alongside `frontend/**` and `schema/**`. A change to any of those can invalidate the frozen-lockfile invariant, so the workflow must run on those edits even when no file under `frontend/` changed.
 
 ### `--if-present` on the test step (revisit when Vitest lands)
 
@@ -213,7 +213,7 @@ Per "pnpm workspace filter exits 0 for missing scripts" above, a missing `test` 
 
 ### Node/pnpm provisioning via mise
 
-The workflow uses the same `jdx/mise-action@v4` step that `backend.yml` uses, relying on the repo-root `.tool-versions` to pin both Node (`nodejs 24`) and pnpm (`pnpm 11.5.3`). mise installs both directly, so for local dev and GitHub Actions the pnpm version is pinned by the repo — not by the CI runner's preinstalled toolchain and not by Corepack. The `packageManager` field in root `package.json` is kept aligned for two reasons that are NOT informational: (1) Vercel does not run mise, so it reads `packageManager` to choose which pnpm version to install on its build image, and (2) pnpm 11 itself uses the field as a self-consistency check and refuses to run when the executing binary disagrees with the declared version. Together these keep local, CI, and Vercel pnpm versions in lockstep with a single source of truth.
+The workflow uses the same `jdx/mise-action@v4` step that `backend.yml` uses, relying on the repo-root `mise.toml` to pin both Node (`node = "24.20.0"`) and pnpm (`pnpm = "11.25.0"`). mise installs both directly, so for local dev and GitHub Actions the pnpm version is pinned by the repo — not by the CI runner's preinstalled toolchain and not by Corepack. The `packageManager` field in root `package.json` is kept aligned for two reasons that are NOT informational: (1) Vercel does not run mise, so it reads `packageManager` to choose which pnpm version to install on its build image, and (2) pnpm 11 itself uses the field as a self-consistency check and refuses to run when the executing binary disagrees with the declared version. Together these keep local, CI, and Vercel pnpm versions in lockstep with a single source of truth.
 
 ### Build-time env vars: server and client
 
@@ -254,7 +254,7 @@ Production deploys to Vercel are managed by Vercel's native Git integration: pus
 
 #### Build environment mismatch risk
 
-`vercel build` (run by Vercel, not by this workflow) is distinct from the repo's `pnpm build`. If the Node version configured in the Vercel project dashboard differs from the version pinned in `.tool-versions` at the repo root (managed by mise), validation can pass in CI while the Vercel-side build fails — or, worse, silently produces a different output. Verify that the Vercel project's Node version setting matches the version in `.tool-versions` under Project → Settings → General → Node.js Version.
+`vercel build` (run by Vercel, not by this workflow) is distinct from the repo's `pnpm build`. If the Node version configured in the Vercel project dashboard differs from the version pinned in `mise.toml` at the repo root (managed by mise), validation can pass in CI while the Vercel-side build fails — or, worse, silently produces a different output. Verify that the Vercel project's Node version setting matches the version in `mise.toml` under Project → Settings → General → Node.js Version.
 
 #### Production env vars live only in the Vercel project
 

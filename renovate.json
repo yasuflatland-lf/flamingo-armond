@@ -53,27 +53,27 @@
       "semanticCommitScope": "ci"
     },
     {
-      "description": "Toolchain pins managed by mise (.tool-versions, mise.toml). Covers Go, Node, pnpm, supabase CLI, python, ansible-core, rust, mprocs.",
+      "description": "Toolchain pins managed by mise (mise.toml, backend/mise.toml). Covers Go, Node, pnpm, supabase CLI, python, pipx, ansible-core, rust, mprocs. Every tool pin lives in a mise.toml so this manager reaches all of them: Renovate's asdf manager has a fixed tool list that omits supabase, pipx and pipx:ansible-core, so a .tool-versions file is never fully covered.",
       "matchManagers": ["mise"],
       "groupName": "toolchain (mise)",
       "addLabels": ["toolchain", "dependencies"],
       "semanticCommitScope": "deps"
     },
     {
-      "description": "Bundle the Go toolchain pin in mise (.tool-versions) with the 'go' directive in backend/go.mod into a single PR, so they cannot drift apart between CI (mise-action) and the module graph.",
+      "description": "Bundle the Go toolchain pin in backend/mise.toml with the 'go' directive in backend/go.mod into a single PR so the two are reviewed together. This is grouping, not an equality constraint: the mise pin is the toolchain CI installs (via mise-action, run with working_directory: backend), while the go.mod directive is the module's minimum language version and may legitimately lag it.",
       "matchManagers": ["mise", "gomod"],
       "matchPackageNames": ["go", "golang"],
       "groupName": "go toolchain"
     },
     {
-      "description": "Bundle the pnpm pin in .tool-versions with the packageManager fields into one PR: Vercel reads packageManager (no mise there), CI reads .tool-versions, and the two must not drift. `asdf` is load-bearing and not interchangeable with `mise` — Renovate routes .tool-versions through its asdf manager, while mise matches only mise.toml.",
-      "matchManagers": ["asdf", "mise", "npm"],
+      "description": "Bundle the pnpm pin in mise.toml with the packageManager fields into one PR: Vercel reads packageManager (no mise there), CI reads mise.toml, and the two must not drift.",
+      "matchManagers": ["mise", "npm"],
       "matchPackageNames": ["pnpm"],
       "groupName": "pnpm toolchain"
     },
     {
-      "description": "Hold pnpm at 11.x: Vercel cannot run pnpm 12. Since v12 the npm package ships `pnpm.exe` as a text placeholder that a preinstall script swaps for the real native binary, and Vercel installs the packageManager version without running lifecycle scripts, so the shell execs the placeholder and `pnpm install` fails. Only Vercel is affected — mise installs pnpm from release binaries, so local dev and CI stay green. Lift once Vercel supports pnpm 12. `asdf` is required alongside `npm`: the .tool-versions pin is an asdf-manager dependency.",
-      "matchManagers": ["asdf", "mise", "npm"],
+      "description": "Hold pnpm at 11.x: Vercel cannot run pnpm 12. Since v12 the npm package ships `pnpm.exe` as a text placeholder that a preinstall script swaps for the real native binary, and Vercel installs the packageManager version without running lifecycle scripts, so the shell execs the placeholder and `pnpm install` fails. Only Vercel is affected — mise installs pnpm from release binaries, so local dev and CI stay green. Lift once Vercel supports pnpm 12.",
+      "matchManagers": ["mise", "npm"],
       "matchPackageNames": ["pnpm"],
       "allowedVersions": "<12"
     },
@@ -88,7 +88,7 @@
       "automerge": false
     },
     {
-      "description": "Toolchain (mise) bumps require human review. Runtime version changes (Go, Node, pnpm, supabase CLI) can shift build/test behavior even on patch releases and propagate into CI via .tool-versions, so a bad bump can break every workflow at once.",
+      "description": "Toolchain (mise) bumps require human review. Runtime version changes (Go, Node, pnpm, supabase CLI) can shift build/test behavior even on patch releases and propagate into CI via mise.toml, so a bad bump can break every workflow at once.",
       "matchManagers": ["mise"],
       "automerge": false
     },

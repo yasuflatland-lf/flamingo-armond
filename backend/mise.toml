@@ -1,0 +1,11 @@
+# Go toolchain pin, kept next to `go.mod`. mise resolves hierarchically, so a
+# job run with `working_directory: backend` sees this file AND the repo-root
+# `mise.toml`; a root `mise install` does NOT see this one.
+#
+# This pins the toolchain mise installs. `go.mod`'s `go` directive is the
+# module's minimum language version and may legitimately lag it — `renovate.json`
+# groups bumps of the two into one PR so they are reviewed together, which is
+# grouping, not an equality constraint.
+
+[tools]
+go = "1.27.0"

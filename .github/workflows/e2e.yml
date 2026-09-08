@@ -12,7 +12,7 @@ on:
       - 'pnpm-workspace.yaml'
       - 'package.json'
       - 'backend/**'
-      - '.tool-versions'
+      - 'mise.toml'
       - '.github/workflows/e2e.yml'
   pull_request:
     branches: [main]
@@ -25,7 +25,7 @@ on:
       - 'pnpm-workspace.yaml'
       - 'package.json'
       - 'backend/**'
-      - '.tool-versions'
+      - 'mise.toml'
       - '.github/workflows/e2e.yml'
   schedule:
     - cron: '0 4 * * *'
@@ -42,7 +42,7 @@ jobs:
       BACKEND_URL: http://localhost:1323
       E2E_BASE_URL: http://localhost:3000
       # Pinned local-stack identity so the Next build can start before `supabase start`
-      # finishes. Deterministic for the CLI pinned in .tool-versions together with the
+      # finishes. Deterministic for the CLI pinned in mise.toml together with the
       # committed supabase/config.toml, which declares neither auth.jwt_secret nor
       # signing keys — the CLI then signs the anon JWT with its built-in secret and a
       # fixed expiry. "Export Supabase local env" asserts both still match the stack.

@@ -10,7 +10,7 @@ on:
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - 'package.json'
-      - '.tool-versions'
+      - 'mise.toml'
       - '.github/workflows/frontend.yml'
   pull_request:
     branches: [main]
@@ -21,7 +21,7 @@ on:
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - 'package.json'
-      - '.tool-versions'
+      - 'mise.toml'
       - '.github/workflows/frontend.yml'
 
 concurrency:
@@ -45,7 +45,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Set up mise (Node + pnpm from .tool-versions)
+      - name: Set up mise (Node + pnpm from mise.toml)
         uses: jdx/mise-action@v4
 
       - name: Resolve pnpm store path

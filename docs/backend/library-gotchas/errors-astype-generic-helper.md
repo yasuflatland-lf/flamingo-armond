@@ -25,7 +25,7 @@ if ve, ok := errors.AsType[*ucerr.ValidationError](err); ok {
 }
 ```
 
-This repo runs `golang 1.26.4` (see `backend/.tool-versions`), so the helper is available everywhere in `backend/`.
+This repo pins its Go toolchain well above 1.26 (see `backend/mise.toml`), so the helper is available everywhere in `backend/`.
 
 ## Why
 

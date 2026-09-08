@@ -37,7 +37,7 @@ Local development does not require any of these — `make setup` boots a local S
 
 | Tool | Why | How to install |
 |---|---|---|
-| **mise** | Pins Go, Node, pnpm, and the Supabase CLI to the versions in `.tool-versions` files | `curl https://mise.run \| sh` |
+| **mise** | Pins Go, Node, pnpm, and the Supabase CLI to the versions in `mise.toml` files | `curl https://mise.run \| sh` |
 | **Docker** | Backs `supabase start` (Postgres + Auth running locally) | Docker Desktop / OrbStack / colima |
 
 Do not install pnpm via `npm i -g pnpm` or `brew install pnpm` — a PATH-level binary shadows the mise shim and silently breaks version pinning. See [`docs/dev-setup.md` § "Tools"](docs/dev-setup.md#tools).
