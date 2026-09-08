@@ -72,6 +72,12 @@
       "groupName": "pnpm toolchain"
     },
     {
+      "description": "Hold pnpm at 11.x: Vercel cannot run pnpm 12. From v12 the npm package ships `pnpm.exe` as a plain-text placeholder that the `preinstall` script (`node install.js`) replaces with the native binary from the `@pnpm/exe.<platform>` optional deps. Vercel materialises the version named in package.json#packageManager into its package-manager-store WITHOUT running lifecycle scripts, so the shell execs the placeholder and the deploy dies with `pnpm.exe: line 4: syntax error near unexpected token ')'` -> `Command \"pnpm install\" exited with 2`. pnpm 11 has no such script (its bin is a plain `bin/pnpm.mjs`), which is why 11.x works even though Vercel's docs only list pnpm 6-10. mise installs pnpm from GitHub release binaries, so local dev and GitHub Actions stay green and never surface the break — only Vercel does. Lift this cap once https://github.com/vercel/vercel/issues/17434 is closed.",
+      "matchManagers": ["mise", "npm"],
+      "matchPackageNames": ["pnpm"],
+      "allowedVersions": "<12"
+    },
+    {
       "description": "Auto-merge minor and patch updates after CI passes",
       "matchUpdateTypes": ["minor", "patch", "digest", "pin", "lockFileMaintenance"],
       "automerge": true
