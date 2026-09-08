@@ -1,3 +1,16 @@
+# Canonical tool pinning for the repo root. `backend/mise.toml` pins the Go
+# toolchain separately, because `.github/workflows/backend.yml` runs
+# jdx/mise-action with `working_directory: backend`.
+#
+# Tool names here are mise registry names, NOT asdf plugin names: `node` and
+# `go`, never `nodejs` or `golang`. mise applies asdf-compat aliasing only to
+# the legacy `.tool-versions` format, so those spellings resolve there and fail
+# here (`mise registry golang` -> "tool not found in registry").
+#
+# `rust` + `cargo:mprocs` are dev runtime tooling: mprocs is built from source
+# via the cargo backend, which needs a Rust toolchain, so both are pinned
+# together and `mise install` stays one step.
+#
 # Auto-exports env files into the shell:
 #   - `.env` -> Google OAuth credentials so `supabase start` resolves env()
 #               placeholders in supabase/config.toml.
@@ -7,13 +20,14 @@
 # binds to $PORT by default — so we keep them scoped to the backend process.
 # `go run ./cmd/server` loads `backend/.env.local` itself via godotenv.
 # `frontend/.env.local` is loaded natively by Next.js from its own CWD.
-#
-# Tool pinning lives in `.tool-versions`; see that file for the canonical list.
-# Exception: dev runtime tooling (Rust + mprocs) lives here so it can ride
-# alongside [env]. mprocs is built from source via the cargo backend, which
-# requires a Rust toolchain — pinned together so `mise install` is one step.
 
 [tools]
+node = "24.20.0"
+pnpm = "11.25.0"
+supabase = "2.90.0"
+python = "3.14.7"
+pipx = "latest"
+"pipx:ansible-core" = "2.20.5"
 rust = "latest"
 "cargo:mprocs" = "latest"
 

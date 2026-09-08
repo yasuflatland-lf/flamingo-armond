@@ -1,0 +1,12 @@
+# Go toolchain pin for the backend. Kept separate from the repo-root
+# `mise.toml` because `.github/workflows/backend.yml` runs jdx/mise-action with
+# `working_directory: backend`, so this is the config that job resolves.
+#
+# The tool name is the mise registry name `go`, not the asdf plugin name
+# `golang` — the latter resolves only in the legacy `.tool-versions` format.
+#
+# Keep the version aligned with the `go` directive in `backend/go.mod`;
+# `renovate.json` groups the two into a single PR so they cannot drift.
+
+[tools]
+go = "1.27.0"
