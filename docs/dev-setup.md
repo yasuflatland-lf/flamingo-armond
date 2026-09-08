@@ -2,13 +2,13 @@
 
 ## Tools
 
-- mise (`curl https://mise.run | sh`) — manages Go (`backend/.tool-versions`), Node + pnpm + Supabase CLI (`./.tool-versions`), and dev runtime tooling (`./mise.toml`: Rust + mprocs).
-- Supabase CLI — local Postgres / Auth emulation. Pinned to a specific version in `./.tool-versions` (do not switch back to `supabase latest`: the CLI breaks `supabase/config.toml` across major upgrades, so the version that everyone runs must be exact).
+- mise (`curl https://mise.run | sh`) — manages Go (`backend/mise.toml`) and Node + pnpm + Supabase CLI + Python/Ansible + dev runtime tooling (`./mise.toml`).
+- Supabase CLI — local Postgres / Auth emulation. Pinned to a specific version in `./mise.toml` (do not switch back to `supabase latest`: the CLI breaks `supabase/config.toml` across major upgrades, so the version that everyone runs must be exact).
 
 ## First-time setup
 
 ```bash
-# Install Go 1.26.4 (backend/.tool-versions), Node 24.x + pnpm 11.5.3 + Supabase CLI (./.tool-versions).
+# Install Go 1.27.0 (backend/mise.toml), Node 24.x + pnpm 11.25.0 + Supabase CLI (./mise.toml).
 mise install
 
 # Install workspace deps. The frontend workspace is populated with a Next.js 16 App Router scaffold (see `frontend/CLAUDE.md`).
@@ -19,7 +19,7 @@ Verify:
 
 ```bash
 node --version        # v24.x.y
-pnpm --version        # 11.5.3  (resolved by mise from .tool-versions)
+pnpm --version        # 11.25.0 (resolved by mise from mise.toml)
 which pnpm            # ~/.local/share/mise/shims/pnpm
 ```
 
@@ -70,17 +70,18 @@ Do **not** reach for `experimental.isolatedDevBuild: false` to "fix" the toggle:
 
 > **Note**: `backend/graph/resolver/*.resolvers.go` are resolver stubs, not generated output. They are **committed** and CI verifies they are up-to-date via `git diff --exit-code -- graph/resolver/*.resolvers.go` in `backend.yml`. This is orthogonal to the "generated files are ignored" policy above.
 
-## `.tool-versions` hierarchy (mise)
+## `mise.toml` hierarchy
 
-mise resolves tool config hierarchically. Three scopes coexist without conflict:
+mise resolves tool config hierarchically. Two scopes compose without conflict:
 
 | Scope | File | Tools |
 |---|---|---|
-| Backend | `backend/.tool-versions` | Go |
-| Repo root (frontend + dev) | `./.tool-versions` | Node, pnpm, Supabase CLI, Python + Ansible |
-| Repo root (dev runtime) | `./mise.toml` | Rust + mprocs (paired with `[env]`) |
+| Backend | `backend/mise.toml` | Go |
+| Repo root | `./mise.toml` | Node, pnpm, Supabase CLI, Python + pipx/Ansible, Rust + mprocs (paired with `[env]`) |
 
-Backend CI sets `working_directory: backend` and sees only Go. Frontend CI runs from the repo root — NOT `working_directory: frontend` — because Node and pnpm are declared in the root `.tool-versions`.
+Use mise registry names in these files, not asdf plugin names: `node` and `go`, never `nodejs` or `golang`. mise accepts the asdf spellings only in the legacy `.tool-versions` format, which this repo no longer uses; in a `mise.toml` they fail to resolve (`mise registry golang` → "tool not found in registry").
+
+Backend CI sets `working_directory: backend` and sees Go plus everything the root file declares. Frontend CI runs from the repo root — NOT `working_directory: frontend` — because Node and pnpm are declared in the root `mise.toml`.
 
 ## `mise` exports `.env` into the shell
 
@@ -90,7 +91,7 @@ Practical consequence: when adding new required env vars consumed by a playbook 
 
 ## Why mise-managed pnpm, not global pnpm or Corepack
 
-The `[tools]` entries in `.tool-versions` are the single source of truth for pnpm in local dev and GitHub Actions. mise downloads the exact pinned version on demand, so every contributor and every CI runner uses the same pnpm — no drift, no "works on my machine". The `packageManager` field in root `package.json` is kept aligned and is **load-bearing for Vercel and for pnpm itself**: Vercel does not run mise and reads this field to install the matching pnpm on its build image, and pnpm 11 uses it as a self-consistency check that refuses execution when the declared and running versions disagree. Treat the two pins as one unit — bump them together.
+The `[tools]` entries in `mise.toml` are the single source of truth for pnpm in local dev and GitHub Actions. mise downloads the exact pinned version on demand, so every contributor and every CI runner uses the same pnpm — no drift, no "works on my machine". The `packageManager` field in root `package.json` is kept aligned and is **load-bearing for Vercel and for pnpm itself**: Vercel does not run mise and reads this field to install the matching pnpm on its build image, and pnpm 11 uses it as a self-consistency check that refuses execution when the declared and running versions disagree. Treat the two pins as one unit — bump them together.
 
 Do **not** install pnpm via `npm i -g pnpm` or `brew install pnpm`. Those paths compete with the mise shim on PATH, and whichever wins is timing-dependent. Corepack is no longer used in this repo — `corepack enable` is unnecessary and can be skipped or disabled.
 
@@ -129,7 +130,7 @@ Sync logic lives in `playbooks/setup.yml` as declarative Ansible tasks. To wire 
 
 ### First-time setup
 
-1. The Supabase CLI is already installed by `mise install` from the root `.tool-versions`. No separate step is needed.
+1. The Supabase CLI is already installed by `mise install` from the root `mise.toml`. No separate step is needed.
 2. Create an OAuth 2.0 client ID in Google Cloud Console (Application type: **Web application**). Use `127.0.0.1`, not `localhost` — Google validates these as distinct origins:
    - Add `http://127.0.0.1:54321/auth/v1/callback` to **Authorized redirect URIs**.
    - Add `http://127.0.0.1:3000` to **Authorized JavaScript origins**.

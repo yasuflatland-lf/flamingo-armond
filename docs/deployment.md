@@ -277,7 +277,7 @@ Production deploys are managed by Vercel's native Git integration, configured du
 
 #### Build environment mismatch risk
 
-Vercel runs its own build pipeline, distinct from the repository's `pnpm build` script. Vercel selects a Node version according to the project's dashboard settings — if that differs from the version pinned in `.tool-versions` at the repo root, the build may behave differently from local. Open the Vercel project's **Settings → General → Node.js Version** and set it to match `.tool-versions`. This is a one-time operator step that cannot be automated — Vercel project settings live in the dashboard and have no API surface exposed in the repository.
+Vercel runs its own build pipeline, distinct from the repository's `pnpm build` script. Vercel selects a Node version according to the project's dashboard settings — if that differs from the version pinned in `mise.toml` at the repo root, the build may behave differently from local. Open the Vercel project's **Settings → General → Node.js Version** and set it to match `mise.toml`. This is a one-time operator step that cannot be automated — Vercel project settings live in the dashboard and have no API surface exposed in the repository.
 
 #### Disabling Git integration
 

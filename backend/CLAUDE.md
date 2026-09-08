@@ -10,7 +10,7 @@ Go / Echo v5 backend. The L1 (`CLAUDE.md` at repo root) applies; this file adds 
 
 ## Quickstart
 
-Go is pinned via mise (`backend/.tool-versions`). Run from `backend/`:
+Go is pinned via mise (`backend/mise.toml`). Run from `backend/`:
 
 ```bash
 go mod download && go vet ./... && go build ./...
