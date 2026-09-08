@@ -8,8 +8,12 @@
 ## First-time setup
 
 ```bash
-# Install Go 1.27.0 (backend/mise.toml), Node 24.x + pnpm 11.25.0 + Supabase CLI (./mise.toml).
+# Node + pnpm + Supabase CLI + Python/Ansible, from ./mise.toml.
 mise install
+
+# Go, from backend/mise.toml. Needed as a separate step: mise resolves upward
+# from the working directory, so a root `mise install` never sees this file.
+mise -C backend install
 
 # Install workspace deps. The frontend workspace is populated with a Next.js 16 App Router scaffold (see `frontend/CLAUDE.md`).
 pnpm install
@@ -77,11 +81,18 @@ mise resolves tool config hierarchically. Two scopes compose without conflict:
 | Scope | File | Tools |
 |---|---|---|
 | Backend | `backend/mise.toml` | Go |
-| Repo root | `./mise.toml` | Node, pnpm, Supabase CLI, Python + pipx/Ansible, Rust + mprocs (paired with `[env]`) |
+| Repo root | `./mise.toml` | Node, pnpm, Supabase CLI, Python + pipx/Ansible, Rust + mprocs; also carries `[env]` |
 
-Use mise registry names in these files, not asdf plugin names: `node` and `go`, never `nodejs` or `golang`. mise accepts the asdf spellings only in the legacy `.tool-versions` format, which this repo no longer uses; in a `mise.toml` they fail to resolve (`mise registry golang` → "tool not found in registry").
+Use the mise **registry** names in these files — `node` and `go` — not the asdf plugin names `nodejs` and `golang`. Both spellings resolve: mise aliases the asdf names inside `mise.toml` too, so `golang = "1.27.0"` installs Go 1.27.0 without complaint. The registry names are still the ones to write, because they are what the registry itself answers to:
 
-Backend CI sets `working_directory: backend` and sees Go plus everything the root file declares. Frontend CI runs from the repo root — NOT `working_directory: frontend` — because Node and pnpm are declared in the root `mise.toml`.
+```console
+$ mise registry go       # core:go
+$ mise registry golang   # mise ERROR tool not found in registry: golang
+```
+
+Anything that looks a tool up by name — `mise use`, `mise registry`, and Renovate's mise manager, whose supported-backend table is keyed on registry names — sees only the canonical form.
+
+Resolution walks **up** from the working directory, never down into subdirectories. Backend CI sets `working_directory: backend`, so it sees Go plus everything the root file declares. The reverse is not true: `mise install` at the repo root does **not** install Go, because `backend/mise.toml` is below it. Frontend CI runs from the repo root — NOT `working_directory: frontend` — because Node and pnpm are declared in the root `mise.toml`.
 
 ## `mise` exports `.env` into the shell
 

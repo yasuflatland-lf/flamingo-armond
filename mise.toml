@@ -1,11 +1,7 @@
-# Canonical tool pinning for the repo root. `backend/mise.toml` pins the Go
-# toolchain separately, because `.github/workflows/backend.yml` runs
-# jdx/mise-action with `working_directory: backend`.
-#
-# Tool names here are mise registry names, NOT asdf plugin names: `node` and
-# `go`, never `nodejs` or `golang`. mise applies asdf-compat aliasing only to
-# the legacy `.tool-versions` format, so those spellings resolve there and fail
-# here (`mise registry golang` -> "tool not found in registry").
+# Canonical tool pinning for the repo root. `backend/mise.toml` pins Go next to
+# `go.mod`; mise resolves hierarchically, so a job run from `backend/` sees both
+# files. Use the mise registry names (`node`, `go`) — see
+# docs/dev-setup.md § "mise.toml hierarchy" for why the asdf spellings are not.
 #
 # `rust` + `cargo:mprocs` are dev runtime tooling: mprocs is built from source
 # via the cargo backend, which needs a Rust toolchain, so both are pinned
