@@ -1403,22 +1403,20 @@ func TestCardRepository_FindDueCards_RescueAdmitsOvernightReviewButNotSameLearnD
 		"the old 24-hour rolling floor withheld exactly this row")
 }
 
-// TestCardRepository_FindDueCards_SamplesNewCardsUnderLimit replaces the old
-// position-order selection test: new cards are now sampled randomly, so the
-// invariants are count, distinctness, and pool membership — not order.
-func TestCardRepository_FindDueCards_SamplesNewCardsUnderLimit(t *testing.T) {
+func TestCardRepository_FindDueCards_NewWindowServesNewestAddedFirst(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
 	cg := insertCardgroup(t, ctx, ownerID)
 	repo := repository.NewCardRepository(testDB.GORM)
-	now := time.Now().UTC().Add(time.Hour)
+	now := time.Now().UTC().Truncate(time.Microsecond)
 
-	pool := make(map[string]bool, 5)
+	cards := make([]*domain.Card, 5)
 	for i := 0; i < 5; i++ {
 		c := newCard(cg.ID, "new-"+string(rune('0'+i)), "back")
+		c.CreatedAt = now.Add(time.Duration(i-5) * time.Hour)
 		require.NoError(t, repo.Create(ctx, c))
-		pool[c.ID] = true
+		cards[i] = c
 	}
 
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
@@ -1428,13 +1426,34 @@ func TestCardRepository_FindDueCards_SamplesNewCardsUnderLimit(t *testing.T) {
 		RescueReviewedBefore: domain.RescueReviewedBefore(now),
 	}, 3)
 	require.NoError(t, err)
-	require.Len(t, got, 3)
-	seen := map[string]bool{}
-	for _, dc := range got {
-		require.True(t, pool[dc.Card.ID], "returned card must come from the pool")
-		require.False(t, seen[dc.Card.ID], "no duplicates")
-		seen[dc.Card.ID] = true
+	require.Equal(t, []string{cards[4].ID, cards[3].ID, cards[2].ID}, repoCardIDs(got))
+}
+
+func TestCardRepository_FindDueCards_NewWindowBreaksTiesByPositionDesc(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	cards := make([]*domain.Card, 3)
+	for i := 0; i < 3; i++ {
+		c := newCard(cg.ID, "tied-"+string(rune('0'+i)), "back")
+		c.CreatedAt = now.Add(-time.Hour)
+		c.Position = i + 1
+		require.NoError(t, repo.Create(ctx, c))
+		cards[i] = c
 	}
+
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
+		Now:                  now,
+		ReviewedBefore:       now,
+		RescueDueBefore:      domain.EndOfLearnDay(now),
+		RescueReviewedBefore: domain.RescueReviewedBefore(now),
+	}, 3)
+	require.NoError(t, err)
+	require.Equal(t, []string{cards[2].ID, cards[1].ID, cards[0].ID}, repoCardIDs(got))
 }
 
 // TestCardRepository_FindPracticeCards_BoundaryComplementarity is the critical

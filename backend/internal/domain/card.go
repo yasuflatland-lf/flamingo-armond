@@ -35,9 +35,8 @@ type Card struct {
 	UpdatedAt   time.Time
 	// Position persists the card's place within its cardgroup's source
 	// document (Notion sync order). It defaults to 0 for cards not created
-	// via Notion sync. The learn-session OrderingPolicy does not consult
-	// Position: due-card ordering is driven by the discovery-first policy in
-	// domain/service, whose DueCard view does not carry this field.
+	// via Notion sync. Learn-session selection uses it as a descending tie-break
+	// within a same-instant new-card import batch, favoring the document's end.
 	Position int
 }
 
