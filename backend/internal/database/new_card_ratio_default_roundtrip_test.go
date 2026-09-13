@@ -8,9 +8,11 @@ import (
 	"backend/internal/database"
 )
 
-// TestNewCardRatioDefaultDownUpRoundtrip pins both column defaults against a
-// real Postgres. It leaves stored preferences unchanged while the migration is
-// rolled back and reapplied.
+// TestNewCardRatioDefaultDownUpRoundtrip pins the new_card_ratio_num column
+// default against a real Postgres: 1/5 at head, 4/5 after rolling back
+// lower_new_card_ratio_default, 1/5 again after reapplying it. It only checks
+// the default applied to freshly inserted rows; it does not assert that
+// pre-existing rows survive the roundtrip.
 func TestNewCardRatioDefaultDownUpRoundtrip(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
