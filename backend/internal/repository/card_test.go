@@ -226,9 +226,11 @@ func TestCardRepository_FindDueCards_ScopedAndLimited(t *testing.T) {
 	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	// Fixtures are stamped with a LastReview well beyond the review window's
-	// UTC-date credit bound, so the band assertions below exercise the due/limit
+	// UTC-date credit bound, so the assertions below exercise the due/limit
 	// predicates rather than the bound. A cutoff strictly after now
-	// keeps every due review inside the reviewedBefore window.
+	// keeps every due review inside the reviewedBefore window. The due bound
+	// is day-granular (EndOfLearnDay), so "future" must sit past the JST day
+	// end rather than merely past now to stay outside the review window.
 	reviewedBefore := now.Add(time.Second)
 	lastReview := now.Add(-25 * time.Hour)
 
@@ -245,16 +247,12 @@ func TestCardRepository_FindDueCards_ScopedAndLimited(t *testing.T) {
 			dueNow:     now,
 			laterDue:   now.Add(-time.Hour),
 			earlierDue: now.Add(-2 * time.Hour),
-			future:     now.Add(time.Hour),
+			future:     domain.EndOfLearnDay(now).Add(time.Hour),
 			otherGroup: now.Add(-3 * time.Hour),
 		} {
 			state := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), card.ID, now)
 			state.State.Due = due
 			state.State.LastReview = lastReview
-			if card == future {
-				state.State.Stability = domain.LearnedStabilityDays
-				state.State.LastRating = domain.RatingGood
-			}
 			if err := ucsRepo.UpsertTx(ctx, tx, state); err != nil {
 				return err
 			}
@@ -269,15 +267,13 @@ func TestCardRepository_FindDueCards_ScopedAndLimited(t *testing.T) {
 		CreditReviewedBefore: domain.CreditReviewedBefore(now),
 	}
 
-	// Selection within the review phase is random() now, so a small limit picks
-	// some two of the three due review cards (never future / other-group).
+	// Review rows are ordered by the t/S key; the three due cards share the
+	// same last_review and stability, so the ucs.due ASC tiebreak makes a
+	// small limit take the two earliest-due cards (never future / other-group).
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg1.ID), window, 2)
 	require.NoError(t, err)
-	require.Len(t, got, 2)
-	due3 := map[string]bool{earlierDue.ID: true, laterDue.ID: true, dueNow.ID: true}
-	for _, id := range repoCardIDs(got) {
-		require.True(t, due3[id], "limit=2 must select from the due review set, got %q", id)
-	}
+	require.Equal(t, []string{earlierDue.ID, laterDue.ID}, repoCardIDs(got),
+		"limit=2 must take the two earliest-due review cards")
 
 	got, err = repo.FindDueCardsForUser(ctx, ownerID, string(cg1.ID), window, 10)
 	require.NoError(t, err)
@@ -349,8 +345,8 @@ func TestCardRepository_FindDueCards_FSRSStateMapping(t *testing.T) {
 			ucs := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), cards[i].ID, now)
 			ucs.State.Phase = tc.state
 			ucs.State.Due = now.Add(-time.Minute) // ensure it is due
-			// Default stability (2.5) puts these rows in the review band, so the
-			// last review must fall on an earlier UTC calendar date to clear the credit bound.
+			// Every review row must clear the UTC-date credit bound, so the
+			// last review is stamped on an earlier UTC calendar date.
 			ucs.State.LastReview = now.Add(-25 * time.Hour)
 			if err := ucsRepo.UpsertTx(ctx, tx, ucs); err != nil {
 				return err
@@ -394,9 +390,9 @@ func TestCardRepository_FindDueCards_InvalidState(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, card))
 
 	// Insert a user_card_fsrs row directly with an invalid state value (99) so
-	// that the IsValid gate in findDueCardsOn is exercised. stability 0 puts the
-	// row in the review band, so last_review is stamped on an earlier UTC
-	// calendar date to clear the credit bound and keep the row inside the review window.
+	// that the IsValid gate in findDueCardsOn is exercised. Every review row
+	// must clear the UTC-date credit bound, so last_review is stamped on an
+	// earlier UTC calendar date to keep the row inside the review window.
 	sqlDB, err := testDB.GORM.DB()
 	require.NoError(t, err)
 	_, err = sqlDB.ExecContext(ctx,
@@ -912,11 +908,11 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 }
 
 // TestCardRepository_FindDueCards_ReviewRowsPrecedeNewRows proves the
-// window-concat contract: rows from either review window always precede rows
+// window-concat contract: rows from the review window always precede rows
 // from the new-card window in the raw result, regardless of cards.position
 // (position orders rows only inside the new window, never across windows).
 // The usecase OrderingPolicy applies the final interleave; the repository
-// guarantees review, review, then new window order.
+// guarantees review-then-new window order.
 func TestCardRepository_FindDueCards_ReviewRowsPrecedeNewRows(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -939,10 +935,10 @@ func TestCardRepository_FindDueCards_ReviewRowsPrecedeNewRows(t *testing.T) {
 	newLowPos.Position = 0
 	require.NoError(t, repo.Create(ctx, newLowPos))
 
-	// Upsert the FSRS row for reviewEarly so its effective due is now-2h. Its
-	// default stability puts it in the review band, so LastReview is stamped 25h
-	// back to clear the review window's UTC-date credit bound; a cutoff
-	// strictly after now keeps the review row inside the reviewedBefore window.
+	// Upsert the FSRS row for reviewEarly so its effective due is now-2h. Every
+	// review row must clear the UTC-date credit bound, so LastReview is stamped
+	// 25h back; a cutoff strictly after now keeps the review row inside the
+	// reviewedBefore window.
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		state := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), reviewEarly.ID, now)
 		state.State.Due = now.Add(-2 * time.Hour)
@@ -1042,10 +1038,10 @@ func TestCardRepository_FindDueCards_ReviewsNotStarvedByNewBacklog(t *testing.T)
 	}))
 
 	// limit=2 is smaller than the new-card backlog. Reviews and new cards use
-	// separate LIMIT windows, so both due reviews still surface. Both review
-	// rows sit in the review band, so their LastReview is stamped 25h back to
-	// clear the UTC-date credit bound; a cutoff strictly after now keeps
-	// them inside the reviewedBefore window.
+	// separate LIMIT windows, so both due reviews still surface. Every review
+	// row must clear the UTC-date credit bound, so their LastReview is stamped
+	// 25h back; a cutoff strictly after now keeps them inside the
+	// reviewedBefore window.
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       now.Add(time.Second),
@@ -1059,10 +1055,11 @@ func TestCardRepository_FindDueCards_ReviewsNotStarvedByNewBacklog(t *testing.T)
 		"due review card must not be starved by the new-card backlog")
 	require.Contains(t, ids, reviewLater.ID,
 		"due review card must not be starved by the new-card backlog")
-	// Reviews are returned ahead of new cards; their within-band order is random().
+	// Reviews are returned ahead of new cards, ordered by the t/S key; both
+	// share last_review and stability, so the ucs.due ASC tiebreak decides.
 	require.GreaterOrEqual(t, len(ids), 2)
-	require.ElementsMatch(t, []string{reviewEarlier.ID, reviewLater.ID}, ids[:2],
-		"due reviews come first; within-band selection order is random")
+	require.Equal(t, []string{reviewEarlier.ID, reviewLater.ID}, ids[:2],
+		"due reviews come first, ordered by the retrievability key then due ASC")
 }
 
 // TestCardRepository_FindDueCards_ExcludesCardsReviewedToday verifies the
@@ -1563,12 +1560,16 @@ func TestCardRepository_FindDueCards_ReviewRowsOrderedByRetrievabilityDesc(t *te
 	repo := repository.NewCardRepository(testDB.GORM)
 	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
 	now := time.Date(2026, 9, 13, 3, 0, 0, 0, time.UTC)
+	// Keys (elapsed/stability): A 0.5, B 1.0, C 0.3, D 3.0, so the expected
+	// order [C, A, B, D] differs from stability DESC [C, D, A, B],
+	// last_review ASC [D, C, A, B] and due ASC [D, A, C, B]; dropping either
+	// factor of the key reorders the result.
 	var ids []string
 	for _, fixture := range []struct {
 		name                        string
 		elapsed, stability, overdue float64
 	}{
-		{"A", 10, 20, 3}, {"B", 2, 2, 1}, {"C", 30, 100, 2},
+		{"A", 10, 20, 3}, {"B", 2, 2, 1}, {"C", 30, 100, 2}, {"D", 90, 30, 4},
 	} {
 		card := newCard(cg.ID, fixture.name, "back")
 		require.NoError(t, repo.Create(ctx, card))
@@ -1579,7 +1580,7 @@ func TestCardRepository_FindDueCards_ReviewRowsOrderedByRetrievabilityDesc(t *te
 	}
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.NewLearnWindow(now), 20)
 	require.NoError(t, err)
-	require.Equal(t, []string{ids[2], ids[0], ids[1]}, repoCardIDs(got))
+	require.Equal(t, []string{ids[2], ids[0], ids[1], ids[3]}, repoCardIDs(got))
 }
 
 func TestCardRepository_FindDueCards_HighStabilityReviewIsServed(t *testing.T) {

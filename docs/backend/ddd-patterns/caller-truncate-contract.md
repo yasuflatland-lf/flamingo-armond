@@ -29,9 +29,9 @@ to truncate.
 order:
 
 ```go
-// The caller is responsible for truncating to a per-session limit. Apply
-// returns all cards from due without imposing a length cap; the input slice
-// is not modified, as partition produces fresh slices while preserving per-kind order.
+// Apply partitions by Phase == FSRSPhaseNew and interleaves at the ratio by largest remainder.
+// It preserves input order within each partition: selection and per-kind order belong to the repository.
+// The input is unchanged; the caller truncates the returned cards to its session limit.
 func (p *OrderingPolicy) Apply(due []domain.DueCard, ratio domain.NewCardRatio) []*domain.Card { ... }
 ```
 
@@ -53,7 +53,7 @@ keep that from drifting:
 
 1. **The docstring on `Apply` names the responsibility explicitly.** A
    reviewer reading the call site can grep the service signature and see
-   "the caller is responsible for truncating".
+   "the caller truncates the returned cards to its session limit".
 2. **The two due windows return up to `2*limit` rows, so the truncate is
    load-bearing.** The repository fetches review and new
    windows as independent `LIMIT limit` selections and concatenates them,

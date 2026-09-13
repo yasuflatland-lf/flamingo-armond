@@ -93,7 +93,7 @@ every rating despite zero scheduling credit. `Again` instead uses
 
 This non-neutral mutation is why `CreditReviewedBefore` in
 [`backend/internal/domain/learn_day.go`](../../../backend/internal/domain/learn_day.go)
-bounds the serving windows at UTC midnight of the current UTC calendar date
+bounds the review window at UTC midnight of the current UTC calendar date
 rather than treating zero scheduling credit as a safe repeat.
 
 ## The `interval == stability` identity

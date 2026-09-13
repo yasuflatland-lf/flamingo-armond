@@ -99,8 +99,10 @@ Ask these questions in order:
 Before the fix, `handleSwipe` returned `nextCards`: a freshly-shuffled slice
 of all due cards. The frontend's `onSwipeComplete` called
 `setQueue(payload.response.nextCards)`, replacing the entire queue on every
-swipe. Because `OrderingPolicy.Apply` uses a `time.Now()`-seeded random source,
-each response carried a different ordering for the same logical set, causing a
+swipe. Because `OrderingPolicy.Apply` at the time shuffled with a
+`time.Now()`-seeded random source (since removed; the policy now preserves
+repository order within each kind), each response carried a different
+ordering for the same logical set, causing a
 visible reshuffle of the remaining cards after every swipe.
 
 The fix dropped `nextCards` from `SwipeResponse`. The frontend's existing
