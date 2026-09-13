@@ -16,13 +16,12 @@ process at boot rather than degrading requests.
 func NewLearnUsecase(
     cardRepo      CardRepoForLearn,
     cardgroupRepo CardgroupRepoForLearn,
+    userPrefs     UserPrefsForLearn,
     ordering      *service.OrderingPolicy,
-    randSource    func() *rand.Rand,
     defaultLimit, maxLimit int,
     clock Clock,
     logger *slog.Logger,
-) *LearnUsecase {
-    // nil guards for required deps (panic)
+) LearnUsecase {
     if logger == nil {
         panic("usecase: learn: logger is required")
     }
@@ -32,17 +31,18 @@ func NewLearnUsecase(
     if cardgroupRepo == nil {
         panic("usecase: learn: cardgroupRepo must not be nil")
     }
-    // optional deps fall back to a default rather than panicking
+    if userPrefs == nil {
+        panic("usecase: learn: userPrefs must not be nil")
+    }
     if ordering == nil {
         ordering = service.NewOrderingPolicy()
     }
-    if randSource == nil {
-        randSource = func() *rand.Rand {
-            return rand.New(rand.NewSource(time.Now().UnixNano()))
-        }
+    if clock == nil {
+        clock = systemClock{}
     }
 
-    // relationship invariant: defaultLimit may never exceed maxLimit
+    if defaultLimit <= 0 { defaultLimit = defaultLearnNextDueLimit }
+    if maxLimit <= 0 { maxLimit = maxLearnNextDueLimit }
     if defaultLimit > maxLimit {
         panic(fmt.Sprintf(
             "usecase: learn: defaultLimit (%d) must not exceed maxLimit (%d)",
@@ -50,15 +50,15 @@ func NewLearnUsecase(
         ))
     }
 
-    return &LearnUsecase{ /* fields */ }
+    return &learnUsecase{ /* fields */ }
 }
 ```
 
-**Optional vs. required dep split.** `cardRepo`, `cardgroupRepo`, and `logger`
+**Optional vs. required dep split.** `cardRepo`, `cardgroupRepo`, `userPrefs`, and `logger`
 are required: nil indicates a wiring bug and must panic at boot. `ordering`
-and `randSource` are optional: a missing value is recoverable because the
+and `clock` are optional: a missing value is recoverable because the
 constructor knows the canonical default (`NewOrderingPolicy()` is stateless,
-`rand.New(rand.NewSource(time.Now().UnixNano()))` is the production seed).
+`systemClock{}` supplies production time).
 The fallback is intentional, not lenient: it lets tests omit deps they do not
 exercise without forcing every test to construct a `service.OrderingPolicy`
 just to satisfy the nil check.

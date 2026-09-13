@@ -157,9 +157,9 @@ func TestFSRSScheduler_Apply_BackwardClockSkewClamped(t *testing.T) {
 
 // TestFSRSScheduler_Apply_NeverSchedulesSubDayInterval pins the long-term-mode
 // invariant: service.NewFSRSScheduler keeps EnableShortTerm false, so due is at
-// least 24h after review. findDueCardsOn's rescue and filler windows and the
+// least 24h after review. findDueCardsOn's review window and the
 // day-granular replay guard in usecase/swipe.go depend on it; flipping the flag
-// reopens the zero-credit repeat prevented by domain.RescueReviewedBefore.
+// reopens the zero-credit repeat prevented by domain.CreditReviewedBefore.
 func TestFSRSScheduler_Apply_NeverSchedulesSubDayInterval(t *testing.T) {
 	t.Parallel()
 

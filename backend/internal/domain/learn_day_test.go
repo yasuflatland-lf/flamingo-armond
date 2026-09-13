@@ -127,7 +127,7 @@ func TestStartOfLearnDay(t *testing.T) {
 }
 
 // TestEndOfLearnDay pins the exclusive JST end-of-day boundary used by the
-// rescue window, including the exact local-midnight transition.
+// review window, including the exact local-midnight transition.
 func TestEndOfLearnDay(t *testing.T) {
 	t.Parallel()
 
@@ -207,15 +207,15 @@ func TestNewLearnWindow(t *testing.T) {
 	require.True(t, got.Now.Equal(now), "Now must be the input instant")
 	require.True(t, got.ReviewedBefore.Equal(StartOfLearnDay(now)),
 		"ReviewedBefore must be StartOfLearnDay(now)")
-	require.True(t, got.RescueDueBefore.Equal(EndOfLearnDay(now)),
-		"RescueDueBefore must be EndOfLearnDay(now)")
-	require.True(t, got.RescueReviewedBefore.Equal(RescueReviewedBefore(now)),
-		"RescueReviewedBefore must be RescueReviewedBefore(now)")
+	require.True(t, got.DueBefore.Equal(EndOfLearnDay(now)),
+		"DueBefore must be EndOfLearnDay(now)")
+	require.True(t, got.CreditReviewedBefore.Equal(CreditReviewedBefore(now)),
+		"CreditReviewedBefore must be CreditReviewedBefore(now)")
 }
 
-// TestRescueReviewedBefore pins the rescue and filler windows' exclusive credit
+// TestCreditReviewedBefore pins the review window's exclusive credit
 // bound to UTC midnight on now's UTC calendar date.
-func TestRescueReviewedBefore(t *testing.T) {
+func TestCreditReviewedBefore(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -252,40 +252,40 @@ func TestRescueReviewedBefore(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := RescueReviewedBefore(tc.now)
+			got := CreditReviewedBefore(tc.now)
 			require.True(t, got.Equal(tc.want), "got %v, want %v", got, tc.want)
 		})
 	}
 }
 
-func TestRescueReviewedBefore_AdmitsOvernightReviewUnderTwentyFourHours(t *testing.T) {
+func TestCreditReviewedBefore_AdmitsOvernightReviewUnderTwentyFourHours(t *testing.T) {
 	t.Parallel()
 
 	lastReview := time.Date(2026, 7, 18, 23, 0, 0, 0, learnDayZone)
 	now := time.Date(2026, 7, 19, 9, 0, 0, 0, learnDayZone)
 
-	require.True(t, lastReview.Before(RescueReviewedBefore(now)))
+	require.True(t, lastReview.Before(CreditReviewedBefore(now)))
 	require.True(t, EarnsSchedulingCredit(lastReview, now))
 	require.Less(t, now.Sub(lastReview), 24*time.Hour)
 	require.True(t, lastReview.Before(StartOfLearnDay(now)))
 }
 
-func TestRescueReviewedBefore_WithholdsSameUTCDateReview(t *testing.T) {
+func TestCreditReviewedBefore_WithholdsSameUTCDateReview(t *testing.T) {
 	t.Parallel()
 
 	lastReview := time.Date(2026, 7, 18, 9, 0, 0, 0, learnDayZone)
 	now := time.Date(2026, 7, 19, 0, 0, 0, 0, learnDayZone)
 
-	require.False(t, lastReview.Before(RescueReviewedBefore(now)))
+	require.False(t, lastReview.Before(CreditReviewedBefore(now)))
 	require.False(t, EarnsSchedulingCredit(lastReview, now))
 	require.True(t, lastReview.Before(StartOfLearnDay(now)))
 	require.Equal(t, 15*time.Hour, now.Sub(lastReview))
 }
 
-// TestRescueReviewedBefore_AgreesWithEarnsSchedulingCredit pins the invariant
+// TestCreditReviewedBefore_AgreesWithEarnsSchedulingCredit pins the invariant
 // this boundary buys: drift on either serving or recording side must fail over
 // every forward pair in a 48-hour grid.
-func TestRescueReviewedBefore_AgreesWithEarnsSchedulingCredit(t *testing.T) {
+func TestCreditReviewedBefore_AgreesWithEarnsSchedulingCredit(t *testing.T) {
 	t.Parallel()
 
 	base := time.Date(2026, 7, 18, 0, 0, 0, 0, time.UTC)
@@ -295,7 +295,7 @@ func TestRescueReviewedBefore_AgreesWithEarnsSchedulingCredit(t *testing.T) {
 			now := base.Add(time.Duration(j) * time.Hour)
 			require.Equal(t,
 				EarnsSchedulingCredit(lastReview, now),
-				lastReview.Before(RescueReviewedBefore(now)),
+				lastReview.Before(CreditReviewedBefore(now)),
 				"serving-side bound and recording-side credit rule must agree at (+%dh, +%dh)", i, j,
 			)
 		}

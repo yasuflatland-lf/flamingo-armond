@@ -160,25 +160,16 @@ separate query the client triggers on its own lifecycle.
 
 [`docs/backend/ddd-patterns/mutation-response-must-not-carry-client-managed-collection.md`](../../docs/backend/ddd-patterns/mutation-response-must-not-carry-client-managed-collection.md)
 
-### Discovery-first due ordering (80% new / 20% prior-day review)
+### Learn queue ordering
 
-A default 20-card learn session is 16 newest-added never-seen cards (80%)
-interleaved with 4 prior-day review slots (20%). Review slots prioritise rescue
-cards whose latest rating was Again or whose stability is below
-`LearnedStabilityDays`; other reviews act as filler. Rescue is day-granular up
-to the exclusive JST learn-day end, while filler must be due now, and both
-exclude cards swiped today via the JST start-of-day cutoff; both windows also
-require the previous review to fall on a different UTC calendar date — the exact
-rule `domain.EarnsSchedulingCredit` uses to grant FSRS credit, so the serving and
-recording sides test the same predicate. SQL `random()` decides which rows enter
-the two review windows; the injected `*rand.Rand` in
-`OrderingPolicy.Apply` decides their arrangement (deterministic in tests) and
-interleaves at the caller-supplied `domain.NewCardRatio` (`domain.DefaultNewCardRatio`
-= 4:1 absent a stored preference). This replaces a tie-scoped
-shuffle that never fired on dense real data (microsecond-precision `due` and
-distinct `position` make ties structurally impossible).
+The repository selects reviews by descending FSRS retrievability using the t/S
+key and new cards newest-added first. Reviews use the exclusive JST day-end due
+bound and both JST learn-day and UTC-date scheduling-credit last-review guards.
+`OrderingPolicy.Apply` preserves per-kind order and interleaves at the user's
+ratio; a full-pool default session has 16 new and 4 review cards. The usecase
+truncates the result to the session limit.
 
-[`docs/backend/ddd-patterns/discovery-first-due-ordering.md`](../../docs/backend/ddd-patterns/discovery-first-due-ordering.md)
+[`docs/backend/ddd-patterns/learn-queue-ordering.md`](../../docs/backend/ddd-patterns/learn-queue-ordering.md)
 
 ### Append-only extension of a classification with a secondary, independently-graded source
 
@@ -238,7 +229,7 @@ boundary (`string(id)` / `domain.UserID(user.Sub)`).
 - [View-level value in the domain package](../../docs/backend/ddd-patterns/view-level-value-in-domain-package.md)
 - [Caller-truncate contract for domain services](../../docs/backend/ddd-patterns/caller-truncate-contract.md)
 - [Mutation response must not carry a client-managed collection](../../docs/backend/ddd-patterns/mutation-response-must-not-carry-client-managed-collection.md)
-- [Discovery-first due ordering (80% new / 20% prior-day review)](../../docs/backend/ddd-patterns/discovery-first-due-ordering.md)
+- [Learn queue ordering](../../docs/backend/ddd-patterns/learn-queue-ordering.md)
 - [Append-only extension of a classification with a secondary, independently-graded source](../../docs/backend/ddd-patterns/append-only-classification-extension.md)
 - [Collapse "unknown" and "exists-but-hidden" into one not-found (non-disclosure gate)](../../docs/backend/ddd-patterns/notfound-collapse-non-disclosure.md)
 - [Typed bare-newtype IDs for the authorization-confusable pair](../../docs/backend/ddd-patterns/typed-id-newtype-for-authz-confusable-pair.md)

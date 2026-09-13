@@ -3,6 +3,7 @@ package repository_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -144,8 +145,8 @@ func TestCardRepository_FindDueCards_UsesPerUserFSRSRows(t *testing.T) {
 	due, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       now,
-		RescueDueBefore:      domain.EndOfLearnDay(now),
-		RescueReviewedBefore: domain.RescueReviewedBefore(now),
+		DueBefore:            domain.EndOfLearnDay(now),
+		CreditReviewedBefore: domain.CreditReviewedBefore(now),
 	}, 10)
 	require.NoError(t, err)
 	require.Equal(t, []string{dueCard.ID}, repoCardIDs(due))
@@ -184,8 +185,8 @@ func TestCardRepository_FindDueCards_IgnoresOtherUsersFSRSRows(t *testing.T) {
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       now,
-		RescueDueBefore:      domain.EndOfLearnDay(now),
-		RescueReviewedBefore: domain.RescueReviewedBefore(now),
+		DueBefore:            domain.EndOfLearnDay(now),
+		CreditReviewedBefore: domain.CreditReviewedBefore(now),
 	}, 10)
 	require.NoError(t, err)
 	require.Equal(t, []string{card.ID}, repoCardIDs(got),
@@ -224,7 +225,7 @@ func TestCardRepository_FindDueCards_ScopedAndLimited(t *testing.T) {
 	repo := repository.NewCardRepository(testDB.GORM)
 	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	// Fixtures are stamped with a LastReview well beyond the rescue window's
+	// Fixtures are stamped with a LastReview well beyond the review window's
 	// UTC-date credit bound, so the band assertions below exercise the due/limit
 	// predicates rather than the bound. A cutoff strictly after now
 	// keeps every due review inside the reviewedBefore window.
@@ -264,8 +265,8 @@ func TestCardRepository_FindDueCards_ScopedAndLimited(t *testing.T) {
 	window := domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       reviewedBefore,
-		RescueDueBefore:      domain.EndOfLearnDay(now),
-		RescueReviewedBefore: domain.RescueReviewedBefore(now),
+		DueBefore:            domain.EndOfLearnDay(now),
+		CreditReviewedBefore: domain.CreditReviewedBefore(now),
 	}
 
 	// Selection within the review phase is random() now, so a small limit picks
@@ -305,8 +306,8 @@ func TestCardRepository_FindDueCards_NoFSRSRow(t *testing.T) {
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       now,
-		RescueDueBefore:      domain.EndOfLearnDay(now),
-		RescueReviewedBefore: domain.RescueReviewedBefore(now),
+		DueBefore:            domain.EndOfLearnDay(now),
+		CreditReviewedBefore: domain.CreditReviewedBefore(now),
 	}, 10)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
@@ -348,7 +349,7 @@ func TestCardRepository_FindDueCards_FSRSStateMapping(t *testing.T) {
 			ucs := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), cards[i].ID, now)
 			ucs.State.Phase = tc.state
 			ucs.State.Due = now.Add(-time.Minute) // ensure it is due
-			// Default stability (2.5) puts these rows in the rescue band, so the
+			// Default stability (2.5) puts these rows in the review band, so the
 			// last review must fall on an earlier UTC calendar date to clear the credit bound.
 			ucs.State.LastReview = now.Add(-25 * time.Hour)
 			if err := ucsRepo.UpsertTx(ctx, tx, ucs); err != nil {
@@ -361,8 +362,8 @@ func TestCardRepository_FindDueCards_FSRSStateMapping(t *testing.T) {
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       now.Add(time.Second),
-		RescueDueBefore:      domain.EndOfLearnDay(now),
-		RescueReviewedBefore: domain.RescueReviewedBefore(now),
+		DueBefore:            domain.EndOfLearnDay(now),
+		CreditReviewedBefore: domain.CreditReviewedBefore(now),
 	}, 10)
 	require.NoError(t, err)
 	require.Len(t, got, len(cases))
@@ -394,8 +395,8 @@ func TestCardRepository_FindDueCards_InvalidState(t *testing.T) {
 
 	// Insert a user_card_fsrs row directly with an invalid state value (99) so
 	// that the IsValid gate in findDueCardsOn is exercised. stability 0 puts the
-	// row in the rescue band, so last_review is stamped on an earlier UTC
-	// calendar date to clear the credit bound and keep the row inside the rescue window.
+	// row in the review band, so last_review is stamped on an earlier UTC
+	// calendar date to clear the credit bound and keep the row inside the review window.
 	sqlDB, err := testDB.GORM.DB()
 	require.NoError(t, err)
 	_, err = sqlDB.ExecContext(ctx,
@@ -409,8 +410,8 @@ func TestCardRepository_FindDueCards_InvalidState(t *testing.T) {
 	_, err = repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       now.Add(time.Second),
-		RescueDueBefore:      domain.EndOfLearnDay(now),
-		RescueReviewedBefore: domain.RescueReviewedBefore(now),
+		DueBefore:            domain.EndOfLearnDay(now),
+		CreditReviewedBefore: domain.CreditReviewedBefore(now),
 	}, 10)
 	require.ErrorContains(t, err, "repository: card: invalid FSRSPhase 99")
 }
@@ -915,7 +916,7 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 // from the new-card window in the raw result, regardless of cards.position
 // (position orders rows only inside the new window, never across windows).
 // The usecase OrderingPolicy applies the final interleave; the repository
-// guarantees rescue, filler, then new window order.
+// guarantees review, review, then new window order.
 func TestCardRepository_FindDueCards_ReviewRowsPrecedeNewRows(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -939,8 +940,8 @@ func TestCardRepository_FindDueCards_ReviewRowsPrecedeNewRows(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, newLowPos))
 
 	// Upsert the FSRS row for reviewEarly so its effective due is now-2h. Its
-	// default stability puts it in the rescue band, so LastReview is stamped 25h
-	// back to clear the rescue window's UTC-date credit bound; a cutoff
+	// default stability puts it in the review band, so LastReview is stamped 25h
+	// back to clear the review window's UTC-date credit bound; a cutoff
 	// strictly after now keeps the review row inside the reviewedBefore window.
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		state := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), reviewEarly.ID, now)
@@ -953,8 +954,8 @@ func TestCardRepository_FindDueCards_ReviewRowsPrecedeNewRows(t *testing.T) {
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       now.Add(time.Second),
-		RescueDueBefore:      domain.EndOfLearnDay(now),
-		RescueReviewedBefore: domain.RescueReviewedBefore(now),
+		DueBefore:            domain.EndOfLearnDay(now),
+		CreditReviewedBefore: domain.CreditReviewedBefore(now),
 	}, 10)
 	require.NoError(t, err)
 	require.Equal(t,
@@ -1042,14 +1043,14 @@ func TestCardRepository_FindDueCards_ReviewsNotStarvedByNewBacklog(t *testing.T)
 
 	// limit=2 is smaller than the new-card backlog. Reviews and new cards use
 	// separate LIMIT windows, so both due reviews still surface. Both review
-	// rows sit in the rescue band, so their LastReview is stamped 25h back to
+	// rows sit in the review band, so their LastReview is stamped 25h back to
 	// clear the UTC-date credit bound; a cutoff strictly after now keeps
 	// them inside the reviewedBefore window.
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       now.Add(time.Second),
-		RescueDueBefore:      domain.EndOfLearnDay(now),
-		RescueReviewedBefore: domain.RescueReviewedBefore(now),
+		DueBefore:            domain.EndOfLearnDay(now),
+		CreditReviewedBefore: domain.CreditReviewedBefore(now),
 	}, 2)
 	require.NoError(t, err)
 	ids := repoCardIDs(got)
@@ -1109,165 +1110,25 @@ func TestCardRepository_FindDueCards_ExcludesCardsReviewedToday(t *testing.T) {
 		return ucsRepo.UpsertTx(ctx, tx, boundary)
 	}))
 
-	// This test isolates the reviewedBefore cutoff, so the rescue window's
+	// This test isolates the reviewedBefore cutoff, so the review window's
 	// UTC-date credit bound is passed wide open and every fixture clears it.
 	// In production that bound can be tighter or looser than the JST
 	// start-of-day depending on the session's JST hour, so leaving it at its real
 	// value could mask a mutation of the strict `<` here; it is pinned on its own
-	// by TestCardRepository_FindDueCards_RescueUsesUTCCreditBound.
-	openRescueBound := now.Add(time.Second)
+	// by TestCardRepository_FindDueCards_ReviewWindowUsesUTCCreditBound.
+	openCreditBound := now.Add(time.Second)
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       startOfToday,
-		RescueDueBefore:      domain.EndOfLearnDay(now),
-		RescueReviewedBefore: openRescueBound,
+		DueBefore:            domain.EndOfLearnDay(now),
+		CreditReviewedBefore: openCreditBound,
 	}, 10)
 	require.NoError(t, err)
 	require.Equal(t, []string{reviewedYesterday.ID}, repoCardIDs(got),
 		"only cards reviewed strictly before the boundary enter the review window")
 }
 
-// TestCardRepository_FindDueCards_RescueOutranksFiller verifies that each band
-// has its own LIMIT and rescue rows are concatenated before filler rows even
-// when both eligible pools exceed the requested limit.
-func TestCardRepository_FindDueCards_RescueOutranksFiller(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	cg := insertCardgroup(t, ctx, ownerID)
-	repo := repository.NewCardRepository(testDB.GORM)
-	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
-	now := time.Date(2026, 7, 19, 3, 0, 0, 0, time.UTC)
-
-	// Every fixture was last reviewed on an earlier UTC calendar date, so the
-	// rescue window's credit bound admits the rescue-band rows and the band
-	// ordering is the only thing under test.
-	lastReview := now.Add(-25 * time.Hour)
-	mk := func(front string, stability float64, rating domain.Rating) *domain.Card {
-		c := newCard(cg.ID, front, "back")
-		require.NoError(t, repo.Create(ctx, c))
-		upsertDueCardState(t, ctx, ucsRepo, ownerID, c, now, now.Add(-time.Hour), lastReview, stability, rating)
-		return c
-	}
-	rescueSet := map[string]bool{}
-	fillerSet := map[string]bool{}
-	for i := 0; i < 3; i++ {
-		card := mk("rescue-"+string(rune('0'+i)), 6.9, domain.RatingGood)
-		rescueSet[card.ID] = true
-	}
-	for i := 0; i < 3; i++ {
-		card := mk("filler-"+string(rune('0'+i)), domain.LearnedStabilityDays, domain.RatingGood)
-		fillerSet[card.ID] = true
-	}
-
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.NewLearnWindow(now), 2)
-	require.NoError(t, err)
-	require.Len(t, got, 4)
-	for i, card := range got[:2] {
-		require.True(t, rescueSet[card.Card.ID], "slot %d must come from the rescue pool", i)
-		require.True(t, card.Rescue)
-	}
-	for i, card := range got[2:] {
-		require.True(t, fillerSet[card.Card.ID], "slot %d must come from the filler pool", i+2)
-		require.False(t, card.Rescue)
-	}
-}
-
-func TestCardRepository_FindDueCards_NullLastRatingFallsIntoFiller(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	cg := insertCardgroup(t, ctx, ownerID)
-	repo := repository.NewCardRepository(testDB.GORM)
-	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
-	now := time.Date(2026, 7, 19, 3, 0, 0, 0, time.UTC)
-
-	card := newCard(cg.ID, "null-last-rating", "back")
-	require.NoError(t, repo.Create(ctx, card))
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, card, now, now.Add(-time.Hour), now.Add(-25*time.Hour), domain.LearnedStabilityDays, 0)
-
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.NewLearnWindow(now), 10)
-	require.NoError(t, err)
-	require.Equal(t, []string{card.ID}, repoCardIDs(got))
-	require.False(t, got[0].Rescue, "NULL last_rating with learned stability belongs to filler")
-}
-
-// TestCardRepository_FindDueCards_FillerExcludesExactCreditBound pins the
-// strict filler boundary. Changing its last_review `<` back to `<=` makes the
-// card at the credit bound appear and fails this mutation proof.
-func TestCardRepository_FindDueCards_FillerExcludesExactCreditBound(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	cg := insertCardgroup(t, ctx, ownerID)
-	repo := repository.NewCardRepository(testDB.GORM)
-	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
-	now := time.Date(2026, 7, 18, 23, 0, 0, 0, time.UTC) // 08:00 JST on 2026-07-19
-	start := domain.StartOfLearnDay(now)
-	end := domain.EndOfLearnDay(now)
-	bound := domain.RescueReviewedBefore(now)
-	require.True(t, bound.Before(start),
-		"before 09:00 JST the UTC-date credit bound is the tighter of the two last_review bounds")
-	due := now.Add(-time.Hour)
-
-	atBound := newCard(cg.ID, "filler-at-credit-bound", "back")
-	justBefore := newCard(cg.ID, "filler-one-second-before-bound", "back")
-	for _, card := range []*domain.Card{atBound, justBefore} {
-		require.NoError(t, repo.Create(ctx, card))
-	}
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, atBound, now, due, bound,
-		domain.LearnedStabilityDays, domain.RatingGood)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, justBefore, now, due, bound.Add(-time.Second),
-		domain.LearnedStabilityDays, domain.RatingGood)
-
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
-		Now:                  now,
-		ReviewedBefore:       start,
-		RescueDueBefore:      end,
-		RescueReviewedBefore: bound,
-	}, 10)
-	require.NoError(t, err)
-	require.Equal(t, []string{justBefore.ID}, repoCardIDs(got),
-		"the filler credit bound is exclusive: a card last reviewed exactly at UTC midnight of today's UTC date is withheld")
-	require.False(t, got[0].Rescue)
-}
-
-func TestCardRepository_FindDueCards_StabilityBoundary(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	cg := insertCardgroup(t, ctx, ownerID)
-	repo := repository.NewCardRepository(testDB.GORM)
-	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
-	now := time.Date(2026, 7, 19, 3, 0, 0, 0, time.UTC)
-
-	below := newCard(cg.ID, "stability-6.9", "back")
-	nullBelow := newCard(cg.ID, "null-last-rating-stability-6.9", "back")
-	at := newCard(cg.ID, "stability-7.0", "back")
-	require.NoError(t, repo.Create(ctx, below))
-	require.NoError(t, repo.Create(ctx, nullBelow))
-	require.NoError(t, repo.Create(ctx, at))
-	// An earlier UTC calendar date than now, so the rescue rows clear the credit
-	// bound and stability alone decides the band.
-	lastReview := now.Add(-25 * time.Hour)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, below, now, now.Add(-time.Hour), lastReview, 6.9, domain.RatingGood)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, nullBelow, now, now.Add(-time.Hour), lastReview, 6.9, 0)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, at, now, now.Add(-time.Hour), lastReview, 7.0, domain.RatingGood)
-
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.NewLearnWindow(now), 10)
-	require.NoError(t, err)
-	require.ElementsMatch(t, []string{below.ID, nullBelow.ID, at.ID}, repoCardIDs(got))
-	byID := make(map[string]domain.DueCard, len(got))
-	for _, dueCard := range got {
-		byID[dueCard.Card.ID] = dueCard
-	}
-	require.True(t, byID[below.ID].Rescue)
-	require.True(t, byID[nullBelow.ID].Rescue,
-		"NULL last_rating with stability below the learned threshold belongs to rescue")
-	require.False(t, byID[at.ID].Rescue)
-}
-
-func TestCardRepository_FindDueCards_RescueUsesJSTDayEnd(t *testing.T) {
+func TestCardRepository_FindDueCards_ReviewWindowUsesJSTDayEnd(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -1280,35 +1141,36 @@ func TestCardRepository_FindDueCards_RescueUsesJSTDayEnd(t *testing.T) {
 	end := domain.EndOfLearnDay(now)
 	dueAt23JST := time.Date(2026, 7, 19, 14, 0, 0, 0, time.UTC)
 
-	rescueToday := newCard(cg.ID, "rescue-due-23-jst", "back")
-	fillerToday := newCard(cg.ID, "filler-due-23-jst", "back")
-	atBoundary := newCard(cg.ID, "rescue-due-at-day-end", "back")
-	for _, card := range []*domain.Card{rescueToday, fillerToday, atBoundary} {
+	againToday := newCard(cg.ID, "again-due-23-jst", "back")
+	goodToday := newCard(cg.ID, "good-due-23-jst", "back")
+	atBoundary := newCard(cg.ID, "review-due-at-day-end", "back")
+	afterBoundary := newCard(cg.ID, "review-due-after-day-end", "back")
+	for _, card := range []*domain.Card{againToday, goodToday, atBoundary, afterBoundary} {
 		require.NoError(t, repo.Create(ctx, card))
 	}
-	// An earlier UTC calendar date than now, so the rescue rows clear the credit
+	// An earlier UTC calendar date than now, so the review rows clear the credit
 	// bound and the due cutoff alone decides inclusion.
 	lastReview := now.Add(-25 * time.Hour)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, rescueToday, now, dueAt23JST, lastReview, 20, domain.RatingAgain)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, fillerToday, now, dueAt23JST, lastReview, 20, domain.RatingGood)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, againToday, now, dueAt23JST, lastReview, 20, domain.RatingAgain)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, goodToday, now, dueAt23JST, lastReview, 20, domain.RatingGood)
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, atBoundary, now, end, lastReview, 20, domain.RatingAgain)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, afterBoundary, now, end.Add(time.Second), lastReview, 20, domain.RatingGood)
 
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       start,
-		RescueDueBefore:      end,
-		RescueReviewedBefore: domain.RescueReviewedBefore(now),
+		DueBefore:            end,
+		CreditReviewedBefore: domain.CreditReviewedBefore(now),
 	}, 10)
 	require.NoError(t, err)
-	require.Equal(t, []string{rescueToday.ID}, repoCardIDs(got),
-		"rescue due later today is included; filler due later today and rescue due exactly at day end are excluded")
-	require.True(t, got[0].Rescue)
+	require.ElementsMatch(t, []string{againToday.ID, goodToday.ID}, repoCardIDs(got),
+		"reviews due later today are included; reviews due exactly at day end are excluded")
 }
 
-// TestCardRepository_FindDueCards_RescueUsesUTCCreditBound pins the strict UTC
+// TestCardRepository_FindDueCards_ReviewWindowUsesUTCCreditBound pins the strict UTC
 // boundary. Changing `<` to `<=` admits atBound; dropping the bound admits
 // sameUTCDate, so either mutation fails loudly.
-func TestCardRepository_FindDueCards_RescueUsesUTCCreditBound(t *testing.T) {
+func TestCardRepository_FindDueCards_ReviewWindowUsesUTCCreditBound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -1318,7 +1180,7 @@ func TestCardRepository_FindDueCards_RescueUsesUTCCreditBound(t *testing.T) {
 	now := time.Date(2026, 7, 18, 23, 0, 0, 0, time.UTC) // 08:00 JST on 2026-07-19
 	start := domain.StartOfLearnDay(now)
 	end := domain.EndOfLearnDay(now)
-	bound := domain.RescueReviewedBefore(now)
+	bound := domain.CreditReviewedBefore(now)
 	require.True(t, bound.Before(start),
 		"before 09:00 JST the UTC-date credit bound is the tighter of the two last_review bounds")
 	due := now.Add(-time.Hour)
@@ -1332,40 +1194,39 @@ func TestCardRepository_FindDueCards_RescueUsesUTCCreditBound(t *testing.T) {
 	}
 	oneSecondBeforeLastReview := bound.Add(-time.Second)
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, sameUTCDate, now, due,
-		time.Date(2026, 7, 18, 9, 0, 0, 0, time.UTC), 20, domain.RatingAgain)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, atBound, now, due, bound, 20, domain.RatingAgain)
+		time.Date(2026, 7, 18, 9, 0, 0, 0, time.UTC), 20, domain.RatingGood)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, atBound, now, due, bound, 20, domain.RatingGood)
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, oneSecondBefore, now, due,
-		oneSecondBeforeLastReview, 20, domain.RatingAgain)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, fullDayElapsed, now, due, now.Add(-25*time.Hour), 20, domain.RatingAgain)
+		oneSecondBeforeLastReview, 20, domain.RatingGood)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, fullDayElapsed, now, due, now.Add(-25*time.Hour), 20, domain.RatingGood)
 
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       start,
-		RescueDueBefore:      end,
-		RescueReviewedBefore: bound,
+		DueBefore:            end,
+		CreditReviewedBefore: bound,
 	}, 10)
 	require.NoError(t, err)
 	require.ElementsMatch(t,
 		[]string{oneSecondBefore.ID, fullDayElapsed.ID}, repoCardIDs(got),
-		"a rescue card is served early exactly when its last review fell on an earlier UTC calendar date")
+		"a review card is served early exactly when its last review fell on an earlier UTC calendar date")
 	require.NotContains(t, repoCardIDs(got), sameUTCDate.ID,
-		"a repeat on the same UTC date earns zero stability growth and must not take a rescue slot")
+		"a repeat on the same UTC date earns zero stability growth and must not take a review slot")
 	require.NotContains(t, repoCardIDs(got), atBound.ID,
 		"the credit bound is exclusive")
 	require.Less(t, now.Sub(oneSecondBeforeLastReview), 24*time.Hour)
 
 	seen := map[string]bool{}
 	for _, dueCard := range got {
-		require.False(t, seen[dueCard.Card.ID], "the three windows must not return a card twice")
+		require.False(t, seen[dueCard.Card.ID], "the two windows must not return a card twice")
 		seen[dueCard.Card.ID] = true
-		require.True(t, dueCard.Rescue, "both surviving rows come from the rescue window")
 	}
 }
 
-// TestCardRepository_FindDueCards_RescueAdmitsOvernightReviewButNotSameLearnDay
+// TestCardRepository_FindDueCards_ReviewWindowAdmitsOvernightReviewButNotSameLearnDay
 // pins both halves of the rule: UTC credit admits the overnight review, while
 // the JST cutoff still prevents a second serve within one learn day.
-func TestCardRepository_FindDueCards_RescueAdmitsOvernightReviewButNotSameLearnDay(t *testing.T) {
+func TestCardRepository_FindDueCards_ReviewWindowAdmitsOvernightReviewButNotSameLearnDay(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -1375,7 +1236,7 @@ func TestCardRepository_FindDueCards_RescueAdmitsOvernightReviewButNotSameLearnD
 	now := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC) // 09:00 JST on 2026-07-19
 	start := domain.StartOfLearnDay(now)
 	end := domain.EndOfLearnDay(now)
-	bound := domain.RescueReviewedBefore(now)
+	bound := domain.CreditReviewedBefore(now)
 	require.True(t, start.Before(bound),
 		"at or after 09:00 JST the JST day cutoff is the tighter of the two last_review bounds")
 	due := now.Add(-time.Hour)
@@ -1394,13 +1255,12 @@ func TestCardRepository_FindDueCards_RescueAdmitsOvernightReviewButNotSameLearnD
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       start,
-		RescueDueBefore:      end,
-		RescueReviewedBefore: bound,
+		DueBefore:            end,
+		CreditReviewedBefore: bound,
 	}, 10)
 	require.NoError(t, err)
 	require.Equal(t, []string{overnight.ID}, repoCardIDs(got),
 		"a review that crossed UTC midnight is served the next morning even under 24 hours elapsed")
-	require.True(t, got[0].Rescue)
 	require.Less(t, now.Sub(overnightLastReview), 24*time.Hour,
 		"the old 24-hour rolling floor withheld exactly this row")
 }
@@ -1427,8 +1287,8 @@ func TestCardRepository_FindDueCards_NewWindowServesNewestAddedFirst(t *testing.
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       now,
-		RescueDueBefore:      domain.EndOfLearnDay(now),
-		RescueReviewedBefore: domain.RescueReviewedBefore(now),
+		DueBefore:            domain.EndOfLearnDay(now),
+		CreditReviewedBefore: domain.CreditReviewedBefore(now),
 	}, 3)
 	require.NoError(t, err)
 	require.Equal(t, []string{cards[4].ID, cards[3].ID, cards[2].ID}, repoCardIDs(got))
@@ -1459,8 +1319,8 @@ func TestCardRepository_FindDueCards_NewWindowBreaksTiesByPositionDesc(t *testin
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       now,
-		RescueDueBefore:      domain.EndOfLearnDay(now),
-		RescueReviewedBefore: domain.RescueReviewedBefore(now),
+		DueBefore:            domain.EndOfLearnDay(now),
+		CreditReviewedBefore: domain.CreditReviewedBefore(now),
 	}, 3)
 	require.NoError(t, err)
 	require.Equal(t, []string{cards[0].ID, cards[1].ID, cards[2].ID}, repoCardIDs(got),
@@ -1521,13 +1381,13 @@ func TestCardRepository_FindPracticeCards_BoundaryComplementarity(t *testing.T) 
 		return ucsRepo.UpsertTx(ctx, tx, today)
 	}))
 
-	// This test isolates the shared boundary, so the rescue window's UTC-date
+	// This test isolates the shared boundary, so the review window's UTC-date
 	// credit bound is passed wide open and every fixture clears it. At its real
 	// value the bound could keep reviewedAtBoundary out of the learn window even
 	// under a mutation of the strict `<`, silently killing the documented
 	// mutation proof; the bound is pinned on its own by
-	// TestCardRepository_FindDueCards_RescueUsesUTCCreditBound.
-	openRescueBound := now.Add(time.Second)
+	// TestCardRepository_FindDueCards_ReviewWindowUsesUTCCreditBound.
+	openCreditBound := now.Add(time.Second)
 
 	// Learn window: cards reviewed strictly before the boundary, plus the
 	// never-reviewed card via the new-card window. reviewedAtBoundary and
@@ -1535,8 +1395,8 @@ func TestCardRepository_FindPracticeCards_BoundaryComplementarity(t *testing.T) 
 	learn, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       boundary,
-		RescueDueBefore:      domain.EndOfLearnDay(now),
-		RescueReviewedBefore: openRescueBound,
+		DueBefore:            domain.EndOfLearnDay(now),
+		CreditReviewedBefore: openCreditBound,
 	}, 10)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{reviewedYesterday.ID, neverReviewed.ID}, repoCardIDs(learn),
@@ -1693,4 +1553,53 @@ func TestCardRepo_CountMatchingFrontsFold_DistinctCaseVariants(t *testing.T) {
 	n0, err := repo.CountMatchingFrontsFold(ctx, string(cg.ID), []string{})
 	require.NoError(t, err)
 	require.Equal(t, int64(0), n0)
+}
+
+func TestCardRepository_FindDueCards_ReviewRowsOrderedByRetrievabilityDesc(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Date(2026, 9, 13, 3, 0, 0, 0, time.UTC)
+	var ids []string
+	for _, fixture := range []struct {
+		name                        string
+		elapsed, stability, overdue float64
+	}{
+		{"A", 10, 20, 3}, {"B", 2, 2, 1}, {"C", 30, 100, 2},
+	} {
+		card := newCard(cg.ID, fixture.name, "back")
+		require.NoError(t, repo.Create(ctx, card))
+		upsertDueCardState(t, ctx, ucsRepo, ownerID, card, now,
+			now.Add(-time.Duration(fixture.overdue)*24*time.Hour),
+			now.Add(-time.Duration(fixture.elapsed)*24*time.Hour), fixture.stability, domain.RatingGood)
+		ids = append(ids, card.ID)
+	}
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.NewLearnWindow(now), 20)
+	require.NoError(t, err)
+	require.Equal(t, []string{ids[2], ids[0], ids[1]}, repoCardIDs(got))
+}
+
+func TestCardRepository_FindDueCards_HighStabilityReviewIsServed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Date(2026, 9, 13, 3, 0, 0, 0, time.UTC)
+	card := newCard(cg.ID, "high-stability", "back")
+	require.NoError(t, repo.Create(ctx, card))
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, card, now, now.Add(-24*time.Hour), now.Add(-2*24*time.Hour), 20, domain.RatingGood)
+	for i := 0; i < 25; i++ {
+		low := newCard(cg.ID, fmt.Sprintf("low-stability-%d", i), "back")
+		require.NoError(t, repo.Create(ctx, low))
+		upsertDueCardState(t, ctx, ucsRepo, ownerID, low, now, now.Add(-24*time.Hour), now.Add(-10*24*time.Hour), 2, domain.RatingAgain)
+	}
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.NewLearnWindow(now), 20)
+	require.NoError(t, err)
+	require.Len(t, got, 20)
+	require.Equal(t, card.ID, got[0].Card.ID)
 }

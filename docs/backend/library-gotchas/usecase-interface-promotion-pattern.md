@@ -128,7 +128,7 @@ the correct boundary.
 
 The alternative — duplicating the full constructor body in `NewSwipeUsecaseWithTx` — is
 tempting but costly: any future change to the production constructor's default initialization
-logic (e.g., changing `ordering` or `randSource` defaults) must be mirrored in the `WithTx`
+logic (e.g., changing `ordering` or `clock` defaults) must be mirrored in the `WithTx`
 variant, and the drift is invisible until a test relies on the differing behavior.
 
 ## Pointer-to-interface anti-pattern
