@@ -166,8 +166,8 @@ The repository selects reviews by descending FSRS retrievability using the t/S
 key and new cards newest-added first. Reviews use the exclusive JST day-end due
 bound and both JST learn-day and UTC-date scheduling-credit last-review guards.
 `OrderingPolicy.Apply` preserves per-kind order and interleaves at the user's
-ratio; a full-pool default session has 16 new and 4 review cards. The usecase
-truncates the result to the session limit.
+ratio; the default is 4 new and 16 review cards in a full-pool session, while
+80% new remains the cap. The usecase truncates the result to the session limit.
 
 [`docs/backend/ddd-patterns/learn-queue-ordering.md`](../../docs/backend/ddd-patterns/learn-queue-ordering.md)
 

@@ -103,11 +103,9 @@ func TestToDomainUserPreference_LearnDisplayMode(t *testing.T) {
 }
 
 // TestToDomainUserPreference_NewCardRatioAboveCapFallsBackToDefault pins the
-// read-path auto-heal: a stored ratio whose new share exceeds the 80% review floor
-// (19/20 = 95% new) could pass the previous loose column CHECK but is rejected
-// by domain.ParseNewCardRatio, so toDomainUserPreference normalizes it to
-// DefaultNewCardRatio on read — existing FSRS-breaking rows self-heal with no DB
-// migration. An accepted stored ratio is preserved. No live DB required.
+// read-path normalization of ratios above the 80% cap. Such ratios could pass
+// the previous loose CHECK but ParseNewCardRatio rejects them, so the mapper
+// falls back to DefaultNewCardRatio. Accepted stored ratios remain unchanged.
 func TestToDomainUserPreference_NewCardRatioAboveCapFallsBackToDefault(t *testing.T) {
 	t.Parallel()
 

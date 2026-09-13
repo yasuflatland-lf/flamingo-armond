@@ -7,7 +7,7 @@ import (
 	"backend/internal/database"
 )
 
-// TestSwipeRecordsCardgroupFKDownUpRoundtrip proves that the newest migration
+// TestSwipeRecordsCardgroupFKDownUpRoundtrip proves that the target migration
 // drops and restores both the swipe_records.cardgroup_id foreign key and the
 // single-column index that backs it, without leaving the schema behind the latest
 // migration version.
@@ -42,14 +42,14 @@ func TestSwipeRecordsCardgroupFKDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back five migrations newest-first:
-	// tighten_new_card_ratio_check, realign_fsrs_snapshot_columns_to_v4,
+	// Step back six migrations newest-first:
+	// lower_new_card_ratio_default, tighten_new_card_ratio_check, realign_fsrs_snapshot_columns_to_v4,
 	// widen_updated_at_triggers_to_insert,
 	// widen_text_length_checks, then add_cardgroup_fk_to_swipe_records (the target).
 	// The Steps(1) below
 	// re-applies only the cardgroup FK; the t.Cleanup restores the rest. Bump
 	// this count when adding migrations after add_cardgroup_fk_to_swipe_records.
-	if err := m.Steps(-5); err != nil {
+	if err := m.Steps(-6); err != nil {
 		t.Fatalf("migrate down cardgroup fk migration: %v", err)
 	}
 	if _, ok := swipeRecordsCardgroupFKDeleteRule(t, ctx, sqlDB); ok {

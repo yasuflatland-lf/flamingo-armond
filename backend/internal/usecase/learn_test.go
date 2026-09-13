@@ -77,7 +77,7 @@ func (m *mockLearnUserPrefs) FindByUserID(_ context.Context, _ string) (*domain.
 }
 
 // notFoundPrefs returns a userPrefs stub reporting no stored preference row, so
-// NextDueCards falls back to domain.DefaultNewCardRatio (the default 4:1 order).
+// NextDueCards falls back to domain.DefaultNewCardRatio (the default 1:4 order).
 func notFoundPrefs() *mockLearnUserPrefs {
 	return &mockLearnUserPrefs{err: repository.ErrNotFound}
 }
@@ -320,7 +320,7 @@ func TestLearnUsecaseNextDueCards_TruncatesToDueLimit(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, got, 3, "result must be truncated to the requested limit")
-	require.Equal(t, []string{"new-1", "new-2", "rev-1"}, learnCardIDs(got))
+	require.Equal(t, []string{"rev-1", "rev-2", "new-1"}, learnCardIDs(got))
 }
 
 // TestLearnUsecaseNextDueCards_HappyPathReviewOnly verifies the simple path
@@ -373,7 +373,7 @@ func ratioRows(now time.Time) []domain.DueCard {
 // TestLearnUsecaseNextDueCards_UsesStoredRatio verifies that a stored non-default
 // ratio (1/2) reaches OrderingPolicy.Apply: the 1:1 alternation puts new cards in
 // the even slots and review cards in the odd slots, distinct from the default
-// 4:1 order [N,N,R,N,R,R].
+// 1:4 order [R,R,N,R,N,N].
 func TestLearnUsecaseNextDueCards_UsesStoredRatio(t *testing.T) {
 	t.Parallel()
 
@@ -405,8 +405,8 @@ func TestLearnUsecaseNextDueCards_UsesStoredRatio(t *testing.T) {
 }
 
 // TestLearnUsecaseNextDueCards_ErrNotFoundUsesDefaultRatio verifies that a
-// missing preference row falls back to domain.DefaultNewCardRatio (4:1), yielding
-// the default [N,N,R,N,R,R] order for the 3-new/3-review fixture.
+// missing preference row falls back to domain.DefaultNewCardRatio (1:4), yielding
+// the default [R,R,N,R,N,N] order for the 3-new/3-review fixture.
 func TestLearnUsecaseNextDueCards_ErrNotFoundUsesDefaultRatio(t *testing.T) {
 	t.Parallel()
 
@@ -427,7 +427,7 @@ func TestLearnUsecaseNextDueCards_ErrNotFoundUsesDefaultRatio(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, got, 6)
-	require.Equal(t, []string{"new-1", "new-2", "rev-1", "new-3", "rev-2", "rev-3"}, learnCardIDs(got))
+	require.Equal(t, []string{"rev-1", "rev-2", "new-1", "rev-3", "new-2", "new-3"}, learnCardIDs(got))
 }
 
 // --- PracticeTodaysCards tests ---

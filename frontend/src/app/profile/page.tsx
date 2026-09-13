@@ -40,9 +40,9 @@ const MeNewCardRatioQuery = graphql(`
   }
 `);
 
-// Mirrors domain.DefaultNewCardRatio on the backend: 4/5 = 80% new cards. Used
+// Mirrors domain.DefaultNewCardRatio on the backend: 1/5 = 20% new cards. Used
 // when the caller is an admin but the ratio fetch fails.
-const DEFAULT_NEW_CARD_RATIO = { numerator: 4, denominator: 5 };
+const DEFAULT_NEW_CARD_RATIO = { numerator: 1, denominator: 5 };
 
 export default async function ProfilePage() {
   const auth = await requireAuthenticated("/login");
