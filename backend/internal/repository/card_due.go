@@ -114,9 +114,9 @@ func findPracticeCardsOn(db *gorm.DB, userID, cardgroupID string, reviewedAfter 
 // a shared helper must not embed a caller-specific layer prefix.
 func dueRowsOn(db *gorm.DB, userID, where string, whereArgs []any, order clause.Expression, limit int, wrapMsg string) ([]dueCardRow, error) {
 	var rows []dueCardRow
-	// ucs.last_review is used in WHERE clauses by both callers (findDueCardsOn
-	// review window and findPracticeCardsOn) but is not projected into
-	// dueCardRow — it is filter-only and not needed after scan.
+	// ucs.last_review and ucs.stability are read by the WHERE predicates (both
+	// callers) and by the review window's ORDER BY key, but are not projected
+	// into dueCardRow — they are not needed after scan.
 	if err := db.
 		Table("cards").
 		Select("cards.id, cards.cardgroup_id, cards.front, cards.back, cards.created_at, cards.updated_at, cards.position, ucs.state, ucs.due").

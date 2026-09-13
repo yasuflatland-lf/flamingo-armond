@@ -185,9 +185,9 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
   // learn-day rollover (which refills the due pool wholesale). The reset is
   // not about the just-swiped card — that one can never come back today — but
   // about the verdict's age: it is a point-in-time snapshot. The review window
-  // admits every card due before the JST day end, and its eligibility set
-  // moves at the 09:00 JST credit rollover and when cards are added, so the
-  // pool can refill while the session runs.
+  // admits every card due before the JST day end and its eligibility set moves
+  // at the 09:00 JST credit rollover; the new-card window grows whenever cards
+  // are added, so the pool can refill while the session runs.
   const exhaustedRef = useRef(false);
   // Tracks the cardgroup the exhaustion verdict belongs to. When the active
   // cardgroup changes, the prefetch effect below clears `exhaustedRef` before

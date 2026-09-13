@@ -1583,6 +1583,30 @@ func TestCardRepository_FindDueCards_ReviewRowsOrderedByRetrievabilityDesc(t *te
 	require.Equal(t, []string{ids[2], ids[0], ids[1], ids[3]}, repoCardIDs(got))
 }
 
+func TestCardRepository_FindDueCards_ReviewKeyFloorsElapsedDays(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Date(2026, 9, 13, 3, 0, 0, 0, time.UTC)
+	due := now.Add(-time.Hour)
+	// Sub-day offsets separate the floored key from the raw one: A is 47h/S=2
+	// (floored 1/2 = 0.5, raw 0.979) and B is 25h/S=1.2 (floored 1/1.2 = 0.833,
+	// raw 0.868), so only floor(elapsed days) as in go-fsrs dateDiffRaw yields
+	// [A, B]; the unfloored key would yield [B, A].
+	a := newCard(cg.ID, "A", "back")
+	require.NoError(t, repo.Create(ctx, a))
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, a, now, due, now.Add(-47*time.Hour), 2, domain.RatingGood)
+	b := newCard(cg.ID, "B", "back")
+	require.NoError(t, repo.Create(ctx, b))
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, b, now, due, now.Add(-25*time.Hour), 1.2, domain.RatingGood)
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.NewLearnWindow(now), 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{a.ID, b.ID}, repoCardIDs(got))
+}
+
 func TestCardRepository_FindDueCards_HighStabilityReviewIsServed(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
