@@ -25,7 +25,7 @@ start-of-day boundary:
 rows, err := dueRowsOn(db, userID,
     "cards.cardgroup_id = ? AND ucs.last_review >= ?",
     []any{cardgroupID, reviewedAfter},
-    "random()",
+    clause.Expr{SQL: "random()"},
     limit,
     "repository: card: find practice cards")
 ```
@@ -56,7 +56,7 @@ first:
 newRows, err := dueRowsOn(db, userID,
     "cards.cardgroup_id = ? AND ucs.due IS NULL",
     []any{cardgroupID},
-    "cards.created_at DESC, cards.position DESC, cards.id DESC",
+    clause.Expr{SQL: "cards.created_at DESC, cards.position DESC, cards.id DESC"},
     limit,
     "repository: card: find due cards")
 ```

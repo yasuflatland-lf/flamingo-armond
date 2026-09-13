@@ -270,7 +270,7 @@ The sentinel `repository.ErrCardgroupNotFound` lives in `repository/user_prefere
 
 Because the read runs after the commit, an infrastructure failure there does **not** fail the mutation: `HandleSwipe` logs the chain and returns the neutral empty-window snapshot (`ModeDefault`, zero review count) instead. The `handleSwipe` error channel therefore means exactly one thing — "the swipe was NOT persisted" — which is what lets the client re-queue the card on error without risking a double review. Context cancellation is the one exception and still propagates unwrapped, since a torn-down caller has nothing to report to.
 
-The re-queue is safe in the other direction too: a replayed request is a success-shaped no-op. Inside the transaction, `HandleSwipe` compares the `last_review` of the row loaded by `FindByUserAndCardIDsTx` against `domain.StartOfLearnDay(now)`; a card already reviewed in the current JST learn day skips both the FSRS upsert and the swipe-record insert, logs the skip, and still returns the normal success payload. This is the write-side complement of the serving-side window described in [`docs/backend/ddd-patterns/discovery-first-due-ordering.md` § "Contracts"](backend/ddd-patterns/discovery-first-due-ordering.md#contracts) — the queue includes only cards whose `last_review` is strictly before the boundary, so the recording guard uses the exact complement (`!last_review.Before(boundary)`) and the two agree on the boundary instant. The comparison must read the loaded row, not the state synthesized by `domain.NewUserCardFSRSForNewCard`, which stamps `LastReview` with `now` and would otherwise swallow the first-ever swipe of every card.
+The re-queue is safe in the other direction too: a replayed request is a success-shaped no-op. Inside the transaction, `HandleSwipe` compares the `last_review` of the row loaded by `FindByUserAndCardIDsTx` against `domain.StartOfLearnDay(now)`; a card already reviewed in the current JST learn day skips both the FSRS upsert and the swipe-record insert, logs the skip, and still returns the normal success payload. This is the write-side complement of the serving-side window described in [`docs/backend/ddd-patterns/learn-queue-ordering.md` § "Contracts"](backend/ddd-patterns/learn-queue-ordering.md#contracts) — the queue includes only cards whose `last_review` is strictly before the boundary, so the recording guard uses the exact complement (`!last_review.Before(boundary)`) and the two agree on the boundary instant. The comparison must read the loaded row, not the state synthesized by `domain.NewUserCardFSRSForNewCard`, which stamps `LastReview` with `now` and would otherwise swallow the first-ever swipe of every card.
 
 The response exposes both `performanceMode` and `metrics`. On the wire `performanceMode` is the `SwipePerformanceMode` enum — `DIFFICULT`, `DEFAULT`, `GOOD`, `EASY`, `MASTERED` — which corresponds in that order to the calculator's internal modes `0..4`; `toSwipePerformanceModeModel` in `backend/graph/resolver/mapper.go` performs the order-preserving conversion. The internal modes and their bands:
 
@@ -284,7 +284,7 @@ The response exposes both `performanceMode` and `metrics`. On the wire `performa
 
 The legacy guard is preserved: fewer than 20 reviews always returns `ModeDefault`. Average difficulty then shifts the mode by one step: `>= 0.7` lowers it, `<= 0.3` raises it, and the final value is clamped to `0..4`. Current FSRS difficulty values are stored on the `1..10` scale, so the calculator normalizes each one as `normalized = difficulty / 10`, clamped to `[0, 1]`, before applying those boundaries. The division is unconditional: a mastered card whose FSRS difficulty is pinned at the floor of exactly `1.0` maps to `0.1` (the low-difficulty band), not `1.0`. A strict `> 1` guard would leave the floor at `1.0` and trip the high-difficulty threshold, inverting the mode downward for the easiest cards.
 
-`StudyStreak` buckets each swipe by its **JST learn-day** rather than by UTC calendar day. Every swipe is keyed with `domain.LearnDayKey(swipe.ReviewedAt)` and the streak walks back from `domain.StartOfLearnDay(now)`, both of which use a fixed UTC+9 offset (`time.FixedZone("JST", 9*60*60)` in [`backend/internal/domain/learn_day.go`](../backend/internal/domain/learn_day.go)). The learn-day therefore rolls over at **15:00 UTC** (JST midnight), not UTC midnight, and the streak is 0 whenever the current JST learn-day has no swipe yet. This keeps `studyStreak` consistent with the learn queue's JST start-of-day cutoff — see [`docs/backend/ddd-patterns/discovery-first-due-ordering.md` § "Contracts"](backend/ddd-patterns/discovery-first-due-ordering.md#contracts). The UTC+9 offset is hard-coded because the product currently assumes a Japan-resident learner; a per-user profile time-zone field would replace it as a separate feature.
+`StudyStreak` buckets each swipe by its **JST learn-day** rather than by UTC calendar day. Every swipe is keyed with `domain.LearnDayKey(swipe.ReviewedAt)` and the streak walks back from `domain.StartOfLearnDay(now)`, both of which use a fixed UTC+9 offset (`time.FixedZone("JST", 9*60*60)` in [`backend/internal/domain/learn_day.go`](../backend/internal/domain/learn_day.go)). The learn-day therefore rolls over at **15:00 UTC** (JST midnight), not UTC midnight, and the streak is 0 whenever the current JST learn-day has no swipe yet. This keeps `studyStreak` consistent with the learn queue's JST start-of-day cutoff — see [`docs/backend/ddd-patterns/learn-queue-ordering.md` § "Contracts"](backend/ddd-patterns/learn-queue-ordering.md#contracts). The UTC+9 offset is hard-coded because the product currently assumes a Japan-resident learner; a per-user profile time-zone field would replace it as a separate feature.
 
 ### Learn and practice queries
 
@@ -356,11 +356,10 @@ slots — until the caller changes it. Slots are filled by largest-remainder
 distribution, so the ratio holds on every prefix rather than only on whole
 cycles: any `limit` yields the nearest whole number of new cards to
 `limit * numerator / denominator`, subject to how many of each kind are due.
-The review side is drawn from cards whose due time has arrived or passed, plus
-cards you failed on their last review or whose memory stability is still below
-the learned threshold; those are served ahead of the rest and may be served
-ahead of their own due time as long as it falls inside today's JST learn day.
-Cards already reviewed today (JST) are excluded from both groups.
+The review side is every card whose due time falls before the end of today's
+JST learn day, served highest FSRS retrievability first (the cards most likely
+to still be remembered come first). Cards already reviewed today (JST) or on
+the current UTC date are excluded from the review group.
 Returns an empty list when the cardgroup has no eligible cards.
 Limit defaults to 20 (clamped to 100). Returns UNAUTHENTICATED if the caller does not own
 the cardgroup; BAD_USER_INPUT if the cardgroup does not exist.
@@ -376,7 +375,7 @@ and the two error codes the caller must handle. Keep descriptions result-oriente
 calls). Do not list error codes only in the resolver body — that surface is invisible
 to client code-generators and frontend teams reading the schema. The queue composition
 behind the description is documented in
-[`docs/backend/ddd-patterns/discovery-first-due-ordering.md`](backend/ddd-patterns/discovery-first-due-ordering.md),
+[`docs/backend/ddd-patterns/learn-queue-ordering.md`](backend/ddd-patterns/learn-queue-ordering.md),
 and the order in which those two error codes are decided in
 [Learn and practice queries](#learn-and-practice-queries).
 

@@ -3,7 +3,6 @@ package resolver_test
 import (
 	"context"
 	"encoding/json"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -143,7 +142,6 @@ func newLearnSrv(cardRepo *cardMockRepo, cgRepo *cardMockCGRepo) *handler.Server
 		cgRepo,
 		learnUserPrefsStub{},
 		service.NewOrderingPolicy(),
-		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 		20,
 		100,
 		nil,

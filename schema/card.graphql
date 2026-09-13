@@ -135,11 +135,10 @@ extend type Query {
   distribution, so the ratio holds on every prefix rather than only on whole
   cycles: any `limit` yields the nearest whole number of new cards to
   `limit * numerator / denominator`, subject to how many of each kind are due.
-  The review side is drawn from cards whose due time has arrived or passed, plus
-  cards you failed on their last review or whose memory stability is still below
-  the learned threshold; those are served ahead of the rest and may be served
-  ahead of their own due time as long as it falls inside today's JST learn day.
-  Cards already reviewed today (JST) are excluded from both groups.
+  The review side is every card whose due time falls before the end of today's
+  JST learn day, served highest FSRS retrievability first (the cards most likely
+  to still be remembered come first). Cards already reviewed today (JST) or on
+  the current UTC date are excluded from the review group.
   Returns an empty list when the cardgroup has no eligible cards.
   Limit defaults to 20 (clamped to 100). Returns UNAUTHENTICATED if the caller does not own
   the cardgroup; BAD_USER_INPUT if the cardgroup does not exist.

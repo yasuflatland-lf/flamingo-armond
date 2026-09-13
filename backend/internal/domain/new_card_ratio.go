@@ -33,7 +33,7 @@ const NewCardRatioDenMax = DefaultLearnSessionSize
 // NewCardRatioMaxNewShareNum / NewCardRatioMaxNewShareDen cap the new-card
 // share at 4/5 (80%) so the review share stays >= 20% — the discovery-first
 // floor. Above it review slots starve and the backlog grows unbounded; proven in
-// docs/backend/ddd-patterns/discovery-first-due-ordering.md and the formal study.
+// docs/backend/ddd-patterns/learn-queue-ordering.md and the formal study.
 const (
 	NewCardRatioMaxNewShareNum = 4
 	NewCardRatioMaxNewShareDen = 5

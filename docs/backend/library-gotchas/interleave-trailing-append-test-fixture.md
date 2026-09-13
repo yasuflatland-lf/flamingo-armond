@@ -27,7 +27,7 @@ for ; i < len(newC); i++ { out = append(out, newC[i].Card) }
 A fixture that splits evenly — e.g. 16 new + 4 review at ratio 4:1 — drains
 both buckets on the same slot. Neither trailing loop runs. A test built around
 that fixture proves the ratio pattern but does NOT prove that either
-trailing-append path emits cards in their post-shuffle order.
+trailing-append path emits cards in their repository order.
 
 ### Two fixtures per interleave
 

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/rand"
 	"time"
 
 	"backend/internal/auth"
@@ -56,7 +55,6 @@ type learnUsecase struct {
 	cardgroupRepo CardgroupRepoForLearn
 	userPrefs     UserPrefsForLearn
 	ordering      *service.OrderingPolicy
-	randSource    func() *rand.Rand
 	clock         Clock
 	defaultLimit  int
 	maxLimit      int
@@ -76,7 +74,6 @@ func NewLearnUsecase(
 	cardgroupRepo CardgroupRepoForLearn,
 	userPrefs UserPrefsForLearn,
 	ordering *service.OrderingPolicy,
-	randSource func() *rand.Rand,
 	defaultLimit, maxLimit int,
 	clock Clock,
 	logger *slog.Logger,
@@ -96,11 +93,6 @@ func NewLearnUsecase(
 	if ordering == nil {
 		ordering = service.NewOrderingPolicy()
 	}
-	if randSource == nil {
-		randSource = func() *rand.Rand {
-			return rand.New(rand.NewSource(time.Now().UnixNano()))
-		}
-	}
 	if clock == nil {
 		clock = systemClock{}
 	}
@@ -118,7 +110,6 @@ func NewLearnUsecase(
 		cardgroupRepo: cardgroupRepo,
 		userPrefs:     userPrefs,
 		ordering:      ordering,
-		randSource:    randSource,
 		clock:         clock,
 		defaultLimit:  defaultLimit,
 		maxLimit:      maxLimit,
@@ -155,8 +146,8 @@ func (u *learnUsecase) NextDueCards(ctx context.Context, cardgroupID string, lim
 	}
 	n = u.clampLimit(n)
 	now := u.clock.Now().UTC()
-	// LearnWindow.RescueReviewedBefore is the UTC-date credit bound shared by the
-	// rescue and filler windows: a card repeated on the same UTC calendar date
+	// LearnWindow.CreditReviewedBefore is the UTC-date credit bound for the
+	// review window: a card repeated on the same UTC calendar date
 	// earns zero FSRS scheduling credit, so it must not be served.
 	due, err := u.cardRepo.FindDueCardsForUser(ctx, user.Sub, cardgroupID, domain.NewLearnWindow(now), n)
 	if err != nil {
@@ -174,7 +165,7 @@ func (u *learnUsecase) NextDueCards(ctx context.Context, cardgroupID string, lim
 	case err != nil && !errors.Is(err, repository.ErrNotFound):
 		return nil, wrapInfraErr(err, "usecase: learn: load user preference")
 	}
-	ordered := u.ordering.Apply(due, u.randSource(), ratio)
+	ordered := u.ordering.Apply(due, ratio)
 	if len(ordered) > n {
 		ordered = ordered[:n]
 	}
