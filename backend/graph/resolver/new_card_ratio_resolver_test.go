@@ -59,7 +59,7 @@ func mustNewCardRatio(t *testing.T, num, den int) domain.NewCardRatio {
 	return r
 }
 
-func TestUserNewCardRatio_NoPreferenceDefaultsToFourFifths(t *testing.T) {
+func TestUserNewCardRatio_NoPreferenceDefaultsToOneFifth(t *testing.T) {
 	t.Parallel()
 
 	userMock := &mockUserRepository{

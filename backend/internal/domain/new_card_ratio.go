@@ -62,10 +62,11 @@ var (
 		DefaultLearnSessionSize)
 )
 
-// DefaultNewCardRatio (4/5) is applied when a user has no stored preference.
-// New share 4, review share 1 → interleave 4:1, matching the historical
-// hard-coded 4:1 new:review interleave this VO replaces.
-var DefaultNewCardRatio = mustNewCardRatio(4, 5)
+// DefaultNewCardRatio (1/5) is applied when a user has no stored preference.
+// New share 1, review share 4 → interleave 1:4. Anki's guidance of roughly
+// ten reviews per new card per day is the reference; 1/5 is the nearest default
+// that keeps the 5-card denominator.
+var DefaultNewCardRatio = mustNewCardRatio(1, 5)
 
 // ParseNewCardRatio reduces num/den and validates each bound in check order.
 // The reduced denominator must not exceed the default session size and must

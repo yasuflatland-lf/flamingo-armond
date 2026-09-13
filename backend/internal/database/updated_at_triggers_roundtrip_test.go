@@ -90,7 +90,7 @@ func requireWithinDatabaseWindow(t *testing.T, got, before, after time.Time) {
 	require.False(t, got.After(after), "updated_at %v is after database ceiling %v", got, after)
 }
 
-// TestUpdatedAtTriggersDownUpRoundtrip proves the newest migration adds INSERT
+// TestUpdatedAtTriggersDownUpRoundtrip proves the target migration adds INSERT
 // to all six updated_at triggers, preserves their UPDATE behavior, restores the
 // old insert behavior on down, and reapplies the new behavior on up.
 //
@@ -136,9 +136,9 @@ func TestUpdatedAtTriggersDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// tighten_new_card_ratio_check and realign_fsrs_snapshot_columns_to_v4 sit
-	// above the trigger migration. Bump this count when adding later migrations.
-	require.NoError(t, m.Steps(-3))
+	// lower_new_card_ratio_default, tighten_new_card_ratio_check, and
+	// realign_fsrs_snapshot_columns_to_v4 sit above the trigger migration.
+	require.NoError(t, m.Steps(-4))
 	requireUpdatedAtTriggerEvents(t, ctx, sqlDB, false)
 	_, legacyInsertedAt := insertCardgroupWithUpdatedAt(t, ctx, sqlDB, ownerID, sentinel)
 	require.True(t, sentinel.Equal(legacyInsertedAt), "down migration must preserve supplied updated_at")

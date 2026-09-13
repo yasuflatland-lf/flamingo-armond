@@ -73,9 +73,9 @@ func TestFSRSSnapshotRealignDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// tighten_new_card_ratio_check sits above realign_fsrs_snapshot_columns_to_v4,
-	// so two steps reach the target. Bump this count when adding later migrations.
-	if err := m.Steps(-2); err != nil {
+	// lower_new_card_ratio_default and tighten_new_card_ratio_check sit above
+	// realign_fsrs_snapshot_columns_to_v4, so three steps reach the target.
+	if err := m.Steps(-3); err != nil {
 		t.Fatalf("migrate down FSRS snapshot realignment: %v", err)
 	}
 	requireColumnExists(t, ctx, sqlDB, "swipe_records", "elapsed_days")

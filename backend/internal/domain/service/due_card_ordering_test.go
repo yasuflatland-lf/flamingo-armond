@@ -42,18 +42,17 @@ func TestOrderingPolicy_Apply_Empty(t *testing.T) {
 func TestOrderingPolicy_Apply_MixedCompositionSlots(t *testing.T) {
 	t.Parallel()
 
-	// 5 review + 20 new. Largest-remainder distribution at 4/5 hands every
-	// fifth slot from index 2 to the review bucket, so review cards occupy
-	// exactly slots 2, 7, 12, 17, 22.
+	// 20 review + 5 new. Largest-remainder distribution at 1/5 puts new cards
+	// in one-based slots 3, 8, 13, 18, and 23.
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
 	in := make([]domain.DueCard, 0, 25)
-	reviewSet := make(map[string]bool, 5)
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 20; i++ {
 		id := fmt.Sprintf("rev-%d", i)
-		reviewSet[id] = true
 		in = append(in, dueCard(id, domain.FSRSPhaseLearning, base.Add(time.Duration(i)*time.Minute)))
 	}
-	for i := 0; i < 20; i++ {
+	newSet := make(map[string]bool, 5)
+	for i := 0; i < 5; i++ {
+		newSet[fmt.Sprintf("new-%d", i)] = true
 		in = append(in, dueCard(fmt.Sprintf("new-%d", i), domain.FSRSPhaseNew, base.Add(time.Duration(100+i)*time.Minute)))
 	}
 
@@ -62,9 +61,9 @@ func TestOrderingPolicy_Apply_MixedCompositionSlots(t *testing.T) {
 
 	for i, c := range got {
 		if i%5 == 2 {
-			require.True(t, reviewSet[c.ID], "slot %d must be a review card, got %q", i, c.ID)
+			require.True(t, newSet[c.ID], "slot %d must be a new card, got %q", i, c.ID)
 		} else {
-			require.False(t, reviewSet[c.ID], "slot %d must be a new card, got %q", i, c.ID)
+			require.False(t, newSet[c.ID], "slot %d must be a review card, got %q", i, c.ID)
 		}
 	}
 }
@@ -72,7 +71,7 @@ func TestOrderingPolicy_Apply_MixedCompositionSlots(t *testing.T) {
 func TestOrderingPolicy_Apply_NonDefaultRatioInterleavesOneToOne(t *testing.T) {
 	t.Parallel()
 
-	// 3 new + 3 review. The default 4/5 ratio emits [N,N,R,N,R,R]; a 1/2 ratio
+	// 3 new + 3 review. The default 1/5 ratio emits [R,R,N,R,N,N]; a 1/2 ratio
 	// (new share 1, review share 1) alternates 1:1 starting with new, so new
 	// cards land in the even slots and review cards in the odd slots. The
 	// distinct slot composition proves the caller-supplied ratio reaches Apply.
@@ -299,9 +298,9 @@ func TestInterleave_PrefixFidelityAcrossAcceptedRatios(t *testing.T) {
 }
 
 // TestInterleave_ServesNewCardEarlierThanTheOldCycle is the P1a regression: the
-// removed cycle emission put den-num review cards ahead of the first new card,
-// so the shipped 4/5 default served none in a one-card session. The first new
-// card now lands at slot 1 for the default and at worst slot den-num elsewhere.
+// removed cycle emission put den-num review cards ahead of the first new card.
+// The shipped 1/5 default now serves its first new card at slot 3, while every
+// accepted ratio stays inside the slot den-num bound.
 func TestInterleave_ServesNewCardEarlierThanTheOldCycle(t *testing.T) {
 	t.Parallel()
 
@@ -318,8 +317,8 @@ func TestInterleave_ServesNewCardEarlierThanTheOldCycle(t *testing.T) {
 		return -1
 	}
 
-	require.Equal(t, 1, firstNewSlot(domain.DefaultNewCardRatio),
-		"the shipped 4/5 default must serve a new card in a one-card session")
+	require.Equal(t, 3, firstNewSlot(domain.DefaultNewCardRatio),
+		"the shipped 1/5 default serves its first new card at slot 3, inside the den - num = 4 bound")
 
 	for den := 2; den <= domain.NewCardRatioDenMax; den++ {
 		for num := 1; num < den; num++ {
@@ -335,7 +334,7 @@ func TestInterleave_ServesNewCardEarlierThanTheOldCycle(t *testing.T) {
 }
 
 // TestInterleave_AdvertisedDefaultSessionSplit pins the advertised composition:
-// a full-pool default session is exactly 16 new / 4 review, the split the
+// a full-pool default session is exactly 4 new / 16 review, the split the
 // removed cycle emission also produced at whole multiples of the denominator.
 func TestInterleave_AdvertisedDefaultSessionSplit(t *testing.T) {
 	t.Parallel()
@@ -351,8 +350,8 @@ func TestInterleave_AdvertisedDefaultSessionSplit(t *testing.T) {
 		}
 	}
 
-	require.Equal(t, 16, served, "a default 20-card session must serve 16 new cards")
-	require.Equal(t, 4, domain.DefaultLearnSessionSize-served, "and 4 review cards")
+	require.Equal(t, 4, served, "a default 20-card session must serve 4 new cards")
+	require.Equal(t, 16, domain.DefaultLearnSessionSize-served, "and 16 review cards")
 }
 
 func TestOrderingPolicy_Apply_PreservesRepositoryOrderWithinKind(t *testing.T) {

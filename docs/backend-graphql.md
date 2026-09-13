@@ -351,7 +351,7 @@ The resolver layer for these operations lives in `backend/graph/resolver/card_im
 """
 Next batch of cards for a learning session: never-seen cards, newest-added first,
 interleaved with review cards at the caller's own `User.newCardRatio` setting
-(see `updateNewCardRatio`), which defaults to 4/5 — four new cards per five
+(see `updateNewCardRatio`), which defaults to 1/5 — one new card per five
 slots — until the caller changes it. Slots are filled by largest-remainder
 distribution, so the ratio holds on every prefix rather than only on whole
 cycles: any `limit` yields the nearest whole number of new cards to

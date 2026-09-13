@@ -60,7 +60,7 @@ var widenedTextLengthChecks = []struct {
 	{"master_cards", "master_cards_back_length", "10000", "500"},
 }
 
-// TestWidenTextLengthChecksDownUpRoundtrip proves the newest migration restores
+// TestWidenTextLengthChecksDownUpRoundtrip proves the target migration restores
 // the original narrow bounds on the way down and the widened bounds on the way
 // back up, for all six text-length constraints, without leaving the schema
 // behind the latest migration version.
@@ -92,10 +92,11 @@ func TestWidenTextLengthChecksDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// tighten_new_card_ratio_check, realign_fsrs_snapshot_columns_to_v4 and
+	// lower_new_card_ratio_default, tighten_new_card_ratio_check,
+	// realign_fsrs_snapshot_columns_to_v4 and
 	// widen_updated_at_triggers_to_insert sit above widen_text_length_checks, so
-	// four steps reach the target. Bump this count when adding later migrations.
-	if err := m.Steps(-4); err != nil {
+	// five steps reach the target. Bump this count when adding later migrations.
+	if err := m.Steps(-5); err != nil {
 		t.Fatalf("migrate down widen_text_length_checks: %v", err)
 	}
 	for _, c := range widenedTextLengthChecks {
