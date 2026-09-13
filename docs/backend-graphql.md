@@ -349,7 +349,7 @@ The resolver layer for these operations lives in `backend/graph/resolver/card_im
 
 ```graphql
 """
-Next batch of cards for a learning session: randomly sampled never-seen cards
+Next batch of cards for a learning session: never-seen cards, newest-added first,
 interleaved with review cards at the caller's own `User.newCardRatio` setting
 (see `updateNewCardRatio`), which defaults to 4/5 — four new cards per five
 slots — until the caller changes it. Slots are filled by largest-remainder

@@ -19,7 +19,7 @@ whenever the keys it scopes to are dense.
 
 **80/20 is a full-pool target, not an invariant.** When both candidate pools are
 full — the deck has at least 16 never-seen cards *and* at least 4 eligible
-prior-day reviews — a default 20-card session composes as **16 uniformly-sampled
+prior-day reviews — a default 20-card session composes as **16 newest-added
 never-seen cards (80%)** interleaved with **4 prior-day review cards (20%)**
 (16/4 at `n = 20` under `domain.DefaultNewCardRatio` = 4/5). That 16/4 split is
 the composition *only under full pools*. When both buckets remain available,
@@ -69,30 +69,32 @@ Within those mechanisms:
 - A card whose `last_review` is at or after the learner's JST start-of-today is
   **excluded** from the review window, so a card swiped today never reappears
   in today's queue regardless of its FSRS re-due interval.
-- New-card sampling is uniform across the whole unseen pool via SQL `random()`,
-  so consecutive sessions surface different cards instead of walking the
-  deterministic `created_at` / `position` (document) order.
+- **New-card selection** is deterministic newest-added-first by descending
+  `(created_at, position, id)`. The import upsert preserves the add instant;
+  position favors the end of a same-instant source-document batch. A swiped
+  card leaves the window, so consecutive sessions still surface different cards.
 
 ## Mechanics
 
-Selection and arrangement are deliberately split across layers so tests stay
-deterministic while the database does the sampling:
+Selection and arrangement are deliberately split across layers so repository
+window selection stays independent from session arrangement:
 
 | Stage | Owner | Behaviour |
 |---|---|---|
-| Selection (which rows enter each window) | `repository.FindDueCardsForUser` | Three independent `LIMIT` windows, each ordered by `random()`: rescue reviews (`due < rescueDueBefore AND last_review < reviewedBefore AND last_review < rescueReviewedBefore` plus `last_rating = Again OR stability < LearnedStabilityDays`), disjoint filler reviews (`due <= now AND last_review < reviewedBefore AND last_review < rescueReviewedBefore` plus `last_rating IS DISTINCT FROM Again AND stability >= LearnedStabilityDays`), then new cards with no FSRS row. |
+| Selection (which rows enter each window) | `repository.FindDueCardsForUser` | Three independent `LIMIT` windows: rescue reviews ordered by `random()` (`due < rescueDueBefore AND last_review < reviewedBefore AND last_review < rescueReviewedBefore` plus `last_rating = Again OR stability < LearnedStabilityDays`), disjoint filler reviews ordered by `random()` (`due <= now AND last_review < reviewedBefore AND last_review < rescueReviewedBefore` plus `last_rating IS DISTINCT FROM Again AND stability >= LearnedStabilityDays`), then new cards with no FSRS row ordered by `created_at DESC, position DESC, id DESC`. |
 | Arrangement (order within the batch) | `service.OrderingPolicy.Apply` | Injected `*rand.Rand` shuffles the new partition fully and the review partition within same-band runs; then interleaves at the caller-supplied ratio (`domain.DefaultNewCardRatio` = 4:1 absent a stored preference) by largest-remainder slot distribution. |
 | Truncation | `usecase.LearnUsecase.NextDueCards` | Caps the interleaved result to the session limit (`ordered[:n]`). Because the three windows return up to `3*limit` rows, this truncate is load-bearing: it yields the 16/4 split for a 20-card request only when both the combined review pool and new-card pool are full, and skews toward review when the unseen pool is short (see Policy). |
 
-`random()` runs in Postgres and cannot be seeded from Go, so it decides only
-*which* rows are eligible; the deterministic arrangement is the injected
-`*rand.Rand`'s job (see [inject `*rand.Rand` into pure functions](../library-gotchas/inject-rand-rand-for-deterministic-test.md)).
+For review windows, `random()` runs in Postgres and cannot be seeded from Go,
+so it decides which review rows are selected. New-window selection is
+deterministic newest-added-first. The injected `*rand.Rand` controls subsequent
+arrangement (see [inject `*rand.Rand` into pure functions](../library-gotchas/inject-rand-rand-for-deterministic-test.md)).
 
 ## Contracts
 
 - **Repository concatenates rescue reviews before filler reviews.** The rescue
-  and filler predicates are disjoint, and each window uses its own `LIMIT` and
-  `ORDER BY random()`. This is a contract with `OrderingPolicy`'s
+  and filler predicates are disjoint, and each review window uses its own
+  `LIMIT` and `ORDER BY random()`. This is a contract with `OrderingPolicy`'s
   `shuffleWithinBand`, which detects each contiguous band with a single linear
   pass and never shuffles across the boundary. A filler card therefore cannot
   displace a rescue card from the review slots. The filler predicate uses
@@ -189,8 +191,10 @@ backlog therefore
 drains more slowly than a pure due-date order would drain it. This is deliberate:
 queue's primary job became surfacing the unseen backlog, not maximising
 retention throughput. `cards.position` remains Notion-sync metadata (assigned
-as the zero-based document index, overwritten on re-sync) but no longer drives
-learn ordering — new cards are sampled randomly, not walked in document order.
+as the zero-based document index, overwritten on re-sync); the new window uses
+it only as a descending tie-break inside a same-`created_at` import batch, after
+`created_at DESC` — new cards are served newest-added first, not walked in
+document order.
 
 ## Reference
 

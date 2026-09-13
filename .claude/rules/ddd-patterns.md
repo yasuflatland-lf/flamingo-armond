@@ -162,7 +162,7 @@ separate query the client triggers on its own lifecycle.
 
 ### Discovery-first due ordering (80% new / 20% prior-day review)
 
-A default 20-card learn session is 16 uniformly-sampled never-seen cards (80%)
+A default 20-card learn session is 16 newest-added never-seen cards (80%)
 interleaved with 4 prior-day review slots (20%). Review slots prioritise rescue
 cards whose latest rating was Again or whose stability is below
 `LearnedStabilityDays`; other reviews act as filler. Rescue is day-granular up
@@ -170,8 +170,8 @@ to the exclusive JST learn-day end, while filler must be due now, and both
 exclude cards swiped today via the JST start-of-day cutoff; both windows also
 require the previous review to fall on a different UTC calendar date — the exact
 rule `domain.EarnsSchedulingCredit` uses to grant FSRS credit, so the serving and
-recording sides test the same predicate. SQL `random()`
-decides *which* rows enter each window (selection); the injected `*rand.Rand` in
+recording sides test the same predicate. SQL `random()` decides which rows enter
+the two review windows; the injected `*rand.Rand` in
 `OrderingPolicy.Apply` decides their arrangement (deterministic in tests) and
 interleaves at the caller-supplied `domain.NewCardRatio` (`domain.DefaultNewCardRatio`
 = 4:1 absent a stored preference). This replaces a tie-scoped

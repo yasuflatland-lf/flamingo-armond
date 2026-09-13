@@ -78,9 +78,10 @@ type dueCardRow struct {
 // a silent dependency on service.NewFSRSScheduler keeping EnableShortTerm =
 // false. random() varies selection within the band.
 //
-// New window: no FSRS row yet; random() samples uniformly across the whole
-// unseen pool so consecutive sessions surface different cards instead of
-// walking the deterministic created_at/position (document) order.
+// New window: no FSRS row yet; newest-added cards come first. created_at is the
+// add instant and the import upsert preserves it. position DESC orders a batch
+// added at the same instant toward the end of the source document. A swiped
+// card leaves this window, so consecutive sessions differ without randomized selection.
 func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, window domain.LearnWindow, limit int) ([]domain.DueCard, error) {
 	userID = coalesceUserIDForJoin(userID)
 	if limit <= 0 {
@@ -129,7 +130,7 @@ func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, window domain.Learn
 	newRows, err := dueRowsOn(db, userID,
 		"cards.cardgroup_id = ? AND ucs.due IS NULL",
 		[]any{cardgroupID},
-		"random()",
+		"cards.created_at DESC, cards.position DESC, cards.id DESC",
 		limit,
 		"repository: card: find due cards")
 	if err != nil {
