@@ -45,9 +45,11 @@ randSource: func() *rand.Rand {
 
 **Why not `rand.Intn` or `SQL RANDOM()` for arrangement:** `SQL RANDOM()` runs
 inside the database and cannot be seeded from Go tests, making *ordering*
-assertions impossible. The repository still uses `random()` for *selection* —
-deciding which rows enter each due-card window — because the selection set is
-asserted by membership, not order. Pulling the arrangement shuffle into
+assertions impossible. The repository still uses `random()` for *selection* in
+the two review windows — deciding which rescue and filler rows enter the batch —
+because that selection set is asserted by membership, not order. The new window
+is selected deterministically (newest-added first) and its order is asserted
+directly. Pulling the arrangement shuffle into
 application code with an injected source lets tests pin the exact post-shuffle
 order. See [discovery-first due ordering](../ddd-patterns/discovery-first-due-ordering.md)
 for the selection-vs-arrangement split.

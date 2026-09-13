@@ -3,6 +3,7 @@ package repository_test
 import (
 	"context"
 	"errors"
+	"sort"
 	"testing"
 	"time"
 
@@ -911,7 +912,8 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 
 // TestCardRepository_FindDueCards_ReviewRowsPrecedeNewRows proves the
 // window-concat contract: rows from either review window always precede rows
-// from the new-card window in the raw result, regardless of cards.position.
+// from the new-card window in the raw result, regardless of cards.position
+// (position orders rows only inside the new window, never across windows).
 // The usecase OrderingPolicy applies the final interleave; the repository
 // guarantees rescue, filler, then new window order.
 func TestCardRepository_FindDueCards_ReviewRowsPrecedeNewRows(t *testing.T) {
@@ -924,7 +926,7 @@ func TestCardRepository_FindDueCards_ReviewRowsPrecedeNewRows(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 
 	// reviewEarly: has an FSRS row with due = now-2h (earlier than now).
-	// Position is set HIGH (100); position plays no role in window ordering.
+	// Position is set HIGH (100); position never moves a row across windows.
 	reviewEarly := newCard(cg.ID, "review-early", "back")
 	reviewEarly.Position = 100
 	require.NoError(t, repo.Create(ctx, reviewEarly))
@@ -958,7 +960,7 @@ func TestCardRepository_FindDueCards_ReviewRowsPrecedeNewRows(t *testing.T) {
 	require.Equal(t,
 		[]string{reviewEarly.ID, newLowPos.ID},
 		repoCardIDs(got),
-		"review-window rows always precede new-window rows in the raw result; position plays no role",
+		"review-window rows always precede new-window rows in the raw result; position never crosses a window boundary",
 	)
 }
 
@@ -1411,10 +1413,13 @@ func TestCardRepository_FindDueCards_NewWindowServesNewestAddedFirst(t *testing.
 	repo := repository.NewCardRepository(testDB.GORM)
 	now := time.Now().UTC().Truncate(time.Microsecond)
 
+	// Position is anti-correlated with created_at so a position-first ORDER BY
+	// would return the oldest cards and fail; only created_at-first passes.
 	cards := make([]*domain.Card, 5)
 	for i := 0; i < 5; i++ {
 		c := newCard(cg.ID, "new-"+string(rune('0'+i)), "back")
 		c.CreatedAt = now.Add(time.Duration(i-5) * time.Hour)
+		c.Position = 5 - i
 		require.NoError(t, repo.Create(ctx, c))
 		cards[i] = c
 	}
@@ -1437,11 +1442,16 @@ func TestCardRepository_FindDueCards_NewWindowBreaksTiesByPositionDesc(t *testin
 	repo := repository.NewCardRepository(testDB.GORM)
 	now := time.Now().UTC().Truncate(time.Microsecond)
 
+	// Ids are pre-sorted ascending and positions run the opposite way, so the
+	// trailing id DESC tie-break alone can never reproduce the expected order.
+	ids := []string{uuid.NewString(), uuid.NewString(), uuid.NewString()}
+	sort.Strings(ids)
 	cards := make([]*domain.Card, 3)
 	for i := 0; i < 3; i++ {
 		c := newCard(cg.ID, "tied-"+string(rune('0'+i)), "back")
+		c.ID = ids[i]
 		c.CreatedAt = now.Add(-time.Hour)
-		c.Position = i + 1
+		c.Position = 3 - i
 		require.NoError(t, repo.Create(ctx, c))
 		cards[i] = c
 	}
@@ -1453,7 +1463,8 @@ func TestCardRepository_FindDueCards_NewWindowBreaksTiesByPositionDesc(t *testin
 		RescueReviewedBefore: domain.RescueReviewedBefore(now),
 	}, 3)
 	require.NoError(t, err)
-	require.Equal(t, []string{cards[2].ID, cards[1].ID, cards[0].ID}, repoCardIDs(got))
+	require.Equal(t, []string{cards[0].ID, cards[1].ID, cards[2].ID}, repoCardIDs(got),
+		"same-created_at rows order by position DESC (3, 2, 1), not by id DESC")
 }
 
 // TestCardRepository_FindPracticeCards_BoundaryComplementarity is the critical

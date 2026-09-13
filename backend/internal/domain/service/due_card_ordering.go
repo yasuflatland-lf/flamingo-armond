@@ -17,9 +17,10 @@ func NewOrderingPolicy() *OrderingPolicy { return &OrderingPolicy{} }
 
 // Apply orders due cards with a two-step policy:
 //
-//  1. The new partition is fully shuffled — the repository samples WHICH new
-//     cards enter the batch (uniformly, via SQL random()); this shuffle
-//     randomises their arrangement deterministically under an injected rng.
+//  1. The new partition is fully shuffled — the repository selects WHICH new
+//     cards enter the batch (newest-added first: created_at DESC, position
+//     DESC, id DESC); this shuffle randomises their arrangement
+//     deterministically under an injected rng.
 //     The review partition is stable-partitioned by Rescue (rescue first)
 //     and each sub-partition is shuffled independently, so a filler can
 //     never displace a rescue card from the review slots regardless of
@@ -57,7 +58,8 @@ func (p *OrderingPolicy) Apply(due []domain.DueCard, rng *rand.Rand, ratio domai
 }
 
 // partition splits due into new (FSRSPhaseNew) vs review (everything else),
-// preserving the input order. New rows arrive in random() sample order.
+// preserving the input order. New rows arrive newest-added first (see
+// repository.findDueCardsOn); review rows arrive in random() sample order.
 func partition(due []domain.DueCard) (newC, reviewC []domain.DueCard) {
 	for _, d := range due {
 		if d.Phase == domain.FSRSPhaseNew {

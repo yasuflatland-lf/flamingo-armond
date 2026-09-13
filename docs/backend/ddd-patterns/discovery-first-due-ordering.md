@@ -19,7 +19,7 @@ whenever the keys it scopes to are dense.
 
 **80/20 is a full-pool target, not an invariant.** When both candidate pools are
 full — the deck has at least 16 never-seen cards *and* at least 4 eligible
-prior-day reviews — a default 20-card session composes as **16 uniformly-sampled
+prior-day reviews — a default 20-card session composes as **16 newest-added
 never-seen cards (80%)** interleaved with **4 prior-day review cards (20%)**
 (16/4 at `n = 20` under `domain.DefaultNewCardRatio` = 4/5). That 16/4 split is
 the composition *only under full pools*. When both buckets remain available,
@@ -93,8 +93,8 @@ arrangement (see [inject `*rand.Rand` into pure functions](../library-gotchas/in
 ## Contracts
 
 - **Repository concatenates rescue reviews before filler reviews.** The rescue
-  and filler predicates are disjoint, and each window uses its own `LIMIT` and
-  `ORDER BY random()`. This is a contract with `OrderingPolicy`'s
+  and filler predicates are disjoint, and each review window uses its own
+  `LIMIT` and `ORDER BY random()`. This is a contract with `OrderingPolicy`'s
   `shuffleWithinBand`, which detects each contiguous band with a single linear
   pass and never shuffles across the boundary. A filler card therefore cannot
   displace a rescue card from the review slots. The filler predicate uses
@@ -191,8 +191,10 @@ backlog therefore
 drains more slowly than a pure due-date order would drain it. This is deliberate:
 queue's primary job became surfacing the unseen backlog, not maximising
 retention throughput. `cards.position` remains Notion-sync metadata (assigned
-as the zero-based document index, overwritten on re-sync) but no longer drives
-learn ordering — new cards are sampled randomly, not walked in document order.
+as the zero-based document index, overwritten on re-sync); the new window uses
+it only as a descending tie-break inside a same-`created_at` import batch, after
+`created_at DESC` — new cards are served newest-added first, not walked in
+document order.
 
 ## Reference
 
