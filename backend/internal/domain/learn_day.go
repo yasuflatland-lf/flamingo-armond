@@ -52,38 +52,26 @@ func utcCalendarDay(t time.Time) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }
 
-// RescueReviewedBefore returns the exclusive upper bound on last_review for the
-// rescue and filler windows: UTC midnight of now's UTC calendar date. go-fsrs
-// counts elapsed days by UTC calendar date, so a card last reviewed strictly
-// before this instant earns stability growth at now — the exact condition
-// EarnsSchedulingCredit tests on the recording side.
-//
-// Not a 24-hour rolling floor: that approximation never admitted a zero-credit
-// repeat, but it also withheld every card a JST learner reviewed after 09:00 the
-// previous day, which has already crossed a UTC date boundary.
-func RescueReviewedBefore(now time.Time) time.Time {
+// CreditReviewedBefore returns UTC midnight of now's UTC date, the exclusive
+// last_review bound for scheduling credit. EarnsSchedulingCredit uses the same
+// calendar-date rule; a rolling 24-hour floor would withhold valid overnight reviews.
+func CreditReviewedBefore(now time.Time) time.Time {
 	return utcCalendarDay(now)
 }
 
 // LearnDayKey returns the canonical JST learn-day key (YYYY-MM-DD) for t.
 func LearnDayKey(t time.Time) string { return StartOfLearnDay(t).Format(time.DateOnly) }
 
-// LearnWindow bundles the four instants that bound one learn-queue fetch,
-// all derived from a single now. Field -> SQL comparator mapping
-// (findDueCardsOn in repository/card_due.go):
-//
-//	Now                  — filler:  ucs.due <= Now
-//	ReviewedBefore       — rescue+filler: ucs.last_review < ReviewedBefore (StartOfLearnDay)
-//	RescueDueBefore      — rescue:  ucs.due < RescueDueBefore (EndOfLearnDay, exclusive)
-//	RescueReviewedBefore — rescue+filler: ucs.last_review < RescueReviewedBefore (UTC-date credit bound)
-//
-// Production code must construct via NewLearnWindow; field literals are for
-// tests that need non-canonical windows.
+// LearnWindow is constructed by NewLearnWindow; test literals may override bounds.
+// Now — review ORDER BY floor(extract(epoch FROM (Now - ucs.last_review)) / 86400) / stability.
+// ReviewedBefore — review: ucs.last_review < ReviewedBefore (StartOfLearnDay).
+// DueBefore — review: ucs.due < DueBefore (EndOfLearnDay, exclusive).
+// CreditReviewedBefore — review: ucs.last_review < CreditReviewedBefore (UTC-date credit bound).
 type LearnWindow struct {
 	Now                  time.Time
 	ReviewedBefore       time.Time
-	RescueDueBefore      time.Time
-	RescueReviewedBefore time.Time
+	DueBefore            time.Time
+	CreditReviewedBefore time.Time
 }
 
 // NewLearnWindow derives the canonical learn-queue window from a single now.
@@ -91,8 +79,8 @@ func NewLearnWindow(now time.Time) LearnWindow {
 	return LearnWindow{
 		Now:                  now,
 		ReviewedBefore:       StartOfLearnDay(now),
-		RescueDueBefore:      EndOfLearnDay(now),
-		RescueReviewedBefore: RescueReviewedBefore(now),
+		DueBefore:            EndOfLearnDay(now),
+		CreditReviewedBefore: CreditReviewedBefore(now),
 	}
 }
 
@@ -100,8 +88,7 @@ func NewLearnWindow(now time.Time) LearnWindow {
 // day containing now: lastReview is at or after StartOfLearnDay(now). It is the
 // exact complement of the serving-side SQL predicate
 // `ucs.last_review < StartOfLearnDay(now)` in repository/card_due.go
-// (findDueCardsOn's rescue and filler windows): a review exactly at the
-// boundary counts as reviewed today on both sides.
+// (findDueCardsOn): a review at the boundary counts as reviewed today on both sides.
 func ReviewedWithinLearnDay(lastReview, now time.Time) bool {
 	return !lastReview.Before(StartOfLearnDay(now))
 }

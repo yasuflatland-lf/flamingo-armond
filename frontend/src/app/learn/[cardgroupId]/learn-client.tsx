@@ -184,9 +184,10 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
   // Cleared after a swipe mutation succeeds, on cardgroup change, and at the JST
   // learn-day rollover (which refills the due pool wholesale). The reset is
   // not about the just-swiped card — that one can never come back today — but
-  // about the verdict's age: it is a point-in-time snapshot, and the filler
-  // review window admits a card once `due <= now`, so the pool can refill with
-  // newly-due cards while the session runs.
+  // about the verdict's age: it is a point-in-time snapshot. The review window
+  // admits every card due before the JST day end and its eligibility set moves
+  // at the 09:00 JST credit rollover; the new-card window grows whenever cards
+  // are added, so the pool can refill while the session runs.
   const exhaustedRef = useRef(false);
   // Tracks the cardgroup the exhaustion verdict belongs to. When the active
   // cardgroup changes, the prefetch effect below clears `exhaustedRef` before
@@ -318,9 +319,9 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
       const payload = result.data?.handleSwipe;
       if (payload?.__typename === "HandleSwipeSuccess") {
         // Re-open prefetching in case the pool was previously marked exhausted.
-        // That verdict may predate cards that have since become due (the filler
-        // review window admits a card once its `due` has arrived); the
-        // just-swiped card itself never returns today.
+        // That verdict may predate cards that have since become eligible
+        // (credit-bound rollover or newly added cards); the just-swiped card
+        // itself never returns today.
         exhaustedRef.current = false;
         return;
       }

@@ -17,7 +17,7 @@ included.
 
 ## Worked example
 
-`findPracticeCardsOn` (`backend/internal/repository/card.go`) selects the
+`findPracticeCardsOn` (`backend/internal/repository/card_due.go`) selects the
 FSRS-safe practice pool — cards the user already reviewed at or after the
 start-of-day boundary:
 
@@ -25,7 +25,7 @@ start-of-day boundary:
 rows, err := dueRowsOn(db, userID,
     "cards.cardgroup_id = ? AND ucs.last_review >= ?",
     []any{cardgroupID, reviewedAfter},
-    "random()",
+    clause.Expr{SQL: "random()"},
     limit,
     "repository: card: find practice cards")
 ```
@@ -48,9 +48,20 @@ exclusion is intended, so a future reader does not add a defensive
 // `IS NOT NULL` guard is needed.
 ```
 
-The complementary learn window (`findDueCardsOn`) makes its own NULL handling
-*explicit* with `ucs.due IS NOT NULL` precisely because there the new-card path
-is a separate window that wants those NULL rows — see the boundary-pin test in
+The complementary learn window (`findDueCardsOn`) makes its NULL handling
+explicit. Its separate new-card path selects `ucs.due IS NULL` newest-added
+first:
+
+```go
+newRows, err := dueRowsOn(db, userID,
+    "cards.cardgroup_id = ? AND ucs.due IS NULL",
+    []any{cardgroupID},
+    clause.Expr{SQL: "cards.created_at DESC, cards.position DESC, cards.id DESC"},
+    limit,
+    "repository: card: find due cards")
+```
+
+See the boundary-pin test in
 [`strict-cutoff-boundary-fixture-and-mutation-proof.md`](strict-cutoff-boundary-fixture-and-mutation-proof.md).
 The shared SELECT/JOIN that makes both windows use the identical projection is
 `dueRowsOn`; see [`repo-tx-and-nontx-share-private-helper.md`](repo-tx-and-nontx-share-private-helper.md).

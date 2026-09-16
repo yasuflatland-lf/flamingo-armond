@@ -3,7 +3,6 @@ package resolver_test
 import (
 	"context"
 	"encoding/json"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -89,7 +88,7 @@ func (m *cardMockCGRepo) FindByID(_ context.Context, _ string) (*domain.Cardgrou
 
 // learnUserPrefsStub satisfies usecase.UserPrefsForLearn. Returning ErrNotFound
 // keeps NextDueCards on the default new-card ratio, so the learn resolver tests
-// exercise the unchanged 4:1 ordering.
+// exercise the default 1:4 ordering.
 type learnUserPrefsStub struct{}
 
 func (learnUserPrefsStub) FindByUserID(_ context.Context, _ string) (*domain.UserPreference, error) {
@@ -143,7 +142,6 @@ func newLearnSrv(cardRepo *cardMockRepo, cgRepo *cardMockCGRepo) *handler.Server
 		cgRepo,
 		learnUserPrefsStub{},
 		service.NewOrderingPolicy(),
-		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 		20,
 		100,
 		nil,

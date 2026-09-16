@@ -49,9 +49,9 @@ func TestNewCardRatioCheckDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// tighten_new_card_ratio_check is the newest migration, so one step down
-	// restores the looser CHECK. Bump this count when adding later migrations.
-	if err := m.Steps(-1); err != nil {
+	// lower_new_card_ratio_default sits above tighten_new_card_ratio_check, so two
+	// steps restore the looser CHECK.
+	if err := m.Steps(-2); err != nil {
 		t.Fatalf("migrate down tighten_new_card_ratio_check: %v", err)
 	}
 	requireRatioAccepted(t, ctx, sqlDB, 1, 3)

@@ -238,19 +238,19 @@ func TestParseNewCardRatio_AllowsBoundaryAndBelowNewShare(t *testing.T) {
 	}
 }
 
-func TestDefaultNewCardRatio_IsFourFifths(t *testing.T) {
+func TestDefaultNewCardRatio_IsOneFifth(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, 4, DefaultNewCardRatio.Numerator())
+	require.Equal(t, 1, DefaultNewCardRatio.Numerator())
 	require.Equal(t, 5, DefaultNewCardRatio.Denominator())
-	require.Equal(t, 4, DefaultNewCardRatio.NewShare())
-	require.Equal(t, 1, DefaultNewCardRatio.ReviewShare())
+	require.Equal(t, 1, DefaultNewCardRatio.NewShare())
+	require.Equal(t, 4, DefaultNewCardRatio.ReviewShare())
 	require.False(t, DefaultNewCardRatio.IsZero())
 }
 
 // TestDefaultNewCardRatio_DenominatorDividesSession guards package init:
 // DefaultNewCardRatio is built by mustNewCardRatio, which panics on rejection, so a
-// divisibility rule that excluded 4/5 would take the whole package down at load.
+// divisibility rule that excluded 1/5 would take the whole package down at load.
 func TestDefaultNewCardRatio_DenominatorDividesSession(t *testing.T) {
 	t.Parallel()
 

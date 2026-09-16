@@ -3,7 +3,6 @@ package service
 import (
 	"fmt"
 	"math"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -22,12 +21,6 @@ func dueCard(id string, state domain.FSRSPhase, due time.Time) domain.DueCard {
 	}
 }
 
-func rescueDueCard(id string, state domain.FSRSPhase, due time.Time) domain.DueCard {
-	card := dueCard(id, state, due)
-	card.Rescue = true
-	return card
-}
-
 func cardIDs(cards []*domain.Card) []string {
 	out := make([]string, len(cards))
 	for i, card := range cards {
@@ -39,170 +32,38 @@ func cardIDs(cards []*domain.Card) []string {
 func TestOrderingPolicy_Apply_Empty(t *testing.T) {
 	t.Parallel()
 
-	got := NewOrderingPolicy().Apply(nil, rand.New(rand.NewSource(42)), domain.DefaultNewCardRatio)
+	got := NewOrderingPolicy().Apply(nil, domain.DefaultNewCardRatio)
 	require.Empty(t, got)
 
-	got = NewOrderingPolicy().Apply([]domain.DueCard{}, rand.New(rand.NewSource(42)), domain.DefaultNewCardRatio)
+	got = NewOrderingPolicy().Apply([]domain.DueCard{}, domain.DefaultNewCardRatio)
 	require.Empty(t, got)
-}
-
-func TestOrderingPolicy_Apply_OnlyNew_AlwaysShuffled(t *testing.T) {
-	t.Parallel()
-
-	// Four new cards with DISTINCT positions: under the old tie-scoped policy
-	// these were never reshuffled; the discovery-first policy always shuffles
-	// the whole new partition. With rand.NewSource(42) a 4-element shuffle
-	// permutes [a,b,c,d] -> [c,d,a,b].
-	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
-	in := []domain.DueCard{
-		dueCard("n1", domain.FSRSPhaseNew, base),
-		dueCard("n2", domain.FSRSPhaseNew, base.Add(time.Minute)),
-		dueCard("n3", domain.FSRSPhaseNew, base.Add(2*time.Minute)),
-		dueCard("n4", domain.FSRSPhaseNew, base.Add(3*time.Minute)),
-	}
-
-	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)), domain.DefaultNewCardRatio)
-
-	require.Equal(t, []string{"n3", "n4", "n1", "n2"}, cardIDs(got),
-		"deterministic full shuffle for seed 42")
-}
-
-func TestOrderingPolicy_Apply_OnlyReview_BandRunsShuffledIndependently(t *testing.T) {
-	t.Parallel()
-
-	// Repository contract: rescue rows arrive before filler rows.
-	// Two rescue + two filler cards. Each band run is shuffled independently
-	// and the band boundary is never crossed. With seed 42
-	// (new partition is empty, so the first rng consumption is the rescue
-	// run) each 2-element run swaps.
-	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
-	in := []domain.DueCard{
-		rescueDueCard("rescue-1", domain.FSRSPhaseReview, base),
-		rescueDueCard("rescue-2", domain.FSRSPhaseReview, base.Add(time.Minute)),
-		dueCard("filler-1", domain.FSRSPhaseReview, base.Add(2*time.Minute)),
-		dueCard("filler-2", domain.FSRSPhaseReview, base.Add(3*time.Minute)),
-	}
-
-	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)), domain.DefaultNewCardRatio)
-
-	require.Equal(t, []string{"rescue-2", "rescue-1", "filler-2", "filler-1"}, cardIDs(got),
-		"each band run shuffles independently; rescue band stays first")
-}
-
-func TestOrderingPolicy_Apply_RescueBoundaryHoldsAcrossSeeds(t *testing.T) {
-	t.Parallel()
-
-	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
-	in := []domain.DueCard{
-		rescueDueCard("rescue-1", domain.FSRSPhaseReview, base),
-		rescueDueCard("rescue-2", domain.FSRSPhaseReview, base.Add(time.Minute)),
-		rescueDueCard("rescue-3", domain.FSRSPhaseReview, base.Add(2*time.Minute)),
-		dueCard("filler-1", domain.FSRSPhaseReview, base.Add(3*time.Minute)),
-		dueCard("filler-2", domain.FSRSPhaseReview, base.Add(4*time.Minute)),
-	}
-	rescue := map[string]bool{"rescue-1": true, "rescue-2": true, "rescue-3": true}
-
-	for _, seed := range []int64{1, 7, 42, 99} {
-		got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(seed)), domain.DefaultNewCardRatio)
-		ids := cardIDs(got)
-		require.Len(t, ids, 5)
-		for i, id := range ids[:3] {
-			require.True(t, rescue[id],
-				"seed %d: slot %d must be rescue, got %q", seed, i, id)
-		}
-	}
 }
 
 func TestOrderingPolicy_Apply_MixedCompositionSlots(t *testing.T) {
 	t.Parallel()
 
-	// 5 review + 20 new. Largest-remainder distribution at 4/5 hands every
-	// fifth slot from index 2 to the review bucket, so review cards occupy
-	// exactly slots 2, 7, 12, 17, 22 regardless of how the shuffles permute
-	// identities WITHIN each partition.
+	// 20 review + 5 new. Largest-remainder distribution at 1/5 puts new cards
+	// in one-based slots 3, 8, 13, 18, and 23.
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
 	in := make([]domain.DueCard, 0, 25)
-	reviewSet := make(map[string]bool, 5)
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 20; i++ {
 		id := fmt.Sprintf("rev-%d", i)
-		reviewSet[id] = true
 		in = append(in, dueCard(id, domain.FSRSPhaseLearning, base.Add(time.Duration(i)*time.Minute)))
 	}
-	for i := 0; i < 20; i++ {
+	newSet := make(map[string]bool, 5)
+	for i := 0; i < 5; i++ {
+		newSet[fmt.Sprintf("new-%d", i)] = true
 		in = append(in, dueCard(fmt.Sprintf("new-%d", i), domain.FSRSPhaseNew, base.Add(time.Duration(100+i)*time.Minute)))
 	}
 
-	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)), domain.DefaultNewCardRatio)
+	got := NewOrderingPolicy().Apply(in, domain.DefaultNewCardRatio)
 	require.Len(t, got, 25)
 
 	for i, c := range got {
 		if i%5 == 2 {
-			require.True(t, reviewSet[c.ID], "slot %d must be a review card, got %q", i, c.ID)
+			require.True(t, newSet[c.ID], "slot %d must be a new card, got %q", i, c.ID)
 		} else {
-			require.False(t, reviewSet[c.ID], "slot %d must be a new card, got %q", i, c.ID)
-		}
-	}
-}
-
-func TestOrderingPolicy_Apply_MixedNewRescueAndFillerPreservesReviewBandPriority(t *testing.T) {
-	t.Parallel()
-
-	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
-	in := []domain.DueCard{
-		rescueDueCard("rescue-1", domain.FSRSPhaseReview, base),
-		rescueDueCard("rescue-2", domain.FSRSPhaseReview, base.Add(time.Minute)),
-		dueCard("filler-1", domain.FSRSPhaseReview, base.Add(2*time.Minute)),
-		dueCard("filler-2", domain.FSRSPhaseReview, base.Add(3*time.Minute)),
-	}
-	for i := 0; i < 12; i++ {
-		in = append(in, dueCard(fmt.Sprintf("new-%d", i), domain.FSRSPhaseNew, base.Add(time.Duration(100+i)*time.Minute)))
-	}
-
-	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)), domain.DefaultNewCardRatio)
-	require.Len(t, got, len(in))
-
-	rescueIDs := map[string]bool{"rescue-1": true, "rescue-2": true}
-	fillerIDs := map[string]bool{"filler-1": true, "filler-2": true}
-	seenFiller := false
-	for _, card := range got {
-		if fillerIDs[card.ID] {
-			seenFiller = true
-		}
-		if rescueIDs[card.ID] {
-			require.False(t, seenFiller, "rescue card %q appeared after a filler card", card.ID)
-		}
-	}
-}
-
-func TestOrderingPolicy_Apply_InterleavedRescueFillerInput_RescueStillFirst(t *testing.T) {
-	t.Parallel()
-
-	// Deliberately interleaved, filler-leading review input: the policy must
-	// enforce rescue-before-filler itself, without relying on the repository
-	// emitting rescue rows ahead of filler rows.
-	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
-	in := []domain.DueCard{
-		dueCard("filler-1", domain.FSRSPhaseReview, base),
-		rescueDueCard("rescue-1", domain.FSRSPhaseReview, base.Add(time.Minute)),
-		dueCard("filler-2", domain.FSRSPhaseReview, base.Add(2*time.Minute)),
-		rescueDueCard("rescue-2", domain.FSRSPhaseReview, base.Add(3*time.Minute)),
-	}
-	rescueIDs := map[string]bool{"rescue-1": true, "rescue-2": true}
-	fillerIDs := map[string]bool{"filler-1": true, "filler-2": true}
-
-	for _, seed := range []int64{1, 7, 42, 99} {
-		got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(seed)), domain.DefaultNewCardRatio)
-		require.Len(t, got, len(in))
-
-		seenFiller := false
-		for _, card := range got {
-			if fillerIDs[card.ID] {
-				seenFiller = true
-			}
-			if rescueIDs[card.ID] {
-				require.False(t, seenFiller,
-					"seed %d: rescue card %q appeared after a filler card", seed, card.ID)
-			}
+			require.False(t, newSet[c.ID], "slot %d must be a review card, got %q", i, c.ID)
 		}
 	}
 }
@@ -210,7 +71,7 @@ func TestOrderingPolicy_Apply_InterleavedRescueFillerInput_RescueStillFirst(t *t
 func TestOrderingPolicy_Apply_NonDefaultRatioInterleavesOneToOne(t *testing.T) {
 	t.Parallel()
 
-	// 3 new + 3 review. The default 4/5 ratio emits [N,N,R,N,R,R]; a 1/2 ratio
+	// 3 new + 3 review. The default 1/5 ratio emits [R,R,N,R,N,N]; a 1/2 ratio
 	// (new share 1, review share 1) alternates 1:1 starting with new, so new
 	// cards land in the even slots and review cards in the odd slots. The
 	// distinct slot composition proves the caller-supplied ratio reaches Apply.
@@ -228,7 +89,7 @@ func TestOrderingPolicy_Apply_NonDefaultRatioInterleavesOneToOne(t *testing.T) {
 	ratio, err := domain.ParseNewCardRatio(1, 2)
 	require.NoError(t, err)
 
-	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)), ratio)
+	got := NewOrderingPolicy().Apply(in, ratio)
 	require.Len(t, got, 6)
 
 	for i, c := range got {
@@ -269,7 +130,7 @@ func TestOrderingPolicy_Apply_EveryAcceptedRatioServesNewCardInSessionPrefix(t *
 				continue
 			}
 
-			ordered := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)), ratio)
+			ordered := NewOrderingPolicy().Apply(in, ratio)
 			hasNew := false
 			for _, card := range ordered[:domain.DefaultLearnSessionSize] {
 				if newSet[card.ID] {
@@ -296,7 +157,7 @@ func TestOrderingPolicy_Apply_SetEquality(t *testing.T) {
 		dueCard("r4", domain.FSRSPhaseRelearning, base.Add(3*time.Minute)),
 	}
 
-	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)), domain.DefaultNewCardRatio)
+	got := NewOrderingPolicy().Apply(in, domain.DefaultNewCardRatio)
 
 	require.Len(t, got, len(in), "no cards dropped or duplicated")
 
@@ -312,17 +173,6 @@ func TestOrderingPolicy_Apply_SetEquality(t *testing.T) {
 		"output Card pointer set must equal input Card pointer set")
 }
 
-func TestOrderingPolicy_Apply_PanicsOnNilRng(t *testing.T) {
-	t.Parallel()
-
-	require.PanicsWithValue(t,
-		"domain/service: OrderingPolicy.Apply requires non-nil rng",
-		func() {
-			_ = NewOrderingPolicy().Apply(nil, nil, domain.DefaultNewCardRatio)
-		},
-	)
-}
-
 func TestOrderingPolicy_Apply_PanicsOnNilCard(t *testing.T) {
 	t.Parallel()
 
@@ -332,13 +182,12 @@ func TestOrderingPolicy_Apply_PanicsOnNilCard(t *testing.T) {
 	require.PanicsWithValue(t,
 		"domain/service: OrderingPolicy.Apply: DueCard.Card must not be nil",
 		func() {
-			_ = NewOrderingPolicy().Apply(due, rand.New(rand.NewSource(42)), domain.DefaultNewCardRatio)
+			_ = NewOrderingPolicy().Apply(due, domain.DefaultNewCardRatio)
 		},
 	)
 }
 
-// interleave is exercised directly for the trailing-append paths so the
-// assertions stay deterministic without depending on shuffle permutations.
+// TestInterleave_TrailingReviewAppend checks the remaining review order.
 func TestInterleave_TrailingReviewAppend(t *testing.T) {
 	t.Parallel()
 
@@ -449,9 +298,9 @@ func TestInterleave_PrefixFidelityAcrossAcceptedRatios(t *testing.T) {
 }
 
 // TestInterleave_ServesNewCardEarlierThanTheOldCycle is the P1a regression: the
-// removed cycle emission put den-num review cards ahead of the first new card,
-// so the shipped 4/5 default served none in a one-card session. The first new
-// card now lands at slot 1 for the default and at worst slot den-num elsewhere.
+// removed cycle emission put den-num review cards ahead of the first new card.
+// The shipped 1/5 default now serves its first new card at slot 3, while every
+// accepted ratio stays inside the slot den-num bound.
 func TestInterleave_ServesNewCardEarlierThanTheOldCycle(t *testing.T) {
 	t.Parallel()
 
@@ -468,8 +317,8 @@ func TestInterleave_ServesNewCardEarlierThanTheOldCycle(t *testing.T) {
 		return -1
 	}
 
-	require.Equal(t, 1, firstNewSlot(domain.DefaultNewCardRatio),
-		"the shipped 4/5 default must serve a new card in a one-card session")
+	require.Equal(t, 3, firstNewSlot(domain.DefaultNewCardRatio),
+		"the shipped 1/5 default serves its first new card at slot 3, inside the den - num = 4 bound")
 
 	for den := 2; den <= domain.NewCardRatioDenMax; den++ {
 		for num := 1; num < den; num++ {
@@ -485,7 +334,7 @@ func TestInterleave_ServesNewCardEarlierThanTheOldCycle(t *testing.T) {
 }
 
 // TestInterleave_AdvertisedDefaultSessionSplit pins the advertised composition:
-// a full-pool default session is exactly 16 new / 4 review, the split the
+// a full-pool default session is exactly 4 new / 16 review, the split the
 // removed cycle emission also produced at whole multiples of the denominator.
 func TestInterleave_AdvertisedDefaultSessionSplit(t *testing.T) {
 	t.Parallel()
@@ -501,6 +350,26 @@ func TestInterleave_AdvertisedDefaultSessionSplit(t *testing.T) {
 		}
 	}
 
-	require.Equal(t, 16, served, "a default 20-card session must serve 16 new cards")
-	require.Equal(t, 4, domain.DefaultLearnSessionSize-served, "and 4 review cards")
+	require.Equal(t, 4, served, "a default 20-card session must serve 4 new cards")
+	require.Equal(t, 16, domain.DefaultLearnSessionSize-served, "and 16 review cards")
+}
+
+func TestOrderingPolicy_Apply_PreservesRepositoryOrderWithinKind(t *testing.T) {
+	t.Parallel()
+	newC, reviewC, newSet := deepBuckets(5)
+	var in []domain.DueCard
+	for i := range newC {
+		in = append(in, reviewC[i], newC[i])
+	}
+	got := NewOrderingPolicy().Apply(in, domain.DefaultNewCardRatio)
+	var newIDs, reviewIDs []string
+	for _, card := range got {
+		if newSet[card.ID] {
+			newIDs = append(newIDs, card.ID)
+		} else {
+			reviewIDs = append(reviewIDs, card.ID)
+		}
+	}
+	require.Equal(t, []string{"new-0", "new-1", "new-2", "new-3", "new-4"}, newIDs)
+	require.Equal(t, []string{"rev-0", "rev-1", "rev-2", "rev-3", "rev-4"}, reviewIDs)
 }

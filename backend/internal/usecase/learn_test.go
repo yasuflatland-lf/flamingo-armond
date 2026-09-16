@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"errors"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -78,7 +77,7 @@ func (m *mockLearnUserPrefs) FindByUserID(_ context.Context, _ string) (*domain.
 }
 
 // notFoundPrefs returns a userPrefs stub reporting no stored preference row, so
-// NextDueCards falls back to domain.DefaultNewCardRatio (the default 4:1 order).
+// NextDueCards falls back to domain.DefaultNewCardRatio (the default 1:4 order).
 func notFoundPrefs() *mockLearnUserPrefs {
 	return &mockLearnUserPrefs{err: repository.ErrNotFound}
 }
@@ -91,8 +90,7 @@ func TestLearnUsecaseNextDueCards(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
-	// Two review cards in the same (Review) phase; under a seeded rng the
-	// in-phase run may be permuted, so assert set equality, not order.
+	// Review cards retain repository order.
 	first := learnDueCard("repo-first", now.Add(-2*time.Hour), domain.FSRSPhaseReview)
 	second := learnDueCard("repo-second", now.Add(-time.Hour), domain.FSRSPhaseReview)
 	cardRepo := &mockLearnCardRepo{rows: []domain.DueCard{first, second}}
@@ -101,7 +99,6 @@ func TestLearnUsecaseNextDueCards(t *testing.T) {
 		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 		notFoundPrefs(),
 		service.NewOrderingPolicy(),
-		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 		20,
 		100,
 		fixedClock{now: now},
@@ -118,11 +115,11 @@ func TestLearnUsecaseNextDueCards(t *testing.T) {
 	require.Equal(t, 5, cardRepo.limit)
 	require.True(t, cardRepo.window.ReviewedBefore.Equal(time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC)),
 		"JST start-of-day for 2026-05-13T09:00Z")
-	require.True(t, cardRepo.window.RescueDueBefore.Equal(time.Date(2026, 5, 13, 15, 0, 0, 0, time.UTC)),
+	require.True(t, cardRepo.window.DueBefore.Equal(time.Date(2026, 5, 13, 15, 0, 0, 0, time.UTC)),
 		"JST end-of-day for 2026-05-13T09:00Z")
-	require.True(t, cardRepo.window.RescueReviewedBefore.Equal(time.Date(2026, 5, 13, 0, 0, 0, 0, time.UTC)),
-		"rescue early-serve bound is UTC midnight of now's UTC calendar date")
-	require.ElementsMatch(t, []string{"repo-first", "repo-second"}, learnCardIDs(got))
+	require.True(t, cardRepo.window.CreditReviewedBefore.Equal(time.Date(2026, 5, 13, 0, 0, 0, 0, time.UTC)),
+		"review early-serve bound is UTC midnight of now's UTC calendar date")
+	require.Equal(t, []string{"repo-first", "repo-second"}, learnCardIDs(got))
 }
 
 func TestLearnUsecaseNextDueCardsAuthAndCardgroupErrors(t *testing.T) {
@@ -137,7 +134,6 @@ func TestLearnUsecaseNextDueCardsAuthAndCardgroupErrors(t *testing.T) {
 			&mockLearnCardgroupRepo{},
 			notFoundPrefs(),
 			service.NewOrderingPolicy(),
-			func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 			20,
 			100,
 			fixedClock{now: now},
@@ -154,7 +150,6 @@ func TestLearnUsecaseNextDueCardsAuthAndCardgroupErrors(t *testing.T) {
 			&mockLearnCardgroupRepo{err: repository.ErrNotFound},
 			notFoundPrefs(),
 			service.NewOrderingPolicy(),
-			func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 			20,
 			100,
 			fixedClock{now: now},
@@ -171,7 +166,6 @@ func TestLearnUsecaseNextDueCardsAuthAndCardgroupErrors(t *testing.T) {
 			&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-2"}},
 			notFoundPrefs(),
 			service.NewOrderingPolicy(),
-			func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 			20,
 			100,
 			fixedClock{now: now},
@@ -208,7 +202,6 @@ func TestLearnUsecaseNextDueCardsLimitClampAndEmpty(t *testing.T) {
 				&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 				notFoundPrefs(),
 				service.NewOrderingPolicy(),
-				func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 				20,
 				100,
 				fixedClock{now: now},
@@ -234,7 +227,6 @@ func TestLearnUsecaseNextDueCardsRepoError(t *testing.T) {
 		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 		notFoundPrefs(),
 		service.NewOrderingPolicy(),
-		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 		20,
 		100,
 		fixedClock{now: now},
@@ -255,7 +247,6 @@ func TestLearnUsecaseNextDueCardsCardgroupRepoInternalError(t *testing.T) {
 		&mockLearnCardgroupRepo{err: errors.New("db down")},
 		notFoundPrefs(),
 		service.NewOrderingPolicy(),
-		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 		20,
 		100,
 		fixedClock{now: now},
@@ -274,25 +265,25 @@ func TestNewLearnUsecase_PanicsOnInvalidDeps(t *testing.T) {
 	t.Run("nil cardRepo", func(t *testing.T) {
 		t.Parallel()
 		require.Panics(t, func() {
-			NewLearnUsecase(nil, cgRepo, notFoundPrefs(), nil, nil, 20, 100, nil, newTestLogger())
+			NewLearnUsecase(nil, cgRepo, notFoundPrefs(), nil, 20, 100, nil, newTestLogger())
 		})
 	})
 	t.Run("nil cardgroupRepo", func(t *testing.T) {
 		t.Parallel()
 		require.Panics(t, func() {
-			NewLearnUsecase(cardRepo, nil, notFoundPrefs(), nil, nil, 20, 100, nil, newTestLogger())
+			NewLearnUsecase(cardRepo, nil, notFoundPrefs(), nil, 20, 100, nil, newTestLogger())
 		})
 	})
 	t.Run("nil userPrefs", func(t *testing.T) {
 		t.Parallel()
 		require.Panics(t, func() {
-			NewLearnUsecase(cardRepo, cgRepo, nil, nil, nil, 20, 100, nil, newTestLogger())
+			NewLearnUsecase(cardRepo, cgRepo, nil, nil, 20, 100, nil, newTestLogger())
 		})
 	})
 	t.Run("defaultLimit greater than maxLimit", func(t *testing.T) {
 		t.Parallel()
 		require.Panics(t, func() {
-			NewLearnUsecase(cardRepo, cgRepo, notFoundPrefs(), nil, nil, 30, 20, nil, newTestLogger())
+			NewLearnUsecase(cardRepo, cgRepo, notFoundPrefs(), nil, 30, 20, nil, newTestLogger())
 		})
 	})
 }
@@ -304,11 +295,7 @@ func TestLearnUsecaseNextDueCards_TruncatesToDueLimit(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
-	// 3 new + 3 review cards. With the default ratio (new share 4 : review
-	// share 1) largest-remainder distribution emits [new, new, review, ...], so
-	// the first three slots are [new, new, review]. Truncating at limit=3 keeps
-	// that composition; the exact ids within a phase are shuffled, so assert the
-	// SHAPE (which slot is review vs new), not specific ids.
+
 	rows := []domain.DueCard{
 		learnDueCard("new-1", now.Add(-3*time.Hour), domain.FSRSPhaseNew),
 		learnDueCard("new-2", now.Add(-2*time.Hour), domain.FSRSPhaseNew),
@@ -323,7 +310,6 @@ func TestLearnUsecaseNextDueCards_TruncatesToDueLimit(t *testing.T) {
 		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 		notFoundPrefs(),
 		service.NewOrderingPolicy(),
-		func() *rand.Rand { return rand.New(rand.NewSource(42)) },
 		20,
 		100,
 		fixedClock{now: now},
@@ -334,11 +320,7 @@ func TestLearnUsecaseNextDueCards_TruncatesToDueLimit(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, got, 3, "result must be truncated to the requested limit")
-	reviewSet := map[string]bool{"rev-1": true, "rev-2": true, "rev-3": true}
-	ids := learnCardIDs(got)
-	require.False(t, reviewSet[ids[0]], "slot 0 must be a new card, got %q", ids[0])
-	require.False(t, reviewSet[ids[1]], "slot 1 must be a new card, got %q", ids[1])
-	require.True(t, reviewSet[ids[2]], "slot 2 must be a review card, got %q", ids[2])
+	require.Equal(t, []string{"rev-1", "rev-2", "new-1"}, learnCardIDs(got))
 }
 
 // TestLearnUsecaseNextDueCards_HappyPathReviewOnly verifies the simple path
@@ -362,7 +344,6 @@ func TestLearnUsecaseNextDueCards_HappyPathReviewOnly(t *testing.T) {
 		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 		notFoundPrefs(),
 		service.NewOrderingPolicy(),
-		func() *rand.Rand { return rand.New(rand.NewSource(7)) },
 		20,
 		100,
 		fixedClock{now: now},
@@ -373,11 +354,11 @@ func TestLearnUsecaseNextDueCards_HappyPathReviewOnly(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, got, 3, "result must contain exactly the requested limit")
+	require.Equal(t, []string{"rev-1", "rev-2", "rev-3"}, learnCardIDs(got))
 }
 
 // ratioRows returns 3 new + 3 review cards, the fixture used by the ratio tests.
-// The slot composition (review vs new) after Apply is deterministic; the ids
-// within a phase are shuffled, so tests assert membership, not order.
+// Apply preserves repository order within each kind while interleaving.
 func ratioRows(now time.Time) []domain.DueCard {
 	return []domain.DueCard{
 		learnDueCard("new-1", now.Add(-3*time.Hour), domain.FSRSPhaseNew),
@@ -392,7 +373,7 @@ func ratioRows(now time.Time) []domain.DueCard {
 // TestLearnUsecaseNextDueCards_UsesStoredRatio verifies that a stored non-default
 // ratio (1/2) reaches OrderingPolicy.Apply: the 1:1 alternation puts new cards in
 // the even slots and review cards in the odd slots, distinct from the default
-// 4:1 order [N,N,R,N,R,R].
+// 1:4 order [R,R,N,R,N,N].
 func TestLearnUsecaseNextDueCards_UsesStoredRatio(t *testing.T) {
 	t.Parallel()
 
@@ -409,7 +390,6 @@ func TestLearnUsecaseNextDueCards_UsesStoredRatio(t *testing.T) {
 		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 		prefs,
 		service.NewOrderingPolicy(),
-		func() *rand.Rand { return rand.New(rand.NewSource(42)) },
 		20,
 		100,
 		fixedClock{now: now},
@@ -421,20 +401,12 @@ func TestLearnUsecaseNextDueCards_UsesStoredRatio(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, prefs.calls, "the stored preference must be read once")
 	require.Len(t, got, 6)
-	reviewSet := map[string]bool{"rev-1": true, "rev-2": true, "rev-3": true}
-	ids := learnCardIDs(got)
-	for i, id := range ids {
-		if i%2 == 0 {
-			require.False(t, reviewSet[id], "slot %d must be a new card, got %q", i, id)
-		} else {
-			require.True(t, reviewSet[id], "slot %d must be a review card, got %q", i, id)
-		}
-	}
+	require.Equal(t, []string{"new-1", "rev-1", "new-2", "rev-2", "new-3", "rev-3"}, learnCardIDs(got))
 }
 
 // TestLearnUsecaseNextDueCards_ErrNotFoundUsesDefaultRatio verifies that a
-// missing preference row falls back to domain.DefaultNewCardRatio (4:1), yielding
-// the default [N,N,R,N,R,R] order for the 3-new/3-review fixture.
+// missing preference row falls back to domain.DefaultNewCardRatio (1:4), yielding
+// the default [R,R,N,R,N,N] order for the 3-new/3-review fixture.
 func TestLearnUsecaseNextDueCards_ErrNotFoundUsesDefaultRatio(t *testing.T) {
 	t.Parallel()
 
@@ -445,7 +417,6 @@ func TestLearnUsecaseNextDueCards_ErrNotFoundUsesDefaultRatio(t *testing.T) {
 		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 		notFoundPrefs(),
 		service.NewOrderingPolicy(),
-		func() *rand.Rand { return rand.New(rand.NewSource(42)) },
 		20,
 		100,
 		fixedClock{now: now},
@@ -456,15 +427,7 @@ func TestLearnUsecaseNextDueCards_ErrNotFoundUsesDefaultRatio(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, got, 6)
-	reviewSet := map[string]bool{"rev-1": true, "rev-2": true, "rev-3": true}
-	ids := learnCardIDs(got)
-	// Default 4:1 largest remainder: [N, N, R, N, R, R].
-	require.False(t, reviewSet[ids[0]], "slot 0 must be a new card, got %q", ids[0])
-	require.False(t, reviewSet[ids[1]], "slot 1 must be a new card, got %q", ids[1])
-	require.True(t, reviewSet[ids[2]], "slot 2 must be a review card, got %q", ids[2])
-	require.False(t, reviewSet[ids[3]], "slot 3 must be a new card, got %q", ids[3])
-	require.True(t, reviewSet[ids[4]], "slot 4 must be a review card, got %q", ids[4])
-	require.True(t, reviewSet[ids[5]], "slot 5 must be a review card, got %q", ids[5])
+	require.Equal(t, []string{"rev-1", "rev-2", "new-1", "rev-3", "new-2", "new-3"}, learnCardIDs(got))
 }
 
 // --- PracticeTodaysCards tests ---
@@ -476,7 +439,6 @@ func newPracticeUsecase(cardRepo *mockLearnCardRepo, cgRepo *mockLearnCardgroupR
 		cgRepo,
 		notFoundPrefs(),
 		service.NewOrderingPolicy(),
-		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 		20,
 		100,
 		fixedClock{now: now},
@@ -694,7 +656,6 @@ func TestLearnUsecase_NextDueCards_FindCardgroup_PropagatesCancelled(t *testing.
 		cgRepo,
 		notFoundPrefs(),
 		nil,
-		nil,
 		20,
 		100,
 		fixedClock{now: time.Now()},
@@ -716,7 +677,6 @@ func TestLearnUsecase_NextDueCards_FindDueCards_PropagatesDeadlineExceeded(t *te
 		cardRepo,
 		cgRepo,
 		notFoundPrefs(),
-		nil,
 		nil,
 		20,
 		100,
@@ -740,7 +700,6 @@ func TestLearnUsecaseNextDueCards_LoadUserPreferenceInternalError(t *testing.T) 
 		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 		&mockLearnUserPrefs{err: errors.New("db down")},
 		service.NewOrderingPolicy(),
-		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 		20,
 		100,
 		fixedClock{now: now},
@@ -764,7 +723,6 @@ func TestLearnUsecaseNextDueCards_LoadUserPreferencePropagatesCancelled(t *testi
 		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 		&mockLearnUserPrefs{err: context.Canceled},
 		service.NewOrderingPolicy(),
-		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 		20,
 		100,
 		fixedClock{now: now},
@@ -808,7 +766,6 @@ func TestLearnUsecaseNextDueCards_PassesJSTStartOfDayAsReviewedBefore(t *testing
 				&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
 				notFoundPrefs(),
 				service.NewOrderingPolicy(),
-				func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 				20,
 				100,
 				fixedClock{now: tc.now},

@@ -297,8 +297,8 @@ describe("ProfilePage — newCardRatio (admin-only, failure-tolerant)", () => {
     // The page does NOT throw and does NOT redirect — the failure is swallowed.
     expect(redirect).not.toHaveBeenCalled();
     const el = findProfileFormElement(result);
-    // Falls back to the backend default ratio (4/5).
-    expect(el?.props.newCardRatio).toEqual({ numerator: 4, denominator: 5 });
+    // Falls back to the backend default ratio (1/5).
+    expect(el?.props.newCardRatio).toEqual({ numerator: 1, denominator: 5 });
     // The degradation is logged for operator triage, name-only (PII redaction).
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining("[profile] newCardRatio fetch failed"),

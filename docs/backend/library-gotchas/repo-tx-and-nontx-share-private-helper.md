@@ -66,14 +66,14 @@ is one source. If the practice window inlined its own copy of the SELECT, a
 later column addition to the learn window would silently skip practice.
 
 **A shared helper serving callers with different wrap prefixes takes the
-message as a parameter.** `dueRowsOn` serves four window queries across two
+message as a parameter.** `dueRowsOn` serves three window queries (review, new, practice) across two
 operations whose `eris.Wrap` layer prefixes differ (`repository: card: find due cards` vs.
 `repository: card: find practice cards`). A shared helper must not hardcode a
 fixed prefix — that would displace the caller-specific module attribution from
 the error chain. The prefix travels as a `wrapMsg` argument the caller supplies:
 
 ```go
-func dueRowsOn(db *gorm.DB, userID, where string, whereArgs []any, order string, limit int, wrapMsg string) ([]dueCardRow, error) {
+func dueRowsOn(db *gorm.DB, userID, where string, whereArgs []any, order clause.Expression, limit int, wrapMsg string) ([]dueCardRow, error) {
     // ... run the shared LEFT JOIN query ...
     if err := db. /* ... */ .Find(&rows).Error; err != nil {
         return nil, eris.Wrap(err, wrapMsg)

@@ -91,9 +91,9 @@ from `Parameters.nextRecallStability` in `arithmetic.go`: at
 every rating despite zero scheduling credit. `Again` instead uses
 `Parameters.nextForgetStability`, which accounts for the stability collapse.
 
-This non-neutral mutation is why `RescueReviewedBefore` in
+This non-neutral mutation is why `CreditReviewedBefore` in
 [`backend/internal/domain/learn_day.go`](../../../backend/internal/domain/learn_day.go)
-bounds the serving windows at UTC midnight of the current UTC calendar date
+bounds the review window at UTC midnight of the current UTC calendar date
 rather than treating zero scheduling credit as a safe repeat.
 
 ## The `interval == stability` identity
@@ -144,6 +144,6 @@ identity breaks.
 - [`backend/internal/domain/service/fsrs_scheduler.go`](../../../backend/internal/domain/service/fsrs_scheduler.go) —
   `NewFSRSScheduler`.
 - [`backend/internal/domain/learn_day.go`](../../../backend/internal/domain/learn_day.go) —
-  `RescueReviewedBefore` and `utcCalendarDay`.
+  `CreditReviewedBefore` and `utcCalendarDay`.
 - [`backend/internal/domain/mastery_tier.go`](../../../backend/internal/domain/mastery_tier.go) —
   `MatureStabilityDays`.
