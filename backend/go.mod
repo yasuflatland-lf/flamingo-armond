@@ -6,11 +6,11 @@ require (
 	github.com/99designs/gqlgen v0.17.95
 	github.com/MicahParks/keyfunc/v3 v3.8.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/golang-migrate/migrate/v4 v4.19.1
+	github.com/golang-migrate/migrate/v4 v4.20.1
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/graph-gophers/dataloader/v7 v7.2.0
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/joho/godotenv v1.5.1
 	github.com/jomei/notionapi v1.13.3
 	github.com/labstack/echo/v5 v5.3.1
@@ -27,7 +27,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.46.0
 	go.opentelemetry.io/otel/sdk v1.46.0
 	golang.org/x/sync v0.23.0
-	golang.org/x/text v0.41.0
+	golang.org/x/text v0.42.0
 	golang.org/x/time v0.16.0
 	gorm.io/driver/postgres v1.6.2
 	gorm.io/gorm v1.31.2
@@ -61,7 +61,7 @@ require (
 	github.com/dop251/goja v0.0.0-20230122112309-96b1610dd4f7 // indirect
 	github.com/ebitengine/purego v0.10.1 // indirect
 	github.com/fatih/color v1.18.0 // indirect
-	github.com/fe3dback/go-arch-lint v1.18.0 // indirect
+	github.com/fe3dback/go-arch-lint v1.19.0 // indirect
 	github.com/fe3dback/go-yaml v1.14.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
@@ -130,8 +130,8 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260811182544-a038080d80e5 // indirect
 	golang.org/x/term v0.45.0 // indirect
-	golang.org/x/tools v0.49.0 // indirect
-	golang.org/x/vuln v1.7.0 // indirect
+	golang.org/x/tools v0.50.0 // indirect
+	golang.org/x/vuln v1.8.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	gonum.org/v1/plot v0.12.0 // indirect
 	google.golang.org/genproto v0.0.0-20260319201613-d00831a3d3e7 // indirect
