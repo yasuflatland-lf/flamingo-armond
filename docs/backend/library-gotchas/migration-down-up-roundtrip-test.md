@@ -111,4 +111,4 @@ Both tests must end with the database migrated back up. A test that leaves the s
 
 ## Reference
 
-`backend/internal/database/extract_user_preferences_test.go` contains `TestExtractUserPreferences_DownUpRoundtrip` and `TestExtractUserPreferences_NullPrefHandledByDown`. The migration pair under test is `20260516120000_extract_user_preferences.{up,down}.sql`. The general migration mechanics (filename format, `schema_migrations.dirty` recovery, BEGIN/COMMIT requirement for the pgx driver) are documented in [`docs/backend-db.md` § "Migrations"](../../backend-db.md#migrations).
+`backend/internal/database/migrate_roundtrip_test.go` contains `TestMigrateDownUpRoundtrip`, which checks that all application tables, including `user_preferences`, are recreated after a full down/up cycle. The `user_preferences` table is defined by `20260430080000_initial_schema.up.sql`. The general migration mechanics (filename format, `schema_migrations.dirty` recovery, BEGIN/COMMIT requirement for the pgx driver) are documented in [`docs/backend-db.md` § "Migrations"](../../backend-db.md#migrations).

@@ -3,12 +3,15 @@ package database_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -33,14 +36,17 @@ func TestRLSPolicies_AuthenticatedRole(t *testing.T) {
 	authPool := openAuthenticatedPool(t, ctx)
 	defer authPool.Close()
 
+	probePool := openPolicyProbePool(t, ctx)
+	defer probePool.Close()
+
 	t.Run("users", func(t *testing.T) {
 		assertCount(t, queryCountAs(t, ctx, authPool, fx.userA, `SELECT count(*) FROM public.users WHERE id = $1`, fx.userA), 1)
 		assertCount(t, queryCountAs(t, ctx, authPool, fx.userA, `SELECT count(*) FROM public.users WHERE id = $1`, fx.userB), 0)
 		assertCount(t, queryCountAs(t, ctx, authPool, fx.adminUser, `SELECT count(*) FROM public.users WHERE id = $1`, fx.userB), 1)
 
-		assertRows(t, execOKAs(t, ctx, authPool, fx.userA,
+		assertRows(t, execOKAs(t, ctx, probePool, fx.userA,
 			`UPDATE public.users SET display_name = 'self update' WHERE id = $1`, fx.userA), 1)
-		assertRows(t, execOKAs(t, ctx, authPool, fx.userA,
+		assertRows(t, execOKAs(t, ctx, probePool, fx.userA,
 			`UPDATE public.users SET display_name = 'blocked update' WHERE id = $1`, fx.userB), 0)
 	})
 
@@ -49,10 +55,10 @@ func TestRLSPolicies_AuthenticatedRole(t *testing.T) {
 		assertCount(t, queryCountAs(t, ctx, authPool, fx.userA, `SELECT count(*) FROM public.cardgroups WHERE id = $1`, fx.groupB), 0)
 		assertCount(t, queryCountAs(t, ctx, authPool, fx.adminUser, `SELECT count(*) FROM public.cardgroups WHERE id = $1`, fx.groupB), 1)
 
-		assertRows(t, execOKAs(t, ctx, authPool, fx.userA,
+		assertRows(t, execOKAs(t, ctx, probePool, fx.userA,
 			`INSERT INTO public.cardgroups (owner_id, name) VALUES ($1, $2)`,
 			fx.userA, "RLS own group"), 1)
-		execDeniedAs(t, ctx, authPool, fx.userA,
+		execDeniedAs(t, ctx, probePool, fx.userA,
 			`INSERT INTO public.cardgroups (owner_id, name) VALUES ($1, $2)`,
 			fx.userB, "RLS blocked group")
 	})
@@ -62,9 +68,9 @@ func TestRLSPolicies_AuthenticatedRole(t *testing.T) {
 		assertCount(t, queryCountAs(t, ctx, authPool, fx.userA, `SELECT count(*) FROM public.cards WHERE id = $1`, fx.cardB), 0)
 		assertCount(t, queryCountAs(t, ctx, authPool, fx.adminUser, `SELECT count(*) FROM public.cards WHERE id = $1`, fx.cardB), 1)
 
-		assertRows(t, execOKAs(t, ctx, authPool, fx.userA, insertCardSQL(),
+		assertRows(t, execOKAs(t, ctx, probePool, fx.userA, insertCardSQL(),
 			uuid.NewString(), fx.groupA, "RLS own card", "Back"), 1)
-		execDeniedAs(t, ctx, authPool, fx.userA, insertCardSQL(),
+		execDeniedAs(t, ctx, probePool, fx.userA, insertCardSQL(),
 			uuid.NewString(), fx.groupB, "RLS blocked card", "Back")
 	})
 
@@ -73,18 +79,18 @@ func TestRLSPolicies_AuthenticatedRole(t *testing.T) {
 		assertCount(t, queryCountAs(t, ctx, authPool, fx.userA, `SELECT count(*) FROM public.swipe_records WHERE user_id = $1`, fx.userB), 0)
 		assertCount(t, queryCountAs(t, ctx, authPool, fx.adminUser, `SELECT count(*) FROM public.swipe_records WHERE user_id = $1`, fx.userB), 1)
 
-		assertRows(t, execOKAs(t, ctx, authPool, fx.userA, insertSwipeSQL(),
+		assertRows(t, execOKAs(t, ctx, probePool, fx.userA, insertSwipeSQL(),
 			fx.userA, fx.cardA, fx.groupA, time.Now().UTC()), 1)
-		execDeniedAs(t, ctx, authPool, fx.userA, insertSwipeSQL(),
+		execDeniedAs(t, ctx, probePool, fx.userA, insertSwipeSQL(),
 			fx.userB, fx.cardA, fx.groupA, time.Now().UTC())
-		execDeniedAs(t, ctx, authPool, fx.adminUser, insertSwipeSQL(),
+		execDeniedAs(t, ctx, probePool, fx.adminUser, insertSwipeSQL(),
 			fx.userB, fx.cardB, fx.groupB, time.Now().UTC())
 
 		// The swipe_records_insert_own policy constrains user_id only, so a
 		// caller inserting their own user_id can still name any deck id. The
 		// cardgroup_id foreign key is what rejects a planted value: this insert
 		// passes the RLS WITH CHECK and fails on SQLSTATE 23503 instead.
-		execDeniedAs(t, ctx, authPool, fx.userA, insertSwipeSQL(),
+		execDeniedAs(t, ctx, probePool, fx.userA, insertSwipeSQL(),
 			fx.userA, fx.cardA, uuid.NewString(), time.Now().UTC())
 	})
 
@@ -100,10 +106,10 @@ func TestRLSPolicies_AuthenticatedRole(t *testing.T) {
 		assertCount(t, queryCountAs(t, ctx, authPool, fx.adminUser, `SELECT count(*) FROM public.user_card_fsrs WHERE user_id = $1`, fx.userB), 1)
 
 		// User A can insert a row for themselves.
-		assertRows(t, execOKAs(t, ctx, authPool, fx.userA, insertUserCardFSRSSQL(),
+		assertRows(t, execOKAs(t, ctx, probePool, fx.userA, insertUserCardFSRSSQL(),
 			fx.userA, fx.cardB, time.Now().UTC()), 1)
 		// User A cannot insert a row with a different user_id.
-		execDeniedAs(t, ctx, authPool, fx.userA, insertUserCardFSRSSQL(),
+		execDeniedAs(t, ctx, probePool, fx.userA, insertUserCardFSRSSQL(),
 			fx.userB, fx.cardA, time.Now().UTC())
 	})
 
@@ -121,44 +127,46 @@ func TestRLSPolicies_AuthenticatedRole(t *testing.T) {
 		// INSERT-own: User C (no pre-existing row) can insert a row for themselves.
 		// userA/userB already have rows from the fixture setup above, so we use userC
 		// to avoid the ON CONFLICT DO NOTHING returning 0 rows affected.
-		assertRows(t, execOKAs(t, ctx, authPool, fx.userC, insertUserPreferencesSQL(), fx.userC), 1)
+		assertRows(t, execOKAs(t, ctx, probePool, fx.userC, insertUserPreferencesSQL(), fx.userC), 1)
 		// INSERT-other denied: User C cannot insert a row with User A's user_id.
-		execDeniedAs(t, ctx, authPool, fx.userC, insertUserPreferencesSQL(), fx.userA)
+		execDeniedAs(t, ctx, probePool, fx.userC, insertUserPreferencesSQL(), fx.userA)
 
 		// UPDATE-own: User A can update their own row.
-		assertRows(t, execOKAs(t, ctx, authPool, fx.userA,
+		assertRows(t, execOKAs(t, ctx, probePool, fx.userA,
 			`UPDATE public.user_preferences SET updated_at = now() WHERE user_id = $1`, fx.userA), 1)
 		// UPDATE-other denied: User A cannot update User B's row (0 rows affected).
-		assertRows(t, execOKAs(t, ctx, authPool, fx.userA,
+		assertRows(t, execOKAs(t, ctx, probePool, fx.userA,
 			`UPDATE public.user_preferences SET updated_at = now() WHERE user_id = $1`, fx.userB), 0)
 
 		// DELETE-own: User A can delete their own row.
-		assertRows(t, execOKAs(t, ctx, authPool, fx.userA,
+		assertRows(t, execOKAs(t, ctx, probePool, fx.userA,
 			`DELETE FROM public.user_preferences WHERE user_id = $1`, fx.userA), 1)
 		// DELETE-other denied: User A cannot delete User B's row (0 rows affected).
-		assertRows(t, execOKAs(t, ctx, authPool, fx.userA,
+		assertRows(t, execOKAs(t, ctx, probePool, fx.userA,
 			`DELETE FROM public.user_preferences WHERE user_id = $1`, fx.userB), 0)
 	})
 
 	t.Run("roles", func(t *testing.T) {
 		assertCount(t, queryCountAs(t, ctx, authPool, fx.userA, `SELECT count(*) FROM public.roles WHERE name = 'admin'`), 1)
-		execDeniedAs(t, ctx, authPool, fx.userA,
+		execDeniedAs(t, ctx, probePool, fx.userA,
 			`INSERT INTO public.roles (name) VALUES ($1)`, uniqueName("blocked-role"))
 
-		roleID := insertRoleAs(t, ctx, authPool, fx.adminUser, uniqueName("admin-created-role"))
-		if roleID == "" {
+		adminCreatedRoleID := insertRoleAs(t, ctx, probePool, fx.adminUser, uniqueName("admin-created-role"))
+		if adminCreatedRoleID == "" {
 			t.Fatal("admin role insert returned empty id")
 		}
+
+		roleID := insertRLSRole(t, ctx, sqlDBForTest(t, db), uniqueName("user-roles-probe"))
 
 		t.Run("user_roles", func(t *testing.T) {
 			assertCount(t, queryCountAs(t, ctx, authPool, fx.userA, `SELECT count(*) FROM public.user_roles WHERE user_id = $1`, fx.userA), 1)
 			assertCount(t, queryCountAs(t, ctx, authPool, fx.userA, `SELECT count(*) FROM public.user_roles WHERE user_id = $1`, fx.userB), 0)
 			assertCount(t, queryCountAs(t, ctx, authPool, fx.adminUser, `SELECT count(*) FROM public.user_roles WHERE user_id = $1`, fx.userB), 1)
 
-			execDeniedAs(t, ctx, authPool, fx.userA,
+			execDeniedAs(t, ctx, probePool, fx.userA,
 				`INSERT INTO public.user_roles (user_id, role_id) VALUES ($1, $2)`,
 				fx.userA, roleID)
-			assertRows(t, execOKAs(t, ctx, authPool, fx.adminUser,
+			assertRows(t, execOKAs(t, ctx, probePool, fx.adminUser,
 				`INSERT INTO public.user_roles (user_id, role_id) VALUES ($1, $2)`,
 				fx.userB, roleID), 1)
 		})
@@ -169,7 +177,7 @@ func TestRLSPolicies_AuthenticatedRole(t *testing.T) {
 		// enabled with no policy and the API-role GRANTs are revoked, so an
 		// authenticated PostgREST caller is denied outright. The owner connection
 		// used by golang-migrate and the backend bypasses RLS and is unaffected.
-		execDeniedAs(t, ctx, authPool, fx.userA,
+		execPrivilegeDeniedAs(t, ctx, authPool, fx.userA,
 			`SELECT version FROM public.schema_migrations`)
 	})
 }
@@ -235,6 +243,17 @@ func insertRLSAuthUser(t *testing.T, ctx context.Context, sqlDB *sql.DB) string 
 	return id
 }
 
+func insertRLSRole(t *testing.T, ctx context.Context, sqlDB *sql.DB, name string) string {
+	t.Helper()
+	id := uuid.NewString()
+	if _, err := sqlDB.ExecContext(ctx,
+		`INSERT INTO public.roles (id, name) VALUES ($1, $2)`,
+		id, name); err != nil {
+		t.Fatalf("insert role: %v", err)
+	}
+	return id
+}
+
 func insertRLSCardgroup(t *testing.T, ctx context.Context, sqlDB *sql.DB, ownerID, name string) string {
 	t.Helper()
 	id := uuid.NewString()
@@ -282,6 +301,45 @@ func openAuthenticatedPool(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	return pool
 }
 
+// Write-policy probes run on the owner pool: the API roles hold no write
+// privileges since 20260927000001_revoke_client_writes, so each probe re-grants
+// them inside a transaction that is always rolled back.
+func openPolicyProbePool(t *testing.T, ctx context.Context) *pgxpool.Pool {
+	t.Helper()
+	pool, err := pgxpool.New(ctx, testDSN)
+	if err != nil {
+		t.Fatalf("open policy probe pool: %v", err)
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		t.Fatalf("ping policy probe pool: %v", err)
+	}
+	return pool
+}
+
+func beginPolicyProbe(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID string) pgx.Tx {
+	t.Helper()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin policy probe tx: %v", err)
+	}
+	ready := false
+	defer func() {
+		if !ready {
+			tx.Rollback(ctx)
+		}
+	}()
+	if _, err := tx.Exec(ctx, `GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated`); err != nil {
+		t.Fatalf("grant policy probe privileges: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `SET LOCAL ROLE authenticated`); err != nil {
+		t.Fatalf("set policy probe role: %v", err)
+	}
+	setClaims(t, ctx, tx, userID)
+	ready = true
+	return tx
+}
+
 func queryCountAs(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID, query string, args ...any) int {
 	t.Helper()
 	tx, err := pool.Begin(ctx)
@@ -303,38 +361,34 @@ func queryCountAs(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID,
 
 func execOKAs(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID, query string, args ...any) int64 {
 	t.Helper()
-	tx, err := pool.Begin(ctx)
-	if err != nil {
-		t.Fatalf("begin authenticated tx: %v", err)
-	}
+	tx := beginPolicyProbe(t, ctx, pool, userID)
 	defer tx.Rollback(ctx)
-	setClaims(t, ctx, tx, userID)
 
 	tag, err := tx.Exec(ctx, query, args...)
 	if err != nil {
 		t.Fatalf("exec as %s: %v", userID, err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		t.Fatalf("commit authenticated tx: %v", err)
 	}
 	return tag.RowsAffected()
 }
 
 func execDeniedAs(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID, query string, args ...any) {
 	t.Helper()
-	tx, err := pool.Begin(ctx)
-	if err != nil {
-		t.Fatalf("begin authenticated tx: %v", err)
-	}
+	tx := beginPolicyProbe(t, ctx, pool, userID)
 	defer tx.Rollback(ctx)
-	setClaims(t, ctx, tx, userID)
 
-	if _, err := tx.Exec(ctx, query, args...); err == nil {
+	_, err := tx.Exec(ctx, query, args...)
+	if err == nil {
 		t.Fatalf("exec as %s unexpectedly succeeded", userID)
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && strings.Contains(pgErr.Message, "permission denied for table") {
+		t.Fatalf("exec as %s: denied by table privilege, not by policy: %v", userID, err)
 	}
 }
 
-func insertRoleAs(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID, name string) string {
+// execPrivilegeDeniedAs asserts the statement fails on the table-privilege check
+// (SQLSTATE 42501, permission denied for table), before any RLS policy runs.
+func execPrivilegeDeniedAs(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID, query string, args ...any) {
 	t.Helper()
 	tx, err := pool.Begin(ctx)
 	if err != nil {
@@ -343,13 +397,22 @@ func insertRoleAs(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID,
 	defer tx.Rollback(ctx)
 	setClaims(t, ctx, tx, userID)
 
+	_, err = tx.Exec(ctx, query, args...)
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "42501" || !strings.Contains(pgErr.Message, "permission denied for table") {
+		t.Fatalf("exec as %s: expected table privilege denial (42501), got: %v", userID, err)
+	}
+}
+
+func insertRoleAs(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID, name string) string {
+	t.Helper()
+	tx := beginPolicyProbe(t, ctx, pool, userID)
+	defer tx.Rollback(ctx)
+
 	var roleID string
 	if err := tx.QueryRow(ctx,
 		`INSERT INTO public.roles (name) VALUES ($1) RETURNING id`, name).Scan(&roleID); err != nil {
 		t.Fatalf("insert role as %s: %v", userID, err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		t.Fatalf("commit authenticated tx: %v", err)
 	}
 	return roleID
 }

@@ -92,11 +92,11 @@ func TestWidenTextLengthChecksDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// lower_new_card_ratio_default, tighten_new_card_ratio_check,
+	// revoke_client_writes, lower_new_card_ratio_default, tighten_new_card_ratio_check,
 	// realign_fsrs_snapshot_columns_to_v4 and
 	// widen_updated_at_triggers_to_insert sit above widen_text_length_checks, so
-	// five steps reach the target. Bump this count when adding later migrations.
-	if err := m.Steps(-5); err != nil {
+	// six steps reach the target. Bump this count when adding later migrations.
+	if err := m.Steps(-6); err != nil {
 		t.Fatalf("migrate down widen_text_length_checks: %v", err)
 	}
 	for _, c := range widenedTextLengthChecks {

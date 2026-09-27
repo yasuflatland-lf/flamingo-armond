@@ -186,7 +186,7 @@ Owner checks live in the usecase, not in Postgres RLS. Both read and write colla
 - Non-owner `cardgroup(id:)` read → return `null`, byte-identical to a missing id (both `data.cardgroup = null`, no top-level error), so the query cannot be used as an existence oracle over other users' cardgroups.
 - Non-owner write (`updateCardgroup`, `deleteCardgroup`) → return `UNAUTHENTICATED`, byte-identical to a missing id.
 
-Although authorization itself is not delegated to Postgres, every application table in the `public` schema has Row Level Security enabled. Core user data tables now have concrete policies for direct Supabase callers:
+Although authorization itself is not delegated to Postgres, every application table in the `public` schema has Row Level Security enabled. The `anon` and `authenticated` API roles hold `SELECT` but no `INSERT` / `UPDATE` / `DELETE` / `TRUNCATE` privilege on those tables (migration `20260927000001_revoke_client_writes`), so PostgREST and pg_graphql callers can at most read, and the policies below decide which rows. The write clauses stay as defence in depth in case a privilege is ever re-granted:
 
 - `users`: a caller can select or update only their own row; admins can select or update any row.
 - `cardgroups` and `cards`: owners have full row access through `cardgroups.owner_id`; admins bypass ownership.
@@ -194,7 +194,7 @@ Although authorization itself is not delegated to Postgres, every application ta
 - `roles`: selectable by all callers; mutations are admin-only.
 - `user_roles`: callers can read their own assignments; admins can read and mutate all assignments.
 
-The Go backend connects as the table-owner role, which bypasses RLS unless `FORCE ROW LEVEL SECURITY` is set, so application queries and migrations are unaffected. `FORCE ROW LEVEL SECURITY` is intentionally not enabled. The `schema_migrations` bookkeeping table carries deny-all RLS (enabled with no policy, API-role GRANTs revoked) so PostgREST callers cannot read or write it, while the table owner still bypasses RLS — see `docs/backend-db.md` § "schema_migrations and RLS" for the rationale. If a future flow needs Supabase JS to read a new table directly, add a targeted policy alongside the access pattern; do not disable RLS to "make it work".
+The Go backend connects as the table-owner role, which bypasses RLS unless `FORCE ROW LEVEL SECURITY` is set, so application queries and migrations are unaffected. `FORCE ROW LEVEL SECURITY` is intentionally not enabled. The `schema_migrations` bookkeeping table carries deny-all RLS (enabled with no policy, API-role GRANTs revoked) so PostgREST callers cannot read or write it, while the table owner still bypasses RLS — see [`docs/backend-db.md` § "`schema_migrations` and RLS"](backend-db.md#schema_migrations-and-rls) for the rationale. If a future flow needs Supabase JS to read a new table directly, add a targeted policy alongside the access pattern; do not disable RLS to "make it work". Direct client writes are not a supported access pattern: route them through a GraphQL mutation so the Go-side rules apply, rather than re-granting write privileges to `authenticated`.
 
 ### Role-based authorization (`auth.Service`)
 

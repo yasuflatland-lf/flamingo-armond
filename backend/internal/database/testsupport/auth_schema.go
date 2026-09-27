@@ -13,10 +13,9 @@ import (
 
 // BootstrapAuthSchema mimics the Supabase-managed auth schema and roles just
 // enough for FK, trigger, and RLS policy references in migrations to resolve.
-// It connects to dsn, creates the `authenticated` role, the `auth` schema with
-// the `auth.users` table and `auth.uid()` function, and grants the privileges
-// (including ALTER DEFAULT PRIVILEGES for future tables/sequences) that RLS
-// policies rely on. Run it before database.Migrate against a throwaway test DB.
+// It creates the `authenticated` and `anon` roles, `auth.users`, and `auth.uid()`,
+// and grants default privileges for future tables/sequences. Run it before
+// database.Migrate against a throwaway test DB.
 func BootstrapAuthSchema(ctx context.Context, dsn string) error {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -32,6 +31,9 @@ func BootstrapAuthSchema(ctx context.Context, dsn string) error {
         BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
                 CREATE ROLE authenticated LOGIN PASSWORD 'test';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+                CREATE ROLE anon NOLOGIN;
             END IF;
         END
         $$;
@@ -54,8 +56,9 @@ func BootstrapAuthSchema(ctx context.Context, dsn string) error {
         GRANT USAGE ON SCHEMA auth TO authenticated;
         GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated;
         GRANT USAGE ON SCHEMA public TO authenticated;
+        GRANT USAGE ON SCHEMA public TO anon;
         ALTER DEFAULT PRIVILEGES IN SCHEMA public
-            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated;
+            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated, anon;
         ALTER DEFAULT PRIVILEGES IN SCHEMA public
             GRANT USAGE, SELECT ON SEQUENCES TO authenticated;
     `); err != nil {
