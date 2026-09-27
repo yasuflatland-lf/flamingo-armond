@@ -389,6 +389,29 @@ describe("<CatalogDeckClient>", () => {
     expect(screen.queryByTestId("catalog-deck-empty")).toBeNull();
   });
 
+  it("renders the query-error banner and hides the unfiltered SSR list when a search query fails", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    const failingSearchMock = {
+      request: {
+        query: CatalogMasterCardsConnectionDocument,
+        variables: { ...catalogCardsDefaultVars(DECK.id), search: "zzz" },
+      },
+      result: { errors: [new GraphQLError("boom", { extensions: { code: "INTERNAL" } })] },
+    };
+
+    renderClient([failingSearchMock], makeConnection([C1]), cache);
+
+    expect(await screen.findByText("hello")).toBeInTheDocument();
+    await user.type(screen.getByTestId("cards-search-input"), "zzz");
+
+    expect(await screen.findByTestId("catalog-deck-query-error")).toHaveTextContent("boom");
+    expect(screen.queryByTestId("catalog-deck-card-list")).toBeNull();
+    expect(screen.queryByTestId("catalog-deck-empty-search")).toBeNull();
+    expect(screen.queryByTestId("catalog-deck-empty")).toBeNull();
+    expect(screen.queryByText("hello")).toBeNull();
+  });
+
   it("halts the IO loop and shows a Retry banner when fetchMore fails", async () => {
     const user = userEvent.setup();
     const cache = new InMemoryCache();

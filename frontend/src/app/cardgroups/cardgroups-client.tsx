@@ -19,7 +19,7 @@ import {
   type MyCardgroupsConnectionQueryVariables,
 } from "@/generated/graphql";
 import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
-import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { classifyQueryError, getBackendErrorBanner } from "@/lib/apollo/errors";
 import { FLAMINGO_EVENT, subscribeFlamingo } from "@/lib/events/flamingo-events";
 import { EMPTY_PAGE_INFO } from "@/lib/pagination/empty-page-info";
 import { makeMergeConnection } from "@/lib/pagination/make-merge-connection";
@@ -218,6 +218,8 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
     fetchMoreError,
     retryFetchMore,
     sentinelRef,
+    queryError,
+    refetch,
   } = useConnectionPagination<
     MyCardgroupsConnectionQuery,
     MyCardgroupsConnectionQueryVariables,
@@ -239,6 +241,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
     logScope: "[cardgroups]",
   });
   const hasNextPage = pageInfo.hasNextPage;
+  const queryErrorKind = classifyQueryError(queryError);
 
   function handleDelete(id: string, name: string) {
     // Clear any stale delete-error banner so a new attempt starts clean.
@@ -299,6 +302,14 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
           <Plus aria-hidden="true" />
         </Button>
       }
+      queryErrorKind={queryErrorKind}
+      errorCopy={{
+        viewForbidden: tCommon("forbidden"),
+        sessionExpired: t("sessionExpired"),
+        signInAgain: t("signInAgain"),
+        retry: tCommon("retry"),
+      }}
+      onRetry={refetch}
       initialLoading={initialLoading}
       loadingLabel={tCommon("loading")}
       isEmpty={edges.length === 0}

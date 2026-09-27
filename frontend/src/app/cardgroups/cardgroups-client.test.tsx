@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -406,6 +406,63 @@ describe("<CardgroupsClient>", () => {
       expect(screen.getByTestId("cardgroups-empty-search")).toBeInTheDocument();
     });
     expect(screen.getByText(/No cardgroups match "nonexistent"/)).toBeInTheDocument();
+  });
+
+  async function renderFailingSearch(code: string) {
+    const user = userEvent.setup({ delay: null });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const cache = new InMemoryCache();
+    const emptyConn = makeConnection([]);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: { first: CARDGROUPS_PAGE_SIZE, search: null },
+      data: { myCardgroupsConnection: emptyConn },
+    });
+
+    const initialMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: { first: CARDGROUPS_PAGE_SIZE, search: null },
+      },
+      result: { data: { myCardgroupsConnection: emptyConn } },
+    };
+    const searchMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: { first: CARDGROUPS_PAGE_SIZE, search: "nonexistent" },
+      },
+      result: { errors: [new GraphQLError("boom", { extensions: { code } })] },
+    };
+
+    renderClient([initialMock, searchMock], null, cache);
+
+    expect(await screen.findByTestId("cardgroups-empty")).toBeInTheDocument();
+
+    await user.type(screen.getByRole("searchbox"), "nonexistent");
+    vi.advanceTimersByTime(300);
+    vi.useRealTimers();
+
+    return screen.findByTestId("cardgroups-query-error");
+  }
+
+  it("renders the query-error banner, not the no-match state, when a search query fails", async () => {
+    const banner = await renderFailingSearch("INTERNAL");
+
+    expect(banner).toHaveTextContent("boom");
+    expect(within(banner).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.queryByTestId("cardgroups-empty-search")).toBeNull();
+    expect(screen.queryByTestId("cardgroups-empty")).toBeNull();
+  });
+
+  it("renders the sign-in banner when a search query fails with UNAUTHENTICATED", async () => {
+    const banner = await renderFailingSearch("UNAUTHENTICATED");
+
+    expect(within(banner).getByRole("link", { name: "Sign in again" })).toHaveAttribute(
+      "href",
+      "/login",
+    );
+    expect(within(banner).queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   // S3: debounces search input — query fires only after 300ms

@@ -11,6 +11,7 @@ import {
   type MasterCatalogQueryVariables,
 } from "@/generated/graphql";
 import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
+import { classifyQueryError } from "@/lib/apollo/errors";
 import { useConnectionPagination } from "@/lib/pagination/use-connection-pagination";
 import { useSeedConnectionCache } from "@/lib/pagination/use-seed-connection-cache";
 import { CatalogListItem } from "./catalog-list-item";
@@ -79,6 +80,8 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
     fetchMoreError,
     retryFetchMore,
     sentinelRef,
+    queryError,
+    refetch,
   } = useConnectionPagination<
     MasterCatalogQuery,
     MasterCatalogQueryVariables,
@@ -102,6 +105,7 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
     logScope: "[catalog]",
   });
   const hasNextPage = pageInfo.hasNextPage;
+  const queryErrorKind = classifyQueryError(queryError);
 
   const initialLoading = loading && edges.length === 0 && networkStatus !== NetworkStatus.fetchMore;
   const hasSearch = searchQuery !== null && searchQuery !== "";
@@ -127,6 +131,14 @@ export default function CatalogClient({ initialConnection }: CatalogClientProps)
       title={t("title")}
       count={totalCount}
       countLabel={tCommon("totalCount", { count: totalCount })}
+      queryErrorKind={queryErrorKind}
+      errorCopy={{
+        viewForbidden: tCommon("forbidden"),
+        sessionExpired: t("sessionExpired"),
+        signInAgain: t("signInAgain"),
+        retry: tCommon("retry"),
+      }}
+      onRetry={refetch}
       initialLoading={initialLoading}
       loadingLabel={tCommon("loading")}
       isEmpty={edges.length === 0}

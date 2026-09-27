@@ -3,6 +3,7 @@ import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MasterCatalogDocument } from "@/generated/graphql";
 import { renderWithIntl } from "@/test/render-with-intl";
@@ -285,6 +286,27 @@ describe("<CatalogClient>", () => {
     await user.type(screen.getByTestId("catalog-search"), "zzz");
 
     expect(await screen.findByTestId("catalog-empty-search")).toBeInTheDocument();
+  });
+
+  it("renders the query-error banner, not the no-match state, when a search query fails", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    const searchMock = {
+      request: {
+        query: MasterCatalogDocument,
+        variables: { ...CATALOG_DEFAULT_VARS, search: "zzz" },
+      },
+      result: { errors: [new GraphQLError("boom", { extensions: { code: "INTERNAL" } })] },
+    };
+
+    renderClient([searchMock], makeConnection([M1]), cache);
+
+    expect(await screen.findByText("Business English")).toBeInTheDocument();
+    await user.type(screen.getByTestId("catalog-search"), "zzz");
+
+    expect(await screen.findByTestId("catalog-query-error")).toHaveTextContent("boom");
+    expect(screen.queryByTestId("catalog-empty-search")).toBeNull();
+    expect(screen.queryByTestId("catalog-empty")).toBeNull();
   });
 });
 
