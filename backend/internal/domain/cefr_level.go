@@ -86,22 +86,28 @@ func ParseCEFRLevel(s string) (CEFRLevel, bool) {
 }
 
 // NormalizeWord canonicalises a word or phrase for CEFR lookup: NFC-normalize,
-// lowercase, fold curly apostrophes to straight, and strip leading/trailing
-// punctuation, symbols, and whitespace. Internal whitespace is preserved so
-// multi-word keys (idioms, phrasal verbs) round-trip. It is shared by the
-// markdown parser (key construction) and the classifier (query normalization)
-// so both sides agree on the canonical form. Note: after folding, a straight
-// apostrophe at the start or end is then stripped by the trailing-punctuation
-// trim; internal apostrophes are preserved.
+// lowercase, NFC again, fold curly apostrophes, strip leading/trailing
+// punctuation, symbols and whitespace, and collapse each internal whitespace run
+// (any unicode.IsSpace rune, including tab, NBSP and U+3000) to one ASCII space.
+// Internal whitespace collapses to a single space so a multi-word key matches
+// however the phrase was spaced. It is shared by the markdown parser (key
+// construction) and the classifier (query normalization) so both sides agree
+// on the canonical form. The result is idempotent:
+// NormalizeWord(NormalizeWord(s)) == NormalizeWord(s). Note: after folding, a
+// straight apostrophe at the start or end is then stripped by the
+// trailing-punctuation trim; internal apostrophes are preserved.
 func NormalizeWord(s string) string {
 	s = norm.NFC.String(s)
 	s = strings.ToLower(s)
+	// Lowercasing can leave a base letter and a following combining mark that
+	// NFC would compose (U+0130 lowers to plain "i"), so re-compose.
+	s = norm.NFC.String(s)
 	s = strings.ReplaceAll(s, "‘", "'")
 	s = strings.ReplaceAll(s, "’", "'")
 	s = strings.TrimFunc(s, func(r rune) bool {
 		return unicode.IsSpace(r) || unicode.IsPunct(r) || unicode.IsSymbol(r)
 	})
-	return s
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // CEFRWordList is the consumer-defined interface for the CEFR word-list

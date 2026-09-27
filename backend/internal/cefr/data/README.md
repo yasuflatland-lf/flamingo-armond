@@ -175,9 +175,10 @@ headword-before-IPA pattern
 which captures the headword that precedes the IPA transcription (`/.../`). A
 match is skipped when the captured headword ends with `:`, exceeds 30
 characters, or has more than four words. Each headword is normalized to the
-canonical key form (NFC-normalize; lowercase; fold curly `‘ ’` to straight `'`;
-strip leading/trailing whitespace, Unicode punctuation, and symbols, preserving
-internal whitespace) — identical to `domain.NormalizeWord` so the keys align
+canonical key form (NFC-normalize; lowercase; NFC-normalize again; fold curly
+`‘ ’` to straight `'`; strip leading/trailing whitespace, Unicode punctuation,
+and symbols, collapsing each internal whitespace run to one space) — identical
+to `domain.NormalizeWord` so the keys align
 with the Oxford keys and the classifier.
 
 The same normalization is applied to the `- key` bullets parsed from

@@ -62,28 +62,70 @@ func TestParseCEFRLevel(t *testing.T) {
 	}
 }
 
+// normalizeWordCases maps each input to its expected NormalizeWord output.
+var normalizeWordCases = map[string]string{
+	"Water":      "water",
+	"  WATER!  ": "water",
+	"(bank)":     "bank",
+	"ice cream":  "ice cream",
+	"Ice  Cream": "ice cream", // internal whitespace run collapsed
+	"don't":      "don't",     // ASCII apostrophe preserved internally
+	"o'clock":    "o'clock",   // ASCII apostrophe preserved internally
+	// Explicit unicode: U+2019 right curly apostrophe folded to straight.
+	// After folding the U+2019 → U+0027, TrimFunc strips a peripheral
+	// straight apostrophe; internal ones are kept.
+	"’clock":    "clock",     // U+2019 at start stripped after fold
+	"o’clock":   "o'clock",   // U+2019 inside word folded to straight
+	"don’t":     "don't",     // U+2019 inside word folded to straight
+	"don‘t":     "don't",     // U+2018 left single quote folded to straight
+	"carry’’on": "carry''on", // two consecutive curly apostrophes folded
+	"...":       "",
+	"":          "",
+	// Every unicode.IsSpace run (tab, NBSP, U+3000, newline) collapses to one space.
+	"artificial\tintelligence":      "artificial intelligence",
+	"artificial\u00a0intelligence":  "artificial intelligence",
+	"artificial\u3000intelligence":  "artificial intelligence",
+	" Artificial \n Intelligence! ": "artificial intelligence",
+	"\u0130\u0308":                  "\u00ef", // U+0130 lowers to "i", then composes with U+0308
+}
+
+// normalizeWordIdempotenceInputs are known non-idempotence counterexamples of
+// the single-NFC form plus canonical-equivalence singletons (Angstrom, Kelvin
+// and Ohm signs) and whitespace edge cases.
+var normalizeWordIdempotenceInputs = []string{
+	"\u0130\u0308", "\u0130\u0301", "\u212b", "\u212a", "\u2126", "a  b", "\t'x'\t",
+}
+
 func TestNormalizeWord(t *testing.T) {
 	t.Parallel()
-	cases := map[string]string{
-		"Water":      "water",
-		"  WATER!  ": "water",
-		"(bank)":     "bank",
-		"ice cream":  "ice cream",
-		"Ice  Cream": "ice  cream", // internal whitespace preserved verbatim
-		"don't":      "don't",      // ASCII apostrophe preserved internally
-		"o'clock":    "o'clock",    // ASCII apostrophe preserved internally
-		// Explicit unicode: U+2019 right curly apostrophe folded to straight.
-		// After folding the U+2019 → U+0027, TrimFunc strips a peripheral
-		// straight apostrophe; internal ones are kept.
-		"’clock":    "clock",     // U+2019 at start stripped after fold
-		"o’clock":   "o'clock",   // U+2019 inside word folded to straight
-		"don’t":     "don't",     // U+2019 inside word folded to straight
-		"don‘t":     "don't",     // U+2018 left single quote folded to straight
-		"carry’’on": "carry''on", // two consecutive curly apostrophes folded
-		"...":       "",
-		"":          "",
-	}
-	for in, want := range cases {
+	for in, want := range normalizeWordCases {
 		require.Equal(t, want, NormalizeWord(in), "input %q", in)
 	}
+}
+
+func TestNormalizeWord_Idempotent(t *testing.T) {
+	t.Parallel()
+	inputs := append([]string(nil), normalizeWordIdempotenceInputs...)
+	for in := range normalizeWordCases {
+		inputs = append(inputs, in)
+	}
+	for _, in := range inputs {
+		once := NormalizeWord(in)
+		require.Equal(t, once, NormalizeWord(once), "input %q", in)
+	}
+}
+
+func FuzzNormalizeWord_Idempotent(f *testing.F) {
+	for in := range normalizeWordCases {
+		f.Add(in)
+	}
+	for _, in := range normalizeWordIdempotenceInputs {
+		f.Add(in)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		n := NormalizeWord(s)
+		if NormalizeWord(n) != n {
+			t.Fatalf("NormalizeWord not idempotent for %q: %q -> %q", s, n, NormalizeWord(n))
+		}
+	})
 }

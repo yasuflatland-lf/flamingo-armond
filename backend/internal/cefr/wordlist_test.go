@@ -1,6 +1,7 @@
 package cefr
 
 import (
+	"strings"
 	"testing"
 
 	"backend/internal/domain"
@@ -69,6 +70,39 @@ func TestNewWordList_EmbeddedData(t *testing.T) {
 
 	// Sanity: a non-trivial number of entries loaded (Oxford + C2 combined).
 	require.Greater(t, wl.Len(), 7000)
+}
+
+// Pins that key construction and query normalization share one canonical form.
+func TestNewWordList_KeysAreNormalizeWordFixedPoints(t *testing.T) {
+	t.Parallel()
+	wl := NewWordList()
+	for k := range wl.levels {
+		require.Equal(t, k, domain.NormalizeWord(k), "key %q is not a NormalizeWord fixed point", k)
+	}
+}
+
+func TestNewWordList_MultiWordKeysMatchAnySpacing(t *testing.T) {
+	t.Parallel()
+	wl := NewWordList()
+	var multi []string
+	for k := range wl.levels {
+		if strings.Contains(k, " ") {
+			multi = append(multi, k)
+		}
+	}
+	// Pinned so a data refresh that adds or drops multi-word keys revisits this test.
+	require.Len(t, multi, 22)
+
+	for _, k := range multi {
+		want, ok := wl.Lookup(k)
+		require.True(t, ok)
+		for _, sep := range []string{"  ", "\t", "\u00a0", "\u3000"} {
+			variant := strings.ReplaceAll(k, " ", sep)
+			got, ok := wl.Lookup(domain.NormalizeWord(variant))
+			require.True(t, ok, "variant %q of key %q", variant, k)
+			require.Equal(t, want, got, "variant %q of key %q", variant, k)
+		}
+	}
 }
 
 func TestNewWordList_CambridgeC2Data(t *testing.T) {
