@@ -195,9 +195,10 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		// and a swipe at 01:00 UTC the next day are only nine hours apart and
 		// remain inside one JST learn day even though FSRS grants credit.
 		//
-		// domain.ReviewedWithinLearnDay is the exact complement of the
-		// serving-side SQL window (repository/card_due.go), so its comparator
-		// and the serving comparator must move together.
+		// The disjunction as a whole is the exact complement of the serving-side
+		// last_review predicates in repository/card_due.go (last_review <
+		// StartOfLearnDay AND last_review < CreditReviewedBefore); each disjunct
+		// and its serving comparator must move together.
 		existing := byCardID[card.ID]
 		if existing != nil &&
 			(domain.ReviewedWithinLearnDay(existing.State.LastReview, now) ||

@@ -22,9 +22,10 @@ type CardRepoForLearn interface {
 	// FindDueCardsForUser fetches one learn-queue batch bounded by window; see
 	// domain.LearnWindow for the field-to-SQL-comparator mapping.
 	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, window domain.LearnWindow, limit int) ([]domain.DueCard, error)
-	// FindPracticeCardsForUser returns cards the user reviewed today (the inverse
-	// window of FindDueCardsForUser): last_review at or after reviewedAfter. The
-	// server randomizes row order; the usecase preserves it verbatim.
+	// FindPracticeCardsForUser returns cards FindDueCardsForUser withholds because of
+	// their last_review (reviewed in today's JST learn day or on the current UTC date):
+	// last_review at or after reviewedAfter. The server randomizes row order; the
+	// usecase preserves it verbatim.
 	FindPracticeCardsForUser(ctx context.Context, userID, cardgroupID string, reviewedAfter time.Time, limit int) ([]domain.DueCard, error)
 }
 
@@ -43,10 +44,11 @@ type UserPrefsForLearn interface {
 // LearnUsecase surfaces due-card retrieval for a learning session.
 type LearnUsecase interface {
 	NextDueCards(ctx context.Context, cardgroupID string, limit *int) ([]*domain.Card, error)
-	// PracticeTodaysCards returns the cards the caller already reviewed today
-	// (JST), the inverse window of NextDueCards. It is read-only: no FSRS
-	// schedule ordering is applied and nothing is written. Returns Unauthenticated
-	// when the caller does not own the cardgroup, BadUserInput when the cardgroup is missing.
+	// PracticeTodaysCards returns the cards NextDueCards withholds because of their
+	// last_review: reviewed in today's JST learn day or on the current UTC date (the exact
+	// complement of the review window's last_review guards). Read-only: no FSRS ordering,
+	// no writes. Returns Unauthenticated when the caller does not own the cardgroup,
+	// BadUserInput when the cardgroup is missing.
 	PracticeTodaysCards(ctx context.Context, cardgroupID string, limit *int) ([]*domain.Card, error)
 }
 
@@ -172,11 +174,11 @@ func (u *learnUsecase) NextDueCards(ctx context.Context, cardgroupID string, lim
 	return ordered, nil
 }
 
-// PracticeTodaysCards returns the cards the caller already reviewed today (JST),
-// the inverse window of NextDueCards. It is strictly read-only: it never invokes
-// OrderingPolicy (practice replay is not schedule ordering) and never writes.
-// The repository randomizes row order server-side; this method preserves that
-// order verbatim, mapping DueCards to their underlying *domain.Card.
+// PracticeTodaysCards returns the cards NextDueCards withholds because of their
+// last_review: reviewed in today's JST learn day or on the current UTC date (the exact
+// complement of the review window's last_review guards). Strictly read-only: it never
+// invokes OrderingPolicy and never writes; the repository's server-side random row
+// order is preserved verbatim.
 func (u *learnUsecase) PracticeTodaysCards(ctx context.Context, cardgroupID string, limit *int) ([]*domain.Card, error) {
 	user, err := u.authorizeCardgroupForLearn(ctx, cardgroupID)
 	if err != nil {
@@ -188,7 +190,7 @@ func (u *learnUsecase) PracticeTodaysCards(ctx context.Context, cardgroupID stri
 	}
 	n = u.clampPracticeLimit(n)
 	now := u.clock.Now().UTC()
-	boundary := domain.StartOfLearnDay(now)
+	boundary := domain.NewLearnWindow(now).PracticeReviewedAfter()
 	rows, err := u.cardRepo.FindPracticeCardsForUser(ctx, user.Sub, cardgroupID, boundary, n)
 	if err != nil {
 		return nil, wrapInfraErr(err, "usecase: learn: find practice cards")
