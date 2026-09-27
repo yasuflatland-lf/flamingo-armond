@@ -11,6 +11,7 @@ import (
 
 	"backend/internal/domain"
 	"backend/internal/repository"
+	"backend/internal/usecase/ucerr"
 )
 
 // masterDeckCardgroupRepo is the subset of repository.MasterCardgroupRepository
@@ -460,7 +461,8 @@ func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx repositor
 // that loses its last card can never be merged as a successful 0/0. Cards
 // conflicting on (cardgroup_id, front) have back and position overwritten, and
 // the database advances updated_at; ids are preserved so FSRS state survives. Returns
-// the destination cardgroup plus the add/update tally.
+// the destination cardgroup plus the add/update tally. A case-fold collision with a
+// card created concurrently in the destination returns a ValidationError on cardgroupId.
 func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 	ctx context.Context, masterID string, destCardgroupID domain.CardgroupID, ownerID domain.UserID,
 ) (*MergeMasterResult, error) {
@@ -520,6 +522,12 @@ func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 	}); err != nil {
 		if isContextDone(err) {
 			return nil, err
+		}
+		if errors.Is(err, repository.ErrCardDuplicateFront) {
+			// A card with the exact catalog front was committed by a concurrent
+			// createCard after the case fold's snapshot; the merge rolled back and a
+			// retry sees that row, so this is a client-retryable input conflict.
+			return nil, ucerr.NewValidationError("cardgroupId", "cardgroup changed during the merge; try again")
 		}
 		if translated := translateTextLengthViolation(err); translated != nil {
 			return nil, translated
