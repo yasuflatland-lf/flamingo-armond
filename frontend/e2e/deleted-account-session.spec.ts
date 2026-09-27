@@ -31,6 +31,8 @@ test("deleted account with a live session cookie lands on /login", async ({ cont
 
   // Whether the local stack reproduces the loop depends on its JWT signing
   // key type, so only termination on /login is asserted, not `reason=`.
-  expect(new URL(page.url()).pathname).toBe("/login");
+  // Not a one-shot page.url() read: the root loading.tsx streams `/` first, so
+  // goto resolves before the RSC redirect moves the client to /login.
+  await page.waitForURL(/\/login(\?|$)/, { timeout: 10_000 });
   await expect(page.getByTestId("login-google-button")).toBeVisible();
 });
