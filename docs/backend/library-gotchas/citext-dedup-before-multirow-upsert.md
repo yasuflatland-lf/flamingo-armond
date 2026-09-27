@@ -4,7 +4,7 @@
 > Repo-side companion: [Table-parameterized bulk repository helper](table-parameterized-bulk-repo-helper.md).
 
 When a batch importer deduplicates parsed rows in memory (a Go `map` keyed on the
-conflict column) *before* handing them to a single multi-row
+conflict column) *before* handing them to a multi-row
 `INSERT ... ON CONFLICT (..., col) DO UPDATE`, the map key MUST match the DB's
 uniqueness semantics for `col`. If `col` is **citext** (case-insensitive), a map
 keyed on the **raw** string is wrong: `"Apple"` and `"apple"` are distinct Go map

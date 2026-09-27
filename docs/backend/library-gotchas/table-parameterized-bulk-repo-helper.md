@@ -24,7 +24,7 @@ to one copy silently misses the other.
 ## The shared normalized row struct
 
 ```go
-// backend/internal/repository/card.go
+// backend/internal/repository/bulk_card_tx.go
 
 // upsertCardRow is the domain-agnostic, normalized representation of a card row
 // consumed by upsertManyTx. GroupID maps to the FK column named by
@@ -48,7 +48,7 @@ time; each aggregate's repo fills it from its own domain field.
 
 ## The three shared helpers
 
-All three live in `backend/internal/repository/card.go` (package-private, not
+All three live in `backend/internal/repository/bulk_card_tx.go` (package-private, not
 exported):
 
 ### `upsertManyTx`
@@ -62,7 +62,9 @@ func upsertManyTx(
 ) (UpsertManyTxResult, error)
 ```
 
-Builds a single multi-row `INSERT INTO tableName ... ON CONFLICT (fkColumn, front) DO UPDATE`.
+Builds one multi-row `INSERT INTO tableName ... ON CONFLICT (fkColumn, front) DO UPDATE`
+per `bulkStatementChunkRows` (5,000) rows on the same `tx` and sums the per-chunk tallies;
+pgx rejects a statement with more than 65,535 bind parameters (6 per row).
 The per-row insert-vs-update split uses PostgreSQL's `RETURNING (xmax = 0) AS inserted`
 system-column trick — no second query needed. Empty input returns a zero-valued result
 with no error. Pre-fills blank IDs via `uuid.NewV7()` (no v4 fallback — see
@@ -171,7 +173,7 @@ No changes to the shared helpers or to `card.go` / `master_card.go`.
 
 ## Reference
 
-- `backend/internal/repository/card.go` — `upsertCardRow`, `upsertManyTx`,
+- `backend/internal/repository/bulk_card_tx.go` — `upsertCardRow`, `upsertManyTx`,
   `listFrontsByGroupTx`, `deleteByGroupAndFrontsTx`.
 - `backend/internal/repository/master_card.go` — `masterCardRepo.UpsertManyTx`,
   `ListFrontsByMasterCardgroupTx`, `DeleteByMasterCardgroupAndFrontsTx`.
