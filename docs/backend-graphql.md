@@ -355,7 +355,8 @@ interleaved with review cards at the caller's own `User.newCardRatio` setting
 slots — until the caller changes it. Slots are filled by largest-remainder
 distribution, so the ratio holds on every prefix rather than only on whole
 cycles: any `limit` yields the nearest whole number of new cards to
-`limit * numerator / denominator`, subject to how many of each kind are due.
+`limit * numerator / denominator`, but never more than 80% of `limit` while
+review cards remain, subject to how many of each kind are due.
 The review side is every card whose due time falls before the end of today's
 JST learn day, served highest FSRS retrievability first (the cards most likely
 to still be remembered come first). Cards already reviewed today (JST) or on

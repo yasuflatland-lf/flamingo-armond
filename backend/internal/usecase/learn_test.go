@@ -371,9 +371,8 @@ func ratioRows(now time.Time) []domain.DueCard {
 }
 
 // TestLearnUsecaseNextDueCards_UsesStoredRatio verifies that a stored non-default
-// ratio (1/2) reaches OrderingPolicy.Apply: the 1:1 alternation puts new cards in
-// the even slots and review cards in the odd slots, distinct from the default
-// 1:4 order [R,R,N,R,N,N].
+// ratio (1/2) reaches OrderingPolicy.Apply: 1/2 yields [R,N,N,R,N,R], distinct
+// from the default 1:4 order [R,R,N,R,N,N].
 func TestLearnUsecaseNextDueCards_UsesStoredRatio(t *testing.T) {
 	t.Parallel()
 
@@ -401,7 +400,7 @@ func TestLearnUsecaseNextDueCards_UsesStoredRatio(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, prefs.calls, "the stored preference must be read once")
 	require.Len(t, got, 6)
-	require.Equal(t, []string{"new-1", "rev-1", "new-2", "rev-2", "new-3", "rev-3"}, learnCardIDs(got))
+	require.Equal(t, []string{"rev-1", "new-1", "new-2", "rev-2", "new-3", "rev-3"}, learnCardIDs(got))
 }
 
 // TestLearnUsecaseNextDueCards_ErrNotFoundUsesDefaultRatio verifies that a
