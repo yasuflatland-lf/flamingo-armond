@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { act, screen } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -307,6 +307,31 @@ describe("<CatalogClient>", () => {
     expect(await screen.findByTestId("catalog-query-error")).toHaveTextContent("boom");
     expect(screen.queryByTestId("catalog-empty-search")).toBeNull();
     expect(screen.queryByTestId("catalog-empty")).toBeNull();
+  });
+
+  it("recovers from a failed search when the query-error Retry is clicked", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    const searchVars = { ...CATALOG_DEFAULT_VARS, search: "zzz" };
+    const failingSearchMock = {
+      request: { query: MasterCatalogDocument, variables: searchVars },
+      result: { errors: [new GraphQLError("boom", { extensions: { code: "INTERNAL" } })] },
+    };
+    const recoveredSearchMock = {
+      request: { query: MasterCatalogDocument, variables: searchVars },
+      result: { data: { masterCatalog: makeConnection([M3]) } },
+    };
+
+    renderClient([failingSearchMock, recoveredSearchMock], makeConnection([M1]), cache);
+
+    expect(await screen.findByText("Business English")).toBeInTheDocument();
+    await user.type(screen.getByTestId("catalog-search"), "zzz");
+
+    const banner = await screen.findByTestId("catalog-query-error");
+    await user.click(within(banner).getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("Travel Phrases")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId("catalog-query-error")).toBeNull());
   });
 });
 

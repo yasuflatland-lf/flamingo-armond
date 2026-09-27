@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -76,12 +76,15 @@ function makeConnection(cards: Card[], hasNextPage = false, totalCount?: number)
 // IntersectionObserver stub
 // ---------------------------------------------------------------------------
 let ioCallbacks: IntersectionObserverCallback[] = [];
+let ioTargets: Element[] = [];
 
 class FakeIntersectionObserver {
   constructor(cb: IntersectionObserverCallback) {
     ioCallbacks.push(cb);
   }
-  observe() {}
+  observe(target: Element) {
+    ioTargets.push(target);
+  }
   unobserve() {}
   disconnect() {}
   takeRecords(): IntersectionObserverEntry[] {
@@ -100,6 +103,7 @@ function fireIntersect() {
 // ---------------------------------------------------------------------------
 beforeEach(() => {
   ioCallbacks = [];
+  ioTargets = [];
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
 });
 
@@ -410,6 +414,39 @@ describe("<CatalogDeckClient>", () => {
     expect(screen.queryByTestId("catalog-deck-empty-search")).toBeNull();
     expect(screen.queryByTestId("catalog-deck-empty")).toBeNull();
     expect(screen.queryByText("hello")).toBeNull();
+  });
+
+  it("hides the footer during a failed search and recovers via Retry with the sentinel still observed", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    const searchVars = { ...catalogCardsDefaultVars(DECK.id), search: "zzz" };
+    const failingSearchMock = {
+      request: { query: CatalogMasterCardsConnectionDocument, variables: searchVars },
+      result: { errors: [new GraphQLError("boom", { extensions: { code: "INTERNAL" } })] },
+    };
+    // Same edge count and hasNextPage as the SSR seed, so the observer effect deps stay unchanged.
+    const recoveredSearchMock = {
+      request: { query: CatalogMasterCardsConnectionDocument, variables: searchVars },
+      result: { data: { masterCardsConnection: makeConnection([C3], true, 2) } },
+    };
+
+    renderClient([failingSearchMock, recoveredSearchMock], makeConnection([C1], true, 2), cache);
+
+    expect(await screen.findByText("hello")).toBeInTheDocument();
+    await user.type(screen.getByTestId("cards-search-input"), "zzz");
+
+    const banner = await screen.findByTestId("catalog-deck-query-error");
+    expect(screen.queryByTestId("catalog-deck-card-list")).toBeNull();
+    expect(screen.getByTestId("catalog-deck-sentinel")).not.toBeVisible();
+
+    await user.click(within(banner).getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("thanks")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId("catalog-deck-query-error")).toBeNull());
+    const sentinel = screen.getByTestId("catalog-deck-sentinel");
+    expect(sentinel).toBeVisible();
+    expect(ioTargets.at(-1)).toBe(sentinel);
+    expect(ioTargets.at(-1)?.isConnected).toBe(true);
   });
 
   it("halts the IO loop and shows a Retry banner when fetchMore fails", async () => {

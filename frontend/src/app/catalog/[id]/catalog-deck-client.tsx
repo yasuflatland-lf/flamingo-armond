@@ -231,9 +231,10 @@ export default function CatalogDeckClient({
             </ul>
           )}
 
-          {/* Not rendered while the query errors: pageInfo is then the unfiltered SSR
-              connection, whose endCursor would fetchMore against the search variables. */}
-          {!queryErrorKind && (
+          {/* Hidden, not unmounted: the pagination hook observes the sentinel node only when
+              its effect deps change, so a remounted sentinel could stay unobserved after recovery.
+              A hidden sentinel never intersects, so the SSR endCursor cannot fetchMore a search. */}
+          <div hidden={queryErrorKind !== null}>
             <ConnectionListFooter
               sentinelRef={sentinelRef}
               hasNextPage={pageInfo.hasNextPage}
@@ -244,7 +245,7 @@ export default function CatalogDeckClient({
               loadingMoreLabel={tCards("loadingMore")}
               testIdPrefix="catalog-deck"
             />
-          )}
+          </div>
         </div>
       </main>
     </>
