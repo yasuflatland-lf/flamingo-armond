@@ -301,9 +301,7 @@ func openAuthenticatedPool(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	return pool
 }
 
-// Write-policy probes run on the owner pool: the API roles hold no write
-// privileges since 20260927000001_revoke_client_writes, so each probe re-grants
-// them inside a transaction that is always rolled back.
+// openPolicyProbePool opens an owner-role pool for beginPolicyProbe.
 func openPolicyProbePool(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	t.Helper()
 	pool, err := pgxpool.New(ctx, testDSN)
@@ -317,6 +315,10 @@ func openPolicyProbePool(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	return pool
 }
 
+// beginPolicyProbe re-grants INSERT/UPDATE/DELETE (withheld from the API roles
+// since 20260927000001_revoke_client_writes) and switches to authenticated inside
+// the returned tx. Callers must roll back: committing persists the GRANT for the
+// whole shared test DB.
 func beginPolicyProbe(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID string) pgx.Tx {
 	t.Helper()
 	tx, err := pool.Begin(ctx)
@@ -404,6 +406,8 @@ func execPrivilegeDeniedAs(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 	}
 }
 
+// insertRoleAs probes the roles INSERT policy as userID. The probe transaction is
+// rolled back, so the returned id does not persist; seed FK targets with insertRLSRole.
 func insertRoleAs(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID, name string) string {
 	t.Helper()
 	tx := beginPolicyProbe(t, ctx, pool, userID)

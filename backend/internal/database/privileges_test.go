@@ -2,6 +2,7 @@ package database_test
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"testing"
 	"time"
@@ -9,12 +10,12 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestMigrations_APIRolesHaveNoWritePrivilegeOnPublicTables(t *testing.T) {
-	ctx := context.Background()
-	db := openMigratedDB(t)
-	defer db.Close()
-	sqlDB := sqlDBForTest(t, db)
-
+// requireAPIWritePrivileges asserts every public table grants anon and authenticated
+// SELECT plus writes only when writesWant; schema_migrations grants them nothing.
+// INSERT/UPDATE use has_any_column_privilege because a column-level grant such as
+// UPDATE (version) is invisible to has_table_privilege.
+func requireAPIWritePrivileges(t *testing.T, ctx context.Context, sqlDB *sql.DB, writesWant bool) {
+	t.Helper()
 	rows, err := sqlDB.QueryContext(ctx, `
 		SELECT c.relname
 		FROM pg_class c
@@ -48,13 +49,15 @@ func TestMigrations_APIRolesHaveNoWritePrivilegeOnPublicTables(t *testing.T) {
 	for _, table := range tables {
 		for _, role := range []string{"anon", "authenticated"} {
 			for _, privilege := range []string{"INSERT", "UPDATE", "DELETE", "TRUNCATE", "SELECT"} {
+				query := `SELECT has_table_privilege($1, 'public.' || quote_ident($2), $3)`
+				if privilege == "INSERT" || privilege == "UPDATE" {
+					query = `SELECT has_any_column_privilege($1, 'public.' || quote_ident($2), $3)`
+				}
 				var granted bool
-				if err := sqlDB.QueryRowContext(ctx,
-					`SELECT has_table_privilege($1, 'public.' || quote_ident($2), $3)`,
-					role, table, privilege).Scan(&granted); err != nil {
+				if err := sqlDB.QueryRowContext(ctx, query, role, table, privilege).Scan(&granted); err != nil {
 					t.Fatalf("query %s:%s:%s: %v", role, table, privilege, err)
 				}
-				want := privilege == "SELECT" && table != "schema_migrations"
+				want := table != "schema_migrations" && (privilege == "SELECT" || writesWant)
 				if granted != want {
 					offenders = append(offenders, role+":"+table+":"+privilege)
 				}
@@ -62,15 +65,15 @@ func TestMigrations_APIRolesHaveNoWritePrivilegeOnPublicTables(t *testing.T) {
 		}
 	}
 	if len(offenders) > 0 {
-		t.Fatalf("unexpected API table privileges: %s", strings.Join(offenders, ", "))
+		t.Fatalf("unexpected API table privileges (writes want %t): %s", writesWant, strings.Join(offenders, ", "))
 	}
 }
 
-func TestMigrations_DefaultPrivilegesWithholdWritesFromAPIRoles(t *testing.T) {
-	ctx := context.Background()
-	db := openMigratedDB(t)
-	defer db.Close()
-	sqlDB := sqlDBForTest(t, db)
+// requireDefaultAPIWritePrivileges asserts a table created by the migration role
+// inherits SELECT for anon and authenticated, plus writes only when writesWant.
+// The probe table lives in a transaction that is always rolled back.
+func requireDefaultAPIWritePrivileges(t *testing.T, ctx context.Context, sqlDB *sql.DB, writesWant bool) {
+	t.Helper()
 	tx, err := sqlDB.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatalf("begin default privilege probe: %v", err)
@@ -87,11 +90,23 @@ func TestMigrations_DefaultPrivilegesWithholdWritesFromAPIRoles(t *testing.T) {
 				role, privilege).Scan(&granted); err != nil {
 				t.Fatalf("query default privilege %s:%s: %v", role, privilege, err)
 			}
-			if want := privilege == "SELECT"; granted != want {
+			if want := privilege == "SELECT" || writesWant; granted != want {
 				t.Errorf("default privilege %s:%s: got %t, want %t", role, privilege, granted, want)
 			}
 		}
 	}
+}
+
+func TestMigrations_APIRolesHaveNoWritePrivilegeOnPublicTables(t *testing.T) {
+	db := openMigratedDB(t)
+	defer db.Close()
+	requireAPIWritePrivileges(t, context.Background(), sqlDBForTest(t, db), false)
+}
+
+func TestMigrations_DefaultPrivilegesWithholdWritesFromAPIRoles(t *testing.T) {
+	db := openMigratedDB(t)
+	defer db.Close()
+	requireDefaultAPIWritePrivileges(t, context.Background(), sqlDBForTest(t, db), false)
 }
 
 func TestAPIRoles_OwnRowWritesArePermissionDenied(t *testing.T) {

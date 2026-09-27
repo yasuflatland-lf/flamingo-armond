@@ -14,8 +14,8 @@ import (
 // BootstrapAuthSchema mimics the Supabase-managed auth schema and roles just
 // enough for FK, trigger, and RLS policy references in migrations to resolve.
 // It creates the `authenticated` and `anon` roles, `auth.users`, and `auth.uid()`,
-// and grants default privileges for future tables/sequences. Run it before
-// database.Migrate against a throwaway test DB.
+// and grants Supabase-shaped default privileges (TRUNCATE included) for future
+// tables/sequences. Run it before database.Migrate against a throwaway test DB.
 func BootstrapAuthSchema(ctx context.Context, dsn string) error {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -58,7 +58,7 @@ func BootstrapAuthSchema(ctx context.Context, dsn string) error {
         GRANT USAGE ON SCHEMA public TO authenticated;
         GRANT USAGE ON SCHEMA public TO anon;
         ALTER DEFAULT PRIVILEGES IN SCHEMA public
-            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated, anon;
+            GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON TABLES TO authenticated, anon;
         ALTER DEFAULT PRIVILEGES IN SCHEMA public
             GRANT USAGE, SELECT ON SEQUENCES TO authenticated;
     `); err != nil {

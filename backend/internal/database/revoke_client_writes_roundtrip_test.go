@@ -17,18 +17,8 @@ func TestRevokeClientWritesDownUpRoundtrip(t *testing.T) {
 		}
 	})
 	sqlDB := sqlDBForTest(t, db)
-	requireInsertPrivilege := func(want bool) {
-		t.Helper()
-		var granted bool
-		if err := sqlDB.QueryRowContext(ctx,
-			`SELECT has_table_privilege('authenticated', 'public.cards', 'INSERT')`).Scan(&granted); err != nil {
-			t.Fatalf("query authenticated cards INSERT privilege: %v", err)
-		}
-		if granted != want {
-			t.Fatalf("authenticated cards INSERT privilege: got %t, want %t", granted, want)
-		}
-	}
-	requireInsertPrivilege(false)
+	requireAPIWritePrivileges(t, ctx, sqlDB, false)
+	requireDefaultAPIWritePrivileges(t, ctx, sqlDB, false)
 
 	m, err := database.NewMigrateInstanceForTest(testDSN)
 	if err != nil {
@@ -42,9 +32,11 @@ func TestRevokeClientWritesDownUpRoundtrip(t *testing.T) {
 	if err := m.Steps(-1); err != nil {
 		t.Fatalf("migrate down revoke_client_writes: %v", err)
 	}
-	requireInsertPrivilege(true)
+	requireAPIWritePrivileges(t, ctx, sqlDB, true)
+	requireDefaultAPIWritePrivileges(t, ctx, sqlDB, true)
 	if err := m.Steps(1); err != nil {
 		t.Fatalf("migrate up revoke_client_writes: %v", err)
 	}
-	requireInsertPrivilege(false)
+	requireAPIWritePrivileges(t, ctx, sqlDB, false)
+	requireDefaultAPIWritePrivileges(t, ctx, sqlDB, false)
 }

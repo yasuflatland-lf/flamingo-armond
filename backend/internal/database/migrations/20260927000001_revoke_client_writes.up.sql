@@ -12,6 +12,7 @@ DECLARE
 BEGIN
     FOREACH api_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
         IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = api_role) THEN
+            -- schema_migrations is not listed: 20260603090000 already revoked ALL, and psql-only harnesses (ER chart) never create it.
             EXECUTE format(
                 'REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE '
                 || 'public.users, public.roles, public.user_roles, '
