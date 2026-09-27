@@ -14,12 +14,8 @@ import (
 )
 
 type mockSwipeRecordRepoForSwipe struct {
-	recent     []*domain.SwipeRecord
-	createErr  error
-	listErr    error
-	listUserID string
-	listLimit  int
-	created    *domain.SwipeRecord
+	createErr error
+	created   *domain.SwipeRecord
 	// phaseBeforeAtCreate is a value snapshot of created.PhaseBefore taken at
 	// CreateTx call time, so an "X before Y" ordering assertion sees the
 	// pre-rating phase rather than a post-hoc read of a possibly-mutated state
@@ -42,108 +38,7 @@ func (m *mockSwipeRecordRepoForSwipe) CreateTx(_ context.Context, _ *gorm.DB, sr
 		after := sr.StateAfter.Phase
 		m.phaseAfterAtCreate = &after
 	}
-	m.recent = append([]*domain.SwipeRecord{sr}, m.recent...)
 	return nil
-}
-
-func (m *mockSwipeRecordRepoForSwipe) ListRecentByUser(_ context.Context, userID string, limit int) ([]*domain.SwipeRecord, error) {
-	m.listUserID = userID
-	m.listLimit = limit
-	return m.recent, m.listErr
-}
-
-func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
-	t.Parallel()
-
-	base := time.Date(2026, 4, 30, 12, 0, 0, 0, time.UTC)
-	cases := []struct {
-		name       string
-		recent     []*domain.SwipeRecord
-		wantMode   int
-		wantReview int
-	}{
-		{
-			name:       "less than twenty reviews uses default mode",
-			recent:     performanceSwipes(base, 9, 9, 5),
-			wantMode:   int(service.ModeDefault),
-			wantReview: 19,
-		},
-		{
-			name:       "sixty percent success with high difficulty becomes difficult",
-			recent:     performanceSwipes(base, 11, 8, 8),
-			wantMode:   int(service.ModeDifficult),
-			wantReview: 20,
-		},
-		{
-			name:       "ninety five percent success becomes mastered",
-			recent:     performanceSwipes(base, 18, 1, 5),
-			wantMode:   int(service.ModeMastered),
-			wantReview: 20,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			cardRepo := &mockCardRepository{
-				findResult: &domain.Card{
-					ID:          "card-1",
-					CardgroupID: domain.CardgroupID("cg-1"),
-				},
-			}
-			cardgroupRepo := &mockCardgroupRepoForCard{
-				findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
-			}
-			swipeRepo := &mockSwipeRecordRepoForSwipe{recent: append([]*domain.SwipeRecord(nil), tc.recent...)}
-			userFSRSRepo := &mockUserCardFSRSRepository{
-				byCardID: map[string]*domain.UserCardFSRS{
-					"card-1": domain.NewUserCardFSRSForNewCard("user-1", "card-1", base),
-				},
-			}
-			tx, _ := fakeTxRunner()
-			uc := NewSwipeUsecaseWithTx(
-				cardRepo,
-				cardgroupRepo,
-				swipeRepo,
-				service.NewFSRSScheduler(),
-				tx,
-				userFSRSRepo,
-				newTestLogger(),
-			)
-
-			outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
-				CardID:      "card-1",
-				CardgroupID: "cg-1",
-				Rating:      int(domain.RatingEasy),
-			})
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if outcome.Swipe == nil {
-				t.Fatal("expected non-nil Swipe on success")
-			}
-			if outcome.Swipe.PerformanceMode != tc.wantMode {
-				t.Fatalf("performance mode=%d, want %d; metrics=%+v", outcome.Swipe.PerformanceMode, tc.wantMode, outcome.Swipe.Metrics)
-			}
-			if outcome.Swipe.Metrics.ReviewCount != tc.wantReview {
-				t.Fatalf("review count=%d, want %d", outcome.Swipe.Metrics.ReviewCount, tc.wantReview)
-			}
-			if swipeRepo.created == nil {
-				t.Fatal("expected swipe record to be created before metrics are listed")
-			}
-			if swipeRepo.created.CardgroupID != "cg-1" {
-				t.Fatalf("created swipe cardgroup=%q, want cg-1", swipeRepo.created.CardgroupID)
-			}
-			if swipeRepo.listUserID != "user-1" {
-				t.Fatalf("ListRecentByUser user=%q, want user-1", swipeRepo.listUserID)
-			}
-			if swipeRepo.listLimit != swipePerformanceSampleLimit {
-				t.Fatalf("ListRecentByUser limit=%d, want %d", swipeRepo.listLimit, swipePerformanceSampleLimit)
-			}
-		})
-	}
 }
 
 func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T) {
@@ -182,6 +77,9 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 	}
 	if outcome.Swipe == nil {
 		t.Fatal("expected non-nil Swipe on success")
+	}
+	if outcome.Swipe.CardID != "card-1" {
+		t.Fatalf("Swipe.CardID=%q, want card-1", outcome.Swipe.CardID)
 	}
 	if userFSRSRepo.upserted == nil {
 		t.Fatal("expected per-user FSRS row to be upserted")
@@ -294,35 +192,6 @@ func TestSwipeUsecase_HandleSwipe_NonOwner_Unauthenticated(t *testing.T) {
 	})
 
 	assertUnauthenticated(t, err)
-}
-
-func performanceSwipes(now time.Time, successes, failures int, difficulty float64) []*domain.SwipeRecord {
-	swipes := make([]*domain.SwipeRecord, 0, successes+failures)
-	for i := range successes {
-		swipes = append(swipes, performanceSwipe(domain.RatingEasy, now.Add(-time.Duration(i+1)*time.Hour), difficulty))
-	}
-	for i := range failures {
-		swipes = append(swipes, performanceSwipe(domain.RatingAgain, now.Add(-time.Duration(successes+i+1)*time.Hour), difficulty))
-	}
-	return swipes
-}
-
-func performanceSwipe(rating domain.Rating, reviewedAt time.Time, difficulty float64) *domain.SwipeRecord {
-	return &domain.SwipeRecord{
-		ID:              reviewedAt.Format("20060102150405"),
-		UserID:          "user-1",
-		CardID:          "card-1",
-		Rating:          rating,
-		ReviewedAt:      reviewedAt,
-		PhaseBefore:     domain.FSRSPhaseReview,
-		StabilityBefore: domain.LearnedStabilityDays,
-		DueBefore:       reviewedAt,
-		StateAfter: domain.FSRSState{
-			Difficulty:    difficulty,
-			ScheduledDays: 1,
-			Phase:         domain.FSRSPhaseReview,
-		},
-	}
 }
 
 func TestSwipeUsecase_HandleSwipe_PropagatesUpsertError(t *testing.T) {

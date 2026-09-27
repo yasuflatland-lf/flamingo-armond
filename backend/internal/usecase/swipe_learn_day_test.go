@@ -95,6 +95,7 @@ func TestSwipeUsecase_HandleSwipe_SameLearnDayRepeat_IsSuccessShapedNoOp(t *test
 
 	require.NoError(t, err)
 	require.NotNil(t, outcome.Swipe, "an ignored repeat must still return the success variant")
+	require.Equal(t, "card-1", outcome.Swipe.CardID, "an ignored repeat still echoes the card id")
 	require.Nil(t, outcome.Validation, "an ignored repeat is not a user-input error")
 	require.Nil(t, userFSRSRepo.upserted, "the FSRS row must not be re-upserted")
 	require.Nil(t, swipeRepo.created, "no second swipe record may be written")

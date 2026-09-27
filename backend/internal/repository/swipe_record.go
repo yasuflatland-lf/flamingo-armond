@@ -36,7 +36,6 @@ func (gormSwipeRecord) TableName() string { return "swipe_records" }
 type SwipeRecordRepository interface {
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.SwipeRecord, error)
 	FindByUserAndCardgroup(ctx context.Context, userID, cardgroupID string) ([]*domain.SwipeRecord, error)
-	ListRecentByUser(ctx context.Context, userID string, limit int) ([]*domain.SwipeRecord, error)
 	ListByUserSince(ctx context.Context, userID string, since time.Time) ([]*domain.SwipeRecord, error)
 	CreateTx(ctx context.Context, tx *gorm.DB, sr *domain.SwipeRecord) error
 }
@@ -74,31 +73,6 @@ func (r *swipeRecordRepo) FindByUserAndCardgroup(ctx context.Context, userID, ca
 		Find(&rows).Error; err != nil {
 		return nil, eris.Wrap(err, "repository: swipe record: find by user and cardgroup")
 	}
-	out := make([]*domain.SwipeRecord, len(rows))
-	for i := range rows {
-		sr, err := swipeRecordToDomain(rows[i])
-		if err != nil {
-			return nil, err
-		}
-		out[i] = sr
-	}
-	return out, nil
-}
-
-func (r *swipeRecordRepo) ListRecentByUser(ctx context.Context, userID string, limit int) ([]*domain.SwipeRecord, error) {
-	if limit <= 0 {
-		return []*domain.SwipeRecord{}, nil
-	}
-
-	var rows []gormSwipeRecord
-	if err := r.db.WithContext(ctx).
-		Where("user_id = ?", userID).
-		Order("reviewed_at DESC, id DESC").
-		Limit(limit).
-		Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: swipe record: list recent by user")
-	}
-
 	out := make([]*domain.SwipeRecord, len(rows))
 	for i := range rows {
 		sr, err := swipeRecordToDomain(rows[i])

@@ -313,9 +313,9 @@ export function LearnClient({ cardgroupId, initialCards, displayMode }: Props) {
 
       if (!result) return;
 
-      // HandleSwipeSuccess is a no-op: the optimistic delete already advanced
-      // the queue and the response carries only performance telemetry that no
-      // UI consumer reads today. Only the non-success branches need handling.
+      // HandleSwipeSuccess needs no payload handling: the optimistic delete
+      // already advanced the queue, and the success variant carries only the
+      // echoed card id. Only the non-success branches need handling.
       const payload = result.data?.handleSwipe;
       if (payload?.__typename === "HandleSwipeSuccess") {
         // Re-open prefetching in case the pool was previously marked exhausted.
