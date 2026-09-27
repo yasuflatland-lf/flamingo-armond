@@ -43,9 +43,10 @@ func partition(due []domain.DueCard) (newC, reviewC []domain.DueCard) {
 
 // interleave fills one output slot at a time from whichever bucket is furthest
 // behind its share (largest remainder), so the ratio holds on every prefix and
-// not only on whole cycles. When one bucket empties, the remainder of the other
-// is appended in its current order. Returns the flattened []*Card extracted
-// from DueCard.Card.
+// not only on whole cycles. No prefix holds more than the 80% cap of new cards
+// while both buckets are non-empty. When one bucket empties, the remainder of
+// the other is appended in its current order. Returns the flattened []*Card
+// extracted from DueCard.Card.
 func interleave(newC, reviewC []domain.DueCard, nRatio, rRatio int) []*domain.Card {
 	if nRatio <= 0 || rRatio <= 0 {
 		panic(fmt.Sprintf("domain/service: interleave requires positive ratios, got nRatio=%d rRatio=%d", nRatio, rRatio))
@@ -54,9 +55,8 @@ func interleave(newC, reviewC []domain.DueCard, nRatio, rRatio int) []*domain.Ca
 	out := make([]*domain.Card, 0, len(newC)+len(reviewC))
 	i, j := 0, 0
 	for i < len(newC) && j < len(reviewC) {
-		// An exact half-card tie goes to the new bucket, not review: a
-		// review-biased tie-break leaves a one-card session at ratio 1/2 with
-		// no new card at all.
+		// An exact half-card tie goes to the new bucket unless the 80% prefix
+		// cap binds; see targetNewCount.
 		if targetNewCount(len(out)+1, nRatio, den) > i {
 			out = append(out, newC[i].Card)
 			i++
@@ -74,9 +74,12 @@ func interleave(newC, reviewC []domain.DueCard, nRatio, rRatio int) []*domain.Ca
 	return out
 }
 
-// targetNewCount is round(slot*nRatio/den) in integer arithmetic, halves up.
-// Float division is rejected: a float round would tie-break on representation
-// error, and 2*slot*nRatio never approaches the int range here.
+// targetNewCount is round(slot*nRatio/den) in integer arithmetic, halves up,
+// then clamped to floor(slot * NewCardRatioMaxNewShareNum / NewCardRatioMaxNewShareDen)
+// so no prefix serves more than the 80% cap while reviews remain. Float division
+// is rejected: a float round would tie-break on representation error.
 func targetNewCount(slot, nRatio, den int) int {
-	return (2*slot*nRatio + den) / (2 * den)
+	nearest := (2*slot*nRatio + den) / (2 * den)
+	capped := slot * domain.NewCardRatioMaxNewShareNum / domain.NewCardRatioMaxNewShareDen
+	return min(nearest, capped)
 }
