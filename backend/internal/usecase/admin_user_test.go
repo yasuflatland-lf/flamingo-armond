@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -356,6 +357,25 @@ func TestAdminUserUsecase_DeleteUser(t *testing.T) {
 		}
 	})
 
+	t.Run("self-deletion with a differently-spelled own id is forbidden", func(t *testing.T) {
+		t.Parallel()
+		const selfUUID = "0190a3c4-7d2e-7b1a-9c3f-4e5d6a7b8c9d"
+		users := &mockAdminUserRepository{}
+		userRoles := &mockAdminUserRoleRepository{}
+		uc, _, _, _ := buildAdminUC(users, nil, userRoles, &adminAuthChecker{admins: map[string]bool{selfUUID: true}})
+
+		for _, spelling := range []string{strings.ToUpper(selfUUID), strings.ReplaceAll(selfUUID, "-", "")} {
+			err := uc.DeleteUser(adminCallerCtx(selfUUID), spelling)
+			assertForbidden(t, err, "cannot delete your own account from the admin panel; use deleteMyAccount")
+		}
+		if userRoles.hasRoleCalls != 0 {
+			t.Fatalf("HasRole must not run on self-deletion, got %d calls", userRoles.hasRoleCalls)
+		}
+		if users.deleteAuthCalls != 0 {
+			t.Fatalf("DeleteAuthUserTx must not run on self-deletion, got %d calls", users.deleteAuthCalls)
+		}
+	})
+
 	t.Run("last admin is forbidden", func(t *testing.T) {
 		t.Parallel()
 		users := &mockAdminUserRepository{}
@@ -419,6 +439,20 @@ func TestAdminUserUsecase_DeleteUser(t *testing.T) {
 		err := uc.DeleteUser(adminCallerCtx(caller), "ghost")
 
 		assertValidationError(t, err, "id", "user not found")
+	})
+
+	t.Run("has-role not-found maps to the missing-target validation error", func(t *testing.T) {
+		t.Parallel()
+		users := &mockAdminUserRepository{}
+		userRoles := &mockAdminUserRoleRepository{hasRoleErr: repository.ErrUserNotFound}
+		uc, _, _, _ := buildAdminUC(users, nil, userRoles, adminCaller())
+
+		err := uc.DeleteUser(adminCallerCtx(caller), "target")
+
+		assertValidationError(t, err, "id", "user not found")
+		if users.deleteAuthCalls != 0 {
+			t.Fatalf("DeleteAuthUserTx must not run when the target is missing, got %d calls", users.deleteAuthCalls)
+		}
 	})
 
 	t.Run("infrastructure error wraps as internal chain", func(t *testing.T) {
@@ -1097,6 +1131,73 @@ func TestAdminUser_EditUser_CannotRevokeOwnAdmin(t *testing.T) {
 	}
 	if userRoles.setCalls != 0 {
 		t.Fatalf("SetUserRolesTx calls = %d, want 0", userRoles.setCalls)
+	}
+}
+
+// TestAdminUser_EditUser_CannotRevokeOwnAdmin_UpperCaseOwnID pins that the
+// self-demotion guard compares uuid values: Postgres resolves an upper-case
+// spelling of the caller's own id to the same row.
+func TestAdminUser_EditUser_CannotRevokeOwnAdmin_UpperCaseOwnID(t *testing.T) {
+	t.Parallel()
+
+	const selfUUID = "0190a3c4-7d2e-7b1a-9c3f-4e5d6a7b8c9d"
+	users := &mockAdminUserRepository{users: map[string]*domain.User{selfUUID: {ID: selfUUID}}}
+	roles := &mockAdminRoleRepository{
+		roles: map[string]*domain.Role{
+			"r-general": {ID: "r-general", Name: "general"},
+		},
+	}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{selfUUID: true}}
+	uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
+
+	outcome, err := uc.EditUser(adminCallerCtx(selfUUID), strings.ToUpper(selfUUID), AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertAdminEditUserOutcomeXOR(t, outcome)
+	if !outcome.CannotRevokeOwnAdmin {
+		t.Fatalf("CannotRevokeOwnAdmin = false, want true")
+	}
+	if userRoles.setCalls != 0 {
+		t.Fatalf("SetUserRolesTx calls = %d, want 0", userRoles.setCalls)
+	}
+}
+
+func TestNormalizeAdminEditRoleIDs_CanonicalisesUUIDs(t *testing.T) {
+	t.Parallel()
+
+	const upper = "0190A3C4-7D2E-7B1A-9C3F-4E5D6A7B8C9D"
+	const lower = "0190a3c4-7d2e-7b1a-9c3f-4e5d6a7b8c9d"
+	tests := []struct {
+		name    string
+		in      []string
+		want    []string
+		wantErr *InputValidationInfo
+	}{
+		{name: "two spellings of one uuid are duplicates", in: []string{upper, lower}, wantErr: &InputValidationInfo{Field: "roleIds", Message: "role IDs must be unique"}},
+		{name: "upper-case uuid is lower-cased", in: []string{upper}, want: []string{lower}},
+		{name: "non-uuid id passes through", in: []string{"r-general"}, want: []string{"r-general"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, info := normalizeAdminEditRoleIDs(tt.in)
+			if tt.wantErr != nil {
+				if info == nil || *info != *tt.wantErr {
+					t.Fatalf("validation = %+v, want %+v", info, tt.wantErr)
+				}
+				return
+			}
+			if info != nil {
+				t.Fatalf("unexpected validation: %+v", info)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Fatalf("normalizeAdminEditRoleIDs(%v) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
 	}
 }
 

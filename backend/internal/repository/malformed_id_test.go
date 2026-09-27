@@ -12,6 +12,8 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"backend/internal/domain"
 )
 
 const invalidTextRepresentationDriverName = "repository-invalid-text-representation"
@@ -158,6 +160,58 @@ func TestClassifyMalformedClientIDAtRepositoryLookups(t *testing.T) {
 			},
 			want: ErrCardgroupNotFound,
 		},
+		{
+			name: "user FindByID",
+			run: func(ctx context.Context, db *gorm.DB) error {
+				_, err := NewUserRepository(db).FindByID(ctx, "malformed")
+				return err
+			},
+			want: ErrNotFound,
+		},
+		{
+			name: "user UpdateTxVersioned",
+			run: func(ctx context.Context, db *gorm.DB) error {
+				return NewUserRepository(db).UpdateTxVersioned(ctx, db, "malformed", UserUpdate{}, 1)
+			},
+			want: ErrNotFound,
+		},
+		{
+			name: "user DeleteAuthUserTx",
+			run: func(ctx context.Context, db *gorm.DB) error {
+				return NewUserRepository(db).DeleteAuthUserTx(ctx, db, "malformed")
+			},
+			want: ErrNotFound,
+		},
+		{
+			name: "role FindByID",
+			run: func(ctx context.Context, db *gorm.DB) error {
+				_, err := NewRoleRepository(db).FindByID(ctx, "malformed")
+				return err
+			},
+			want: ErrRoleNotFound,
+		},
+		{
+			name: "role Delete",
+			run: func(ctx context.Context, db *gorm.DB) error {
+				return NewRoleRepository(db).Delete(ctx, "malformed")
+			},
+			want: ErrRoleNotFound,
+		},
+		{
+			name: "user role HasRoleTx",
+			run: func(ctx context.Context, db *gorm.DB) error {
+				_, err := NewUserRoleRepository(db).HasRoleTx(ctx, db, "malformed", domain.AdminRoleName)
+				return err
+			},
+			want: ErrUserNotFound,
+		},
+		{
+			name: "user role SetUserRolesTx user",
+			run: func(ctx context.Context, db *gorm.DB) error {
+				return NewUserRoleRepository(db).SetUserRolesTx(ctx, db, "malformed", nil)
+			},
+			want: ErrUserNotFound,
+		},
 	}
 
 	for _, tt := range tests {
@@ -172,5 +226,18 @@ func TestClassifyMalformedClientIDAtRepositoryLookups(t *testing.T) {
 				t.Fatalf("classified error must not retain an internal PostgreSQL error: %v", err)
 			}
 		})
+	}
+}
+
+// The fake driver fails every query, so a nil error proves no query was issued.
+func TestFindRolesByIDs_DropsMalformedIDsWithoutQuerying(t *testing.T) {
+	t.Parallel()
+
+	got, err := NewRoleRepository(newInvalidTextRepresentationDB(t)).FindByIDs(context.Background(), []string{"malformed"})
+	if err != nil {
+		t.Fatalf("expected no query and no error, got %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected an empty map, got %v", got)
 	}
 }

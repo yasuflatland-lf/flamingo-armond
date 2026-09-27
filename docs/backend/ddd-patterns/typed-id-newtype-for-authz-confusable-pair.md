@@ -66,6 +66,10 @@ mechanisms already in place:
    the type doc states the zero value `""` is invalid and that ids are
    constructed by a direct cast at boundaries.
 
+Comparing two client-visible ids for identity is the one place spelling
+matters; `usecase.sameUserID` compares parsed uuid values there, still without
+a domain parser.
+
 ## Scope boundary — type only the authz-confusable pair
 
 Only `UserID` and `CardgroupID` are typed. `CardID`, `RoleID`, and the

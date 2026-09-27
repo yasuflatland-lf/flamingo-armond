@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/google/uuid"
+
 	"backend/internal/domain"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
@@ -288,7 +290,8 @@ func (u *adminUserUsecase) Get(ctx context.Context, id string) (*domain.User, er
 // is no write to roll back, so no control-flow sentinel is needed; the post-tx
 // code returns the captured outcome before inspecting the transaction error.
 // The last-admin guard is surfaced the same way through guardErr, which carries
-// a forbidden error rather than an outcome field.
+// a forbidden error rather than an outcome field. The own-row check compares
+// the uuid value, not its spelling.
 func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminEditUserInput) (AdminEditUserOutcome, error) {
 	callerID, err := u.adminGate.Require(ctx, "usecase: admin user: check admin")
 	if err != nil {
@@ -334,7 +337,7 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 			// but only after passing the keepsAdmin check on the partial map.
 			// Other targets keep the downstream rejection so the relative
 			// precedence of the id and roleIds validation errors is unchanged.
-			if callerID == id && len(roles) != len(roleIDs) {
+			if sameUserID(callerID, id) && len(roles) != len(roleIDs) {
 				earlyOutcome = &AdminEditUserOutcome{Validation: NewInputValidationInfo("roleIds", "role not found")}
 				return nil
 			}
@@ -345,7 +348,7 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 			keepsAdmin = set.ContainsAdmin()
 		}
 		if !keepsAdmin {
-			if callerID == id {
+			if sameUserID(callerID, id) {
 				earlyOutcome = &AdminEditUserOutcome{CannotRevokeOwnAdmin: true}
 				return nil
 			}
@@ -420,7 +423,7 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 //  1. Admin gate: non-admin / unauthenticated callers are rejected.
 //  2. Self-deletion block: an admin cannot delete their own account from the
 //     admin surface (they must use DeleteMyAccount), preventing an accidental
-//     lockout.
+//     lockout; the comparison is on the uuid value, not its spelling.
 //  3. Last-admin guard: when the target holds the admin role and is the only
 //     admin, the deletion is refused so the system is never left without an
 //     admin. The membership read, the count and the delete share one
@@ -434,7 +437,7 @@ func (u *adminUserUsecase) DeleteUser(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	if callerID == id {
+	if sameUserID(callerID, id) {
 		return ucerr.NewForbiddenError("cannot delete your own account from the admin panel; use deleteMyAccount")
 	}
 
@@ -448,6 +451,9 @@ func (u *adminUserUsecase) DeleteUser(ctx context.Context, id string) error {
 		}
 		isAdmin, herr := u.userRoles.HasRoleTx(ctx, tx, id, domain.AdminRoleName)
 		if herr != nil {
+			if errors.Is(herr, repository.ErrNotFound) {
+				return ucerr.NewValidationError("id", "user not found")
+			}
 			return wrapInfraErr(herr, "usecase: admin user: delete: check admin role")
 		}
 		if gerr := guardNotLastAdmin(
@@ -469,6 +475,18 @@ func (u *adminUserUsecase) DeleteUser(ctx context.Context, id string) error {
 		}
 		return nil
 	})
+}
+
+// sameUserID reports whether a and b name the same user row. Postgres compares
+// uuid values, so an upper-case or hyphen-less spelling of an id selects the same
+// row as its canonical form; ids that do not parse fall back to exact equality.
+func sameUserID(a, b string) bool {
+	ua, errA := uuid.Parse(a)
+	ub, errB := uuid.Parse(b)
+	if errA != nil || errB != nil {
+		return a == b
+	}
+	return ua == ub
 }
 
 func mapAdminEditMutationError(err error) (*InputValidationInfo, error) {
@@ -496,11 +514,15 @@ func normalizeAdminEditRoleIDs(roleIDs []string) ([]string, *InputValidationInfo
 		if roleID == "" {
 			return nil, NewInputValidationInfo("roleIds", "role ID is required")
 		}
-		if seen[roleID] {
+		key := roleID
+		if parsed, err := uuid.Parse(roleID); err == nil {
+			key = parsed.String()
+		}
+		if seen[key] {
 			return nil, NewInputValidationInfo("roleIds", "role IDs must be unique")
 		}
-		seen[roleID] = true
-		out = append(out, roleID)
+		seen[key] = true
+		out = append(out, key)
 	}
 	return out, nil
 }

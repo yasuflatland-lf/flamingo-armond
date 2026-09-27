@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/google/uuid"
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -115,6 +116,10 @@ func hasRoleOn(ctx context.Context, db *gorm.DB, userID string, roleName domain.
 		Where("user_roles.user_id = ? AND roles.name = ?", userID, roleName).
 		Count(&count).Error
 	if err != nil {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; userID is the only one here.
+		if pgInvalidTextRepresentation(err) {
+			return false, ErrUserNotFound
+		}
 		return false, eris.Wrap(err, "repository: check user role")
 	}
 	return count > 0, nil
@@ -136,6 +141,10 @@ func requireExistsOn(ctx context.Context, db *gorm.DB, table, id, wrap string, n
 		Count(&count).Error; err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err
+		}
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if pgInvalidTextRepresentation(err) {
+			return notFound
 		}
 		return eris.Wrap(err, wrap)
 	}
@@ -185,6 +194,13 @@ func (r *userRoleRepo) SetUserRolesTx(ctx context.Context, tx *gorm.DB, userID s
 		}
 		seen[roleID] = true
 		uniqueRoleIDs = append(uniqueRoleIDs, roleID)
+	}
+	// Not classifying 22P02 from the COUNT instead: the checks are equivalent,
+	// but rejecting up front skips a query that could only fail.
+	for _, roleID := range uniqueRoleIDs {
+		if uuid.Validate(roleID) != nil {
+			return ErrRoleNotFound
+		}
 	}
 	// Validate that every submitted role exists in one batched COUNT rather than
 	// N sequential round trips inside the row-locked transaction. The empty-slice
