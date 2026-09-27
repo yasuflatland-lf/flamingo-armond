@@ -35,21 +35,11 @@ type UpsertManyTxResult struct {
 	Updated  int64
 }
 
-// UpsertManyTx upserts cards by (cardgroup_id, front). Existing rows have
-// `back` and `position` overwritten; the database trigger advances updated_at.
-// The conflict key requires the unique index `uq_cards_cardgroup_front`
-// (migration 20260430080000_initial_schema).
-//
-// Counts are derived per-row from the PostgreSQL system column `xmax`. A
-// freshly inserted row has `xmax = 0` in the same transaction; a row updated
-// via `ON CONFLICT DO UPDATE` has `xmax` set to the current transaction id.
-// The RETURNING clause exposes `xmax = 0 AS inserted` so the split can be
-// computed without a second query.
-//
-// The method is transaction-safe: it operates on the supplied tx only and
-// never reaches back to r.db. Inputs above bulkStatementChunkRows run as several
-// statements, so tx must be a transaction for a later-chunk failure to roll back
-// the earlier chunks. Empty input returns a zero-valued result and no error.
+// UpsertManyTx upserts cards by (cardgroup_id, front) on uq_cards_cardgroup_front, overwriting
+// `back` and `position`; the trigger advances updated_at. RETURNING (xmax = 0) splits Inserted
+// from Updated without a second query. It uses tx only, never r.db; inputs above
+// bulkStatementChunkRows run as several statements, so tx must be a transaction for a failed
+// chunk to roll back the earlier ones. Empty input returns a zero-valued result and no error.
 func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (UpsertManyTxResult, error) {
 	rows := make([]upsertCardRow, len(cards))
 	for i, c := range cards {
