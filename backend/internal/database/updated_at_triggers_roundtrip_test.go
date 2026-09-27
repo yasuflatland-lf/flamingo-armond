@@ -136,8 +136,9 @@ func TestUpdatedAtTriggersDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// revoke_client_writes, lower_new_card_ratio_default, tighten_new_card_ratio_check, and
-	// realign_fsrs_snapshot_columns_to_v4 sit above the trigger migration.
+	// revoke_client_writes, lower_new_card_ratio_default,
+	// tighten_new_card_ratio_check, and realign_fsrs_snapshot_columns_to_v4 sit
+	// above the trigger migration.
 	require.NoError(t, m.Steps(-5))
 	requireUpdatedAtTriggerEvents(t, ctx, sqlDB, false)
 	_, legacyInsertedAt := insertCardgroupWithUpdatedAt(t, ctx, sqlDB, ownerID, sentinel)
