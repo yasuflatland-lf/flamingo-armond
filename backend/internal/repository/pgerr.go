@@ -37,18 +37,18 @@ const textLengthConstraintSuffix = "_length"
 // its unique btree index (SQLSTATE 54000, see classifyFrontIndexRowTooLarge).
 //
 // The domain layer already enforces the user-visible length rule in grapheme
-// clusters, and the database bound is deliberately far wider, so this is a
-// backstop that fires only for pathological input -- a grapheme cluster admits
-// an unbounded combining-mark run, so no finite code-point bound closes the gap.
-// When it fires, the input is still user-supplied text that is too long for the
-// column -- classifying it as an internal error would hide a fixable input
-// problem behind a generic failure.
+// clusters. The CHECK's code-point bound is deliberately far wider, but a grapheme
+// cluster admits an unbounded combining-mark run, so no finite code-point bound
+// closes the gap; the index limit is an engine limit in compressed bytes that a
+// poorly compressible front can exceed. Either way the input is still
+// user-supplied text too long for the column -- classifying it as an internal
+// error would hide a fixable input problem behind a generic failure.
 // The usecase layer maps this to a field-scoped BAD_USER_INPUT via
 // translateTextLengthViolation.
 //
 // Constraint is the violated CHECK constraint, or the index name for a 54000.
-// Field is the column the constraint guards ("front", "back", "name"), derived
-// from the constraint name so callers do not need a per-table lookup table.
+// Field is the guarded column ("front", "back", "name"): derived from the
+// constraint name for a 23514, always "front" for a 54000.
 // Pointer receiver on Error() so callers recover it with
 // errors.AsType[*TextLengthViolationError] even after eris.Wrap.
 type TextLengthViolationError struct {

@@ -318,3 +318,63 @@ func TestMasterCardRepository_FrontIndexRowTooLarge_ClassifiesAsTextLengthError(
 	err := repo.Create(ctx, newMasterCard(mcg.ID, incompressibleFront(4), "back", 0))
 	requireFrontIndexViolation(t, err, "uq_master_cards_cg_front")
 }
+
+// TestCardRepository_Update_FrontIndexRowTooLarge_ClassifiesAsTextLengthError
+// pins the classifier arm on the single-card edit path in both 54000 shapes.
+func TestCardRepository_Update_FrontIndexRowTooLarge_ClassifiesAsTextLengthError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	card := newCard(cg.ID, "small", "back")
+	require.NoError(t, repo.Create(ctx, card))
+
+	for _, tc := range []struct {
+		name  string
+		marks int
+	}{
+		{name: "btree", marks: 4},
+		{name: "index tuple", marks: 19},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			big := incompressibleFront(tc.marks)
+			_, err := repo.Update(ctx, card.ID, repository.CardUpdate{Front: &big})
+			requireFrontIndexViolation(t, err, "uq_cards_cardgroup_front")
+		})
+	}
+}
+
+// TestMasterCardRepository_Update_FrontIndexRowTooLarge_ClassifiesAsTextLengthError
+// pins the master edit-path arm. marks=4 hits the btree shape, which names the
+// index, so a wrong index constant at the call site fails the test.
+func TestMasterCardRepository_Update_FrontIndexRowTooLarge_ClassifiesAsTextLengthError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "Front-Index-Row-Size-Update-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+	card := newMasterCard(mcg.ID, "small", "back", 0)
+	require.NoError(t, repo.Create(ctx, card))
+
+	big := incompressibleFront(4)
+	_, err := repo.Update(ctx, card.ID, repository.MasterCardUpdate{Front: &big})
+	requireFrontIndexViolation(t, err, "uq_master_cards_cg_front")
+}
+
+// TestMasterCardRepository_UpsertManyTx_FrontIndexRowTooLarge_ClassifiesAsTextLengthError
+// pins the master bulk-import arm. marks=4 hits the btree shape, which names the
+// index, so a wrong index constant at the call site fails the test.
+func TestMasterCardRepository_UpsertManyTx_FrontIndexRowTooLarge_ClassifiesAsTextLengthError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "Front-Index-Row-Size-Upsert-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		_, txErr := repo.UpsertManyTx(ctx, tx, []*domain.MasterCard{
+			newMasterCard(mcg.ID, incompressibleFront(4), "back", 0),
+		})
+		return txErr
+	})
+	requireFrontIndexViolation(t, err, "uq_master_cards_cg_front")
+}
