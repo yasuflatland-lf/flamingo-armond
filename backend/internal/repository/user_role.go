@@ -29,9 +29,10 @@ type gormUserRoleJoinRow struct {
 
 // UserRoleRepository queries the many-to-many membership between users and roles.
 type UserRoleRepository interface {
-	// HasRole reports whether userID holds the named role.
-	// Returns (false, nil) when the user has no rows or the role name does not exist.
-	// Only DB errors return a non-nil error. Role lookup is by name (case-sensitive).
+	// HasRole reports whether userID holds the named role (lookup by name, case-sensitive).
+	// Returns (false, nil) when a well-formed userID has no rows or the role name does
+	// not exist; returns ErrUserNotFound (also ErrNotFound) when userID is not a uuid.
+	// Any other non-nil error is a DB error.
 	HasRole(ctx context.Context, userID string, roleName domain.RoleName) (bool, error)
 
 	// HasRoleTx is HasRole scoped to the supplied transaction. Callers that use

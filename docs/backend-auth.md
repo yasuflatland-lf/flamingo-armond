@@ -116,7 +116,7 @@ The "self or admin" check is the right granularity for fields where the owning u
 
 A user who is allowed to edit final role sets can remove their own admin role and lock the system out of admin operations. The usecase layer must reject "the caller is removing the admin role from themselves" before the DB write:
 
-1. Compare `callerID` and `targetUserID` as uuid values (`sameUserID` in `backend/internal/usecase/admin_user.go`), not as strings: Postgres resolves an upper-case or hyphen-less spelling to the same row, so a string compare lets a caller bypass the guard.
+1. Compare `callerID` and `targetUserID` as uuid values (`sameUserID` in `backend/internal/usecase/admin_user.go`), not as strings: Postgres `uuid_in` resolves an upper-case, hyphen-less, braced or every-4-digit-hyphenated spelling to the same row, so a string compare lets a caller bypass the guard.
 2. Resolve the submitted final `roleIds` to role names.
 3. If the final set for the caller no longer contains the `"admin"` role, return the `CannotRevokeOwnAdminRoleError` union variant from `adminEditUser`.
 

@@ -364,7 +364,14 @@ func TestAdminUserUsecase_DeleteUser(t *testing.T) {
 		userRoles := &mockAdminUserRoleRepository{}
 		uc, _, _, _ := buildAdminUC(users, nil, userRoles, &adminAuthChecker{admins: map[string]bool{selfUUID: true}})
 
-		for _, spelling := range []string{strings.ToUpper(selfUUID), strings.ReplaceAll(selfUUID, "-", "")} {
+		for _, spelling := range []string{
+			strings.ToUpper(selfUUID),
+			strings.ReplaceAll(selfUUID, "-", ""),
+			"0190-a3c4-7d2e-7b1a-9c3f-4e5d-6a7b-8c9d",
+			"{0190a3c47d2e7b1a9c3f4e5d6a7b8c9d}",
+			"0190a3c47d2e-7b1a-9c3f-4e5d6a7b8c9d",
+			"{0190a3c4-7d2e-7b1a-9c3f-4e5d6a7b8c9d}",
+		} {
 			err := uc.DeleteUser(adminCallerCtx(selfUUID), spelling)
 			assertForbidden(t, err, "cannot delete your own account from the admin panel; use deleteMyAccount")
 		}
@@ -1134,35 +1141,84 @@ func TestAdminUser_EditUser_CannotRevokeOwnAdmin(t *testing.T) {
 	}
 }
 
-// TestAdminUser_EditUser_CannotRevokeOwnAdmin_UpperCaseOwnID pins that the
-// self-demotion guard compares uuid values: Postgres resolves an upper-case
-// spelling of the caller's own id to the same row.
-func TestAdminUser_EditUser_CannotRevokeOwnAdmin_UpperCaseOwnID(t *testing.T) {
+// TestAdminUser_EditUser_CannotRevokeOwnAdmin_DifferentlySpelledOwnID pins that
+// the self-demotion guard compares uuid values: Postgres resolves an upper-case,
+// every-4-hyphen or braced hyphen-less spelling of the caller's id to its row.
+func TestAdminUser_EditUser_CannotRevokeOwnAdmin_DifferentlySpelledOwnID(t *testing.T) {
 	t.Parallel()
 
 	const selfUUID = "0190a3c4-7d2e-7b1a-9c3f-4e5d6a7b8c9d"
-	users := &mockAdminUserRepository{users: map[string]*domain.User{selfUUID: {ID: selfUUID}}}
-	roles := &mockAdminRoleRepository{
-		roles: map[string]*domain.Role{
-			"r-general": {ID: "r-general", Name: "general"},
-		},
-	}
-	userRoles := &mockAdminUserRoleRepository{}
-	authChk := &adminAuthChecker{admins: map[string]bool{selfUUID: true}}
-	uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
+	for _, spelling := range []string{
+		strings.ToUpper(selfUUID),
+		"0190-a3c4-7d2e-7b1a-9c3f-4e5d-6a7b-8c9d",
+		"{0190a3c47d2e7b1a9c3f4e5d6a7b8c9d}",
+	} {
+		t.Run(spelling, func(t *testing.T) {
+			t.Parallel()
+			users := &mockAdminUserRepository{users: map[string]*domain.User{selfUUID: {ID: selfUUID}}}
+			roles := &mockAdminRoleRepository{
+				roles: map[string]*domain.Role{
+					"r-general": {ID: "r-general", Name: "general"},
+				},
+			}
+			userRoles := &mockAdminUserRoleRepository{}
+			authChk := &adminAuthChecker{admins: map[string]bool{selfUUID: true}}
+			uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
 
-	outcome, err := uc.EditUser(adminCallerCtx(selfUUID), strings.ToUpper(selfUUID), AdminEditUserInput{
-		RoleIDs: []string{"r-general"},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+			outcome, err := uc.EditUser(adminCallerCtx(selfUUID), spelling, AdminEditUserInput{
+				RoleIDs: []string{"r-general"},
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			assertAdminEditUserOutcomeXOR(t, outcome)
+			if !outcome.CannotRevokeOwnAdmin {
+				t.Fatalf("CannotRevokeOwnAdmin = false, want true")
+			}
+			if userRoles.setCalls != 0 {
+				t.Fatalf("SetUserRolesTx calls = %d, want 0", userRoles.setCalls)
+			}
+		})
 	}
-	assertAdminEditUserOutcomeXOR(t, outcome)
-	if !outcome.CannotRevokeOwnAdmin {
-		t.Fatalf("CannotRevokeOwnAdmin = false, want true")
+}
+
+// TestParsePgUUID pins the Postgres uuid_in grammar that sameUserID relies on.
+func TestParsePgUUID(t *testing.T) {
+	t.Parallel()
+
+	const canonical = "0190a3c4-7d2e-7b1a-9c3f-4e5d6a7b8c9d"
+	accept := []string{
+		canonical,
+		strings.ToUpper(canonical),
+		"0190a3c47d2e7b1a9c3f4e5d6a7b8c9d",
+		"{" + canonical + "}",
+		"{0190a3c47d2e7b1a9c3f4e5d6a7b8c9d}",
+		"0190-a3c4-7d2e-7b1a-9c3f-4e5d-6a7b-8c9d",
+		"0190a3c47d2e-7b1a-9c3f-4e5d6a7b8c9d",
 	}
-	if userRoles.setCalls != 0 {
-		t.Fatalf("SetUserRolesTx calls = %d, want 0", userRoles.setCalls)
+	for _, in := range accept {
+		got, ok := parsePgUUID(in)
+		if !ok || got.String() != canonical {
+			t.Errorf("parsePgUUID(%q) = (%v, %v), want (%s, true)", in, got, ok, canonical)
+		}
+	}
+	reject := []string{
+		"0-190a3c47d2e7b1a9c3f4e5d6a7b8c9d",
+		"{0190a3c47d2e7b1a9c3f4e5d6a7b8c9d",
+		"0190a3c47d2e7b1a9c3f4e5d6a7b8c9d}",
+		"0190a3c4--7d2e-7b1a-9c3f-4e5d6a7b8c9d",
+		"0190a3c47d2e7b1a9c3f4e5d6a7b8c9d-",
+		"urn:uuid:" + canonical,
+		" " + canonical,
+		"0190a3c47d2e7b1a9c3f4e5d6a7b8c9",
+		"0190a3c47d2e7b1a9c3f4e5d6a7b8c9d0",
+		"g190a3c47d2e7b1a9c3f4e5d6a7b8c9d",
+		"",
+	}
+	for _, in := range reject {
+		if got, ok := parsePgUUID(in); ok {
+			t.Errorf("parsePgUUID(%q) = (%v, true), want rejection", in, got)
+		}
 	}
 }
 
@@ -1180,6 +1236,9 @@ func TestNormalizeAdminEditRoleIDs_CanonicalisesUUIDs(t *testing.T) {
 		{name: "two spellings of one uuid are duplicates", in: []string{upper, lower}, wantErr: &InputValidationInfo{Field: "roleIds", Message: "role IDs must be unique"}},
 		{name: "upper-case uuid is lower-cased", in: []string{upper}, want: []string{lower}},
 		{name: "non-uuid id passes through", in: []string{"r-general"}, want: []string{"r-general"}},
+		{name: "postgres-only spelling duplicates its canonical form", in: []string{"0190-a3c4-7d2e-7b1a-9c3f-4e5d-6a7b-8c9d", lower}, wantErr: &InputValidationInfo{Field: "roleIds", Message: "role IDs must be unique"}},
+		{name: "postgres-only spelling is canonicalised", in: []string{"{0190a3c47d2e7b1a9c3f4e5d6a7b8c9d}"}, want: []string{lower}},
+		{name: "spelling postgres rejects passes through", in: []string{"0-190a3c47d2e7b1a9c3f4e5d6a7b8c9d"}, want: []string{"0-190a3c47d2e7b1a9c3f4e5d6a7b8c9d"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

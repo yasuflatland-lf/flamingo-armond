@@ -2,9 +2,11 @@ package usecase
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -478,15 +480,56 @@ func (u *adminUserUsecase) DeleteUser(ctx context.Context, id string) error {
 }
 
 // sameUserID reports whether a and b name the same user row. Postgres compares
-// uuid values, so an upper-case or hyphen-less spelling of an id selects the same
-// row as its canonical form; ids that do not parse fall back to exact equality.
+// uuid values, so every spelling its uuid_in accepts selects the same row as the
+// canonical form; ids that parse as neither fall back to exact equality.
 func sameUserID(a, b string) bool {
-	ua, errA := uuid.Parse(a)
-	ub, errB := uuid.Parse(b)
-	if errA != nil || errB != nil {
-		return a == b
+	return canonicalUUIDKey(a) == canonicalUUIDKey(b)
+}
+
+// canonicalUUIDKey returns the canonical lower-case form of s when Postgres
+// (parsePgUUID) or google/uuid accepts it, and s unchanged otherwise.
+func canonicalUUIDKey(s string) string {
+	// Not uuid.Parse alone: it rejects Postgres-only spellings (39-char, braced
+	// hyphen-less) that still select the same row.
+	if u, ok := parsePgUUID(s); ok {
+		return u.String()
 	}
-	return ua == ub
+	// Not dropping the uuid.Parse fallback: a urn:uuid: role id would then reach
+	// findRolesByIDs uncanonicalised, pass uuid.Validate, and fail the IN query.
+	if u, err := uuid.Parse(s); err == nil {
+		return u.String()
+	}
+	return s
+}
+
+// parsePgUUID mirrors Postgres uuid_in: an optional matched {} pair around 32 hex
+// digits, with one optional '-' after each group of 4 digits except the last.
+func parsePgUUID(s string) (uuid.UUID, bool) {
+	var u uuid.UUID
+	src := s
+	braces := strings.HasPrefix(src, "{")
+	if braces {
+		src = src[1:]
+	}
+	for i := range u {
+		if len(src) < 2 {
+			return uuid.UUID{}, false
+		}
+		if _, err := hex.Decode(u[i:i+1], []byte(src[:2])); err != nil {
+			return uuid.UUID{}, false
+		}
+		src = src[2:]
+		if len(src) > 0 && src[0] == '-' && i%2 == 1 && i < len(u)-1 {
+			src = src[1:]
+		}
+	}
+	if braces {
+		if !strings.HasPrefix(src, "}") {
+			return uuid.UUID{}, false
+		}
+		src = src[1:]
+	}
+	return u, src == ""
 }
 
 func mapAdminEditMutationError(err error) (*InputValidationInfo, error) {
@@ -514,10 +557,7 @@ func normalizeAdminEditRoleIDs(roleIDs []string) ([]string, *InputValidationInfo
 		if roleID == "" {
 			return nil, NewInputValidationInfo("roleIds", "role ID is required")
 		}
-		key := roleID
-		if parsed, err := uuid.Parse(roleID); err == nil {
-			key = parsed.String()
-		}
+		key := canonicalUUIDKey(roleID)
 		if seen[key] {
 			return nil, NewInputValidationInfo("roleIds", "role IDs must be unique")
 		}
