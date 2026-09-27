@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/99designs/gqlgen/graphql/handler"
@@ -43,17 +44,11 @@ func (m *swipeCGRepo) FindByID(_ context.Context, _ string) (*domain.Cardgroup, 
 
 // swipeRecordRepo satisfies usecase.SwipeRecordRepoForSwipe.
 type swipeRecordRepo struct {
-	createTxErr      error
-	listRecentResult []*domain.SwipeRecord
-	listRecentErr    error
+	createTxErr error
 }
 
 func (m *swipeRecordRepo) CreateTx(_ context.Context, _ *gorm.DB, _ *domain.SwipeRecord) error {
 	return m.createTxErr
-}
-
-func (m *swipeRecordRepo) ListRecentByUser(_ context.Context, _ string, _ int) ([]*domain.SwipeRecord, error) {
-	return m.listRecentResult, m.listRecentErr
 }
 
 // userCardFSRSRepo satisfies usecase.UserCardFSRSRepoForSwipe.
@@ -119,12 +114,7 @@ func handleSwipeMutation(cardID, cardgroupID string, rating int) string {
 		"query": `mutation($input: HandleSwipeInput!) {
 			handleSwipe(input: $input) {
 				__typename
-				... on HandleSwipeSuccess {
-					response {
-						performanceMode
-						metrics { successRate avgDifficulty retentionRate studyStreak lapseRate reviewCount }
-					}
-				}
+				... on HandleSwipeSuccess { cardId }
 				... on InputValidationError { field message }
 			}
 		}`,
@@ -144,7 +134,7 @@ func handleSwipeMutation(cardID, cardgroupID string, rating int) string {
 // ---------------------------------------------------------------------------
 
 // TestResolver_HandleSwipe_HappyPath verifies that a successful swipe returns
-// the HandleSwipeSuccess union variant with the swipe response payload.
+// the HandleSwipeSuccess union variant echoing the swiped card id.
 func TestResolver_HandleSwipe_HappyPath(t *testing.T) {
 	t.Parallel()
 
@@ -156,9 +146,7 @@ func TestResolver_HandleSwipe_HappyPath(t *testing.T) {
 	cgRepo := &swipeCGRepo{
 		findByIDResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"},
 	}
-	swipeRepo := &swipeRecordRepo{
-		listRecentResult: []*domain.SwipeRecord{},
-	}
+	swipeRepo := &swipeRecordRepo{}
 	fsrsRepo := &userCardFSRSRepo{
 		findByIDsTxResult: map[string]*domain.UserCardFSRS{}, // no prior state → new card
 	}
@@ -179,9 +167,8 @@ func TestResolver_HandleSwipe_HappyPath(t *testing.T) {
 	if payload["__typename"] != "HandleSwipeSuccess" {
 		t.Fatalf("expected __typename=HandleSwipeSuccess, got %v; response: %v", payload["__typename"], resp)
 	}
-	response, _ := payload["response"].(map[string]any)
-	if response == nil {
-		t.Fatalf("expected response in HandleSwipeSuccess, got nil; response: %v", resp)
+	if payload["cardId"] != "c-1" {
+		t.Fatalf("expected cardId=c-1, got %v; response: %v", payload["cardId"], resp)
 	}
 }
 
@@ -280,30 +267,30 @@ func TestResolver_HandleSwipe_InfrastructureError_ReturnsInternal(t *testing.T) 
 	}
 }
 
-// TestSwipeResponseSchema_DoesNotExposeNextCards is a regression guard for
-// issue #229. The fix dropped the `nextCards` field from `SwipeResponse`
-// because the field carried a freshly-shuffled queue snapshot that the
-// client also tracked, creating a dual-source-of-truth bug. If a future
-// change re-introduces the field on the SwipeResponse type, this test
-// fails immediately at unit-test time.
-//
-// The test uses gqlgen's parsed schema (not a runtime mutation) because:
-//   - The parsed schema is the canonical wire contract.
-//   - A runtime mutation requires resolver + repository mocks; if the
-//     resolver panics on incomplete mocks, the recovered error masks
-//     the schema-level rejection signal.
-//   - Schema introspection runs in microseconds and is dependency-free.
-func TestSwipeResponseSchema_DoesNotExposeNextCards(t *testing.T) {
+// TestHandleSwipeSuccessSchema_ExposesOnlyCardID pins the handleSwipe success
+// payload to the echoed card id. The client owns its queue and reads learning
+// statistics from myLearningStats, so a queue snapshot (issue #229) or a
+// performance snapshot re-added here would be unread per-swipe work.
+func TestHandleSwipeSuccessSchema_ExposesOnlyCardID(t *testing.T) {
 	t.Parallel()
 
 	schema := generated.NewExecutableSchema(generated.Config{}).Schema()
-	swipeResponse, ok := schema.Types["SwipeResponse"]
+	success, ok := schema.Types["HandleSwipeSuccess"]
 	if !ok {
-		t.Fatal("SwipeResponse type missing from schema")
+		t.Fatal("HandleSwipeSuccess type missing from schema")
 	}
-	for _, field := range swipeResponse.Fields {
-		if field.Name == "nextCards" {
-			t.Fatalf("SwipeResponse must not expose `nextCards` field (issue #229 regression); current fields: %v", swipeResponse.Fields)
+	var names []string
+	for _, field := range success.Fields {
+		if !strings.HasPrefix(field.Name, "__") {
+			names = append(names, field.Name)
+		}
+	}
+	if len(names) != 1 || names[0] != "cardId" {
+		t.Fatalf("HandleSwipeSuccess fields = %v, want [cardId]", names)
+	}
+	for _, removed := range []string{"SwipeResponse", "SwipePerformanceMode"} {
+		if _, exists := schema.Types[removed]; exists {
+			t.Fatalf("schema must not define %s", removed)
 		}
 	}
 }

@@ -533,78 +533,10 @@ func TestStudyStreak_ReturnsUnclampedRunLength(t *testing.T) {
 	require.Equal(t, 366, studyStreak(daysSeen, now))
 }
 
-func TestModeFromMetricsThresholdBoundaries(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name        string
-		reviewCount int
-		successRate float64
-		want        PerformanceMode
-	}{
-		{"under minimum reviews defaults", 19, 1, ModeDefault},
-		{"below difficult threshold", 20, 0.599, ModeDifficult},
-		{"at default threshold", 20, 0.60, ModeDefault},
-		{"below good threshold", 20, 0.749, ModeDefault},
-		{"at good threshold", 20, 0.75, ModeGood},
-		{"below easy threshold", 20, 0.849, ModeGood},
-		{"at easy threshold", 20, 0.85, ModeEasy},
-		{"below mastered threshold", 20, 0.949, ModeEasy},
-		{"at mastered threshold", 20, 0.95, ModeMastered},
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := ModeFromMetrics(PerformanceMetrics{
-				SuccessRate:   tc.successRate,
-				AvgDifficulty: 0.5,
-				ReviewCount:   tc.reviewCount,
-			})
-
-			require.Equal(t, tc.want, got)
-		})
-	}
-}
-
-func TestModeFromMetricsDifficultyAdjustments(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name          string
-		successRate   float64
-		avgDifficulty float64
-		want          PerformanceMode
-	}{
-		{"high difficulty decreases mode", 0.80, 0.70, ModeDefault},
-		{"low difficulty increases mode", 0.80, 0.30, ModeEasy},
-		{"neutral difficulty leaves mode", 0.80, 0.50, ModeGood},
-		{"high difficulty clamps at difficult", 0.50, 0.90, ModeDifficult},
-		{"low difficulty clamps at mastered", 0.99, 0.10, ModeMastered},
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := ModeFromMetrics(PerformanceMetrics{
-				SuccessRate:   tc.successRate,
-				AvgDifficulty: tc.avgDifficulty,
-				ReviewCount:   MinReviewsForModeCalculation,
-			})
-
-			require.Equal(t, tc.want, got)
-		})
-	}
-}
-
 // TestNormalizedDifficulty pins the difficulty/10 mapping at its boundary
-// values. The FSRS floor of exactly 1.0 must normalize to 0.1 (the
-// low-difficulty band), not 1.0 — the bug that inverted the mode for mastered
-// cards left a strict `> 1` guard that skipped the division at the floor.
+// values. The FSRS floor of exactly 1.0 must normalize to 0.1, not 1.0: a
+// strict `> 1` guard would skip the division at the floor and report mastered
+// cards as maximally difficult.
 func TestNormalizedDifficulty(t *testing.T) {
 	t.Parallel()
 
@@ -644,60 +576,6 @@ func TestNormalizedDifficultyMonotonic(t *testing.T) {
 		require.GreaterOrEqualf(t, got, prev,
 			"normalizedDifficulty must be non-decreasing: difficulty %.1f gave %.4f after %.4f", d, got, prev)
 		prev = got
-	}
-}
-
-// TestModeFromMetricsFSRSFloorNotDecremented drives a 20-swipe history whose
-// cards all sit at the FSRS difficulty floor of 1.0. The mastered cards must
-// normalize into the low-difficulty band (0.1) and raise the mode, never trip
-// the high-difficulty threshold and decrement it below the success-rate band.
-func TestModeFromMetricsFSRSFloorNotDecremented(t *testing.T) {
-	t.Parallel()
-
-	now := time.Date(2026, 4, 30, 3, 0, 0, 0, time.UTC)
-
-	swipes := make([]domain.SwipeRecord, 0, MinReviewsForModeCalculation)
-	for i := 0; i < 16; i++ {
-		swipes = append(swipes, swipe(domain.RatingGood, now, state(1.0, 1, domain.FSRSPhaseReview)))
-	}
-	for i := 0; i < 4; i++ {
-		swipes = append(swipes, swipe(domain.RatingAgain, now, state(1.0, 1, domain.FSRSPhaseReview)))
-	}
-
-	metrics := ComputeMetrics(swipes, now)
-	// 16/20 successes selects the Good success-rate band (0.75 <= rate < 0.85).
-	require.InDelta(t, 0.80, metrics.SuccessRate, 0.000000001)
-	// All cards at the floor normalize to 0.1, the low-difficulty band.
-	require.InDelta(t, 0.10, metrics.AvgDifficulty, 0.000000001)
-
-	got := ModeFromMetrics(metrics)
-	// The floor difficulty is <= 0.3, so the mode is raised to ModeEasy; it must
-	// not be decremented below the Good band the success rate selected.
-	require.GreaterOrEqual(t, int(got), int(ModeGood))
-	require.Equal(t, ModeEasy, got)
-}
-
-func TestPerformanceModeIsValid(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name string
-		mode PerformanceMode
-		want bool
-	}{
-		{"below range", -1, false},
-		{"difficult lower bound", ModeDifficult, true},
-		{"mastered upper bound", ModeMastered, true},
-		{"above range", 5, false},
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			require.Equal(t, tc.want, tc.mode.IsValid())
-		})
 	}
 }
 

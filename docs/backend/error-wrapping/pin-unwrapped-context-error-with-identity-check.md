@@ -71,12 +71,11 @@ representative tests, not every cancellation test:
 | Test | Pinned shape | Why it is representative |
 |---|---|---|
 | `TestSwipeUsecase_HandleSwipe_FindCardByID_PropagatesCancelled` (`swipe_error_test.go`) | In-tx path | Error originates inside the `txRunner` closure |
-| `TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesDeadlineExceeded` (`swipe_error_test.go`) | Post-tx path | Error originates after the tx commits |
 | `TestLearnUsecase_NextDueCards_FindCardgroup_PropagatesCancelled` (`learn_test.go`) | Separate usecase | Confirms the contract holds across usecase boundaries, not just one |
 
 Each test exercises a structurally distinct code path that could regress
 independently. Pinning identity on all cancellation tests would be redundant
-without strengthening coverage; pinning on these three covers the orthogonal
+without strengthening coverage; pinning on these two covers the orthogonal
 seams where a wrap could plausibly leak in.
 
 ## Self-check

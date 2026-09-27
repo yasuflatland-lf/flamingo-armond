@@ -129,37 +129,6 @@ func TopStruggling(stats []domain.FSRSStat, limit int) []StrugglingCard {
 	return out
 }
 
-// PerformanceMode is the difficulty level inferred from a user's recent
-// performance. Values intentionally span ModeDifficult (0) .. ModeMastered (4).
-type PerformanceMode int
-
-const (
-	ModeDifficult PerformanceMode = 0
-	ModeDefault   PerformanceMode = 1
-	ModeGood      PerformanceMode = 2
-	ModeEasy      PerformanceMode = 3
-	ModeMastered  PerformanceMode = 4
-
-	MinReviewsForModeCalculation = 20
-
-	// Success-rate band thresholds for ModeFromMetrics. A success rate at or
-	// above each threshold selects the named mode (or higher).
-	defaultModeThreshold  = 0.60
-	goodModeThreshold     = 0.75
-	easyModeThreshold     = 0.85
-	masteredModeThreshold = 0.95
-
-	// Average-difficulty nudges shift the band-selected mode by one step:
-	// hard recent cards drop the mode, easy recent cards raise it.
-	highDifficultyThreshold = 0.7
-	lowDifficultyThreshold  = 0.3
-)
-
-// IsValid reports whether the mode is in the recognised range.
-func (m PerformanceMode) IsValid() bool {
-	return m >= ModeDifficult && m <= ModeMastered
-}
-
 type PerformanceMetrics struct {
 	SuccessRate   float64
 	AvgDifficulty float64
@@ -263,37 +232,11 @@ func ComputeMetrics(swipes []domain.SwipeRecord, now time.Time) PerformanceMetri
 	}
 }
 
-func ModeFromMetrics(m PerformanceMetrics) PerformanceMode {
-	if m.ReviewCount < MinReviewsForModeCalculation {
-		return ModeDefault
-	}
-
-	mode := ModeMastered
-	switch {
-	case m.SuccessRate < defaultModeThreshold:
-		mode = ModeDifficult
-	case m.SuccessRate < goodModeThreshold:
-		mode = ModeDefault
-	case m.SuccessRate < easyModeThreshold:
-		mode = ModeGood
-	case m.SuccessRate < masteredModeThreshold:
-		mode = ModeEasy
-	}
-
-	if m.AvgDifficulty >= highDifficultyThreshold {
-		mode--
-	} else if m.AvgDifficulty <= lowDifficultyThreshold {
-		mode++
-	}
-
-	return clampMode(mode)
-}
-
 // normalizedDifficulty maps a stored FSRS difficulty on the 1..10 scale into
 // 0..1 as difficulty/10, clamped to [0,1]. The division is unconditional so a
-// mastered card pinned at the FSRS floor of exactly 1.0 normalizes to 0.1 (the
-// low-difficulty band) rather than 1.0; a strict `> 1` guard would leave the
-// floor at 1.0 and trip the high-difficulty threshold, inverting the mode down.
+// card pinned at the FSRS floor of exactly 1.0 normalizes to 0.1 rather than
+// 1.0; a strict `> 1` guard would leave the floor at 1.0 and report the easiest
+// cards as the hardest in AvgDifficulty.
 func normalizedDifficulty(difficulty float64) float64 {
 	difficulty = difficulty / 10
 	if difficulty < 0 {
@@ -350,14 +293,4 @@ func ratio(numerator, denominator int) float64 {
 		return 0
 	}
 	return float64(numerator) / float64(denominator)
-}
-
-func clampMode(mode PerformanceMode) PerformanceMode {
-	if mode < ModeDifficult {
-		return ModeDifficult
-	}
-	if mode > ModeMastered {
-		return ModeMastered
-	}
-	return mode
 }
