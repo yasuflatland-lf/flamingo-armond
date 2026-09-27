@@ -2,7 +2,7 @@
 
 > Part of [`frontend/CLAUDE.md`](../../frontend/CLAUDE.md). See the index for related chapters.
 
-`/` (HomePage RSC) is the canonical landing — every entry converges there, and `/` then routes the user to the most useful next screen rather than dropping them on a static page. `/login` passes a signed-in visitor through `/auth/verify-session` rather than straight back to `/`, so the chain terminates even for a session that is valid locally but rejected by the backend (a deleted account, an `aud`/`iss` mismatch):
+`/` (HomePage RSC) is the canonical landing — every entry converges there, and `/` then routes the user to the most useful next screen rather than dropping them on a static page. `/login` passes a signed-in visitor through `/auth/verify-session` rather than straight back to `/`, so the chain terminates even for a session that is valid locally but rejected by the backend (a deleted account: a valid JWT whose user row is gone, which the backend answers with a GraphQL `UNAUTHENTICATED` error). A transport-level HTTP 401 from the backend auth middleware (bad signature, `aud`/`iss` mismatch, unknown `kid`) is a non-auth failure there and continues to `/`, because it is a backend configuration outage that a local sign-out cannot repair:
 
 | Entry | Anonymous → | Signed-in → |
 |---|---|---|

@@ -21,8 +21,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL("/", origin));
     }
     const supabase = await createSupabaseServerClient();
-    // `local`, not `global`: an aud/iss mismatch rejects a live account, whose
-    // other devices must keep their sessions.
+    // `local`, not `global`: only this device's cookie is known to be dead; a global
+    // revoke would also sign out the learner's other devices on one backend verdict.
     const { error } = await supabase.auth.signOut({ scope: "local" });
     if (error) {
       console.warn("[auth/verify-session] signOut failed:", { name: error.name });

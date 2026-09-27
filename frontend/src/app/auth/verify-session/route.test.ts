@@ -87,6 +87,17 @@ describe("GET /auth/verify-session", () => {
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("transport HTTP 401 (bad signature, aud/iss mismatch) is not treated as a rejected session", async () => {
+    vi.mocked(gqlFetch).mockRejectedValueOnce(
+      new Error("GraphQL HTTP 401 Unauthorized: invalid token"),
+    );
+
+    const response = await GET(makeRequest());
+
+    expect(response.headers.get("location")).toBe("http://localhost/");
+    expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
   it("FORBIDDEN is not treated as a rejected session", async () => {
     vi.mocked(gqlFetch).mockRejectedValueOnce(gqlError("FORBIDDEN"));
 
