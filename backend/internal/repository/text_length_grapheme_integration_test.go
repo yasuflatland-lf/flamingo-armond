@@ -231,6 +231,23 @@ func incompressibleFront(marks int) string {
 	return b.String()
 }
 
+// Marks per grapheme that make incompressibleFront trip each 54000 shape:
+// ~5,500 bytes hits the btree check (index named), ~20,500 bytes hits the
+// earlier index-tuple check (no index named).
+const (
+	btreeShapeMarks      = 4
+	indexTupleShapeMarks = 19
+)
+
+// frontIndexShapes drives the subtests that must cover both 54000 shapes.
+var frontIndexShapes = []struct {
+	name  string
+	marks int
+}{
+	{name: "btree", marks: btreeShapeMarks},
+	{name: "index tuple", marks: indexTupleShapeMarks},
+}
+
 // TestIncompressibleFront_IsDomainValid is the precondition for the 54000 tests
 // below: both inputs pass the domain grapheme gate and stay within the
 // cards_front_length CHECK (10000 code points), so only the index limit can
@@ -241,8 +258,8 @@ func TestIncompressibleFront_IsDomainValid(t *testing.T) {
 		marks     int
 		wantRunes int
 	}{
-		{marks: 4, wantRunes: 2500},
-		{marks: 19, wantRunes: 10000},
+		{marks: btreeShapeMarks, wantRunes: 2500},
+		{marks: indexTupleShapeMarks, wantRunes: 10000},
 	} {
 		s := incompressibleFront(tc.marks)
 		_, err := domain.ParseCardText(s, domain.ErrCardFrontRequired, domain.ErrCardFrontTooLong)
@@ -273,13 +290,7 @@ func TestCardRepository_FrontIndexRowTooLarge_ClassifiesAsTextLengthError(t *tes
 	cg := insertCardgroup(t, ctx, ownerID)
 	repo := repository.NewCardRepository(testDB.GORM)
 
-	for _, tc := range []struct {
-		name  string
-		marks int
-	}{
-		{name: "btree", marks: 4},
-		{name: "index tuple", marks: 19},
-	} {
+	for _, tc := range frontIndexShapes {
 		t.Run(tc.name, func(t *testing.T) {
 			err := repo.Create(ctx, newCard(cg.ID, incompressibleFront(tc.marks), "back"))
 			requireFrontIndexViolation(t, err, "uq_cards_cardgroup_front")
@@ -299,7 +310,7 @@ func TestCardRepository_UpsertManyTx_FrontIndexRowTooLarge_ClassifiesAsTextLengt
 
 	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		_, txErr := repo.UpsertManyTx(ctx, tx, []*domain.Card{
-			newCard(cg.ID, incompressibleFront(19), "back"),
+			newCard(cg.ID, incompressibleFront(indexTupleShapeMarks), "back"),
 		})
 		return txErr
 	})
@@ -315,7 +326,7 @@ func TestMasterCardRepository_FrontIndexRowTooLarge_ClassifiesAsTextLengthError(
 	mcg := insertMCGForCardTest(t, ctx, "Front-Index-Row-Size-Group")
 	repo := repository.NewMasterCardRepository(testDB.GORM)
 
-	err := repo.Create(ctx, newMasterCard(mcg.ID, incompressibleFront(4), "back", 0))
+	err := repo.Create(ctx, newMasterCard(mcg.ID, incompressibleFront(btreeShapeMarks), "back", 0))
 	requireFrontIndexViolation(t, err, "uq_master_cards_cg_front")
 }
 
@@ -330,13 +341,7 @@ func TestCardRepository_Update_FrontIndexRowTooLarge_ClassifiesAsTextLengthError
 	card := newCard(cg.ID, "small", "back")
 	require.NoError(t, repo.Create(ctx, card))
 
-	for _, tc := range []struct {
-		name  string
-		marks int
-	}{
-		{name: "btree", marks: 4},
-		{name: "index tuple", marks: 19},
-	} {
+	for _, tc := range frontIndexShapes {
 		t.Run(tc.name, func(t *testing.T) {
 			big := incompressibleFront(tc.marks)
 			_, err := repo.Update(ctx, card.ID, repository.CardUpdate{Front: &big})
@@ -346,8 +351,8 @@ func TestCardRepository_Update_FrontIndexRowTooLarge_ClassifiesAsTextLengthError
 }
 
 // TestMasterCardRepository_Update_FrontIndexRowTooLarge_ClassifiesAsTextLengthError
-// pins the master edit-path arm. marks=4 hits the btree shape, which names the
-// index, so a wrong index constant at the call site fails the test.
+// pins the master edit-path arm. The btree shape names the index, so a wrong
+// index constant at the call site fails the test.
 func TestMasterCardRepository_Update_FrontIndexRowTooLarge_ClassifiesAsTextLengthError(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -356,14 +361,14 @@ func TestMasterCardRepository_Update_FrontIndexRowTooLarge_ClassifiesAsTextLengt
 	card := newMasterCard(mcg.ID, "small", "back", 0)
 	require.NoError(t, repo.Create(ctx, card))
 
-	big := incompressibleFront(4)
+	big := incompressibleFront(btreeShapeMarks)
 	_, err := repo.Update(ctx, card.ID, repository.MasterCardUpdate{Front: &big})
 	requireFrontIndexViolation(t, err, "uq_master_cards_cg_front")
 }
 
 // TestMasterCardRepository_UpsertManyTx_FrontIndexRowTooLarge_ClassifiesAsTextLengthError
-// pins the master bulk-import arm. marks=4 hits the btree shape, which names the
-// index, so a wrong index constant at the call site fails the test.
+// pins the master bulk-import arm. The btree shape names the index, so a wrong
+// index constant at the call site fails the test.
 func TestMasterCardRepository_UpsertManyTx_FrontIndexRowTooLarge_ClassifiesAsTextLengthError(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -372,7 +377,7 @@ func TestMasterCardRepository_UpsertManyTx_FrontIndexRowTooLarge_ClassifiesAsTex
 
 	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		_, txErr := repo.UpsertManyTx(ctx, tx, []*domain.MasterCard{
-			newMasterCard(mcg.ID, incompressibleFront(4), "back", 0),
+			newMasterCard(mcg.ID, incompressibleFront(btreeShapeMarks), "back", 0),
 		})
 		return txErr
 	})

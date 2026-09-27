@@ -94,17 +94,18 @@ func textLengthConstraintField(name string) (string, bool) {
 	return stem[i+1:], true
 }
 
-// classifyFrontIndexRowTooLarge maps SQLSTATE 54000 (program_limit_exceeded) from a write
-// whose unique (group, front) index is frontIndex to a *TextLengthViolationError on "front".
-// The btree check names the index; the earlier index-tuple check names none, but front is the
-// only variable-length indexed column on cards and master_cards. Returns nil for any other
-// error, including a 54000 naming a different index.
+// classifyFrontIndexRowTooLarge maps SQLSTATE 54000 (program_limit_exceeded) on
+// a write guarded by the unique (group, front) index frontIndex to a
+// *TextLengthViolationError on "front". Only the btree check names the index,
+// but front is the only variable-length indexed column on cards and
+// master_cards. Returns nil otherwise, including for a 54000 on another index.
 func classifyFrontIndexRowTooLarge(err error, frontIndex string) error {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != "54000" {
 		return nil
 	}
-	// Matching the message text to tell the unnamed shape apart is rejected: lc_messages can translate it.
+	// Matching the message text to tell the unnamed shape apart is rejected:
+	// lc_messages can translate it.
 	if pgErr.ConstraintName != "" && pgErr.ConstraintName != frontIndex {
 		return nil
 	}
