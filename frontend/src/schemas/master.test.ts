@@ -38,6 +38,24 @@ describe("masterSchema", () => {
     expect(r.success).toBe(true);
   });
 
+  it("rejects a name of only U+0085", () => {
+    const r = masterSchema.safeParse({ name: "\u0085" });
+    expect(r.success).toBe(false);
+  });
+
+  it("accepts a name of only U+FEFF", () => {
+    const r = masterSchema.safeParse({ name: "\uFEFF" });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.name).toBe("\uFEFF");
+  });
+
+  it("counts description graphemes after Go trim", () => {
+    const trailingNel = `${"a".repeat(500)}\u0085`;
+    const trailingBom = `${"a".repeat(500)}\uFEFF`;
+    expect(masterSchema.safeParse({ name: "Deck", description: trailingNel }).success).toBe(true);
+    expect(masterSchema.safeParse({ name: "Deck", description: trailingBom }).success).toBe(false);
+  });
+
   it("accepts an empty sortOrder", () => {
     const r = masterSchema.safeParse({ name: "Deck", sortOrder: "" });
     expect(r.success).toBe(true);

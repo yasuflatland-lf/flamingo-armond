@@ -168,6 +168,37 @@ describe("AdminUserProfileSheet", () => {
     });
   });
 
+  it("sends a U+FEFF display name like Go strings.TrimSpace, not native trim", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn();
+    // The mock only matches U+FEFF; native .trim() would send "" and never resolve it.
+    const mocks = [
+      {
+        request: {
+          query: AdminEditUserDocument,
+          variables: {
+            id: "u-1",
+            expectedVersion: 41,
+            displayName: "\uFEFF",
+            bio: "bio text",
+            roleIds: [ADMIN_ROLE.id],
+          },
+        },
+        result: { data: { adminEditUser: successPayload() } },
+      },
+    ];
+
+    renderSheet({ mocks, onSaved });
+
+    await user.clear(screen.getByLabelText(/display name/i));
+    await user.type(screen.getByLabelText(/display name/i), "\uFEFF");
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("ConcurrentUpdateError renders stale-edit copy and requests reload", async () => {
     const user = userEvent.setup();
     const onReloadRequested = vi.fn();

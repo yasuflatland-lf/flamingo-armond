@@ -53,6 +53,17 @@ describe("AdminMasterForm", () => {
     expect(firstCallArg).toMatchObject({ name: "New Deck", sortOrder: 7 });
   });
 
+  it("trims name and description like Go strings.TrimSpace on submit", async () => {
+    const submit = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderWithIntl(<AdminMasterForm mode="create" submitting={false} submit={submit} />);
+    await user.type(screen.getByTestId("master-field-name"), "\uFEFF");
+    await user.type(screen.getByTestId("master-field-description"), "\u0085");
+    await user.click(screen.getByTestId("master-form-submit"));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(submit.mock.calls[0]?.[0]).toMatchObject({ name: "\uFEFF", description: null });
+  });
+
   it("blocks submit when sortOrder is not a whole number", async () => {
     const submit = vi.fn();
     const user = userEvent.setup();

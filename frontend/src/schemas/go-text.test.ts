@@ -29,6 +29,12 @@ describe("trimLikeGo", () => {
     expect(trimLikeGo(" a b ")).toBe("a b");
   });
 
+  // A backtracking edge regex takes tens of seconds here and trips the test timeout.
+  it("trims a long interior whitespace run in linear time", () => {
+    const s = `a${" ".repeat(300_000)}b`;
+    expect(trimLikeGo(` ${s} `)).toBe(s);
+  });
+
   it("strips nothing else in the BMP", () => {
     const stripped = [];
     for (let codePoint = 0; codePoint <= 0xffff; codePoint++) {
@@ -48,6 +54,10 @@ describe("toLowerLikeGo", () => {
 
   it("does not apply final-sigma context", () => {
     expect(toLowerLikeGo("\u039f\u0394\u039f\u03a3")).toBe("\u03bf\u03b4\u03bf\u03c3");
+  });
+
+  it("lowercases supplementary-plane letters per code point", () => {
+    expect(toLowerLikeGo("\u{10400}")).toBe("\u{10428}");
   });
 
   it("lowercases ASCII", () => {
