@@ -33,8 +33,8 @@ func pgInvalidTextRepresentation(err error) bool {
 const textLengthConstraintSuffix = "_length"
 
 // TextLengthViolationError reports a Postgres CHECK violation (SQLSTATE 23514)
-// on one of the "<table>_<column>_length" constraints that back the card and
-// cardgroup text columns.
+// on one of the "<table>_<column>_length" constraints, or a front too large for
+// its unique btree index (SQLSTATE 54000, see classifyFrontIndexRowTooLarge).
 //
 // The domain layer already enforces the user-visible length rule in grapheme
 // clusters, and the database bound is deliberately far wider, so this is a
@@ -46,6 +46,7 @@ const textLengthConstraintSuffix = "_length"
 // The usecase layer maps this to a field-scoped BAD_USER_INPUT via
 // translateTextLengthViolation.
 //
+// Constraint is the violated CHECK constraint, or the index name for a 54000.
 // Field is the column the constraint guards ("front", "back", "name"), derived
 // from the constraint name so callers do not need a per-table lookup table.
 // Pointer receiver on Error() so callers recover it with
@@ -91,4 +92,21 @@ func textLengthConstraintField(name string) (string, bool) {
 		return "", false
 	}
 	return stem[i+1:], true
+}
+
+// classifyFrontIndexRowTooLarge maps SQLSTATE 54000 (program_limit_exceeded) from a write
+// whose unique (group, front) index is frontIndex to a *TextLengthViolationError on "front".
+// The btree check names the index; the earlier index-tuple check names none, but front is the
+// only variable-length indexed column on cards and master_cards. Returns nil for any other
+// error, including a 54000 naming a different index.
+func classifyFrontIndexRowTooLarge(err error, frontIndex string) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "54000" {
+		return nil
+	}
+	// Matching the message text to tell the unnamed shape apart is rejected: lc_messages can translate it.
+	if pgErr.ConstraintName != "" && pgErr.ConstraintName != frontIndex {
+		return nil
+	}
+	return &TextLengthViolationError{Constraint: frontIndex, Field: "front"}
 }
