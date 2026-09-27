@@ -133,11 +133,11 @@ func TestComputeMetrics(t *testing.T) {
 			},
 		},
 		{
-			// A successful review answered later than the interval it was due
-			// within is a review, but not an on-time recall.
+			// A successful review whose due fell on the previous JST day, so the
+			// review is late: a review, but not an on-time recall.
 			name: "new-format review easy later than scheduled is a review but not a retention",
 			swipes: []domain.SwipeRecord{
-				swipeBefore(domain.RatingEasy, now, state(5, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now.Add(-time.Hour)),
+				swipeBefore(domain.RatingEasy, now, state(5, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now.AddDate(0, 0, -1)),
 			},
 			want: PerformanceMetrics{
 				SuccessRate:   1,
@@ -149,13 +149,40 @@ func TestComputeMetrics(t *testing.T) {
 			},
 		},
 		{
-			// The old day comparison counted this successful review as on time
-			// because its truncated elapsed-day count equalled the scheduled
-			// interval. The due instant shows it was already late, so it is now
-			// correctly excluded from retention.
-			name: "new-format review just after due is not on time",
+			// Reviewed a minute past the due instant but on the same JST learn
+			// day, which is the day the queue served the card on.
+			name: "review one minute after due on the same JST day is on time",
 			swipes: []domain.SwipeRecord{
-				swipeBefore(domain.RatingGood, now, state(5, 9, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now.Add(-time.Nanosecond)),
+				swipeBefore(
+					domain.RatingGood,
+					time.Date(2026, 4, 30, 1, 1, 0, 0, time.UTC), // 10:01 JST
+					state(5, 9, domain.FSRSPhaseReview),
+					domain.FSRSPhaseReview,
+					time.Date(2026, 4, 30, 1, 0, 0, 0, time.UTC), // 10:00 JST
+				),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   1,
+				AvgDifficulty: 0.5,
+				RetentionRate: 1,
+				StudyStreak:   1,
+				LapseRate:     0,
+				ReviewCount:   1,
+			},
+		},
+		{
+			// Due and review share the UTC calendar date 4/29, so a UTC
+			// elapsed-day comparison would call this on time. The JST due-day
+			// bound ends at 4/30 00:00 JST, so the 00:01 JST review is late.
+			name: "review at 00:01 JST the day after due is late",
+			swipes: []domain.SwipeRecord{
+				swipeBefore(
+					domain.RatingGood,
+					time.Date(2026, 4, 29, 15, 1, 0, 0, time.UTC), // 4/30 00:01 JST
+					state(5, 9, domain.FSRSPhaseReview),
+					domain.FSRSPhaseReview,
+					time.Date(2026, 4, 29, 11, 0, 0, 0, time.UTC), // 4/29 20:00 JST
+				),
 			},
 			want: PerformanceMetrics{
 				SuccessRate:   1,
@@ -167,7 +194,28 @@ func TestComputeMetrics(t *testing.T) {
 			},
 		},
 		{
-			// ReviewedAt == DueBefore exactly is on time (inclusive boundary).
+			name: "again on the due day is a lapse, never an on-time recall",
+			swipes: []domain.SwipeRecord{
+				swipeBefore(
+					domain.RatingAgain,
+					time.Date(2026, 4, 30, 1, 1, 0, 0, time.UTC),
+					stateWithLapses(5, 0, domain.FSRSPhaseRelearning, 1),
+					domain.FSRSPhaseReview,
+					time.Date(2026, 4, 30, 1, 0, 0, 0, time.UTC),
+				),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   0,
+				AvgDifficulty: 0.5,
+				RetentionRate: 0,
+				StudyStreak:   1,
+				LapseRate:     1,
+				ReviewCount:   1,
+			},
+		},
+		{
+			// ReviewedAt == DueBefore is on time: the due instant is inside its
+			// own JST due day.
 			name: "new-format review at the exact due instant is on time",
 			swipes: []domain.SwipeRecord{
 				swipeBefore(domain.RatingGood, now, state(5, 9, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now),
@@ -207,7 +255,7 @@ func TestComputeMetrics(t *testing.T) {
 			swipes: []domain.SwipeRecord{
 				swipeBefore(domain.RatingAgain, now, stateWithLapses(5, 0, domain.FSRSPhaseRelearning, 1), domain.FSRSPhaseReview, now),
 				swipeBefore(domain.RatingHard, now, state(5, 8, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now),
-				swipeBefore(domain.RatingEasy, now, state(5, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now.Add(-time.Hour)),
+				swipeBefore(domain.RatingEasy, now, state(5, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now.AddDate(0, 0, -1)),
 				swipeBefore(domain.RatingEasy, now, state(5, 1, domain.FSRSPhaseReview), domain.FSRSPhaseLearning, now),
 			},
 			want: PerformanceMetrics{
@@ -303,7 +351,7 @@ func TestComputeMetrics_KnownReviewCount(t *testing.T) {
 		got := ComputeMetrics([]domain.SwipeRecord{
 			swipeBefore(domain.RatingAgain, now, stateWithLapses(5, 0, domain.FSRSPhaseRelearning, 1), domain.FSRSPhaseReview, now),
 			swipeBefore(domain.RatingHard, now, state(5, 8, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now),
-			swipeBefore(domain.RatingEasy, now, state(5, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now.Add(-time.Hour)),
+			swipeBefore(domain.RatingEasy, now, state(5, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now.AddDate(0, 0, -1)),
 			swipeBefore(domain.RatingEasy, now, state(5, 1, domain.FSRSPhaseReview), domain.FSRSPhaseLearning, now),
 		}, now)
 
