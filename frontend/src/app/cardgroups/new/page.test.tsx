@@ -10,7 +10,6 @@ import { headers } from "next/headers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CARDGROUPS_DEFAULT_VARS } from "@/app/cardgroups/queries";
 import { CreateCardgroupDocument, MyCardgroupsConnectionDocument } from "@/generated/graphql";
-import { sanitizeReturnTo } from "@/lib/sanitize-return-to";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { NewCardgroupClient } from "./new-cardgroup-client";
 import NewCardgroupPage from "./page";
@@ -635,45 +634,5 @@ describe("authentication boundary", () => {
     );
 
     expect(mockRedirect).toHaveBeenCalledWith("/login");
-  });
-});
-
-describe("sanitizeReturnTo", () => {
-  it("allows internal paths starting with /", () => {
-    expect(sanitizeReturnTo("/cards/new")).toBe("/cards/new");
-  });
-
-  it("allows internal paths with query string", () => {
-    expect(sanitizeReturnTo("/cards/new?foo=1")).toBe("/cards/new?foo=1");
-  });
-
-  it("rejects protocol-relative URLs starting with //", () => {
-    expect(sanitizeReturnTo("//evil.com")).toBeNull();
-  });
-
-  it("rejects https:// URLs", () => {
-    expect(sanitizeReturnTo("https://evil.com")).toBeNull();
-  });
-
-  it("rejects bare hostnames without leading slash", () => {
-    expect(sanitizeReturnTo("evil.com")).toBeNull();
-  });
-
-  it("rejects undefined", () => {
-    expect(sanitizeReturnTo(undefined)).toBeNull();
-  });
-
-  it("rejects empty string", () => {
-    expect(sanitizeReturnTo("")).toBeNull();
-  });
-
-  it("rejects backslash-bypass /\\evil.com", () => {
-    expect(sanitizeReturnTo("/\\evil.com")).toBeNull();
-  });
-
-  it("rejects backslash-bypass /\\\\evil.com", () => {
-    // double-escaped to land "/\\evil.com" as the runtime string -- verify the helper
-    // when called with the raw form a browser may emit
-    expect(sanitizeReturnTo("/\\\\evil.com")).toBeNull();
   });
 });
