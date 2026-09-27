@@ -34,11 +34,11 @@ describe("encodeUtf8Base64", () => {
   it("round-trips to the TextEncoder/TextDecoder normalisation for arbitrary DOM strings", () => {
     const units = ["a", "\t", "\n", "\u3042", "\u{1f600}", "\ud83d", "\ude00", "\u00e9"];
     let seed = 0x5eed;
-    const next = () => {
+    function next(): number {
       // Math.imul keeps the multiply exact; a plain `*` loses low bits past 2^53.
       seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
       return seed >>> 16;
-    };
+    }
     for (let n = 0; n < 500; n++) {
       const length = next() % 13;
       let s = "";
