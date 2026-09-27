@@ -423,7 +423,7 @@ func TestCardRepository_FoldFrontCaseToTx(t *testing.T) {
 		cancel()
 
 		folded, err := repo.FoldFrontCaseToTx(cancelledCtx, testDB.GORM, string(cg.ID), []string{"Apple"})
-		require.ErrorIs(t, err, context.Canceled)
+		require.Equal(t, context.Canceled, err)
 		require.Zero(t, folded)
 	})
 

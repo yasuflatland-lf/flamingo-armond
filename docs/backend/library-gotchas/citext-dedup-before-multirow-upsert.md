@@ -27,12 +27,16 @@ key. With `front` citext, two parsed rows differing only by case collapse to one
 conflict key, so a raw-keyed in-memory dedup lets both through and the whole
 import transaction aborts (surfaced as `INTERNAL`).
 
-21000 fires only for duplicates inside one statement. A duplicate that straddles a
-chunk boundary (input above 5,000 rows) raises nothing: the later chunk updates
-the row the earlier chunk inserted and counts it as Updated (`back` and `position`
-take the later values; the stored `front` keeps the earlier casing). The in-memory
-dedup keyed on the column's uniqueness semantics is therefore the only guard, not
-a belt-and-braces with the database.
+21000 fires only for duplicates inside one statement. Imports stay within one
+statement, so a miskeyed in-memory dedup still aborts with 21000. Input above
+`bulkStatementChunkRows` gets no database check across a chunk boundary: a
+duplicate that straddles it silently updates the row the earlier chunk inserted
+and counts as Updated in the later chunk (`back` and `position` take the later
+values; the stored `front` keeps the earlier casing). The only caller above one
+chunk today is the master-deck copy (`copyMasterCardsIntoTx`), which upserts into
+`cards` and is safe because its source fronts are unique under `master_cards`'
+case-insensitive unique `front`. Any caller above one chunk must pass key-unique
+input.
 
 The user-card mirror (`cards.front` is plain `text`, case-sensitive) does **not**
 have this problem — case-differing fronts are genuinely distinct there. The bug
