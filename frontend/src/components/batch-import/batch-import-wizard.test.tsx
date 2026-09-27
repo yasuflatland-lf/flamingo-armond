@@ -26,7 +26,7 @@ import {
   CardsByCardgroupConnectionDocument,
   ValidateCardImportDocument,
 } from "@/generated/graphql";
-import { encodePayload } from "@/test/batch-import-test-utils";
+import { encodeUtf8Base64 } from "@/lib/encode-utf8-base64";
 import { renderWithIntl } from "@/test/render-with-intl";
 import {
   BatchImportWizard,
@@ -80,12 +80,14 @@ const TARGET_ID = "tgt-1";
 const TARGET_NAME = "Spanish Vocab";
 
 const TWO_LINE_TEXT = "apple\tred fruit\nbanana\tyellow fruit";
+// Ends in an unpaired low surrogate, which TextEncoder encodes as U+FFFD ("YQli77+9").
+const LONE_SURROGATE_TEXT = "a\tb\ude00";
 
 function validateMock(text: string, result: MockedResponse["result"]): MockedResponse {
   return {
     request: {
       query: ValidateCardImportDocument,
-      variables: { input: { payload: encodePayload(text) } },
+      variables: { input: { payload: encodeUtf8Base64(text) } },
     },
     result,
   };
@@ -158,8 +160,8 @@ async function typePayload(user: ReturnType<typeof userEvent.setup>, text: strin
   return textarea;
 }
 
-async function advanceToStep2(user: ReturnType<typeof userEvent.setup>) {
-  await typePayload(user, TWO_LINE_TEXT);
+async function advanceToStep2(user: ReturnType<typeof userEvent.setup>, text = TWO_LINE_TEXT) {
+  await typePayload(user, text);
   await user.click(screen.getByRole("button", { name: /^validate$/i }));
   const importButton = await screen.findByRole("button", { name: /^import$/i });
   await waitFor(() => expect(importButton).toBeEnabled());
@@ -329,9 +331,30 @@ describe("<BatchImportWizard>", () => {
     await advanceToStep2(user);
     const confirm = await screen.findByTestId("batch-import-confirm-btn");
     await user.click(confirm);
-    await waitFor(() => expect(onImport).toHaveBeenCalledWith(encodePayload(TWO_LINE_TEXT)));
+    await waitFor(() => expect(onImport).toHaveBeenCalledWith(encodeUtf8Base64(TWO_LINE_TEXT)));
     expect(refetchSpy).toHaveBeenCalledWith({ include: [CardsByCardgroupConnectionDocument] });
     await waitFor(() => expect(onImported).toHaveBeenCalledTimes(1));
+  });
+
+  it("validate with a lone surrogate sends a U+FFFD payload instead of failing silently", async () => {
+    const user = userEvent.setup();
+    renderWizard({ mocks: [validateMock(LONE_SURROGATE_TEXT, VALID_RESULT)] });
+    await typePayload(user, LONE_SURROGATE_TEXT);
+    await user.click(screen.getByRole("button", { name: /^validate$/i }));
+    const importButton = await screen.findByRole("button", { name: /^import$/i });
+    await waitFor(() => expect(importButton).toBeEnabled());
+  });
+
+  it("import with a lone surrogate calls onImport with the U+FFFD payload", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(ApolloClient.prototype, "refetchQueries")
+      // biome-ignore lint/suspicious/noExplicitAny: test stub for refetchQueries return
+      .mockResolvedValue({} as any);
+    const onImport = vi.fn(async () => OK_IMPORT);
+    renderWizard({ mocks: [validateMock(LONE_SURROGATE_TEXT, VALID_RESULT)], onImport });
+    await advanceToStep2(user, LONE_SURROGATE_TEXT);
+    await user.click(await screen.findByTestId("batch-import-confirm-btn"));
+    await waitFor(() => expect(onImport).toHaveBeenCalledWith("YQli77+9"));
   });
 
   it("import with error rows stays on step 2 and does not call onImported", async () => {
@@ -406,7 +429,7 @@ describe("<BatchImportWizard>", () => {
         {
           request: {
             query: ValidateCardImportDocument,
-            variables: { input: { payload: encodePayload(TWO_LINE_TEXT) } },
+            variables: { input: { payload: encodeUtf8Base64(TWO_LINE_TEXT) } },
           },
           error: new Error("network error"),
         },

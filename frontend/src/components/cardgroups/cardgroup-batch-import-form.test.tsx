@@ -10,7 +10,7 @@ import {
   ImportCardsDocument,
   ValidateCardImportDocument,
 } from "@/generated/graphql";
-import { encodePayload } from "@/test/batch-import-test-utils";
+import { encodeUtf8Base64 } from "@/lib/encode-utf8-base64";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { CardgroupBatchImportForm } from "./cardgroup-batch-import-form";
 
@@ -21,7 +21,7 @@ const TWO_LINE_TEXT = "apple\tred fruit\nbanana\tyellow fruit";
 const validateMock: MockedResponse = {
   request: {
     query: ValidateCardImportDocument,
-    variables: { input: { payload: encodePayload(TWO_LINE_TEXT) } },
+    variables: { input: { payload: encodeUtf8Base64(TWO_LINE_TEXT) } },
   },
   result: {
     data: {
@@ -41,7 +41,7 @@ const validateMock: MockedResponse = {
 const importMock: MockedResponse = {
   request: {
     query: ImportCardsDocument,
-    variables: { input: { cardgroupId: CARDGROUP_ID, payload: encodePayload(TWO_LINE_TEXT) } },
+    variables: { input: { cardgroupId: CARDGROUP_ID, payload: encodeUtf8Base64(TWO_LINE_TEXT) } },
   },
   result: {
     data: {
