@@ -49,10 +49,10 @@ func newSwipeLearnDayFixture(existing *domain.UserCardFSRS, now time.Time, logge
 }
 
 // reviewedCardFSRS returns an already-reviewed FSRS row for "card-1" whose
-// LastReview is lastReview. The scheduling counters are non-zero so a test can
-// prove the guard left them untouched. Due is one day after lastReview so the
-// row is due by the end of the swipe's learn day in every replay-guard fixture;
-// the not-due guard has its own tests that set Due explicitly.
+// LastReview is lastReview and whose Due is one day later, with non-zero counters.
+// A same-learn-day fixture is therefore also not due before the learn-day end, so
+// replay-guard skip tests assert which log line fired to pin that the replay
+// guard runs first; the not-due guard has its own tests that set Due explicitly.
 func reviewedCardFSRS(lastReview time.Time) *domain.UserCardFSRS {
 	return &domain.UserCardFSRS{
 		UserID: domain.UserID("user-1"),
@@ -99,11 +99,15 @@ func TestSwipeUsecase_HandleSwipe_SameLearnDayRepeat_IsSuccessShapedNoOp(t *test
 	lastReview := domain.StartOfLearnDay(now).Add(time.Minute)
 	existing := reviewedCardFSRS(lastReview)
 	before := existing.State
-	uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(existing, now, nil)
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(existing, now, logger)
 
 	outcome, err := swipeCard1(uc)
 
 	require.NoError(t, err)
+	require.Contains(t, buf.String(), `"msg":"swipe: repeat review ignored"`)
+	require.NotContains(t, buf.String(), `"msg":"swipe: not-due review ignored"`)
 	require.NotNil(t, outcome.Swipe, "an ignored repeat must still return the success variant")
 	require.Equal(t, "card-1", outcome.Swipe.CardID, "an ignored repeat still echoes the card id")
 	require.Nil(t, outcome.Validation, "an ignored repeat is not a user-input error")
@@ -157,13 +161,17 @@ func TestSwipeUsecase_HandleSwipe_LearnDayBoundary(t *testing.T) {
 			t.Parallel()
 
 			existing := reviewedCardFSRS(tc.lastReview)
-			uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(existing, now, nil)
+			var buf bytes.Buffer
+			logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(existing, now, logger)
 
 			outcome, err := swipeCard1(uc)
 
 			require.NoError(t, err)
 			require.NotNil(t, outcome.Swipe)
 			if tc.wantSkip {
+				require.Contains(t, buf.String(), `"msg":"swipe: repeat review ignored"`)
+				require.NotContains(t, buf.String(), `"msg":"swipe: not-due review ignored"`)
 				require.Nil(t, userFSRSRepo.upserted, "same-learn-day repeat must not upsert")
 				require.Nil(t, swipeRepo.created, "same-learn-day repeat must not write a swipe record")
 				require.Equal(t, 3, existing.State.Reps, "reps must not advance")
