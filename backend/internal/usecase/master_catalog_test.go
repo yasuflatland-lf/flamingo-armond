@@ -903,6 +903,27 @@ func TestImportMaster_IsAdminError_Wrapped(t *testing.T) {
 	assertInternalChain(t, err, "usecase: master catalog: import: check admin")
 }
 
+// TestImportMaster_IsAdminCancelled_IdentityPreserved pins that a cancelled
+// admin check propagates as the bare context.Canceled (identity, not errors.Is)
+// and that no copy is attempted.
+func TestImportMaster_IsAdminCancelled_IdentityPreserved(t *testing.T) {
+	repo := &mockMasterCatalogRepository{
+		findPublishedByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Deck"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	copyUC := &mockCopyMasterToUserUC{fn: func(context.Context, string, string, bool) (CopyMasterToUserResult, error) {
+		t.Fatal("copy must not run when the admin check is cancelled")
+		return CopyMasterToUserResult{}, nil
+	}}
+	uc := NewMasterCatalogUsecase(repo, copyUC, NewAdminGate(&mockAdminChecker{err: context.Canceled}), newTestLogger())
+
+	_, err := uc.ImportMaster(authedCtx("u1"), "m1")
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %v", err)
+	}
+}
+
 func TestImportMaster_CopyError_Wrapped(t *testing.T) {
 	repo := &mockMasterCatalogRepository{
 		findByIDFn: func(id string) (*domain.MasterCardgroup, error) {
