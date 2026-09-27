@@ -53,7 +53,9 @@ ties. A reviewed card leaves the never-seen window.
   day-granular bound avoids a recurring time-of-day delay. The retention
   statistic uses the same bound: `isOnTimeRecall` counts a recall as on time
   when it lands before `EndOfLearnDay` of the pre-swipe due, so a review served
-  on its due day is never reported late.
+  on its due day is never reported late. `domain.DueBeforeEndOfLearnDay` is
+  its Go form; the swipe path ignores a rating for an existing FSRS row that
+  fails it.
 - `ReviewedBefore` is `StartOfLearnDay`. The strict bound excludes cards already
   reviewed in today's JST learn day. Together with `CreditReviewedBefore`, its
   complement is the swipe replay guard (`ReviewedWithinLearnDay || !EarnsSchedulingCredit`)

@@ -104,3 +104,11 @@ func (w LearnWindow) PracticeReviewedAfter() time.Time {
 func ReviewedWithinLearnDay(lastReview, now time.Time) bool {
 	return !lastReview.Before(StartOfLearnDay(now))
 }
+
+// DueBeforeEndOfLearnDay reports whether due falls before the end of the JST
+// learn day containing now. It is the Go form of the serving-side SQL predicate
+// `ucs.due < EndOfLearnDay(now)` in repository/card_due.go (findDueCardsOn):
+// a card due exactly at the next JST midnight belongs to tomorrow on both sides.
+func DueBeforeEndOfLearnDay(due, now time.Time) bool {
+	return due.Before(EndOfLearnDay(now))
+}

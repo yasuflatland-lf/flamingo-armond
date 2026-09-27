@@ -34,9 +34,11 @@ type UserCardFSRSRepoForSwipe interface {
 }
 
 // SwipeUsecase processes a single card swipe and advances the FSRS schedule.
-// A repeat review within the same JST learn day or without FSRS scheduling
-// credit is accepted and ignored: the schedule is left untouched, no second
-// swipe record is written, and the normal success outcome is still returned.
+// A swipe the learn queue would not serve now is accepted and ignored: a repeat
+// within the same JST learn day or without FSRS scheduling credit, or a rating
+// for a card whose due is at or after the end of the current JST learn day. The
+// schedule is left untouched, no swipe record is written, and the normal success
+// outcome is still returned.
 type SwipeUsecase interface {
 	HandleSwipe(ctx context.Context, in HandleSwipeInput) (HandleSwipeOutcome, error)
 }
@@ -202,6 +204,20 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 				"card_id", card.ID,
 				"learn_day_start", domain.StartOfLearnDay(now),
 				"last_review", existing.State.LastReview,
+			)
+			return nil
+		}
+		// Not-due guard. An existing row is served only by the learn queue's
+		// review window (ucs.due < EndOfLearnDay(now)); a card without a row is
+		// served by the new-card window and never reaches this check. A rating
+		// for a card the queue would not serve now (a tab left open overnight, a
+		// delayed retry, a direct call) is ignored rather than recorded as an
+		// early review that pulls its due date forward.
+		if existing != nil && !domain.DueBeforeEndOfLearnDay(existing.State.Due, now) {
+			u.logger.InfoContext(ctx, "swipe: not-due review ignored",
+				"card_id", card.ID,
+				"learn_day_end", domain.EndOfLearnDay(now),
+				"due", existing.State.Due,
 			)
 			return nil
 		}

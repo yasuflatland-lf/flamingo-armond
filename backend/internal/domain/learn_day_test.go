@@ -196,6 +196,49 @@ func TestReviewedWithinLearnDay(t *testing.T) {
 	}
 }
 
+// TestDueBeforeEndOfLearnDay pins the truth table at the exclusive end-of-day
+// boundary: the predicate mirrors the serving-side `ucs.due < EndOfLearnDay(now)`,
+// so a card due exactly at the next JST midnight belongs to tomorrow.
+func TestDueBeforeEndOfLearnDay(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 9, 29, 0, 0, 0, 0, time.UTC) // 09:00 JST
+	end := EndOfLearnDay(now)                           // 2026-09-29T15:00Z (2026-09-30 00:00 JST)
+
+	cases := []struct {
+		name string
+		due  time.Time
+		want bool
+	}{
+		{
+			name: "exactly at EndOfLearnDay belongs to tomorrow",
+			due:  end,
+			want: false,
+		},
+		{
+			name: "one nanosecond before EndOfLearnDay is due today",
+			due:  end.Add(-time.Nanosecond),
+			want: true,
+		},
+		{
+			name: "overdue since yesterday is due",
+			due:  time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC),
+			want: true,
+		},
+		{
+			name: "due later today in JST is due",
+			due:  time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC),
+			want: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, DueBeforeEndOfLearnDay(tc.due, now))
+		})
+	}
+}
+
 // TestNewLearnWindow pins each field of the canonical window to its boundary
 // formula, all derived from the same now.
 func TestNewLearnWindow(t *testing.T) {
