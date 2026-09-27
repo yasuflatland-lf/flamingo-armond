@@ -38,7 +38,7 @@ export const masterSortOrderSchema = z.string().refine(
     const n = Number(trimmed);
     return n >= SORT_ORDER_MIN && n <= SORT_ORDER_MAX;
   },
-  { message: "sort order must be a whole number between -2147483648 and 2147483647" },
+  { message: `sort order must be a whole number between ${SORT_ORDER_MIN} and ${SORT_ORDER_MAX}` },
 );
 
 // name is always client-validated; description and sortOrder are optional so the

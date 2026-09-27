@@ -36,7 +36,7 @@ describe("trimLikeGo", () => {
   });
 
   it("strips nothing else in the BMP", () => {
-    const stripped = [];
+    const stripped: number[] = [];
     for (let codePoint = 0; codePoint <= 0xffff; codePoint++) {
       if (codePoint >= 0xd800 && codePoint <= 0xdfff) continue;
       const c = String.fromCodePoint(codePoint);
