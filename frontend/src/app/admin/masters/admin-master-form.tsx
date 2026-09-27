@@ -7,6 +7,7 @@ import { ErrorBanner } from "@/components/ui/error-banner";
 import { DirtyStateBridge } from "@/lib/forms/dirty-state-bridge";
 import { FormField } from "@/lib/forms/form-field";
 import { submitFormHandler, wrapSubmit } from "@/lib/forms/submit-handler";
+import { trimLikeGo } from "@/schemas/go-text";
 import { masterDescriptionSchema, masterNameSchema, masterSortOrderSchema } from "@/schemas/master";
 import type { AdminMasterListItem } from "./admin-master-row";
 
@@ -28,7 +29,7 @@ type Props = {
 };
 
 function emptyToNull(s: string): string | null {
-  const trimmed = s.trim();
+  const trimmed = trimLikeGo(s);
   return trimmed.length === 0 ? null : trimmed;
 }
 
@@ -54,10 +55,10 @@ export function AdminMasterForm({
       sortOrder: master?.sortOrder != null ? String(master.sortOrder) : "",
     },
     onSubmit: async ({ value }) => {
-      const sortOrderRaw = value.sortOrder.trim();
+      const sortOrderRaw = trimLikeGo(value.sortOrder);
       const parsedSortOrder = Number(sortOrderRaw);
       const values: MasterFormValues = {
-        name: value.name.trim(),
+        name: trimLikeGo(value.name),
         description: emptyToNull(value.description),
         isDefaultStarter: value.isDefaultStarter,
         // The sortOrder field validator blocks submit on a non-integer; guard the

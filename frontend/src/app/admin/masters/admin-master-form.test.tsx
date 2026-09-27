@@ -63,6 +63,16 @@ describe("AdminMasterForm", () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
+  it("blocks submit when sortOrder exceeds int32", async () => {
+    const submit = vi.fn();
+    const user = userEvent.setup();
+    renderWithIntl(<AdminMasterForm mode="create" submitting={false} submit={submit} />);
+    await user.type(screen.getByTestId("master-field-name"), "Deck");
+    await user.type(screen.getByTestId("master-field-sortOrder"), "2147483648");
+    await user.click(screen.getByTestId("master-form-submit"));
+    expect(submit).not.toHaveBeenCalled();
+  });
+
   it("prefills edit mode fields", () => {
     renderWithIntl(
       <AdminMasterForm mode="edit" master={EXISTING} submitting={false} submit={vi.fn()} />,

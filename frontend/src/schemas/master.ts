@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { trimLikeGo } from "./go-text";
 import { graphemeCount } from "./grapheme";
 
 // Mirrors the backend master name rule: trimmed, 1-100 grapheme clusters.
@@ -6,7 +7,7 @@ import { graphemeCount } from "./grapheme";
 // TanStack Form validator, which requires a StandardSchema over `string`.
 export const masterNameSchema = z
   .string()
-  .transform((s) => s.trim())
+  .transform(trimLikeGo)
   .refine((s) => graphemeCount(s) >= 1, { message: "name is required" })
   .refine((s) => graphemeCount(s) <= 100, {
     message: "name must be at most 100 characters",
@@ -16,22 +17,25 @@ export const masterNameSchema = z
 // optional, at most 500 grapheme clusters. Empty collapses to "no description".
 export const masterDescriptionSchema = z
   .string()
-  .transform((s) => s.trim())
+  .transform(trimLikeGo)
   .refine((s) => graphemeCount(s) <= 500, {
     message: "description must be at most 500 characters",
   });
 
-// The sort-order form input is a string; allow empty (→ null on submit) or a
-// finite whole number. NaN, Infinity, and decimals are rejected before submit.
-// Frontend-only guard: the GraphQL Int type already bounds the value server-side,
-// so there is no backend value object to mirror.
+// GraphQL Int maps to Go int (64-bit) without a domain bound, so relying on
+// server validation would surface Postgres integer overflow as a generic error.
+const SORT_ORDER_MIN = -2147483648;
+const SORT_ORDER_MAX = 2147483647;
+
 export const masterSortOrderSchema = z.string().refine(
   (s) => {
-    const trimmed = s.trim();
+    const trimmed = trimLikeGo(s);
     if (trimmed === "") return true;
-    return Number.isInteger(Number(trimmed));
+    if (!/^-?\d+$/.test(trimmed)) return false;
+    const n = Number(trimmed);
+    return n >= SORT_ORDER_MIN && n <= SORT_ORDER_MAX;
   },
-  { message: "sort order must be a whole number" },
+  { message: "sort order must be a whole number between -2147483648 and 2147483647" },
 );
 
 // name is always client-validated; description and sortOrder are optional so the
