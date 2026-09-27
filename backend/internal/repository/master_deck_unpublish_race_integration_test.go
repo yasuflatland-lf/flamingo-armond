@@ -47,9 +47,8 @@ func TestMergeMaster_Integration_UnpublishCommitsBeforeTxBody_NoCardsImported(t 
 
 	ownerID := insertAuthUser(t, ctx)
 	authedCtx := auth.ContextWithUser(ctx, &auth.AuthUser{
-		Sub:           ownerID,
-		Email:         ownerID + "@test.example",
-		EmailVerified: true,
+		Sub:   ownerID,
+		Email: ownerID + "@test.example",
 	})
 
 	masterID := seedMasterDeck(t, ctx, "Unpublish Race "+uuid.NewString(), []*domain.MasterCard{

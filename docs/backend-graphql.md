@@ -205,7 +205,7 @@ The `auth` package exposes two distinct types with different lifetimes and data 
 | `AuthUser` (`auth/user.go`) | Request-scoped | JWT claims (Supabase) | Who is the caller? |
 | `auth.Service` (`auth/role.go`) | Boot-scoped | DB-backed (`UserRoleRepository`) | What can the caller do? |
 
-`AuthUser` (`Sub`, `Email`, `EmailVerified`) does not surface a `Role` field — the JWT still carries a Supabase/Postgres database role claim (`authenticated`, `anon`, or `service_role`), but the Go struct never exposed it as the application role, so the field was removed. The application-level `admin`/`general` role lives in `public.user_roles` and is determined by `auth.Service.IsAdmin`, which performs a membership check against `domain.AdminRoleName`.
+`AuthUser` (`Sub`, `Email`) does not surface a `Role` field — the JWT still carries a Supabase/Postgres database role claim (`authenticated`, `anon`, or `service_role`), but the Go struct never exposed it as the application role, so the field was removed. The application-level `admin`/`general` role lives in `public.user_roles` and is determined by `auth.Service.IsAdmin`, which performs a membership check against `domain.AdminRoleName`.
 
 The split is deliberate: the JWT does not carry roles in this project, so every role check goes through the DB. `auth.Service` is constructed once at boot in `run()` against the `UserRoleRepository` and injected into resolvers/usecases that need to gate on role membership.
 
@@ -399,11 +399,10 @@ separate `SELECT` statements. DataLoader collapses those into a single
 `backend/internal/loader/` exposes a per-request `Loaders` struct. Production
 wiring uses `loader.MiddlewareWithUserCardFSRS(...)`, which adds the
 per-viewer `UserCardFSRS` loader on top of the base `loader.Middleware(...)`
-set. The middleware is registered on the `/query` group alongside `authMW`
-and the super-user promoter middleware:
+set. The middleware is registered on the `/query` group after `authMW`:
 
 ```go
-q := e.Group("/query", authMW, promoter.Middleware(), loader.MiddlewareWithUserCardFSRS(
+q := e.Group("/query", authMW, loader.MiddlewareWithUserCardFSRS(
     userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo,
     userPreferenceRepo, swipeRecordRepo, userCardFSRSRepo,
 ))

@@ -20,7 +20,7 @@ import (
 
 // panicMasterCardRepo satisfies repository.MasterCardRepository with every
 // method panicking. Concrete mocks embed it and override only the methods the
-// test under exercise actually calls, mirroring panicRoleRepo in
+// test under exercise actually calls, mirroring panicUserRoleRepo in
 // cmd/server/main_test.go.
 type panicMasterCardRepo struct{}
 
