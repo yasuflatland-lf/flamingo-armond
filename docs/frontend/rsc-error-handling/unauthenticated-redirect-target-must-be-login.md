@@ -14,7 +14,7 @@ redirectIfAuthError(err, "/cardgroups");
 redirectIfAuthError(err, "/login");
 ```
 
-**Why the target must be `/login` specifically:** the routing topology in [`routing-topology.md` § "HomePage redirect chain"](../routing-topology.md#homepage-redirect-chain) establishes `/login` as the canonical unauthenticated entry. After sign-in, `/login` redirects to `/` (HomePage), which then routes the user to the correct post-login destination based on their current state (`lastViewedCardgroup`, cardgroup count, onboarding status). Sending a mid-session UNAUTHENTICATED directly to `/cardgroups` bypasses that decision chain and may land the user in a loop or on the wrong screen.
+**Why the target must be `/login` specifically:** the routing topology in [`routing-topology.md` § "HomePage redirect chain"](../routing-topology.md#homepage-redirect-chain) establishes `/login` as the canonical unauthenticated entry. After sign-in, `/login` redirects through `/auth/verify-session` (a backend re-check that signs out a session the backend rejects) to `/` (HomePage), which then routes the user to the correct post-login destination based on their current state (`lastViewedCardgroup`, cardgroup count, onboarding status). Sending a mid-session UNAUTHENTICATED directly to `/cardgroups` bypasses that decision chain and may land the user in a loop or on the wrong screen.
 
 **How to apply:** never hand-roll the classify-and-redirect arm. Two named helpers own the decision, and both take the redirect target as an explicit argument so a wrong target is a reviewable diff rather than a copy-paste typo:
 

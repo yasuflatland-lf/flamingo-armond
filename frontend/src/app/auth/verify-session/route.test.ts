@@ -1,0 +1,98 @@
+import { NextRequest } from "next/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { GET } from "./route";
+
+const mockSignOut = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/supabase/server", () => ({
+  createSupabaseServerClient: vi.fn().mockResolvedValue({
+    auth: { signOut: mockSignOut },
+  }),
+}));
+
+vi.mock("@/lib/apollo/server", () => ({
+  gqlFetch: vi.fn(),
+}));
+
+import { gqlFetch } from "@/lib/apollo/server";
+
+function gqlError(code: string) {
+  return new Error(`GraphQL errors: ${JSON.stringify([{ extensions: { code } }])}`);
+}
+
+function makeRequest() {
+  return new NextRequest(new URL("http://localhost/auth/verify-session"));
+}
+
+describe("GET /auth/verify-session", () => {
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+    vi.clearAllMocks();
+  });
+
+  it("live session: redirects to / without signing out", async () => {
+    vi.mocked(gqlFetch).mockResolvedValueOnce({ me: { id: "u1" } } as never);
+
+    const response = await GET(makeRequest());
+
+    expect([301, 302, 307, 308]).toContain(response.status);
+    expect(response.headers.get("location")).toBe("http://localhost/");
+    expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
+  it("UNAUTHENTICATED: signs out locally and redirects to /login?reason=session_invalid", async () => {
+    vi.mocked(gqlFetch).mockRejectedValueOnce(gqlError("UNAUTHENTICATED"));
+    mockSignOut.mockResolvedValueOnce({ error: null });
+
+    const response = await GET(makeRequest());
+
+    expect(mockSignOut).toHaveBeenCalledTimes(1);
+    expect(mockSignOut).toHaveBeenCalledWith({ scope: "local" });
+    expect([301, 302, 307, 308]).toContain(response.status);
+    expect(response.headers.get("location")).toBe("http://localhost/login?reason=session_invalid");
+  });
+
+  it("UNAUTHENTICATED + signOut error: still redirects to /login?reason=session_invalid", async () => {
+    vi.mocked(gqlFetch).mockRejectedValueOnce(gqlError("UNAUTHENTICATED"));
+    mockSignOut.mockResolvedValueOnce({
+      error: Object.assign(new Error("x"), { name: "AuthApiError" }),
+    });
+
+    const response = await GET(makeRequest());
+
+    expect(response.headers.get("location")).toBe("http://localhost/login?reason=session_invalid");
+    expect(consoleWarnSpy).toHaveBeenCalledWith("[auth/verify-session] signOut failed:", {
+      name: "AuthApiError",
+    });
+  });
+
+  it("non-auth failure: redirects to / without signing out", async () => {
+    vi.mocked(gqlFetch).mockRejectedValueOnce(
+      new Error('GraphQL errors: [{"extensions":{"code":"INTERNAL"}}]'),
+    );
+
+    const response = await GET(makeRequest());
+
+    expect(response.headers.get("location")).toBe("http://localhost/");
+    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("FORBIDDEN is not treated as a rejected session", async () => {
+    vi.mocked(gqlFetch).mockRejectedValueOnce(gqlError("FORBIDDEN"));
+
+    const response = await GET(makeRequest());
+
+    expect(response.headers.get("location")).toBe("http://localhost/");
+    expect(mockSignOut).not.toHaveBeenCalled();
+  });
+});
