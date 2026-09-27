@@ -41,13 +41,10 @@ export const env = createEnv({
   emptyStringAsUndefined: true,
 });
 
-// NEXT_PUBLIC_SITE_URL falls back to http://localhost:3000 above so local dev
-// and unit tests work unset, and to VERCEL_URL on Preview. A real production
-// deploy must set it explicitly: an unset value silently ships a localhost
-// robots.txt / sitemap.xml / Open Graph metadataBase (confirmed in production
-// 2026-09-27; see docs/frontend/env-vars.md). VERCEL_ENV is only "production"
-// during an actual Vercel build/runtime, so this never fires in local dev, CI
-// unit tests, or Preview deploys.
+// A production deploy that falls back to the localhost default silently ships
+// a localhost robots.txt / sitemap.xml / Open Graph metadataBase. VERCEL_ENV is
+// only "production" during an actual Vercel production build/runtime, so this
+// never fires in local dev, CI unit tests, or Preview deploys.
 if (
   process.env.NODE_ENV === "production" &&
   process.env.VERCEL_ENV === "production" &&

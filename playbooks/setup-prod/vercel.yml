@@ -112,7 +112,7 @@
       - "  NEXT_PUBLIC_SUPABASE_URL      = {{ supabase_url }}           (All Environments)"
       - "  NEXT_PUBLIC_SUPABASE_ANON_KEY = {{ supabase_anon_key }}      (All Environments)"
       - "  ONBOARDING_GATE_SECRET        = (generated, value hidden)    (Production, Preview)"
-      - "  NEXT_PUBLIC_SITE_URL          = (collected below)          (Production, Preview)"
+      - "  NEXT_PUBLIC_SITE_URL          = (collected below)            (Production, Preview)"
 
 - name: Show Vercel import wizard steps
   ansible.builtin.pause:
