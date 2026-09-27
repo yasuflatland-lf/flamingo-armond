@@ -299,7 +299,7 @@ func newCardWalkFixture(statelessID string) *cardWalkRepo {
 func newCardWalkUsecase(repo *cardWalkRepo, fsrs UserCardFSRSRepositoryForCard) CardUsecase {
 	return NewCardUsecase(nil, repo,
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		fsrs, nil, newTestLogger(),
+		fsrs, newTestLogger(),
 	)
 }
 

@@ -6,7 +6,7 @@ The backend exposes `POST /internal/notion-sync` for GitHub Actions or another t
 
 Required:
 
-- `NOTION_TOKEN`: Notion integration token.
+- `NOTION_TOKEN`: Notion integration token. The backend only reads page content; it never writes to Notion.
 - `NOTION_PAGE_IDS`: comma-separated page IDs.
 - `NOTION_MASTER_CARDGROUP_NAME`: destination master cardgroup name. The backend creates it when absent.
 - `NOTION_SYNC_TOKEN`: shared bearer token used by the scheduler.
@@ -129,24 +129,6 @@ After running `sync-notion-secrets` or `setup-prod-postapply`, confirm the value
 1. **Render dashboard** — open the service's Environment tab and confirm the NOTION_* vars are present.
 2. **GitHub secrets** — `gh secret list --repo <owner>/<repo>` should show `NOTION_SYNC_URL` and `NOTION_SYNC_TOKEN`.
 3. **Trigger a test run** — `gh workflow run notion-sync.yml` (requires `workflow_dispatch` enabled) and check the Actions log for a `2xx` response from the backend.
-
-## Manual card write-back to Notion
-
-When a user creates or updates a card via GraphQL and the save succeeds, the backend appends a plain-text paragraph of the form `front back` (space-separated) to the bottom of the first page listed in `NOTION_PAGE_IDS`.
-
-**Trigger conditions:**
-
-- `createCard` mutation completes with a new card — not a duplicate.
-- `updateCard` mutation completes with an updated card.
-- The duplicate path (`outcome.Duplicate != nil`) skips the write-back entirely because the card already exists in the database.
-
-**Configuration:** No new environment variables. The write-back reuses `NOTION_TOKEN` (for API authentication) and the first entry of `NOTION_PAGE_IDS` as the target page. When any of the four `NOTION_*` variables is absent, `notionSyncDisabled` is true, the Notion `CardWritebacker` adapter is not wired, and write-back is silently disabled. This covers local development and CI environments without Notion credentials.
-
-**Failure handling:** Any Notion API error (non-2xx response, network timeout, context expiry) emits `slog.Warn` with `card_id`, `cardgroup_id`, and `page_id` as structured fields. Card create/update is unaffected — the mutation returns successfully regardless of the write-back outcome.
-
-**Lifecycle:** The write-back runs in a detached goroutine using `context.Background()` with a 15-second `WithTimeout`. The request context is cancelled the moment the GraphQL handler returns; deriving the goroutine context from it would abort any in-flight Notion API call immediately. See [`docs/backend/library-gotchas/fire-and-forget-goroutine-detached-context.md`](backend/library-gotchas/fire-and-forget-goroutine-detached-context.md) for the general pattern.
-
-**Acknowledged edge case:** A card that exists in Notion but has not yet been synced to the database will produce a duplicate paragraph in Notion when manually created. The duplicate paragraph persists after the next `notion-sync` run because that run upserts the database row (a no-op) but does not deduplicate Notion page content. This is accepted as a low-frequency, low-severity situation.
 
 ## Behavior
 

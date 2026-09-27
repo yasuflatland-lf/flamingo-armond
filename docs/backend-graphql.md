@@ -155,7 +155,7 @@ cardRepo      := repository.NewCardRepository(db.GORM)
 
 userUC      := usecase.NewUserUsecase(userRepo, userRoleRepo, authSvc, logger)
 cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
-cardUC      := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, cardObserver, logger)
+cardUC      := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
 // ... swipeUC, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, learnUC
 
 resolvers := resolver.NewResolver(
