@@ -289,7 +289,7 @@ func TestInterleave_PrefixFidelityAcrossAcceptedRatios(t *testing.T) {
 // removed cycle emission put den-num review cards ahead of the first new card.
 // The shipped 1/5 default now serves its first new card at slot 3, while every
 // accepted ratio stays inside the slot max(den-num, 2) bound: the 80% prefix cap
-// makes slot 1 a review for every ratio above 1/2.
+// makes slot 1 a review for every ratio at or above 1/2.
 func TestInterleave_ServesNewCardEarlierThanTheOldCycle(t *testing.T) {
 	t.Parallel()
 
@@ -318,7 +318,7 @@ func TestInterleave_ServesNewCardEarlierThanTheOldCycle(t *testing.T) {
 			require.LessOrEqual(t,
 				firstNewSlot(ratio), max(ratio.Denominator()-ratio.Numerator(), 2),
 				"ratio %d/%d must serve its first new card no later than slot max(den-num, 2): "+
-					"the 80%% prefix cap makes slot 1 a review for every ratio above 1/2", num, den)
+					"the 80%% prefix cap makes slot 1 a review for every ratio at or above 1/2", num, den)
 		}
 	}
 }
