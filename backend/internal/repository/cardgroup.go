@@ -102,18 +102,23 @@ type CardgroupRepository interface {
 	) ([]*domain.Cardgroup, int64, error)
 	// CountByOwner returns the total number of cardgroups owned by ownerID
 	// matching the optional search predicate. Used by the filter-less callers
-	// that pass a nil search (seed and cardgroup-limit checks); the paginated
-	// connection reads its filtered total from FindPageByOwner instead.
+	// that pass a nil search (the stats dashboard); the paginated connection
+	// reads its filtered total from FindPageByOwner instead.
 	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
+	// CountByOwnerTx counts every cardgroup owned by ownerID on tx, so a caller
+	// holding AcquireUserCardgroupLockTx reads the count on the locked connection.
+	CountByOwnerTx(ctx context.Context, tx *gorm.DB, ownerID string) (int64, error)
 	Create(ctx context.Context, cg *domain.Cardgroup) error
 	// CreateTx inserts a new cardgroup row using the supplied transaction
 	// handle so the insert participates in the caller's transaction. The caller
 	// is responsible for pre-filling cg.ID (uuid v7) and CreatedAt. UpdatedAt is
 	// assigned by the database and copied back into cg.
 	CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Cardgroup) error
-	// AcquireUserSeedLockTx takes a per-user advisory lock (released at tx end)
-	// so concurrent seed-for-new-user calls for the same user do not race.
-	AcquireUserSeedLockTx(ctx context.Context, tx *gorm.DB, userID string) error
+	// AcquireUserCardgroupLockTx takes a per-owner transaction-scoped advisory
+	// lock. Every write that adds cardgroups to an owner under the general-user
+	// quota (create, master import, default-starter seed) takes it first, so the
+	// count-then-insert sequences for one owner serialize.
+	AcquireUserCardgroupLockTx(ctx context.Context, tx *gorm.DB, userID string) error
 	Update(ctx context.Context, id string, patch CardgroupUpdate) (*domain.Cardgroup, error)
 	Delete(ctx context.Context, id string) error
 }
@@ -239,6 +244,15 @@ func (r *cardgroupRepo) CountByOwner(ctx context.Context, ownerID string, search
 	return total, nil
 }
 
+// CountByOwnerTx counts every cardgroup owned by ownerID on the supplied tx.
+func (r *cardgroupRepo) CountByOwnerTx(ctx context.Context, tx *gorm.DB, ownerID string) (int64, error) {
+	var total int64
+	if err := tx.WithContext(ctx).Model(&gormCardgroup{}).Where("owner_id = ?", ownerID).Count(&total).Error; err != nil {
+		return 0, eris.Wrap(err, "repository: cardgroup: count by owner tx")
+	}
+	return total, nil
+}
+
 // cardgroupCursorSpec describes the cardgroup aggregate's cursor geometry. The
 // columns are UNALIASED (bare `name` / `created_at` / `id`) because
 // FindPageByOwner queries the cardgroups table without an alias.
@@ -353,14 +367,15 @@ func (r *cardgroupRepo) CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Ca
 	return nil
 }
 
-// AcquireUserSeedLockTx takes a per-user advisory lock (released at tx end) so
-// concurrent seed-for-new-user calls for the same user do not race. hashtext
+// AcquireUserCardgroupLockTx takes a per-user advisory lock (released at tx end)
+// so every quota-bound cardgroup write for the same owner (create, master
+// import, default-starter seed) serializes. hashtext
 // returns int4, so pg_advisory_xact_lock(0, hashtext(userID)) keys the lock on
 // the user within a fixed namespace where unrelated callers do not contend; the
 // lock releases automatically at transaction end.
-func (r *cardgroupRepo) AcquireUserSeedLockTx(ctx context.Context, tx *gorm.DB, userID string) error {
+func (r *cardgroupRepo) AcquireUserCardgroupLockTx(ctx context.Context, tx *gorm.DB, userID string) error {
 	if err := tx.WithContext(ctx).Exec("SELECT pg_advisory_xact_lock(0, hashtext(?))", userID).Error; err != nil {
-		return eris.Wrap(err, "repository: cardgroup: acquire user seed lock")
+		return eris.Wrap(err, "repository: cardgroup: acquire user cardgroup lock")
 	}
 	return nil
 }

@@ -159,7 +159,7 @@ func (f *fakeUserCardRepo) UpsertManyTx(_ context.Context, tx *gorm.DB, cards []
 }
 
 // fakeUserCG implements masterDeckUserCardgroupRepo: the idempotency-guard
-// CountByOwner plus the snapshot-cardgroup CreateTx. createdCGs records every
+// CountByOwnerTx plus the snapshot-cardgroup CreateTx. createdCGs records every
 // cardgroup handed to CreateTx (deep-copied) so assertions survive caller-side
 // mutation. byID backs FindByID for ownership checks and post-merge result
 // retrieval; a missing key returns repository.ErrNotFound.
@@ -182,7 +182,9 @@ type fakeUserCG struct {
 	findByIDErrOnCall int // 1-based; 0 = never inject
 	lockCalls         int
 	lockUser          string
-	lockCountAtCall   int // snapshot of CountByOwner calls when the lock was taken (0 ⇒ lock before count)
+	lockCountAtCall   int // snapshot of CountByOwnerTx calls when the lock was taken (0 ⇒ lock before count)
+	lockTx            *gorm.DB
+	countTx           *gorm.DB
 }
 
 func (f *fakeUserCG) FindByID(_ context.Context, id string) (*domain.Cardgroup, error) {
@@ -197,19 +199,21 @@ func (f *fakeUserCG) FindByID(_ context.Context, id string) (*domain.Cardgroup, 
 	return cg, nil
 }
 
-func (f *fakeUserCG) CountByOwner(_ context.Context, ownerID string, _ *string) (int64, error) {
+func (f *fakeUserCG) CountByOwnerTx(_ context.Context, tx *gorm.DB, ownerID string) (int64, error) {
 	f.calls++
 	f.lastUser = ownerID
+	f.countTx = tx
 	return f.count, f.countErr
 }
 
-// AcquireUserSeedLockTx records that the per-user advisory lock was taken and
-// snapshots how many CountByOwner calls had run at that point, so the seed
-// usecase test can assert the lock is taken before the idempotency count.
-func (f *fakeUserCG) AcquireUserSeedLockTx(_ context.Context, _ *gorm.DB, userID string) error {
+// AcquireUserCardgroupLockTx records that the per-owner advisory lock was taken
+// and snapshots how many CountByOwnerTx calls had run at that point, so tests
+// can assert the lock is taken before the count.
+func (f *fakeUserCG) AcquireUserCardgroupLockTx(_ context.Context, tx *gorm.DB, userID string) error {
 	f.lockCalls++
 	f.lockUser = userID
 	f.lockCountAtCall = f.calls
+	f.lockTx = tx
 	return nil
 }
 
@@ -398,7 +402,8 @@ func TestCopyMasterToUser_CopiesContentWithFreshIDsAndPositions(t *testing.T) {
 
 	uc, _, calls := newSeedUsecase(t, cg, card, user, userCG)
 
-	got, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-1")
+	copyRes, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-1", false)
+	got := copyRes.Cardgroup
 	require.NoError(t, err)
 	require.Equal(t, 1, *calls, "should run in exactly one transaction")
 
@@ -449,7 +454,8 @@ func TestCopyMasterToUser_EmptyDeck_ReturnsNotFoundWithoutWriting(t *testing.T) 
 
 	uc, _, calls := newSeedUsecase(t, cg, card, user, userCG)
 
-	got, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-2")
+	copyRes, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-2", false)
+	got := copyRes.Cardgroup
 	require.Error(t, err)
 	require.ErrorIs(t, err, repository.ErrNotFound,
 		"an empty deck must collapse into the same not-found the catalog uses for an unknown id")
@@ -472,12 +478,74 @@ func TestCopyMasterToUser_MasterNotFound_ReturnsInternalChain(t *testing.T) {
 
 	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
 
-	got, err := uc.CopyMasterToUser(context.Background(), "missing", "owner-3")
+	copyRes, err := uc.CopyMasterToUser(context.Background(), "missing", "owner-3", false)
+	got := copyRes.Cardgroup
 	require.Error(t, err)
 	assert.Nil(t, got)
 	// Caller prefix is applied by CopyMasterToUser, not by the shared helper.
 	assertInternalChain(t, err, "usecase: master deck: copy master to user")
 	assert.Empty(t, user.captured, "no cards persisted when the master lookup fails")
+}
+
+func TestCopyMasterToUser_EnforceQuota_AtLimit_NoWrite(t *testing.T) {
+	t.Parallel()
+
+	const masterID = "m1"
+	cg := &fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Starter Deck")}}
+	card := &fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: {masterCard("mc1", masterID, "f", "b", 0)}}}
+	user := &fakeUserCardRepo{}
+	userCG := &fakeUserCG{count: 5}
+
+	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
+
+	res, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-capped", true)
+	require.NoError(t, err)
+	assert.Equal(t, &CardgroupLimitInfo{Limit: 5, Current: 5}, res.LimitReached)
+	assert.Nil(t, res.Cardgroup)
+	assert.Equal(t, 0, userCG.createCalls, "no cardgroup is inserted at the limit")
+	assert.Equal(t, 0, userCG.lockCountAtCall, "the lock is taken before the count")
+	assert.Equal(t, 0, cg.findCalls, "the master row is not read (or FOR SHARE locked) at the limit")
+	assert.Empty(t, user.captured)
+}
+
+func TestCopyMasterToUser_EnforceQuota_UnderLimit_CopiesOnSameTx(t *testing.T) {
+	t.Parallel()
+
+	const masterID = "m1"
+	cg := &fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Starter Deck")}}
+	card := &fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: {masterCard("mc1", masterID, "f", "b", 0)}}}
+	user := &fakeUserCardRepo{}
+	userCG := &fakeUserCG{count: 4}
+
+	uc, _, calls := newSeedUsecase(t, cg, card, user, userCG)
+
+	res, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-under", true)
+	require.NoError(t, err)
+	require.NotNil(t, res.Cardgroup)
+	assert.Nil(t, res.LimitReached)
+	assert.Equal(t, 1, *calls, "lock, count and copy share one transaction")
+	require.NotNil(t, userCG.lockTx)
+	assert.Same(t, userCG.lockTx, userCG.countTx, "the count runs on the locked transaction")
+	assert.Equal(t, 1, userCG.createCalls)
+}
+
+func TestCopyMasterToUser_NoQuota_SkipsLockAndCount(t *testing.T) {
+	t.Parallel()
+
+	const masterID = "m1"
+	cg := &fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Starter Deck")}}
+	card := &fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{masterID: {masterCard("mc1", masterID, "f", "b", 0)}}}
+	user := &fakeUserCardRepo{}
+	userCG := &fakeUserCG{count: 5}
+
+	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
+
+	res, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-admin", false)
+	require.NoError(t, err)
+	require.NotNil(t, res.Cardgroup)
+	assert.Nil(t, res.LimitReached)
+	assert.Equal(t, 0, userCG.lockCalls)
+	assert.Equal(t, 0, userCG.calls)
 }
 
 // --- SeedForNewUser tests --------------------------------------------------
@@ -565,13 +633,45 @@ func TestSeedForNewUser_TakesAdvisoryLockBeforeCounting(t *testing.T) {
 	require.NoError(t, err)
 
 	// The advisory lock (now owned by the repository) is taken exactly once and
-	// before the idempotency COUNT: lockCountAtCall snapshots the CountByOwner
+	// before the idempotency COUNT: lockCountAtCall snapshots the CountByOwnerTx
 	// call counter at lock time, so 0 proves the lock came first.
 	assert.Equal(t, 1, userCG.lockCalls, "the advisory lock is taken once")
 	assert.Equal(t, 0, userCG.lockCountAtCall, "the lock is taken before the idempotency count")
 	// The lock is keyed on the user id, so two distinct users never contend on
 	// the same advisory lock.
 	assert.Equal(t, "lock-user", userCG.lockUser)
+	// The count runs on the locked transaction, not on a pooled connection.
+	require.NotNil(t, userCG.lockTx)
+	assert.Same(t, userCG.lockTx, userCG.countTx)
+}
+
+func TestSeedForNewUser_StopsAtGeneralUserLimit(t *testing.T) {
+	t.Parallel()
+
+	ids := []string{"s1", "s2", "s3", "s4", "s5", "s6"}
+	byID := map[string]*domain.MasterCardgroup{}
+	byMaster := map[string][]*domain.MasterCard{}
+	starters := make([]*domain.MasterCardgroup, 0, len(ids))
+	for _, id := range ids {
+		m := masterCG(id, "Deck "+id)
+		byID[id] = m
+		starters = append(starters, m)
+		byMaster[id] = []*domain.MasterCard{masterCard("c-"+id, id, "f-"+id, "b-"+id, 0)}
+	}
+	cg := &fakeMasterCGRepo{byID: byID, starters: starters}
+	card := &fakeMasterCardRepo{byMaster: byMaster}
+	user := &fakeUserCardRepo{}
+	userCG := &fakeUserCG{count: 0}
+
+	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
+
+	seeded, err := uc.SeedForNewUser(context.Background(), "six-starters-user")
+	require.NoError(t, err)
+	require.Len(t, seeded, 5)
+	assert.Equal(t, 5, userCG.createCalls)
+	for _, created := range userCG.createdCGs {
+		assert.NotEqual(t, domain.CardgroupName("Deck s6"), created.Name, "the sixth starter must not be seeded")
+	}
 }
 
 func TestSeedForNewUser_NoStarters_NoCopies(t *testing.T) {
@@ -741,7 +841,8 @@ func TestCopyMasterToUser_ContextCancelled_PassesThrough(t *testing.T) {
 
 	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
 
-	got, err := uc.CopyMasterToUser(context.Background(), "any-master", "owner-cancel")
+	copyRes, err := uc.CopyMasterToUser(context.Background(), "any-master", "owner-cancel", false)
+	got := copyRes.Cardgroup
 	require.Error(t, err)
 	assert.Nil(t, got)
 	assertCancelled(t, err)
@@ -758,7 +859,8 @@ func TestCopyMasterToUser_ListCardsError_ReturnsInternalChain(t *testing.T) {
 
 	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
 
-	got, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-listerr")
+	copyRes, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-listerr", false)
+	got := copyRes.Cardgroup
 	require.Error(t, err)
 	assert.Nil(t, got)
 	assertInternalChain(t, err, "usecase: master deck: copy master to user")
@@ -779,7 +881,8 @@ func TestCopyMasterToUser_CreateCGError_PropagatesChain(t *testing.T) {
 
 	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
 
-	got, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-createerr")
+	copyRes, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-createerr", false)
+	got := copyRes.Cardgroup
 	require.Error(t, err)
 	assert.Nil(t, got)
 	assertInternalChain(t, err, "usecase: master deck: copy master to user")
@@ -802,7 +905,8 @@ func TestCopyMasterToUser_UpsertCardsError_PropagatesChain(t *testing.T) {
 
 	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
 
-	got, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-upserterr")
+	copyRes, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-upserterr", false)
+	got := copyRes.Cardgroup
 	require.Error(t, err)
 	assert.Nil(t, got)
 	assertInternalChain(t, err, "usecase: master deck: copy master to user")
@@ -934,7 +1038,7 @@ func TestMasterDeckUsecase_CopyMasterToUser_PublishedProbeRunsOnTxHandle(t *test
 
 	uc, _, _ := newSeedUsecase(t, cg, card, user, userCG)
 
-	_, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-txhandle")
+	_, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-txhandle", false)
 	require.NoError(t, err)
 
 	assert.Zero(t, cg.pooledCalls, "the copy must not probe the master on a pooled connection")

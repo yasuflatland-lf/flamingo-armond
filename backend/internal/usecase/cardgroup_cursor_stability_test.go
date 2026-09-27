@@ -145,6 +145,18 @@ func (r *cursorWalkRepo) CountByOwner(_ context.Context, _ string, _ *string) (i
 
 func (r *cursorWalkRepo) Create(_ context.Context, _ *domain.Cardgroup) error { return nil }
 
+func (r *cursorWalkRepo) CountByOwnerTx(ctx context.Context, _ repository.Tx, ownerID string) (int64, error) {
+	return r.CountByOwner(ctx, ownerID, nil)
+}
+
+func (r *cursorWalkRepo) CreateTx(ctx context.Context, _ repository.Tx, cg *domain.Cardgroup) error {
+	return r.Create(ctx, cg)
+}
+
+func (r *cursorWalkRepo) AcquireUserCardgroupLockTx(_ context.Context, _ repository.Tx, _ string) error {
+	return nil
+}
+
 func (r *cursorWalkRepo) Update(_ context.Context, _ string, _ repository.CardgroupUpdate) (*domain.Cardgroup, error) {
 	return nil, nil
 }
@@ -249,7 +261,7 @@ func fetchWalkPageBackward(t *testing.T, uc CardgroupUsecase, before *string, la
 }
 
 func newWalkUsecase(repo *cursorWalkRepo) CardgroupUsecase {
-	return NewCardgroupUsecase(repo, cgDefaultAdmin(), newTestLogger())
+	return NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
 }
 
 // setUpdatedAt moves a row's ordering key, simulating an edit made from another

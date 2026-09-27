@@ -93,7 +93,8 @@ type ImportMasterOutcome struct {
 // Unauthenticated callers
 // receive ucerr.ErrUnauthenticated. Import is the second entry point into "the caller now
 // owns a new cardgroup", so it applies the same per-user cardgroup quota as
-// CardgroupUsecase.Create via checkCardgroupLimit (admins exempt) — without it the
+// CardgroupUsecase.Create by passing enforceQuota to CopyMasterToUser, which
+// locks, counts and inserts on one transaction (admins exempt) — without it the
 // cap would be a property of the create form rather than an invariant of the
 // system. The copy is a one-time snapshot delegated to CopyMasterToUserUsecase;
 // FSRS/swipe state starts empty.
@@ -112,17 +113,13 @@ func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string
 	}
 
 	// The quota runs after the published gate so a capped caller probing an
-	// unknown id still gets the non-disclosure not-found outcome, and before the
-	// copy so no cardgroup row is ever written for a rejected import.
-	limit, err := checkCardgroupLimit(ctx, u.cgCounter, u.adminGate, caller.Sub)
+	// unknown id still gets the non-disclosure not-found outcome, and inside the
+	// copy transaction so no cardgroup row is ever written for a rejected import.
+	isAdmin, err := u.adminGate.IsAdmin(ctx, caller.Sub)
 	if err != nil {
-		return ImportMasterOutcome{}, err
+		return ImportMasterOutcome{}, wrapInfraErr(err, "usecase: master catalog: import: check admin")
 	}
-	if limit != nil {
-		return ImportMasterOutcome{LimitReached: limit}, nil
-	}
-
-	cg, err := u.deckUC.CopyMasterToUser(ctx, masterID, caller.Sub)
+	res, err := u.deckUC.CopyMasterToUser(ctx, masterID, caller.Sub, !isAdmin)
 	if err != nil {
 		if isContextDone(err) {
 			return ImportMasterOutcome{}, err
@@ -144,7 +141,10 @@ func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string
 		}
 		return ImportMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: import: copy master to user")
 	}
-	return ImportMasterOutcome{Cardgroup: cg}, nil
+	if res.LimitReached != nil {
+		return ImportMasterOutcome{LimitReached: res.LimitReached}, nil
+	}
+	return ImportMasterOutcome{Cardgroup: res.Cardgroup}, nil
 }
 
 // MergeMaster merges the published master cardgroup identified by masterID into
