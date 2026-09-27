@@ -121,9 +121,12 @@ learner-visible reconciliation policy first.
 
 ### Hazard 2 — the multi-row upsert needs a case-folded dedup key
 
-`upsertManyTx` emits a **single** multi-row `INSERT ... ON CONFLICT ... DO UPDATE`. Under
-citext, two case-variant fronts in the same batch collapse onto one conflict target and
-Postgres raises `21000`, `ON CONFLICT DO UPDATE command cannot affect row a second time`.
+`upsertManyTx` emits one multi-row `INSERT ... ON CONFLICT ... DO UPDATE` per
+`bulkStatementChunkRows` (5,000) rows; an import, capped at `cardImportParsedRowCap` =
+5,000 rows, is always one statement. Under citext, two case-variant fronts in the same
+statement collapse onto one conflict target and Postgres raises `21000`,
+`ON CONFLICT DO UPDATE command cannot affect row a second time`; in two different chunks
+the later one would instead silently update the earlier row.
 
 The catalog pipeline already carries the guard — its `dedupeByKey` step keys on
 `frontMatchKey` for exactly this reason. The user-deck import pipeline has the *seam* but

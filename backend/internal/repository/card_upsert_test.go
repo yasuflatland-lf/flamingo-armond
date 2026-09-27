@@ -271,15 +271,20 @@ func TestCardRepository_FoldFrontCaseToTx_SpansChunks(t *testing.T) {
 	ownerID := insertAuthUser(t, ctx)
 	cg := insertCardgroup(t, ctx, ownerID)
 
-	// Three times bulkStatementChunkRows (5000) + 1: a 1-row final chunk. One statement would
-	// bind only 15,002 parameters, so this pins the per-chunk sum, not the pgx cap.
+	// Not 15,001 fronts alone: that fits in one statement. Pad the 15,001 matching fronts
+	// (a 1-row final chunk of matches) to 70,001 with unmatched fronts so one unchunked
+	// statement would bind 70,002 parameters, above pgx's 65,535 cap.
 	const count = 15001
+	const foldFronts = 70001
 	cards := make([]*domain.Card, count)
-	fronts := make([]string, count)
+	fronts := make([]string, foldFronts)
 	for i := range cards {
 		front := fmt.Sprintf("front-%05d", i)
 		cards[i] = newCard(cg.ID, front, "back-1")
 		fronts[i] = strings.ToUpper(front)
+	}
+	for i := count; i < foldFronts; i++ {
+		fronts[i] = fmt.Sprintf("MISSING-%05d", i-count)
 	}
 	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		_, txErr := repo.UpsertManyTx(ctx, tx, cards)
@@ -407,6 +412,19 @@ func TestCardRepository_FoldFrontCaseToTx(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, domain.CardText("apple"), gotNewer.Front)
 		require.Equal(t, domain.CardText("newer"), gotNewer.Back)
+	})
+
+	t.Run("cancelled context returns the bare context error", func(t *testing.T) {
+		t.Parallel()
+		repo := repository.NewCardRepository(testDB.GORM)
+		ownerID := insertAuthUser(t, ctx)
+		cg := insertCardgroup(t, ctx, ownerID)
+		cancelledCtx, cancel := context.WithCancel(ctx)
+		cancel()
+
+		folded, err := repo.FoldFrontCaseToTx(cancelledCtx, testDB.GORM, string(cg.ID), []string{"Apple"})
+		require.ErrorIs(t, err, context.Canceled)
+		require.Zero(t, folded)
 	})
 
 	t.Run("empty fronts does not access database", func(t *testing.T) {

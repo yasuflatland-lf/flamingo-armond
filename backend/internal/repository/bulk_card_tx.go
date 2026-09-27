@@ -14,14 +14,17 @@ import (
 	"backend/internal/domain"
 )
 
-// upsertParamsPerRow is the number of bind parameters one row contributes to
-// upsertManyTx's INSERT: (id, <fkColumn>, front, back, created_at, position).
+// upsertParamsPerRow is the number of bind parameters one row contributes to upsertChunkTx's
+// INSERT (id, <fkColumn>, front, back, created_at, position); it must equal upsertRowPlaceholders' arity.
 const upsertParamsPerRow = 6
+
+// upsertRowPlaceholders is one VALUES tuple of upsertChunkTx's INSERT.
+const upsertRowPlaceholders = "(?, ?, ?, ?, ?, ?)"
 
 // bulkStatementChunkRows caps rows (upsertManyTx) or fronts (FoldFrontCaseToTx)
 // per statement: pgx v5 pgconn/pgconn.go rejects more than 65,535 bind parameters
 // before reaching the server ("extended protocol limited to 65535 parameters").
-// A master deck above 10,922 cards could not be copied in one statement.
+// One statement therefore holds at most 10,922 upsert rows (65,535 / 6).
 // 5,000 rows x 6 parameters = 30,000; a fold chunk binds 5,001.
 const bulkStatementChunkRows = 5000
 
@@ -44,8 +47,9 @@ type UpsertManyTxResult struct {
 // computed without a second query.
 //
 // The method is transaction-safe: it operates on the supplied tx only and
-// never reaches back to r.db. Empty input returns a zero-valued result and
-// no error.
+// never reaches back to r.db. Inputs above bulkStatementChunkRows run as several
+// statements, so tx must be a transaction for a later-chunk failure to roll back
+// the earlier chunks. Empty input returns a zero-valued result and no error.
 func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (UpsertManyTxResult, error) {
 	rows := make([]upsertCardRow, len(cards))
 	for i, c := range cards {
@@ -74,8 +78,8 @@ func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domai
 // FoldFrontCaseToTx renames one case-insensitive match per front, choosing the oldest
 // created_at then smallest id; extra matches stay untouched. LOWER-distinct input, NOT EXISTS,
 // and DISTINCT ON prevent uq_cards_cardgroup_front conflicts. Stable ids preserve FSRS/swipes;
-// the DB-owned updated_at trigger fires [#1112]. Fronts are processed bulkStatementChunkRows at
-// a time on tx; chunks never contend for a row because the input is LOWER-distinct.
+// the DB-owned updated_at trigger fires [#1112]. Runs bulkStatementChunkRows fronts per statement
+// on tx, which must be a transaction; LOWER-distinct input keeps chunks off each other's rows.
 func (r *cardRepo) FoldFrontCaseToTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error) {
 	if len(fronts) == 0 {
 		return 0, nil
@@ -172,11 +176,11 @@ type upsertCardRow struct {
 	CreatedAt time.Time
 }
 
-// upsertManyTx is the (fkColumn, front) upsert shared by cardRepo and master_card. It builds
-// one multi-row INSERT per bulkStatementChunkRows rows into tableName, all on tx, and sums the
-// per-chunk tallies. A (fkColumn, front) key repeated across two chunks would count as Updated in
-// the later chunk; every caller dedupes its input first, and inputs at or below
-// bulkStatementChunkRows run as one statement exactly as before. Wraps carry no layer prefix.
+// upsertManyTx is the (fkColumn, front) upsert shared by cardRepo and masterCardRepo: one
+// multi-row INSERT per bulkStatementChunkRows rows into tableName on tx, which must be a
+// transaction so a failed chunk rolls back the earlier ones. A key repeated across two chunks
+// counts as Updated in the later chunk; callers pass key-unique input (imports dedupe, master-deck
+// copies inherit master_cards' unique front). Each table wrapper owns its "repository: <table>:" prefix.
 func upsertManyTx(ctx context.Context, tx *gorm.DB, rows []upsertCardRow, tableName, fkColumn string) (UpsertManyTxResult, error) {
 	if len(rows) == 0 {
 		return UpsertManyTxResult{}, nil
@@ -209,7 +213,6 @@ func upsertManyTx(ctx context.Context, tx *gorm.DB, rows []upsertCardRow, tableN
 
 func upsertChunkTx(ctx context.Context, tx *gorm.DB, rows []upsertCardRow, tableName, fkColumn string) (UpsertManyTxResult, error) {
 	columns := "(id, " + fkColumn + ", front, back, created_at, position)"
-	const rowPH = "(?, ?, ?, ?, ?, ?)"
 
 	var sb strings.Builder
 	sb.WriteString("INSERT INTO ")
@@ -222,7 +225,7 @@ func upsertChunkTx(ctx context.Context, tx *gorm.DB, rows []upsertCardRow, table
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		sb.WriteString(rowPH)
+		sb.WriteString(upsertRowPlaceholders)
 		args = append(args,
 			row.ID,
 			row.GroupID,

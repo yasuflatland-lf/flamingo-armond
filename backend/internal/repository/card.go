@@ -161,14 +161,16 @@ type CardWriteRepository interface {
 	// which would convert this `Delete` into a delete-all-cards-in-cardgroup.
 	// See `.claude/rules/go-library-gotchas.md` § GORM empty IN.
 	DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
-	// UpsertManyTx upserts cards by (cardgroup_id, front). Existing rows have
-	// their `back` and `position` columns overwritten, while the database trigger
-	// advances updated_at. Returns the per-row split between Inserted and Updated.
-	// Empty input is a no-op.
+	// UpsertManyTx upserts cards by (cardgroup_id, front), overwriting `back` and `position`;
+	// the database trigger advances updated_at. Returns the per-row split between Inserted
+	// and Updated. Empty input is a no-op. Inputs above bulkStatementChunkRows run as several
+	// statements; tx must be a transaction so a later-chunk failure rolls back the earlier chunks.
 	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (UpsertManyTxResult, error)
 	// FoldFrontCaseToTx renames one case-insensitive match per incoming front to
 	// the incoming casing so a following UpsertManyTx updates it. Empty fronts
-	// returns 0 without touching the database.
+	// returns 0 without touching the database. Inputs above bulkStatementChunkRows
+	// run as several statements; tx must be a transaction so a later-chunk failure
+	// rolls back the earlier chunks.
 	FoldFrontCaseToTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
 }
 
