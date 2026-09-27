@@ -151,7 +151,7 @@ func (r *appRepos) loaderDeps() loaderDeps {
 
 // buildResolver wires every usecase, the ping/notion handlers, and the GraphQL
 // resolver from the repository bundle. Extracted from run() so the wiring is
-// independently testable, mirroring bootstrapSuperUserPromoter. notionSyncHandler
+// independently testable, mirroring warnIfNoAdmin. notionSyncHandler
 // is nil when notion sync is disabled.
 func buildResolver(
 	repos *appRepos,
@@ -249,7 +249,6 @@ func newGraphQLServer(r *resolver.Resolver, introspectionEnabled bool) *handler.
 func newRouter(
 	resolvers *resolver.Resolver,
 	authMW echo.MiddlewareFunc,
-	promoter *auth.SuperUserPromoter,
 	ld loaderDeps,
 	pingHandler *ping.Handler,
 	notionSyncHandler *notionsync.Handler,
@@ -313,7 +312,7 @@ func newRouter(
 			return r.Method + " " + r.URL.Path
 		}),
 	)
-	q := e.Group("/query", authMW, promoter.Middleware(), loader.MiddlewareWithUserCardFSRS(ld.user, ld.role, ld.userRole, ld.cardgroup, ld.card, ld.userPreference, ld.swipeRecord, ld.userCardFSRS))
+	q := e.Group("/query", authMW, loader.MiddlewareWithUserCardFSRS(ld.user, ld.role, ld.userRole, ld.cardgroup, ld.card, ld.userPreference, ld.swipeRecord, ld.userCardFSRS))
 	q.POST("", echo.WrapHandler(otelGQLHandler))
 
 	// Gate the Playground UI on the same single introspectionEnabled flag as the
@@ -327,44 +326,24 @@ func newRouter(
 	return e
 }
 
-// bootstrapSuperUserPromoter constructs the SuperUserPromoter and emits the
-// startup INFO/WARN logs for the super-user bootstrap path. Extracted so its
-// branching logic can be unit-tested without spinning up the full run() server.
-//
-// Returns the promoter and an error only when the admin role lookup fails for
-// a non-empty SUPER_USER_EMAILS configuration. A failure to count existing
-// admin role-holders is non-fatal: the WARN log records the error_chain and
-// the function returns a pass-through promoter.
-func bootstrapSuperUserPromoter(
-	ctx context.Context,
-	logger *slog.Logger,
-	authSvc *auth.Service,
-	roleRepo repository.RoleRepository,
-	userRoleRepo repository.UserRoleRepository,
-	emailsEnv string,
-) (*auth.SuperUserPromoter, error) {
-	superUserEmails := auth.ParseSuperUserSet(emailsEnv)
-	if len(superUserEmails) > 0 {
-		adminRole, err := roleRepo.FindByName(ctx, domain.AdminRoleName)
-		if err != nil {
-			return nil, eris.Wrap(err, "run: lookup admin role for super-user bootstrap")
-		}
-		logger.Info("super-user bootstrap enabled", "email_count", len(superUserEmails))
-		var roleAsg auth.RoleAssigner = userRoleRepo
-		return auth.NewSuperUserPromoter(superUserEmails, adminRole.ID, authSvc, roleAsg, logger), nil
-	}
-	// No SUPER_USER_EMAILS configured. Check whether at least one admin
-	// already exists in the DB; if not, the operator has no escape hatch
-	// and we emit a single-line WARN to make the misconfiguration visible.
-	// A failed count query is non-fatal — log the eris chain and continue.
-	if adminCount, err := userRoleRepo.CountAdmins(ctx); err != nil {
-		logging.LogWarn(ctx, logger, "super-user bootstrap: admin count check failed",
+// adminCounter is the narrow port warnIfNoAdmin needs from the user-role repository.
+type adminCounter interface {
+	CountAdmins(ctx context.Context) (int64, error)
+}
+
+// warnIfNoAdmin logs a WARN when no user holds the admin role, so a deployment
+// whose admin seed task never ran is visible at boot. A failed count is
+// non-fatal: the eris chain is logged and startup continues.
+func warnIfNoAdmin(ctx context.Context, logger *slog.Logger, counter adminCounter) {
+	adminCount, err := counter.CountAdmins(ctx)
+	if err != nil {
+		logging.LogWarn(ctx, logger, "admin bootstrap: admin count check failed",
 			eris.Wrap(err, "run: count admin users for bootstrap check"))
-	} else if adminCount == 0 {
-		logger.Warn("super-user bootstrap: no admin configured and no admin role-holder exists",
-			"admin_count", adminCount)
+		return
 	}
-	return auth.NewSuperUserPromoter(nil, "", nil, nil, logger), nil
+	if adminCount == 0 {
+		logger.Warn("admin bootstrap: no admin role-holder exists", "admin_count", adminCount)
+	}
 }
 
 func run(ctx context.Context, logger *slog.Logger) error {
@@ -425,10 +404,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	authSvc := auth.NewService(roleChk)
 	adminGate := usecase.NewAdminGate(authSvc)
 
-	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, repos.role, repos.userRole, os.Getenv("SUPER_USER_EMAILS"))
-	if err != nil {
-		return err
-	}
+	warnIfNoAdmin(ctx, logger, repos.userRole)
 
 	resolvers, pingHandler, notionSyncHandler, err := buildResolver(repos, authSvc, adminGate, logger, notionEnv, notionSyncDisabled, pingToken)
 	if err != nil {
@@ -438,7 +414,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	// constructs reads otel.GetTextMapPropagator() eagerly (it is newRouter, not
 	// the buildResolver call just above, that constructs that handler). See comment
 	// above telemetry.Init for the full ordering invariant.
-	e := newRouter(resolvers, authMW, promoter, repos.loaderDeps(), pingHandler, notionSyncHandler, srvCfg.introspectionEnabled)
+	e := newRouter(resolvers, authMW, repos.loaderDeps(), pingHandler, notionSyncHandler, srvCfg.introspectionEnabled)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")
