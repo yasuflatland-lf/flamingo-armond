@@ -14,22 +14,21 @@ export async function GET(request: NextRequest) {
   try {
     await gqlFetch(VerifySessionQuery, { revalidate: 0 });
   } catch (err) {
-    if (!isUnauthenticatedGraphQLError(err)) {
-      console.error("[auth/verify-session] gqlFetch failed:", {
-        name: err instanceof Error ? err.name : "unknown",
-      });
-      return NextResponse.redirect(new URL("/", origin));
+    if (isUnauthenticatedGraphQLError(err)) {
+      const supabase = await createSupabaseServerClient();
+      // `local`, not `global`: only this device's cookie is known to be dead; a global
+      // revoke would also sign out the learner's other devices on one backend verdict.
+      const { error } = await supabase.auth.signOut({ scope: "local" });
+      if (error) {
+        console.warn("[auth/verify-session] signOut failed:", { name: error.name });
+      }
+      const loginUrl = new URL("/login", origin);
+      loginUrl.searchParams.set("reason", SESSION_INVALID_REASON);
+      return NextResponse.redirect(loginUrl);
     }
-    const supabase = await createSupabaseServerClient();
-    // `local`, not `global`: only this device's cookie is known to be dead; a global
-    // revoke would also sign out the learner's other devices on one backend verdict.
-    const { error } = await supabase.auth.signOut({ scope: "local" });
-    if (error) {
-      console.warn("[auth/verify-session] signOut failed:", { name: error.name });
-    }
-    const loginUrl = new URL("/login", origin);
-    loginUrl.searchParams.set("reason", SESSION_INVALID_REASON);
-    return NextResponse.redirect(loginUrl);
+    console.error("[auth/verify-session] gqlFetch failed:", {
+      name: err instanceof Error ? err.name : "unknown",
+    });
   }
   return NextResponse.redirect(new URL("/", origin));
 }

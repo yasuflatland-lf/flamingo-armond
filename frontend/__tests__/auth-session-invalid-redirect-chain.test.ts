@@ -72,20 +72,20 @@ async function visit(path: string): Promise<string | typeof RENDERED> {
   try {
     if (url.pathname === "/") {
       await HomePage();
-    } else if (url.pathname === "/login") {
+      throw new Error("/ rendered instead of redirecting");
+    }
+    if (url.pathname === "/login") {
       await LoginPage({ searchParams: Promise.resolve(Object.fromEntries(url.searchParams)) });
       return RENDERED;
-    } else {
-      const res = await GET(new NextRequest(`${ORIGIN}${path}`));
-      const location = new URL(res.headers.get("location") ?? "", ORIGIN);
-      return `${location.pathname}${location.search}`;
     }
+    const res = await GET(new NextRequest(`${ORIGIN}${path}`));
+    const location = new URL(res.headers.get("location") ?? "", ORIGIN);
+    return `${location.pathname}${location.search}`;
   } catch (err) {
     const target = err instanceof Error ? /^REDIRECT:(.*)$/.exec(err.message)?.[1] : undefined;
     if (target !== undefined) return target;
     throw err;
   }
-  throw new Error(`${path} neither redirected nor rendered`);
 }
 
 async function walk(start: string): Promise<{ route: string[]; end: Termination }> {
