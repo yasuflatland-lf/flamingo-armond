@@ -214,11 +214,11 @@ func (u *learnUsecase) clampLimit(limit int) int {
 	return limit
 }
 
-// clampPracticeLimit clamps the practice-mode limit. Unlike clampLimit, the
-// default IS the cap: a missing or non-positive limit yields the cap
-// (u.maxLimit), because the unit of practice is the entire set of cards
-// reviewed today, not a paged subset. The deliberate asymmetry with
-// clampLimit's default-20 is why this is a separate named method.
+// clampPracticeLimit clamps the practice-mode limit. Unlike clampLimit, the default
+// IS the cap: a missing or non-positive limit yields the cap (u.maxLimit), because
+// the unit of practice is the whole practice pool (every card NextDueCards withholds
+// by last_review), not a paged subset. The deliberate asymmetry with clampLimit's
+// default-20 is why this is a separate named method.
 func (u *learnUsecase) clampPracticeLimit(limit int) int {
 	if limit <= 0 {
 		return u.maxLimit
