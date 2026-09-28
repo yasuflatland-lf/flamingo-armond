@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"maps"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -96,6 +98,11 @@ var normalizeWordIdempotenceInputs = []string{
 	"\u0130\u0308", "\u0130\u0301", "\u212b", "\u212a", "\u2126", "a  b", "\t'x'\t",
 }
 
+// normalizeWordSeeds returns every table input plus the idempotence inputs.
+func normalizeWordSeeds() []string {
+	return append(slices.Collect(maps.Keys(normalizeWordCases)), normalizeWordIdempotenceInputs...)
+}
+
 func TestNormalizeWord(t *testing.T) {
 	t.Parallel()
 	for in, want := range normalizeWordCases {
@@ -105,21 +112,14 @@ func TestNormalizeWord(t *testing.T) {
 
 func TestNormalizeWord_Idempotent(t *testing.T) {
 	t.Parallel()
-	inputs := append([]string(nil), normalizeWordIdempotenceInputs...)
-	for in := range normalizeWordCases {
-		inputs = append(inputs, in)
-	}
-	for _, in := range inputs {
+	for _, in := range normalizeWordSeeds() {
 		once := NormalizeWord(in)
 		require.Equal(t, once, NormalizeWord(once), "input %q", in)
 	}
 }
 
 func FuzzNormalizeWord_Idempotent(f *testing.F) {
-	for in := range normalizeWordCases {
-		f.Add(in)
-	}
-	for _, in := range normalizeWordIdempotenceInputs {
+	for _, in := range normalizeWordSeeds() {
 		f.Add(in)
 	}
 	f.Fuzz(func(t *testing.T, s string) {

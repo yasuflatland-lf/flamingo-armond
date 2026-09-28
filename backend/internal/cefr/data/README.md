@@ -178,8 +178,8 @@ characters, or has more than four words. Each headword is normalized to the
 canonical key form (NFC-normalize; lowercase; NFC-normalize again; fold curly
 `‘ ’` to straight `'`; strip leading/trailing whitespace, Unicode punctuation,
 and symbols, collapsing each internal whitespace run to one space) — identical
-to `domain.NormalizeWord` so the keys align
-with the Oxford keys and the classifier.
+to `domain.NormalizeWord` so the keys align with the Oxford keys and the
+classifier.
 
 The same normalization is applied to the `- key` bullets parsed from
 `oxford-3000.md` and `oxford-5000.md`. The diff `EVP_headwords − Oxford_keys`
