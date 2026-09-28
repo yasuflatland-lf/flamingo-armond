@@ -190,8 +190,8 @@ func (u *learnUsecase) PracticeTodaysCards(ctx context.Context, cardgroupID stri
 	}
 	n = u.clampPracticeLimit(n)
 	now := u.clock.Now().UTC()
-	boundary := domain.NewLearnWindow(now).PracticeReviewedAfter()
-	rows, err := u.cardRepo.FindPracticeCardsForUser(ctx, user.Sub, cardgroupID, boundary, n)
+	reviewedAfter := domain.NewLearnWindow(now).PracticeReviewedAfter()
+	rows, err := u.cardRepo.FindPracticeCardsForUser(ctx, user.Sub, cardgroupID, reviewedAfter, n)
 	if err != nil {
 		return nil, wrapInfraErr(err, "usecase: learn: find practice cards")
 	}
