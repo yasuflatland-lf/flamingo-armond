@@ -45,13 +45,10 @@ const ja = flatten(jaMessages);
 
 describe("i18n catalog parity", () => {
   it("en.json and ja.json have the same flattened key set", () => {
-    const enKeys = Object.keys(en).sort();
-    const jaKeys = Object.keys(ja).sort();
-    const onlyEn = enKeys.filter((k) => !(k in ja));
-    const onlyJa = jaKeys.filter((k) => !(k in en));
+    const onlyEn = Object.keys(en).filter((k) => !Object.hasOwn(ja, k));
+    const onlyJa = Object.keys(ja).filter((k) => !Object.hasOwn(en, k));
 
     expect({ onlyEn, onlyJa }).toEqual({ onlyEn: [], onlyJa: [] });
-    expect(enKeys).toEqual(jaKeys);
   });
 
   it("every key uses the same ICU arguments in both catalogs, except plural-only arguments ja may drop", () => {
