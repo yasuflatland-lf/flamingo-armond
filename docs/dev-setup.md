@@ -167,7 +167,7 @@ The backend never grants the `admin` role on its own. The `make sync-env` seed t
    ```
    Comma-separate multiple emails.
 2. Sign in at `http://127.0.0.1:3000/login` with each listed account once, so its `auth.users` row exists.
-3. Run `make sync-env`. The seed task prints one line per address; an address that has not signed in yet is skipped, so re-run after its first sign-in.
+3. Run `make sync-env`. The seed task prints one line per address; an address that has not signed in yet is skipped, so re-run after its first sign-in. The seed runs only while `backend/.env.local` starts with the `# managed-by: sync-env` marker line; for a user-owned file (marker deleted or hand-made file), it is skipped entirely and prints only the generic `user-owned (no marker); skipping` notice, so run `make seed-admin EMAIL=you@example.com` for each address instead.
 4. Sign out and sign back in (or wait for a token refresh) so the JWT carries the new role. The Admin pill appears in the global header and `/admin/*` routes become reachable.
 
 **After `make db-reset`:** `public.user_roles` is wiped. Restart the backend so migrations re-create `public.roles`, sign in again if your `auth.users` row was also removed, then run `make sync-env`.
