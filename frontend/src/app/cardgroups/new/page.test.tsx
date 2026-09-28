@@ -171,6 +171,8 @@ describe("<NewCardgroupPage> (client)", () => {
     });
     // Rendered once, as the inline field error — not duplicated in a page banner.
     expect(screen.getAllByText("name already exists")).toHaveLength(1);
+    const fieldRow = screen.getByRole("textbox").parentElement as HTMLElement;
+    expect(within(fieldRow).getByText("name already exists")).toBeInTheDocument();
     // No navigation: the error variant is data, not a success.
     expect(mockPush).not.toHaveBeenCalled();
     expect(mockRefresh).not.toHaveBeenCalled();
