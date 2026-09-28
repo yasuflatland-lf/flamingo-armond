@@ -505,12 +505,14 @@ func canonicalUUIDKey(s string) string {
 // parsePgUUID mirrors Postgres uuid_in: an optional matched {} pair around 32 hex
 // digits, with one optional '-' after each group of 4 digits except the last.
 func parsePgUUID(s string) (uuid.UUID, bool) {
-	var u uuid.UUID
-	src := s
-	braces := strings.HasPrefix(src, "{")
-	if braces {
-		src = src[1:]
+	src, braced := strings.CutPrefix(s, "{")
+	if braced {
+		var closed bool
+		if src, closed = strings.CutSuffix(src, "}"); !closed {
+			return uuid.UUID{}, false
+		}
 	}
+	var u uuid.UUID
 	for i := range u {
 		if len(src) < 2 {
 			return uuid.UUID{}, false
@@ -522,12 +524,6 @@ func parsePgUUID(s string) (uuid.UUID, bool) {
 		if len(src) > 0 && src[0] == '-' && i%2 == 1 && i < len(u)-1 {
 			src = src[1:]
 		}
-	}
-	if braces {
-		if !strings.HasPrefix(src, "}") {
-			return uuid.UUID{}, false
-		}
-		src = src[1:]
 	}
 	return u, src == ""
 }

@@ -132,8 +132,7 @@ func findRolesByIDs(ctx context.Context, db *gorm.DB, ids []string, lock bool) (
 	if len(parseable) == 0 {
 		return map[string]*domain.Role{}, nil
 	}
-	ids = parseable
-	q := db.WithContext(ctx).Where("id IN ?", ids)
+	q := db.WithContext(ctx).Where("id IN ?", parseable)
 	if lock {
 		q = q.Clauses(clause.Locking{Strength: "UPDATE"})
 	}

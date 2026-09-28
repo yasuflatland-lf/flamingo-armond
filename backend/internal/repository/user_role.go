@@ -193,15 +193,13 @@ func (r *userRoleRepo) SetUserRolesTx(ctx context.Context, tx *gorm.DB, userID s
 		if seen[roleID] {
 			continue
 		}
-		seen[roleID] = true
-		uniqueRoleIDs = append(uniqueRoleIDs, roleID)
-	}
-	// Not classifying 22P02 from the COUNT instead: the checks are equivalent,
-	// but rejecting up front skips a query that could only fail.
-	for _, roleID := range uniqueRoleIDs {
+		// Not classifying 22P02 from the COUNT instead: the checks are equivalent,
+		// but rejecting up front skips a query that could only fail.
 		if uuid.Validate(roleID) != nil {
 			return ErrRoleNotFound
 		}
+		seen[roleID] = true
+		uniqueRoleIDs = append(uniqueRoleIDs, roleID)
 	}
 	// Validate that every submitted role exists in one batched COUNT rather than
 	// N sequential round trips inside the row-locked transaction. The empty-slice
