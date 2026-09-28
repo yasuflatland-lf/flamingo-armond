@@ -64,8 +64,9 @@ type masterDeckUserCardRepo interface {
 // use u.userCG directly; it is also called post-merge to read the destination
 // cardgroup back after the transaction commits. CountByOwnerTx backs the
 // idempotency guard and the import quota: a user who already owns at least one
-// cardgroup is not re-seeded on the next call. CreateTx inserts the snapshot cardgroup using the caller's transaction
-// handle so the insert participates in the caller's transaction.
+// cardgroup is not re-seeded on the next call. CreateTx inserts the snapshot
+// cardgroup using the caller's transaction handle so the insert participates in
+// the caller's transaction.
 type masterDeckUserCardgroupRepo interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
 	CountByOwnerTx(ctx context.Context, tx repository.Tx, ownerID string) (int64, error)
@@ -280,9 +281,10 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) (
 	// convention; callers receive `[]` regardless of which path fired).
 	seeded := []*domain.Cardgroup{}
 	if err := u.tx(ctx, func(tx repository.Tx) error {
-		// Take a per-user transaction-scoped advisory lock so two concurrent seed
-		// attempts for the same user serialize. The advisory-lock SQL (a Postgres
-		// dialect detail) lives in the repository; the lock releases at tx end.
+		// Take the per-owner transaction-scoped advisory lock so concurrent seed,
+		// create and import calls for the same user serialize. The advisory-lock
+		// SQL (a Postgres dialect detail) lives in the repository; the lock
+		// releases at tx end.
 		if err := u.userCG.AcquireUserCardgroupLockTx(ctx, tx, userID); err != nil {
 			return err
 		}

@@ -803,7 +803,7 @@ func TestImportMaster_NonAdminAtLimit_ReturnsLimitOutcome(t *testing.T) {
 	var gotEnforce bool
 	copyUC := &mockCopyMasterToUserUC{fn: func(_ context.Context, _, _ string, enforceQuota bool) (CopyMasterToUserResult, error) {
 		gotEnforce = enforceQuota
-		return CopyMasterToUserResult{LimitReached: &CardgroupLimitInfo{Limit: domain.GeneralUserCardgroupLimit, Current: domain.GeneralUserCardgroupLimit}}, nil
+		return CopyMasterToUserResult{LimitReached: want}, nil
 	}}
 	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(false), newTestLogger())
 
@@ -833,7 +833,7 @@ func TestImportMaster_NonAdminAtLimit_UnknownMaster_ReturnsNotFound(t *testing.T
 	repo := &mockMasterCatalogRepository{}
 	copyUC := &mockCopyMasterToUserUC{fn: func(context.Context, string, string, bool) (CopyMasterToUserResult, error) {
 		t.Fatal("copy (and therefore the quota) must not run for an unknown master")
-		return CopyMasterToUserResult{LimitReached: &CardgroupLimitInfo{Limit: domain.GeneralUserCardgroupLimit, Current: domain.GeneralUserCardgroupLimit}}, nil
+		return CopyMasterToUserResult{}, nil
 	}}
 	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(false), newTestLogger())
 

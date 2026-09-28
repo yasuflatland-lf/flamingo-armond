@@ -314,7 +314,7 @@ func TestCardgroupUsecase_Create_EmptyName_ValidationVariant(t *testing.T) {
 		t.Fatalf("expected Validation.Field=%q, got %q", "name", outcome.Validation.Field)
 	}
 	if repo.capturedCreate != nil {
-		t.Fatal("repository.Create must not be called on validation failure")
+		t.Fatal("repository.CreateTx must not be called on validation failure")
 	}
 }
 
@@ -338,7 +338,7 @@ func TestCardgroupUsecase_Create_TooLong_ValidationVariant(t *testing.T) {
 		t.Fatalf("expected Validation.Field=%q, got %q", "name", outcome.Validation.Field)
 	}
 	if repo.capturedCreate != nil {
-		t.Fatal("repository.Create must not be called on validation failure")
+		t.Fatal("repository.CreateTx must not be called on validation failure")
 	}
 }
 
@@ -359,7 +359,7 @@ func TestCardgroupUsecase_Create_Trims(t *testing.T) {
 		t.Fatalf("expected trimmed name %q, got %q", "Hello", outcome.Cardgroup.Name)
 	}
 	if repo.capturedCreate == nil || repo.capturedCreate.Name != "Hello" {
-		t.Fatal("expected repo.Create to receive trimmed name")
+		t.Fatal("expected repo.CreateTx to receive trimmed name")
 	}
 }
 
@@ -383,13 +383,13 @@ func TestCardgroupUsecase_Create_Success_AssignsOwnerToCaller(t *testing.T) {
 		t.Fatal("expected non-empty ID")
 	}
 	if repo.capturedCreate == nil {
-		t.Fatal("expected repo.Create to be called")
+		t.Fatal("expected repo.CreateTx to be called")
 	}
 	if repo.capturedCreate.OwnerID != "user-1" {
-		t.Fatalf("expected repo.Create called with OwnerID=%q, got %q", "user-1", repo.capturedCreate.OwnerID)
+		t.Fatalf("expected repo.CreateTx called with OwnerID=%q, got %q", "user-1", repo.capturedCreate.OwnerID)
 	}
 	if repo.capturedCreate.ID == "" {
-		t.Fatal("expected repo.Create called with non-empty ID")
+		t.Fatal("expected repo.CreateTx called with non-empty ID")
 	}
 }
 
@@ -442,13 +442,13 @@ func TestCardgroupUsecase_Create_GeneralUser_UnderLimit_Succeeds(t *testing.T) {
 		t.Fatalf("expected nil LimitReached under the limit, got %+v", outcome.LimitReached)
 	}
 	if repo.capturedCreate == nil {
-		t.Fatal("expected repo.Create to be called when under the limit")
+		t.Fatal("expected repo.CreateTx to be called when under the limit")
 	}
 }
 
 // TestCardgroupUsecase_Create_GeneralUser_AtLimit_Rejected verifies that a
 // non-admin owner already holding 5 cardgroups (the limit) is rejected via the
-// LimitReached outcome, and repo.Create is NOT called.
+// LimitReached outcome, and repo.CreateTx is NOT called.
 func TestCardgroupUsecase_Create_GeneralUser_AtLimit_Rejected(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{countResult: domain.GeneralUserCardgroupLimit}
@@ -472,7 +472,7 @@ func TestCardgroupUsecase_Create_GeneralUser_AtLimit_Rejected(t *testing.T) {
 		t.Fatalf("expected LimitReached.Current=%d, got %d", domain.GeneralUserCardgroupLimit, outcome.LimitReached.Current)
 	}
 	if repo.capturedCreate != nil {
-		t.Fatal("repository.Create must not be called when the limit is reached")
+		t.Fatal("repository.CreateTx must not be called when the limit is reached")
 	}
 }
 
@@ -497,7 +497,7 @@ func TestCardgroupUsecase_Create_GeneralUser_AboveLimit_Rejected(t *testing.T) {
 		t.Fatalf("expected LimitReached.Current=6 (real count, not the cap), got %d", outcome.LimitReached.Current)
 	}
 	if repo.capturedCreate != nil {
-		t.Fatal("repository.Create must not be called when above the limit")
+		t.Fatal("repository.CreateTx must not be called when above the limit")
 	}
 }
 
@@ -530,7 +530,7 @@ func TestCardgroupUsecase_Create_Admin_SkipsCounting(t *testing.T) {
 
 // TestCardgroupUsecase_Create_IsAdminError_Wrapped verifies that a non-context
 // error from IsAdmin propagates wrapped with the "usecase: cardgroup: check
-// admin" prefix and that repo.Create is not reached.
+// admin" prefix and that repo.CreateTx is not reached.
 func TestCardgroupUsecase_Create_IsAdminError_Wrapped(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
@@ -544,7 +544,7 @@ func TestCardgroupUsecase_Create_IsAdminError_Wrapped(t *testing.T) {
 	}
 	assertInternalChain(t, err, "usecase: cardgroup: check admin")
 	if repo.capturedCreate != nil {
-		t.Fatal("repository.Create must not be called when IsAdmin fails")
+		t.Fatal("repository.CreateTx must not be called when IsAdmin fails")
 	}
 }
 
@@ -659,14 +659,14 @@ func TestCardgroupUsecase_Create_IsAdminCancelled_IdentityPreserved(t *testing.T
 		t.Fatalf("expected the unwrapped context.Canceled, got %v (%T)", err, err)
 	}
 	if repo.capturedCreate != nil {
-		t.Fatal("repository.Create must not be called when IsAdmin is cancelled")
+		t.Fatal("repository.CreateTx must not be called when IsAdmin is cancelled")
 	}
 }
 
 // TestCardgroupUsecase_Create_LimitAndInvalidName_NameValidationFirst pins the
 // ordering: name validation runs BEFORE the limit check. With an invalid name
 // and a count that would otherwise trip the limit, the outcome carries
-// Validation (not LimitReached), and neither IsAdmin nor CountByOwner is
+// Validation (not LimitReached), and neither IsAdmin nor CountByOwnerTx is
 // consulted.
 func TestCardgroupUsecase_Create_LimitAndInvalidName_NameValidationFirst(t *testing.T) {
 	t.Parallel()
@@ -695,10 +695,10 @@ func TestCardgroupUsecase_Create_LimitAndInvalidName_NameValidationFirst(t *test
 		t.Fatalf("expected IsAdmin NOT to be called when name validation fails first, got %d calls", admin.calls)
 	}
 	if len(repo.countCalls) != 0 {
-		t.Fatalf("expected CountByOwner NOT to be called when name validation fails first, got %d calls", len(repo.countCalls))
+		t.Fatalf("expected CountByOwnerTx NOT to be called when name validation fails first, got %d calls", len(repo.countCalls))
 	}
 	if repo.capturedCreate != nil {
-		t.Fatal("repository.Create must not be called on validation failure")
+		t.Fatal("repository.CreateTx must not be called on validation failure")
 	}
 }
 
@@ -2032,7 +2032,7 @@ func TestLockCardgroupQuotaTx_ContextErrors_IdentityPreserved(t *testing.T) {
 // TestCardgroupUsecase_Create_CountByOwnerCancelled_IdentityPreserved verifies
 // that a context.Canceled returned from CountByOwnerTx propagates with its
 // identity intact (errors.Is matches and err == context.Canceled, NOT an eris
-// wrap) and that repo.Create is not reached. The admin stub reports isAdmin=false
+// wrap) and that repo.CreateTx is not reached. The admin stub reports isAdmin=false
 // so the count query is reached and injects the cancellation.
 func TestCardgroupUsecase_Create_CountByOwnerCancelled_IdentityPreserved(t *testing.T) {
 	t.Parallel()

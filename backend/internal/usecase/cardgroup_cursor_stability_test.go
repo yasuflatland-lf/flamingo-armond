@@ -139,18 +139,12 @@ func (r *cursorWalkRepo) FindPageByOwner(
 	return owned, total, nil
 }
 
-func (r *cursorWalkRepo) CountByOwner(_ context.Context, _ string, _ *string) (int64, error) {
+func (r *cursorWalkRepo) CountByOwnerTx(_ context.Context, _ repository.Tx, _ string) (int64, error) {
 	return int64(len(r.rows)), nil
 }
 
-func (r *cursorWalkRepo) Create(_ context.Context, _ *domain.Cardgroup) error { return nil }
-
-func (r *cursorWalkRepo) CountByOwnerTx(ctx context.Context, _ repository.Tx, ownerID string) (int64, error) {
-	return r.CountByOwner(ctx, ownerID, nil)
-}
-
-func (r *cursorWalkRepo) CreateTx(ctx context.Context, _ repository.Tx, cg *domain.Cardgroup) error {
-	return r.Create(ctx, cg)
+func (r *cursorWalkRepo) CreateTx(_ context.Context, _ repository.Tx, _ *domain.Cardgroup) error {
+	return nil
 }
 
 func (r *cursorWalkRepo) AcquireUserCardgroupLockTx(_ context.Context, _ repository.Tx, _ string) error {

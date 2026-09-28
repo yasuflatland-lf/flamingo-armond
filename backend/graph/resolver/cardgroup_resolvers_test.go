@@ -44,7 +44,7 @@ type mockCardgroupRepoForResolver struct {
 	updateResult *domain.Cardgroup
 	updateErr    error
 
-	// createErr controls the return value of Create. Used by the deleted-account
+	// createErr controls the return value of CreateTx. Used by the deleted-account
 	// test to inject repository.ErrCardgroupOwnerNotFound.
 	createErr error
 }
@@ -65,20 +65,12 @@ func (m *mockCardgroupRepoForResolver) FindPageByOwner(
 	return m.findPageResult, m.findPageTotal, m.findPageErr
 }
 
-func (m *mockCardgroupRepoForResolver) CountByOwner(_ context.Context, _ string, _ *string) (int64, error) {
-	return m.countResult, m.countErr
-}
-
-func (m *mockCardgroupRepoForResolver) Create(_ context.Context, _ *domain.Cardgroup) error {
-	return m.createErr
-}
-
 func (m *mockCardgroupRepoForResolver) CountByOwnerTx(_ context.Context, _ repository.Tx, _ string) (int64, error) {
 	return m.countResult, m.countErr
 }
 
-func (m *mockCardgroupRepoForResolver) CreateTx(ctx context.Context, _ repository.Tx, cg *domain.Cardgroup) error {
-	return m.Create(ctx, cg)
+func (m *mockCardgroupRepoForResolver) CreateTx(_ context.Context, _ repository.Tx, _ *domain.Cardgroup) error {
+	return m.createErr
 }
 
 func (m *mockCardgroupRepoForResolver) AcquireUserCardgroupLockTx(_ context.Context, _ repository.Tx, _ string) error {
@@ -558,7 +550,7 @@ func createCardgroupBodyWithLimit(name string) string {
 func TestResolver_CreateCardgroup_LimitReached(t *testing.T) {
 	t.Parallel()
 
-	// CountByOwner returns 5 — the non-admin caller is at the limit.
+	// CountByOwnerTx returns 5 — the non-admin caller is at the limit.
 	repo := &mockCardgroupRepoForResolver{countResult: 5}
 	// isAdmin: false so the limit check is not bypassed.
 	srv := newCardgroupSrvWithAdmin(repo, stubAdminCheckerForResolver{isAdmin: false})

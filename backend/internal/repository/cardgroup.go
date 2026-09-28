@@ -369,10 +369,9 @@ func (r *cardgroupRepo) CreateTx(ctx context.Context, tx *gorm.DB, cg *domain.Ca
 
 // AcquireUserCardgroupLockTx takes a per-user advisory lock (released at tx end)
 // so every quota-bound cardgroup write for the same owner (create, master
-// import, default-starter seed) serializes. hashtext
-// returns int4, so pg_advisory_xact_lock(0, hashtext(userID)) keys the lock on
-// the user within a fixed namespace where unrelated callers do not contend; the
-// lock releases automatically at transaction end.
+// import, default-starter seed) serializes. hashtext returns int4, so
+// pg_advisory_xact_lock(0, hashtext(userID)) keys the lock on the user within a
+// fixed namespace where unrelated callers do not contend.
 func (r *cardgroupRepo) AcquireUserCardgroupLockTx(ctx context.Context, tx *gorm.DB, userID string) error {
 	if err := tx.WithContext(ctx).Exec("SELECT pg_advisory_xact_lock(0, hashtext(?))", userID).Error; err != nil {
 		return eris.Wrap(err, "repository: cardgroup: acquire user cardgroup lock")
