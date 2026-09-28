@@ -382,8 +382,7 @@ func execDeniedAs(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID,
 	if err == nil {
 		t.Fatalf("exec as %s unexpectedly succeeded", userID)
 	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && strings.Contains(pgErr.Message, "permission denied for table") {
+	if isTablePrivilegeDenial(err) {
 		t.Fatalf("exec as %s: denied by table privilege, not by policy: %v", userID, err)
 	}
 }
@@ -399,11 +398,18 @@ func execPrivilegeDeniedAs(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 	defer tx.Rollback(ctx)
 	setClaims(t, ctx, tx, userID)
 
-	_, err = tx.Exec(ctx, query, args...)
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) || pgErr.Code != "42501" || !strings.Contains(pgErr.Message, "permission denied for table") {
+	if _, err := tx.Exec(ctx, query, args...); !isTablePrivilegeDenial(err) {
 		t.Fatalf("exec as %s: expected table privilege denial (42501), got: %v", userID, err)
 	}
+}
+
+// isTablePrivilegeDenial reports whether err is the table-privilege check failure
+// (SQLSTATE 42501, permission denied for table) rather than an RLS policy denial,
+// which shares the SQLSTATE but not the message.
+func isTablePrivilegeDenial(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "42501" &&
+		strings.Contains(pgErr.Message, "permission denied for table")
 }
 
 // insertRoleAs probes the roles INSERT policy as userID. The probe transaction is

@@ -253,6 +253,17 @@ func deepBuckets(n int) (newC, reviewC []domain.DueCard, newSet map[string]bool)
 	return newC, reviewC, newSet
 }
 
+// countNew returns how many of ids are in newSet.
+func countNew(ids []string, newSet map[string]bool) int {
+	n := 0
+	for _, id := range ids {
+		if newSet[id] {
+			n++
+		}
+	}
+	return n
+}
+
 // TestInterleave_PrefixFidelityAcrossAcceptedRatios pins the property the
 // largest-remainder distribution buys: for every accepted ratio and every prefix
 // length, the served new-card count stays between floor and ceil of the nominal
@@ -329,9 +340,10 @@ func TestInterleave_ServesNewCardEarlierThanTheOldCycle(t *testing.T) {
 func TestInterleave_NewShareNeverExceedsCapOnAnyPrefix(t *testing.T) {
 	t.Parallel()
 
+	const bucketDepth = 220
 	const maxPrefix = 200
 
-	newC, reviewC, newSet := deepBuckets(220)
+	newC, reviewC, newSet := deepBuckets(bucketDepth)
 
 	for den := 2; den <= domain.NewCardRatioDenMax; den++ {
 		for num := 1; num < den; num++ {
@@ -378,12 +390,7 @@ func TestInterleave_FourFifthsShortSessions(t *testing.T) {
 		{20, 16, 4},
 	}
 	for _, tc := range cases {
-		served := 0
-		for _, id := range ids[:tc.limit] {
-			if newSet[id] {
-				served++
-			}
-		}
+		served := countNew(ids[:tc.limit], newSet)
 		require.Equal(t, tc.wantNew, served, "limit %d new count", tc.limit)
 		require.Equal(t, tc.wantReview, tc.limit-served, "limit %d review count", tc.limit)
 	}
@@ -399,12 +406,7 @@ func TestInterleave_AdvertisedDefaultSessionSplit(t *testing.T) {
 	ratio := domain.DefaultNewCardRatio
 
 	ids := cardIDs(interleave(newC, reviewC, ratio.NewShare(), ratio.ReviewShare()))
-	served := 0
-	for _, id := range ids[:domain.DefaultLearnSessionSize] {
-		if newSet[id] {
-			served++
-		}
-	}
+	served := countNew(ids[:domain.DefaultLearnSessionSize], newSet)
 
 	require.Equal(t, 4, served, "a default 20-card session must serve 4 new cards")
 	require.Equal(t, 16, domain.DefaultLearnSessionSize-served, "and 16 review cards")
