@@ -3,8 +3,7 @@ import { expect, test } from "@playwright/test";
 import { deleteAuthUser, loginAs, seedUser } from "./_auth";
 
 // Scenario: the account is deleted while the browser still holds a signed,
-// unexpired access token. `/` must end on /login instead of bouncing / <-> /login
-// until the browser gives up with ERR_TOO_MANY_REDIRECTS.
+// unexpired access token. `/` must end on /login instead of bouncing / <-> /login.
 
 const runId = randomUUID().slice(0, 8);
 const learner = {
@@ -26,13 +25,14 @@ test("deleted account with a live session cookie lands on /login", async ({ cont
 
   await deleteAuthUser(user.id);
 
-  // A redirect loop rejects page.goto with net::ERR_TOO_MANY_REDIRECTS.
+  // Not relying on goto rejecting with ERR_TOO_MANY_REDIRECTS: streaming makes a loop
+  // client-side, so goto resolves either way. The LoginButton assertion below catches
+  // it, because a looping /login redirects before rendering the button.
   await page.goto("/");
 
   // Whether the local stack reproduces the loop depends on its JWT signing
   // key type, so only termination on /login is asserted, not `reason=`.
-  // Not a one-shot page.url() read: the root loading.tsx streams `/` first, so
-  // goto resolves before the RSC redirect moves the client to /login.
+  // Not a one-shot page.url() read: wait for the RSC redirect to reach /login.
   await page.waitForURL(/\/login(\?|$)/, { timeout: 10_000 });
   await expect(page.getByTestId("login-google-button")).toBeVisible();
 });

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { VerifySessionQuery } from "./queries";
 import { GET } from "./route";
 
 const mockSignOut = vi.hoisted(() => vi.fn());
@@ -46,6 +47,8 @@ describe("GET /auth/verify-session", () => {
 
     expect([301, 302, 307, 308]).toContain(response.status);
     expect(response.headers.get("location")).toBe("http://localhost/");
+    expect(gqlFetch).toHaveBeenCalledTimes(1);
+    expect(gqlFetch).toHaveBeenCalledWith(VerifySessionQuery, { revalidate: 0 });
     expect(mockSignOut).not.toHaveBeenCalled();
   });
 
@@ -85,6 +88,13 @@ describe("GET /auth/verify-session", () => {
     expect(response.headers.get("location")).toBe("http://localhost/");
     expect(mockSignOut).not.toHaveBeenCalled();
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy).toHaveBeenCalledWith("[auth/verify-session] gqlFetch failed:", {
+      name: "Error",
+    });
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.anything() }),
+    );
   });
 
   it("transport HTTP 401 (bad signature, aud/iss mismatch) is not treated as a rejected session", async () => {
@@ -96,6 +106,13 @@ describe("GET /auth/verify-session", () => {
 
     expect(response.headers.get("location")).toBe("http://localhost/");
     expect(mockSignOut).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith("[auth/verify-session] gqlFetch failed:", {
+      name: "Error",
+    });
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.anything() }),
+    );
   });
 
   it("FORBIDDEN is not treated as a rejected session", async () => {

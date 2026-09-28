@@ -9,7 +9,7 @@
 | `/` (`app/page.tsx`) | `/login` | redirect chain (see below) |
 | `/login` (`app/login/page.tsx`) | render `LoginButton` | `/auth/verify-session` (backend re-check: a live session continues to `/`, delegating the post-login routing decision back to HomePage; an `UNAUTHENTICATED` one is signed out and sent to `/login?reason=session_invalid`). With `?reason=session_invalid` the page renders instead of redirecting |
 | `/auth/callback?code=...` (`app/auth/callback/route.ts`) | n/a | always `/` (so HomePage owns the post-OAuth landing decision) |
-| `/auth/verify-session` (`app/auth/verify-session/route.ts`) | n/a | queries `me { id }`: success or a non-auth failure → `/`; `UNAUTHENTICATED` → `signOut({ scope: "local" })` then `/login?reason=session_invalid` |
+| `/auth/verify-session` (`app/auth/verify-session/route.ts`) | backend answers `me` with `UNAUTHENTICATED` (no bearer token) → no-op `signOut` → `/login?reason=session_invalid` (the notice renders even though there was no session) | queries `me { id }`: success or a non-auth failure → `/`; `UNAUTHENTICATED` → `signOut({ scope: "local" })` then `/login?reason=session_invalid` |
 | `/onboarding` (`app/onboarding/page.tsx`) | `/login` | render `OnboardingForm`; already-onboarded users redirect to `/` (self-guard via `isUserOnboarded`) |
 | `/onboarding/start` (`app/onboarding/start/page.tsx`) | `/login` | first-deck chooser: import a master-catalog deck (→ `/learn/{id}`) or start with the default decks (seeds the `is_default_starter` decks → `/cardgroups`, or → `/cardgroups/new?welcome=1` when zero were seeded); not-onboarded self-guard → `/onboarding`; empty catalog → `/cardgroups/new?welcome=1` |
 | `/cards/new?cardgroup=<id>` | `/login` | render chip + `CardForm`; resolves cardgroup via 4-priority chain (see `/cards/new` below) |
@@ -62,7 +62,7 @@ On the `/cards/new?cardgroup=<id>` targets above, the id is supplied by the orig
 
 The URL `?cardgroup=<id>` is the **single source of truth** for the chip + form pair: the picker calls `router.replace("/cards/new?cardgroup=<newId>", { scroll: false })`, and chip / form re-render against the new URL. No client-side state holds a duplicate "selected cardgroup" — eliminates the chip-vs-form drift class of bugs.
 
-`/login` (when hit by an already-signed-in user) follows the same single-decision-point rule: it redirects to `/`, never directly to `/cardgroups` or `/learn/...`, for the same reason the OAuth callback does.
+`/login` (when hit by an already-signed-in user) follows the same single-decision-point rule: it redirects to `/auth/verify-session`, which continues to `/` for a live session. It never goes directly to `/cardgroups` or `/learn/...`, for the same reason the OAuth callback does.
 
 ### Top-level nav destination wiring
 
