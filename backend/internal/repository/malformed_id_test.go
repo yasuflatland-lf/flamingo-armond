@@ -191,6 +191,14 @@ func TestClassifyMalformedClientIDAtRepositoryLookups(t *testing.T) {
 			want: ErrRoleNotFound,
 		},
 		{
+			name: "role Update",
+			run: func(ctx context.Context, db *gorm.DB) error {
+				_, err := NewRoleRepository(db).Update(ctx, "malformed", "x")
+				return err
+			},
+			want: ErrRoleNotFound,
+		},
+		{
 			name: "role Delete",
 			run: func(ctx context.Context, db *gorm.DB) error {
 				return NewRoleRepository(db).Delete(ctx, "malformed")
@@ -233,7 +241,9 @@ func TestClassifyMalformedClientIDAtRepositoryLookups(t *testing.T) {
 func TestFindRolesByIDs_DropsMalformedIDsWithoutQuerying(t *testing.T) {
 	t.Parallel()
 
-	got, err := NewRoleRepository(newInvalidTextRepresentationDB(t)).FindByIDs(context.Background(), []string{"malformed"})
+	got, err := NewRoleRepository(newInvalidTextRepresentationDB(t)).FindByIDs(context.Background(), []string{
+		"malformed", "urn:uuid:0190a3c4-7d2e-7b1a-9c3f-4e5d6a7b8c9d",
+	})
 	if err != nil {
 		t.Fatalf("expected no query and no error, got %v", err)
 	}

@@ -283,14 +283,16 @@ func TestUserRoleRepository_SetUserRolesTx_MalformedRoleID(t *testing.T) {
 	}
 	adminID := insertRole(t, ctx, "admin")
 
-	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return repo.SetUserRolesTx(ctx, tx, userID, []string{adminID, "not-a-uuid"})
-	})
-	if !errors.Is(err, repository.ErrRoleNotFound) {
-		t.Fatalf("SetUserRolesTx(malformed role): want ErrRoleNotFound, got %v", err)
-	}
+	for _, malformed := range []string{"not-a-uuid", "urn:uuid:" + adminID} {
+		err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			return repo.SetUserRolesTx(ctx, tx, userID, []string{adminID, malformed})
+		})
+		if !errors.Is(err, repository.ErrRoleNotFound) {
+			t.Fatalf("SetUserRolesTx(%q): want ErrRoleNotFound, got %v", malformed, err)
+		}
 
-	assertUserRoleIDs(t, ctx, repo, userID, []string{generalID})
+		assertUserRoleIDs(t, ctx, repo, userID, []string{generalID})
+	}
 }
 
 // TestUserRoleRepository_SetUserRolesTx_DuplicateRoleIDsDeDupe pins the batched

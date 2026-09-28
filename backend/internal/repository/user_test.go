@@ -38,8 +38,8 @@ func TestMain(m *testing.M) {
 // enabled would nil-panic instead of skipping. Add a new Docker-free test's name
 // here, or it will not run when Docker is unavailable.
 const dockerFreeTests = "^(TestCardRepositorySatisfiesNarrowInterfaces|TestBulkStatementChunk_|TestClassify|TestCursorWhere_|" +
-	"TestDomainRejectsOverCapEmoji|TestEscapeLikePattern|TestIncompressibleFront_|TestMasterCardgroupToDomain_|" +
-	"TestOrderClause_|TestPgConstraintViolation|TestRefetchAfterUpdate|TestTextLengthViolationError_|" +
+	"TestDomainRejectsOverCapEmoji|TestEscapeLikePattern|TestFindRolesByIDs_|TestIncompressibleFront_|" +
+	"TestMasterCardgroupToDomain_|TestOrderClause_|TestPgConstraintViolation|TestRefetchAfterUpdate|TestTextLengthViolationError_|" +
 	"TestToDomainUserPreference_|TestUserCardFSRSToDomain_|TestZWJEmojiAtGraphemeCap_)"
 
 func runTests(m *testing.M) int {

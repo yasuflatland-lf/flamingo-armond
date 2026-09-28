@@ -116,14 +116,14 @@ func (r *roleRepo) FindByIDsTx(ctx context.Context, tx *gorm.DB, ids []string) (
 // findRolesByIDs is shared by FindByIDs (pool, no lock) and FindByIDsTx
 // (transaction, FOR UPDATE). lock=true acquires a row lock on the matched
 // rows so no other transaction can rename or delete them before the caller's
-// write commits. Ids that are not uuids are dropped before the query and so
-// are absent from the result, like any other unknown id.
+// write commits. Only canonical 36-char ids are queried; other spellings are
+// absent from the result, so callers forwarding client ids must canonicalise.
 func findRolesByIDs(ctx context.Context, db *gorm.DB, ids []string, lock bool) (map[string]*domain.Role, error) {
 	// Not classifying 22P02 instead: one malformed id would fail the whole IN
 	// query and lose the partial-match result for the well-formed ones.
 	parseable := make([]string, 0, len(ids))
 	for _, id := range ids {
-		if uuid.Validate(id) == nil {
+		if isCanonicalUUID(id) {
 			parseable = append(parseable, id)
 		}
 	}

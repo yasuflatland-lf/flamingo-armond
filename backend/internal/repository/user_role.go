@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/google/uuid"
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -193,9 +192,9 @@ func (r *userRoleRepo) SetUserRolesTx(ctx context.Context, tx *gorm.DB, userID s
 		if seen[roleID] {
 			continue
 		}
-		// Not classifying 22P02 from the COUNT instead: the checks are equivalent,
-		// but rejecting up front skips a query that could only fail.
-		if uuid.Validate(roleID) != nil {
+		// Not classifying 22P02 from the COUNT instead: it would abort the
+		// transaction. Non-canonical spellings are not found; callers canonicalise.
+		if !isCanonicalUUID(roleID) {
 			return ErrRoleNotFound
 		}
 		seen[roleID] = true

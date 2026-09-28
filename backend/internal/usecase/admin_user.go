@@ -494,8 +494,8 @@ func canonicalUUIDKey(s string) string {
 	if u, ok := parsePgUUID(s); ok {
 		return u.String()
 	}
-	// Not dropping the uuid.Parse fallback: a urn:uuid: role id would then reach
-	// findRolesByIDs uncanonicalised, pass uuid.Validate, and fail the IN query.
+	// Not dropping the uuid.Parse fallback: the repository accepts only canonical
+	// ids, so a urn:uuid: spelling would appear missing and escape the duplicate check.
 	if u, err := uuid.Parse(s); err == nil {
 		return u.String()
 	}

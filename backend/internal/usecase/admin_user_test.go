@@ -1182,6 +1182,50 @@ func TestAdminUser_EditUser_CannotRevokeOwnAdmin_DifferentlySpelledOwnID(t *test
 	}
 }
 
+// TestAdminUser_EditUser_Self_UnknownRoleID_DifferentlySpelledOwnID pins that
+// a differently-spelled own id gets roleIds validation before self-demotion.
+func TestAdminUser_EditUser_Self_UnknownRoleID_DifferentlySpelledOwnID(t *testing.T) {
+	t.Parallel()
+
+	const selfUUID = "0190a3c4-7d2e-7b1a-9c3f-4e5d6a7b8c9d"
+	for _, spelling := range []string{
+		strings.ToUpper(selfUUID),
+		"0190-a3c4-7d2e-7b1a-9c3f-4e5d-6a7b-8c9d",
+		"{0190a3c47d2e7b1a9c3f4e5d6a7b8c9d}",
+	} {
+		t.Run(spelling, func(t *testing.T) {
+			t.Parallel()
+			users := &mockAdminUserRepository{users: map[string]*domain.User{selfUUID: {ID: selfUUID}}}
+			roles := &mockAdminRoleRepository{
+				roles: map[string]*domain.Role{
+					"r-admin": {ID: "r-admin", Name: domain.AdminRoleName},
+				},
+			}
+			userRoles := &mockAdminUserRoleRepository{}
+			authChk := &adminAuthChecker{admins: map[string]bool{selfUUID: true}}
+			uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
+
+			outcome, err := uc.EditUser(adminCallerCtx(selfUUID), spelling, AdminEditUserInput{
+				RoleIDs: []string{"r-unknown"},
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			assertAdminEditUserOutcomeXOR(t, outcome)
+			want := InputValidationInfo{Field: "roleIds", Message: "role not found"}
+			if outcome.Validation == nil || *outcome.Validation != want {
+				t.Fatalf("Validation = %+v, want %+v", outcome.Validation, want)
+			}
+			if outcome.CannotRevokeOwnAdmin {
+				t.Fatal("CannotRevokeOwnAdmin = true, want false")
+			}
+			if userRoles.setCalls != 0 {
+				t.Fatalf("SetUserRolesTx calls = %d, want 0", userRoles.setCalls)
+			}
+		})
+	}
+}
+
 // TestParsePgUUID pins the Postgres uuid_in grammar that sameUserID relies on.
 func TestParsePgUUID(t *testing.T) {
 	t.Parallel()
@@ -1235,6 +1279,8 @@ func TestNormalizeAdminEditRoleIDs_CanonicalisesUUIDs(t *testing.T) {
 	}{
 		{name: "two spellings of one uuid are duplicates", in: []string{upper, lower}, wantErr: &InputValidationInfo{Field: "roleIds", Message: "role IDs must be unique"}},
 		{name: "upper-case uuid is lower-cased", in: []string{upper}, want: []string{lower}},
+		{name: "urn:uuid spelling is canonicalised", in: []string{"urn:uuid:" + upper}, want: []string{lower}},
+		{name: "urn:uuid spelling duplicates its canonical form", in: []string{"urn:uuid:" + lower, lower}, wantErr: &InputValidationInfo{Field: "roleIds", Message: "role IDs must be unique"}},
 		{name: "non-uuid id passes through", in: []string{"r-general"}, want: []string{"r-general"}},
 		{name: "postgres-only spelling duplicates its canonical form", in: []string{"0190-a3c4-7d2e-7b1a-9c3f-4e5d-6a7b-8c9d", lower}, wantErr: &InputValidationInfo{Field: "roleIds", Message: "role IDs must be unique"}},
 		{name: "postgres-only spelling is canonicalised", in: []string{"{0190a3c47d2e7b1a9c3f4e5d6a7b8c9d}"}, want: []string{lower}},

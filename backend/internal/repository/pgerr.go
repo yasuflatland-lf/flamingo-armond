@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -25,6 +26,13 @@ func pgConstraintViolation(err error, code, constraintSubstr string) bool {
 func pgInvalidTextRepresentation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "22P02"
+}
+
+// isCanonicalUUID reports whether id uses the 36-char hyphenated spelling
+// accepted by Postgres uuid_in.
+func isCanonicalUUID(id string) bool {
+	// Not uuid.Validate alone: it also admits urn:uuid:, which uuid_in rejects.
+	return len(id) == 36 && uuid.Validate(id) == nil
 }
 
 // textLengthConstraintSuffix is the naming convention every text-length CHECK
