@@ -72,11 +72,7 @@ func reviewedCardFSRS(lastReview time.Time) *domain.UserCardFSRS {
 }
 
 func swipeCard1(uc SwipeUsecase) (HandleSwipeOutcome, error) {
-	return uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
-		CardID:      "card-1",
-		CardgroupID: "cg-1",
-		Rating:      int(domain.RatingEasy),
-	})
+	return swipeCard1WithRating(uc, domain.RatingEasy)
 }
 
 func swipeCard1WithRating(uc SwipeUsecase, rating domain.Rating) (HandleSwipeOutcome, error) {
