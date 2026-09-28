@@ -131,6 +131,8 @@ A fresh deployment has zero admin rows, but every admin-management mutation is g
 | Local, one address | `make seed-admin EMAIL=you@example.com` | not read; the `EMAIL` argument is used |
 | Production | `make seed-admin-prod` (also runs inside `make setup-prod-postapply`) | root `.env`, exported to the shell by mise |
 
+`make sync-env` seeds only while `backend/.env.local` starts with the `# managed-by: sync-env` marker line; for a user-owned file it skips the seed entirely, so use `make seed-admin EMAIL=you@example.com` instead.
+
 Each task runs `INSERT INTO public.user_roles ... ON CONFLICT DO NOTHING` for every listed address that already has an `auth.users` row. It is idempotent and silently skips an address that has not signed in yet, so sign in once and re-run. After the grant, sign out and back in (or wait for a token refresh) so the custom access token hook re-mints the JWT with `app_metadata.role = "admin"`.
 
 `SUPER_USER_EMAILS` is an input to these seed tasks only; the backend server does not read it. Listing an address has no effect until a seed task runs, and removing one never revokes a role — demote through `adminEditUser`.

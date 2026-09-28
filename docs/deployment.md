@@ -211,7 +211,7 @@ Dynamic env vars (declared with `sync: false` in `render.yaml`; Blueprint create
 | `SUPABASE_JWT_ISSUER` | `https://<project-ref>.supabase.co/auth/v1` | Phase 6. |
 | `PING_TOKEN` | Auto-generated 32-byte hex token consumed by the readiness-ping workflow (see [Keep-alive ping workflow](#keep-alive-ping-workflow)). | Phase 6 (`postapply.yml`). |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint, or empty for no-op tracing. | Operator (manual, persisted across Blueprint syncs because of `sync: false`). |
-| `SUPER_USER_EMAILS` | Comma-separated email allowlist for first-admin bootstrap. Empty = feature OFF. | Operator (manual, persisted across Blueprint syncs because of `sync: false`). |
+| `SUPER_USER_EMAILS` | Not read by the backend; any value here has no effect. The admin seed reads it from the operator's root `.env`, not from Render — see [Bootstrap admin (production)](#bootstrap-admin-production). | Operator (manual, persisted across Blueprint syncs because of `sync: false`). |
 
 When the Blueprint apply wizard prompts for the `sync: false` placeholders, leave them blank and click Save. Re-running `make setup-prod-postapply` reconciles the Supabase-derived three from the state file via the Render API, then triggers the first deploy.
 
