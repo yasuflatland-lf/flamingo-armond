@@ -26,10 +26,11 @@ mutation-conflict reload (admin users' `reloadEditedUser` after a
 (`refetch: useQuery.Result<TData, TVars>["refetch"]`, returned straight from the
 owned `useQuery`); take it from the hook return. Re-adding a
 `useQuery(SameDocument, …)` purely to obtain `refetch` double-subscribes to the
-same document and can split the cache. The SSR-seeded screens (cards /
-cardgroups / catalog) ignore `refetch`; only the two admin screens consume it,
-which is why it was added to the hook in the admin migration, not the original
-extraction.
+same document and can split the cache. Admin users / masters, cardgroups,
+catalog, and catalog deck detail consume `refetch` for query-error Retry;
+admin users also use it for mutation-conflict reload. The cards screen does
+not use it. The admin screens were its first consumers, so it was added to the
+hook during the admin migration rather than the original extraction.
 
 ### 2. Keep the screen's OTHER query hooks
 

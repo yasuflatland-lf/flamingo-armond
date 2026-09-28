@@ -105,10 +105,9 @@ export interface UseConnectionPaginationResult<
   queryVariables: TVars;
   queryError: ErrorLike | undefined;
   /**
-   * The underlying `useQuery` refetch. Exposed so a screen that renders a
-   * query-error banner can offer a Retry, and so a mutation-conflict reload
-   * (admin users) can re-issue the list query. The SSR-seeded screens
-   * (cards / cardgroups / catalog) do not consume it.
+   * The underlying `useQuery` refetch. Used for query-error Retry by admin
+   * users / masters, cardgroups, catalog, and catalog deck detail, and for
+   * admin users' mutation-conflict reload. The cards screen does not use it.
    */
   refetch: useQuery.Result<TData, TVars>["refetch"];
 }

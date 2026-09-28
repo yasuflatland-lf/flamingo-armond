@@ -408,7 +408,7 @@ describe("<CardgroupsClient>", () => {
     expect(screen.getByText(/No cardgroups match "nonexistent"/)).toBeInTheDocument();
   });
 
-  async function renderFailingSearch(code: string) {
+  async function renderFailingSearch(code: string, extraMocks: unknown[] = []) {
     const user = userEvent.setup({ delay: null });
     vi.useFakeTimers({ shouldAdvanceTime: true });
 
@@ -435,7 +435,7 @@ describe("<CardgroupsClient>", () => {
       result: { errors: [new GraphQLError("boom", { extensions: { code } })] },
     };
 
-    renderClient([initialMock, searchMock], null, cache);
+    renderClient([initialMock, searchMock, ...extraMocks], null, cache);
 
     expect(await screen.findByTestId("cardgroups-empty")).toBeInTheDocument();
 
@@ -443,11 +443,11 @@ describe("<CardgroupsClient>", () => {
     vi.advanceTimersByTime(300);
     vi.useRealTimers();
 
-    return screen.findByTestId("cardgroups-query-error");
+    return { banner: await screen.findByTestId("cardgroups-query-error"), user };
   }
 
   it("renders the query-error banner, not the no-match state, when a search query fails", async () => {
-    const banner = await renderFailingSearch("INTERNAL");
+    const { banner } = await renderFailingSearch("INTERNAL");
 
     expect(banner).toHaveTextContent("boom");
     expect(within(banner).getByRole("button", { name: "Retry" })).toBeInTheDocument();
@@ -456,13 +456,29 @@ describe("<CardgroupsClient>", () => {
   });
 
   it("renders the sign-in banner when a search query fails with UNAUTHENTICATED", async () => {
-    const banner = await renderFailingSearch("UNAUTHENTICATED");
+    const { banner } = await renderFailingSearch("UNAUTHENTICATED");
 
     expect(within(banner).getByRole("link", { name: "Sign in again" })).toHaveAttribute(
       "href",
       "/login",
     );
     expect(within(banner).queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("recovers from a failed search when the query-error Retry is clicked", async () => {
+    const recoveredSearchMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: { first: CARDGROUPS_PAGE_SIZE, search: "nonexistent" },
+      },
+      result: { data: { myCardgroupsConnection: makeConnection([CG_2]) } },
+    };
+    const { banner, user } = await renderFailingSearch("INTERNAL", [recoveredSearchMock]);
+
+    await user.click(within(banner).getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("Math Formulas")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId("cardgroups-query-error")).toBeNull());
   });
 
   // S3: debounces search input — query fires only after 300ms

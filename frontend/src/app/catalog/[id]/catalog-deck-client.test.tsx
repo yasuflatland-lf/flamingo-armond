@@ -416,6 +416,27 @@ describe("<CatalogDeckClient>", () => {
     expect(screen.queryByText("hello")).toBeNull();
   });
 
+  it("renders only the query-error banner, not the no-match state, when a search on an empty deck fails", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    const failingSearchMock = {
+      request: {
+        query: CatalogMasterCardsConnectionDocument,
+        variables: { ...catalogCardsDefaultVars(DECK.id), search: "zzz" },
+      },
+      result: { errors: [new GraphQLError("boom", { extensions: { code: "INTERNAL" } })] },
+    };
+
+    renderClient([failingSearchMock], makeConnection([]), cache);
+
+    expect(await screen.findByTestId("catalog-deck-empty")).toBeInTheDocument();
+    await user.type(screen.getByTestId("cards-search-input"), "zzz");
+
+    expect(await screen.findByTestId("catalog-deck-query-error")).toHaveTextContent("boom");
+    expect(screen.queryByTestId("catalog-deck-empty-search")).toBeNull();
+    expect(screen.queryByTestId("catalog-deck-empty")).toBeNull();
+  });
+
   it("hides the footer during a failed search and recovers via Retry with the sentinel still observed", async () => {
     const user = userEvent.setup();
     const cache = new InMemoryCache();
