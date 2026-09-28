@@ -513,9 +513,7 @@ func TestUpdateTx_Success_DisplayNameOnly(t *testing.T) {
 }
 
 // TestUpdateTx_NotFound asserts that targeting a missing row returns
-// ErrNotFound so the surrounding transaction can roll back atomically.
-// This is load-bearing for adminUserUsecase.EditUser which classifies the
-// sentinel into an InputValidationError on field=id.
+// ErrNotFound so a surrounding transaction can roll back atomically.
 func TestUpdateTx_NotFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -532,9 +530,8 @@ func TestUpdateTx_NotFound(t *testing.T) {
 }
 
 // TestUpdateTx_EmptyPatchNoOp verifies that a patch with no non-nil fields
-// returns nil without touching the database (no UPDATE issued). This matches
-// adminUserUsecase.EditUser's profile-omitted branch where UpdateTx must not
-// be called or, if called defensively, must be a no-op.
+// returns nil without issuing an UPDATE, so neither updated_at nor version
+// advances.
 func TestUpdateTx_EmptyPatchNoOp(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
