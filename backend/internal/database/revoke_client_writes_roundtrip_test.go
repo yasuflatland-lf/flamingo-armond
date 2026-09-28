@@ -29,7 +29,8 @@ func TestRevokeClientWritesDownUpRoundtrip(t *testing.T) {
 			t.Logf("migrate close: src_err=%v db_err=%v", srcErr, dbErr)
 		}
 	}()
-	// reset_legacy_new_card_ratio sits above revoke_client_writes, so two steps reach it.
+	// reset_legacy_new_card_ratio sits above revoke_client_writes, so two steps
+	// reach it.
 	if err := m.Steps(-2); err != nil {
 		t.Fatalf("migrate down revoke_client_writes: %v", err)
 	}
