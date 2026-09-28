@@ -450,7 +450,8 @@ func TestCardRepository_FoldFrontCaseToTx_ConcurrentExactInsert_ReturnsDuplicate
 	cg := insertCardgroup(t, ctx, ownerID)
 	require.NoError(t, repo.Create(ctx, newCard(cg.ID, "apple", "old")))
 
-	stage, err := sqlDBHandle(t).BeginTx(ctx, nil)
+	sqlDB := sqlDBHandle(t)
+	stage, err := sqlDB.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	defer func() { _ = stage.Rollback() }()
 	var stagePID int
@@ -471,7 +472,7 @@ func TestCardRepository_FoldFrontCaseToTx_ConcurrentExactInsert_ReturnsDuplicate
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		var blocked int
-		require.NoError(t, sqlDBHandle(t).QueryRowContext(ctx,
+		require.NoError(t, sqlDB.QueryRowContext(ctx,
 			"SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))", stagePID).Scan(&blocked))
 		if blocked == 1 {
 			break
