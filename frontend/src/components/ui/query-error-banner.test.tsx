@@ -14,7 +14,7 @@ const COPY = {
 describe("<QueryErrorBanner>", () => {
   it("renders nothing when kind is null", () => {
     const { container } = render(
-      <QueryErrorBanner kind={null} onRetry={vi.fn()} copy={COPY} testId="admin-query-error" />,
+      <QueryErrorBanner kind={null} onRetry={vi.fn()} copy={COPY} testId="query-error" />,
     );
     expect(container).toBeEmptyDOMElement();
   });
@@ -25,11 +25,11 @@ describe("<QueryErrorBanner>", () => {
         kind={{ kind: "forbidden" }}
         onRetry={vi.fn()}
         copy={COPY}
-        testId="admin-query-error"
+        testId="query-error"
       />,
     );
 
-    const banner = screen.getByTestId("admin-query-error");
+    const banner = screen.getByTestId("query-error");
     expect(banner).toHaveTextContent(COPY.viewForbidden);
     expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
   });
@@ -40,11 +40,11 @@ describe("<QueryErrorBanner>", () => {
         kind={{ kind: "unauthenticated" }}
         onRetry={vi.fn()}
         copy={COPY}
-        testId="admin-query-error"
+        testId="query-error"
       />,
     );
 
-    const banner = screen.getByTestId("admin-query-error");
+    const banner = screen.getByTestId("query-error");
     expect(banner).toHaveTextContent(COPY.sessionExpired);
 
     const link = screen.getByRole("link", { name: COPY.signInAgain });
@@ -58,11 +58,11 @@ describe("<QueryErrorBanner>", () => {
         kind={{ kind: "banner", message: "Something went wrong" }}
         onRetry={vi.fn()}
         copy={COPY}
-        testId="admin-query-error"
+        testId="query-error"
       />,
     );
 
-    const banner = screen.getByTestId("admin-query-error");
+    const banner = screen.getByTestId("query-error");
     expect(banner).toHaveTextContent("Something went wrong");
     expect(screen.getByRole("button", { name: COPY.retry })).toBeInTheDocument();
   });
@@ -75,7 +75,7 @@ describe("<QueryErrorBanner>", () => {
         kind={{ kind: "banner", message: "boom" }}
         onRetry={onRetry}
         copy={COPY}
-        testId="admin-query-error"
+        testId="query-error"
       />,
     );
 

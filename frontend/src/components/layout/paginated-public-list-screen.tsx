@@ -121,6 +121,7 @@ export function PaginatedPublicListScreen({
   children,
 }: PaginatedPublicListScreenProps) {
   const { search: searchInstance, placeholder, ariaLabel } = search;
+  const showEmptyBranch = !initialLoading && !queryErrorKind && isEmpty;
 
   return (
     <>
@@ -153,9 +154,9 @@ export function PaginatedPublicListScreen({
           copy={errorCopy}
         />
 
-        {!initialLoading && !queryErrorKind && isEmpty && !hasSearch && emptyState}
+        {showEmptyBranch && !hasSearch && emptyState}
 
-        {!initialLoading && !queryErrorKind && isEmpty && hasSearch && emptySearchState}
+        {showEmptyBranch && hasSearch && emptySearchState}
 
         {children}
 
