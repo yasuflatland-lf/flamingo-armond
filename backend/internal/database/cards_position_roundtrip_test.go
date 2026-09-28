@@ -45,7 +45,8 @@ func TestCardsPositionDownUpRoundtrip(t *testing.T) {
 	}()
 
 	// Step back past the twenty-one migrations newer than add_position_to_cards
-	// (reset_legacy_new_card_ratio, revoke_client_writes, lower_new_card_ratio_default, tighten_new_card_ratio_check,
+	// (reset_legacy_new_card_ratio, revoke_client_writes,
+	// lower_new_card_ratio_default, tighten_new_card_ratio_check,
 	// realign_fsrs_snapshot_columns_to_v4,
 	// widen_updated_at_triggers_to_insert, widen_text_length_checks,
 	// add_cardgroup_fk_to_swipe_records, add_stability_before_to_swipe_records,

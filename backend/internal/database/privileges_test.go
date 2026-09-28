@@ -10,6 +10,11 @@ import (
 	"github.com/google/uuid"
 )
 
+var (
+	apiRoles           = []string{"anon", "authenticated"}
+	apiTablePrivileges = []string{"INSERT", "UPDATE", "DELETE", "TRUNCATE", "SELECT"}
+)
+
 // requireAPIWritePrivileges asserts every public table grants anon and authenticated
 // SELECT plus writes only when writesWant; schema_migrations grants them nothing.
 // INSERT/UPDATE use has_any_column_privilege because a column-level grant such as
@@ -38,17 +43,14 @@ func requireAPIWritePrivileges(t *testing.T, ctx context.Context, sqlDB *sql.DB,
 	if err := rows.Err(); err != nil {
 		t.Fatalf("iterate public tables: %v", err)
 	}
-	if err := rows.Close(); err != nil {
-		t.Fatalf("close public tables: %v", err)
-	}
 	if len(tables) < 12 {
 		t.Fatalf("found %d public tables, want at least 12", len(tables))
 	}
 
 	var offenders []string
 	for _, table := range tables {
-		for _, role := range []string{"anon", "authenticated"} {
-			for _, privilege := range []string{"INSERT", "UPDATE", "DELETE", "TRUNCATE", "SELECT"} {
+		for _, role := range apiRoles {
+			for _, privilege := range apiTablePrivileges {
 				query := `SELECT has_table_privilege($1, 'public.' || quote_ident($2), $3)`
 				if privilege == "INSERT" || privilege == "UPDATE" {
 					query = `SELECT has_any_column_privilege($1, 'public.' || quote_ident($2), $3)`
@@ -82,8 +84,8 @@ func requireDefaultAPIWritePrivileges(t *testing.T, ctx context.Context, sqlDB *
 	if _, err := tx.ExecContext(ctx, `CREATE TABLE public.default_privilege_probe (id int)`); err != nil {
 		t.Fatalf("create default privilege probe: %v", err)
 	}
-	for _, role := range []string{"anon", "authenticated"} {
-		for _, privilege := range []string{"INSERT", "UPDATE", "DELETE", "TRUNCATE", "SELECT"} {
+	for _, role := range apiRoles {
+		for _, privilege := range apiTablePrivileges {
 			var granted bool
 			if err := tx.QueryRowContext(ctx,
 				`SELECT has_table_privilege($1, 'public.default_privilege_probe', $2)`,

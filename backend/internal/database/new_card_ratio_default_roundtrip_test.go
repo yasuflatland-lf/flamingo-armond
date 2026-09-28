@@ -34,7 +34,8 @@ func TestNewCardRatioDefaultDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// reset_legacy_new_card_ratio and revoke_client_writes sit above lower_new_card_ratio_default, so three steps reach it.
+	// reset_legacy_new_card_ratio and revoke_client_writes sit above
+	// lower_new_card_ratio_default, so three steps reach it.
 	if err := m.Steps(-3); err != nil {
 		t.Fatalf("migrate down lower_new_card_ratio_default: %v", err)
 	}

@@ -345,6 +345,14 @@ func TestCreditReviewedBefore_AgreesWithEarnsSchedulingCredit(t *testing.T) {
 	}
 }
 
+// windowMembership evaluates lastReview against the review window's two last_review
+// guards and against the practice pool's inclusive lower bound.
+func windowMembership(w LearnWindow, lastReview time.Time) (reviewEligible, practice bool) {
+	reviewEligible = lastReview.Before(w.ReviewedBefore) && lastReview.Before(w.CreditReviewedBefore)
+	practice = !lastReview.Before(w.PracticeReviewedAfter())
+	return reviewEligible, practice
+}
+
 // TestLearnWindow_PracticeReviewedAfter_ComplementsReviewGuards pins that practice
 // and review partition every reviewed card over a 48-hour half-hour grid, and that
 // the practice bound agrees with HandleSwipe's replay-guard disjunction.
@@ -356,9 +364,7 @@ func TestLearnWindow_PracticeReviewedAfter_ComplementsReviewGuards(t *testing.T)
 		for j := i; j <= 96; j++ {
 			lastReview := base.Add(time.Duration(i) * 30 * time.Minute)
 			now := base.Add(time.Duration(j) * 30 * time.Minute)
-			w := NewLearnWindow(now)
-			reviewEligible := lastReview.Before(w.ReviewedBefore) && lastReview.Before(w.CreditReviewedBefore)
-			practice := !lastReview.Before(w.PracticeReviewedAfter())
+			reviewEligible, practice := windowMembership(NewLearnWindow(now), lastReview)
 			require.NotEqual(t, reviewEligible, practice,
 				"practice and review must be complements at (+%d, +%d) half-hours", i, j)
 			require.Equal(t,
@@ -375,34 +381,71 @@ func TestLearnWindow_PracticeReviewedAfter_ComplementsReviewGuards(t *testing.T)
 func TestLearnWindow_PracticeReviewedAfter_Band(t *testing.T) {
 	t.Parallel()
 
+	inBand := time.Date(2026, 7, 18, 23, 0, 0, 0, time.UTC)   // 08:00 JST on 2026-07-19
+	afterBand := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC) // 09:00 JST on 2026-07-19
 	cases := []struct {
-		name           string
-		now            time.Time
-		lastReview     time.Time
-		practice       bool
-		reviewEligible bool
-		creditBound    bool
+		name            string
+		now             time.Time
+		lastReview      time.Time
+		wantPractice    bool
+		wantReview      bool
+		wantCreditBound bool
 	}{
-		{"08:00 JST, reviewed 23:59 JST the day before", time.Date(2026, 7, 18, 23, 0, 0, 0, time.UTC), time.Date(2026, 7, 18, 14, 59, 0, 0, time.UTC), true, false, true},
-		{"08:00 JST, reviewed 20:00 JST the day before", time.Date(2026, 7, 18, 23, 0, 0, 0, time.UTC), time.Date(2026, 7, 18, 11, 0, 0, 0, time.UTC), true, false, true},
-		{"08:00 JST, reviewed exactly at the UTC date start", time.Date(2026, 7, 18, 23, 0, 0, 0, time.UTC), time.Date(2026, 7, 18, 0, 0, 0, 0, time.UTC), true, false, true},
-		{"08:00 JST, reviewed 08:59 JST the day before", time.Date(2026, 7, 18, 23, 0, 0, 0, time.UTC), time.Date(2026, 7, 17, 23, 59, 0, 0, time.UTC), false, true, true},
-		{"08:00 JST, reviewed 00:30 JST the same day", time.Date(2026, 7, 18, 23, 0, 0, 0, time.UTC), time.Date(2026, 7, 18, 15, 30, 0, 0, time.UTC), true, false, true},
-		{"09:00 JST, reviewed 23:00 JST the day before", time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC), time.Date(2026, 7, 18, 14, 0, 0, 0, time.UTC), false, true, false},
+		{
+			name:            "08:00 JST, reviewed 23:59 JST the day before",
+			now:             inBand,
+			lastReview:      time.Date(2026, 7, 18, 14, 59, 0, 0, time.UTC),
+			wantPractice:    true,
+			wantCreditBound: true,
+		},
+		{
+			name:            "08:00 JST, reviewed 20:00 JST the day before",
+			now:             inBand,
+			lastReview:      time.Date(2026, 7, 18, 11, 0, 0, 0, time.UTC),
+			wantPractice:    true,
+			wantCreditBound: true,
+		},
+		{
+			name:            "08:00 JST, reviewed exactly at the UTC date start",
+			now:             inBand,
+			lastReview:      time.Date(2026, 7, 18, 0, 0, 0, 0, time.UTC),
+			wantPractice:    true,
+			wantCreditBound: true,
+		},
+		{
+			name:            "08:00 JST, reviewed 08:59 JST the day before",
+			now:             inBand,
+			lastReview:      time.Date(2026, 7, 17, 23, 59, 0, 0, time.UTC),
+			wantReview:      true,
+			wantCreditBound: true,
+		},
+		{
+			name:            "08:00 JST, reviewed 00:30 JST the same day",
+			now:             inBand,
+			lastReview:      time.Date(2026, 7, 18, 15, 30, 0, 0, time.UTC),
+			wantPractice:    true,
+			wantCreditBound: true,
+		},
+		{
+			name:       "09:00 JST, reviewed 23:00 JST the day before",
+			now:        afterBand,
+			lastReview: time.Date(2026, 7, 18, 14, 0, 0, 0, time.UTC),
+			wantReview: true,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := NewLearnWindow(tc.now)
-			reviewEligible := tc.lastReview.Before(w.ReviewedBefore) && tc.lastReview.Before(w.CreditReviewedBefore)
-			practice := !tc.lastReview.Before(w.PracticeReviewedAfter())
-			require.Equal(t, tc.practice, practice)
-			require.Equal(t, tc.reviewEligible, reviewEligible)
-			if tc.creditBound {
-				require.True(t, w.PracticeReviewedAfter().Equal(w.CreditReviewedBefore))
-			} else {
-				require.True(t, w.PracticeReviewedAfter().Equal(w.ReviewedBefore))
+			reviewEligible, practice := windowMembership(w, tc.lastReview)
+			require.Equal(t, tc.wantPractice, practice)
+			require.Equal(t, tc.wantReview, reviewEligible)
+			wantBound := w.ReviewedBefore
+			if tc.wantCreditBound {
+				wantBound = w.CreditReviewedBefore
 			}
+			require.True(t, w.PracticeReviewedAfter().Equal(wantBound),
+				"PracticeReviewedAfter: got %v, want %v", w.PracticeReviewedAfter(), wantBound)
 		})
 	}
 }

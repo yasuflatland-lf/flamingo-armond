@@ -2339,8 +2339,8 @@ func (f failingCountRepo) CountAdmins(_ context.Context) (int64, error) {
 }
 
 // existingAdminRepo satisfies repository.UserRoleRepository with CountAdmins
-// returning a fixed count. Used by deterministic tests for the admin-exists branch
-// (admin role-holders already exist → no WARN emitted).
+// returning a fixed count. Used by deterministic tests for the admin-exists
+// branch (admin role-holders already exist → no WARN emitted).
 type existingAdminRepo struct {
 	panicUserRoleRepo
 	count int64

@@ -136,7 +136,8 @@ func TestUpdatedAtTriggersDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// reset_legacy_new_card_ratio, revoke_client_writes, lower_new_card_ratio_default, tighten_new_card_ratio_check, and
+	// reset_legacy_new_card_ratio, revoke_client_writes,
+	// lower_new_card_ratio_default, tighten_new_card_ratio_check, and
 	// realign_fsrs_snapshot_columns_to_v4 sit above the trigger migration.
 	require.NoError(t, m.Steps(-6))
 	requireUpdatedAtTriggerEvents(t, ctx, sqlDB, false)
