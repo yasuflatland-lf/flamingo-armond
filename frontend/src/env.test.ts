@@ -56,6 +56,16 @@ describe("env — NEXT_PUBLIC_SITE_URL", () => {
     },
   );
 
+  it("prefers an explicit NEXT_PUBLIC_SITE_URL over the VERCEL_URL backfill when VERCEL_ENV=preview", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://flamingo-armond-frontend.vercel.app");
+    vi.stubEnv("VERCEL_URL", "flamingo-armond-git-feature-x.vercel.app");
+
+    const { env } = await loadEnvFresh();
+    expect(env.NEXT_PUBLIC_SITE_URL).toBe("https://flamingo-armond-frontend.vercel.app");
+  });
+
   it.each(UNSET_FORMS)(
     "defaults to http://localhost:3000 outside production when NEXT_PUBLIC_SITE_URL is %s",
     async (_label, value) => {

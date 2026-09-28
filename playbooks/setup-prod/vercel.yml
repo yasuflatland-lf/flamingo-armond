@@ -11,12 +11,14 @@
 # (defaults: <repo-root>/.setup-prod.state.yml, confirm: false).
 #
 # Env wiring is automated: after the operator imports the project from GitHub
-# (the import wizard cannot be driven via API), this phase POSTs the five
-# required env vars to /v10/projects/{id}/env?upsert=true. The repoId captured
-# here feeds Phase 6's deploy kick (POST /v13/deployments needs repoId, not the
-# "owner/repo" string). The first build at import time is expected to fail
-# because env is not yet present; Phase 6 triggers a fresh deploy that picks up
-# the values registered here.
+# (the import wizard cannot be driven via API), this phase reconciles five env
+# vars: GET /v9/projects/{id}/env, PATCH existing vars at
+# /v9/projects/{id}/env/{envId}, and POST new vars to /v10/projects/{id}/env
+# (see "Reconcile env vars" below). The repoId captured here feeds Phase 6's
+# deploy kick (POST /v13/deployments needs repoId, not the "owner/repo"
+# string). The first build at import time is expected to fail because env is
+# not yet present; Phase 6 triggers a fresh deploy that picks up the values
+# registered here.
 
 - name: Phase 4 cannot run in unattended mode
   ansible.builtin.fail:
@@ -125,7 +127,7 @@
          The function region is pinned to sin1 (Singapore) by
          frontend/vercel.json -- no dashboard region step is needed.
       4. SKIP the Environment Variables section -- leave it empty.
-         The playbook registers the five required env vars via the Vercel
+         The playbook registers the five env vars via the Vercel
          API as soon as you provide the project ID below.
       5. Click Deploy. The first build will fail because env is not yet
          registered -- this is EXPECTED. Phase 6 (postapply) triggers a
