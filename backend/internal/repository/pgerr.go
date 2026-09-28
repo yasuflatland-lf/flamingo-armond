@@ -94,11 +94,11 @@ func textLengthConstraintField(name string) (string, bool) {
 	return stem[i+1:], true
 }
 
-// classifyFrontIndexRowTooLarge maps SQLSTATE 54000 (program_limit_exceeded) on
-// a write guarded by the unique (group, front) index frontIndex to a
-// *TextLengthViolationError on "front". Only the btree check names the index,
-// but front is the only variable-length indexed column on cards and
-// master_cards. Returns nil otherwise, including for a 54000 on another index.
+// classifyFrontIndexRowTooLarge maps SQLSTATE 54000 from indexing a front into
+// frontIndex to a *TextLengthViolationError on "front"; anything else is nil. The
+// btree check names the index (another name is nil), the index-tuple check none.
+// An unnamed 54000 is pinned on front because front is the only variable-length
+// indexed column on cards and master_cards; another table or text index breaks it.
 func classifyFrontIndexRowTooLarge(err error, frontIndex string) error {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != "54000" {
