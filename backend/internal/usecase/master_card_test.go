@@ -28,6 +28,10 @@ func (panicMasterCardRepo) ListByMasterCardgroup(_ context.Context, _ string) ([
 	panic("not used in this test")
 }
 
+func (panicMasterCardRepo) ListByMasterCardgroupTx(_ context.Context, _ *gorm.DB, _ string) ([]*domain.MasterCard, error) {
+	panic("not used in this test")
+}
+
 func (panicMasterCardRepo) FindByID(_ context.Context, _ string) (*domain.MasterCard, error) {
 	panic("not used in this test")
 }

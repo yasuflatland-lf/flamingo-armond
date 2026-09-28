@@ -39,12 +39,15 @@ import (
 type masterDeckCardgroupRepo interface {
 	FindPublishedByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 	FindPublishedByIDTx(ctx context.Context, tx repository.Tx, id string) (*domain.MasterCardgroup, error)
-	ListPublishedDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error)
+	ListPublishedDefaultStartersTx(ctx context.Context, tx repository.Tx) ([]*domain.MasterCardgroup, error)
 }
 
 // masterDeckCardRepo is the subset of repository.MasterCardRepository the master
-// deck usecase consumes: read a master deck's cards to snapshot.
+// deck usecase consumes: read a master deck's cards to snapshot. The copy reads on
+// its transaction because its callers hold the per-owner cardgroup lock; merge and
+// preview hold no such lock and read through the pool.
 type masterDeckCardRepo interface {
+	ListByMasterCardgroupTx(ctx context.Context, tx repository.Tx, masterCardgroupID string) ([]*domain.MasterCard, error)
 	ListByMasterCardgroup(ctx context.Context, masterCardgroupID string) ([]*domain.MasterCard, error)
 }
 
@@ -264,7 +267,7 @@ func (u *masterDeckUsecase) CopyMasterToUser(ctx context.Context, masterID, owne
 
 // SeedForNewUser copies every catalog-visible default-starter master deck into
 // the user's cardgroups. Starters that are published but hold zero cards are
-// skipped by ListPublishedDefaultStarters, so the learner is never seeded with
+// skipped by ListPublishedDefaultStartersTx, so the learner is never seeded with
 // an empty deck; when every starter is empty nothing is created and the user's
 // owned-deck count stays 0, leaving the next seed attempt free to run normally.
 // The whole batch runs in a single transaction guarded by a
@@ -273,7 +276,7 @@ func (u *masterDeckUsecase) CopyMasterToUser(ctx context.Context, masterID, owne
 // short-circuits when the user already owns at least one cardgroup, so a retry
 // after a partially-applied previous attempt does not double-seed. At most
 // domain.GeneralUserCardgroupLimit starters are copied, in
-// ListPublishedDefaultStarters order (sort_order, id). Returns the cardgroups
+// ListPublishedDefaultStartersTx order (sort_order, id). Returns the cardgroups
 // created by this call (empty when no defaults exist or the guard short-circuits).
 func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) ([]*domain.Cardgroup, error) {
 	// Non-nil empty slice so the no-op / no-defaults paths return a consistent
@@ -301,17 +304,17 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) (
 			return nil
 		}
 
-		starters, err := u.masterCG.ListPublishedDefaultStarters(ctx)
+		starters, err := u.masterCG.ListPublishedDefaultStartersTx(ctx, tx)
 		if err != nil {
 			return eris.Wrap(err, "usecase: master deck: seed for new user: list default starters")
 		}
-		for _, m := range starters {
+		for i, m := range starters {
 			// The helper returns its error bare; the outer tx-return wrap below
 			// applies the single "seed for new user" prefix, so wrapping here
 			// would duplicate that frame in the error chain.
 			cg, err := u.copyMasterToUserTx(ctx, tx, m.ID, userID)
 			if errors.Is(err, repository.ErrNotFound) {
-				// The starter left the catalog between ListPublishedDefaultStarters
+				// The starter left the catalog between ListPublishedDefaultStartersTx
 				// and its copy — unpublished, deleted, or emptied of its last card.
 				// Skip it and seed the rest: one starter losing visibility mid-signup
 				// must not fail the whole seed, and the guarantee this protects is
@@ -323,6 +326,13 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) (
 			}
 			seeded = append(seeded, cg)
 			if len(seeded) == domain.GeneralUserCardgroupLimit {
+				if remaining := len(starters) - (i + 1); remaining > 0 {
+					u.logger.WarnContext(ctx, "usecase: master deck: seed for new user: default starters exceed general-user cardgroup limit; remaining starters skipped",
+						slog.String("user_id", userID),
+						slog.Int("limit", domain.GeneralUserCardgroupLimit),
+						slog.Int("published_starters", len(starters)),
+						slog.Int("skipped", remaining))
+				}
 				break
 			}
 		}
@@ -383,7 +393,9 @@ func (u *masterDeckUsecase) copyMasterCardsIntoTx(
 // The emptiness half of catalog visibility needs no lock: it is decided by
 // len(cards) on the enumeration this copy consumes — see the guard at its call
 // site — which holds no matter how the reads interleave with a concurrent
-// last-card delete. The enumeration therefore stays on the pooled connection.
+// last-card delete. The enumeration still runs on tx: both callers hold the
+// per-owner cardgroup lock, and a pooled read made while same-owner waiters each
+// hold a connection blocked on that lock can exhaust the pool.
 //
 // SeedForNewUser tolerates that ErrNotFound by skipping the starter, since one
 // deck leaving the catalog mid-signup must not fail the whole seed.
@@ -399,7 +411,7 @@ func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx repositor
 		return nil, eris.Wrap(err, "find published master cardgroup")
 	}
 
-	cards, err := u.masterCard.ListByMasterCardgroup(ctx, masterID)
+	cards, err := u.masterCard.ListByMasterCardgroupTx(ctx, tx, masterID)
 	if err != nil {
 		return nil, eris.Wrap(err, "list master cards")
 	}

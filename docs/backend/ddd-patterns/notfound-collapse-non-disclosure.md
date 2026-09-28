@@ -63,7 +63,9 @@ closed by different mechanisms:
   rather than from a separate probe: both write paths return `repository.ErrNotFound`
   when `len(cards) == 0` on the enumeration they are about to copy. That holds however
   the reads interleave with a concurrent last-card delete, and it needs no lock and no
-  transaction-scoped repository method.
+  transaction-scoped repository method. The copy path reads that enumeration through
+  `ListByMasterCardgroupTx` for a different reason: it runs under the per-owner
+  cardgroup advisory lock, where a pooled read can starve the connection pool.
 - **Unpublish** — the probe runs on the **transaction connection** and takes a
   **`FOR SHARE` lock on the master row**. `FindPublishedByIDTx` is the tx-scoped sibling
   of `FindPublishedByID`; both delegate to one private helper so the visibility filter

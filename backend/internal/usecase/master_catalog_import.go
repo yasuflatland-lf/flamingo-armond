@@ -90,9 +90,12 @@ type ImportMasterOutcome struct {
 // now-invisible deck. Both halves are airtight: emptiness because the verdict
 // comes from the enumeration the copy consumes, the unpublish because the lock
 // serialises it against the write. See masterDeckUsecase.copyMasterToUserTx.
-// Unauthenticated callers
-// receive ucerr.ErrUnauthenticated. Import is the second entry point into "the caller now
-// owns a new cardgroup", so it applies the same per-user cardgroup quota as
+// For a non-admin at the quota the per-owner lock and count run before that
+// re-read (lock order: advisory lock, then FOR SHARE, matching SeedForNewUser), so
+// a mid-flight unpublish returns LimitReached instead; unknown or draft ids are
+// still answered NotFound by the gate, so nothing is disclosed. Unauthenticated
+// callers receive ucerr.ErrUnauthenticated. Import is the second entry point into
+// "the caller now owns a new cardgroup", so it applies the same per-user cardgroup quota as
 // CardgroupUsecase.Create by passing enforceQuota to CopyMasterToUser, which
 // locks, counts and inserts on one transaction (admins exempt) — without it the
 // cap would be a property of the create form rather than an invariant of the
@@ -248,7 +251,7 @@ func (u *masterCatalogUsecase) PreviewMergeMaster(ctx context.Context, masterID,
 // SeedDefaultStarters copies the published, non-empty default-starter master
 // decks into the authenticated caller's own cardgroups (idempotent — a no-op if
 // the caller already owns a cardgroup). A starter that is published but holds
-// zero cards is skipped by ListPublishedDefaultStarters, so a new user is never
+// zero cards is skipped by ListPublishedDefaultStartersTx, so a new user is never
 // seeded with an empty deck. Unauthenticated callers receive ucerr.ErrUnauthenticated.
 func (u *masterCatalogUsecase) SeedDefaultStarters(ctx context.Context) ([]*domain.Cardgroup, error) {
 	caller := auth.UserFrom(ctx)

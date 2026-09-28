@@ -49,8 +49,8 @@ and calls `IsAdmin` to conditionally skip operations that only apply to non-admi
 
 ## Worked example: per-user cardgroup creation cap
 
-`const generalUserCardgroupLimit = 5` (package-private in `backend/internal/usecase/`)
-caps the number of cardgroups a non-admin owner may create. Admins are exempt.
+`domain.GeneralUserCardgroupLimit = 5` (`backend/internal/domain/cardgroup_quota.go`)
+caps the number of cardgroups a non-admin owner may hold. Admins are exempt.
 
 `cardgroupUsecase` holds an `admin AdminChecker` field. Its constructor panics when
 the checker is nil:
@@ -109,8 +109,8 @@ The helper's wrap messages carry no layer prefix because it is shared between
 When `lockCardgroupQuotaTx` returns a non-nil `*CardgroupLimitInfo`, `Create` surfaces
 the rejection via the `CardgroupLimitReachedError` GraphQL union variant (errors-as-data),
 carrying `limit` and `current`. Existing users already over the cap are rejected for
-new creates only — the `>=` comparison rejects at-or-above the limit without deleting
-existing cardgroups.
+new creates only — `domain.GeneralUserCardgroupQuotaReached` (`count >= limit`) rejects
+at-or-above the limit without deleting existing cardgroups.
 
 ## Call ordering in `Create`
 

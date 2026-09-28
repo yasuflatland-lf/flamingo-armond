@@ -41,6 +41,8 @@ func seedOwnerAtOneBelowQuota(t *testing.T) (string, context.Context) {
 func TestCardgroupCreate_Integration_ConcurrentCreatesRespectQuota(t *testing.T) {
 	t.Parallel()
 	ownerID, authedCtx := seedOwnerAtOneBelowQuota(t)
+	ctx, cancel := context.WithTimeout(authedCtx, 15*time.Second)
+	defer cancel()
 	cgRepo := repository.NewCardgroupRepository(testDB.GORM)
 	uc := usecase.NewCardgroupUsecase(testDB.GORM, cgRepo, stubParityAdminChecker{}, slog.New(slog.DiscardHandler))
 
@@ -54,7 +56,7 @@ func TestCardgroupCreate_Integration_ConcurrentCreatesRespectQuota(t *testing.T)
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			outcomes[i], errs[i] = uc.Create(authedCtx, usecase.CreateCardgroupInput{Name: fmt.Sprintf("Race %d", i)})
+			outcomes[i], errs[i] = uc.Create(ctx, usecase.CreateCardgroupInput{Name: fmt.Sprintf("Race %d", i)})
 		}(i)
 	}
 	close(start)
@@ -72,12 +74,14 @@ func TestCardgroupCreate_Integration_ConcurrentCreatesRespectQuota(t *testing.T)
 	}
 	require.Equal(t, 1, created, "exactly one concurrent create fits under the quota")
 	require.Equal(t, workers-1, limited)
-	require.Equal(t, domain.GeneralUserCardgroupLimit, countCardgroupsForOwner(t, context.Background(), ownerID))
+	require.Equal(t, domain.GeneralUserCardgroupLimit, countCardgroupsForOwner(t, ctx, ownerID))
 }
 
 func TestCardgroupQuota_Integration_ConcurrentCreateAndImportRespectQuota(t *testing.T) {
 	t.Parallel()
 	ownerID, authedCtx := seedOwnerAtOneBelowQuota(t)
+	ctx, cancel := context.WithTimeout(authedCtx, 15*time.Second)
+	defer cancel()
 	cgRepo := repository.NewCardgroupRepository(testDB.GORM)
 	cgUC := usecase.NewCardgroupUsecase(testDB.GORM, cgRepo, stubParityAdminChecker{}, slog.New(slog.DiscardHandler))
 	catalogUC := newMasterCatalogUsecaseForParityTest(t)
@@ -95,13 +99,13 @@ func TestCardgroupQuota_Integration_ConcurrentCreateAndImportRespectQuota(t *tes
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			out, err := cgUC.Create(authedCtx, usecase.CreateCardgroupInput{Name: fmt.Sprintf("Race %d", i)})
+			out, err := cgUC.Create(ctx, usecase.CreateCardgroupInput{Name: fmt.Sprintf("Race %d", i)})
 			succeeded[i], errs[i] = out.Cardgroup != nil, err
 		}(i)
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			out, err := catalogUC.ImportMaster(authedCtx, masterID)
+			out, err := catalogUC.ImportMaster(ctx, masterID)
 			succeeded[perKind+i], errs[perKind+i] = out.Cardgroup != nil, err
 		}(i)
 	}
@@ -116,5 +120,46 @@ func TestCardgroupQuota_Integration_ConcurrentCreateAndImportRespectQuota(t *tes
 		}
 	}
 	require.Equal(t, 1, total, "exactly one concurrent create or import fits under the quota")
-	require.Equal(t, domain.GeneralUserCardgroupLimit, countCardgroupsForOwner(t, context.Background(), ownerID))
+	require.Equal(t, domain.GeneralUserCardgroupLimit, countCardgroupsForOwner(t, ctx, ownerID))
+}
+
+func TestCardgroupQuota_Integration_ConcurrentImportsRespectQuota(t *testing.T) {
+	t.Parallel()
+	ownerID, authedCtx := seedOwnerAtOneBelowQuota(t)
+	ctx, cancel := context.WithTimeout(authedCtx, 15*time.Second)
+	defer cancel()
+	catalogUC := newMasterCatalogUsecaseForParityTest(t)
+	masterID := seedMasterDeck(t, ctx, "Quota Import Race Master "+uuid.NewString(), []*domain.MasterCard{
+		masterCardFixture("front", "back", 0),
+	})
+
+	const workers = 8
+	outcomes := make([]usecase.ImportMasterOutcome, workers)
+	errs := make([]error, workers)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			outcomes[i], errs[i] = catalogUC.ImportMaster(ctx, masterID)
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	imported, limited := 0, 0
+	for i := 0; i < workers; i++ {
+		require.NoError(t, errs[i])
+		if outcomes[i].Cardgroup != nil {
+			imported++
+		}
+		if outcomes[i].LimitReached != nil {
+			limited++
+		}
+	}
+	require.Equal(t, 1, imported, "exactly one concurrent import fits under the quota")
+	require.Equal(t, workers-1, limited)
+	require.Equal(t, domain.GeneralUserCardgroupLimit, countCardgroupsForOwner(t, ctx, ownerID))
 }
