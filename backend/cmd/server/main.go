@@ -151,8 +151,8 @@ func (r *appRepos) loaderDeps() loaderDeps {
 
 // buildResolver wires every usecase, the ping/notion handlers, and the GraphQL
 // resolver from the repository bundle. Extracted from run() so the wiring is
-// independently testable, mirroring warnIfNoAdmin. notionSyncHandler
-// is nil when notion sync is disabled.
+// independently testable, mirroring warnIfNoAdmin. notionSyncHandler is nil
+// when notion sync is disabled.
 func buildResolver(
 	repos *appRepos,
 	authSvc *auth.Service,

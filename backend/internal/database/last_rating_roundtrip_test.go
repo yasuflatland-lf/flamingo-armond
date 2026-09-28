@@ -39,7 +39,8 @@ func TestLastRatingDownUpRoundtrip(t *testing.T) {
 	}()
 
 	// Step back ten migrations newest-first:
-	// reset_legacy_new_card_ratio, revoke_client_writes, lower_new_card_ratio_default, tighten_new_card_ratio_check,
+	// reset_legacy_new_card_ratio, revoke_client_writes,
+	// lower_new_card_ratio_default, tighten_new_card_ratio_check,
 	// realign_fsrs_snapshot_columns_to_v4,
 	// widen_updated_at_triggers_to_insert, widen_text_length_checks,
 	// add_cardgroup_fk_to_swipe_records, add_stability_before_to_swipe_records,
@@ -115,7 +116,8 @@ func TestLastRatingUpMigrationBackfillsLatestSwipe(t *testing.T) {
 		t.Fatalf("seed swipe_records rows: %v", err)
 	}
 
-	// Ten steps: reset_legacy_new_card_ratio, revoke_client_writes, lower_new_card_ratio_default, tighten_new_card_ratio_check,
+	// Ten steps: reset_legacy_new_card_ratio, revoke_client_writes,
+	// lower_new_card_ratio_default, tighten_new_card_ratio_check,
 	// realign_fsrs_snapshot_columns_to_v4,
 	// widen_updated_at_triggers_to_insert, widen_text_length_checks,
 	// add_cardgroup_fk_to_swipe_records and add_stability_before_to_swipe_records

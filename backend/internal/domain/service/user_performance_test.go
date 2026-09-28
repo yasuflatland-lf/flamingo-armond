@@ -171,6 +171,28 @@ func TestComputeMetrics(t *testing.T) {
 			},
 		},
 		{
+			// A review at 23:59 JST is on time for a due at 00:30 JST that day,
+			// even across UTC dates; a fixed grace window or early day end fails here.
+			name: "review at the end of the due's JST day is on time even across a UTC date change",
+			swipes: []domain.SwipeRecord{
+				swipeBefore(
+					domain.RatingGood,
+					time.Date(2026, 4, 30, 14, 59, 0, 0, time.UTC), // 4/30 23:59 JST
+					state(5, 9, domain.FSRSPhaseReview),
+					domain.FSRSPhaseReview,
+					time.Date(2026, 4, 29, 15, 30, 0, 0, time.UTC), // 4/30 00:30 JST
+				),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   1,
+				AvgDifficulty: 0.5,
+				RetentionRate: 1,
+				StudyStreak:   1,
+				LapseRate:     0,
+				ReviewCount:   1,
+			},
+		},
+		{
 			// Due and review share the UTC calendar date 4/29, so a UTC
 			// elapsed-day comparison would call this on time. The JST due-day
 			// bound ends at 4/30 00:00 JST, so the 00:01 JST review is late.
