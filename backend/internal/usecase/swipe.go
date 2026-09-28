@@ -148,7 +148,6 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		}
 	}
 
-	var now time.Time
 	if u.userFSRSRepo == nil {
 		return HandleSwipeOutcome{}, eris.New("usecase: swipe: user card fsrs repository is not configured")
 	}
@@ -165,7 +164,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		}
 
 		// Read the request instant through the injected clock port.
-		now = u.clock.Now().UTC()
+		now := u.clock.Now().UTC()
 		byCardID, err := u.userFSRSRepo.FindByUserAndCardIDsTx(ctx, tx, user.Sub, []string{card.ID})
 		if err != nil {
 			return wrapSwipeErr(err, "usecase: swipe: find user-card fsrs")
