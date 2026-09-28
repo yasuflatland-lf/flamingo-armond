@@ -117,7 +117,8 @@ func TestSwipeRecordsCardgroupOrphanCleanupRoundtrip(t *testing.T) {
 	}()
 
 	// Eight steps reach add_cardgroup_fk_to_swipe_records:
-	// reset_legacy_new_card_ratio, revoke_client_writes, lower_new_card_ratio_default, tighten_new_card_ratio_check,
+	// reset_legacy_new_card_ratio, revoke_client_writes,
+	// lower_new_card_ratio_default, tighten_new_card_ratio_check,
 	// realign_fsrs_snapshot_columns_to_v4,
 	// widen_updated_at_triggers_to_insert,
 	// and widen_text_length_checks sit above it. Bump this count when adding
