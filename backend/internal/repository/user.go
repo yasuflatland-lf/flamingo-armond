@@ -151,7 +151,8 @@ func (r *userRepo) FindByID(ctx context.Context, id string) (*domain.User, error
 	var row gormUser
 	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if errors.Is(err, gorm.ErrRecordNotFound) || pgInvalidTextRepresentation(err) {
 			return nil, ErrNotFound
 		}
 		return nil, eris.Wrap(err, "repository: user: find by id")
@@ -218,6 +219,10 @@ func (r *userRepo) UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string
 		Where("id = ? AND version = ?", id, expectedVersion).
 		Updates(updates)
 	if res.Error != nil {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if pgInvalidTextRepresentation(res.Error) {
+			return ErrNotFound
+		}
 		return eris.Wrap(res.Error, "repository: user: update tx versioned")
 	}
 	if res.RowsAffected > 0 {
@@ -244,6 +249,10 @@ func (r *userRepo) DeleteAuthUserTx(ctx context.Context, tx *gorm.DB, id string)
 	}
 	res := tx.WithContext(ctx).Exec("DELETE FROM auth.users WHERE id = ?", id)
 	if res.Error != nil {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if pgInvalidTextRepresentation(res.Error) {
+			return ErrNotFound
+		}
 		return eris.Wrap(res.Error, "repository: user: delete auth user")
 	}
 	if res.RowsAffected == 0 {
@@ -350,11 +359,13 @@ func (r *userRepo) ListPage(
 		// Hydrate the cursor user's created_at so we can build the tuple
 		// comparison. A missing user means the cursor row was deleted between
 		// fetches — surface as ErrCursorNotFound so callers can map to a
-		// BAD_USER_INPUT-shaped error.
+		// BAD_USER_INPUT-shaped error; a cursor (v1 or legacy bare id) whose id
+		// is not a uuid is the same not-found.
 		err := r.db.WithContext(ctx).Select("id", "created_at").
 			Where("id = ?", *cursorID).Take(&cursorRow).Error
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+			if errors.Is(err, gorm.ErrRecordNotFound) || pgInvalidTextRepresentation(err) {
 				return nil, 0, ErrCursorNotFound
 			}
 			return nil, 0, eris.Wrap(err, "repository: user: hydrate cursor")
