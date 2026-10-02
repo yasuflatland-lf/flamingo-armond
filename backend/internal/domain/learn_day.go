@@ -88,7 +88,8 @@ func NewLearnWindow(now time.Time) LearnWindow {
 // PracticeReviewedAfter returns the inclusive last_review lower bound of the
 // practice pool: the earlier of ReviewedBefore and CreditReviewedBefore. A reviewed
 // card fails the review window's last_review guards exactly when its last_review is
-// at or after this instant, so practice and review partition every reviewed card.
+// at or after this instant. Practice ignores due, so a reviewed card that is not yet
+// due and was last reviewed before this instant is in neither window.
 func (w LearnWindow) PracticeReviewedAfter() time.Time {
 	if w.CreditReviewedBefore.Before(w.ReviewedBefore) {
 		return w.CreditReviewedBefore

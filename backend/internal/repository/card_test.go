@@ -1454,7 +1454,7 @@ func TestCardRepository_FindPracticeCards_CoversUTCCreditBandBeforeNineJST(t *te
 		require.False(t, union[id], "a card must not appear in both windows")
 		union[id] = true
 	}
-	require.Len(t, union, 3, "together the two windows cover every reviewed card")
+	require.Len(t, union, 3, "together the two windows cover every due reviewed card")
 }
 
 // TestCardRepository_FindPracticeCards_IgnoresOtherUsersFSRSRows verifies the

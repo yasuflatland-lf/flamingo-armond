@@ -310,9 +310,10 @@ func windowMembership(w LearnWindow, lastReview time.Time) (reviewEligible, prac
 	return reviewEligible, practice
 }
 
-// TestLearnWindow_PracticeReviewedAfter_ComplementsReviewGuards pins that practice
-// and review partition every reviewed card over a 48-hour half-hour grid, and that
-// the practice bound agrees with HandleSwipe's replay-guard disjunction.
+// TestLearnWindow_PracticeReviewedAfter_ComplementsReviewGuards pins that practice is
+// the exact complement of the review window's two last_review guards (due is not
+// modelled) over a 48-hour half-hour grid, and that the practice bound agrees with
+// HandleSwipe's replay-guard disjunction.
 func TestLearnWindow_PracticeReviewedAfter_ComplementsReviewGuards(t *testing.T) {
 	t.Parallel()
 
