@@ -43,9 +43,10 @@ type masterDeckCardgroupRepo interface {
 }
 
 // masterDeckCardRepo is the subset of repository.MasterCardRepository the master
-// deck usecase consumes: read a master deck's cards to snapshot. The copy reads on
-// its transaction because the seed and a quota-enforced import hold the per-owner
-// cardgroup lock there; merge and preview hold no such lock and read through the pool.
+// deck usecase consumes: read a master deck's cards to snapshot. The copy and merge
+// read on their transaction: a pooled read inside it holds one connection while
+// waiting for a second, so concurrent writers can exhaust the pool. The read-only
+// preview opens no transaction and reads through the pool.
 type masterDeckCardRepo interface {
 	ListByMasterCardgroupTx(ctx context.Context, tx repository.Tx, masterCardgroupID string) ([]*domain.MasterCard, error)
 	ListByMasterCardgroup(ctx context.Context, masterCardgroupID string) ([]*domain.MasterCard, error)
@@ -393,10 +394,10 @@ func (u *masterDeckUsecase) copyMasterCardsIntoTx(
 // The emptiness half of catalog visibility needs no lock: it is decided by
 // len(cards) on the enumeration this copy consumes — see the guard at its call
 // site — which holds no matter how the reads interleave with a concurrent
-// last-card delete. The enumeration still runs on tx: the seed and a
-// quota-enforced import hold the per-owner cardgroup lock, and a pooled read made
-// while same-owner waiters each hold a connection blocked on that lock can
-// exhaust the pool.
+// last-card delete. The enumeration still runs on tx: a pooled read here would
+// hold this transaction's connection while waiting for a second one, so
+// concurrent writers (or same-owner waiters blocked on the per-owner cardgroup
+// lock, each holding a connection) can exhaust the pool.
 //
 // SeedForNewUser tolerates that ErrNotFound by skipping the starter, since one
 // deck leaving the catalog mid-signup must not fail the whole seed.
@@ -489,7 +490,7 @@ func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 		if _, err := u.masterCG.FindPublishedByIDTx(ctx, tx, masterID); err != nil {
 			return eris.Wrap(err, "usecase: master deck: merge master into cardgroup: verify published master")
 		}
-		cards, err := u.masterCard.ListByMasterCardgroup(ctx, masterID)
+		cards, err := u.masterCard.ListByMasterCardgroupTx(ctx, tx, masterID)
 		if err != nil {
 			return eris.Wrap(err, "usecase: master deck: merge master into cardgroup: list master cards")
 		}

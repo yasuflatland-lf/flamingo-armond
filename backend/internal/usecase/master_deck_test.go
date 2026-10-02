@@ -1206,6 +1206,9 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_PublishedProbeRunsOnTxHandle
 
 	assert.Zero(t, cg.pooledCalls, "the merge must not probe the master on a pooled connection")
 	require.Len(t, cg.txHandles, 1, "the merge probes the published master exactly once, on its transaction")
+	assert.Zero(t, card.pooledCalls, "the merge must not list master cards on a pooled connection")
+	require.Len(t, card.txHandles, 1)
+	assert.Same(t, cg.txHandles[0], card.txHandles[0])
 	require.Len(t, user.upsertTxHandles, 1)
 	require.Len(t, user.foldTxHandles, 1)
 	assert.Same(t, user.foldTxHandles[0], cg.txHandles[0],

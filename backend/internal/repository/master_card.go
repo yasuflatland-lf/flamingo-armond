@@ -111,8 +111,8 @@ type MasterCardUpdate struct {
 // with "master_cards" and "master_cardgroup_id".
 type MasterCardRepository interface {
 	ListByMasterCardgroup(ctx context.Context, masterCardgroupID string) ([]*domain.MasterCard, error)
-	// ListByMasterCardgroupTx reads on the caller's transaction so a holder of
-	// the per-owner cardgroup lock needs no second pooled connection.
+	// ListByMasterCardgroupTx reads on the caller's transaction so a write
+	// transaction (copy or merge) needs no second pooled connection.
 	ListByMasterCardgroupTx(ctx context.Context, tx *gorm.DB, masterCardgroupID string) ([]*domain.MasterCard, error)
 	// FindByID returns the master card with the given primary key, or ErrNotFound
 	// when no such row exists. The usecase uses it to hydrate a pagination cursor's
@@ -177,8 +177,8 @@ func (r *masterCardRepo) ListByMasterCardgroup(ctx context.Context, masterCardgr
 	return listByMasterCardgroup(r.db.WithContext(ctx), masterCardgroupID)
 }
 
-// ListByMasterCardgroupTx reads on the caller's transaction so a holder of the
-// per-owner cardgroup lock needs no second pooled connection.
+// ListByMasterCardgroupTx reads on the caller's transaction so a write
+// transaction (copy or merge) needs no second pooled connection.
 func (r *masterCardRepo) ListByMasterCardgroupTx(ctx context.Context, tx *gorm.DB, masterCardgroupID string) ([]*domain.MasterCard, error) {
 	return listByMasterCardgroup(tx.WithContext(ctx), masterCardgroupID)
 }
