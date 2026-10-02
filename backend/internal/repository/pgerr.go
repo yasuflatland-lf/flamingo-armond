@@ -94,19 +94,25 @@ func textLengthConstraintField(name string) (string, bool) {
 	return stem[i+1:], true
 }
 
+// indexFormTupleRoutine prefixes the Postgres function that raises the unnamed
+// index-row-size 54000 (index_form_tuple or index_form_tuple_context, by version).
+const indexFormTupleRoutine = "index_form_tuple"
+
 // classifyFrontIndexRowTooLarge maps SQLSTATE 54000 from indexing a front into
 // frontIndex to a *TextLengthViolationError on "front"; anything else is nil. The
-// btree check names the index (another name is nil), the index-tuple check none.
-// An unnamed 54000 is pinned on front because front is the only variable-length
-// indexed column on cards and master_cards; another table or text index breaks it.
+// btree check names the index; the index-tuple check names none, so it is matched
+// by Routine and pinned on front, the only variable-length indexed column on cards
+// and master_cards. Other unnamed 54000s, such as the XID-wraparound stop, are nil.
 func classifyFrontIndexRowTooLarge(err error, frontIndex string) error {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != "54000" {
 		return nil
 	}
-	// Matching the message text to tell the unnamed shape apart is rejected:
-	// lc_messages can translate it.
-	if pgErr.ConstraintName != "" && pgErr.ConstraintName != frontIndex {
+	// Matching the message text instead of Routine is rejected: lc_messages can
+	// translate it.
+	named := pgErr.ConstraintName == frontIndex
+	indexTuple := pgErr.ConstraintName == "" && strings.HasPrefix(pgErr.Routine, indexFormTupleRoutine)
+	if !named && !indexTuple {
 		return nil
 	}
 	return &TextLengthViolationError{Constraint: frontIndex, Field: "front"}

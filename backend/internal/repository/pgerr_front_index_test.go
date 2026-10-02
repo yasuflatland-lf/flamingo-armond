@@ -1,8 +1,8 @@
 package repository
 
 // White-box tests for classifyFrontIndexRowTooLarge. It is unexported, so the
-// tests live in the same package; every case uses a fabricated *pgconn.PgError,
-// mirroring pgerr_text_length_test.go, so no live DB is required.
+// tests live in the same package; every case fabricates its error, mirroring
+// pgerr_text_length_test.go, so no live DB is required.
 
 import (
 	"errors"
@@ -31,10 +31,35 @@ func TestClassifyFrontIndexRowTooLarge(t *testing.T) {
 		},
 		{
 			name:           "index_form_tuple shape names no index",
-			err:            &pgconn.PgError{Code: "54000"},
+			err:            &pgconn.PgError{Code: "54000", Routine: "index_form_tuple_context"},
 			frontIndex:     "uq_cards_cardgroup_front",
 			wantClassify:   true,
 			wantConstraint: "uq_cards_cardgroup_front",
+		},
+		{
+			name:           "index_form_tuple shape under its older routine name",
+			err:            &pgconn.PgError{Code: "54000", Routine: "index_form_tuple"},
+			frontIndex:     "uq_cards_cardgroup_front",
+			wantClassify:   true,
+			wantConstraint: "uq_cards_cardgroup_front",
+		},
+		{
+			name:         "XID wraparound stop names no index and is not classified",
+			err:          &pgconn.PgError{Code: "54000", Routine: "GetNewTransactionId"},
+			frontIndex:   "uq_cards_cardgroup_front",
+			wantClassify: false,
+		},
+		{
+			name:         "MultiXact stop names no index and is not classified",
+			err:          &pgconn.PgError{Code: "54000", Routine: "GetNewMultiXactId"},
+			frontIndex:   "uq_cards_cardgroup_front",
+			wantClassify: false,
+		},
+		{
+			name:         "unnamed 54000 without a routine is not classified",
+			err:          &pgconn.PgError{Code: "54000"},
+			frontIndex:   "uq_cards_cardgroup_front",
+			wantClassify: false,
 		},
 		{
 			name:           "master front index",
