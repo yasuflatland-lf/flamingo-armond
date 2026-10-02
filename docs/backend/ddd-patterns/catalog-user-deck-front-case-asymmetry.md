@@ -122,9 +122,10 @@ learner-visible reconciliation policy first.
 ### Hazard 2 — the multi-row upsert needs a case-folded dedup key
 
 `upsertManyTx` emits one multi-row `INSERT ... ON CONFLICT ... DO UPDATE` per
-`bulkStatementChunkRows` (5,000) rows; an import, capped at `cardImportParsedRowCap` =
-5,000 rows, is always one statement. Under citext, two case-variant fronts in the same
-statement collapse onto one conflict target and Postgres raises `21000`,
+`bulkStatementChunkRows` (5,000) rows; a text-payload import or a Notion sync, capped at
+`cardImportParsedRowCap` = 5,000 rows, is always one statement, while copying a whole
+catalog deck into a learner's deck is not capped. Under citext, two case-variant fronts in
+the same statement collapse onto one conflict target and Postgres raises `21000`,
 `ON CONFLICT DO UPDATE command cannot affect row a second time`; in two different chunks
 the later one would instead silently update the earlier row.
 
