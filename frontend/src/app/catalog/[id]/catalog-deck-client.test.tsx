@@ -94,7 +94,8 @@ class FakeIntersectionObserver {
 
 function fireIntersect() {
   const cb = ioCallbacks[ioCallbacks.length - 1];
-  if (!cb) return;
+  // A target inside a `hidden` ancestor is display:none and never intersects in a browser.
+  if (!cb || ioTargets.at(-1)?.closest("[hidden]")) return;
   cb([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
 }
 
@@ -132,6 +133,27 @@ function renderClient(
       />
     </MockedProvider>,
   );
+}
+
+// Seeds a deck, types a search whose query fails with `code`, and returns the
+// query-error banner. The default seed is a one-card deck with a next page.
+async function renderFailingSearch(
+  code: string,
+  connection: ReturnType<typeof makeConnection> = makeConnection([C1], true, 2),
+) {
+  const failingSearchMock = {
+    request: {
+      query: CatalogMasterCardsConnectionDocument,
+      variables: { ...catalogCardsDefaultVars(DECK.id), search: "zzz" },
+    },
+    result: { errors: [new GraphQLError("boom", { extensions: { code } })] },
+  };
+
+  renderClient([failingSearchMock], connection, new InMemoryCache());
+
+  await userEvent.setup().type(await screen.findByTestId("cards-search-input"), "zzz");
+
+  return screen.findByTestId("catalog-deck-query-error");
 }
 
 // ---------------------------------------------------------------------------
@@ -468,6 +490,129 @@ describe("<CatalogDeckClient>", () => {
     expect(sentinel).toBeVisible();
     expect(ioTargets.at(-1)).toBe(sentinel);
     expect(ioTargets.at(-1)?.isConnected).toBe(true);
+  });
+
+  it("keeps the footer hidden and never paginates the SSR cursor while a Retry is in flight", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    const searchVars = { ...catalogCardsDefaultVars(DECK.id), search: "zzz" };
+    const failingSearchMock = {
+      request: { query: CatalogMasterCardsConnectionDocument, variables: searchVars },
+      result: { errors: [new GraphQLError("boom", { extensions: { code: "INTERNAL" } })] },
+    };
+    // delay: Infinity keeps the Retry pending so the in-flight window is observable.
+    const pendingRetryMock = {
+      request: { query: CatalogMasterCardsConnectionDocument, variables: searchVars },
+      result: { data: { masterCardsConnection: makeConnection([C3], true, 2) } },
+      delay: Infinity,
+    };
+    const staleCursorResult = vi.fn(() => ({
+      data: { masterCardsConnection: makeConnection([C2], false, 2) },
+    }));
+    const staleCursorMock = {
+      request: {
+        query: CatalogMasterCardsConnectionDocument,
+        variables: { ...searchVars, after: "mc-1" },
+      },
+      result: staleCursorResult,
+    };
+
+    renderClient(
+      [failingSearchMock, pendingRetryMock, staleCursorMock],
+      makeConnection([C1], true, 2),
+      cache,
+    );
+
+    expect(await screen.findByText("hello")).toBeInTheDocument();
+    await user.type(screen.getByTestId("cards-search-input"), "zzz");
+
+    const banner = await screen.findByTestId("catalog-deck-query-error");
+    await user.click(within(banner).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByTestId("catalog-deck-query-error")).toBeNull());
+
+    // The rendered page is still the SSR fallback, so its endCursor must not be paginated.
+    expect(screen.getByTestId("catalog-deck-sentinel")).not.toBeVisible();
+    fireIntersect();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(staleCursorResult).not.toHaveBeenCalled();
+  });
+
+  it("keeps the footer hidden and never paginates the SSR cursor while an edited search term loads", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    const searchVars = { ...catalogCardsDefaultVars(DECK.id), search: "zzz" };
+    const failingSearchMock = {
+      request: { query: CatalogMasterCardsConnectionDocument, variables: searchVars },
+      result: { errors: [new GraphQLError("boom", { extensions: { code: "INTERNAL" } })] },
+    };
+    const pendingSearchMock = {
+      request: {
+        query: CatalogMasterCardsConnectionDocument,
+        variables: { ...searchVars, search: "zzzz" },
+      },
+      result: { data: { masterCardsConnection: makeConnection([C3], true, 2) } },
+      delay: Infinity,
+    };
+    const staleCursorResult = vi.fn(() => ({
+      data: { masterCardsConnection: makeConnection([C2], false, 2) },
+    }));
+    const staleCursorMock = {
+      request: {
+        query: CatalogMasterCardsConnectionDocument,
+        variables: { ...searchVars, search: "zzzz", after: "mc-1" },
+      },
+      result: staleCursorResult,
+    };
+
+    renderClient(
+      [failingSearchMock, pendingSearchMock, staleCursorMock],
+      makeConnection([C1], true, 2),
+      cache,
+    );
+
+    expect(await screen.findByText("hello")).toBeInTheDocument();
+    await user.type(screen.getByTestId("cards-search-input"), "zzz");
+    await screen.findByTestId("catalog-deck-query-error");
+
+    await user.type(screen.getByTestId("cards-search-input"), "z");
+    await waitFor(() => expect(screen.queryByTestId("catalog-deck-query-error")).toBeNull());
+
+    expect(screen.getByTestId("catalog-deck-sentinel")).not.toBeVisible();
+    fireIntersect();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(staleCursorResult).not.toHaveBeenCalled();
+  });
+
+  it("renders the sign-in banner and hides the list and footer when a search fails with UNAUTHENTICATED", async () => {
+    const banner = await renderFailingSearch("UNAUTHENTICATED");
+
+    expect(banner).toHaveTextContent("Your session has expired.");
+    expect(within(banner).getByRole("link", { name: "Sign in again" })).toHaveAttribute(
+      "href",
+      "/login",
+    );
+    expect(within(banner).queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryByTestId("catalog-deck-card-list")).toBeNull();
+    expect(screen.queryByTestId("catalog-deck-empty-search")).toBeNull();
+    expect(screen.getByTestId("catalog-deck-sentinel")).not.toBeVisible();
+  });
+
+  it("suppresses the no-match state on an empty deck when a search fails with UNAUTHENTICATED", async () => {
+    const banner = await renderFailingSearch("UNAUTHENTICATED", makeConnection([]));
+
+    expect(banner).toHaveTextContent("Your session has expired.");
+    expect(screen.queryByTestId("catalog-deck-empty-search")).toBeNull();
+    expect(screen.queryByTestId("catalog-deck-empty")).toBeNull();
+  });
+
+  it("renders the permission banner without Retry and hides the list and footer when a search fails with FORBIDDEN", async () => {
+    const banner = await renderFailingSearch("FORBIDDEN");
+
+    expect(banner).toHaveTextContent("You do not have permission.");
+    expect(within(banner).queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryByTestId("catalog-deck-card-list")).toBeNull();
+    expect(screen.queryByTestId("catalog-deck-empty-search")).toBeNull();
+    expect(screen.getByTestId("catalog-deck-sentinel")).not.toBeVisible();
   });
 
   it("halts the IO loop and shows a Retry banner when fetchMore fails", async () => {

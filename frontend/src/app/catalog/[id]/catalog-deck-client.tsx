@@ -1,5 +1,6 @@
 "use client";
 
+import { NetworkStatus } from "@apollo/client";
 import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
@@ -96,6 +97,7 @@ export default function CatalogDeckClient({
     fetchMoreError,
     retryFetchMore,
     sentinelRef,
+    networkStatus,
     queryError,
     refetch,
   } = useCatalogCardsConnection({
@@ -109,6 +111,9 @@ export default function CatalogDeckClient({
     fetchMoreErrorMessage: tCards("fetchMoreFailed"),
   });
   const queryErrorKind = classifyQueryError(queryError);
+  // Until the active query has data, `edges` / `pageInfo` are the SSR fallback.
+  const rendersActiveQuery =
+    networkStatus === NetworkStatus.ready || networkStatus === NetworkStatus.fetchMore;
 
   // Import state for this single deck. `importing` serializes; `imported` drives
   // the done affordance on the header CTA.
@@ -233,8 +238,9 @@ export default function CatalogDeckClient({
 
           {/* Hidden, not unmounted: the pagination hook observes the sentinel node only when
               its effect deps change, so a remounted sentinel could stay unobserved after recovery.
-              A hidden sentinel never intersects, so the SSR endCursor cannot fetchMore a search. */}
-          <div hidden={queryErrorKind !== null}>
+              A hidden sentinel never intersects, so the SSR endCursor cannot fetchMore a search
+              while the error shows or the search is loading. */}
+          <div hidden={queryErrorKind !== null || !rendersActiveQuery}>
             <ConnectionListFooter
               sentinelRef={sentinelRef}
               hasNextPage={pageInfo.hasNextPage}
