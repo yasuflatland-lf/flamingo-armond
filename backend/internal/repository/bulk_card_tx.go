@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -13,6 +14,20 @@ import (
 	"backend/internal/domain"
 )
 
+// upsertParamsPerRow is the number of bind parameters one row contributes to upsertChunkTx's
+// INSERT (id, <fkColumn>, front, back, created_at, position); it must equal upsertRowPlaceholders' arity.
+const upsertParamsPerRow = 6
+
+// upsertRowPlaceholders is one VALUES tuple of upsertChunkTx's INSERT.
+const upsertRowPlaceholders = "(?, ?, ?, ?, ?, ?)"
+
+// bulkStatementChunkRows caps rows (upsertManyTx) or fronts (FoldFrontCaseToTx, CountMatchingFrontsFold,
+// deleteByGroupAndFrontsTx) per statement: pgx v5 pgconn/pgconn.go rejects more than 65,535 bind
+// parameters before reaching the server ("extended protocol limited to 65535 parameters"), so one
+// upsert statement holds at most 10,922 rows (65,535 / 6). 5,000 rows x 6 parameters = 30,000;
+// a fronts chunk binds 5,001 (the fronts plus the group id).
+const bulkStatementChunkRows = 5000
+
 // UpsertManyTxResult counts the outcome of an UpsertManyTx call.
 // Inserted+Updated equals len(input cards) for a successful call.
 type UpsertManyTxResult struct {
@@ -20,20 +35,11 @@ type UpsertManyTxResult struct {
 	Updated  int64
 }
 
-// UpsertManyTx upserts cards by (cardgroup_id, front). Existing rows have
-// `back` and `position` overwritten; the database trigger advances updated_at.
-// The conflict key requires the unique index `uq_cards_cardgroup_front`
-// (migration 20260430080000_initial_schema).
-//
-// Counts are derived per-row from the PostgreSQL system column `xmax`. A
-// freshly inserted row has `xmax = 0` in the same transaction; a row updated
-// via `ON CONFLICT DO UPDATE` has `xmax` set to the current transaction id.
-// The RETURNING clause exposes `xmax = 0 AS inserted` so the split can be
-// computed without a second query.
-//
-// The method is transaction-safe: it operates on the supplied tx only and
-// never reaches back to r.db. Empty input returns a zero-valued result and
-// no error.
+// UpsertManyTx upserts cards by (cardgroup_id, front) on uq_cards_cardgroup_front, overwriting
+// `back` and `position`; the trigger advances updated_at. RETURNING (xmax = 0) splits Inserted
+// from Updated without a second query. It uses tx only, never r.db; inputs above
+// bulkStatementChunkRows run as several statements, so tx must be a transaction for a failed
+// chunk to roll back the earlier ones. Empty input returns a zero-valued result and no error.
 func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (UpsertManyTxResult, error) {
 	rows := make([]upsertCardRow, len(cards))
 	for i, c := range cards {
@@ -59,16 +65,28 @@ func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domai
 	return res, nil
 }
 
-// FoldFrontCaseToTx renames one case-insensitive match per front, choosing the
-// oldest created_at then smallest id; extra matches stay untouched. LOWER-distinct
-// input, NOT EXISTS, and DISTINCT ON prevent uq_cards_cardgroup_front conflicts.
-// Stable ids preserve FSRS/swipes; the DB-owned updated_at trigger fires [#1112].
-// Empty fronts returns without touching the database.
+// FoldFrontCaseToTx renames one case-insensitive match per front, choosing the oldest
+// created_at then smallest id; extra matches stay untouched. LOWER-distinct input, NOT EXISTS,
+// and DISTINCT ON prevent uq_cards_cardgroup_front conflicts. Stable ids preserve FSRS/swipes;
+// the DB-owned updated_at trigger fires [#1112]. Runs bulkStatementChunkRows fronts per statement
+// on tx, which must be a transaction; LOWER-distinct input keeps chunks off each other's rows.
 func (r *cardRepo) FoldFrontCaseToTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error) {
 	if len(fronts) == 0 {
 		return 0, nil
 	}
 
+	var total int64
+	for chunk := range slices.Chunk(fronts, bulkStatementChunkRows) {
+		n, err := foldFrontCaseChunkTx(ctx, tx, cardgroupID, chunk)
+		if err != nil {
+			return 0, err
+		}
+		total += n
+	}
+	return total, nil
+}
+
+func foldFrontCaseChunkTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error) {
 	var sb strings.Builder
 	sb.WriteString("WITH incoming(front) AS (VALUES ")
 	args := make([]any, 0, len(fronts)+1)
@@ -148,21 +166,11 @@ type upsertCardRow struct {
 	CreatedAt time.Time
 }
 
-// upsertManyTx is the table-parameterized bulk upsert shared by cardRepo and the
-// master_card repository. It builds a single multi-row INSERT into tableName and
-// resolves conflicts on the (fkColumn, front) unique key, overwriting back and
-// position. The updated_at trigger fires for either branch. The per-row
-// insert/update split is derived from the
-// PostgreSQL `xmax = 0` system-column trick in the RETURNING clause, avoiding a
-// second query.
-//
-// rows is a normalized, domain-agnostic slice; callers map their domain type to
-// upsertCardRow before invoking. Empty input returns a zero-valued result and no
-// error. The conflict columns are derived from fkColumn because the only conflict
-// target this helper supports is the (fkColumn, front) pair.
-//
-// This helper does NOT embed a caller-specific layer prefix in its wraps: each
-// table's wrapper method owns its own "repository: <table>: ..." prefix.
+// upsertManyTx is the (fkColumn, front) upsert shared by cardRepo and masterCardRepo: one
+// multi-row INSERT per bulkStatementChunkRows rows into tableName on tx, which must be a
+// transaction so a failed chunk rolls back the earlier ones. A key repeated across two chunks
+// counts as Updated in the later chunk; callers pass key-unique input (imports dedupe, master-deck
+// copies inherit master_cards' unique front). Each table wrapper owns its "repository: <table>:" prefix.
 func upsertManyTx(ctx context.Context, tx *gorm.DB, rows []upsertCardRow, tableName, fkColumn string) (UpsertManyTxResult, error) {
 	if len(rows) == 0 {
 		return UpsertManyTxResult{}, nil
@@ -181,10 +189,20 @@ func upsertManyTx(ctx context.Context, tx *gorm.DB, rows []upsertCardRow, tableN
 		}
 	}
 
-	// Build a single multi-row INSERT. Each row contributes 6 placeholders
-	// matching the column list below.
+	var res UpsertManyTxResult
+	for chunk := range slices.Chunk(rows, bulkStatementChunkRows) {
+		part, err := upsertChunkTx(ctx, tx, chunk, tableName, fkColumn)
+		if err != nil {
+			return UpsertManyTxResult{}, err
+		}
+		res.Inserted += part.Inserted
+		res.Updated += part.Updated
+	}
+	return res, nil
+}
+
+func upsertChunkTx(ctx context.Context, tx *gorm.DB, rows []upsertCardRow, tableName, fkColumn string) (UpsertManyTxResult, error) {
 	columns := "(id, " + fkColumn + ", front, back, created_at, position)"
-	const rowPH = "(?, ?, ?, ?, ?, ?)"
 
 	var sb strings.Builder
 	sb.WriteString("INSERT INTO ")
@@ -192,12 +210,12 @@ func upsertManyTx(ctx context.Context, tx *gorm.DB, rows []upsertCardRow, tableN
 	sb.WriteString(" ")
 	sb.WriteString(columns)
 	sb.WriteString(" VALUES ")
-	args := make([]any, 0, len(rows)*6)
+	args := make([]any, 0, len(rows)*upsertParamsPerRow)
 	for i, row := range rows {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		sb.WriteString(rowPH)
+		sb.WriteString(upsertRowPlaceholders)
 		args = append(args,
 			row.ID,
 			row.GroupID,
@@ -252,24 +270,25 @@ func listFrontsByGroupTx(ctx context.Context, tx *gorm.DB, groupID, tableName, f
 	return fronts, nil
 }
 
-// deleteByGroupAndFrontsTx hard-deletes rows matching the scoped
-// (fkColumn, front) natural key. Shared by cardRepo and the master_card
-// repository; the caller owns the layer-prefix wrap.
-//
-// Empty fronts short-circuits to (0, nil) without touching the DB. With an empty
-// slice GORM v2 omits the `WHERE front IN (?)` clause altogether, which would
-// convert this `Delete` into a delete-all-rows-in-group. See
-// `.claude/rules/go-library-gotchas.md` § GORM empty IN.
+// deleteByGroupAndFrontsTx hard-deletes rows matching the scoped (fkColumn, front) natural key,
+// one statement per bulkStatementChunkRows fronts on tx, which must be a transaction so a failed
+// chunk rolls back the earlier ones. Shared by cardRepo and masterCardRepo; the caller owns the
+// layer-prefix wrap. Empty fronts returns (0, nil) without a query: GORM v2 drops an empty `IN ?`,
+// deleting every row in the group (`.claude/rules/go-library-gotchas.md` § GORM empty IN).
 func deleteByGroupAndFrontsTx(ctx context.Context, tx *gorm.DB, groupID string, fronts []string, tableName, fkColumn string) (int64, error) {
 	if len(fronts) == 0 {
 		return 0, nil
 	}
-	res := tx.WithContext(ctx).
-		Table(tableName).
-		Where(fkColumn+" = ? AND front IN ?", groupID, fronts).
-		Delete(nil)
-	if res.Error != nil {
-		return 0, eris.Wrap(res.Error, "delete by cardgroup and fronts")
+	var total int64
+	for chunk := range slices.Chunk(fronts, bulkStatementChunkRows) {
+		res := tx.WithContext(ctx).
+			Table(tableName).
+			Where(fkColumn+" = ? AND front IN ?", groupID, chunk).
+			Delete(nil)
+		if res.Error != nil {
+			return 0, eris.Wrap(res.Error, "delete by cardgroup and fronts")
+		}
+		total += res.RowsAffected
 	}
-	return res.RowsAffected, nil
+	return total, nil
 }
