@@ -11,8 +11,6 @@ if _, hasEmail := rec0["email"]; hasEmail {
 }
 ```
 
-Used in the `superuser_test.go` INFO and WARN cases — the policy in `auth/superuser.go` is "log `user_id` only", and the absence-tests are what hold that contract.
-
 ## CLI output: extend the same rule to unstructured stdout/stderr
 
 The slog-scoped rule above targets structured JSON fields in the application server. The same intent applies to unstructured output from CLI tools:

@@ -71,9 +71,8 @@ func seedOwnedCardgroupWithCards(
 
 func authenticatedContext(ctx context.Context, ownerID string) context.Context {
 	return auth.ContextWithUser(ctx, &auth.AuthUser{
-		Sub:           ownerID,
-		Email:         ownerID + "@test.example",
-		EmailVerified: true,
+		Sub:   ownerID,
+		Email: ownerID + "@test.example",
 	})
 }
 

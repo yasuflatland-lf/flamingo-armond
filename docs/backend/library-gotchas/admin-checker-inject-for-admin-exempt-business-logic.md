@@ -10,7 +10,7 @@ the wrong one produces either an overly restrictive gate or a missed exemption.
 The JWT carries a **Supabase/Postgres database role** claim (`authenticated`,
 `anon`, `service_role`) that is distinct from the application-level
 `admin` / `general` role stored in `public.user_roles`. `auth.AuthUser`
-(`Sub`, `Email`, `EmailVerified`) no longer surfaces a `Role` field — it was
+(`Sub`, `Email`) no longer surfaces a `Role` field — it was
 removed (issue #832) because it was never the application role: reading it to
 decide whether the caller is an admin silently compared two unrelated
 concepts and always returned false for admin users. The application role is
