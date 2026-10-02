@@ -148,7 +148,6 @@ type MasterCatalogUsecase interface {
 type masterCatalogUsecase struct {
 	repo      MasterCatalogRepository
 	deckUC    masterDeckUsecaseFacade
-	cgCounter cardgroupOwnerCounter
 	adminGate *AdminGate
 	logger    *slog.Logger
 }
@@ -156,21 +155,17 @@ type masterCatalogUsecase struct {
 // NewMasterCatalogUsecase constructs a MasterCatalogUsecase backed by the given
 // repository. deckUC is the combined deck facade (CopyMasterToUserUsecase +
 // SeedForNewUserUsecase + MergeMasterIntoCardgroupUsecase) used by ImportMaster,
-// SeedDefaultStarters, and MergeMaster; cgCounter counts the caller's existing
-// cardgroups for the ImportMaster quota check; adminGate gates every
-// admin-management method and supplies the quota's admin exemption. The public
-// ListPublishedConnection is gated by authentication only. Panics when repo,
-// deckUC, cgCounter, adminGate, or logger is nil — a nil required dependency is
-// a wiring bug that must fail at startup, not at first use.
-func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsecaseFacade, cgCounter cardgroupOwnerCounter, adminGate *AdminGate, logger *slog.Logger) MasterCatalogUsecase {
+// SeedDefaultStarters, and MergeMaster; adminGate gates every admin-management
+// method and supplies the ImportMaster quota's admin exemption; the quota itself
+// is enforced inside the copy transaction. The public ListPublishedConnection is
+// gated by authentication only. Panics when repo, deckUC, adminGate, or logger
+// is nil — a nil required dependency is a wiring bug that must fail at startup.
+func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsecaseFacade, adminGate *AdminGate, logger *slog.Logger) MasterCatalogUsecase {
 	if repo == nil {
 		panic("usecase: master catalog: repo is required")
 	}
 	if deckUC == nil {
 		panic("usecase: master catalog: deckUC is required")
-	}
-	if cgCounter == nil {
-		panic("usecase: master catalog: cgCounter is required")
 	}
 	if adminGate == nil {
 		panic("usecase: master catalog: adminGate is required")
@@ -178,7 +173,7 @@ func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsec
 	if logger == nil {
 		panic("usecase: master catalog: logger is required")
 	}
-	return &masterCatalogUsecase{repo: repo, deckUC: deckUC, cgCounter: cgCounter, adminGate: adminGate, logger: logger}
+	return &masterCatalogUsecase{repo: repo, deckUC: deckUC, adminGate: adminGate, logger: logger}
 }
 
 // masterCatalogPageFetch is the repository page-fetch closure shape shared by

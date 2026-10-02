@@ -87,7 +87,7 @@ func TestCardgroupUsecase_Create_TextLengthViolation_SurfacesAsValidationOutcome
 			"repository: cardgroup: create",
 		),
 	}
-	uc := NewCardgroupUsecase(repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
 
 	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "My Group"})
 
@@ -123,7 +123,8 @@ func TestCopyMasterToUser_TextLengthViolation_BecomesValidationError(t *testing.
 		}}
 		uc, _, _ := newSeedUsecase(t, cg, card, &fakeUserCardRepo{}, userCG)
 
-		got, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-textlen")
+		copyRes, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-textlen", false)
+		got := copyRes.Cardgroup
 		assert.Nil(t, got)
 		assertValidationError(t, err, "name", "name is too long")
 	})
@@ -137,7 +138,8 @@ func TestCopyMasterToUser_TextLengthViolation_BecomesValidationError(t *testing.
 		}}
 		uc, _, _ := newSeedUsecase(t, cg, card, user, &fakeUserCG{})
 
-		got, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-textlen-2")
+		copyRes, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-textlen-2", false)
+		got := copyRes.Cardgroup
 		assert.Nil(t, got)
 		assertValidationError(t, err, "back", "back is too long")
 	})
@@ -181,7 +183,7 @@ func TestCardgroupUsecase_Update_TextLengthViolation_SurfacesAsValidationOutcome
 			"repository: cardgroup: update",
 		),
 	}
-	uc := NewCardgroupUsecase(repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
 
 	outcome, err := uc.Update(cgAuthedCtx("user-1"), "cg1", UpdateCardgroupInput{Name: ptr("New Name")})
 
