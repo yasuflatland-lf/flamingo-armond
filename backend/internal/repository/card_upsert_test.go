@@ -271,20 +271,20 @@ func TestCardRepository_FoldFrontCaseToTx_SpansChunks(t *testing.T) {
 	ownerID := insertAuthUser(t, ctx)
 	cg := insertCardgroup(t, ctx, ownerID)
 
-	// Not 15,001 fronts alone: that fits in one statement. Pad the 15,001 matching fronts
-	// (a 1-row final chunk of matches) to 70,001 with unmatched fronts so one unchunked
-	// statement would bind 70,002 parameters, above pgx's 65,535 cap.
+	// Not 15,001 fronts alone: that fits in one statement. Lead with 55,000 unmatched fronts
+	// (11 full chunks) so one unchunked statement would bind 70,002 parameters, above pgx's
+	// 65,535 cap. Not matches first: the 1-row final chunk would then hold an unmatched front.
 	const count = 15001
-	const foldFronts = 70001
+	const pad = 55000
 	cards := make([]*domain.Card, count)
-	fronts := make([]string, foldFronts)
+	fronts := make([]string, pad+count)
+	for i := range pad {
+		fronts[i] = fmt.Sprintf("MISSING-%05d", i)
+	}
 	for i := range cards {
 		front := fmt.Sprintf("front-%05d", i)
 		cards[i] = newCard(cg.ID, front, "back-1")
-		fronts[i] = strings.ToUpper(front)
-	}
-	for i := count; i < foldFronts; i++ {
-		fronts[i] = fmt.Sprintf("MISSING-%05d", i-count)
+		fronts[pad+i] = strings.ToUpper(front)
 	}
 	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		_, txErr := repo.UpsertManyTx(ctx, tx, cards)
