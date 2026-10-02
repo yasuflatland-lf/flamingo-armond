@@ -5,7 +5,19 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
+
+// Call-through spy on the encoder: every call runs the real implementation until
+// a test arms a one-shot throw, which is how the encode-inside-try tests below
+// simulate the RangeError an oversized input would raise.
+const encoderProbe = vi.hoisted(() => ({
+  encode: undefined as unknown as Mock<(text: string) => string>,
+}));
+vi.mock("@/lib/encode-utf8-base64", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/encode-utf8-base64")>();
+  encoderProbe.encode = vi.fn(actual.encodeUtf8Base64);
+  return { ...actual, encodeUtf8Base64: encoderProbe.encode };
+});
 
 // Render-count probe: wrap next-intl's `useTranslations` (calling through to the
 // real impl, so translations still resolve) and count invocations. A component
@@ -26,7 +38,7 @@ import {
   CardsByCardgroupConnectionDocument,
   ValidateCardImportDocument,
 } from "@/generated/graphql";
-import { encodePayload } from "@/test/batch-import-test-utils";
+import { encodeUtf8Base64 } from "@/lib/encode-utf8-base64";
 import { renderWithIntl } from "@/test/render-with-intl";
 import {
   BatchImportWizard,
@@ -80,12 +92,14 @@ const TARGET_ID = "tgt-1";
 const TARGET_NAME = "Spanish Vocab";
 
 const TWO_LINE_TEXT = "apple\tred fruit\nbanana\tyellow fruit";
+// Ends in an unpaired low surrogate, which TextEncoder encodes as U+FFFD ("YQli77+9").
+const LONE_SURROGATE_TEXT = "a\tb\ude00";
 
 function validateMock(text: string, result: MockedResponse["result"]): MockedResponse {
   return {
     request: {
       query: ValidateCardImportDocument,
-      variables: { input: { payload: encodePayload(text) } },
+      variables: { input: { payload: encodeUtf8Base64(text) } },
     },
     result,
   };
@@ -158,8 +172,8 @@ async function typePayload(user: ReturnType<typeof userEvent.setup>, text: strin
   return textarea;
 }
 
-async function advanceToStep2(user: ReturnType<typeof userEvent.setup>) {
-  await typePayload(user, TWO_LINE_TEXT);
+async function advanceToStep2(user: ReturnType<typeof userEvent.setup>, text = TWO_LINE_TEXT) {
+  await typePayload(user, text);
   await user.click(screen.getByRole("button", { name: /^validate$/i }));
   const importButton = await screen.findByRole("button", { name: /^import$/i });
   await waitFor(() => expect(importButton).toBeEnabled());
@@ -329,9 +343,68 @@ describe("<BatchImportWizard>", () => {
     await advanceToStep2(user);
     const confirm = await screen.findByTestId("batch-import-confirm-btn");
     await user.click(confirm);
-    await waitFor(() => expect(onImport).toHaveBeenCalledWith(encodePayload(TWO_LINE_TEXT)));
+    await waitFor(() => expect(onImport).toHaveBeenCalledWith(encodeUtf8Base64(TWO_LINE_TEXT)));
     expect(refetchSpy).toHaveBeenCalledWith({ include: [CardsByCardgroupConnectionDocument] });
     await waitFor(() => expect(onImported).toHaveBeenCalledTimes(1));
+  });
+
+  it("validate with a lone surrogate sends a U+FFFD payload instead of failing silently", async () => {
+    const user = userEvent.setup();
+    renderWizard({ mocks: [validateMock(LONE_SURROGATE_TEXT, VALID_RESULT)] });
+    await typePayload(user, LONE_SURROGATE_TEXT);
+    await user.click(screen.getByRole("button", { name: /^validate$/i }));
+    const importButton = await screen.findByRole("button", { name: /^import$/i });
+    await waitFor(() => expect(importButton).toBeEnabled());
+  });
+
+  it("import with a lone surrogate calls onImport with the U+FFFD payload", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(ApolloClient.prototype, "refetchQueries")
+      // biome-ignore lint/suspicious/noExplicitAny: test stub for refetchQueries return
+      .mockResolvedValue({} as any);
+    const onImport = vi.fn(async () => OK_IMPORT);
+    renderWizard({ mocks: [validateMock(LONE_SURROGATE_TEXT, VALID_RESULT)], onImport });
+    await advanceToStep2(user, LONE_SURROGATE_TEXT);
+    await user.click(await screen.findByTestId("batch-import-confirm-btn"));
+    await waitFor(() => expect(onImport).toHaveBeenCalledWith("YQli77+9"));
+  });
+
+  describe("when the payload encoder throws", () => {
+    afterEach(() => {
+      // Restores the real encoder and drops a one-shot throw a test never consumed.
+      encoderProbe.encode.mockReset();
+    });
+
+    function armEncoderFailure() {
+      encoderProbe.encode.mockImplementationOnce(() => {
+        throw new RangeError("Invalid string length");
+      });
+    }
+
+    it("validate shows the error banner instead of rejecting the click handler", async () => {
+      const user = userEvent.setup();
+      renderWizard();
+      await typePayload(user, TWO_LINE_TEXT);
+      armEncoderFailure();
+      await user.click(screen.getByRole("button", { name: /^validate$/i }));
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^import$/i })).not.toBeInTheDocument();
+    });
+
+    it("import shows the error banner, skips onImport and stays on step 2 for retry", async () => {
+      const user = userEvent.setup();
+      const { onImport, onImported } = renderWizard({
+        mocks: [validateMock(TWO_LINE_TEXT, VALID_RESULT)],
+      });
+      await advanceToStep2(user);
+      const confirm = await screen.findByTestId("batch-import-confirm-btn");
+      armEncoderFailure();
+      await user.click(confirm);
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      expect(onImport).not.toHaveBeenCalled();
+      expect(onImported).not.toHaveBeenCalled();
+      expect(screen.getByTestId("batch-import-confirm-btn")).toBeEnabled();
+    });
   });
 
   it("import with error rows stays on step 2 and does not call onImported", async () => {
@@ -406,7 +479,7 @@ describe("<BatchImportWizard>", () => {
         {
           request: {
             query: ValidateCardImportDocument,
-            variables: { input: { payload: encodePayload(TWO_LINE_TEXT) } },
+            variables: { input: { payload: encodeUtf8Base64(TWO_LINE_TEXT) } },
           },
           error: new Error("network error"),
         },

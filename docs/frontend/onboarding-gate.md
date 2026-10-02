@@ -2,7 +2,7 @@
 
 > Part of [`frontend/CLAUDE.md`](../../frontend/CLAUDE.md). See the index for related chapters.
 
-The "is this user onboarded?" question is asked in three places — by the **middleware**, which enforces the invariant on every route; by HomePage, which decides whether to send the user *into* `/onboarding`; and by `/onboarding` itself, which decides whether to send an already-onboarded caller back *out*. All three resolve to the same predicate: `isUserOnboarded(me)` in `frontend/src/lib/auth/onboarding.ts`. The predicate is the unit of meaning; the three sites are three consumers.
+The "is this user onboarded?" question is asked in three places — by the **middleware**, which enforces the invariant on every route; by HomePage, which decides whether to send the user *into* `/onboarding`; and by `/onboarding` itself, which decides whether to send an already-onboarded caller back *out*. All three resolve to the same predicate: `isUserOnboarded(me)` in `frontend/src/lib/auth/onboarding.ts`. The predicate is the unit of meaning; the three sites are three consumers. The predicate trims with `trimLikeGo` (Go `strings.TrimSpace` semantics), so a display name the backend accepts is always "onboarded".
 
 ## The middleware gate closes the deep-link path
 
