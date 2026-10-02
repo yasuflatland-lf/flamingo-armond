@@ -39,12 +39,16 @@ import (
 type masterDeckCardgroupRepo interface {
 	FindPublishedByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 	FindPublishedByIDTx(ctx context.Context, tx repository.Tx, id string) (*domain.MasterCardgroup, error)
-	ListPublishedDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error)
+	ListPublishedDefaultStartersTx(ctx context.Context, tx repository.Tx) ([]*domain.MasterCardgroup, error)
 }
 
 // masterDeckCardRepo is the subset of repository.MasterCardRepository the master
-// deck usecase consumes: read a master deck's cards to snapshot.
+// deck usecase consumes: read a master deck's cards to snapshot. The copy and merge
+// read on their transaction: a pooled read inside it holds one connection while
+// waiting for a second, so concurrent writers can exhaust the pool. The read-only
+// preview opens no transaction and reads through the pool.
 type masterDeckCardRepo interface {
+	ListByMasterCardgroupTx(ctx context.Context, tx repository.Tx, masterCardgroupID string) ([]*domain.MasterCard, error)
 	ListByMasterCardgroup(ctx context.Context, masterCardgroupID string) ([]*domain.MasterCard, error)
 }
 
@@ -62,18 +66,20 @@ type masterDeckUserCardRepo interface {
 // master deck usecase consumes against the USER cardgroups table (not the master
 // catalog). FindByID satisfies CardgroupOwnershipFinder so the ownership gate can
 // use u.userCG directly; it is also called post-merge to read the destination
-// cardgroup back after the transaction commits. CountByOwner backs the idempotency
-// guard: a user who already owns at least one cardgroup is not re-seeded on the
-// next call. CreateTx inserts the snapshot cardgroup using the caller's transaction
-// handle so the insert participates in the caller's transaction.
+// cardgroup back after the transaction commits. CountByOwnerTx backs the
+// idempotency guard and the import quota: a user who already owns at least one
+// cardgroup is not re-seeded on the next call. CreateTx inserts the snapshot
+// cardgroup using the caller's transaction handle so the insert participates in
+// the caller's transaction.
 type masterDeckUserCardgroupRepo interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
-	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
+	CountByOwnerTx(ctx context.Context, tx repository.Tx, ownerID string) (int64, error)
 	CreateTx(ctx context.Context, tx repository.Tx, cg *domain.Cardgroup) error
-	// AcquireUserSeedLockTx takes a per-user transaction-scoped advisory lock so
-	// two concurrent seed-for-new-user calls for the same user serialize. The
-	// dialect detail (the advisory-lock SQL) lives in the repository.
-	AcquireUserSeedLockTx(ctx context.Context, tx repository.Tx, userID string) error
+	// AcquireUserCardgroupLockTx takes a per-owner transaction-scoped advisory
+	// lock so every quota-bound cardgroup write for one owner (create, master
+	// import, default-starter seed) serializes. The dialect detail (the
+	// advisory-lock SQL) lives in the repository.
+	AcquireUserCardgroupLockTx(ctx context.Context, tx repository.Tx, userID string) error
 }
 
 // SeedForNewUserUsecase provisions the published default-starter master decks
@@ -91,7 +97,15 @@ type SeedForNewUserUsecase interface {
 // cardgroup. Used by the importMasterCardgroup mutation (via MasterCatalogUsecase.
 // ImportMaster); the copy is a one-time snapshot with empty FSRS/swipe state.
 type CopyMasterToUserUsecase interface {
-	CopyMasterToUser(ctx context.Context, masterID, ownerID string) (*domain.Cardgroup, error)
+	CopyMasterToUser(ctx context.Context, masterID, ownerID string, enforceQuota bool) (CopyMasterToUserResult, error)
+}
+
+// CopyMasterToUserResult is the outcome of CopyMasterToUser. On a nil error
+// exactly one field is non-nil: Cardgroup when the copy committed, LimitReached
+// when enforceQuota was set and the owner already holds the general-user limit.
+type CopyMasterToUserResult struct {
+	Cardgroup    *domain.Cardgroup
+	LimitReached *CardgroupLimitInfo
 }
 
 // MergeMasterResult is the tally returned by MergeMasterIntoCardgroup: the
@@ -216,78 +230,92 @@ func newMasterDeckUsecaseWithTx(
 }
 
 // CopyMasterToUser snapshots the master deck identified by masterID into a fresh
-// cardgroup owned by ownerID, inside its own transaction. Returns the new
-// cardgroup. The copy is independent of the source: later edits to the master
-// deck do not propagate.
-func (u *masterDeckUsecase) CopyMasterToUser(ctx context.Context, masterID, ownerID string) (*domain.Cardgroup, error) {
-	var out *domain.Cardgroup
+// cardgroup owned by ownerID, inside its own transaction. The copy is independent
+// of the source: later edits to the master deck do not propagate. When
+// enforceQuota is set it takes the per-owner cardgroup lock and counts before
+// touching the master row, so the quota check and the insert share one
+// transaction.
+func (u *masterDeckUsecase) CopyMasterToUser(ctx context.Context, masterID, ownerID string, enforceQuota bool) (CopyMasterToUserResult, error) {
+	var out CopyMasterToUserResult
 	if err := u.tx(ctx, func(tx repository.Tx) error {
+		if enforceQuota {
+			limit, err := lockCardgroupQuotaTx(ctx, u.userCG, tx, ownerID)
+			if err != nil {
+				return err
+			}
+			if limit != nil {
+				out.LimitReached = limit
+				return nil
+			}
+		}
 		cg, err := u.copyMasterToUserTx(ctx, tx, masterID, ownerID)
 		if err != nil {
 			return err
 		}
-		out = cg
+		out.Cardgroup = cg
 		return nil
 	}); err != nil {
 		if isContextDone(err) {
-			return nil, err
+			return CopyMasterToUserResult{}, err
 		}
 		if translated := translateTextLengthViolation(err); translated != nil {
-			return nil, translated
+			return CopyMasterToUserResult{}, translated
 		}
-		return nil, eris.Wrap(err, "usecase: master deck: copy master to user")
+		return CopyMasterToUserResult{}, eris.Wrap(err, "usecase: master deck: copy master to user")
 	}
 	return out, nil
 }
 
 // SeedForNewUser copies every catalog-visible default-starter master deck into
 // the user's cardgroups. Starters that are published but hold zero cards are
-// skipped by ListPublishedDefaultStarters, so the learner is never seeded with
+// skipped by ListPublishedDefaultStartersTx, so the learner is never seeded with
 // an empty deck; when every starter is empty nothing is created and the user's
 // owned-deck count stays 0, leaving the next seed attempt free to run normally.
 // The whole batch runs in a single transaction guarded by a
 // transaction-scoped advisory lock keyed on the user id so two concurrent seed
 // attempts (e.g. a double onboarding submit) serialize. The idempotency guard
 // short-circuits when the user already owns at least one cardgroup, so a retry
-// after a partially-applied previous attempt does not double-seed. Returns the
-// cardgroups created by this call (empty when no defaults exist or the guard
-// short-circuits).
+// after a partially-applied previous attempt does not double-seed. At most
+// domain.GeneralUserCardgroupLimit starters are copied, in
+// ListPublishedDefaultStartersTx order (sort_order, id). Returns the cardgroups
+// created by this call (empty when no defaults exist or the guard short-circuits).
 func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) ([]*domain.Cardgroup, error) {
 	// Non-nil empty slice so the no-op / no-defaults paths return a consistent
 	// empty container rather than nil (matches the repo's empty-return symmetry
 	// convention; callers receive `[]` regardless of which path fired).
 	seeded := []*domain.Cardgroup{}
 	if err := u.tx(ctx, func(tx repository.Tx) error {
-		// Take a per-user transaction-scoped advisory lock so two concurrent seed
-		// attempts for the same user serialize. The advisory-lock SQL (a Postgres
-		// dialect detail) lives in the repository; the lock releases at tx end.
-		if err := u.userCG.AcquireUserSeedLockTx(ctx, tx, userID); err != nil {
+		// Take the per-owner transaction-scoped advisory lock so concurrent seed
+		// and non-admin create and import calls for the same user serialize. The
+		// advisory-lock SQL (a Postgres dialect detail) lives in the repository;
+		// the lock releases at tx end.
+		if err := u.userCG.AcquireUserCardgroupLockTx(ctx, tx, userID); err != nil {
 			return err
 		}
 
-		count, err := u.userCG.CountByOwner(ctx, userID, nil)
+		count, err := u.userCG.CountByOwnerTx(ctx, tx, userID)
 		if err != nil {
 			return eris.Wrap(err, "usecase: master deck: seed for new user: count owner cardgroups")
 		}
 		if count > 0 {
-			// Already seeded (or the user created their own cardgroup): no-op.
-			// This guard is also why seeding needs no explicit cardgroup-quota
-			// check: it only ever runs for an owner holding zero cardgroups, and
-			// the published default-starter set is admin-curated and small.
+			// Already seeded (or the user owns a cardgroup): no-op. The seed runs
+			// only for an owner holding zero cardgroups, under the same per-owner
+			// lock non-admin Create and ImportMaster take, and stops at
+			// domain.GeneralUserCardgroupLimit decks below.
 			return nil
 		}
 
-		starters, err := u.masterCG.ListPublishedDefaultStarters(ctx)
+		starters, err := u.masterCG.ListPublishedDefaultStartersTx(ctx, tx)
 		if err != nil {
 			return eris.Wrap(err, "usecase: master deck: seed for new user: list default starters")
 		}
-		for _, m := range starters {
+		for i, m := range starters {
 			// The helper returns its error bare; the outer tx-return wrap below
 			// applies the single "seed for new user" prefix, so wrapping here
 			// would duplicate that frame in the error chain.
 			cg, err := u.copyMasterToUserTx(ctx, tx, m.ID, userID)
 			if errors.Is(err, repository.ErrNotFound) {
-				// The starter left the catalog between ListPublishedDefaultStarters
+				// The starter left the catalog between ListPublishedDefaultStartersTx
 				// and its copy — unpublished, deleted, or emptied of its last card.
 				// Skip it and seed the rest: one starter losing visibility mid-signup
 				// must not fail the whole seed, and the guarantee this protects is
@@ -298,6 +326,16 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) (
 				return err
 			}
 			seeded = append(seeded, cg)
+			if len(seeded) == domain.GeneralUserCardgroupLimit {
+				if remaining := len(starters) - (i + 1); remaining > 0 {
+					u.logger.WarnContext(ctx, "usecase: master deck: seed for new user: default starters exceed general-user cardgroup limit; remaining starters skipped",
+						slog.String("user_id", userID),
+						slog.Int("limit", domain.GeneralUserCardgroupLimit),
+						slog.Int("published_starters", len(starters)),
+						slog.Int("skipped", remaining))
+				}
+				break
+			}
 		}
 		return nil
 	}); err != nil {
@@ -356,7 +394,10 @@ func (u *masterDeckUsecase) copyMasterCardsIntoTx(
 // The emptiness half of catalog visibility needs no lock: it is decided by
 // len(cards) on the enumeration this copy consumes — see the guard at its call
 // site — which holds no matter how the reads interleave with a concurrent
-// last-card delete. The enumeration therefore stays on the pooled connection.
+// last-card delete. The enumeration still runs on tx: a pooled read here would
+// hold this transaction's connection while waiting for a second one, so
+// concurrent writers (or same-owner waiters blocked on the per-owner cardgroup
+// lock, each holding a connection) can exhaust the pool.
 //
 // SeedForNewUser tolerates that ErrNotFound by skipping the starter, since one
 // deck leaving the catalog mid-signup must not fail the whole seed.
@@ -372,7 +413,7 @@ func (u *masterDeckUsecase) copyMasterToUserTx(ctx context.Context, tx repositor
 		return nil, eris.Wrap(err, "find published master cardgroup")
 	}
 
-	cards, err := u.masterCard.ListByMasterCardgroup(ctx, masterID)
+	cards, err := u.masterCard.ListByMasterCardgroupTx(ctx, tx, masterID)
 	if err != nil {
 		return nil, eris.Wrap(err, "list master cards")
 	}
@@ -449,7 +490,7 @@ func (u *masterDeckUsecase) MergeMasterIntoCardgroup(
 		if _, err := u.masterCG.FindPublishedByIDTx(ctx, tx, masterID); err != nil {
 			return eris.Wrap(err, "usecase: master deck: merge master into cardgroup: verify published master")
 		}
-		cards, err := u.masterCard.ListByMasterCardgroup(ctx, masterID)
+		cards, err := u.masterCard.ListByMasterCardgroupTx(ctx, tx, masterID)
 		if err != nil {
 			return eris.Wrap(err, "usecase: master deck: merge master into cardgroup: list master cards")
 		}

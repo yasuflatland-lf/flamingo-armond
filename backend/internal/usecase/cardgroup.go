@@ -29,8 +29,9 @@ type CardgroupRepository interface {
 		dir repository.SortOrder,
 		search *string,
 	) ([]*domain.Cardgroup, int64, error)
-	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
-	Create(ctx context.Context, cg *domain.Cardgroup) error
+	CountByOwnerTx(ctx context.Context, tx repository.Tx, ownerID string) (int64, error)
+	CreateTx(ctx context.Context, tx repository.Tx, cg *domain.Cardgroup) error
+	AcquireUserCardgroupLockTx(ctx context.Context, tx repository.Tx, userID string) error
 	Update(ctx context.Context, id string, patch repository.CardgroupUpdate) (*domain.Cardgroup, error)
 	Delete(ctx context.Context, id string) error
 }
@@ -93,18 +94,37 @@ type CardgroupUsecase interface {
 type cardgroupUsecase struct {
 	repo   CardgroupRepository
 	admin  AdminChecker
+	tx     txRunner
 	logger *slog.Logger
 }
 
-// NewCardgroupUsecase constructs a CardgroupUsecase backed by the given repository.
-func NewCardgroupUsecase(repo CardgroupRepository, admin AdminChecker, logger *slog.Logger) CardgroupUsecase {
+// NewCardgroupUsecase constructs a CardgroupUsecase backed by the given
+// repository. db backs the transaction runner that scopes the quota lock, count
+// and insert; tests that inject repository fakes may pass nil (see runInTx).
+func NewCardgroupUsecase(db repository.Tx, repo CardgroupRepository, admin AdminChecker, logger *slog.Logger) CardgroupUsecase {
 	if admin == nil {
 		panic("usecase: cardgroup: admin checker is required")
 	}
 	if logger == nil {
 		panic("usecase: cardgroup: logger is required")
 	}
-	return &cardgroupUsecase{repo: repo, admin: admin, logger: logger}
+	return &cardgroupUsecase{repo: repo, admin: admin, tx: newTxRunner(db), logger: logger}
+}
+
+// newCardgroupUsecaseWithTx is the test-time constructor that injects an
+// explicit transaction runner. Production callers must use NewCardgroupUsecase.
+// Panics when the admin checker, the tx runner, or the logger is nil.
+func newCardgroupUsecaseWithTx(tx txRunner, repo CardgroupRepository, admin AdminChecker, logger *slog.Logger) CardgroupUsecase {
+	if tx == nil {
+		panic("usecase: cardgroup: tx runner is required")
+	}
+	if admin == nil {
+		panic("usecase: cardgroup: admin checker is required")
+	}
+	if logger == nil {
+		panic("usecase: cardgroup: logger is required")
+	}
+	return &cardgroupUsecase{repo: repo, admin: admin, tx: tx, logger: logger}
 }
 
 // Cardgroup returns a single cardgroup by id. A missing row and a row owned by
@@ -158,28 +178,24 @@ type CardgroupLimitInfo struct {
 	Current int
 }
 
-// cardgroupOwnerCounter is the narrow surface checkCardgroupLimit needs.
-// Keeping it separate from CardgroupRepository lets tests stub only the
-// counting method.
-type cardgroupOwnerCounter interface {
-	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
+// cardgroupQuotaTxRepo is the narrow surface lockCardgroupQuotaTx needs.
+type cardgroupQuotaTxRepo interface {
+	AcquireUserCardgroupLockTx(ctx context.Context, tx repository.Tx, userID string) error
+	CountByOwnerTx(ctx context.Context, tx repository.Tx, ownerID string) (int64, error)
 }
 
-// checkCardgroupLimit returns a non-nil *CardgroupLimitInfo when a non-admin
-// owner already holds domain.GeneralUserCardgroupLimit cardgroups. Admins are
-// exempt (returns nil, nil without counting). Context cancellation and deadline
-// errors pass through unwrapped; other infrastructure failures propagate wrapped.
-func checkCardgroupLimit(ctx context.Context, counter cardgroupOwnerCounter, admin AdminChecker, ownerID string) (*CardgroupLimitInfo, error) {
-	isAdmin, err := admin.IsAdmin(ctx, ownerID)
-	if err != nil {
-		return nil, wrapInfraErr(err, "usecase: cardgroup: check admin")
+// lockCardgroupQuotaTx takes the per-owner cardgroup lock on tx, counts the
+// owner's cardgroups on the same tx, and returns a non-nil *CardgroupLimitInfo
+// when domain.GeneralUserCardgroupLimit is reached. Callers apply the admin
+// exemption first and wrap returned errors with their own prefix; context
+// errors pass through unwrapped.
+func lockCardgroupQuotaTx(ctx context.Context, repo cardgroupQuotaTxRepo, tx repository.Tx, ownerID string) (*CardgroupLimitInfo, error) {
+	if err := repo.AcquireUserCardgroupLockTx(ctx, tx, ownerID); err != nil {
+		return nil, wrapInfraErr(err, "acquire owner cardgroup lock")
 	}
-	if isAdmin {
-		return nil, nil
-	}
-	count, err := counter.CountByOwner(ctx, ownerID, nil)
+	count, err := repo.CountByOwnerTx(ctx, tx, ownerID)
 	if err != nil {
-		return nil, wrapInfraErr(err, "usecase: cardgroup: count by owner")
+		return nil, wrapInfraErr(err, "count owner cardgroups")
 	}
 	if domain.GeneralUserCardgroupQuotaReached(count) {
 		return &CardgroupLimitInfo{Limit: domain.GeneralUserCardgroupLimit, Current: int(count)}, nil
@@ -203,15 +219,13 @@ func (u *cardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 		return CreateCardgroupOutcome{Validation: info}, nil
 	}
 
-	// Name validation (no DB) runs first to avoid the IsAdmin + Count queries
-	// on the common invalid-name path. Non-admins are capped at
-	// domain.GeneralUserCardgroupLimit cardgroups; admins are exempt.
-	limit, err := checkCardgroupLimit(ctx, u.repo, u.admin, user.Sub)
+	// Name validation (no DB) runs first. Non-admins take the per-owner
+	// cardgroup lock, count and insert on one transaction so two concurrent
+	// creates cannot both read a count below domain.GeneralUserCardgroupLimit;
+	// admins are exempt.
+	isAdmin, err := u.admin.IsAdmin(ctx, user.Sub)
 	if err != nil {
-		return CreateCardgroupOutcome{}, err
-	}
-	if limit != nil {
-		return CreateCardgroupOutcome{LimitReached: limit}, nil
+		return CreateCardgroupOutcome{}, wrapInfraErr(err, "usecase: cardgroup: check admin")
 	}
 
 	now := time.Now().UTC()
@@ -220,7 +234,21 @@ func (u *cardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 		return CreateCardgroupOutcome{}, wrapInfraErr(err, "usecase: cardgroup: new cardgroup")
 	}
 
-	if err := u.repo.Create(ctx, cg); err != nil {
+	var limit *CardgroupLimitInfo
+	err = runInTx(ctx, u.tx, func(tx repository.Tx) error {
+		if !isAdmin {
+			reached, qerr := lockCardgroupQuotaTx(ctx, u.repo, tx, user.Sub)
+			if qerr != nil {
+				return qerr
+			}
+			if reached != nil {
+				limit = reached
+				return nil
+			}
+		}
+		return u.repo.CreateTx(ctx, tx, cg)
+	})
+	if err != nil {
 		// The owner FK no longer resolves: the caller's account was deleted while
 		// their JWT was still valid. Surface UNAUTHENTICATED so the client signs
 		// them out instead of paging an operator with an INTERNAL error.
@@ -235,6 +263,9 @@ func (u *cardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 			return CreateCardgroupOutcome{Validation: info}, nil
 		}
 		return CreateCardgroupOutcome{}, wrapInfraErr(err, "usecase: cardgroup: create")
+	}
+	if limit != nil {
+		return CreateCardgroupOutcome{LimitReached: limit}, nil
 	}
 	return CreateCardgroupOutcome{Cardgroup: cg}, nil
 }

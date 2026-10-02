@@ -13,6 +13,9 @@ import (
 	"backend/internal/domain"
 )
 
+// cardsFrontIndex is the unique (cardgroup_id, front) index on public.cards.
+const cardsFrontIndex = "uq_cards_cardgroup_front"
+
 // ErrCardDuplicateFront is returned by Create and Update when the write collides
 // with the (cardgroup_id, front) unique index. Standalone — do NOT join with
 // ErrNotFound; the row was found, which is precisely the failure (see
@@ -25,7 +28,7 @@ var ErrCardDuplicateFront = errors.New("repository: card with same front exists 
 // the same constraint, so they share this classifier rather than each spelling
 // out the code/constraint pair.
 func classifyCardDuplicateFront(err error) error {
-	if pgConstraintViolation(err, "23505", "uq_cards_cardgroup_front") {
+	if pgConstraintViolation(err, "23505", cardsFrontIndex) {
 		return ErrCardDuplicateFront
 	}
 	return nil
@@ -258,6 +261,9 @@ func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {
 		if classified := classifyTextLengthViolation(err); classified != nil {
 			return classified
 		}
+		if classified := classifyFrontIndexRowTooLarge(err, cardsFrontIndex); classified != nil {
+			return classified
+		}
 		return eris.Wrap(err, "repository: card: create")
 	}
 	card.UpdatedAt = row.UpdatedAt
@@ -317,6 +323,9 @@ func (r *cardRepo) Update(ctx context.Context, id string, patch CardUpdate) (*do
 			return nil, classified
 		}
 		if classified := classifyTextLengthViolation(res.Error); classified != nil {
+			return nil, classified
+		}
+		if classified := classifyFrontIndexRowTooLarge(res.Error, cardsFrontIndex); classified != nil {
 			return nil, classified
 		}
 		return nil, eris.Wrap(res.Error, "repository: card: update")

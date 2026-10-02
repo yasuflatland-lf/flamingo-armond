@@ -1,9 +1,9 @@
 package usecase
 
 // White-box tests for translateTextLengthViolation, the usecase-side half of the
-// 23514 CHECK backstop. The function is unexported so the tests live in the same
-// package; no DB is required because the repository error is constructed
-// directly.
+// 23514 CHECK and 54000 index-row backstops. The function is unexported so the
+// tests live in the same package; no DB is required because the repository error
+// is constructed directly.
 
 import (
 	"context"
@@ -87,7 +87,7 @@ func TestCardgroupUsecase_Create_TextLengthViolation_SurfacesAsValidationOutcome
 			"repository: cardgroup: create",
 		),
 	}
-	uc := NewCardgroupUsecase(repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
 
 	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "My Group"})
 
@@ -108,10 +108,10 @@ func TestCopyMasterToUser_TextLengthViolation_BecomesValidationError(t *testing.
 	const masterID = "m-textlen"
 	newDeps := func() (*fakeMasterCGRepo, *fakeMasterCardRepo) {
 		return &fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{
-				masterID: masterCG(masterID, "Deck"),
-			}}, &fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
-				masterID: {masterCard("mc1", masterID, "f1", "b1", 0)},
-			}}
+			masterID: masterCG(masterID, "Deck"),
+		}}, &fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
+			masterID: {masterCard("mc1", masterID, "f1", "b1", 0)},
+		}}
 	}
 
 	t.Run("cardgroup name violation from CreateTx", func(t *testing.T) {
@@ -123,7 +123,8 @@ func TestCopyMasterToUser_TextLengthViolation_BecomesValidationError(t *testing.
 		}}
 		uc, _, _ := newSeedUsecase(t, cg, card, &fakeUserCardRepo{}, userCG)
 
-		got, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-textlen")
+		copyRes, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-textlen", false)
+		got := copyRes.Cardgroup
 		assert.Nil(t, got)
 		assertValidationError(t, err, "name", "name is too long")
 	})
@@ -137,7 +138,8 @@ func TestCopyMasterToUser_TextLengthViolation_BecomesValidationError(t *testing.
 		}}
 		uc, _, _ := newSeedUsecase(t, cg, card, user, &fakeUserCG{})
 
-		got, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-textlen-2")
+		copyRes, err := uc.CopyMasterToUser(context.Background(), masterID, "owner-textlen-2", false)
+		got := copyRes.Cardgroup
 		assert.Nil(t, got)
 		assertValidationError(t, err, "back", "back is too long")
 	})
@@ -181,7 +183,7 @@ func TestCardgroupUsecase_Update_TextLengthViolation_SurfacesAsValidationOutcome
 			"repository: cardgroup: update",
 		),
 	}
-	uc := NewCardgroupUsecase(repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
 
 	outcome, err := uc.Update(cgAuthedCtx("user-1"), "cg1", UpdateCardgroupInput{Name: ptr("New Name")})
 
