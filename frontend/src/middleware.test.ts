@@ -2,9 +2,9 @@ import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { describe, expect, it } from "vitest";
 import { config } from "./middleware";
 
-// Route Handlers that write their own auth cookies must stay outside the
-// matcher, or the middleware's refreshed cookies race the handler's writes on
-// the same response (see docs/frontend/auth-supabase.md).
+// Route Handlers that write their own auth cookies and the /api GraphQL proxy
+// must stay outside the matcher: refreshed middleware cookies would race the
+// handler's writes on the same response (see docs/frontend/auth-supabase.md).
 describe("middleware matcher", () => {
   it.each([
     "/auth/callback",
