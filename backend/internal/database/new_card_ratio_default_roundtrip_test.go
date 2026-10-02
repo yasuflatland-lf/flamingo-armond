@@ -10,8 +10,7 @@ import (
 
 // TestNewCardRatioDefaultDownUpRoundtrip checks freshly inserted defaults:
 // 1/5 at head, 4/5 after rollback, and 1/5 after reapplying the target.
-// revoke_client_writes sits above lower_new_card_ratio_default, so two steps
-// roll back to the 4/5 default. Pre-existing row survival is not asserted.
+// Pre-existing row survival is not asserted.
 func TestNewCardRatioDefaultDownUpRoundtrip(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
@@ -35,7 +34,9 @@ func TestNewCardRatioDefaultDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	if err := m.Steps(-2); err != nil {
+	// reset_legacy_new_card_ratio and revoke_client_writes sit above
+	// lower_new_card_ratio_default, so three steps reach it.
+	if err := m.Steps(-3); err != nil {
 		t.Fatalf("migrate down lower_new_card_ratio_default: %v", err)
 	}
 	requireDefaultRatio(t, ctx, sqlDB, 4, 5)

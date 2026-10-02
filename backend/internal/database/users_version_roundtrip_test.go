@@ -38,32 +38,33 @@ func TestUsersVersionDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back through the 22 migrations listed newest-first until
+	// Step back through the 23 migrations listed newest-first until
 	// add_version_to_users (the target) is also rolled back:
-	//   1. revoke_client_writes
-	//   2. lower_new_card_ratio_default
-	//   3. tighten_new_card_ratio_check
-	//   4. realign_fsrs_snapshot_columns_to_v4
-	//   5. widen_updated_at_triggers_to_insert
-	//   6. widen_text_length_checks
-	//   7. add_cardgroup_fk_to_swipe_records
-	//   8. add_stability_before_to_swipe_records
-	//   9. add_last_rating_to_user_card_fsrs
-	//   10. add_pre_swipe_snapshot_to_swipe_records
-	//   11. add_new_card_ratio_to_user_preferences
-	//   12. index_hygiene_users_swipe_records
-	//   13. drop_master_cardgroup_metadata_columns
-	//   14. master_cards_front_citext
-	//   15. add_user_card_fsrs_card_id_index
-	//   16. add_learn_display_mode_to_user_preferences
-	//   17. add_master_tables
-	//   18. restrict_definer_function_exposure
-	//   19. pin_trigger_function_search_path
-	//   20. enable_rls_schema_migrations
-	//   21. add_position_to_cards
-	//   22. add_version_to_users  ← target (rolls back the version column)
+	//   1. reset_legacy_new_card_ratio
+	//   2. revoke_client_writes
+	//   3. lower_new_card_ratio_default
+	//   4. tighten_new_card_ratio_check
+	//   5. realign_fsrs_snapshot_columns_to_v4
+	//   6. widen_updated_at_triggers_to_insert
+	//   7. widen_text_length_checks
+	//   8. add_cardgroup_fk_to_swipe_records
+	//   9. add_stability_before_to_swipe_records
+	//   10. add_last_rating_to_user_card_fsrs
+	//   11. add_pre_swipe_snapshot_to_swipe_records
+	//   12. add_new_card_ratio_to_user_preferences
+	//   13. index_hygiene_users_swipe_records
+	//   14. drop_master_cardgroup_metadata_columns
+	//   15. master_cards_front_citext
+	//   16. add_user_card_fsrs_card_id_index
+	//   17. add_learn_display_mode_to_user_preferences
+	//   18. add_master_tables
+	//   19. restrict_definer_function_exposure
+	//   20. pin_trigger_function_search_path
+	//   21. enable_rls_schema_migrations
+	//   22. add_position_to_cards
+	//   23. add_version_to_users  ← target (rolls back the version column)
 	// Bump the count here when adding migrations after add_version_to_users.
-	if err := m.Steps(-22); err != nil {
+	if err := m.Steps(-23); err != nil {
 		t.Fatalf("migrate down to before add_version_to_users: %v", err)
 	}
 
