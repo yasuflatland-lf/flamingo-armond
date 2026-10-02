@@ -59,6 +59,15 @@ const importMock: MockedResponse = {
   },
 };
 
+async function advanceToStep2(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByLabelText(/cards to import/i));
+  await user.paste(TWO_LINE_TEXT);
+  await user.click(screen.getByRole("button", { name: /^validate$/i }));
+  const importButton = await screen.findByRole("button", { name: /^import$/i });
+  await waitFor(() => expect(importButton).toBeEnabled());
+  await user.click(importButton);
+}
+
 describe("<MasterBatchImportForm> wiring", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -88,6 +97,25 @@ describe("<MasterBatchImportForm> wiring", () => {
 
     await waitFor(() => expect(onImported).toHaveBeenCalledTimes(1));
     expect(refetchSpy).toHaveBeenCalledWith({ include: [AdminMasterCardsConnectionDocument] });
+  });
+
+  it("disables the step 2 controls while the import mutation is in flight", async () => {
+    const user = userEvent.setup();
+    // delay: Infinity keeps the mutation pending so the in-flight state stays observable.
+    const delayedImportMock: MockedResponse = { ...importMock, delay: Infinity };
+    renderWithIntl(
+      <MockedProvider mocks={[validateMock, delayedImportMock]}>
+        <MasterBatchImportForm masterId={MASTER_ID} deckName={DECK_NAME} />
+      </MockedProvider>,
+    );
+    await advanceToStep2(user);
+    const confirm = await screen.findByTestId("batch-import-confirm-btn");
+    const backToEdit = screen.getByRole("button", { name: /back to edit/i });
+    expect(confirm).toBeEnabled();
+    expect(backToEdit).toBeEnabled();
+    await user.click(confirm);
+    await waitFor(() => expect(confirm).toBeDisabled());
+    expect(backToEdit).toBeDisabled();
   });
 
   it("wires the admin master mutation, not the cardgroup import mutation (static-source guard)", () => {
