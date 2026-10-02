@@ -6,7 +6,7 @@ input HandleSwipeInput {
   rating: Int!
 }
 
-"""Success variant returned by `handleSwipe`: the swipe was recorded, or ignored as a repeat review. Carries no statistics — the client manages its own queue, and learning statistics are served by `myLearningStats`."""
+"""Success variant returned by `handleSwipe`: the swipe was recorded, or ignored as a repeat or not-due review. Carries no statistics — the client manages its own queue, and learning statistics are served by `myLearningStats`."""
 type HandleSwipeSuccess {
   """The swiped card, echoed from the input."""
   cardId: ID!
@@ -18,6 +18,6 @@ union HandleSwipeResult =
   | InputValidationError
 
 extend type Mutation {
-  """Apply one swipe rating, persist the SwipeRecord event, and return the swiped card id. A repeat review of the same card within the same JST learn day, or on the same UTC calendar date as its last review (which earns no FSRS scheduling credit), is accepted and ignored: the card's schedule is left untouched and no second SwipeRecord is written, but the mutation still returns the normal success payload, so a replayed request needs no special client handling."""
+  """Apply one swipe rating, persist the SwipeRecord event, and return the swiped card id. A rating the learn queue would not serve now is accepted and ignored: a repeat of a card already reviewed in the current JST learn day or on the current UTC date, or a rating for a card whose due is at or after the next JST midnight. The card's schedule is left untouched and no SwipeRecord is written, but the mutation still returns the normal success payload, so a replayed or stale request needs no special client handling."""
   handleSwipe(input: HandleSwipeInput!): HandleSwipeResult!
 }

@@ -55,6 +55,9 @@ ties. A reviewed card leaves the never-seen window.
   when it lands before `EndOfLearnDay` of the pre-swipe due, so a review recorded
   on its due day is never reported late. The swipe instant decides: a card
   fetched before JST midnight and swiped after it is late.
+  `domain.DueBeforeEndOfLearnDay(due, now)` is the Go form of the
+  `ucs.due < DueBefore` comparison; the swipe path ignores a rating for an
+  existing FSRS row that fails it.
 - `ReviewedBefore` is `StartOfLearnDay`. The strict bound excludes cards already
   reviewed in today's JST learn day. Together with `CreditReviewedBefore`, its
   complement is the swipe replay guard (`ReviewedWithinLearnDay || !EarnsSchedulingCredit`)

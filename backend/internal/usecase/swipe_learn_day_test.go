@@ -49,17 +49,19 @@ func newSwipeLearnDayFixture(existing *domain.UserCardFSRS, now time.Time, logge
 }
 
 // reviewedCardFSRS returns an already-reviewed FSRS row for "card-1" whose
-// LastReview is lastReview. The scheduling counters are non-zero so a test can
-// prove the guard left them untouched.
+// LastReview is lastReview and whose Due is one day later, with non-zero counters.
+// A same-learn-day fixture is therefore also not due before the learn-day end, so
+// replay-guard skip tests assert which log line fired to pin that the replay
+// guard runs first; the not-due guard has its own tests that set Due explicitly.
 func reviewedCardFSRS(lastReview time.Time) *domain.UserCardFSRS {
 	return &domain.UserCardFSRS{
 		UserID: domain.UserID("user-1"),
 		CardID: "card-1",
 		State: domain.FSRSState{
-			Due:           lastReview.Add(48 * time.Hour),
+			Due:           lastReview.Add(24 * time.Hour),
 			Stability:     12.5,
 			Difficulty:    5.5,
-			ScheduledDays: 2,
+			ScheduledDays: 1,
 			Reps:          3,
 			Lapses:        1,
 			Phase:         domain.FSRSPhaseReview,
@@ -70,10 +72,14 @@ func reviewedCardFSRS(lastReview time.Time) *domain.UserCardFSRS {
 }
 
 func swipeCard1(uc SwipeUsecase) (HandleSwipeOutcome, error) {
+	return swipeCard1WithRating(uc, domain.RatingEasy)
+}
+
+func swipeCard1WithRating(uc SwipeUsecase, rating domain.Rating) (HandleSwipeOutcome, error) {
 	return uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
-		Rating:      int(domain.RatingEasy),
+		Rating:      int(rating),
 	})
 }
 
@@ -89,11 +95,15 @@ func TestSwipeUsecase_HandleSwipe_SameLearnDayRepeat_IsSuccessShapedNoOp(t *test
 	lastReview := domain.StartOfLearnDay(now).Add(time.Minute)
 	existing := reviewedCardFSRS(lastReview)
 	before := existing.State
-	uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(existing, now, nil)
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(existing, now, logger)
 
 	outcome, err := swipeCard1(uc)
 
 	require.NoError(t, err)
+	require.Contains(t, buf.String(), `"msg":"swipe: repeat review ignored"`)
+	require.NotContains(t, buf.String(), `"msg":"swipe: not-due review ignored"`)
 	require.NotNil(t, outcome.Swipe, "an ignored repeat must still return the success variant")
 	require.Equal(t, "card-1", outcome.Swipe.CardID, "an ignored repeat still echoes the card id")
 	require.Nil(t, outcome.Validation, "an ignored repeat is not a user-input error")
@@ -147,13 +157,17 @@ func TestSwipeUsecase_HandleSwipe_LearnDayBoundary(t *testing.T) {
 			t.Parallel()
 
 			existing := reviewedCardFSRS(tc.lastReview)
-			uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(existing, now, nil)
+			var buf bytes.Buffer
+			logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(existing, now, logger)
 
 			outcome, err := swipeCard1(uc)
 
 			require.NoError(t, err)
 			require.NotNil(t, outcome.Swipe)
 			if tc.wantSkip {
+				require.Contains(t, buf.String(), `"msg":"swipe: repeat review ignored"`)
+				require.NotContains(t, buf.String(), `"msg":"swipe: not-due review ignored"`)
 				require.Nil(t, userFSRSRepo.upserted, "same-learn-day repeat must not upsert")
 				require.Nil(t, swipeRepo.created, "same-learn-day repeat must not write a swipe record")
 				require.Equal(t, 3, existing.State.Reps, "reps must not advance")
@@ -225,4 +239,150 @@ func TestSwipeUsecase_HandleSwipe_BrandNewCard_IsNotSkipped(t *testing.T) {
 	require.Equal(t, 1, userFSRSRepo.upserted.State.Reps)
 	require.Equal(t, domain.FSRSPhaseNew, swipeRepo.created.PhaseBefore,
 		"the recorded pre-swipe phase must be the synthesized new-card phase")
+}
+
+// TestSwipeUsecase_HandleSwipe_StaleTabNextMorning_NotDueIgnored replays the
+// stale-tab counterexample: a Hard at 21:00 JST schedules the card two days out,
+// and a second rating from the same tab at 09:00 JST the next morning passes
+// both replay rules yet targets a card the learn queue does not serve. It must
+// be ignored without rescheduling the card.
+func TestSwipeUsecase_HandleSwipe_StaleTabNextMorning_NotDueIgnored(t *testing.T) {
+	t.Parallel()
+
+	day0 := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC) // 21:00 JST
+	uc0, repo0, _ := newSwipeLearnDayFixture(nil, day0, nil)
+	_, err := swipeCard1WithRating(uc0, domain.RatingHard)
+	require.NoError(t, err)
+	existing := repo0.upserted
+	require.NotNil(t, existing)
+	require.True(t, existing.State.Due.Equal(time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)),
+		"a first Hard at 21:00 JST must schedule the card two days out, got %s", existing.State.Due)
+	before := existing.State
+
+	day1 := time.Date(2026, 9, 29, 0, 0, 0, 0, time.UTC) // 09:00 JST
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	uc1, repo1, swipe1 := newSwipeLearnDayFixture(existing, day1, logger)
+
+	outcome, err := swipeCard1WithRating(uc1, domain.RatingHard)
+
+	require.NoError(t, err)
+	require.NotNil(t, outcome.Swipe, "an ignored not-due rating must still return the success variant")
+	require.Nil(t, outcome.Validation, "an ignored not-due rating is not a user-input error")
+	require.Nil(t, repo1.upserted, "a not-due rating must not upsert the FSRS row")
+	require.Nil(t, swipe1.created, "a not-due rating must not write a swipe record")
+	require.Equal(t, before, existing.State, "the scheduling state must be left byte-identical")
+	require.Contains(t, buf.String(), `"msg":"swipe: not-due review ignored"`)
+	require.Contains(t, buf.String(), `"card_id":"card-1"`)
+	require.Contains(t, buf.String(), `"due":"2026-09-30T12:00:00Z"`)
+	require.Contains(t, buf.String(), `"learn_day_end":"2026-09-30T00:00:00+09:00"`)
+	require.NotContains(t, buf.String(), `"msg":"swipe: repeat review ignored"`)
+}
+
+// TestSwipeUsecase_HandleSwipe_AgainNextMorning_DueTodayApplies is the servable
+// counterpart: an Again at 21:00 JST makes the card due at 21:00 JST the next
+// day, before that learn day ends, so a rating the next morning is applied.
+func TestSwipeUsecase_HandleSwipe_AgainNextMorning_DueTodayApplies(t *testing.T) {
+	t.Parallel()
+
+	day0 := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC) // 21:00 JST
+	uc0, repo0, _ := newSwipeLearnDayFixture(nil, day0, nil)
+	_, err := swipeCard1WithRating(uc0, domain.RatingAgain)
+	require.NoError(t, err)
+	existing := repo0.upserted
+	require.NotNil(t, existing)
+	require.True(t, existing.State.Due.Equal(time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)),
+		"a first Again at 21:00 JST must schedule the card for the next day, got %s", existing.State.Due)
+
+	day1 := time.Date(2026, 9, 29, 0, 0, 0, 0, time.UTC) // 09:00 JST
+	uc1, repo1, swipe1 := newSwipeLearnDayFixture(existing, day1, nil)
+
+	outcome, err := swipeCard1WithRating(uc1, domain.RatingHard)
+
+	require.NoError(t, err)
+	require.NotNil(t, outcome.Swipe)
+	require.NotNil(t, repo1.upserted, "a rating for a card due today must upsert the FSRS row")
+	require.NotNil(t, swipe1.created, "a rating for a card due today must write a swipe record")
+	require.Equal(t, 2, repo1.upserted.State.Reps, "the applied rating must advance reps")
+	require.True(t, repo1.upserted.State.LastReview.Equal(day1),
+		"the applied swipe must use the injected clock instant")
+}
+
+// TestSwipeUsecase_HandleSwipe_DueBoundary pins the exclusive comparison at the
+// next JST midnight. The serving side admits ucs.due < EndOfLearnDay(now), so a
+// row due exactly at that instant belongs to tomorrow and must be ignored, while
+// one due a nanosecond earlier must apply.
+func TestSwipeUsecase_HandleSwipe_DueBoundary(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 9, 29, 0, 0, 0, 0, time.UTC) // 09:00 JST
+	end := domain.EndOfLearnDay(now)
+	require.True(t, end.Equal(time.Date(2026, 9, 29, 15, 0, 0, 0, time.UTC)))
+	// 01:00 JST on 09-30 while the UTC date is still 09-29: a day end derived
+	// from the UTC date would drop this learn day's due cards until 09:00 JST.
+	afterJSTMidnight := time.Date(2026, 9, 29, 16, 0, 0, 0, time.UTC)
+	lastReview := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name     string
+		now      time.Time
+		due      time.Time
+		wantSkip bool
+	}{
+		{
+			name:     "exactly at EndOfLearnDay is tomorrow",
+			now:      now,
+			due:      end,
+			wantSkip: true,
+		},
+		{
+			name:     "one nanosecond before EndOfLearnDay is due today",
+			now:      now,
+			due:      end.Add(-time.Nanosecond),
+			wantSkip: false,
+		},
+		{
+			name:     "overdue since yesterday applies",
+			now:      now,
+			due:      time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC),
+			wantSkip: false,
+		},
+		{
+			name:     "due two days later is ignored",
+			now:      now,
+			due:      time.Date(2026, 10, 1, 15, 0, 0, 0, time.UTC),
+			wantSkip: true,
+		},
+		{
+			name:     "due later the same JST day before the UTC date catches up applies",
+			now:      afterJSTMidnight,
+			due:      time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC), // 21:00 JST on 09-30
+			wantSkip: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			existing := reviewedCardFSRS(lastReview)
+			existing.State.Due = tc.due
+			uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(existing, tc.now, nil)
+
+			outcome, err := swipeCard1(uc)
+
+			require.NoError(t, err)
+			require.NotNil(t, outcome.Swipe)
+			if tc.wantSkip {
+				require.Nil(t, userFSRSRepo.upserted, "a not-due rating must not upsert")
+				require.Nil(t, swipeRepo.created, "a not-due rating must not write a swipe record")
+				require.Equal(t, 3, existing.State.Reps, "reps must not advance")
+				require.True(t, existing.State.Due.Equal(tc.due), "due must not move")
+				return
+			}
+			require.NotNil(t, userFSRSRepo.upserted, "a rating for a due card must upsert the FSRS row")
+			require.NotNil(t, swipeRepo.created, "a rating for a due card must write a swipe record")
+			require.Equal(t, 4, userFSRSRepo.upserted.State.Reps, "reps must advance")
+		})
+	}
 }
