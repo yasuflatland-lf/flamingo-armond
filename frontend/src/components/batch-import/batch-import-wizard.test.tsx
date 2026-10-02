@@ -5,7 +5,19 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
+
+// Call-through spy on the encoder: every call runs the real implementation until
+// a test arms a one-shot throw, which is how the encode-inside-try tests below
+// make an otherwise total encoder fail.
+const encoderProbe = vi.hoisted(() => ({
+  encode: undefined as unknown as Mock<(text: string) => string>,
+}));
+vi.mock("@/lib/encode-utf8-base64", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/encode-utf8-base64")>();
+  encoderProbe.encode = vi.fn(actual.encodeUtf8Base64);
+  return { ...actual, encodeUtf8Base64: encoderProbe.encode };
+});
 
 // Render-count probe: wrap next-intl's `useTranslations` (calling through to the
 // real impl, so translations still resolve) and count invocations. A component
@@ -355,6 +367,44 @@ describe("<BatchImportWizard>", () => {
     await advanceToStep2(user, LONE_SURROGATE_TEXT);
     await user.click(await screen.findByTestId("batch-import-confirm-btn"));
     await waitFor(() => expect(onImport).toHaveBeenCalledWith("YQli77+9"));
+  });
+
+  describe("when the payload encoder throws", () => {
+    afterEach(() => {
+      // Restores the real encoder and drops a one-shot throw a test never consumed.
+      encoderProbe.encode.mockReset();
+    });
+
+    function armEncoderFailure() {
+      encoderProbe.encode.mockImplementationOnce(() => {
+        throw new RangeError("Invalid string length");
+      });
+    }
+
+    it("validate shows the error banner instead of rejecting the click handler", async () => {
+      const user = userEvent.setup();
+      renderWizard();
+      await typePayload(user, TWO_LINE_TEXT);
+      armEncoderFailure();
+      await user.click(screen.getByRole("button", { name: /^validate$/i }));
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^import$/i })).not.toBeInTheDocument();
+    });
+
+    it("import shows the error banner, skips onImport and stays on step 2 for retry", async () => {
+      const user = userEvent.setup();
+      const { onImport, onImported } = renderWizard({
+        mocks: [validateMock(TWO_LINE_TEXT, VALID_RESULT)],
+      });
+      await advanceToStep2(user);
+      const confirm = await screen.findByTestId("batch-import-confirm-btn");
+      armEncoderFailure();
+      await user.click(confirm);
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      expect(onImport).not.toHaveBeenCalled();
+      expect(onImported).not.toHaveBeenCalled();
+      expect(screen.getByTestId("batch-import-confirm-btn")).toBeEnabled();
+    });
   });
 
   it("import with error rows stays on step 2 and does not call onImported", async () => {
