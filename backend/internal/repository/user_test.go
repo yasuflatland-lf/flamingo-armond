@@ -507,12 +507,13 @@ func TestUpdateTx_Success_DisplayNameOnly(t *testing.T) {
 	if got.DisplayName == nil || string(*got.DisplayName) != name {
 		t.Fatalf("DisplayName: got %v, want %q", got.DisplayName, name)
 	}
+	if got.Version != 1 {
+		t.Fatalf("Version = %d, want 1", got.Version)
+	}
 }
 
 // TestUpdateTx_NotFound asserts that targeting a missing row returns
-// ErrNotFound so the surrounding transaction can roll back atomically.
-// This is load-bearing for adminUserUsecase.EditUser which classifies the
-// sentinel into an InputValidationError on field=id.
+// ErrNotFound so a surrounding transaction can roll back atomically.
 func TestUpdateTx_NotFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -529,9 +530,8 @@ func TestUpdateTx_NotFound(t *testing.T) {
 }
 
 // TestUpdateTx_EmptyPatchNoOp verifies that a patch with no non-nil fields
-// returns nil without touching the database (no UPDATE issued). This matches
-// adminUserUsecase.EditUser's profile-omitted branch where UpdateTx must not
-// be called or, if called defensively, must be a no-op.
+// returns nil without issuing an UPDATE, so neither updated_at nor version
+// advances.
 func TestUpdateTx_EmptyPatchNoOp(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -557,6 +557,9 @@ func TestUpdateTx_EmptyPatchNoOp(t *testing.T) {
 	}
 	if !after.UpdatedAt.Equal(beforeUpdated) {
 		t.Errorf("empty patch must not bump updated_at; before=%v after=%v", beforeUpdated, after.UpdatedAt)
+	}
+	if after.Version != before.Version {
+		t.Errorf("empty patch must not bump version; before=%d after=%d", before.Version, after.Version)
 	}
 }
 
@@ -640,6 +643,104 @@ func TestUpdateTxVersioned_NotFound(t *testing.T) {
 	})
 	if !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("UpdateTxVersioned(missing): want ErrNotFound, got %v", err)
+	}
+}
+
+func TestUserRepository_Update_BumpsVersion(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	id := insertAuthUser(t, ctx)
+	repo := repository.NewUserRepository(testDB.GORM)
+
+	before, err := repo.FindByID(ctx, id)
+	if err != nil {
+		t.Fatalf("FindByID (before): %v", err)
+	}
+	if before.Version != 0 {
+		t.Fatalf("initial Version = %d, want 0", before.Version)
+	}
+
+	first := "first"
+	got, err := repo.Update(ctx, id, repository.UserUpdate{DisplayName: &first})
+	if err != nil {
+		t.Fatalf("Update (first): %v", err)
+	}
+	if got.Version != 1 {
+		t.Fatalf("Version after first Update = %d, want 1", got.Version)
+	}
+
+	second := "second"
+	got, err = repo.Update(ctx, id, repository.UserUpdate{DisplayName: &second})
+	if err != nil {
+		t.Fatalf("Update (second): %v", err)
+	}
+	if got.Version != 2 {
+		t.Fatalf("Version after second Update = %d, want 2", got.Version)
+	}
+
+	reread, err := repo.FindByID(ctx, id)
+	if err != nil {
+		t.Fatalf("FindByID (after): %v", err)
+	}
+	if reread.Version != 2 {
+		t.Fatalf("re-read Version = %d, want 2", reread.Version)
+	}
+}
+
+func TestUserRepository_Update_EmptyPatch_KeepsVersion(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	id := insertAuthUser(t, ctx)
+	repo := repository.NewUserRepository(testDB.GORM)
+
+	got, err := repo.Update(ctx, id, repository.UserUpdate{})
+	if err != nil {
+		t.Fatalf("Update (empty patch): %v", err)
+	}
+	if got.Version != 0 {
+		t.Fatalf("Version after empty patch = %d, want 0", got.Version)
+	}
+}
+
+// TestUserRepository_SelfUpdateInvalidatesStaleAdminVersion pins that a
+// self-service Update between an admin's read and save makes the admin's
+// stale expectedVersion fail instead of overwriting the user's change.
+func TestUserRepository_SelfUpdateInvalidatesStaleAdminVersion(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	id := insertAuthUser(t, ctx)
+	repo := repository.NewUserRepository(testDB.GORM)
+
+	before, err := repo.FindByID(ctx, id)
+	if err != nil {
+		t.Fatalf("FindByID (before): %v", err)
+	}
+	if before.Version != 0 {
+		t.Fatalf("initial Version = %d, want 0", before.Version)
+	}
+
+	self := "self"
+	if _, err := repo.Update(ctx, id, repository.UserUpdate{DisplayName: &self}); err != nil {
+		t.Fatalf("Update (self): %v", err)
+	}
+
+	stale := "admin-stale"
+	err = testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.UpdateTxVersioned(ctx, tx, id, repository.UserUpdate{DisplayName: &stale}, before.Version)
+	})
+	if !errors.Is(err, repository.ErrConcurrentUpdate) {
+		t.Fatalf("UpdateTxVersioned (stale admin): want ErrConcurrentUpdate, got %v", err)
+	}
+
+	got, err := repo.FindByID(ctx, id)
+	if err != nil {
+		t.Fatalf("FindByID (after): %v", err)
+	}
+	if got.DisplayName == nil || string(*got.DisplayName) != self {
+		t.Fatalf("DisplayName = %v, want %q", got.DisplayName, self)
+	}
+	if got.Version != 1 {
+		t.Fatalf("Version = %d, want 1", got.Version)
 	}
 }
 
