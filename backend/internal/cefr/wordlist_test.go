@@ -1,6 +1,7 @@
 package cefr
 
 import (
+	"strings"
 	"testing"
 
 	"backend/internal/domain"
@@ -25,6 +26,19 @@ func TestParseMarkdown_DuplicateKeyHighestWins(t *testing.T) {
 	out, err := ParseMarkdown(src)
 	require.NoError(t, err)
 	require.Equal(t, domain.CEFRB1, out["run"])
+}
+
+// A bullet with case, internal whitespace runs and edge punctuation must land on
+// the same key the classifier queries, or the entry can never match.
+func TestParseMarkdown_KeysUseCanonicalForm(t *testing.T) {
+	t.Parallel()
+	src := "## C2\n- Bite  The\tBullet!\n- ( Out Of )\n"
+	out, err := ParseMarkdown(src)
+	require.NoError(t, err)
+	require.Equal(t, map[string]domain.CEFRLevel{
+		"bite the bullet": domain.CEFRC2,
+		"out of":          domain.CEFRC2,
+	}, out)
 }
 
 func TestParseMarkdown_BulletBeforeHeading(t *testing.T) {
@@ -69,6 +83,37 @@ func TestNewWordList_EmbeddedData(t *testing.T) {
 
 	// Sanity: a non-trivial number of entries loaded (Oxford + C2 combined).
 	require.Greater(t, wl.Len(), 7000)
+}
+
+// Pins that every embedded key is already canonical under NormalizeWord.
+func TestNewWordList_KeysAreNormalizeWordFixedPoints(t *testing.T) {
+	t.Parallel()
+	wl := NewWordList()
+	for k := range wl.levels {
+		require.Equal(t, k, domain.NormalizeWord(k), "key %q is not a NormalizeWord fixed point", k)
+	}
+}
+
+func TestNewWordList_MultiWordKeysMatchAnySpacing(t *testing.T) {
+	t.Parallel()
+	wl := NewWordList()
+	multi := map[string]domain.CEFRLevel{}
+	for k, lvl := range wl.levels {
+		if strings.Contains(k, " ") {
+			multi[k] = lvl
+		}
+	}
+	// Pinned so a data refresh that adds or drops multi-word keys revisits this test.
+	require.Len(t, multi, 22)
+
+	for k, want := range multi {
+		for _, sep := range []string{"  ", "\t", "\u00a0", "\u3000"} {
+			variant := strings.ReplaceAll(k, " ", sep)
+			got, ok := wl.Lookup(domain.NormalizeWord(variant))
+			require.True(t, ok, "variant %q of key %q", variant, k)
+			require.Equal(t, want, got, "variant %q of key %q", variant, k)
+		}
+	}
 }
 
 func TestNewWordList_CambridgeC2Data(t *testing.T) {
