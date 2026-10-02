@@ -7,7 +7,7 @@ A client component (`"use client"`) that observes `UNAUTHENTICATED` from an Apol
 The right shape is a **degraded banner** that surfaces the session-expired message inline and points at `/login` via a `<Link>` the user clicks when they are ready:
 
 ```tsx
-// frontend/src/app/admin/users/admin-users-client.tsx
+// Illustrative shape; the shared `QueryErrorBanner` (frontend/src/components/ui/query-error-banner.tsx) renders this branch.
 const queryErrorKind = classifyQueryError(queryError);
 
 // UNAUTHENTICATED post-mount means the session expired while the page was

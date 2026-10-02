@@ -69,9 +69,10 @@ export interface UseConnectionPaginationInput<
   /** Concatenates the next page's edges onto the previous result (document-specific field). */
   mergeConnection: (prev: TData, more: TData) => TData;
   /**
-   * Render fallback used until the query resolves. For SSR-seeded screens this
-   * is never read (the cache seed makes the first `useQuery` pass synchronous);
-   * for prop-seeded screens it is the initial render value.
+   * Render fallback used while the active query has no data. An SSR-seeded
+   * screen never reads it on the first pass (the cache seed makes `useQuery`
+   * synchronous) but does for uncached variables (a new search) and after a
+   * failed query; a prop-seeded screen reads it until its first response.
    */
   initial: ConnectionShape<TEdge, TPageInfo>;
   /** Maps a failed `fetchMore` error to the user-facing banner string. */
@@ -107,7 +108,8 @@ export interface UseConnectionPaginationResult<
   /**
    * The underlying `useQuery` refetch. Used for query-error Retry by admin
    * users / masters, cardgroups, catalog, and catalog deck detail, and for
-   * admin users' mutation-conflict reload. The cards screen does not use it.
+   * admin users' mutation-conflict reload. The cardgroup cards and admin master
+   * cards screens do not use it.
    */
   refetch: useQuery.Result<TData, TVars>["refetch"];
 }
