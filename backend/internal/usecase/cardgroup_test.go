@@ -599,6 +599,40 @@ func TestCardgroupUsecase_Create_GeneralUser_LocksCountsAndCreatesOnOneTx(t *tes
 	}
 }
 
+// TestCardgroupUsecase_Create_IsAdminRunsBeforeTheSingleTx pins that the pooled
+// admin check runs before the transaction opens: called inside it, each create
+// would hold its tx connection while waiting for a second pooled one, and a
+// burst of concurrent creates could exhaust the pool.
+func TestCardgroupUsecase_Create_IsAdminRunsBeforeTheSingleTx(t *testing.T) {
+	t.Parallel()
+	inTx, txRuns := false, 0
+	runner := func(_ context.Context, fn func(tx repository.Tx) error) error {
+		txRuns++
+		inTx = true
+		defer func() { inTx = false }()
+		return fn(&gorm.DB{})
+	}
+	adminInTx := false
+	admin := &mockAdminChecker{isAdmin: false, onCall: func() { adminInTx = inTx }}
+	repo := &mockCardgroupRepository{countResult: 4}
+	uc := newCardgroupUsecaseWithTx(runner, repo, admin, newTestLogger())
+
+	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "Fifth"})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if outcome.Cardgroup == nil {
+		t.Fatal("expected non-nil Cardgroup under the limit")
+	}
+	if admin.calls != 1 || adminInTx {
+		t.Fatalf("IsAdmin calls = %d, inside tx = %v; want 1 call before the tx", admin.calls, adminInTx)
+	}
+	if txRuns != 1 {
+		t.Fatalf("transactions = %d, want lock, count and create on one", txRuns)
+	}
+}
+
 // TestCardgroupUsecase_Create_GeneralUser_AtLimit_NoInsertOnTx verifies that at
 // the limit the transaction takes the lock and counts but never inserts.
 func TestCardgroupUsecase_Create_GeneralUser_AtLimit_NoInsertOnTx(t *testing.T) {
