@@ -299,7 +299,7 @@ describe("<NewCardgroupPage> (client)", () => {
     }
   });
 
-  it("generic transport rejection — warns and shows no auth/validation banner", async () => {
+  it("generic transport rejection — warns and shows no auth banner", async () => {
     const user = userEvent.setup();
 
     const networkError = new Error("network down");
