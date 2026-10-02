@@ -17,10 +17,10 @@ remainder. The default 1/5 ratio gives 4 new and 16 review cards in a full-pool
 20-card session. Half-card ties favor new; every k-card prefix is also capped
 at `floor(4k/5)` new cards while reviews remain, so the review share never drops
 below 20% and slot 1 is always a review (the cap forces it for every ratio at or
-above 1/2). Under the 1/5 default, when reviews exist, one- and two-card
-sessions contain no new card, and the first new slot is 3. This remains inside
-the `denominator - numerator` bound of slot 4. When a pool empties, the other
-supplies the remainder. The usecase truncates to the requested session limit.
+above 1/2). Under the 1/5 default, when at least two reviews are due, one- and
+two-card sessions contain no new card, and the first new slot is 3. This remains
+inside the `denominator - numerator` bound of slot 4. When a pool empties, the
+other supplies the remainder. The usecase truncates to the requested session limit.
 
 ## Mechanics
 
