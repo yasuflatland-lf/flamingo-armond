@@ -359,8 +359,8 @@ func (r *userRepo) ListPage(
 		// Hydrate the cursor user's created_at so we can build the tuple
 		// comparison. A missing user means the cursor row was deleted between
 		// fetches — surface as ErrCursorNotFound so callers can map to a
-		// BAD_USER_INPUT-shaped error; a malformed legacy bare-id cursor is the
-		// same not-found.
+		// BAD_USER_INPUT-shaped error; a cursor (v1 or legacy bare id) whose id
+		// is not a uuid is the same not-found.
 		err := r.db.WithContext(ctx).Select("id", "created_at").
 			Where("id = ?", *cursorID).Take(&cursorRow).Error
 		if err != nil {

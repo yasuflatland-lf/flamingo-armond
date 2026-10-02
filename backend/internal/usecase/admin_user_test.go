@@ -1312,7 +1312,7 @@ func TestNormalizeAdminEditRoleIDs_CanonicalisesUUIDs(t *testing.T) {
 }
 
 // TestAdminUser_EditUser_Self_NoRolesSubmitted_CannotRevokeOwnAdmin covers the
-// zero-roleIDs sub-path of the self-demotion guard: when callerID == id and the
+// zero-roleIDs sub-path of the self-demotion guard: when sameUserID(callerID, id) and the
 // submitted final role set is empty, FindByIDsTx is skipped (len(roleIDs) == 0),
 // keepsAdmin stays false, and the guard captures its outcome and returns nil
 // from the tx closure before any write. The guard outcome is returned without
@@ -1987,7 +1987,7 @@ func TestAdminUser_EditUser_UserNotFoundValidation(t *testing.T) {
 }
 
 // TestAdminUser_EditUser_Self_FindByIDsInfraError pins the self-edit lookup
-// branch: when callerID == id and roleIDs is non-empty, FindByIDsTx is invoked
+// branch: when sameUserID(callerID, id) and roleIDs is non-empty, FindByIDsTx is invoked
 // at the front of the transaction (FOR UPDATE lock). A non-cancellation infra
 // error must surface as INTERNAL with the documented wrap prefix.
 func TestAdminUser_EditUser_Self_FindByIDsInfraError(t *testing.T) {

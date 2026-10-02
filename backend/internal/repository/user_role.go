@@ -192,8 +192,8 @@ func (r *userRoleRepo) SetUserRolesTx(ctx context.Context, tx *gorm.DB, userID s
 		if seen[roleID] {
 			continue
 		}
-		// Not classifying 22P02 from the COUNT instead: it would abort the
-		// transaction. Non-canonical spellings are not found; callers canonicalise.
+		// Not classifying 22P02 from the COUNT instead: uuid_in accepts braced and
+		// hyphen-less spellings that findRolesByIDs drops, so the two would disagree.
 		if !isCanonicalUUID(roleID) {
 			return ErrRoleNotFound
 		}

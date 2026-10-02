@@ -28,10 +28,10 @@ func pgInvalidTextRepresentation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "22P02"
 }
 
-// isCanonicalUUID reports whether id uses the 36-char hyphenated spelling
-// accepted by Postgres uuid_in.
+// isCanonicalUUID reports whether id uses the 36-char 8-4-4-4-12 spelling
+// (either hex case), one of the spellings Postgres uuid_in accepts.
 func isCanonicalUUID(id string) bool {
-	// Not uuid.Validate alone: it also admits urn:uuid:, which uuid_in rejects.
+	// Not uuid.Validate alone: it also admits braced, hyphen-less and urn:uuid: forms.
 	return len(id) == 36 && uuid.Validate(id) == nil
 }
 

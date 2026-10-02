@@ -116,8 +116,8 @@ func (r *roleRepo) FindByIDsTx(ctx context.Context, tx *gorm.DB, ids []string) (
 // findRolesByIDs is shared by FindByIDs (pool, no lock) and FindByIDsTx
 // (transaction, FOR UPDATE). lock=true acquires a row lock on the matched
 // rows so no other transaction can rename or delete them before the caller's
-// write commits. Only canonical 36-char ids are queried; other spellings are
-// absent from the result, so callers forwarding client ids must canonicalise.
+// write commits. Only 8-4-4-4-12 ids are queried and the result is keyed by the
+// stored lower-case id, so callers forwarding client ids must canonicalise.
 func findRolesByIDs(ctx context.Context, db *gorm.DB, ids []string, lock bool) (map[string]*domain.Role, error) {
 	// Not classifying 22P02 instead: one malformed id would fail the whole IN
 	// query and lose the partial-match result for the well-formed ones.

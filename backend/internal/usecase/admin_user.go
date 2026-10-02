@@ -480,8 +480,8 @@ func (u *adminUserUsecase) DeleteUser(ctx context.Context, id string) error {
 }
 
 // sameUserID reports whether a and b name the same user row. Postgres compares
-// uuid values, so every spelling its uuid_in accepts selects the same row as the
-// canonical form; ids that parse as neither fall back to exact equality.
+// uuid values, so both are keyed by canonicalUUIDKey (every uuid_in spelling, plus
+// urn:uuid:, which only over-matches); other ids fall back to exact equality.
 func sameUserID(a, b string) bool {
 	return canonicalUUIDKey(a) == canonicalUUIDKey(b)
 }
