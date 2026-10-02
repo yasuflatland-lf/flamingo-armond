@@ -94,7 +94,12 @@ func deleteByGroupAndFrontsTx(
 ) (int64, error)
 ```
 
-Hard-deletes rows by the scoped `(fkColumn, front)` natural key. **Empty `fronts`
+Hard-deletes rows by the scoped `(fkColumn, front)` natural key, one `DELETE` per
+`bulkStatementChunkRows` (5,000) fronts on the same `tx`, summing `RowsAffected`; each
+statement binds the fronts plus the group id, so one unchunked `IN` list stops at 65,534
+fronts under pgx's 65,535-parameter cap. The Notion-sync prune reaches that size when a
+master deck it targets has accumulated more stale cards than that through repeated admin
+imports. **Empty `fronts`
 short-circuits to `(0, nil)` before touching the DB.** Without this guard, GORM
 silently drops `WHERE front IN (?)` for an empty slice and deletes every row in
 the group — the same trap described in

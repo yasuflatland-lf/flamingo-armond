@@ -67,6 +67,9 @@ Merge does not attempt to reconcile the remaining variants.
 counts distinct `LOWER(front)` values against lowered catalog fronts. Multiple stored case
 variants therefore predict one update, matching the one-row fold and subsequent upsert.
 For an unchanged source and destination, preview `Added`/`Updated` equals the merge tally.
+A catalog deck has no card cap, so the count deduplicates the lowered fronts and runs one
+statement per `bulkStatementChunkRows` (5,000) of them, keeping a deck of 65,535 or more
+cards under pgx's bind-parameter cap without counting a front twice.
 
 ## Consequence 2 — a case-only admin rename never reaches learners
 
@@ -80,10 +83,10 @@ Nothing observable changes. Two independent mechanisms hold the old casing in pl
 
 - **The upsert never rewrites `front`.** The multi-row statement built in
   `upsertManyTx` ends with
-  `ON CONFLICT (<fk>, front) DO UPDATE SET back = EXCLUDED.back, updated_at = now(), position = EXCLUDED.position`.
+  `ON CONFLICT (<fk>, front) DO UPDATE SET back = EXCLUDED.back, position = EXCLUDED.position`.
   `front` is absent from the `DO UPDATE SET` list, so the citext conflict matches the
-  stored `"drive"` row and updates only `back` / `updated_at` / `position`. The stored
-  case stays `"drive"`.
+  stored `"drive"` row and updates only `back` / `position` (the database trigger advances
+  `updated_at`). The stored case stays `"drive"`.
 - **The prune deliberately protects the old-cased row.** `frontsToDelete` compares
   through `frontMatchKey`, so the stored `"drive"` matches the incoming `"Drive"` and is
   not classified as stale. Without that case-folded comparison the row *would* be pruned
