@@ -84,18 +84,16 @@ func TestNewWordList_KeysAreNormalizeWordFixedPoints(t *testing.T) {
 func TestNewWordList_MultiWordKeysMatchAnySpacing(t *testing.T) {
 	t.Parallel()
 	wl := NewWordList()
-	var multi []string
-	for k := range wl.levels {
+	multi := map[string]domain.CEFRLevel{}
+	for k, lvl := range wl.levels {
 		if strings.Contains(k, " ") {
-			multi = append(multi, k)
+			multi[k] = lvl
 		}
 	}
 	// Pinned so a data refresh that adds or drops multi-word keys revisits this test.
 	require.Len(t, multi, 22)
 
-	for _, k := range multi {
-		want, ok := wl.Lookup(k)
-		require.True(t, ok)
+	for k, want := range multi {
 		for _, sep := range []string{"  ", "\t", "\u00a0", "\u3000"} {
 			variant := strings.ReplaceAll(k, " ", sep)
 			got, ok := wl.Lookup(domain.NormalizeWord(variant))
