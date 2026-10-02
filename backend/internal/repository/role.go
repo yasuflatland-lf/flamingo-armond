@@ -127,8 +127,8 @@ func findRolesByIDs(ctx context.Context, db *gorm.DB, ids []string, lock bool) (
 			canonicalIDs = append(canonicalIDs, id)
 		}
 	}
-	// The empty check must follow the filter: GORM renders an empty IN as no
-	// condition at all, which would scan every role.
+	// Not checking emptiness before the filter: an all-malformed list would still
+	// issue a query.
 	if len(canonicalIDs) == 0 {
 		return map[string]*domain.Role{}, nil
 	}
