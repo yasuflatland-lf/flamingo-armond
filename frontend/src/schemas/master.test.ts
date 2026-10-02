@@ -38,6 +38,24 @@ describe("masterSchema", () => {
     expect(r.success).toBe(true);
   });
 
+  it("rejects a name of only U+0085", () => {
+    const r = masterSchema.safeParse({ name: "\u0085" });
+    expect(r.success).toBe(false);
+  });
+
+  it("accepts a name of only U+FEFF", () => {
+    const r = masterSchema.safeParse({ name: "\uFEFF" });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.name).toBe("\uFEFF");
+  });
+
+  it("counts description graphemes after Go trim", () => {
+    const trailingNel = `${"a".repeat(500)}\u0085`;
+    const trailingBom = `${"a".repeat(500)}\uFEFF`;
+    expect(masterSchema.safeParse({ name: "Deck", description: trailingNel }).success).toBe(true);
+    expect(masterSchema.safeParse({ name: "Deck", description: trailingBom }).success).toBe(false);
+  });
+
   it("accepts an empty sortOrder", () => {
     const r = masterSchema.safeParse({ name: "Deck", sortOrder: "" });
     expect(r.success).toBe(true);
@@ -46,6 +64,24 @@ describe("masterSchema", () => {
   it("accepts an integer sortOrder", () => {
     const r = masterSchema.safeParse({ name: "Deck", sortOrder: "5" });
     expect(r.success).toBe(true);
+  });
+
+  it("rejects exponent, hex and signed-plus notations", () => {
+    for (const sortOrder of ["1e151", "1e0151", "0x10", "+5"]) {
+      expect(masterSchema.safeParse({ name: "Deck", sortOrder }).success).toBe(false);
+    }
+  });
+
+  it("rejects values outside int32", () => {
+    for (const sortOrder of ["2147483648", "-2147483649", "99999999999"]) {
+      expect(masterSchema.safeParse({ name: "Deck", sortOrder }).success).toBe(false);
+    }
+  });
+
+  it("accepts the int32 bounds", () => {
+    for (const sortOrder of ["2147483647", "-2147483648", " 7 "]) {
+      expect(masterSchema.safeParse({ name: "Deck", sortOrder }).success).toBe(true);
+    }
   });
 
   it("rejects a decimal sortOrder", () => {
