@@ -22,6 +22,18 @@ type PerformanceWindows {
   days7: PerformanceMetrics!
 }
 
+"""Performance metrics computed over one window of the viewer's swipes."""
+type PerformanceMetrics {
+  successRate: Float!
+  avgDifficulty: Float!
+  retentionRate: Float!
+  studyStreak: Int!
+  lapseRate: Float!
+  reviewCount: Int!
+  """Number of reviews in the window that qualified for retentionRate/lapseRate (reviews of already-learned cards). When the window has swipes but none of them are gated reviews, retentionRate and lapseRate are both 0; when the window is empty (reviewCount is 0 too), both instead carry a neutral 0.5 placeholder. Either way, render an explicit empty state instead of trusting those values."""
+  knownReviewCount: Int!
+}
+
 """A card the learner struggles with (high lapses / low stability)."""
 type StrugglingCard {
   """The struggling card."""

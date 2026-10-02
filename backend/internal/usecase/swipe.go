@@ -11,13 +11,8 @@ import (
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/domain/service"
-	"backend/internal/logging"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
-)
-
-const (
-	swipePerformanceSampleLimit = 100
 )
 
 type CardRepoForSwipe interface {
@@ -30,7 +25,6 @@ type CardgroupRepoForSwipe interface {
 
 type SwipeRecordRepoForSwipe interface {
 	CreateTx(ctx context.Context, tx repository.Tx, sr *domain.SwipeRecord) error
-	ListRecentByUser(ctx context.Context, userID string, limit int) ([]*domain.SwipeRecord, error)
 }
 
 type UserCardFSRSRepoForSwipe interface {
@@ -67,13 +61,14 @@ type HandleSwipeInput struct {
 }
 
 type SwipeOutput struct {
-	PerformanceMode int
-	Metrics         service.PerformanceMetrics
+	// CardID echoes the swiped card. It is set for a recorded swipe and for an
+	// ignored repeat review alike.
+	CardID string
 }
 
 // HandleSwipeOutcome is the result of SwipeUsecase.HandleSwipe. Exactly one of
 // Swipe or Validation is non-nil on a nil-error return.
-//   - Swipe holds the success result (performance metrics).
+//   - Swipe holds the success result (the swiped card id).
 //   - Validation holds field-level user-input errors: invalid mode, an unknown card, or
 //     an unknown cardgroup. Validation.Field will be one of "mode", "cardId", or "cardgroupId".
 //   - Authorization failures (caller does not own the cardgroup) and infrastructure errors
@@ -153,7 +148,6 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		}
 	}
 
-	var now time.Time
 	if u.userFSRSRepo == nil {
 		return HandleSwipeOutcome{}, eris.New("usecase: swipe: user card fsrs repository is not configured")
 	}
@@ -170,7 +164,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		}
 
 		// Read the request instant through the injected clock port.
-		now = u.clock.Now().UTC()
+		now := u.clock.Now().UTC()
 		byCardID, err := u.userFSRSRepo.FindByUserAndCardIDsTx(ctx, tx, user.Sub, []string{card.ID})
 		if err != nil {
 			return wrapSwipeErr(err, "usecase: swipe: find user-card fsrs")
@@ -242,53 +236,11 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			return HandleSwipeOutcome{Validation: info}, nil
 		}
 	}
-	// The transaction has committed: the FSRS row and the swipe record are
-	// durable from here on. Everything below is read-only telemetry assembly,
-	// so past this point the error channel means "the swipe was NOT persisted".
-	metrics, err := u.performanceSnapshot(ctx, user.Sub, now)
-	if err != nil {
-		return HandleSwipeOutcome{}, err
-	}
-	return HandleSwipeOutcome{Swipe: &SwipeOutput{
-		PerformanceMode: int(service.ModeFromMetrics(metrics)),
-		Metrics:         metrics,
-	}}, nil
-}
-
-// performanceSnapshot assembles the read-only performance telemetry that
-// accompanies an already-committed swipe. An infrastructure failure of the
-// recent-swipe read degrades to the neutral empty-window snapshot (which
-// ModeFromMetrics maps to service.ModeDefault) and is logged rather than
-// returned, because reporting a durable swipe as failed makes the client
-// re-queue the card and review it twice. Context cancellation still propagates
-// unwrapped: the caller is being torn down and has nothing to report to.
-func (u *swipeUsecase) performanceSnapshot(ctx context.Context, userID string, now time.Time) (service.PerformanceMetrics, error) {
-	recentSwipes, err := u.swipeRepo.ListRecentByUser(ctx, userID, swipePerformanceSampleLimit)
-	if err != nil {
-		if isContextDone(err) {
-			return service.PerformanceMetrics{}, err
-		}
-		logging.LogWarn(ctx, u.logger,
-			"swipe committed but recent-swipe read failed; returning default performance snapshot",
-			eris.Wrap(err, "usecase: swipe: list recent swipes"),
-		)
-		return service.ComputeMetrics(nil, now), nil
-	}
-	return service.ComputeMetrics(swipeRecordsByValue(recentSwipes), now), nil
+	return HandleSwipeOutcome{Swipe: &SwipeOutput{CardID: in.CardID}}, nil
 }
 
 // wrapSwipeErr passes a context cancellation through unwrapped and wraps any
 // other error with the caller-supplied chain prefix.
 func wrapSwipeErr(err error, msg string) error {
 	return wrapInfraErr(err, msg)
-}
-
-func swipeRecordsByValue(swipes []*domain.SwipeRecord) []domain.SwipeRecord {
-	out := make([]domain.SwipeRecord, 0, len(swipes))
-	for _, swipe := range swipes {
-		if swipe != nil {
-			out = append(out, *swipe)
-		}
-	}
-	return out
 }
