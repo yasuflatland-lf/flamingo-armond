@@ -20,8 +20,10 @@ test("deleted account with a live session cookie lands on /login", async ({ cont
   });
   await loginAs(context, learner);
 
+  // Not /onboarding/start alone: an empty master catalog lands on /cardgroups/new?welcome=1,
+  // so that match would race the transient /onboarding/start URL.
   await page.goto("/");
-  await page.waitForURL(/\/(cardgroups|onboarding\/start)(\?|$)/, { timeout: 10_000 });
+  await page.waitForURL(/\/(cardgroups|onboarding\/start)(\/|\?|$)/, { timeout: 10_000 });
 
   await deleteAuthUser(user.id);
 
