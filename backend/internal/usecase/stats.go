@@ -149,3 +149,13 @@ func capStreak(m service.PerformanceMetrics) service.PerformanceMetrics {
 	}
 	return m
 }
+
+func swipeRecordsByValue(swipes []*domain.SwipeRecord) []domain.SwipeRecord {
+	out := make([]domain.SwipeRecord, 0, len(swipes))
+	for _, swipe := range swipes {
+		if swipe != nil {
+			out = append(out, *swipe)
+		}
+	}
+	return out
+}

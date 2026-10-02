@@ -43,8 +43,8 @@ if existing != nil &&
 ```
 
 `ReviewedWithinLearnDay` preserves the queue's product rule: a card swiped
-today does not return during the same JST learn day. It is the exact complement
-of the serving-side SQL `last_review < StartOfLearnDay(now)` window, so those
+today does not return during the same JST learn day. It complements the
+serving-side JST guard `last_review < StartOfLearnDay(now)`, so those
 comparators must move together. It also blocks a nine-hour repeat from 16:00 UTC
 (01:00 JST) to 01:00 UTC on the next UTC date: go-fsrs grants scheduling credit
 because UTC midnight was crossed, but both instants remain in one JST learn day.
@@ -86,13 +86,36 @@ for every rating, and `Again` collapses stability by 86%. The union guard keeps
 both that scheduling corruption and same-learn-day replays off the recording
 path.
 
+## A rating for a card that is not due is ignored too
+
+The replay guard reads only `last_review`, so on its own it accepts a rating
+the learn queue would never serve. A new card rated Hard at 21:00 JST (12:00 UTC)
+becomes due two days later; the same card rated again from a tab left open
+until 09:00 JST the next morning sits on a new JST learn day and a new UTC date,
+so both replay rules let it through, yet its due is after the next JST midnight
+and the queue does not serve it. Accepting it would record an early review and
+reschedule the card from it: an `Again` pulls the due date in, while `Hard` or
+`Easy` pushes it out.
+
+A second guard, evaluated after the replay guard, ignores the swipe when an
+FSRS row exists and `!domain.DueBeforeEndOfLearnDay(existing.State.Due, now)`.
+`DueBeforeEndOfLearnDay` is the Go form of the serving-side
+`ucs.due < EndOfLearnDay(now)`, so a card due exactly at the next JST midnight
+is ignored and one due a microsecond earlier, the resolution of the `due`
+column, is accepted. A card without a row
+never reaches the check: the new-card window serves it. The response is the
+same success-shaped no-op, logged as `swipe: not-due review ignored`. Together
+the two guards keep one invariant: every accepted rating was servable by the
+learn queue at the moment it was recorded.
+
 ## Reference
 
 - [`backend/internal/usecase/learn.go`](../../../backend/internal/usecase/learn.go) —
   `Clock` and `systemClock`.
 - [`backend/internal/domain/learn_day.go`](../../../backend/internal/domain/learn_day.go) —
-  `EarnsSchedulingCredit`, `ReviewedWithinLearnDay`, and the learn-day bounds.
+  `EarnsSchedulingCredit`, `ReviewedWithinLearnDay`, `DueBeforeEndOfLearnDay`,
+  and the learn-day bounds.
 - [`backend/internal/usecase/swipe.go`](../../../backend/internal/usecase/swipe.go) —
-  the injected clock read and union replay guard.
+  the injected clock read, the union replay guard, and the not-due guard.
 - [`backend/internal/usecase/swipe_learn_day_test.go`](../../../backend/internal/usecase/swipe_learn_day_test.go) —
-  fixed-clock coverage of both replay rules.
+  fixed-clock coverage of both replay rules and the not-due guard.

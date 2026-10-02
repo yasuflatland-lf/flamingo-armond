@@ -1,11 +1,12 @@
 import { z } from "zod";
+import { trimLikeGo } from "./go-text";
 import { graphemeCount } from "./grapheme";
 
 // Mirrors NewCardInput / UpdateCardInput in schema/schema.graphql.
 const cardSideSchema = (fieldName: string) =>
   z
     .string()
-    .trim()
+    .overwrite(trimLikeGo)
     .refine((s) => graphemeCount(s) >= 1, { message: `${fieldName} is required` })
     .refine((s) => graphemeCount(s) <= 500, {
       message: `${fieldName} must be at most 500 characters`,

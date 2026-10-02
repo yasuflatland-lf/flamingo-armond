@@ -101,7 +101,8 @@ func TestCopyMasterToUser_Integration_CopiesDeckWithNoFSRSState(t *testing.T) {
 	})
 
 	uc := newMasterDeckUsecaseForTest(t)
-	cg, err := uc.CopyMasterToUser(ctx, masterID, ownerID)
+	copyRes, err := uc.CopyMasterToUser(ctx, masterID, ownerID, false)
+	cg := copyRes.Cardgroup
 	require.NoError(t, err)
 	require.NotNil(t, cg)
 
@@ -165,7 +166,8 @@ func TestCopyMasterToUser_Integration_RollsBackOnMissingMaster(t *testing.T) {
 	ownerID := insertAuthUser(t, ctx)
 
 	uc := newMasterDeckUsecaseForTest(t)
-	cg, err := uc.CopyMasterToUser(ctx, uuid.NewString(), ownerID)
+	copyRes, err := uc.CopyMasterToUser(ctx, uuid.NewString(), ownerID, false)
+	cg := copyRes.Cardgroup
 	require.Error(t, err)
 	assert.Nil(t, cg)
 

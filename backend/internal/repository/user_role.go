@@ -28,9 +28,10 @@ type gormUserRoleJoinRow struct {
 
 // UserRoleRepository queries the many-to-many membership between users and roles.
 type UserRoleRepository interface {
-	// HasRole reports whether userID holds the named role.
-	// Returns (false, nil) when the user has no rows or the role name does not exist.
-	// Only DB errors return a non-nil error. Role lookup is by name (case-sensitive).
+	// HasRole reports whether userID holds the named role (lookup by name, case-sensitive).
+	// Returns (false, nil) when a well-formed userID has no rows or the role name does
+	// not exist; returns ErrUserNotFound (also ErrNotFound) when userID is not a uuid.
+	// Any other non-nil error is a DB error.
 	HasRole(ctx context.Context, userID string, roleName domain.RoleName) (bool, error)
 
 	// HasRoleTx is HasRole scoped to the supplied transaction. Callers that use
@@ -115,6 +116,10 @@ func hasRoleOn(ctx context.Context, db *gorm.DB, userID string, roleName domain.
 		Where("user_roles.user_id = ? AND roles.name = ?", userID, roleName).
 		Count(&count).Error
 	if err != nil {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; userID is the only one here.
+		if pgInvalidTextRepresentation(err) {
+			return false, ErrUserNotFound
+		}
 		return false, eris.Wrap(err, "repository: check user role")
 	}
 	return count > 0, nil
@@ -136,6 +141,10 @@ func requireExistsOn(ctx context.Context, db *gorm.DB, table, id, wrap string, n
 		Count(&count).Error; err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err
+		}
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if pgInvalidTextRepresentation(err) {
+			return notFound
 		}
 		return eris.Wrap(err, wrap)
 	}
@@ -182,6 +191,11 @@ func (r *userRoleRepo) SetUserRolesTx(ctx context.Context, tx *gorm.DB, userID s
 	for _, roleID := range roleIDs {
 		if seen[roleID] {
 			continue
+		}
+		// Not classifying 22P02 from the COUNT instead: uuid_in accepts braced and
+		// hyphen-less spellings that findRolesByIDs drops, so the two would disagree.
+		if !isCanonicalUUID(roleID) {
+			return ErrRoleNotFound
 		}
 		seen[roleID] = true
 		uniqueRoleIDs = append(uniqueRoleIDs, roleID)

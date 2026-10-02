@@ -371,9 +371,8 @@ func ratioRows(now time.Time) []domain.DueCard {
 }
 
 // TestLearnUsecaseNextDueCards_UsesStoredRatio verifies that a stored non-default
-// ratio (1/2) reaches OrderingPolicy.Apply: the 1:1 alternation puts new cards in
-// the even slots and review cards in the odd slots, distinct from the default
-// 1:4 order [R,R,N,R,N,N].
+// ratio (1/2) reaches OrderingPolicy.Apply: 1/2 yields [R,N,N,R,N,R], distinct
+// from the default 1:4 order [R,R,N,R,N,N].
 func TestLearnUsecaseNextDueCards_UsesStoredRatio(t *testing.T) {
 	t.Parallel()
 
@@ -401,7 +400,7 @@ func TestLearnUsecaseNextDueCards_UsesStoredRatio(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, prefs.calls, "the stored preference must be read once")
 	require.Len(t, got, 6)
-	require.Equal(t, []string{"new-1", "rev-1", "new-2", "rev-2", "new-3", "rev-3"}, learnCardIDs(got))
+	require.Equal(t, []string{"rev-1", "new-1", "new-2", "rev-2", "new-3", "rev-3"}, learnCardIDs(got))
 }
 
 // TestLearnUsecaseNextDueCards_ErrNotFoundUsesDefaultRatio verifies that a
@@ -553,28 +552,40 @@ func TestLearnUsecasePracticeTodaysCardsLimitClamp(t *testing.T) {
 	}
 }
 
-// TestLearnUsecasePracticeTodaysCards_PassesJSTStartOfDayAsReviewedAfter pins
-// that the usecase computes the JST start-of-day boundary and the repository
-// receives it verbatim as reviewedAfter (the inverse window of NextDueCards),
-// and that the authenticated user's Sub is forwarded. The chosen instant has
-// distinct UTC and JST dates: 2026-06-06T16:30Z = 2026-06-07 01:30 JST.
-func TestLearnUsecasePracticeTodaysCards_PassesJSTStartOfDayAsReviewedAfter(t *testing.T) {
+// TestLearnUsecasePracticeTodaysCards_PassesEarlierReviewBoundAsReviewedAfter pins
+// that the repository receives the earlier of the JST day start and the UTC date
+// start as reviewedAfter, and that the caller's Sub and cardgroup are forwarded.
+// 16:30Z (01:30 JST) sits in the 00:00-09:00 JST band, so the UTC bound wins;
+// at 03:00Z (12:00 JST) the JST day start wins.
+func TestLearnUsecasePracticeTodaysCards_PassesEarlierReviewBoundAsReviewedAfter(t *testing.T) {
 	t.Parallel()
 
-	now := time.Date(2026, 6, 6, 16, 30, 0, 0, time.UTC)
-	wantBoundary := time.Date(2026, 6, 7, 0, 0, 0, 0, time.FixedZone("JST", 9*60*60))
-	cardRepo := &mockLearnCardRepo{}
-	uc := newPracticeUsecase(
-		cardRepo,
-		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
-		now,
-	)
-	_, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
-	require.NoError(t, err)
-	require.True(t, cardRepo.practiceReviewedAfter.Equal(wantBoundary),
-		"reviewedAfter: got %v, want instant %v", cardRepo.practiceReviewedAfter, wantBoundary)
-	require.Equal(t, "u-1", cardRepo.practiceUserID)
-	require.Equal(t, "cg-1", cardRepo.practiceCardgroupID)
+	jst := time.FixedZone("JST", 9*60*60)
+	cases := []struct {
+		name         string
+		now          time.Time
+		wantBoundary time.Time
+	}{
+		{"01:30 JST uses the UTC date start", time.Date(2026, 6, 6, 16, 30, 0, 0, time.UTC), time.Date(2026, 6, 6, 0, 0, 0, 0, time.UTC)},
+		{"12:00 JST uses the JST day start", time.Date(2026, 6, 7, 3, 0, 0, 0, time.UTC), time.Date(2026, 6, 7, 0, 0, 0, 0, jst)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cardRepo := &mockLearnCardRepo{}
+			uc := newPracticeUsecase(
+				cardRepo,
+				&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "u-1"}},
+				tc.now,
+			)
+			_, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
+			require.NoError(t, err)
+			require.True(t, cardRepo.practiceReviewedAfter.Equal(tc.wantBoundary),
+				"reviewedAfter: got %v, want instant %v", cardRepo.practiceReviewedAfter, tc.wantBoundary)
+			require.Equal(t, "u-1", cardRepo.practiceUserID)
+			require.Equal(t, "cg-1", cardRepo.practiceCardgroupID)
+		})
+	}
 }
 
 // TestLearnUsecasePracticeTodaysCards_EmptyIsNonNilSlice verifies that an empty

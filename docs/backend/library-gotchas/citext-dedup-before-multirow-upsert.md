@@ -4,7 +4,7 @@
 > Repo-side companion: [Table-parameterized bulk repository helper](table-parameterized-bulk-repo-helper.md).
 
 When a batch importer deduplicates parsed rows in memory (a Go `map` keyed on the
-conflict column) *before* handing them to a single multi-row
+conflict column) *before* handing them to a multi-row
 `INSERT ... ON CONFLICT (..., col) DO UPDATE`, the map key MUST match the DB's
 uniqueness semantics for `col`. If `col` is **citext** (case-insensitive), a map
 keyed on the **raw** string is wrong: `"Apple"` and `"apple"` are distinct Go map
@@ -12,7 +12,9 @@ keys but the *same* conflict key under citext.
 
 ## The failure
 
-The shared `upsertManyTx` helper builds one multi-row statement:
+The shared `upsertManyTx` helper builds one multi-row statement per
+`bulkStatementChunkRows` (5,000) rows on the same `tx`. An import is capped at
+`cardImportParsedRowCap` = 5,000 rows, so it is always a single statement:
 
 ```sql
 INSERT INTO master_cards (..., front, ...) VALUES (...), (...)
@@ -24,6 +26,17 @@ a second time` — when two rows in the *same* statement map to the same conflic
 key. With `front` citext, two parsed rows differing only by case collapse to one
 conflict key, so a raw-keyed in-memory dedup lets both through and the whole
 import transaction aborts (surfaced as `INTERNAL`).
+
+21000 fires only for duplicates inside one statement. Imports stay within one
+statement, so a miskeyed in-memory dedup still aborts with 21000. Input above
+`bulkStatementChunkRows` gets no database check across a chunk boundary: a
+duplicate that straddles it silently updates the row the earlier chunk inserted
+and counts as Updated in the later chunk (`back` and `position` take the later
+values; the stored `front` keeps the earlier casing). The only caller above one
+chunk today is the master-deck copy (`copyMasterCardsIntoTx`), which upserts into
+`cards` and is safe because its source fronts are unique under `master_cards`'
+case-insensitive unique `front`. Any caller above one chunk must pass key-unique
+input.
 
 The user-card mirror (`cards.front` is plain `text`, case-sensitive) does **not**
 have this problem — case-differing fronts are genuinely distinct there. The bug

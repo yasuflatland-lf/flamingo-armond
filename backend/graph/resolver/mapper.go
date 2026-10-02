@@ -233,41 +233,8 @@ func toUsecaseOrderBy[M ~string, U ~string](o *M) *U {
 	return &v
 }
 
-func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
-	if out == nil {
-		return nil
-	}
-	return &model.SwipeResponse{
-		PerformanceMode: toSwipePerformanceModeModel(out.PerformanceMode),
-		Metrics:         toPerformanceMetricsModel(out.Metrics),
-	}
-}
-
-// toSwipePerformanceModeModel maps the usecase's int-encoded performance mode
-// (service.PerformanceMode, 0..4) to the generated wire enum. The int always
-// comes from service.ModeFromMetrics, which returns a clamped in-range value,
-// so the default arm is unreachable; it maps to DEFAULT as a fail-safe to keep
-// the non-null field serializable.
-func toSwipePerformanceModeModel(mode int) model.SwipePerformanceMode {
-	switch service.PerformanceMode(mode) {
-	case service.ModeDifficult:
-		return model.SwipePerformanceModeDifficult
-	case service.ModeDefault:
-		return model.SwipePerformanceModeDefault
-	case service.ModeGood:
-		return model.SwipePerformanceModeGood
-	case service.ModeEasy:
-		return model.SwipePerformanceModeEasy
-	case service.ModeMastered:
-		return model.SwipePerformanceModeMastered
-	default:
-		return model.SwipePerformanceModeDefault
-	}
-}
-
 // toPerformanceMetricsModel maps the domain-service performance value object to
-// the generated wire model. Shared by the swipe response and the learning-stats
-// diagnostic snapshot.
+// the generated wire model. Used by the learning-stats diagnostic snapshot.
 func toPerformanceMetricsModel(m service.PerformanceMetrics) *model.PerformanceMetrics {
 	return &model.PerformanceMetrics{
 		SuccessRate:      m.SuccessRate,

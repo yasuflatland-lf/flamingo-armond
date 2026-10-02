@@ -82,14 +82,14 @@ func translateCardErr(err error) error {
 }
 
 // translateTextLengthViolation maps a *repository.TextLengthViolationError -- the
-// database-side CHECK backstop on a "<table>_<column>_length" constraint
-// (SQLSTATE 23514) -- to a field-scoped BAD_USER_INPUT validation error keyed on
-// the column the constraint guards ("front", "back", "name").
+// database-side backstop for a text-length CHECK (SQLSTATE 23514) or a front too
+// large for its unique index (SQLSTATE 54000) -- to a field-scoped BAD_USER_INPUT
+// validation error keyed on the guarded column ("front", "back", "name").
 //
 // It returns nil when err is not a text-length violation, so callers use it as a
 // pre-filter before their existing eris.Wrap. The domain layer enforces the
-// user-visible cap in grapheme clusters and the database bound is a wide
-// multiple of it, so this path fires only for pathological combining-mark input;
+// user-visible cap in grapheme clusters and the database bounds sit above it for
+// realistic input, so this path fires only for pathological input;
 // classifying it as BAD_USER_INPUT rather than INTERNAL means the learner sees a
 // length message instead of an unexplained failure.
 func translateTextLengthViolation(err error) error {

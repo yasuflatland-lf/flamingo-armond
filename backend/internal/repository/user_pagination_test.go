@@ -331,6 +331,18 @@ func TestUserPagination_CursorNotFound(t *testing.T) {
 		"expected ErrCursorNotFound, got %v", err)
 }
 
+func TestUserPagination_MalformedCursorID(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewUserRepository(testDB.GORM)
+
+	malformed := "not-a-uuid"
+	_, _, err := repo.ListPage(ctx, &malformed, nil, 5, 0, nil)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, repository.ErrCursorNotFound),
+		"expected ErrCursorNotFound, got %v", err)
+}
+
 // TestUserPagination_PageCapAllowsMaxPlusOne mirrors the cards-side test:
 // userPageCap == maxUserPageSize+1 (101) so first=101 is accepted, while
 // first=100 stays at the documented user-facing maximum.

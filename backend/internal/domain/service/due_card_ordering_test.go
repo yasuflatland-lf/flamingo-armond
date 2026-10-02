@@ -2,7 +2,6 @@ package service
 
 import (
 	"fmt"
-	"math"
 	"testing"
 	"time"
 
@@ -68,13 +67,12 @@ func TestOrderingPolicy_Apply_MixedCompositionSlots(t *testing.T) {
 	}
 }
 
-func TestOrderingPolicy_Apply_NonDefaultRatioInterleavesOneToOne(t *testing.T) {
+func TestOrderingPolicy_Apply_NonDefaultRatioReachesInterleave(t *testing.T) {
 	t.Parallel()
 
-	// 3 new + 3 review. The default 1/5 ratio emits [R,R,N,R,N,N]; a 1/2 ratio
-	// (new share 1, review share 1) alternates 1:1 starting with new, so new
-	// cards land in the even slots and review cards in the odd slots. The
-	// distinct slot composition proves the caller-supplied ratio reaches Apply.
+	// 3 new + 3 review. At 1/2 the 80% prefix cap makes slot 1 a review, so the
+	// order is [R,N,N,R,N,R], distinct from the default 1/5 order [R,R,N,R,N,N];
+	// the distinct order proves the caller-supplied ratio reaches Apply.
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
 	in := []domain.DueCard{
 		dueCard("n1", domain.FSRSPhaseNew, base),
@@ -84,21 +82,12 @@ func TestOrderingPolicy_Apply_NonDefaultRatioInterleavesOneToOne(t *testing.T) {
 		dueCard("r2", domain.FSRSPhaseReview, base.Add(4*time.Minute)),
 		dueCard("r3", domain.FSRSPhaseReview, base.Add(5*time.Minute)),
 	}
-	reviewSet := map[string]bool{"r1": true, "r2": true, "r3": true}
 
 	ratio, err := domain.ParseNewCardRatio(1, 2)
 	require.NoError(t, err)
 
 	got := NewOrderingPolicy().Apply(in, ratio)
-	require.Len(t, got, 6)
-
-	for i, c := range got {
-		if i%2 == 0 {
-			require.False(t, reviewSet[c.ID], "slot %d must be a new card, got %q", i, c.ID)
-		} else {
-			require.True(t, reviewSet[c.ID], "slot %d must be a review card, got %q", i, c.ID)
-		}
-	}
+	require.Equal(t, []string{"r1", "n1", "n2", "r2", "n3", "r3"}, cardIDs(got))
 }
 
 // TestOrderingPolicy_Apply_EveryAcceptedRatioServesNewCardInSessionPrefix pins
@@ -200,9 +189,9 @@ func TestInterleave_TrailingReviewAppend(t *testing.T) {
 
 	got := interleave(newC, reviewC, 4, 1)
 
-	// Slot 1 goes to the new bucket (round(1*4/5) = 1) and empties it; the main
-	// loop exits and the trailing-review path appends rev-0..rev-6.
-	want := []string{"new-0", "rev-0", "rev-1", "rev-2", "rev-3", "rev-4", "rev-5", "rev-6"}
+	// Slot 1 is capped to review (floor(4/5) = 0); slot 2 takes new-0 and empties
+	// the new bucket, so the trailing-review path appends rev-1..rev-6.
+	want := []string{"rev-0", "new-0", "rev-1", "rev-2", "rev-3", "rev-4", "rev-5", "rev-6"}
 	require.Equal(t, want, cardIDs(got))
 }
 
@@ -221,11 +210,11 @@ func TestInterleave_TrailingNewAppend(t *testing.T) {
 
 	got := interleave(newC, reviewC, 4, 1)
 
-	// round(k*4/5) hands slots 3 and 8 to the review bucket, emptying it; the
-	// main loop exits and trailing-new appends new-6..new-9.
+	// The 80% prefix cap hands slots 1 and 6 to the review bucket, emptying it;
+	// the main loop exits and trailing-new appends new-4..new-9.
 	want := []string{
-		"new-0", "new-1", "rev-0", "new-2", "new-3",
-		"new-4", "new-5", "rev-1", "new-6", "new-7",
+		"rev-0", "new-0", "new-1", "new-2", "new-3",
+		"rev-1", "new-4", "new-5", "new-6", "new-7",
 		"new-8", "new-9",
 	}
 	require.Equal(t, want, cardIDs(got))
@@ -264,15 +253,26 @@ func deepBuckets(n int) (newC, reviewC []domain.DueCard, newSet map[string]bool)
 	return newC, reviewC, newSet
 }
 
+// countNew returns how many of ids are in newSet.
+func countNew(ids []string, newSet map[string]bool) int {
+	n := 0
+	for _, id := range ids {
+		if newSet[id] {
+			n++
+		}
+	}
+	return n
+}
+
 // TestInterleave_PrefixFidelityAcrossAcceptedRatios pins the property the
 // largest-remainder distribution buys: for every accepted ratio and every prefix
-// length, the served new-card count stays within half a card of the nominal
+// length, the served new-card count stays between floor and ceil of the nominal
 // share. Both buckets stay deep so no trailing-append path is reached.
 func TestInterleave_PrefixFidelityAcrossAcceptedRatios(t *testing.T) {
 	t.Parallel()
 
-	const bucketDepth = 120
-	const maxPrefix = 100
+	const bucketDepth = 220
+	const maxPrefix = 200
 
 	newC, reviewC, newSet := deepBuckets(bucketDepth)
 
@@ -289,9 +289,8 @@ func TestInterleave_PrefixFidelityAcrossAcceptedRatios(t *testing.T) {
 				if newSet[ids[k-1]] {
 					served++
 				}
-				nominal := float64(k) * float64(num) / float64(den)
-				require.LessOrEqual(t, math.Abs(float64(served)-nominal), 0.5+1e-9,
-					"ratio %d/%d prefix k=%d: served %d new, nominal %.4f", num, den, k, served, nominal)
+				require.True(t, num*k/den <= served && served <= (num*k+den-1)/den,
+					"ratio %d/%d prefix k=%d: served %d new, want floor..ceil of %d/%d", num, den, k, served, num*k, den)
 			}
 		}
 	}
@@ -300,7 +299,8 @@ func TestInterleave_PrefixFidelityAcrossAcceptedRatios(t *testing.T) {
 // TestInterleave_ServesNewCardEarlierThanTheOldCycle is the P1a regression: the
 // removed cycle emission put den-num review cards ahead of the first new card.
 // The shipped 1/5 default now serves its first new card at slot 3, while every
-// accepted ratio stays inside the slot den-num bound.
+// accepted ratio stays inside the slot max(den-num, 2) bound: the 80% prefix cap
+// makes slot 1 a review for every ratio at or above 1/2.
 func TestInterleave_ServesNewCardEarlierThanTheOldCycle(t *testing.T) {
 	t.Parallel()
 
@@ -327,9 +327,72 @@ func TestInterleave_ServesNewCardEarlierThanTheOldCycle(t *testing.T) {
 				continue
 			}
 			require.LessOrEqual(t,
-				firstNewSlot(ratio), ratio.Denominator()-ratio.Numerator(),
-				"ratio %d/%d must serve its first new card no later than slot den-num", num, den)
+				firstNewSlot(ratio), max(ratio.Denominator()-ratio.Numerator(), 2),
+				"ratio %d/%d must serve its first new card no later than slot max(den-num, 2): "+
+					"the 80%% prefix cap makes slot 1 a review for every ratio at or above 1/2", num, den)
 		}
+	}
+}
+
+// TestInterleave_NewShareNeverExceedsCapOnAnyPrefix pins the 80% cap on every
+// prefix of every accepted ratio while both buckets stay deep, together with the
+// floor..ceil bound around the nominal share.
+func TestInterleave_NewShareNeverExceedsCapOnAnyPrefix(t *testing.T) {
+	t.Parallel()
+
+	const bucketDepth = 220
+	const maxPrefix = 200
+
+	newC, reviewC, newSet := deepBuckets(bucketDepth)
+
+	for den := 2; den <= domain.NewCardRatioDenMax; den++ {
+		for num := 1; num < den; num++ {
+			ratio, err := domain.ParseNewCardRatio(num, den)
+			if err != nil {
+				continue
+			}
+
+			ids := cardIDs(interleave(newC, reviewC, ratio.NewShare(), ratio.ReviewShare()))
+			served := 0
+			for k := 1; k <= maxPrefix; k++ {
+				if newSet[ids[k-1]] {
+					served++
+				}
+				require.LessOrEqual(t, served,
+					k*domain.NewCardRatioMaxNewShareNum/domain.NewCardRatioMaxNewShareDen,
+					"ratio %d/%d prefix k=%d: served %d new exceeds the 80%% cap", num, den, k, served)
+				require.True(t, k*num/den <= served && served <= (k*num+den-1)/den,
+					"ratio %d/%d prefix k=%d: served %d new, want floor..ceil of %d/%d", num, den, k, served, k*num, den)
+			}
+		}
+	}
+}
+
+// TestInterleave_FourFifthsShortSessions pins the new/review split of short
+// sessions at the 4/5 maximum ratio, where the 80% prefix cap binds.
+func TestInterleave_FourFifthsShortSessions(t *testing.T) {
+	t.Parallel()
+
+	ratio, err := domain.ParseNewCardRatio(4, 5)
+	require.NoError(t, err)
+	newC, reviewC, newSet := deepBuckets(domain.DefaultLearnSessionSize)
+	ids := cardIDs(interleave(newC, reviewC, ratio.NewShare(), ratio.ReviewShare()))
+
+	cases := []struct {
+		limit, wantNew, wantReview int
+	}{
+		{1, 0, 1},
+		{2, 1, 1},
+		{3, 2, 1},
+		{4, 3, 1},
+		{7, 5, 2},
+		{12, 9, 3},
+		{20, 16, 4},
+	}
+	for _, tc := range cases {
+		served := countNew(ids[:tc.limit], newSet)
+		require.Equal(t, tc.wantNew, served, "limit %d new count", tc.limit)
+		require.Equal(t, tc.wantReview, tc.limit-served, "limit %d review count", tc.limit)
 	}
 }
 
@@ -343,12 +406,7 @@ func TestInterleave_AdvertisedDefaultSessionSplit(t *testing.T) {
 	ratio := domain.DefaultNewCardRatio
 
 	ids := cardIDs(interleave(newC, reviewC, ratio.NewShare(), ratio.ReviewShare()))
-	served := 0
-	for _, id := range ids[:domain.DefaultLearnSessionSize] {
-		if newSet[id] {
-			served++
-		}
-	}
+	served := countNew(ids[:domain.DefaultLearnSessionSize], newSet)
 
 	require.Equal(t, 4, served, "a default 20-card session must serve 4 new cards")
 	require.Equal(t, 16, domain.DefaultLearnSessionSize-served, "and 16 review cards")
