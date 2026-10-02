@@ -44,8 +44,8 @@ type masterDeckCardgroupRepo interface {
 
 // masterDeckCardRepo is the subset of repository.MasterCardRepository the master
 // deck usecase consumes: read a master deck's cards to snapshot. The copy reads on
-// its transaction because its callers hold the per-owner cardgroup lock; merge and
-// preview hold no such lock and read through the pool.
+// its transaction because the seed and a quota-enforced import hold the per-owner
+// cardgroup lock there; merge and preview hold no such lock and read through the pool.
 type masterDeckCardRepo interface {
 	ListByMasterCardgroupTx(ctx context.Context, tx repository.Tx, masterCardgroupID string) ([]*domain.MasterCard, error)
 	ListByMasterCardgroup(ctx context.Context, masterCardgroupID string) ([]*domain.MasterCard, error)
@@ -284,10 +284,10 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) (
 	// convention; callers receive `[]` regardless of which path fired).
 	seeded := []*domain.Cardgroup{}
 	if err := u.tx(ctx, func(tx repository.Tx) error {
-		// Take the per-owner transaction-scoped advisory lock so concurrent seed,
-		// create and import calls for the same user serialize. The advisory-lock
-		// SQL (a Postgres dialect detail) lives in the repository; the lock
-		// releases at tx end.
+		// Take the per-owner transaction-scoped advisory lock so concurrent seed
+		// and non-admin create and import calls for the same user serialize. The
+		// advisory-lock SQL (a Postgres dialect detail) lives in the repository;
+		// the lock releases at tx end.
 		if err := u.userCG.AcquireUserCardgroupLockTx(ctx, tx, userID); err != nil {
 			return err
 		}
@@ -299,7 +299,7 @@ func (u *masterDeckUsecase) SeedForNewUser(ctx context.Context, userID string) (
 		if count > 0 {
 			// Already seeded (or the user owns a cardgroup): no-op. The seed runs
 			// only for an owner holding zero cardgroups, under the same per-owner
-			// lock Create and ImportMaster take, and stops at
+			// lock non-admin Create and ImportMaster take, and stops at
 			// domain.GeneralUserCardgroupLimit decks below.
 			return nil
 		}
@@ -393,9 +393,10 @@ func (u *masterDeckUsecase) copyMasterCardsIntoTx(
 // The emptiness half of catalog visibility needs no lock: it is decided by
 // len(cards) on the enumeration this copy consumes — see the guard at its call
 // site — which holds no matter how the reads interleave with a concurrent
-// last-card delete. The enumeration still runs on tx: both callers hold the
-// per-owner cardgroup lock, and a pooled read made while same-owner waiters each
-// hold a connection blocked on that lock can exhaust the pool.
+// last-card delete. The enumeration still runs on tx: the seed and a
+// quota-enforced import hold the per-owner cardgroup lock, and a pooled read made
+// while same-owner waiters each hold a connection blocked on that lock can
+// exhaust the pool.
 //
 // SeedForNewUser tolerates that ErrNotFound by skipping the starter, since one
 // deck leaving the catalog mid-signup must not fail the whole seed.

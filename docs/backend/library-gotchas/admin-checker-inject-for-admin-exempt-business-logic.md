@@ -122,8 +122,8 @@ The `Create` method runs its checks in this order:
 4. Inside one transaction: non-admins run `AcquireUserCardgroupLockTx` → `CountByOwnerTx` → `CreateTx`; admins run `CreateTx` only.
 
 `ImportMaster` (via `CopyMasterToUser` with `enforceQuota`) and `SeedForNewUser` take the
-same per-owner advisory lock first in their own transactions, so every write that adds
-cardgroups to an owner serializes on one key.
+same per-owner advisory lock first in their own transactions, so every quota-bound
+(non-admin) write that adds cardgroups to an owner serializes on one key.
 
 Name validation runs before the limit check because it requires no DB round-trips.
 An invalid name fails immediately, avoiding the `IsAdmin`, lock and count queries
