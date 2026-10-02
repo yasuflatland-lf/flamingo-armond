@@ -2509,10 +2509,10 @@ func TestWarnIfNoAdmin_WarnOnCountError(t *testing.T) {
 
 	// 4. The "no admin role-holder" WARN must NOT appear — the count failed,
 	//    so we never learned whether adminCount == 0.
-	const wantNoEscapeMsg = "admin bootstrap: no admin role-holder exists"
+	const wantNoAdminMsg = "admin bootstrap: no admin role-holder exists"
 	for _, rec := range records {
-		if rec["msg"] == wantNoEscapeMsg {
-			t.Errorf("unexpected log line %q: should only appear when count succeeds with 0", wantNoEscapeMsg)
+		if rec["msg"] == wantNoAdminMsg {
+			t.Errorf("unexpected log line %q: should only appear when count succeeds with 0", wantNoAdminMsg)
 		}
 	}
 }
