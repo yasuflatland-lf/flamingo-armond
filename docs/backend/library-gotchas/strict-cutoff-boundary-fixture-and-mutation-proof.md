@@ -43,10 +43,12 @@ FAILS, then restore and confirm the diff is clean:
   `ucs.last_review <= ?`. The exact-boundary row now passes the predicate and
   enters the review window, so the `require.Equal` against the single expected
   ID fails. Restore the `<` and the test goes green again.
-- For a JST start-of-day cutoff: change `domain.StartOfLearnDay(now)` to a raw `now`
-  (`backend/internal/usecase/learn.go`). A card reviewed earlier today now sits
-  before the looser cutoff and reappears in the queue, breaking the
-  exclusion assertion.
+- For the JST start-of-day cutoff: change `ReviewedBefore: StartOfLearnDay(now)`
+  to `ReviewedBefore: now` in `domain.NewLearnWindow`
+  (`backend/internal/domain/learn_day.go`).
+  `TestLearnUsecaseNextDueCards_PassesJSTStartOfDayAsReviewedBefore`
+  (`backend/internal/usecase/learn_test.go`) fails, because the window the
+  repository receives no longer starts at JST midnight.
 
 The mutation must produce a *failing* test, not merely a different one. A pin
 that survives the mutation is not testing the boundary — widen the fixture until

@@ -1408,6 +1408,55 @@ func TestCardRepository_FindPracticeCards_BoundaryComplementarity(t *testing.T) 
 		"practice pool holds exactly the cards reviewed at-or-after the boundary (inclusive >=)")
 }
 
+// TestCardRepository_FindPracticeCards_CoversUTCCreditBandBeforeNineJST pins that,
+// before 09:00 JST, a card reviewed the previous JST evening lands in practice
+// rather than in neither window: the review window withholds it by the UTC credit
+// bound, and PracticeReviewedAfter admits it.
+func TestCardRepository_FindPracticeCards_CoversUTCCreditBandBeforeNineJST(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Date(2026, 7, 18, 23, 0, 0, 0, time.UTC) // 08:00 JST on 2026-07-19
+	w := domain.NewLearnWindow(now)
+	due := now.Add(-time.Hour)
+
+	eveningBefore := newCard(cg.ID, "reviewed-20-jst-day-before", "back")
+	atCreditBound := newCard(cg.ID, "reviewed-at-credit-bound", "back")
+	beforeCreditBound := newCard(cg.ID, "reviewed-before-credit-bound", "back")
+	for _, card := range []*domain.Card{eveningBefore, atCreditBound, beforeCreditBound} {
+		require.NoError(t, repo.Create(ctx, card))
+	}
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, eveningBefore, now, due,
+		time.Date(2026, 7, 18, 11, 0, 0, 0, time.UTC), 20, domain.RatingGood)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, atCreditBound, now, due,
+		w.CreditReviewedBefore, 20, domain.RatingGood)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, beforeCreditBound, now, due,
+		time.Date(2026, 7, 17, 23, 0, 0, 0, time.UTC), 20, domain.RatingGood)
+
+	learn, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), w, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{beforeCreditBound.ID}, repoCardIDs(learn),
+		"only the card reviewed before the UTC date start is review-eligible")
+
+	practice, err := repo.FindPracticeCardsForUser(ctx, ownerID, string(cg.ID), w.PracticeReviewedAfter(), 10)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{eveningBefore.ID, atCreditBound.ID}, repoCardIDs(practice),
+		"practice holds every reviewed card the review window withholds by last_review")
+
+	union := map[string]bool{}
+	for _, id := range repoCardIDs(learn) {
+		union[id] = true
+	}
+	for _, id := range repoCardIDs(practice) {
+		require.False(t, union[id], "a card must not appear in both windows")
+		union[id] = true
+	}
+	require.Len(t, union, 3, "together the two windows cover every due reviewed card")
+}
+
 // TestCardRepository_FindPracticeCards_IgnoresOtherUsersFSRSRows verifies the
 // LEFT JOIN is scoped to the calling user via ucs.user_id = ?. Another user
 // reviewing the shared card today must not surface it in the querying user's

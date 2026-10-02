@@ -157,7 +157,7 @@ func TestEndOfLearnDay(t *testing.T) {
 }
 
 // TestReviewedWithinLearnDay pins the truth table at the boundary instant:
-// the predicate is the exact complement of the serving-side SQL
+// the predicate complements the serving-side JST guard
 // `last_review < StartOfLearnDay(now)`, so a review exactly at the boundary
 // counts as reviewed today while one a nanosecond earlier belongs to the
 // previous learn day.
@@ -299,5 +299,111 @@ func TestCreditReviewedBefore_AgreesWithEarnsSchedulingCredit(t *testing.T) {
 				"serving-side bound and recording-side credit rule must agree at (+%dh, +%dh)", i, j,
 			)
 		}
+	}
+}
+
+// windowMembership evaluates lastReview against the review window's two last_review
+// guards and against the practice pool's inclusive lower bound.
+func windowMembership(w LearnWindow, lastReview time.Time) (reviewEligible, practice bool) {
+	reviewEligible = lastReview.Before(w.ReviewedBefore) && lastReview.Before(w.CreditReviewedBefore)
+	practice = !lastReview.Before(w.PracticeReviewedAfter())
+	return reviewEligible, practice
+}
+
+// TestLearnWindow_PracticeReviewedAfter_ComplementsReviewGuards pins that practice is
+// the exact complement of the review window's two last_review guards (due is not
+// modelled) over a 48-hour half-hour grid, and that the practice bound agrees with
+// HandleSwipe's replay-guard disjunction.
+func TestLearnWindow_PracticeReviewedAfter_ComplementsReviewGuards(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 7, 18, 0, 0, 0, 0, time.UTC)
+	for i := 0; i <= 96; i++ {
+		for j := i; j <= 96; j++ {
+			lastReview := base.Add(time.Duration(i) * 30 * time.Minute)
+			now := base.Add(time.Duration(j) * 30 * time.Minute)
+			reviewEligible, practice := windowMembership(NewLearnWindow(now), lastReview)
+			require.NotEqual(t, reviewEligible, practice,
+				"practice and review must be complements at (+%d, +%d) half-hours", i, j)
+			require.Equal(t,
+				ReviewedWithinLearnDay(lastReview, now) || !EarnsSchedulingCredit(lastReview, now),
+				practice,
+				"practice bound and swipe replay guard must agree at (+%d, +%d) half-hours", i, j)
+		}
+	}
+}
+
+// TestLearnWindow_PracticeReviewedAfter_Band pins the 00:00-09:00 JST band, where
+// the UTC date start is the earlier bound, and the return to the JST day start at
+// 09:00 JST.
+func TestLearnWindow_PracticeReviewedAfter_Band(t *testing.T) {
+	t.Parallel()
+
+	inBand := time.Date(2026, 7, 18, 23, 0, 0, 0, time.UTC)   // 08:00 JST on 2026-07-19
+	afterBand := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC) // 09:00 JST on 2026-07-19
+	cases := []struct {
+		name            string
+		now             time.Time
+		lastReview      time.Time
+		wantPractice    bool
+		wantReview      bool
+		wantCreditBound bool
+	}{
+		{
+			name:            "08:00 JST, reviewed 23:59 JST the day before",
+			now:             inBand,
+			lastReview:      time.Date(2026, 7, 18, 14, 59, 0, 0, time.UTC),
+			wantPractice:    true,
+			wantCreditBound: true,
+		},
+		{
+			name:            "08:00 JST, reviewed 20:00 JST the day before",
+			now:             inBand,
+			lastReview:      time.Date(2026, 7, 18, 11, 0, 0, 0, time.UTC),
+			wantPractice:    true,
+			wantCreditBound: true,
+		},
+		{
+			name:            "08:00 JST, reviewed exactly at the UTC date start",
+			now:             inBand,
+			lastReview:      time.Date(2026, 7, 18, 0, 0, 0, 0, time.UTC),
+			wantPractice:    true,
+			wantCreditBound: true,
+		},
+		{
+			name:            "08:00 JST, reviewed 08:59 JST the day before",
+			now:             inBand,
+			lastReview:      time.Date(2026, 7, 17, 23, 59, 0, 0, time.UTC),
+			wantReview:      true,
+			wantCreditBound: true,
+		},
+		{
+			name:            "08:00 JST, reviewed 00:30 JST the same day",
+			now:             inBand,
+			lastReview:      time.Date(2026, 7, 18, 15, 30, 0, 0, time.UTC),
+			wantPractice:    true,
+			wantCreditBound: true,
+		},
+		{
+			name:       "09:00 JST, reviewed 23:00 JST the day before",
+			now:        afterBand,
+			lastReview: time.Date(2026, 7, 18, 14, 0, 0, 0, time.UTC),
+			wantReview: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := NewLearnWindow(tc.now)
+			reviewEligible, practice := windowMembership(w, tc.lastReview)
+			require.Equal(t, tc.wantPractice, practice)
+			require.Equal(t, tc.wantReview, reviewEligible)
+			wantBound := w.ReviewedBefore
+			if tc.wantCreditBound {
+				wantBound = w.CreditReviewedBefore
+			}
+			require.True(t, w.PracticeReviewedAfter().Equal(wantBound),
+				"PracticeReviewedAfter: got %v, want %v", w.PracticeReviewedAfter(), wantBound)
+		})
 	}
 }

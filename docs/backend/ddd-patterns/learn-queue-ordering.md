@@ -56,7 +56,9 @@ ties. A reviewed card leaves the never-seen window.
   on its due day is never reported late. The swipe instant decides: a card
   fetched before JST midnight and swiped after it is late.
 - `ReviewedBefore` is `StartOfLearnDay`. The strict bound excludes cards already
-  reviewed in today's JST learn day and complements `ReviewedWithinLearnDay`.
+  reviewed in today's JST learn day. Together with `CreditReviewedBefore`, its
+  complement is the swipe replay guard (`ReviewedWithinLearnDay || !EarnsSchedulingCredit`)
+  and the practice pool (`last_review >= PracticeReviewedAfter()`).
 - `CreditReviewedBefore` is UTC midnight of now's UTC date. The strict bound
   prevents a repeat earning zero scheduling credit under `EarnsSchedulingCredit`.
   Before 09:00 JST this is the tighter bound; afterward the JST cutoff is tighter.
@@ -87,7 +89,7 @@ and desired retention 0.8. Its reported results were:
 - [FSRS review sort-order simulation](https://github.com/open-spaced-repetition/review-sort-order-comparison), `notebook.ipynb` results table.
 - [Improving sort orders](https://forums.ankiweb.net/t/improving-sort-orders/50081).
 - `github.com/open-spaced-repetition/go-fsrs/v4@v4.0.0`: `ForgettingCurve`, `decayAndFactor`, `dateDiffRaw`, `constrainStability`.
-- `backend/internal/domain/learn_day.go`: `NewLearnWindow`, `CreditReviewedBefore`.
+- `backend/internal/domain/learn_day.go`: `NewLearnWindow`, `CreditReviewedBefore`, `PracticeReviewedAfter`.
 - `backend/internal/repository/card_due.go`: `findDueCardsOn`.
 - `backend/internal/domain/service/due_card_ordering.go`: `Apply`, `partition`, `interleave`.
 - `backend/internal/domain/service/user_performance.go`: `isOnTimeRecall`.

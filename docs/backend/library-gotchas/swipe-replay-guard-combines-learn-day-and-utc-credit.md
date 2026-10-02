@@ -43,8 +43,8 @@ if existing != nil &&
 ```
 
 `ReviewedWithinLearnDay` preserves the queue's product rule: a card swiped
-today does not return during the same JST learn day. It is the exact complement
-of the serving-side SQL `last_review < StartOfLearnDay(now)` window, so those
+today does not return during the same JST learn day. It complements the
+serving-side JST guard `last_review < StartOfLearnDay(now)`, so those
 comparators must move together. It also blocks a nine-hour repeat from 16:00 UTC
 (01:00 JST) to 01:00 UTC on the next UTC date: go-fsrs grants scheduling credit
 because UTC midnight was crossed, but both instants remain in one JST learn day.

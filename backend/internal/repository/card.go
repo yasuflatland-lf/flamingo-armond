@@ -137,10 +137,11 @@ type CardSessionRepository interface {
 	// FindDueCardsForUser returns review cards due before window.DueBefore,
 	// highest FSRS retrievability first, then never-seen cards newest-added first.
 	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, window domain.LearnWindow, limit int) ([]domain.DueCard, error)
-	// FindPracticeCardsForUser returns the FSRS-safe practice pool: cards the
-	// user already reviewed at or after reviewedAfter (the start-of-day cutoff).
-	// This is the inverse window of FindDueCardsForUser's review window — it
-	// consults last_review but not due, and never advances FSRS scheduling.
+	// FindPracticeCardsForUser returns the FSRS-safe practice pool: cards whose
+	// last_review is at or after reviewedAfter. Callers pass
+	// LearnWindow.PracticeReviewedAfter(), so practice is the exact complement of
+	// FindDueCardsForUser's last_review guards (due is not consulted); it never
+	// advances FSRS scheduling.
 	FindPracticeCardsForUser(ctx context.Context, userID, cardgroupID string, reviewedAfter time.Time, limit int) ([]domain.DueCard, error)
 }
 
