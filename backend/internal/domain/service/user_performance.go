@@ -319,17 +319,14 @@ func isKnownCardReview(swipe domain.SwipeRecord) bool {
 		swipe.StabilityBefore >= domain.LearnedStabilityDays
 }
 
-// isOnTimeRecall reports whether a swipe recalled the card inside the interval
-// scheduled for it: the review instant is at or before the due instant the card
-// carried going in. Comparing instants rather than truncated day counts is what
-// keeps the statistic on the schedule's own clock -- the due date is a wall-clock
-// offset while go-fsrs counts elapsed days by UTC calendar date, so any day-count
-// comparison drifts from the due date by up to a full day and reports a late
-// review as on time. Only meaningful for reviews of already-learned cards;
-// ComputeMetrics consults it inside the isKnownCardReview branch. The boundary is
-// inclusive: a review exactly at due is on time.
+// isOnTimeRecall reports whether a swipe recalled the card by the end of the JST
+// learn day its pre-swipe due fell on -- the same day-granular bound the learn
+// queue serves by (due < EndOfLearnDay(now)), so a review recorded on its due day
+// is never late. This is a JST due-day bound, not a UTC elapsed-day count: go-fsrs
+// differences UTC dates, which would drift from the due day by up to a full day.
 func isOnTimeRecall(swipe domain.SwipeRecord) bool {
-	return swipe.Rating != domain.RatingAgain && !swipe.ReviewedAt.After(swipe.DueBefore)
+	return swipe.Rating != domain.RatingAgain &&
+		swipe.ReviewedAt.Before(domain.EndOfLearnDay(swipe.DueBefore))
 }
 
 // studyStreak counts consecutive JST learn-days ending at the current learn-day,
