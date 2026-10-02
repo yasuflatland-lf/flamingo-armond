@@ -653,7 +653,7 @@ func TestNormalizedDifficulty(t *testing.T) {
 		difficulty float64
 		want       float64
 	}{
-		{"fsrs floor maps to low band", 1.0, 0.1},
+		{"fsrs floor maps to one tenth", 1.0, 0.1},
 		{"just above floor", 1.5, 0.15},
 		{"midscale", 5.0, 0.5},
 		{"fsrs ceiling maps to one", 10.0, 1.0},
