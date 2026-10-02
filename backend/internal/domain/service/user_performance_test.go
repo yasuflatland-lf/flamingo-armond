@@ -395,6 +395,24 @@ func TestComputeMetrics(t *testing.T) {
 				ReviewCount:   4,
 			},
 		},
+		{
+			// Every other case sits at difficulty 5, so a constant 0.5 would pass
+			// them. The FSRS floor of 1.0 and 3.0 average to 0.2 only when each
+			// stored difficulty is divided by ten, floor included.
+			name: "average difficulty is the mean of per-swipe difficulty over ten",
+			swipes: []domain.SwipeRecord{
+				swipe(domain.RatingGood, now, state(1, 7, domain.FSRSPhaseReview)),
+				swipe(domain.RatingGood, now, state(3, 7, domain.FSRSPhaseReview)),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   1,
+				AvgDifficulty: 0.2,
+				RetentionRate: 1,
+				StudyStreak:   1,
+				LapseRate:     0,
+				ReviewCount:   2,
+			},
+		},
 	}
 
 	for _, tc := range cases {
