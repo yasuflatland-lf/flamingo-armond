@@ -45,7 +45,7 @@ describe("GET /auth/verify-session", () => {
 
     const response = await GET(makeRequest());
 
-    expect([301, 302, 307, 308]).toContain(response.status);
+    expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe("http://localhost/");
     expect(gqlFetch).toHaveBeenCalledTimes(1);
     expect(gqlFetch).toHaveBeenCalledWith(VerifySessionQuery, { revalidate: 0 });
@@ -60,7 +60,7 @@ describe("GET /auth/verify-session", () => {
 
     expect(mockSignOut).toHaveBeenCalledTimes(1);
     expect(mockSignOut).toHaveBeenCalledWith({ scope: "local" });
-    expect([301, 302, 307, 308]).toContain(response.status);
+    expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe("http://localhost/login?reason=session_invalid");
   });
 
