@@ -25,6 +25,15 @@ describe("encodeUtf8Base64", () => {
     }
   });
 
+  it("matches the legacy output when a multi-byte character straddles a chunk boundary", () => {
+    for (const ch of ["\u00e9", "\u3042", "\u{1f600}", "\ufeff"]) {
+      for (const pad of [0x7ffd, 0x7ffe, 0x7fff, 0x8000, 0xfffe, 0xffff]) {
+        const s = `${"a".repeat(pad)}${ch}b`;
+        expect(encodeUtf8Base64(s), `${pad} ${JSON.stringify(ch)}`).toBe(legacyEncode(s));
+      }
+    }
+  });
+
   it("replaces a lone surrogate with U+FFFD instead of throwing", () => {
     expect(encodeUtf8Base64("\ude00")).toBe("77+9");
     expect(encodeUtf8Base64("a\ud83d")).toBe("Ye+/vQ==");
