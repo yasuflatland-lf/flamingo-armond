@@ -1382,11 +1382,8 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_FoldDuplicateFront_ReturnsVa
 	got, err := uc.MergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID(ownerID))
 	require.Error(t, err)
 	assert.Nil(t, got)
-	ve, ok := errors.AsType[*ucerr.ValidationError](err)
-	require.True(t, ok, "a concurrent exact-front collision must surface as a ValidationError, got %v", err)
-	assert.Equal(t, "cardgroupId", ve.Field)
-	assert.Equal(t, "cardgroup changed during the merge; try again", ve.Message)
-	assert.False(t, errors.Is(err, repository.ErrNotFound), "must not enter MergeMaster's not-found branch")
+	assertValidationError(t, err, "cardgroupId", "cardgroup changed during the merge; try again")
+	assert.NotErrorIs(t, err, repository.ErrNotFound, "must not enter MergeMaster's not-found branch")
 	assert.Zero(t, user.upsertCall, "the upsert must not run after a failed case fold")
 }
 
