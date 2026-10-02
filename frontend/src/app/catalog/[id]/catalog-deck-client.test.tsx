@@ -139,7 +139,7 @@ function renderClient(
 // query-error banner. The default seed is a one-card deck with a next page.
 async function renderFailingSearch(
   code: string,
-  connection: ReturnType<typeof makeConnection> = makeConnection([C1], true, 2),
+  { connection = makeConnection([C1], true, 2), extraMocks = [] as unknown[] } = {},
 ) {
   const failingSearchMock = {
     request: {
@@ -149,11 +149,12 @@ async function renderFailingSearch(
     result: { errors: [new GraphQLError("boom", { extensions: { code } })] },
   };
 
-  renderClient([failingSearchMock], connection, new InMemoryCache());
+  renderClient([failingSearchMock, ...extraMocks], connection, new InMemoryCache());
 
-  await userEvent.setup().type(await screen.findByTestId("cards-search-input"), "zzz");
+  const user = userEvent.setup();
+  await user.type(await screen.findByTestId("cards-search-input"), "zzz");
 
-  return screen.findByTestId("catalog-deck-query-error");
+  return { banner: await screen.findByTestId("catalog-deck-query-error"), user };
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +188,7 @@ describe("<CatalogDeckClient>", () => {
         variables: { ...catalogCardsDefaultVars(DECK.id), after: "mc-1", search: null },
       },
       result: { data: { masterCardsConnection: makeConnection([C2], false, 2) } },
+      delay: 50,
     };
 
     renderClient([fetchMoreMock], makeConnection([C1], true, 2), cache);
@@ -194,6 +196,8 @@ describe("<CatalogDeckClient>", () => {
     expect(await screen.findByText("hello")).toBeInTheDocument();
     fireIntersect();
 
+    // The footer stays visible while a page loads (only a search without data hides it).
+    expect(await screen.findByTestId("catalog-deck-loading-more")).toBeVisible();
     expect(await screen.findByText("goodbye")).toBeInTheDocument();
     // The first page row stays rendered (appended, not replaced).
     expect(screen.getByText("hello")).toBeInTheDocument();
@@ -493,13 +497,7 @@ describe("<CatalogDeckClient>", () => {
   });
 
   it("keeps the footer hidden and never paginates the SSR cursor while a Retry is in flight", async () => {
-    const user = userEvent.setup();
-    const cache = new InMemoryCache();
     const searchVars = { ...catalogCardsDefaultVars(DECK.id), search: "zzz" };
-    const failingSearchMock = {
-      request: { query: CatalogMasterCardsConnectionDocument, variables: searchVars },
-      result: { errors: [new GraphQLError("boom", { extensions: { code: "INTERNAL" } })] },
-    };
     // delay: Infinity keeps the Retry pending so the in-flight window is observable.
     const pendingRetryMock = {
       request: { query: CatalogMasterCardsConnectionDocument, variables: searchVars },
@@ -517,16 +515,9 @@ describe("<CatalogDeckClient>", () => {
       result: staleCursorResult,
     };
 
-    renderClient(
-      [failingSearchMock, pendingRetryMock, staleCursorMock],
-      makeConnection([C1], true, 2),
-      cache,
-    );
-
-    expect(await screen.findByText("hello")).toBeInTheDocument();
-    await user.type(screen.getByTestId("cards-search-input"), "zzz");
-
-    const banner = await screen.findByTestId("catalog-deck-query-error");
+    const { banner, user } = await renderFailingSearch("INTERNAL", {
+      extraMocks: [pendingRetryMock, staleCursorMock],
+    });
     await user.click(within(banner).getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(screen.queryByTestId("catalog-deck-query-error")).toBeNull());
 
@@ -538,13 +529,7 @@ describe("<CatalogDeckClient>", () => {
   });
 
   it("keeps the footer hidden and never paginates the SSR cursor while an edited search term loads", async () => {
-    const user = userEvent.setup();
-    const cache = new InMemoryCache();
     const searchVars = { ...catalogCardsDefaultVars(DECK.id), search: "zzz" };
-    const failingSearchMock = {
-      request: { query: CatalogMasterCardsConnectionDocument, variables: searchVars },
-      result: { errors: [new GraphQLError("boom", { extensions: { code: "INTERNAL" } })] },
-    };
     const pendingSearchMock = {
       request: {
         query: CatalogMasterCardsConnectionDocument,
@@ -564,15 +549,9 @@ describe("<CatalogDeckClient>", () => {
       result: staleCursorResult,
     };
 
-    renderClient(
-      [failingSearchMock, pendingSearchMock, staleCursorMock],
-      makeConnection([C1], true, 2),
-      cache,
-    );
-
-    expect(await screen.findByText("hello")).toBeInTheDocument();
-    await user.type(screen.getByTestId("cards-search-input"), "zzz");
-    await screen.findByTestId("catalog-deck-query-error");
+    const { user } = await renderFailingSearch("INTERNAL", {
+      extraMocks: [pendingSearchMock, staleCursorMock],
+    });
 
     await user.type(screen.getByTestId("cards-search-input"), "z");
     await waitFor(() => expect(screen.queryByTestId("catalog-deck-query-error")).toBeNull());
@@ -584,7 +563,7 @@ describe("<CatalogDeckClient>", () => {
   });
 
   it("renders the sign-in banner and hides the list and footer when a search fails with UNAUTHENTICATED", async () => {
-    const banner = await renderFailingSearch("UNAUTHENTICATED");
+    const { banner } = await renderFailingSearch("UNAUTHENTICATED");
 
     expect(banner).toHaveTextContent("Your session has expired.");
     expect(within(banner).getByRole("link", { name: "Sign in again" })).toHaveAttribute(
@@ -598,7 +577,9 @@ describe("<CatalogDeckClient>", () => {
   });
 
   it("suppresses the no-match state on an empty deck when a search fails with UNAUTHENTICATED", async () => {
-    const banner = await renderFailingSearch("UNAUTHENTICATED", makeConnection([]));
+    const { banner } = await renderFailingSearch("UNAUTHENTICATED", {
+      connection: makeConnection([]),
+    });
 
     expect(banner).toHaveTextContent("Your session has expired.");
     expect(screen.queryByTestId("catalog-deck-empty-search")).toBeNull();
@@ -606,7 +587,7 @@ describe("<CatalogDeckClient>", () => {
   });
 
   it("renders the permission banner without Retry and hides the list and footer when a search fails with FORBIDDEN", async () => {
-    const banner = await renderFailingSearch("FORBIDDEN");
+    const { banner } = await renderFailingSearch("FORBIDDEN");
 
     expect(banner).toHaveTextContent("You do not have permission.");
     expect(within(banner).queryByRole("button", { name: "Retry" })).toBeNull();
