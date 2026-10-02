@@ -58,13 +58,16 @@ type UserUpdate struct {
 type UserRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.User, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.User, error)
+	// Update applies the patch and bumps version so an admin holding a stale
+	// expectedVersion sees ErrConcurrentUpdate instead of overwriting the
+	// change. An empty patch reads without writing and leaves version unchanged.
 	Update(ctx context.Context, id string, patch UserUpdate) (*domain.User, error)
 	// UpdateTx applies the patch inside the caller-provided transaction. Unlike
 	// Update, it does not re-fetch the row — callers that need the updated
 	// value should refetch after the transaction commits. A patch with no
 	// non-nil fields returns nil without touching the database. A patch that
 	// targets a missing row returns ErrNotFound so the surrounding transaction
-	// rolls back atomically.
+	// rolls back atomically. A non-empty patch bumps version, as Update does.
 	UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch UserUpdate) error
 	// UpdateTxVersioned applies the patch inside the caller-provided
 	// transaction only when the row's current version matches expectedVersion.
@@ -148,7 +151,8 @@ func (r *userRepo) FindByID(ctx context.Context, id string) (*domain.User, error
 	var row gormUser
 	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if errors.Is(err, gorm.ErrRecordNotFound) || pgInvalidTextRepresentation(err) {
 			return nil, ErrNotFound
 		}
 		return nil, eris.Wrap(err, "repository: user: find by id")
@@ -179,12 +183,13 @@ func (r *userRepo) Update(ctx context.Context, id string, patch UserUpdate) (*do
 		// No-op patch: return current value rather than touching DB.
 		return r.FindByID(ctx, id)
 	}
+	updates["version"] = gorm.Expr("version + 1")
 
 	res := r.db.WithContext(ctx).Model(&gormUser{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
 		return nil, eris.Wrap(res.Error, "repository: user: update")
 	}
-	// Re-fetch so callers see the trigger-refreshed updated_at.
+	// Re-fetch so callers see the trigger-refreshed updated_at and the bumped version.
 	return refetchAfterUpdate(res.RowsAffected, ErrNotFound,
 		func() (*domain.User, error) { return r.FindByID(ctx, id) }, "")
 }
@@ -194,6 +199,7 @@ func (r *userRepo) UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch U
 	if len(updates) == 0 {
 		return nil
 	}
+	updates["version"] = gorm.Expr("version + 1")
 	res := tx.WithContext(ctx).Model(&gormUser{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
 		return eris.Wrap(res.Error, "repository: user: update tx")
@@ -213,6 +219,10 @@ func (r *userRepo) UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string
 		Where("id = ? AND version = ?", id, expectedVersion).
 		Updates(updates)
 	if res.Error != nil {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if pgInvalidTextRepresentation(res.Error) {
+			return ErrNotFound
+		}
 		return eris.Wrap(res.Error, "repository: user: update tx versioned")
 	}
 	if res.RowsAffected > 0 {
@@ -239,6 +249,10 @@ func (r *userRepo) DeleteAuthUserTx(ctx context.Context, tx *gorm.DB, id string)
 	}
 	res := tx.WithContext(ctx).Exec("DELETE FROM auth.users WHERE id = ?", id)
 	if res.Error != nil {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if pgInvalidTextRepresentation(res.Error) {
+			return ErrNotFound
+		}
 		return eris.Wrap(res.Error, "repository: user: delete auth user")
 	}
 	if res.RowsAffected == 0 {
@@ -345,11 +359,13 @@ func (r *userRepo) ListPage(
 		// Hydrate the cursor user's created_at so we can build the tuple
 		// comparison. A missing user means the cursor row was deleted between
 		// fetches — surface as ErrCursorNotFound so callers can map to a
-		// BAD_USER_INPUT-shaped error.
+		// BAD_USER_INPUT-shaped error; a cursor (v1 or legacy bare id) whose id
+		// is not a uuid is the same not-found.
 		err := r.db.WithContext(ctx).Select("id", "created_at").
 			Where("id = ?", *cursorID).Take(&cursorRow).Error
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+			if errors.Is(err, gorm.ErrRecordNotFound) || pgInvalidTextRepresentation(err) {
 				return nil, 0, ErrCursorNotFound
 			}
 			return nil, 0, eris.Wrap(err, "repository: user: hydrate cursor")

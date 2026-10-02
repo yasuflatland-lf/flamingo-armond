@@ -375,7 +375,7 @@ expect(formIndex).toBe(0);        // pinned position
 expect(brandIndex).toBe(1);       // pinned position
 ```
 
-Apply this pattern whenever `children.indexOf(el)` or `findIndex(...)` is used to assert DOM order. The `not.toBe(-1)` guard must come before the positional assertion; otherwise the positional failure message shows `-1 !== 1` and does not indicate which element is missing. Reference: `frontend/src/app/login/page.test.tsx` lines 169–175.
+Apply this pattern whenever `children.indexOf(el)` or `findIndex(...)` is used to assert DOM order. The `not.toBe(-1)` guard must come before the positional assertion; otherwise the positional failure message shows `-1 !== 1` and does not indicate which element is missing. Reference: the "brand panel comes before the form column in DOM order" test in `frontend/src/app/login/page.test.tsx`.
 
 ### Assert `disabled` state behaviorally, not just by attribute
 
@@ -588,7 +588,7 @@ expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 expect(screen.getByRole("alert")).toHaveTextContent(/sign-in failed/i);
 ```
 
-Reference: `frontend/src/app/login/page.test.tsx` lines 209–215 (absence) and 200–206 (presence).
+Reference: the "error banner has role='alert'" (presence) and "no error param: role='alert' element is not present" (absence) tests in `frontend/src/app/login/page.test.tsx`.
 
 ### Expand a Radix `Collapsible` before asserting its inner content
 

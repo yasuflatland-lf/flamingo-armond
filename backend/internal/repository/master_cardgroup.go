@@ -94,10 +94,10 @@ type MasterCardgroupRepository interface {
 	Create(ctx context.Context, m *domain.MasterCardgroup) error
 	Update(ctx context.Context, id string, patch MasterCardgroupUpdate) (*domain.MasterCardgroup, error)
 	Delete(ctx context.Context, id string) error
-	// ListPublishedDefaultStarters returns the published, NON-EMPTY default
-	// starter decks. A starter whose cards have all been deleted is skipped so
-	// the new-user seed never creates an empty cardgroup.
-	ListPublishedDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error)
+	// ListPublishedDefaultStartersTx returns the published, NON-EMPTY default
+	// starter decks on tx, so a holder of the per-owner cardgroup lock needs no
+	// second pooled connection. Starters whose cards have all been deleted are skipped.
+	ListPublishedDefaultStartersTx(ctx context.Context, tx *gorm.DB) ([]*domain.MasterCardgroup, error)
 	// FindPublishedPage returns a window of PUBLISHED, NON-EMPTY master
 	// cardgroups ordered by (orderBy, id), each bundled with its card count,
 	// plus the search-aware total of all matching rows. Catalog visibility is
@@ -322,14 +322,14 @@ func (r *masterCardgroupRepo) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// ListPublishedDefaultStarters returns all published, NON-EMPTY master cardgroups
-// flagged as default starters, ordered by (sort_order, id) so the starter set is
-// deterministic. A starter whose cards have all been deleted is skipped, so the
-// new-user seed never hands out an empty deck. Returns an empty slice when none
-// are found.
-func (r *masterCardgroupRepo) ListPublishedDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error) {
+// ListPublishedDefaultStartersTx returns all published, NON-EMPTY master cardgroups
+// flagged as default starters, on tx, ordered by (sort_order, id) so the set is
+// deterministic. An emptied starter is skipped, so the seed never hands out an empty
+// deck. Reading on tx keeps the seed, which holds the per-owner cardgroup lock, off
+// a second pooled connection. Returns an empty slice when none are found.
+func (r *masterCardgroupRepo) ListPublishedDefaultStartersTx(ctx context.Context, tx *gorm.DB) ([]*domain.MasterCardgroup, error) {
 	var rows []gormMasterCardgroup
-	if err := r.db.WithContext(ctx).
+	if err := tx.WithContext(ctx).
 		Where("status = ? AND is_default_starter", string(domain.MasterStatusPublished)).
 		Where(masterCardsExistPredicate("master_cardgroups")).
 		Order("sort_order, id").

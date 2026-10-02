@@ -164,7 +164,7 @@ func buildResolver(
 ) (*resolver.Resolver, *ping.Handler, *notionsync.Handler, error) {
 	masterDeckUC := usecase.NewMasterDeckUsecase(repos.masterCardgroup, repos.masterCard, repos.card, repos.cardgroup, repos.gorm, logger)
 	userUC := usecase.NewUserUsecase(repos.gorm, repos.user, repos.userRole, authSvc, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(repos.cardgroup, authSvc, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(repos.gorm, repos.cardgroup, authSvc, logger)
 	learnUC := usecase.NewLearnUsecase(repos.card, repos.cardgroup, repos.userPreference, service.NewOrderingPolicy(), 0, 0, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(repos.gorm, repos.card, repos.cardgroup, repos.swipeRecord, service.NewFSRSScheduler(), repos.userCardFSRS, logger)
 	cardImportUC := usecase.NewCardImportUsecase(repos.cardgroup, repos.card, repos.gorm, logger)
@@ -191,7 +191,7 @@ func buildResolver(
 	var cefrWords domain.CEFRWordList = cefr.NewWordList()
 	cefrClassifier := service.NewCEFRClassifier(cefrWords)
 	cefrUC := usecase.NewCEFRUsecase(cefrClassifier)
-	masterCatalogUC := usecase.NewMasterCatalogUsecase(repos.masterCardgroup, masterDeckUC, repos.cardgroup, adminGate, logger)
+	masterCatalogUC := usecase.NewMasterCatalogUsecase(repos.masterCardgroup, masterDeckUC, adminGate, logger)
 	masterCardUC := usecase.NewMasterCardUsecase(repos.gorm, repos.masterCard, repos.masterCardgroup, adminGate, logger)
 	statsUC := usecase.NewStats(repos.userCardFSRS, repos.swipeRecord, repos.cardgroup, nil)
 

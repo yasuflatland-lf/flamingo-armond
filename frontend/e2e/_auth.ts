@@ -118,6 +118,12 @@ async function createAuthUser(email: string, password: string, displayName: stri
   return data.user;
 }
 
+/** Deletes the auth user; the FK cascade removes its public.users row with it. */
+export async function deleteAuthUser(id: string) {
+  const { error } = await adminClient.auth.admin.deleteUser(id);
+  if (error) throw error;
+}
+
 export async function seedCardgroup({ ownerId, name }: SeedCardgroupInput) {
   // cardgroups has no UNIQUE on (owner_id, name); upsert with that onConflict raises
   // "no unique or exclusion constraint matching". Callers randomize name via runId,

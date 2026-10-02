@@ -22,6 +22,14 @@ describe("isUserOnboarded", () => {
     expect(isUserOnboarded({ displayName: "   " })).toBe(false);
   });
 
+  it("returns true when displayName is only U+FEFF, which the backend accepts", () => {
+    expect(isUserOnboarded({ displayName: "\uFEFF" })).toBe(true);
+  });
+
+  it("returns false when displayName is only U+0085, which the backend rejects", () => {
+    expect(isUserOnboarded({ displayName: "\u0085" })).toBe(false);
+  });
+
   it("returns false when me is null", () => {
     expect(isUserOnboarded(null)).toBe(false);
   });

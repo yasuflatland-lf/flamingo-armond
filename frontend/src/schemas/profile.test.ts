@@ -66,6 +66,36 @@ describe("updateProfileSchema", () => {
     }
   });
 
+  it("accepts a 500-grapheme bio with trailing whitespace (backend trims first)", () => {
+    for (const bio of [`${"x".repeat(500)} `, `${"x".repeat(500)}\n\n`]) {
+      const result = updateProfileSchema.safeParse({ displayName: "Alice", bio });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.bio).toBe(bio);
+    }
+  });
+
+  it("rejects a 500-grapheme bio followed by U+FEFF (not trimmed by Go)", () => {
+    const result = updateProfileSchema.safeParse({
+      displayName: "Alice",
+      bio: `${"x".repeat(500)}\uFEFF`,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a displayName of only U+0085 (Go TrimSpace strips it)", () => {
+    const result = updateProfileSchema.safeParse({ displayName: "\u0085" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((i) => i.message)).toContain("Display name is required");
+    }
+  });
+
+  it("accepts a displayName of only U+FEFF (Go TrimSpace keeps it)", () => {
+    const result = updateProfileSchema.safeParse({ displayName: "\uFEFF" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.displayName).toBe("\uFEFF");
+  });
+
   it("accepts emoji ZWJ family in displayName (50 graphemes)", () => {
     const input = { displayName: "👨‍👩‍👧‍👦".repeat(50) };
     const result = updateProfileSchema.safeParse(input);
@@ -110,6 +140,16 @@ describe("updateProfileSchema", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues.map((i) => i.message)).toContain("Display name is reserved");
+    }
+  });
+
+  it("rejects a reserved displayName written with U+0130", () => {
+    for (const displayName of ["ADM\u0130N", "adm\u0130n"]) {
+      const result = updateProfileSchema.safeParse({ displayName });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues.map((i) => i.message)).toContain("Display name is reserved");
+      }
     }
   });
 

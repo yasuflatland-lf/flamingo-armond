@@ -52,10 +52,11 @@
     "react-dom": "19.3.0",
     "sonner": "^2.0.7",
     "vaul": "^1.1.2",
-    "zod": "4.6.4"
+    "zod": "4.6.5"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.13",
+    "@biomejs/biome": "2.5.14",
+    "@formatjs/icu-messageformat-parser": "^3.5.17",
     "@graphql-codegen/cli": "^7.0.0",
     "@graphql-codegen/client-preset": "^6.0.0",
     "@graphql-codegen/typescript": "^6.0.1",
@@ -68,7 +69,7 @@
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
-    "@types/node": "24.13.4",
+    "@types/node": "24.13.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitest/coverage-v8": "^5.0.0",

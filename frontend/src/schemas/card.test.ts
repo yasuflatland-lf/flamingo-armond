@@ -55,6 +55,14 @@ describe("newCardSchema", () => {
     }
   });
 
+  it("rejects a front of only U+0085", () => {
+    const result = newCardSchema.safeParse({ cardgroupId: "g1", front: "\u0085", back: "a" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((i) => i.message)).toContain("front is required");
+    }
+  });
+
   it("rejects empty back", () => {
     const result = newCardSchema.safeParse({ cardgroupId: "g1", front: "q", back: "" });
     expect(result.success).toBe(false);
