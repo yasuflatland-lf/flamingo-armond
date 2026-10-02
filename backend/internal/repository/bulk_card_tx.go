@@ -21,11 +21,11 @@ const upsertParamsPerRow = 6
 // upsertRowPlaceholders is one VALUES tuple of upsertChunkTx's INSERT.
 const upsertRowPlaceholders = "(?, ?, ?, ?, ?, ?)"
 
-// bulkStatementChunkRows caps rows (upsertManyTx) or fronts (FoldFrontCaseToTx)
-// per statement: pgx v5 pgconn/pgconn.go rejects more than 65,535 bind parameters
-// before reaching the server ("extended protocol limited to 65535 parameters").
-// One statement therefore holds at most 10,922 upsert rows (65,535 / 6).
-// 5,000 rows x 6 parameters = 30,000; a fold chunk binds 5,001.
+// bulkStatementChunkRows caps rows (upsertManyTx) or fronts (FoldFrontCaseToTx, CountMatchingFrontsFold,
+// deleteByGroupAndFrontsTx) per statement: pgx v5 pgconn/pgconn.go rejects more than 65,535 bind
+// parameters before reaching the server ("extended protocol limited to 65535 parameters"), so one
+// upsert statement holds at most 10,922 rows (65,535 / 6). 5,000 rows x 6 parameters = 30,000;
+// a fronts chunk binds 5,001 (the fronts plus the group id).
 const bulkStatementChunkRows = 5000
 
 // UpsertManyTxResult counts the outcome of an UpsertManyTx call.
@@ -270,24 +270,25 @@ func listFrontsByGroupTx(ctx context.Context, tx *gorm.DB, groupID, tableName, f
 	return fronts, nil
 }
 
-// deleteByGroupAndFrontsTx hard-deletes rows matching the scoped
-// (fkColumn, front) natural key. Shared by cardRepo and the master_card
-// repository; the caller owns the layer-prefix wrap.
-//
-// Empty fronts short-circuits to (0, nil) without touching the DB. With an empty
-// slice GORM v2 omits the `WHERE front IN (?)` clause altogether, which would
-// convert this `Delete` into a delete-all-rows-in-group. See
-// `.claude/rules/go-library-gotchas.md` § GORM empty IN.
+// deleteByGroupAndFrontsTx hard-deletes rows matching the scoped (fkColumn, front) natural key,
+// one statement per bulkStatementChunkRows fronts on tx, which must be a transaction so a failed
+// chunk rolls back the earlier ones. Shared by cardRepo and masterCardRepo; the caller owns the
+// layer-prefix wrap. Empty fronts returns (0, nil) without a query: GORM v2 drops an empty `IN ?`,
+// deleting every row in the group (`.claude/rules/go-library-gotchas.md` § GORM empty IN).
 func deleteByGroupAndFrontsTx(ctx context.Context, tx *gorm.DB, groupID string, fronts []string, tableName, fkColumn string) (int64, error) {
 	if len(fronts) == 0 {
 		return 0, nil
 	}
-	res := tx.WithContext(ctx).
-		Table(tableName).
-		Where(fkColumn+" = ? AND front IN ?", groupID, fronts).
-		Delete(nil)
-	if res.Error != nil {
-		return 0, eris.Wrap(res.Error, "delete by cardgroup and fronts")
+	var total int64
+	for chunk := range slices.Chunk(fronts, bulkStatementChunkRows) {
+		res := tx.WithContext(ctx).
+			Table(tableName).
+			Where(fkColumn+" = ? AND front IN ?", groupID, chunk).
+			Delete(nil)
+		if res.Error != nil {
+			return 0, eris.Wrap(res.Error, "delete by cardgroup and fronts")
+		}
+		total += res.RowsAffected
 	}
-	return res.RowsAffected, nil
+	return total, nil
 }

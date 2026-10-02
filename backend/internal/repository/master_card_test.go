@@ -381,6 +381,47 @@ func TestMasterCardRepository_DeleteByMasterCardgroupAndFrontsTx(t *testing.T) {
 	require.Equal(t, int64(0), noopAffected)
 }
 
+func TestMasterCardRepository_DeleteByMasterCardgroupAndFrontsTx_SpansChunks(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+	mcg := insertMCGForCardTest(t, ctx, "DeleteByFronts-SpansChunks")
+
+	// 55,000 unmatched fronts (11 full chunks), then 15,001 matches so the last match sits
+	// alone in the final chunk: 70,001 fronts would bind 70,002 parameters as one
+	// statement, above pgx's 65,535 cap. The extra seeded card is the one survivor.
+	const count = 15001
+	const pad = 55000
+	cards := make([]*domain.MasterCard, count+1)
+	fronts := make([]string, 0, pad+count)
+	for i := range pad {
+		fronts = append(fronts, fmt.Sprintf("Absent-%05d", i))
+	}
+	for i := range cards {
+		front := fmt.Sprintf("Front-%05d", i)
+		cards[i] = newMasterCard(mcg.ID, front, "back", i)
+		if i < count {
+			fronts = append(fronts, front)
+		}
+	}
+	var affected int64
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if _, txErr := repo.UpsertManyTx(ctx, tx, cards); txErr != nil {
+			return txErr
+		}
+		var txErr error
+		affected, txErr = repo.DeleteByMasterCardgroupAndFrontsTx(ctx, tx, mcg.ID, fronts)
+		return txErr
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(count), affected)
+
+	stored, err := repo.ListByMasterCardgroup(ctx, mcg.ID)
+	require.NoError(t, err)
+	require.Len(t, stored, 1)
+	require.Equal(t, domain.CardText(fmt.Sprintf("Front-%05d", count)), stored[0].Front)
+}
+
 // TestMasterCardRepository_Create_DuplicateFront verifies Create classifies the
 // uq_master_cards_cg_front 23505 conflict into the repository.ErrCardDuplicateFront
 // sentinel (mirroring cardRepo.Create) so the admin usecase can surface the

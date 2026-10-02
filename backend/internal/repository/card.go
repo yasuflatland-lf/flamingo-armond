@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -93,6 +94,8 @@ type CardReadRepository interface {
 	// CountMatchingFrontsFold returns the number of distinct case-folded fronts
 	// in the cardgroup that match the caller-supplied lowercase fronts. It counts
 	// multiple stored case variants once. Empty fronts returns 0 without a query.
+	// Inputs above bulkStatementChunkRows distinct fronts run as several pooled
+	// statements, each on its own snapshot.
 	CountMatchingFrontsFold(ctx context.Context, cardgroupID string, loweredFronts []string) (int64, error)
 }
 
@@ -151,15 +154,11 @@ type CardWriteRepository interface {
 	// slice GORM v2 omits the `WHERE id IN (?)` clause altogether, which would
 	// convert this `Delete` into an unbounded mass delete — far worse than a slow scan.
 	DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error)
-	// DeleteByCardgroupAndFrontsTx hard-deletes cards by the scoped
-	// (cardgroup_id, front) natural key. Scoping is by cardgroup_id only —
-	// callers must verify the cardgroup is reachable by the calling owner
-	// before invoking this method.
-	//
-	// Empty fronts short-circuits to (0, nil) without touching the DB. With an
-	// empty slice GORM v2 omits the `WHERE front IN (?)` clause altogether,
-	// which would convert this `Delete` into a delete-all-cards-in-cardgroup.
-	// See `.claude/rules/go-library-gotchas.md` § GORM empty IN.
+	// DeleteByCardgroupAndFrontsTx hard-deletes cards by the scoped (cardgroup_id, front) natural
+	// key; callers must verify the cardgroup is reachable by the calling owner first. Inputs above
+	// bulkStatementChunkRows run as several statements, so tx must be a transaction. Empty fronts
+	// returns (0, nil) without touching the DB: GORM v2 drops an empty `IN ?`, which would delete
+	// every card in the cardgroup (`.claude/rules/go-library-gotchas.md` § GORM empty IN).
 	DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
 	// UpsertManyTx upserts cards by (cardgroup_id, front), overwriting `back` and `position`;
 	// the database trigger advances updated_at. Returns the per-row split between Inserted
@@ -283,15 +282,21 @@ func (r *cardRepo) CountMatchingFrontsFold(ctx context.Context, cardgroupID stri
 	if len(loweredFronts) == 0 {
 		return 0, nil
 	}
-	var count int64
-	if err := r.db.WithContext(ctx).Raw(
-		`SELECT COUNT(DISTINCT LOWER(front)) FROM cards
-		 WHERE cardgroup_id = ? AND LOWER(front) IN ?`,
-		cardgroupID, loweredFronts,
-	).Scan(&count).Error; err != nil {
-		return 0, eris.Wrap(err, "repository: card: count matching fronts fold")
+	var total int64
+	// Not chunked on the raw input: a front repeated in two chunks would be counted twice.
+	distinct := slices.Compact(slices.Sorted(slices.Values(loweredFronts)))
+	for chunk := range slices.Chunk(distinct, bulkStatementChunkRows) {
+		var count int64
+		if err := r.db.WithContext(ctx).Raw(
+			`SELECT COUNT(DISTINCT LOWER(front)) FROM cards
+			 WHERE cardgroup_id = ? AND LOWER(front) IN ?`,
+			cardgroupID, chunk,
+		).Scan(&count).Error; err != nil {
+			return 0, eris.Wrap(err, "repository: card: count matching fronts fold")
+		}
+		total += count
 	}
-	return count, nil
+	return total, nil
 }
 
 func (r *cardRepo) Update(ctx context.Context, id string, patch CardUpdate) (*domain.Card, error) {

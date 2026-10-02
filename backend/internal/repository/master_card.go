@@ -453,7 +453,8 @@ func (r *masterCardRepo) ListFrontsByMasterCardgroupTx(ctx context.Context, tx *
 
 // DeleteByMasterCardgroupAndFrontsTx hard-deletes master cards by the scoped
 // (master_cardgroup_id, front) natural key. Empty fronts short-circuits to
-// (0, nil) inside the shared helper.
+// (0, nil) inside the shared helper. Inputs above bulkStatementChunkRows run as
+// several statements, so tx must be a transaction.
 func (r *masterCardRepo) DeleteByMasterCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, masterCardgroupID string, fronts []string) (int64, error) {
 	affected, err := deleteByGroupAndFrontsTx(ctx, tx, masterCardgroupID, fronts, "master_cards", "master_cardgroup_id")
 	if err != nil {
