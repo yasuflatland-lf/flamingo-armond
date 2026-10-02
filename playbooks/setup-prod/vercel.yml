@@ -107,7 +107,7 @@
   ansible.builtin.debug:
     msg:
       - "These five env vars will be registered automatically via the Vercel API"
-      - "after you provide the project ID. SKIP the Environment Variables section"
+      - "after you provide the project ID and production URL. SKIP the Environment Variables section"
       - "in the import wizard — leave it empty."
       - ""
       - "  BACKEND_URL                   = {{ backend_url }}            (Production, Preview)"
@@ -128,7 +128,7 @@
          frontend/vercel.json -- no dashboard region step is needed.
       4. SKIP the Environment Variables section -- leave it empty.
          The playbook registers the five env vars via the Vercel
-         API as soon as you provide the project ID below.
+         API as soon as you provide the project ID and production URL below.
       5. Click Deploy. The first build will fail because env is not yet
          registered -- this is EXPECTED. Phase 6 (postapply) triggers a
          fresh deploy after env wiring completes.
