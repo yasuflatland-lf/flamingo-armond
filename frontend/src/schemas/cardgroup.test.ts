@@ -35,6 +35,20 @@ describe("newCardgroupSchema", () => {
     }
   });
 
+  it("rejects a name of only U+0085", () => {
+    const result = newCardgroupSchema.safeParse({ name: "\u0085" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((i) => i.message)).toContain("name is required");
+    }
+  });
+
+  it("accepts a name of only U+FEFF", () => {
+    const result = newCardgroupSchema.safeParse({ name: "\uFEFF" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.name).toBe("\uFEFF");
+  });
+
   it("accepts exactly 100 graphemes", () => {
     const result = newCardgroupSchema.safeParse({ name: "x".repeat(100) });
     expect(result.success).toBe(true);

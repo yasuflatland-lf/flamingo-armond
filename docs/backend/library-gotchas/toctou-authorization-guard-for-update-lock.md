@@ -29,7 +29,7 @@ Precedent in this repo: `backend/internal/repository/card.go` — `FindByIDForUp
 
 ## Returning a business outcome from a guard that runs before any write
 
-When the caller is editing their own row (`callerID == id`), the guard sits at the front of the transaction. When it decides the edit must **not** proceed (self-demotion, or an unknown role id), it wants to return a *non-error* business outcome to the caller (a `CannotRevokeOwnAdmin` or a `Validation` field on the outcome struct) without performing any write. Because the guard runs **before** any `UpdateTxVersioned` or `SetUserRolesTx` call, returning `nil` from the closure commits an empty transaction — there is nothing to roll back.
+When the caller is editing their own row (`sameUserID(callerID, id)`, a uuid-value compare; see [`docs/backend-auth.md` § "Self-demotion guard"](../../backend-auth.md#self-demotion-guard) for why a plain string compare is wrong), the guard sits at the front of the transaction. When it decides the edit must **not** proceed (self-demotion, or an unknown role id), it wants to return a *non-error* business outcome to the caller (a `CannotRevokeOwnAdmin` or a `Validation` field on the outcome struct) without performing any write. Because the guard runs **before** any `UpdateTxVersioned` or `SetUserRolesTx` call, returning `nil` from the closure commits an empty transaction — there is nothing to roll back.
 
 The pattern captures the guard result in a variable declared outside the closure:
 
@@ -37,7 +37,7 @@ The pattern captures the guard result in a variable declared outside the closure
 var earlyOutcome *AdminEditUserOutcome
 
 err = u.tx(ctx, func(tx *gorm.DB) error {
-    if callerID == id {
+    if sameUserID(callerID, id) {
         // ... look up roles with FOR UPDATE lock ...
         if len(roles) != len(roleIDs) {
             earlyOutcome = &AdminEditUserOutcome{Validation: NewInputValidationInfo("roleIds", "role not found")}

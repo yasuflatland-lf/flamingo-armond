@@ -249,7 +249,8 @@
     "copyLink": "Copy page link",
     "linkCopied": "Copied — paste into Safari or Chrome",
     "terms": "By signing in, you agree to our <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>.",
-    "tagline": "Remember more, study less."
+    "tagline": "Remember more, study less.",
+    "sessionInvalid": "Your session is no longer valid. Sign in again to continue."
   },
   "Pwa": {
     "installHeading": "Install {brand}",

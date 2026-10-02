@@ -66,6 +66,11 @@ mechanisms already in place:
    the type doc states the zero value `""` is invalid and that ids are
    constructed by a direct cast at boundaries.
 
+Comparing client-supplied ids for identity (the admin self guards, role-id
+deduplication) is where spelling matters; `usecase.sameUserID` and
+`usecase.canonicalUUIDKey` compare parsed uuid values there, still without a
+domain parser.
+
 ## Scope boundary — type only the authz-confusable pair
 
 Only `UserID` and `CardgroupID` are typed. `CardID`, `RoleID`, and the
