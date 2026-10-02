@@ -63,6 +63,13 @@ updated, and `"apple"` remains as an independent user card. If no exact row exis
 both `"APPLE"` and `"apple"` do, only the deterministic oldest row is renamed and updated.
 Merge does not attempt to reconcile the remaining variants.
 
+The fold's `NOT EXISTS` guard sees only rows visible to its statement snapshot. If the
+learner creates the exact catalog front in another tab while the merge runs, the rename
+collides with that row on `uq_cards_cardgroup_front` once it commits; `FoldFrontCaseToTx`
+classifies the `23505` as `ErrCardDuplicateFront` and the merge returns `BAD_USER_INPUT` on
+`cardgroupId` ("cardgroup changed during the merge; try again"). The transaction rolls back,
+and a retry sees the committed row, skips the rename and updates that row instead.
+
 `PreviewMergeMasterIntoCardgroup` uses `CardRepository.CountMatchingFrontsFold`, which
 counts distinct `LOWER(front)` values against lowered catalog fronts. Multiple stored case
 variants therefore predict one update, matching the one-row fold and subsequent upsert.

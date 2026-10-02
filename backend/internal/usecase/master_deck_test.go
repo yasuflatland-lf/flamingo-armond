@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rotisserie/eris"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
@@ -1355,6 +1356,34 @@ func TestMasterDeckUsecase_MergeMasterIntoCardgroup_FoldError_PropagatesChain(t 
 	_, err := uc.MergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID(ownerID))
 	require.Error(t, err)
 	assertInternalChain(t, err, "usecase: master deck: merge master into cardgroup: fold case variants")
+	assert.Zero(t, user.upsertCall, "the upsert must not run after a failed case fold")
+}
+
+func TestMasterDeckUsecase_MergeMasterIntoCardgroup_FoldDuplicateFront_ReturnsValidation(t *testing.T) {
+	t.Parallel()
+	const ownerID = "11111111-1111-7111-8111-111111111111"
+	const destID = "22222222-2222-7222-8222-222222222222"
+	const masterID = "master-id"
+
+	user := &fakeUserCardRepo{foldErr: eris.Wrap(repository.ErrCardDuplicateFront, "repository: card: fold front case")}
+	uc := newMasterDeckUsecaseWithTx(
+		&fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{masterID: masterCG(masterID, "Master")}},
+		&fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
+			masterID: {masterCard("mc-1", masterID, "Apple", "new", 0)},
+		}},
+		user,
+		&fakeUserCG{byID: map[string]*domain.Cardgroup{
+			destID: mustCardgroup(t, destID, ownerID, "My Deck"),
+		}},
+		stubTxRunner,
+		newTestLogger(),
+	)
+
+	got, err := uc.MergeMasterIntoCardgroup(context.Background(), masterID, domain.CardgroupID(destID), domain.UserID(ownerID))
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assertValidationError(t, err, "cardgroupId", "cardgroup changed during the merge; try again")
+	assert.NotErrorIs(t, err, repository.ErrNotFound, "must not enter MergeMaster's not-found branch")
 	assert.Zero(t, user.upsertCall, "the upsert must not run after a failed case fold")
 }
 

@@ -68,11 +68,11 @@ func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domai
 	return res, nil
 }
 
-// FoldFrontCaseToTx renames one case-insensitive match per front, choosing the oldest
-// created_at then smallest id; extra matches stay untouched. LOWER-distinct input, NOT EXISTS,
-// and DISTINCT ON prevent uq_cards_cardgroup_front conflicts. Stable ids preserve FSRS/swipes;
-// the DB-owned updated_at trigger fires [#1112]. Runs bulkStatementChunkRows fronts per statement
-// on tx, which must be a transaction; LOWER-distinct input keeps chunks off each other's rows.
+// FoldFrontCaseToTx renames one case-insensitive match per front, choosing the oldest created_at then smallest id; extra matches stay
+// untouched. LOWER-distinct input, NOT EXISTS, and DISTINCT ON prevent uq_cards_cardgroup_front conflicts with rows visible to the
+// statement; an exact-front row a concurrent transaction commits after the statement's snapshot still collides, and that 23505 returns
+// ErrCardDuplicateFront. Stable ids preserve FSRS/swipes; the DB-owned updated_at trigger fires [#1112]. Runs bulkStatementChunkRows
+// fronts per statement on tx, which must be a transaction; LOWER-distinct input keeps chunks off each other's rows.
 func (r *cardRepo) FoldFrontCaseToTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error) {
 	if len(fronts) == 0 {
 		return 0, nil
@@ -120,6 +120,9 @@ UPDATE cards SET front = t.new_front FROM targets t WHERE cards.id = t.id`)
 	if res.Error != nil {
 		if errors.Is(res.Error, context.Canceled) || errors.Is(res.Error, context.DeadlineExceeded) {
 			return 0, res.Error
+		}
+		if classified := classifyCardDuplicateFront(res.Error); classified != nil {
+			return 0, classified
 		}
 		return 0, eris.Wrap(res.Error, "repository: card: fold front case")
 	}

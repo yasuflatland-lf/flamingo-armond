@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
@@ -434,4 +435,70 @@ func TestCardRepository_FoldFrontCaseToTx(t *testing.T) {
 		require.NoError(t, err)
 		require.Zero(t, folded)
 	})
+}
+
+// TestCardRepository_FoldFrontCaseToTx_ConcurrentExactInsert_ReturnsDuplicateFront stages an
+// uncommitted exact-front insert, lets the fold's rename block on it, then commits it: the fold's
+// NOT EXISTS ran on a snapshot without that row, so the rename collides on uq_cards_cardgroup_front.
+// Waiting is confirmed via pg_blocking_pids, not a sleep: a fold that starts after the commit would
+// see the row, skip the rename and never collide.
+func TestCardRepository_FoldFrontCaseToTx_ConcurrentExactInsert_ReturnsDuplicateFront(t *testing.T) {
+	// Not parallel: stage and the blocked fold hold two connections of the shared test pool while
+	// each poll acquires another, so parallel tests holding the rest would deadlock the pool.
+	ctx := context.Background()
+	repo := repository.NewCardRepository(testDB.GORM)
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	require.NoError(t, repo.Create(ctx, newCard(cg.ID, "apple", "old")))
+
+	sqlDB := sqlDBHandle(t)
+	stage, err := sqlDB.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	defer func() { _ = stage.Rollback() }()
+	var stagePID int
+	require.NoError(t, stage.QueryRowContext(ctx, "SELECT pg_backend_pid()").Scan(&stagePID))
+	_, err = stage.ExecContext(ctx,
+		"INSERT INTO cards (id, cardgroup_id, front, back) VALUES ($1, $2, 'Apple', 'concurrent')",
+		uuid.NewString(), string(cg.ID))
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			_, foldErr := repo.FoldFrontCaseToTx(ctx, tx, string(cg.ID), []string{"Apple"})
+			return foldErr
+		})
+	}()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var blocked int
+		require.NoError(t, sqlDB.QueryRowContext(ctx,
+			"SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))", stagePID).Scan(&blocked))
+		if blocked == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the fold never blocked on the uncommitted exact-front insert")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	require.NoError(t, stage.Commit())
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, repository.ErrCardDuplicateFront)
+	case <-time.After(30 * time.Second):
+		t.Fatal("the fold did not finish after the concurrent insert committed")
+	}
+
+	stored, err := repo.ListByCardgroup(ctx, string(cg.ID))
+	require.NoError(t, err)
+	backs := make(map[domain.CardText]domain.CardText, len(stored))
+	for _, c := range stored {
+		backs[c.Front] = c.Back
+	}
+	require.Equal(t, map[domain.CardText]domain.CardText{"apple": "old", "Apple": "concurrent"}, backs,
+		"the fold rolls back and the concurrent card stays")
 }

@@ -16,17 +16,17 @@ import (
 // cardsFrontIndex is the unique (cardgroup_id, front) index on public.cards.
 const cardsFrontIndex = "uq_cards_cardgroup_front"
 
-// ErrCardDuplicateFront is returned by Create and Update when the write collides
-// with the (cardgroup_id, front) unique index. Standalone — do NOT join with
+// ErrCardDuplicateFront is returned by Create, Update and FoldFrontCaseToTx when the
+// write collides with the (cardgroup_id, front) unique index. Standalone — do NOT join with
 // ErrNotFound; the row was found, which is precisely the failure (see
 // docs/backend/error-wrapping/standalone-sentinels-not-every-joins-errnotfound.md).
 var ErrCardDuplicateFront = errors.New("repository: card with same front exists in cardgroup")
 
 // classifyCardDuplicateFront maps a Postgres unique violation on the
 // (cardgroup_id, front) index to ErrCardDuplicateFront, and returns nil for any
-// other error. Both write paths — INSERT (Create) and UPDATE (Update) — can hit
-// the same constraint, so they share this classifier rather than each spelling
-// out the code/constraint pair.
+// other error. Every write path that can collide — INSERT (Create), UPDATE (Update)
+// and the merge case fold (FoldFrontCaseToTx) — can hit the same constraint, so they
+// share this classifier rather than each spelling out the code/constraint pair.
 func classifyCardDuplicateFront(err error) error {
 	if pgConstraintViolation(err, "23505", cardsFrontIndex) {
 		return ErrCardDuplicateFront
@@ -172,7 +172,8 @@ type CardWriteRepository interface {
 	// the incoming casing so a following UpsertManyTx updates it. Empty fronts
 	// returns 0 without touching the database. Inputs above bulkStatementChunkRows
 	// run as several statements; tx must be a transaction so a later-chunk failure
-	// rolls back the earlier chunks.
+	// rolls back the earlier chunks. A concurrent insert of the exact front returns
+	// ErrCardDuplicateFront.
 	FoldFrontCaseToTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
 }
 
