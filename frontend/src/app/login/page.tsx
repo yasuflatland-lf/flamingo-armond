@@ -4,26 +4,32 @@ import { redirect } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import type { ReactNode } from "react";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
+import { SESSION_INVALID_REASON, VERIFY_SESSION_PATH } from "@/lib/auth/session-invalid";
 import { readAuthContext } from "@/lib/supabase/auth-status";
 import { InAppBrowserGuard } from "./in-app-browser-guard";
 import { LoginButton } from "./login-button";
 
 export const metadata: Metadata = { title: "Login" };
 
-type SearchParams = Promise<{ error?: string }>;
+type SearchParams = Promise<{ error?: string; reason?: string }>;
 
 export default async function LoginPage({ searchParams }: { searchParams: SearchParams }) {
-  // Redirect an already-authenticated visitor away. The middleware forwards
-  // identity via x-auth-status; stale / anonymous / error all render the page.
-  // The target is `/` (HomePage), never an app surface directly: HomePage is the
-  // single post-login decision point that routes on onboarding state,
-  // lastViewedCardgroup, and cardgroup count. Sending an authenticated visitor
-  // straight to /cardgroups bypasses that chain — a browser-back to /login after
-  // sign-up would forward an un-onboarded user into the app shell.
-  if (readAuthContext(await headers()).status === "authenticated") redirect("/");
+  // Forward an already-authenticated visitor to /auth/verify-session. The
+  // middleware forwards identity via x-auth-status; stale / anonymous / error all
+  // render the page. verify-session re-checks the session against the backend:
+  // a live one continues to `/` (HomePage, the single post-login decision point
+  // that routes on onboarding state, lastViewedCardgroup, and cardgroup count); a
+  // rejected one is signed out and sent back to /login?reason=session_invalid,
+  // which never redirects, so the chain stops here even if the cookie survives.
+  // Never target /cardgroups directly: a browser-back to /login after sign-up
+  // would forward an un-onboarded user into the app shell.
+  const { error, reason } = await searchParams;
+  const sessionInvalid = reason === SESSION_INVALID_REASON;
+  if (!sessionInvalid && readAuthContext(await headers()).status === "authenticated") {
+    redirect(VERIFY_SESSION_PATH);
+  }
 
   const t = await getTranslations("Login");
-  const { error } = await searchParams;
 
   // Locale-aware tracking, mirroring apple.com/jp's locale-specific
   // letter-spacing: Latin display text takes tight negative tracking, while
@@ -112,6 +118,16 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
                   {t("googleCta")}
                 </p>
               </div>
+
+              {sessionInvalid && (
+                <p
+                  role="status"
+                  data-testid="login-session-invalid"
+                  className="text-sm text-muted-foreground"
+                >
+                  {t("sessionInvalid")}
+                </p>
+              )}
 
               {error && (
                 <p role="alert" className="text-sm text-destructive">
