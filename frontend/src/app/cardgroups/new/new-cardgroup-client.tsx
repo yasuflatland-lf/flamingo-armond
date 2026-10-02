@@ -86,12 +86,6 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
         />
       ) : null}
 
-      {validationError ? (
-        <ErrorBanner className="mb-4" data-testid="cardgroup-new-validation-error">
-          {validationError.message}
-        </ErrorBanner>
-      ) : null}
-
       {formattedLimitError ? (
         <ErrorBanner className="mb-4" data-testid="cardgroup-new-limit-error">
           {formattedLimitError}

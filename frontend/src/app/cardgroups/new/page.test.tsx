@@ -166,11 +166,12 @@ describe("<NewCardgroupPage> (client)", () => {
     await user.click(screen.getByRole("button", { name: /create/i }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("cardgroup-new-validation-error")).toBeInTheDocument();
+      expect(screen.getByText("name already exists")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("cardgroup-new-validation-error")).toHaveTextContent(
-      "name already exists",
-    );
+    // Rendered once, as the inline field error — not duplicated in a page banner.
+    expect(screen.getAllByText("name already exists")).toHaveLength(1);
+    const fieldRow = screen.getByRole("textbox").parentElement as HTMLElement;
+    expect(within(fieldRow).getByText("name already exists")).toBeInTheDocument();
     // No navigation: the error variant is data, not a success.
     expect(mockPush).not.toHaveBeenCalled();
     expect(mockRefresh).not.toHaveBeenCalled();
@@ -212,9 +213,9 @@ describe("<NewCardgroupPage> (client)", () => {
     await user.type(screen.getByRole("textbox"), "Bad Name");
     await user.click(screen.getByRole("button", { name: /create/i }));
 
-    // Wait for the validation error banner to appear (mutation completed).
+    // Wait for the inline validation error to appear (mutation completed).
     await waitFor(() => {
-      expect(screen.getByTestId("cardgroup-new-validation-error")).toBeInTheDocument();
+      expect(screen.getByText("name already exists")).toBeInTheDocument();
     });
 
     // The MyCardgroupsConnection must NOT have been written to the cache —
@@ -298,7 +299,7 @@ describe("<NewCardgroupPage> (client)", () => {
     }
   });
 
-  it("generic transport rejection — warns and shows no auth/validation banner", async () => {
+  it("generic transport rejection — warns and shows no auth banner", async () => {
     const user = userEvent.setup();
 
     const networkError = new Error("network down");
@@ -324,7 +325,6 @@ describe("<NewCardgroupPage> (client)", () => {
       expect(mockPush).not.toHaveBeenCalled();
       expect(mockRefresh).not.toHaveBeenCalled();
       expect(screen.queryByTestId("cardgroup-new-auth-error")).not.toBeInTheDocument();
-      expect(screen.queryByTestId("cardgroup-new-validation-error")).not.toBeInTheDocument();
       expect(
         screen.queryByTestId("cardgroup-new-unexpected-payload-error"),
       ).not.toBeInTheDocument();
@@ -375,7 +375,6 @@ describe("<NewCardgroupPage> (client)", () => {
       expect(screen.getByTestId("cardgroup-new-unexpected-payload-error")).toHaveTextContent(
         /something went wrong/i,
       );
-      expect(screen.queryByTestId("cardgroup-new-validation-error")).not.toBeInTheDocument();
 
       expect(mockPush).not.toHaveBeenCalled();
       expect(mockRefresh).not.toHaveBeenCalled();
@@ -426,7 +425,6 @@ describe("<NewCardgroupPage> (client)", () => {
     expect(mockPush).not.toHaveBeenCalled();
     expect(mockRefresh).not.toHaveBeenCalled();
     // Limit branch returns early — no generic warn must fire.
-    expect(screen.queryByTestId("cardgroup-new-validation-error")).not.toBeInTheDocument();
     expect(screen.queryByTestId("cardgroup-new-unexpected-payload-error")).not.toBeInTheDocument();
   });
 
