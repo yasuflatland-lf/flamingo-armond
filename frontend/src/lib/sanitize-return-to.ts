@@ -1,3 +1,5 @@
+const SENTINEL_ORIGIN = "http://internal.invalid";
+
 /**
  * Open-redirect guard: returns a same-origin path (pathname + search + hash)
  * or null. Resolves the value with the WHATWG URL parser against a sentinel
@@ -7,12 +9,12 @@
  * Safe to import from both Server Components and Client Components — this
  * module has no dependency on next/headers or any server-only API.
  */
-const SENTINEL_ORIGIN = "http://internal.invalid";
-
 export function sanitizeReturnTo(value: string | undefined): string | null {
-  // Not a positional "//" check: "evil.com" / "?x" / "#h" would otherwise
-  // resolve to "/evil.com" etc. and be accepted as relative references.
-  if (!value?.startsWith("/")) return null;
+  // Keep the leading-"/" precheck: without it "evil.com" / "?x" / "#h" resolve
+  // to "/evil.com" etc. and are accepted as relative references. Not
+  // `value?.startsWith`: it throws on the string[] a page receives for a
+  // repeated query key.
+  if (typeof value !== "string" || !value.startsWith("/")) return null;
   let url: URL;
   try {
     url = new URL(value, SENTINEL_ORIGIN);

@@ -36,7 +36,7 @@ const ALPHABET = [
   " ",
   "a",
   "\u0000",
-  "\u3000",
+  "　",
   "h",
   "t",
   "p",
@@ -99,6 +99,10 @@ describe("sanitizeReturnTo", () => {
     ["/cards new", "/cards%20new"],
   ])("sanitizeReturnTo(%j) returns %j", (input, expected) => {
     expect(sanitizeReturnTo(input)).toBe(expected);
+  });
+
+  it.each([[["/a", "//evil.com"]], [5], [{}]])("rejects non-string runtime value %j", (value) => {
+    expect(sanitizeReturnTo(value as unknown as string)).toBeNull();
   });
 
   it("accepted values resolve to the app origin and are idempotent", () => {
