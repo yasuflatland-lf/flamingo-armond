@@ -2,9 +2,10 @@
 const CHUNK_SIZE = 0x8000;
 
 /**
- * Encodes text as standard (padded) base64 of its UTF-8 bytes. Total over every
- * DOMString: TextEncoder replaces unpaired surrogates with U+FFFD, so this never
- * throws. Matches the backend's base64.StdEncoding decode of card-import payloads.
+ * Encodes text as standard (padded) base64 of its UTF-8 bytes. Never throws on
+ * malformed UTF-16: TextEncoder replaces unpaired surrogates with U+FFFD. Only an
+ * input past the engine's maximum string length can throw (RangeError). Matches the
+ * backend's base64.StdEncoding decode of card-import payloads.
  */
 export function encodeUtf8Base64(text: string): string {
   const bytes = new TextEncoder().encode(text);

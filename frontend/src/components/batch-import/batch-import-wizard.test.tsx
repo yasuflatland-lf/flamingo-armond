@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
 
 // Call-through spy on the encoder: every call runs the real implementation until
 // a test arms a one-shot throw, which is how the encode-inside-try tests below
-// make an otherwise total encoder fail.
+// simulate the RangeError an oversized input would raise.
 const encoderProbe = vi.hoisted(() => ({
   encode: undefined as unknown as Mock<(text: string) => string>,
 }));
