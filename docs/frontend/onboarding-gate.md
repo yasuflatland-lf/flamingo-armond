@@ -2,7 +2,7 @@
 
 > Part of [`frontend/CLAUDE.md`](../../frontend/CLAUDE.md). See the index for related chapters.
 
-The "is this user onboarded?" question is asked in three places — by the **middleware**, which enforces the invariant on every route; by HomePage, which decides whether to send the user *into* `/onboarding`; and by `/onboarding` itself, which decides whether to send an already-onboarded caller back *out*. All three resolve to the same predicate: `isUserOnboarded(me)` in `frontend/src/lib/auth/onboarding.ts`. The predicate is the unit of meaning; the three sites are three consumers.
+The "is this user onboarded?" question is asked in three places — by the **middleware**, which enforces the invariant on every route; by HomePage, which decides whether to send the user *into* `/onboarding`; and by `/onboarding` itself, which decides whether to send an already-onboarded caller back *out*. All three resolve to the same predicate: `isUserOnboarded(me)` in `frontend/src/lib/auth/onboarding.ts`. The predicate is the unit of meaning; the three sites are three consumers. The predicate trims with `trimLikeGo` (Go `strings.TrimSpace` semantics), so a display name the backend accepts is always "onboarded".
 
 ## The middleware gate closes the deep-link path
 
@@ -25,7 +25,7 @@ The gate never redirects these, matched on the exact path or a `/`-bounded sub-p
 | `/robots.txt`, `/sitemap.xml`, `/opengraph-image` | Metadata routes the matcher forwards. Without the exemption a signed-in caller with an empty display name is 307'd instead of served the asset. |
 | `/favicon.ico`, `/sw.js`, `/offline.html`, `/manifest.webmanifest` | Static single-file routes the matcher already excludes. |
 
-The matcher and the gate are two independent lists, and they do not fully overlap: the matcher already excludes `/api`, `/auth/callback`, `/_next` and the last row's static files, but it forwards `/robots.txt`, `/sitemap.xml` and `/opengraph-image`. Entries the matcher already excludes stay in the gate's list deliberately, so the gate is still correct if the matcher widens — but a new metadata or asset route must be checked against the matcher pattern before assuming it is covered.
+The matcher and the gate are two independent lists, and they do not fully overlap: the matcher already excludes `/api`, `/auth/callback`, `/auth/verify-session`, `/_next` and the last row's static files, but it forwards `/robots.txt`, `/sitemap.xml` and `/opengraph-image`. Entries the matcher already excludes stay in the gate's list deliberately, so the gate is still correct if the matcher widens — but a new metadata or asset route must be checked against the matcher pattern before assuming it is covered.
 
 ### Signed fast-path cookie
 

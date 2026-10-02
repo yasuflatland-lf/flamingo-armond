@@ -115,7 +115,7 @@ The "self or admin" check is the right granularity for fields where the owning u
 
 A user who is allowed to edit final role sets can remove their own admin role and lock the system out of admin operations. The usecase layer must reject "the caller is removing the admin role from themselves" before the DB write:
 
-1. Compare `callerID == targetUserID`.
+1. Compare `callerID` and `targetUserID` as uuid values (`sameUserID` in `backend/internal/usecase/admin_user.go`), not as strings: Postgres `uuid_in` resolves an upper-case, hyphen-less, braced or every-4-digit-hyphenated spelling to the same row, so a string compare lets a caller bypass the guard.
 2. Resolve the submitted final `roleIds` to role names.
 3. If the final set for the caller no longer contains the `"admin"` role, return the `CannotRevokeOwnAdminRoleError` union variant from `adminEditUser`.
 
@@ -133,7 +133,7 @@ A fresh deployment has zero admin rows, but every admin-management mutation is g
 
 `make sync-env` seeds only while `backend/.env.local` starts with the `# managed-by: sync-env` marker line; for a user-owned file it skips the seed entirely, so use `make seed-admin EMAIL=you@example.com` instead.
 
-Each task runs `INSERT INTO public.user_roles ... ON CONFLICT DO NOTHING` for every listed address that already has an `auth.users` row. It is idempotent and silently skips an address that has not signed in yet, so sign in once and re-run. After the grant, sign out and back in (or wait for a token refresh) so the custom access token hook re-mints the JWT with `app_metadata.role = "admin"`.
+Each task runs `INSERT INTO public.user_roles ... ON CONFLICT DO NOTHING` for every listed address that already has an `auth.users` row. It is idempotent and reports an address that has not signed in yet as a no-op, so sign in once and re-run. After the grant, sign out and back in (or wait for a token refresh) so the custom access token hook re-mints the JWT with `app_metadata.role = "admin"`.
 
 `SUPER_USER_EMAILS` is an input to these seed tasks only; the backend server does not read it. Listing an address has no effect until a seed task runs, and removing one never revokes a role — demote through `adminEditUser`.
 
@@ -151,7 +151,7 @@ Run the seed task for the environment from the table above. A failed count query
 
 ### Manual SQL fallback (post-`make db-reset`)
 
-`make db-reset` re-runs all migrations and resets `public.user_roles` to empty, so every admin loses the role. Once the backend has re-created `public.roles`, re-run `make sync-env` (sign in first if the reset also removed your `auth.users` row), or insert the row directly:
+`make db-reset` recreates the local Postgres database, so `auth.users` and every app table are dropped and every admin loses the role. The repo keeps no `supabase/migrations`; the app schema (including `public.roles` and an empty `public.user_roles`) returns only when the backend re-applies its migrations on boot. Restart the backend, sign in again with each listed account, then re-run `make sync-env`, or insert the row directly:
 
 ```bash
 psql "$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')" <<'SQL'
@@ -169,7 +169,7 @@ Or use the Make target wrapper:
 make seed-admin EMAIL=you@example.com
 ```
 
-The Make target executes the same INSERT through the local Supabase Postgres container (no `Authorization` header round-trip required).
+The Make target runs the same `user_roles` INSERT, preceded by a `public.users` upsert, with host `psql` against the local Supabase `DB_URL`.
 
 ### Multi-layer security test coverage
 

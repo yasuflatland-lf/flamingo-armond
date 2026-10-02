@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -12,19 +13,22 @@ import (
 	"backend/internal/domain"
 )
 
-// ErrCardDuplicateFront is returned by Create and Update when the write collides
-// with the (cardgroup_id, front) unique index. Standalone — do NOT join with
+// cardsFrontIndex is the unique (cardgroup_id, front) index on public.cards.
+const cardsFrontIndex = "uq_cards_cardgroup_front"
+
+// ErrCardDuplicateFront is returned by Create, Update and FoldFrontCaseToTx when the
+// write collides with the (cardgroup_id, front) unique index. Standalone — do NOT join with
 // ErrNotFound; the row was found, which is precisely the failure (see
 // docs/backend/error-wrapping/standalone-sentinels-not-every-joins-errnotfound.md).
 var ErrCardDuplicateFront = errors.New("repository: card with same front exists in cardgroup")
 
 // classifyCardDuplicateFront maps a Postgres unique violation on the
 // (cardgroup_id, front) index to ErrCardDuplicateFront, and returns nil for any
-// other error. Both write paths — INSERT (Create) and UPDATE (Update) — can hit
-// the same constraint, so they share this classifier rather than each spelling
-// out the code/constraint pair.
+// other error. Every write path that can collide — INSERT (Create), UPDATE (Update)
+// and the merge case fold (FoldFrontCaseToTx) — can hit the same constraint, so they
+// share this classifier rather than each spelling out the code/constraint pair.
 func classifyCardDuplicateFront(err error) error {
-	if pgConstraintViolation(err, "23505", "uq_cards_cardgroup_front") {
+	if pgConstraintViolation(err, "23505", cardsFrontIndex) {
 		return ErrCardDuplicateFront
 	}
 	return nil
@@ -93,6 +97,8 @@ type CardReadRepository interface {
 	// CountMatchingFrontsFold returns the number of distinct case-folded fronts
 	// in the cardgroup that match the caller-supplied lowercase fronts. It counts
 	// multiple stored case variants once. Empty fronts returns 0 without a query.
+	// Inputs above bulkStatementChunkRows distinct fronts run as several pooled
+	// statements, each on its own snapshot.
 	CountMatchingFrontsFold(ctx context.Context, cardgroupID string, loweredFronts []string) (int64, error)
 }
 
@@ -152,24 +158,23 @@ type CardWriteRepository interface {
 	// slice GORM v2 omits the `WHERE id IN (?)` clause altogether, which would
 	// convert this `Delete` into an unbounded mass delete — far worse than a slow scan.
 	DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error)
-	// DeleteByCardgroupAndFrontsTx hard-deletes cards by the scoped
-	// (cardgroup_id, front) natural key. Scoping is by cardgroup_id only —
-	// callers must verify the cardgroup is reachable by the calling owner
-	// before invoking this method.
-	//
-	// Empty fronts short-circuits to (0, nil) without touching the DB. With an
-	// empty slice GORM v2 omits the `WHERE front IN (?)` clause altogether,
-	// which would convert this `Delete` into a delete-all-cards-in-cardgroup.
-	// See `.claude/rules/go-library-gotchas.md` § GORM empty IN.
+	// DeleteByCardgroupAndFrontsTx hard-deletes cards by the scoped (cardgroup_id, front) natural
+	// key; callers must verify the cardgroup is reachable by the calling owner first. Inputs above
+	// bulkStatementChunkRows run as several statements, so tx must be a transaction. Empty fronts
+	// returns (0, nil) without touching the DB: GORM v2 drops an empty `IN ?`, which would delete
+	// every card in the cardgroup (`.claude/rules/go-library-gotchas.md` § GORM empty IN).
 	DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
-	// UpsertManyTx upserts cards by (cardgroup_id, front). Existing rows have
-	// their `back` and `position` columns overwritten, while the database trigger
-	// advances updated_at. Returns the per-row split between Inserted and Updated.
-	// Empty input is a no-op.
+	// UpsertManyTx upserts cards by (cardgroup_id, front), overwriting `back` and `position`;
+	// the database trigger advances updated_at. Returns the per-row split between Inserted
+	// and Updated. Empty input is a no-op. Inputs above bulkStatementChunkRows run as several
+	// statements; tx must be a transaction so a later-chunk failure rolls back the earlier chunks.
 	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (UpsertManyTxResult, error)
 	// FoldFrontCaseToTx renames one case-insensitive match per incoming front to
 	// the incoming casing so a following UpsertManyTx updates it. Empty fronts
-	// returns 0 without touching the database.
+	// returns 0 without touching the database. Inputs above bulkStatementChunkRows
+	// run as several statements; tx must be a transaction so a later-chunk failure
+	// rolls back the earlier chunks. A concurrent insert of the exact front returns
+	// ErrCardDuplicateFront.
 	FoldFrontCaseToTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
 }
 
@@ -258,6 +263,9 @@ func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {
 		if classified := classifyTextLengthViolation(err); classified != nil {
 			return classified
 		}
+		if classified := classifyFrontIndexRowTooLarge(err, cardsFrontIndex); classified != nil {
+			return classified
+		}
 		return eris.Wrap(err, "repository: card: create")
 	}
 	card.UpdatedAt = row.UpdatedAt
@@ -282,15 +290,21 @@ func (r *cardRepo) CountMatchingFrontsFold(ctx context.Context, cardgroupID stri
 	if len(loweredFronts) == 0 {
 		return 0, nil
 	}
-	var count int64
-	if err := r.db.WithContext(ctx).Raw(
-		`SELECT COUNT(DISTINCT LOWER(front)) FROM cards
-		 WHERE cardgroup_id = ? AND LOWER(front) IN ?`,
-		cardgroupID, loweredFronts,
-	).Scan(&count).Error; err != nil {
-		return 0, eris.Wrap(err, "repository: card: count matching fronts fold")
+	var total int64
+	// Not chunked on the raw input: a front repeated in two chunks would be counted twice.
+	distinct := slices.Compact(slices.Sorted(slices.Values(loweredFronts)))
+	for chunk := range slices.Chunk(distinct, bulkStatementChunkRows) {
+		var count int64
+		if err := r.db.WithContext(ctx).Raw(
+			`SELECT COUNT(DISTINCT LOWER(front)) FROM cards
+			 WHERE cardgroup_id = ? AND LOWER(front) IN ?`,
+			cardgroupID, chunk,
+		).Scan(&count).Error; err != nil {
+			return 0, eris.Wrap(err, "repository: card: count matching fronts fold")
+		}
+		total += count
 	}
-	return count, nil
+	return total, nil
 }
 
 func (r *cardRepo) Update(ctx context.Context, id string, patch CardUpdate) (*domain.Card, error) {
@@ -311,6 +325,9 @@ func (r *cardRepo) Update(ctx context.Context, id string, patch CardUpdate) (*do
 			return nil, classified
 		}
 		if classified := classifyTextLengthViolation(res.Error); classified != nil {
+			return nil, classified
+		}
+		if classified := classifyFrontIndexRowTooLarge(res.Error, cardsFrontIndex); classified != nil {
 			return nil, classified
 		}
 		return nil, eris.Wrap(res.Error, "repository: card: update")

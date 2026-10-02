@@ -424,6 +424,72 @@ func TestRun_NotionSyncDisabledWhenEnvMissing(t *testing.T) {
 	}
 }
 
+// TestRun_WarnsAtBootWhenNoAdminExists pins the warnIfNoAdmin call inside
+// run(). The helper returns nothing, so deleting the call still compiles and
+// the helper's own unit tests stay green; only run()'s log output notices.
+func TestRun_WarnsAtBootWhenNoAdminExists(t *testing.T) {
+	db, err := database.Open(t.Context(), database.Config{URL: testDBURL})
+	if err != nil {
+		t.Fatalf("db open: %v", err)
+	}
+	adminCount, err := repository.NewUserRoleRepository(db.GORM).CountAdmins(t.Context())
+	db.Close()
+	if err != nil {
+		t.Fatalf("CountAdmins: %v", err)
+	}
+	if adminCount != 0 {
+		t.Skipf("pre-condition: %d admin role-holder(s) already exist; the boot WARN would not fire", adminCount)
+	}
+
+	tsJWKS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"keys": []}`))
+	}))
+	defer tsJWKS.Close()
+
+	t.Setenv("SUPABASE_JWKS_URL", tsJWKS.URL)
+	t.Setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
+	t.Setenv("SUPABASE_JWT_ISSUER", "http://issuer.test")
+	t.Setenv("SUPABASE_DB_URL", testDBURL)
+	t.Setenv("PING_TOKEN", "test-token")
+	unsetNotionSyncEnv(t)
+
+	port := freePort(t)
+	t.Setenv("PORT", port)
+	t.Setenv("SHUTDOWN_TIMEOUT", "2s")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- run(ctx, logger)
+	}()
+
+	waitHealthy(t, port, 3*time.Second)
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("run returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not return within timeout after context cancel")
+	}
+
+	const wantMsg = "admin bootstrap: no admin role-holder exists"
+	for _, rec := range decodeLogRecords(t, &buf) {
+		if rec["msg"] == wantMsg {
+			return
+		}
+	}
+	t.Fatalf("run() did not log %q at boot; output: %s", wantMsg, buf.String())
+}
+
 func TestRun_FailsWhenJWKSURLMissing(t *testing.T) {
 	t.Setenv("SUPABASE_JWKS_URL", "")
 	t.Setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
@@ -709,7 +775,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	logger := slog.New(slog.DiscardHandler)
 	userUC := usecase.NewUserUsecase(nil, userRepo, userRoleRepo, nil, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(db.GORM, cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
@@ -1948,7 +2014,7 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 	logger := slog.New(slog.DiscardHandler)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM, logger)
 	userUC := usecase.NewUserUsecase(nil, userRepo, userRoleRepo, nil, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(db.GORM, cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	lastViewedUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
@@ -2339,8 +2405,8 @@ func (f failingCountRepo) CountAdmins(_ context.Context) (int64, error) {
 }
 
 // existingAdminRepo satisfies repository.UserRoleRepository with CountAdmins
-// returning a fixed count. Used by deterministic tests for the admin-exists
-// branch (admin role-holders already exist → no WARN emitted).
+// returning a fixed count. Used by the deterministic tests for the zero-admin
+// branch (count 0 → WARN) and the admin-exists branch (count > 0 → no WARN).
 type existingAdminRepo struct {
 	panicUserRoleRepo
 	count int64
@@ -2489,11 +2555,52 @@ func TestWarnIfNoAdmin_WarnOnCountError(t *testing.T) {
 
 	// 4. The "no admin role-holder" WARN must NOT appear — the count failed,
 	//    so we never learned whether adminCount == 0.
-	const wantNoEscapeMsg = "admin bootstrap: no admin role-holder exists"
+	const wantNoAdminMsg = "admin bootstrap: no admin role-holder exists"
 	for _, rec := range records {
-		if rec["msg"] == wantNoEscapeMsg {
-			t.Errorf("unexpected log line %q: should only appear when count succeeds with 0", wantNoEscapeMsg)
+		if rec["msg"] == wantNoAdminMsg {
+			t.Errorf("unexpected log line %q: should only appear when count succeeds with 0", wantNoAdminMsg)
 		}
+	}
+}
+
+// TestWarnIfNoAdmin_WarnOnStdlibCountError proves the eris.Wrap at the log
+// site is load-bearing: a plain errors.New from the counter has no stack, so
+// error_chain.root.stack is present only because warnIfNoAdmin wraps it.
+func TestWarnIfNoAdmin_WarnOnStdlibCountError(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	warnIfNoAdmin(t.Context(), logger, failingCountRepo{err: errors.New("plain stdlib failure")})
+
+	records := decodeLogRecords(t, &buf)
+	if len(records) != 1 {
+		t.Fatalf("want exactly 1 log record, got %d: %s", len(records), buf.String())
+	}
+	chain, _ := records[0]["error_chain"].(map[string]any)
+	root, _ := chain["root"].(map[string]any)
+	if stack, _ := root["stack"].([]any); len(stack) == 0 {
+		t.Errorf("error_chain.root.stack must be non-empty for a stdlib counter error; got error_chain=%v", records[0]["error_chain"])
+	}
+}
+
+// TestWarnIfNoAdmin_WarnsWhenCountIsZero drives the zero-admin branch with a
+// stub, so it never skips, and pins the admin_count attribute the docs quote.
+func TestWarnIfNoAdmin_WarnsWhenCountIsZero(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	warnIfNoAdmin(t.Context(), logger, existingAdminRepo{count: 0})
+
+	records := decodeLogRecords(t, &buf)
+	if len(records) != 1 {
+		t.Fatalf("want exactly 1 log record, got %d: %s", len(records), buf.String())
+	}
+	rec := records[0]
+	if rec["level"] != "WARN" || rec["msg"] != "admin bootstrap: no admin role-holder exists" {
+		t.Errorf("want WARN %q, got level=%v msg=%v", "admin bootstrap: no admin role-holder exists", rec["level"], rec["msg"])
+	}
+	if got, ok := rec["admin_count"].(float64); !ok || got != 0 {
+		t.Errorf("want admin_count=0 present, got %v (present=%v)", rec["admin_count"], ok)
 	}
 }
 

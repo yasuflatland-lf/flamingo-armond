@@ -1454,7 +1454,7 @@ func TestCardRepository_FindPracticeCards_CoversUTCCreditBandBeforeNineJST(t *te
 		require.False(t, union[id], "a card must not appear in both windows")
 		union[id] = true
 	}
-	require.Len(t, union, 3, "together the two windows cover every reviewed card")
+	require.Len(t, union, 3, "together the two windows cover every due reviewed card")
 }
 
 // TestCardRepository_FindPracticeCards_IgnoresOtherUsersFSRSRows verifies the
@@ -1599,6 +1599,39 @@ func TestCardRepo_CountMatchingFrontsFold_DistinctCaseVariants(t *testing.T) {
 	n0, err := repo.CountMatchingFrontsFold(ctx, string(cg.ID), []string{})
 	require.NoError(t, err)
 	require.Equal(t, int64(0), n0)
+}
+
+func TestCardRepo_CountMatchingFrontsFold_SpansChunks(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	// 55,000 unmatched fronts (11 full chunks), then 15,001 matches so the last match sits
+	// alone in the final chunk, then a repeat of the first match: 70,002 fronts would bind
+	// 70,003 parameters as one statement, above pgx's 65,535 cap, and an undeduplicated
+	// repeat in another chunk would be counted twice.
+	const count = 15001
+	const pad = 55000
+	cards := make([]*domain.Card, count)
+	fronts := make([]string, 0, pad+count+1)
+	for i := range pad {
+		fronts = append(fronts, fmt.Sprintf("absent-%05d", i))
+	}
+	for i := range cards {
+		cards[i] = newCard(cg.ID, fmt.Sprintf("Front-%05d", i), "back")
+		fronts = append(fronts, fmt.Sprintf("front-%05d", i))
+	}
+	fronts = append(fronts, "front-00000")
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		_, txErr := repo.UpsertManyTx(ctx, tx, cards)
+		return txErr
+	}))
+
+	n, err := repo.CountMatchingFrontsFold(ctx, string(cg.ID), fronts)
+	require.NoError(t, err)
+	require.Equal(t, int64(count), n)
 }
 
 func TestCardRepository_FindDueCards_ReviewRowsOrderedByRetrievabilityDesc(t *testing.T) {

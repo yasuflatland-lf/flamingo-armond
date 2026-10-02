@@ -22,6 +22,7 @@ import { mutationAuthBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { FormField } from "@/lib/forms/form-field";
 import { submitFormHandler } from "@/lib/forms/submit-handler";
+import { trimLikeGo } from "@/schemas/go-text";
 import { updateProfileSchema } from "@/schemas/profile";
 import type { AdminUserListItem, AdminUserRole } from "./admin-user-row";
 import { AdminEditUserMutation } from "./queries";
@@ -124,7 +125,11 @@ export function AdminUserProfileSheet({
             id: user.id,
             expectedVersion: user.version,
             ...(profileDirty
-              ? { displayName: value.displayName.trim(), bio: value.bio || null }
+              ? {
+                  displayName: trimLikeGo(value.displayName),
+                  // `|| null` alone would leave a cleared bio in place: null means "unchanged".
+                  bio: value.bio || (user.bio ? "" : null),
+                }
               : {}),
             roleIds: Array.from(stagedRoleIds),
           },
