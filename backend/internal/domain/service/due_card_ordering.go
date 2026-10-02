@@ -45,8 +45,7 @@ func partition(due []domain.DueCard) (newC, reviewC []domain.DueCard) {
 // behind its share (largest remainder), so the ratio holds on every prefix and
 // not only on whole cycles. No prefix holds more than the 80% cap of new cards
 // while both buckets are non-empty. When one bucket empties, the remainder of
-// the other is appended in its current order. Returns the flattened []*Card
-// extracted from DueCard.Card.
+// the other is appended in its current order.
 func interleave(newC, reviewC []domain.DueCard, nRatio, rRatio int) []*domain.Card {
 	if nRatio <= 0 || rRatio <= 0 {
 		panic(fmt.Sprintf("domain/service: interleave requires positive ratios, got nRatio=%d rRatio=%d", nRatio, rRatio))
