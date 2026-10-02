@@ -89,7 +89,6 @@ type findPageByOwnerCall struct {
 
 type countByOwnerCall struct {
 	OwnerID string
-	Search  *string
 }
 
 func (m *mockCardgroupRepository) FindByID(_ context.Context, id string) (*domain.Cardgroup, error) {
