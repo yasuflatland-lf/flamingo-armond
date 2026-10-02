@@ -86,10 +86,10 @@ func ParseCEFRLevel(s string) (CEFRLevel, bool) {
 }
 
 // NormalizeWord canonicalises a word or phrase for CEFR lookup: NFC, lowercase,
-// NFC again, fold curly apostrophes to straight (so an edge one is then trimmed),
-// trim leading/trailing whitespace, punctuation and symbols, and collapse each
-// internal unicode.IsSpace run to one ASCII space. The markdown parser (keys) and
-// the classifier (queries) share it so both agree; the result is idempotent.
+// NFC again, fold curly apostrophes to straight, trim leading/trailing
+// whitespace, punctuation and symbols, and collapse each internal unicode.IsSpace
+// run to one ASCII space. The markdown parser (keys) and the classifier
+// (queries) share it so both agree; the result is idempotent.
 func NormalizeWord(s string) string {
 	s = norm.NFC.String(s)
 	s = strings.ToLower(s)

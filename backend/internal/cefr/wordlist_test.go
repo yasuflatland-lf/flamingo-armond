@@ -28,6 +28,19 @@ func TestParseMarkdown_DuplicateKeyHighestWins(t *testing.T) {
 	require.Equal(t, domain.CEFRB1, out["run"])
 }
 
+// A bullet with case, internal whitespace runs and edge punctuation must land on
+// the same key the classifier queries, or the entry can never match.
+func TestParseMarkdown_KeysUseCanonicalForm(t *testing.T) {
+	t.Parallel()
+	src := "## C2\n- Bite  The\tBullet!\n- ( Out Of )\n"
+	out, err := ParseMarkdown(src)
+	require.NoError(t, err)
+	require.Equal(t, map[string]domain.CEFRLevel{
+		"bite the bullet": domain.CEFRC2,
+		"out of":          domain.CEFRC2,
+	}, out)
+}
+
 func TestParseMarkdown_BulletBeforeHeading(t *testing.T) {
 	t.Parallel()
 	_, err := ParseMarkdown("- orphan\n")
@@ -72,7 +85,7 @@ func TestNewWordList_EmbeddedData(t *testing.T) {
 	require.Greater(t, wl.Len(), 7000)
 }
 
-// Pins that key construction and query normalization share one canonical form.
+// Pins that every embedded key is already canonical under NormalizeWord.
 func TestNewWordList_KeysAreNormalizeWordFixedPoints(t *testing.T) {
 	t.Parallel()
 	wl := NewWordList()

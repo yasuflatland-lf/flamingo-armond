@@ -4,6 +4,7 @@ import (
 	"maps"
 	"slices"
 	"testing"
+	"unicode"
 
 	"github.com/stretchr/testify/require"
 )
@@ -89,6 +90,17 @@ var normalizeWordCases = map[string]string{
 	"artificial\u3000intelligence":  "artificial intelligence",
 	" Artificial \n Intelligence! ": "artificial intelligence",
 	"\u0130\u0308":                  "\u00ef", // U+0130 lowers to "i", then composes with U+0308
+	// Whitespace mixed with edge punctuation or symbols must be trimmed to the word, not left as " bank ".
+	"( bank )":                   "bank",
+	"! water":                    "water",
+	"water!\u00a0":               "water",
+	"~water~":                    "water",
+	"$water":                     "water",
+	"artificial\r\nintelligence": "artificial intelligence",
+	// The first NFC makes canonically equivalent inputs share one key; NFKC is rejected, so ligatures stay.
+	"I\u0307":  "i",
+	"\u0130":   "i",
+	"\ufb01ne": "\ufb01ne",
 }
 
 // normalizeWordIdempotenceInputs are known non-idempotence counterexamples of
@@ -107,6 +119,18 @@ func TestNormalizeWord(t *testing.T) {
 	t.Parallel()
 	for in, want := range normalizeWordCases {
 		require.Equal(t, want, NormalizeWord(in), "input %q", in)
+	}
+}
+
+// Every unicode.IsSpace rune, not a hand-picked few, collapses to one ASCII space.
+func TestNormalizeWord_CollapsesEveryUnicodeSpaceRune(t *testing.T) {
+	t.Parallel()
+	for r := rune(0); r <= 0xFFFF; r++ {
+		if !unicode.IsSpace(r) {
+			continue
+		}
+		sep := string(r)
+		require.Equal(t, "a b", NormalizeWord("a"+sep+sep+"b"), "separator U+%04X", r)
 	}
 }
 
