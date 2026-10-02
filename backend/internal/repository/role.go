@@ -121,18 +121,18 @@ func (r *roleRepo) FindByIDsTx(ctx context.Context, tx *gorm.DB, ids []string) (
 func findRolesByIDs(ctx context.Context, db *gorm.DB, ids []string, lock bool) (map[string]*domain.Role, error) {
 	// Not classifying 22P02 instead: one malformed id would fail the whole IN
 	// query and lose the partial-match result for the well-formed ones.
-	parseable := make([]string, 0, len(ids))
+	canonicalIDs := make([]string, 0, len(ids))
 	for _, id := range ids {
 		if isCanonicalUUID(id) {
-			parseable = append(parseable, id)
+			canonicalIDs = append(canonicalIDs, id)
 		}
 	}
 	// The empty check must follow the filter: GORM renders an empty IN as no
 	// condition at all, which would scan every role.
-	if len(parseable) == 0 {
+	if len(canonicalIDs) == 0 {
 		return map[string]*domain.Role{}, nil
 	}
-	q := db.WithContext(ctx).Where("id IN ?", parseable)
+	q := db.WithContext(ctx).Where("id IN ?", canonicalIDs)
 	if lock {
 		q = q.Clauses(clause.Locking{Strength: "UPDATE"})
 	}
