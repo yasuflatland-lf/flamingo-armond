@@ -89,18 +89,20 @@ path.
 ## A rating for a card that is not due is ignored too
 
 The replay guard reads only `last_review`, so on its own it accepts a rating
-the learn queue would never serve. A card rated Hard at 21:00 JST (12:00 UTC)
+the learn queue would never serve. A new card rated Hard at 21:00 JST (12:00 UTC)
 becomes due two days later; the same card rated again from a tab left open
 until 09:00 JST the next morning sits on a new JST learn day and a new UTC date,
 so both replay rules let it through, yet its due is after the next JST midnight
 and the queue does not serve it. Accepting it would record an early review and
-pull the due date forward.
+reschedule the card from it: an `Again` pulls the due date in, while `Hard` or
+`Easy` pushes it out.
 
 A second guard, evaluated after the replay guard, ignores the swipe when an
 FSRS row exists and `!domain.DueBeforeEndOfLearnDay(existing.State.Due, now)`.
 `DueBeforeEndOfLearnDay` is the Go form of the serving-side
 `ucs.due < EndOfLearnDay(now)`, so a card due exactly at the next JST midnight
-is ignored and one due a nanosecond earlier is accepted. A card without a row
+is ignored and one due a microsecond earlier, the resolution of the `due`
+column, is accepted. A card without a row
 never reaches the check: the new-card window serves it. The response is the
 same success-shaped no-op, logged as `swipe: not-due review ignored`. Together
 the two guards keep one invariant: every accepted rating was servable by the
@@ -111,8 +113,9 @@ learn queue at the moment it was recorded.
 - [`backend/internal/usecase/learn.go`](../../../backend/internal/usecase/learn.go) —
   `Clock` and `systemClock`.
 - [`backend/internal/domain/learn_day.go`](../../../backend/internal/domain/learn_day.go) —
-  `EarnsSchedulingCredit`, `ReviewedWithinLearnDay`, and the learn-day bounds.
+  `EarnsSchedulingCredit`, `ReviewedWithinLearnDay`, `DueBeforeEndOfLearnDay`,
+  and the learn-day bounds.
 - [`backend/internal/usecase/swipe.go`](../../../backend/internal/usecase/swipe.go) —
-  the injected clock read and union replay guard.
+  the injected clock read, the union replay guard, and the not-due guard.
 - [`backend/internal/usecase/swipe_learn_day_test.go`](../../../backend/internal/usecase/swipe_learn_day_test.go) —
   fixed-clock coverage of both replay rules and the not-due guard.

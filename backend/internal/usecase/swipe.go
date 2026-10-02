@@ -35,10 +35,9 @@ type UserCardFSRSRepoForSwipe interface {
 
 // SwipeUsecase processes a single card swipe and advances the FSRS schedule.
 // A swipe the learn queue would not serve now is accepted and ignored: a repeat
-// within the same JST learn day or without FSRS scheduling credit, or a rating
-// for a card whose due is at or after the end of the current JST learn day. The
-// schedule is left untouched, no swipe record is written, and the normal success
-// outcome is still returned.
+// within the same JST learn day or without FSRS scheduling credit, or a rating for
+// a card due at or after the end of the current JST learn day. Nothing is written
+// and the normal success outcome is still returned.
 type SwipeUsecase interface {
 	HandleSwipe(ctx context.Context, in HandleSwipeInput) (HandleSwipeOutcome, error)
 }
@@ -64,7 +63,7 @@ type HandleSwipeInput struct {
 
 type SwipeOutput struct {
 	// CardID echoes the swiped card. It is set for a recorded swipe and for an
-	// ignored repeat review alike.
+	// ignored one alike.
 	CardID string
 }
 
@@ -211,7 +210,8 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		// served by the new-card window and never reaches this check. A rating
 		// for a card the queue would not serve now (a tab left open overnight, a
 		// delayed retry, a direct call) is ignored rather than recorded as an
-		// early review that pulls its due date forward.
+		// early review that reschedules the card. Comparing due with now instead
+		// would drop morning ratings of cards the queue serves as due later today.
 		if existing != nil && !domain.DueBeforeEndOfLearnDay(existing.State.Due, now) {
 			u.logger.InfoContext(ctx, "swipe: not-due review ignored",
 				"card_id", card.ID,

@@ -245,7 +245,7 @@ func TestSwipeUsecase_HandleSwipe_BrandNewCard_IsNotSkipped(t *testing.T) {
 // stale-tab counterexample: a Hard at 21:00 JST schedules the card two days out,
 // and a second rating from the same tab at 09:00 JST the next morning passes
 // both replay rules yet targets a card the learn queue does not serve. It must
-// be ignored without moving the due date forward.
+// be ignored without rescheduling the card.
 func TestSwipeUsecase_HandleSwipe_StaleTabNextMorning_NotDueIgnored(t *testing.T) {
 	t.Parallel()
 
