@@ -2,9 +2,12 @@ package repository_test
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
@@ -217,6 +220,98 @@ func TestCardRepository_UpsertManyTx_UpdatesPositionOnConflict(t *testing.T) {
 	}
 }
 
+func TestCardRepository_UpsertManyTx_SpansChunks(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewCardRepository(testDB.GORM)
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+
+	// Three times bulkStatementChunkRows (5000) + 1: a 1-row final chunk, and 90,006 bind
+	// parameters as one statement, above pgx's 65,535 cap. Not 10,001: that fits in one statement.
+	const count = 15001
+	cards := make([]*domain.Card, count)
+	for i := range cards {
+		cards[i] = newCard(cg.ID, fmt.Sprintf("front-%05d", i), "back-1")
+	}
+
+	var result repository.UpsertManyTxResult
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var txErr error
+		result, txErr = repo.UpsertManyTx(ctx, tx, cards)
+		return txErr
+	})
+	require.NoError(t, err)
+	require.Equal(t, repository.UpsertManyTxResult{Inserted: count}, result)
+
+	for i := range cards {
+		cards[i] = newCard(cg.ID, fmt.Sprintf("front-%05d", i), "back-2")
+	}
+	err = testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var txErr error
+		result, txErr = repo.UpsertManyTx(ctx, tx, cards)
+		return txErr
+	})
+	require.NoError(t, err)
+	require.Equal(t, repository.UpsertManyTxResult{Updated: count}, result)
+
+	sqlDB := sqlDBHandle(t)
+	var total int
+	require.NoError(t, sqlDB.QueryRowContext(ctx,
+		`SELECT count(*) FROM cards WHERE cardgroup_id = $1`, cg.ID).Scan(&total))
+	require.Equal(t, count, total)
+	require.NoError(t, sqlDB.QueryRowContext(ctx,
+		`SELECT count(*) FROM cards WHERE cardgroup_id = $1 AND back = 'back-2'`, cg.ID).Scan(&total))
+	require.Equal(t, count, total)
+}
+
+func TestCardRepository_FoldFrontCaseToTx_SpansChunks(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewCardRepository(testDB.GORM)
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+
+	// Not 15,001 fronts alone: that fits in one statement. Lead with 55,000 unmatched fronts
+	// (11 full chunks) so one unchunked statement would bind 70,002 parameters, above pgx's
+	// 65,535 cap. Not matches first: the 1-row final chunk would then hold an unmatched front.
+	const count = 15001
+	const pad = 55000
+	cards := make([]*domain.Card, count)
+	fronts := make([]string, pad+count)
+	for i := range pad {
+		fronts[i] = fmt.Sprintf("MISSING-%05d", i)
+	}
+	for i := range cards {
+		front := fmt.Sprintf("front-%05d", i)
+		cards[i] = newCard(cg.ID, front, "back-1")
+		fronts[pad+i] = strings.ToUpper(front)
+	}
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		_, txErr := repo.UpsertManyTx(ctx, tx, cards)
+		return txErr
+	})
+	require.NoError(t, err)
+
+	var folded int64
+	err = testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var txErr error
+		folded, txErr = repo.FoldFrontCaseToTx(ctx, tx, string(cg.ID), fronts)
+		return txErr
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(count), folded)
+
+	sqlDB := sqlDBHandle(t)
+	var total int
+	require.NoError(t, sqlDB.QueryRowContext(ctx,
+		`SELECT count(*) FROM cards WHERE cardgroup_id = $1 AND front LIKE 'FRONT-%'`, cg.ID).Scan(&total))
+	require.Equal(t, count, total)
+	require.NoError(t, sqlDB.QueryRowContext(ctx,
+		`SELECT count(*) FROM cards WHERE cardgroup_id = $1`, cg.ID).Scan(&total))
+	require.Equal(t, count, total)
+}
+
 func TestCardRepository_FoldFrontCaseToTx(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -320,6 +415,19 @@ func TestCardRepository_FoldFrontCaseToTx(t *testing.T) {
 		require.Equal(t, domain.CardText("newer"), gotNewer.Back)
 	})
 
+	t.Run("cancelled context returns the bare context error", func(t *testing.T) {
+		t.Parallel()
+		repo := repository.NewCardRepository(testDB.GORM)
+		ownerID := insertAuthUser(t, ctx)
+		cg := insertCardgroup(t, ctx, ownerID)
+		cancelledCtx, cancel := context.WithCancel(ctx)
+		cancel()
+
+		folded, err := repo.FoldFrontCaseToTx(cancelledCtx, testDB.GORM, string(cg.ID), []string{"Apple"})
+		require.Equal(t, context.Canceled, err)
+		require.Zero(t, folded)
+	})
+
 	t.Run("empty fronts does not access database", func(t *testing.T) {
 		t.Parallel()
 		repo := repository.NewCardRepository(nil)
@@ -327,4 +435,70 @@ func TestCardRepository_FoldFrontCaseToTx(t *testing.T) {
 		require.NoError(t, err)
 		require.Zero(t, folded)
 	})
+}
+
+// TestCardRepository_FoldFrontCaseToTx_ConcurrentExactInsert_ReturnsDuplicateFront stages an
+// uncommitted exact-front insert, lets the fold's rename block on it, then commits it: the fold's
+// NOT EXISTS ran on a snapshot without that row, so the rename collides on uq_cards_cardgroup_front.
+// Waiting is confirmed via pg_blocking_pids, not a sleep: a fold that starts after the commit would
+// see the row, skip the rename and never collide.
+func TestCardRepository_FoldFrontCaseToTx_ConcurrentExactInsert_ReturnsDuplicateFront(t *testing.T) {
+	// Not parallel: stage and the blocked fold hold two connections of the shared test pool while
+	// each poll acquires another, so parallel tests holding the rest would deadlock the pool.
+	ctx := context.Background()
+	repo := repository.NewCardRepository(testDB.GORM)
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	require.NoError(t, repo.Create(ctx, newCard(cg.ID, "apple", "old")))
+
+	sqlDB := sqlDBHandle(t)
+	stage, err := sqlDB.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	defer func() { _ = stage.Rollback() }()
+	var stagePID int
+	require.NoError(t, stage.QueryRowContext(ctx, "SELECT pg_backend_pid()").Scan(&stagePID))
+	_, err = stage.ExecContext(ctx,
+		"INSERT INTO cards (id, cardgroup_id, front, back) VALUES ($1, $2, 'Apple', 'concurrent')",
+		uuid.NewString(), string(cg.ID))
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			_, foldErr := repo.FoldFrontCaseToTx(ctx, tx, string(cg.ID), []string{"Apple"})
+			return foldErr
+		})
+	}()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var blocked int
+		require.NoError(t, sqlDB.QueryRowContext(ctx,
+			"SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))", stagePID).Scan(&blocked))
+		if blocked == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the fold never blocked on the uncommitted exact-front insert")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	require.NoError(t, stage.Commit())
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, repository.ErrCardDuplicateFront)
+	case <-time.After(30 * time.Second):
+		t.Fatal("the fold did not finish after the concurrent insert committed")
+	}
+
+	stored, err := repo.ListByCardgroup(ctx, string(cg.ID))
+	require.NoError(t, err)
+	backs := make(map[domain.CardText]domain.CardText, len(stored))
+	for _, c := range stored {
+		backs[c.Front] = c.Back
+	}
+	require.Equal(t, map[domain.CardText]domain.CardText{"apple": "old", "Apple": "concurrent"}, backs,
+		"the fold rolls back and the concurrent card stays")
 }

@@ -7,6 +7,7 @@ package repository_test
 
 import (
 	"context"
+	"math/rand/v2"
 	"strings"
 	"testing"
 
@@ -212,4 +213,187 @@ func TestCardRepository_UpsertManyTx_CheckViolation_ClassifiesAsTextLengthError(
 	require.ErrorAs(t, err, &v)
 	require.Equal(t, "back", v.Field)
 	require.Equal(t, "cards_back_length", v.Constraint)
+}
+
+// incompressibleFront returns domain.CardTextMax grapheme clusters, each a random
+// CJK base (U+4E00..U+9FFF) followed by marks random combining marks
+// (U+0300..U+036F). A fixed seed keeps it deterministic; the randomness keeps
+// pglz from shrinking it under the btree limit.
+func incompressibleFront(marks int) string {
+	r := rand.New(rand.NewPCG(1, 2))
+	var b strings.Builder
+	for range domain.CardTextMax {
+		b.WriteRune(rune(0x4E00 + r.IntN(0x9FFF-0x4E00+1)))
+		for range marks {
+			b.WriteRune(rune(0x0300 + r.IntN(0x036F-0x0300+1)))
+		}
+	}
+	return b.String()
+}
+
+// Marks per grapheme that make incompressibleFront trip each 54000 shape:
+// ~5,500 bytes hits the btree check (index named), ~20,500 bytes hits the
+// earlier index-tuple check (no index named).
+const (
+	btreeShapeMarks      = 4
+	indexTupleShapeMarks = 19
+)
+
+// frontIndexShapes drives the subtests that must cover both 54000 shapes.
+var frontIndexShapes = []struct {
+	name  string
+	marks int
+}{
+	{name: "btree", marks: btreeShapeMarks},
+	{name: "index tuple", marks: indexTupleShapeMarks},
+}
+
+// TestIncompressibleFront_IsDomainValid is the precondition for the 54000 tests
+// below: both inputs pass the domain grapheme gate and stay within the
+// cards_front_length CHECK (10000 code points), so only the index limit can
+// reject them.
+func TestIncompressibleFront_IsDomainValid(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		marks     int
+		wantRunes int
+	}{
+		{marks: btreeShapeMarks, wantRunes: 2500},
+		{marks: indexTupleShapeMarks, wantRunes: 10000},
+	} {
+		s := incompressibleFront(tc.marks)
+		_, err := domain.ParseCardText(s, domain.ErrCardFrontRequired, domain.ErrCardFrontTooLong)
+		require.NoError(t, err, "marks=%d", tc.marks)
+		require.Equal(t, domain.CardTextMax, uniseg.GraphemeClusterCount(s), "marks=%d", tc.marks)
+		require.Equal(t, tc.wantRunes, len([]rune(s)), "marks=%d", tc.marks)
+	}
+}
+
+// requireFrontIndexViolation asserts err is the 54000 backstop classified as a
+// front length error against index.
+func requireFrontIndexViolation(t *testing.T, err error, index string) {
+	t.Helper()
+	var v *repository.TextLengthViolationError
+	require.ErrorAs(t, err, &v)
+	require.Equal(t, "front", v.Field)
+	require.Equal(t, index, v.Constraint)
+}
+
+// TestCardRepository_FrontIndexRowTooLarge_ClassifiesAsTextLengthError proves a
+// domain-valid front too large for uq_cards_cardgroup_front surfaces as
+// *repository.TextLengthViolationError in both 54000 shapes: the btree check
+// (index named) and the earlier index-tuple check (no index named).
+func TestCardRepository_FrontIndexRowTooLarge_ClassifiesAsTextLengthError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	for _, tc := range frontIndexShapes {
+		t.Run(tc.name, func(t *testing.T) {
+			err := repo.Create(ctx, newCard(cg.ID, incompressibleFront(tc.marks), "back"))
+			requireFrontIndexViolation(t, err, "uq_cards_cardgroup_front")
+		})
+	}
+}
+
+// TestCardRepository_UpsertManyTx_FrontIndexRowTooLarge_ClassifiesAsTextLengthError
+// covers the bulk writer, which reaches the same index through a hand-built
+// multi-row INSERT and so needs its own classifier arm, in both 54000 shapes.
+func TestCardRepository_UpsertManyTx_FrontIndexRowTooLarge_ClassifiesAsTextLengthError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	for _, tc := range frontIndexShapes {
+		t.Run(tc.name, func(t *testing.T) {
+			err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+				_, txErr := repo.UpsertManyTx(ctx, tx, []*domain.Card{
+					newCard(cg.ID, incompressibleFront(tc.marks), "back"),
+				})
+				return txErr
+			})
+			requireFrontIndexViolation(t, err, "uq_cards_cardgroup_front")
+		})
+	}
+}
+
+// TestMasterCardRepository_FrontIndexRowTooLarge_ClassifiesAsTextLengthError is
+// the master-catalog sibling in both 54000 shapes: master_cards.front is citext
+// with its own unique (master_cardgroup_id, front) index.
+func TestMasterCardRepository_FrontIndexRowTooLarge_ClassifiesAsTextLengthError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "Front-Index-Row-Size-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	for _, tc := range frontIndexShapes {
+		t.Run(tc.name, func(t *testing.T) {
+			err := repo.Create(ctx, newMasterCard(mcg.ID, incompressibleFront(tc.marks), "back", 0))
+			requireFrontIndexViolation(t, err, "uq_master_cards_cg_front")
+		})
+	}
+}
+
+// TestCardRepository_Update_FrontIndexRowTooLarge_ClassifiesAsTextLengthError
+// pins the classifier arm on the single-card edit path in both 54000 shapes.
+func TestCardRepository_Update_FrontIndexRowTooLarge_ClassifiesAsTextLengthError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	card := newCard(cg.ID, "small", "back")
+	require.NoError(t, repo.Create(ctx, card))
+
+	for _, tc := range frontIndexShapes {
+		t.Run(tc.name, func(t *testing.T) {
+			big := incompressibleFront(tc.marks)
+			_, err := repo.Update(ctx, card.ID, repository.CardUpdate{Front: &big})
+			requireFrontIndexViolation(t, err, "uq_cards_cardgroup_front")
+		})
+	}
+}
+
+// TestMasterCardRepository_Update_FrontIndexRowTooLarge_ClassifiesAsTextLengthError
+// pins the master edit-path arm in both 54000 shapes.
+func TestMasterCardRepository_Update_FrontIndexRowTooLarge_ClassifiesAsTextLengthError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "Front-Index-Row-Size-Update-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+	card := newMasterCard(mcg.ID, "small", "back", 0)
+	require.NoError(t, repo.Create(ctx, card))
+
+	for _, tc := range frontIndexShapes {
+		t.Run(tc.name, func(t *testing.T) {
+			big := incompressibleFront(tc.marks)
+			_, err := repo.Update(ctx, card.ID, repository.MasterCardUpdate{Front: &big})
+			requireFrontIndexViolation(t, err, "uq_master_cards_cg_front")
+		})
+	}
+}
+
+// TestMasterCardRepository_UpsertManyTx_FrontIndexRowTooLarge_ClassifiesAsTextLengthError
+// pins the master bulk-import arm in both 54000 shapes.
+func TestMasterCardRepository_UpsertManyTx_FrontIndexRowTooLarge_ClassifiesAsTextLengthError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	mcg := insertMCGForCardTest(t, ctx, "Front-Index-Row-Size-Upsert-Group")
+	repo := repository.NewMasterCardRepository(testDB.GORM)
+
+	for _, tc := range frontIndexShapes {
+		t.Run(tc.name, func(t *testing.T) {
+			err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+				_, txErr := repo.UpsertManyTx(ctx, tx, []*domain.MasterCard{
+					newMasterCard(mcg.ID, incompressibleFront(tc.marks), "back", 0),
+				})
+				return txErr
+			})
+			requireFrontIndexViolation(t, err, "uq_master_cards_cg_front")
+		})
+	}
 }
