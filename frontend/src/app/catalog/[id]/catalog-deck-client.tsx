@@ -1,5 +1,6 @@
 "use client";
 
+import { NetworkStatus } from "@apollo/client";
 import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
@@ -11,11 +12,13 @@ import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
 import { AuthErrorBanner } from "@/components/ui/auth-error-banner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
+import { QueryErrorBanner } from "@/components/ui/query-error-banner";
 import {
   CatalogMasterCardsConnectionDocument,
   type CatalogMasterCardsConnectionQuery,
 } from "@/generated/graphql";
 import { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
+import { classifyQueryError } from "@/lib/apollo/errors";
 import { useSeedConnectionCache } from "@/lib/pagination/use-seed-connection-cache";
 import type { CatalogDeck } from "./catalog-deck-header";
 import { CatalogDeckHeader } from "./catalog-deck-header";
@@ -86,17 +89,31 @@ export default function CatalogDeckClient({
     },
   });
 
-  const { edges, pageInfo, totalCount, fetchingMore, fetchMoreError, retryFetchMore, sentinelRef } =
-    useCatalogCardsConnection({
-      masterCardgroupId: id,
-      searchQuery: search.query,
-      initialEdges,
-      initialPageInfo,
-      initialTotalCount,
-      // The deck-detail list loads CARDS, so reuse the Cards namespace ("load
-      // more cards"), not Catalog.fetchMoreError ("load more cardgroups").
-      fetchMoreErrorMessage: tCards("fetchMoreFailed"),
-    });
+  const {
+    edges,
+    pageInfo,
+    totalCount,
+    fetchingMore,
+    fetchMoreError,
+    retryFetchMore,
+    sentinelRef,
+    networkStatus,
+    queryError,
+    refetch,
+  } = useCatalogCardsConnection({
+    masterCardgroupId: id,
+    searchQuery: search.query,
+    initialEdges,
+    initialPageInfo,
+    initialTotalCount,
+    // The deck-detail list loads CARDS, so reuse the Cards namespace ("load
+    // more cards"), not Catalog.fetchMoreError ("load more cardgroups").
+    fetchMoreErrorMessage: tCards("fetchMoreFailed"),
+  });
+  const queryErrorKind = classifyQueryError(queryError);
+  // Until the active query has data, `edges` / `pageInfo` are the SSR fallback.
+  const rendersActiveQuery =
+    networkStatus === NetworkStatus.ready || networkStatus === NetworkStatus.fetchMore;
 
   // Import state for this single deck. `importing` serializes; `imported` drives
   // the done affordance on the header CTA.
@@ -181,7 +198,19 @@ export default function CatalogDeckClient({
 
           <CardSearchInput value={search.input} onChange={search.setInput} />
 
-          {edges.length === 0 && search.query && (
+          <QueryErrorBanner
+            kind={queryErrorKind}
+            onRetry={refetch}
+            testId="catalog-deck-query-error"
+            copy={{
+              viewForbidden: tCommon("forbidden"),
+              sessionExpired: t("sessionExpired"),
+              signInAgain: t("signInAgain"),
+              retry: tCommon("retry"),
+            }}
+          />
+
+          {!queryErrorKind && edges.length === 0 && search.query && (
             <EmptyState
               className="rounded-md p-6"
               testId="catalog-deck-empty-search"
@@ -189,7 +218,7 @@ export default function CatalogDeckClient({
             />
           )}
 
-          {edges.length === 0 && !search.query && (
+          {!queryErrorKind && edges.length === 0 && !search.query && (
             <EmptyState
               className="rounded-md p-6"
               testId="catalog-deck-empty"
@@ -197,7 +226,7 @@ export default function CatalogDeckClient({
             />
           )}
 
-          {edges.length > 0 && (
+          {!queryErrorKind && edges.length > 0 && (
             <ul className="space-y-3" data-testid="catalog-deck-card-list">
               {edges.map((edge) => (
                 <li key={edge.node.id}>
@@ -207,16 +236,22 @@ export default function CatalogDeckClient({
             </ul>
           )}
 
-          <ConnectionListFooter
-            sentinelRef={sentinelRef}
-            hasNextPage={pageInfo.hasNextPage}
-            fetchingMore={fetchingMore}
-            fetchMoreError={fetchMoreError}
-            onRetry={retryFetchMore}
-            retryLabel={tCommon("retry")}
-            loadingMoreLabel={tCards("loadingMore")}
-            testIdPrefix="catalog-deck"
-          />
+          {/* Hidden, not unmounted: the pagination hook observes the sentinel node only when
+              its effect deps change, so a remounted sentinel could stay unobserved after recovery.
+              A hidden sentinel never intersects, so the SSR endCursor cannot fetchMore a search
+              while the error shows or the search is loading. */}
+          <div hidden={queryErrorKind !== null || !rendersActiveQuery}>
+            <ConnectionListFooter
+              sentinelRef={sentinelRef}
+              hasNextPage={pageInfo.hasNextPage}
+              fetchingMore={fetchingMore}
+              fetchMoreError={fetchMoreError}
+              onRetry={retryFetchMore}
+              retryLabel={tCommon("retry")}
+              loadingMoreLabel={tCards("loadingMore")}
+              testIdPrefix="catalog-deck"
+            />
+          </div>
         </div>
       </main>
     </>

@@ -3,30 +3,28 @@ import { ErrorBanner } from "@/components/ui/error-banner";
 import type { QueryErrorKind } from "@/lib/apollo/errors";
 
 /**
- * Copy slots for the admin query-error banner. Callers resolve these from their
- * own i18n namespace: the admin list screens use different next-intl namespaces
- * (`AdminMasters`, `Admin`) that share the same key names, so the banner takes
- * resolved strings rather than a namespace-bound `t`, keeping it a pure
- * presentational leaf with no i18n coupling.
+ * Copy slots for the query-error banner. Callers resolve these from their own
+ * i18n namespace (Admin, AdminMasters, Cardgroups, Catalog), so the banner takes
+ * resolved strings rather than a namespace-bound `t`.
  */
-type AdminQueryErrorBannerCopy = {
+export type QueryErrorBannerCopy = {
   viewForbidden: string;
   sessionExpired: string;
   signInAgain: string;
   retry: string;
 };
 
-type AdminQueryErrorBannerProps = {
+type QueryErrorBannerProps = {
   kind: QueryErrorKind | null;
   onRetry: () => void;
-  copy: AdminQueryErrorBannerCopy;
+  copy: QueryErrorBannerCopy;
   testId: string;
   className?: string;
 };
 
 /**
- * Shared three-branch banner for an admin list query error:
- *  - `forbidden`:       caller lacks the admin role — no Retry, since re-issuing
+ * Shared three-branch banner for a list query error:
+ *  - `forbidden`:       caller lacks the required role — no Retry, since re-issuing
  *                       the same query would fail again.
  *  - `unauthenticated`: session expired mid-page — a degraded banner pointing to
  *                       /login rather than a client-side redirect.
@@ -35,13 +33,13 @@ type AdminQueryErrorBannerProps = {
  *
  * Renders nothing when `kind` is null.
  */
-export function AdminQueryErrorBanner({
+export function QueryErrorBanner({
   kind,
   onRetry,
   copy,
   testId,
   className,
-}: AdminQueryErrorBannerProps) {
+}: QueryErrorBannerProps) {
   if (!kind) return null;
 
   if (kind.kind === "forbidden") {
