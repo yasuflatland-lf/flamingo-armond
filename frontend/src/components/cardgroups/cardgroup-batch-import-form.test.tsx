@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import { ApolloClient } from "@apollo/client";
-import type { MockedResponse } from "@apollo/client/testing";
+import { ApolloClient, ApolloLink } from "@apollo/client";
+import { type MockedResponse, MockLink } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -123,5 +123,31 @@ describe("<CardgroupBatchImportForm> wiring", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /paste & review/i })).toBeDisabled();
     });
+  });
+
+  it("confirm button is disabled while the import is in flight, so a double click sends one mutation", async () => {
+    const user = userEvent.setup();
+    const importRequests = vi.fn();
+    const countingLink = new ApolloLink((operation, forward) => {
+      if (operation.operationName === "ImportCards") importRequests();
+      return forward(operation);
+    });
+    // delay: Infinity keeps the first mutation pending, so only `loading` can stop a second one.
+    const link = ApolloLink.from([
+      countingLink,
+      new MockLink([validateMock, { ...importMock, delay: Infinity }]),
+    ]);
+    renderWithIntl(
+      <MockedProvider link={link}>
+        <CardgroupBatchImportForm cardgroupId={CARDGROUP_ID} cardgroupName={CARDGROUP_NAME} />
+      </MockedProvider>,
+    );
+    await advanceToStep2(user);
+    const confirm = await screen.findByTestId("batch-import-confirm-btn");
+    expect(confirm).toBeEnabled();
+    await user.dblClick(confirm);
+    await waitFor(() => expect(confirm).toBeDisabled());
+    await user.click(confirm);
+    expect(importRequests).toHaveBeenCalledTimes(1);
   });
 });
