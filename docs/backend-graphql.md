@@ -266,7 +266,7 @@ The sentinel `repository.ErrCardgroupNotFound` lives in `repository/user_prefere
 
 ### Swipe recording and performance metrics
 
-`SwipeUsecase.HandleSwipe` does all of its work inside one transaction: it upserts the FSRS row, inserts the swipe record, and after the commit returns `HandleSwipeSuccess { cardId }` without any further read. The payload carries no statistics; the learner's performance metrics are served by `myLearningStats`, computed by the stateless calculator in `backend/internal/domain/service/user_performance.go`.
+`SwipeUsecase.HandleSwipe` does all of its writes inside one transaction: it upserts the FSRS row, inserts the swipe record, and after the commit returns `HandleSwipeSuccess { cardId }` without any further read. The payload carries no statistics; the learner's performance metrics are served by `myLearningStats`, computed by the stateless calculator in `backend/internal/domain/service/user_performance.go`.
 
 No read follows the commit, so the `handleSwipe` error channel means exactly one thing — "the swipe was NOT persisted" — which is what lets the client re-queue the card on error without risking a double review.
 
