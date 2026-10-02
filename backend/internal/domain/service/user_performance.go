@@ -321,7 +321,7 @@ func isKnownCardReview(swipe domain.SwipeRecord) bool {
 
 // isOnTimeRecall reports whether a swipe recalled the card by the end of the JST
 // learn day its pre-swipe due fell on -- the same day-granular bound the learn
-// queue serves by (due < EndOfLearnDay(now)), so a review served on its due day
+// queue serves by (due < EndOfLearnDay(now)), so a review recorded on its due day
 // is never late. This is a JST due-day bound, not a UTC elapsed-day count: go-fsrs
 // differences UTC dates, which would drift from the due day by up to a full day.
 func isOnTimeRecall(swipe domain.SwipeRecord) bool {

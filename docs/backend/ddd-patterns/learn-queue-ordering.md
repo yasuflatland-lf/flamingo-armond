@@ -49,8 +49,9 @@ ties. A reviewed card leaves the never-seen window.
   due later today is eligible; one due at or after midnight is excluded. This
   day-granular bound avoids a recurring time-of-day delay. The retention
   statistic uses the same bound: `isOnTimeRecall` counts a recall as on time
-  when it lands before `EndOfLearnDay` of the pre-swipe due, so a review served
-  on its due day is never reported late.
+  when it lands before `EndOfLearnDay` of the pre-swipe due, so a review recorded
+  on its due day is never reported late. The swipe instant decides: a card
+  fetched before JST midnight and swiped after it is late.
 - `ReviewedBefore` is `StartOfLearnDay`. The strict bound excludes cards already
   reviewed in today's JST learn day and complements `ReviewedWithinLearnDay`.
 - `CreditReviewedBefore` is UTC midnight of now's UTC date. The strict bound
