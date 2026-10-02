@@ -249,7 +249,8 @@
     "copyLink": "ページのリンクをコピー",
     "linkCopied": "コピーしました。Safari または Chrome に貼り付けてください",
     "terms": "ログインすることで、<terms>利用規約</terms>および<privacy>プライバシーポリシー</privacy>に同意したものとみなされます。",
-    "tagline": "少ない学習で、より多く記憶。"
+    "tagline": "少ない学習で、より多く記憶。",
+    "sessionInvalid": "セッションが無効になりました。続けるにはもう一度ログインしてください。"
   },
   "Pwa": {
     "installHeading": "{brand}をインストール",
