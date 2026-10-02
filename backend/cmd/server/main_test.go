@@ -424,6 +424,72 @@ func TestRun_NotionSyncDisabledWhenEnvMissing(t *testing.T) {
 	}
 }
 
+// TestRun_WarnsAtBootWhenNoAdminExists pins the warnIfNoAdmin call inside
+// run(). The helper returns nothing, so deleting the call still compiles and
+// the helper's own unit tests stay green; only run()'s log output notices.
+func TestRun_WarnsAtBootWhenNoAdminExists(t *testing.T) {
+	db, err := database.Open(t.Context(), database.Config{URL: testDBURL})
+	if err != nil {
+		t.Fatalf("db open: %v", err)
+	}
+	adminCount, err := repository.NewUserRoleRepository(db.GORM).CountAdmins(t.Context())
+	db.Close()
+	if err != nil {
+		t.Fatalf("CountAdmins: %v", err)
+	}
+	if adminCount != 0 {
+		t.Skipf("pre-condition: %d admin role-holder(s) already exist; the boot WARN would not fire", adminCount)
+	}
+
+	tsJWKS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"keys": []}`))
+	}))
+	defer tsJWKS.Close()
+
+	t.Setenv("SUPABASE_JWKS_URL", tsJWKS.URL)
+	t.Setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
+	t.Setenv("SUPABASE_JWT_ISSUER", "http://issuer.test")
+	t.Setenv("SUPABASE_DB_URL", testDBURL)
+	t.Setenv("PING_TOKEN", "test-token")
+	unsetNotionSyncEnv(t)
+
+	port := freePort(t)
+	t.Setenv("PORT", port)
+	t.Setenv("SHUTDOWN_TIMEOUT", "2s")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- run(ctx, logger)
+	}()
+
+	waitHealthy(t, port, 3*time.Second)
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("run returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not return within timeout after context cancel")
+	}
+
+	const wantMsg = "admin bootstrap: no admin role-holder exists"
+	for _, rec := range decodeLogRecords(t, &buf) {
+		if rec["msg"] == wantMsg {
+			return
+		}
+	}
+	t.Fatalf("run() did not log %q at boot; output: %s", wantMsg, buf.String())
+}
+
 func TestRun_FailsWhenJWKSURLMissing(t *testing.T) {
 	t.Setenv("SUPABASE_JWKS_URL", "")
 	t.Setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
