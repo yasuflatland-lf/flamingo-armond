@@ -80,6 +80,9 @@ describe("LoginPage", () => {
     expect(screen.getByTestId("login-session-invalid").textContent).toBe(
       enMessages.Login.sessionInvalid,
     );
+    // role=status, not alert: the notice describes a state rather than announcing a failure.
+    expect(screen.getByRole("status")).toHaveAttribute("data-testid", "login-session-invalid");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("anonymous user with reason=session_invalid: renders the session-invalid notice", async () => {

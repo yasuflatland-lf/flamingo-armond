@@ -3,11 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Table test for the (feAuth, beAuth) redirect chain across HomePage, LoginPage
 // and /auth/verify-session: every combination must terminate within MAX_HOPS,
-// including a locally-valid token the backend rejects (deleted account).
+// including a locally-valid token the backend rejects (deleted account) and
+// non-auth backend failures, which must end in HomePage's throw (error.tsx).
 
 const state = vi.hoisted(() => ({
   feAuth: "anonymous" as "authenticated" | "anonymous",
-  beAuth: "ok" as "ok" | "UNAUTHENTICATED",
+  beAuth: "ok" as "ok" | "UNAUTHENTICATED" | "FORBIDDEN" | "HTTP_401",
   signOutClears: false,
 }));
 
@@ -29,10 +30,13 @@ vi.mock("@/lib/supabase/server", () => ({
 
 vi.mock("@/lib/apollo/server", () => ({
   gqlFetch: vi.fn(async () => {
-    if (state.beAuth === "UNAUTHENTICATED") {
+    if (state.beAuth === "UNAUTHENTICATED" || state.beAuth === "FORBIDDEN") {
       throw new Error(
-        `GraphQL errors: ${JSON.stringify([{ extensions: { code: "UNAUTHENTICATED" } }])}`,
+        `GraphQL errors: ${JSON.stringify([{ extensions: { code: state.beAuth } }])}`,
       );
+    }
+    if (state.beAuth === "HTTP_401") {
+      throw new Error("GraphQL HTTP 401 Unauthorized: invalid token");
     }
     return {
       me: { id: "u1", displayName: "A", lastViewedCardgroup: null },
@@ -62,17 +66,20 @@ import enMessages from "../messages/en.json";
 const ORIGIN = "http://localhost";
 const MAX_HOPS = 6;
 const RENDERED = Symbol("rendered");
+const THROWN = Symbol("thrown");
 const DRIVEN_PATHS = new Set(["/", "/login", VERIFY_SESSION_PATH]);
 
-type Termination = "login-rendered" | "app-surface" | "no-termination";
+type Termination = "login-rendered" | "app-surface" | "thrown" | "no-termination";
 
-/** Visits one path and returns the next path, or RENDERED when the page draws. */
-async function visit(path: string): Promise<string | typeof RENDERED> {
+class UnexpectedRender extends Error {}
+
+/** Visits one path and returns the next path, RENDERED when the page draws, or THROWN when HomePage throws into error.tsx. */
+async function visit(path: string): Promise<string | typeof RENDERED | typeof THROWN> {
   const url = new URL(path, ORIGIN);
   try {
     if (url.pathname === "/") {
       await HomePage();
-      throw new Error("/ rendered instead of redirecting");
+      throw new UnexpectedRender("/ rendered instead of redirecting");
     }
     if (url.pathname === "/login") {
       await LoginPage({ searchParams: Promise.resolve(Object.fromEntries(url.searchParams)) });
@@ -84,6 +91,7 @@ async function visit(path: string): Promise<string | typeof RENDERED> {
   } catch (err) {
     const target = err instanceof Error ? /^REDIRECT:(.*)$/.exec(err.message)?.[1] : undefined;
     if (target !== undefined) return target;
+    if (url.pathname === "/" && !(err instanceof UnexpectedRender)) return THROWN;
     throw err;
   }
 }
@@ -97,6 +105,7 @@ async function walk(start: string): Promise<{ route: string[]; end: Termination 
     }
     const next = await visit(current);
     if (next === RENDERED) return { route, end: "login-rendered" };
+    if (next === THROWN) return { route, end: "thrown" };
     route.push(next);
     current = next;
   }
@@ -171,6 +180,33 @@ describe("auth session-invalid redirect chain", () => {
       signOutClears: false,
       route: ["/login", "/auth/verify-session", "/", "/cardgroups"],
       end: "app-surface",
+      signOutCalls: 0,
+    },
+    {
+      start: "/",
+      feAuth: "authenticated",
+      beAuth: "FORBIDDEN",
+      signOutClears: false,
+      route: ["/"],
+      end: "thrown",
+      signOutCalls: 0,
+    },
+    {
+      start: "/login",
+      feAuth: "authenticated",
+      beAuth: "FORBIDDEN",
+      signOutClears: false,
+      route: ["/login", "/auth/verify-session", "/"],
+      end: "thrown",
+      signOutCalls: 0,
+    },
+    {
+      start: "/login",
+      feAuth: "authenticated",
+      beAuth: "HTTP_401",
+      signOutClears: false,
+      route: ["/login", "/auth/verify-session", "/"],
+      end: "thrown",
       signOutCalls: 0,
     },
   ] as const)(
