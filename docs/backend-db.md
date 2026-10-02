@@ -162,6 +162,8 @@ The repository's two upsert call sites are deliberately asymmetric. `cards (card
 
 The flip side is that the conflict key MUST be unique within the input batch. If two rows in the same `INSERT ... VALUES (...), (...)` collide on the conflict target, Postgres raises SQLSTATE `21000` ("ON CONFLICT DO UPDATE command cannot affect row a second time") and aborts the whole statement — Postgres deliberately does not silently merge intra-batch duplicates because either-row-wins is non-deterministic. The application layer must dedup by conflict key before issuing the SQL; the dictionary usecase keeps the *last* occurrence and reports earlier ones as soft errors.
 
+`upsertManyTx` sends one statement per `bulkStatementChunkRows` (5,000) rows, so 21000 only catches duplicates inside one chunk: a duplicate that straddles a chunk boundary is silently counted as Updated in the later chunk. Import paths are capped at `cardImportParsedRowCap` = 5,000 rows and always fit in one statement, so a miskeyed dedup still aborts with 21000. A caller above one chunk must pass key-unique input, as master-deck copies (`copyMasterCardsIntoTx`) do by inheriting `master_cards`' case-insensitive unique `front` when upserting into `cards`.
+
 ### One-time master-catalog migration CLI (`cmd/migrate-to-master`)
 
 `backend/cmd/migrate-to-master` copies an owner's existing personal deck

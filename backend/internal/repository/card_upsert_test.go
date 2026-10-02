@@ -2,6 +2,8 @@ package repository_test
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -217,6 +219,98 @@ func TestCardRepository_UpsertManyTx_UpdatesPositionOnConflict(t *testing.T) {
 	}
 }
 
+func TestCardRepository_UpsertManyTx_SpansChunks(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewCardRepository(testDB.GORM)
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+
+	// Three times bulkStatementChunkRows (5000) + 1: a 1-row final chunk, and 90,006 bind
+	// parameters as one statement, above pgx's 65,535 cap. Not 10,001: that fits in one statement.
+	const count = 15001
+	cards := make([]*domain.Card, count)
+	for i := range cards {
+		cards[i] = newCard(cg.ID, fmt.Sprintf("front-%05d", i), "back-1")
+	}
+
+	var result repository.UpsertManyTxResult
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var txErr error
+		result, txErr = repo.UpsertManyTx(ctx, tx, cards)
+		return txErr
+	})
+	require.NoError(t, err)
+	require.Equal(t, repository.UpsertManyTxResult{Inserted: count}, result)
+
+	for i := range cards {
+		cards[i] = newCard(cg.ID, fmt.Sprintf("front-%05d", i), "back-2")
+	}
+	err = testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var txErr error
+		result, txErr = repo.UpsertManyTx(ctx, tx, cards)
+		return txErr
+	})
+	require.NoError(t, err)
+	require.Equal(t, repository.UpsertManyTxResult{Updated: count}, result)
+
+	sqlDB := sqlDBHandle(t)
+	var total int
+	require.NoError(t, sqlDB.QueryRowContext(ctx,
+		`SELECT count(*) FROM cards WHERE cardgroup_id = $1`, cg.ID).Scan(&total))
+	require.Equal(t, count, total)
+	require.NoError(t, sqlDB.QueryRowContext(ctx,
+		`SELECT count(*) FROM cards WHERE cardgroup_id = $1 AND back = 'back-2'`, cg.ID).Scan(&total))
+	require.Equal(t, count, total)
+}
+
+func TestCardRepository_FoldFrontCaseToTx_SpansChunks(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewCardRepository(testDB.GORM)
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+
+	// Not 15,001 fronts alone: that fits in one statement. Lead with 55,000 unmatched fronts
+	// (11 full chunks) so one unchunked statement would bind 70,002 parameters, above pgx's
+	// 65,535 cap. Not matches first: the 1-row final chunk would then hold an unmatched front.
+	const count = 15001
+	const pad = 55000
+	cards := make([]*domain.Card, count)
+	fronts := make([]string, pad+count)
+	for i := range pad {
+		fronts[i] = fmt.Sprintf("MISSING-%05d", i)
+	}
+	for i := range cards {
+		front := fmt.Sprintf("front-%05d", i)
+		cards[i] = newCard(cg.ID, front, "back-1")
+		fronts[pad+i] = strings.ToUpper(front)
+	}
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		_, txErr := repo.UpsertManyTx(ctx, tx, cards)
+		return txErr
+	})
+	require.NoError(t, err)
+
+	var folded int64
+	err = testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var txErr error
+		folded, txErr = repo.FoldFrontCaseToTx(ctx, tx, string(cg.ID), fronts)
+		return txErr
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(count), folded)
+
+	sqlDB := sqlDBHandle(t)
+	var total int
+	require.NoError(t, sqlDB.QueryRowContext(ctx,
+		`SELECT count(*) FROM cards WHERE cardgroup_id = $1 AND front LIKE 'FRONT-%'`, cg.ID).Scan(&total))
+	require.Equal(t, count, total)
+	require.NoError(t, sqlDB.QueryRowContext(ctx,
+		`SELECT count(*) FROM cards WHERE cardgroup_id = $1`, cg.ID).Scan(&total))
+	require.Equal(t, count, total)
+}
+
 func TestCardRepository_FoldFrontCaseToTx(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -318,6 +412,19 @@ func TestCardRepository_FoldFrontCaseToTx(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, domain.CardText("apple"), gotNewer.Front)
 		require.Equal(t, domain.CardText("newer"), gotNewer.Back)
+	})
+
+	t.Run("cancelled context returns the bare context error", func(t *testing.T) {
+		t.Parallel()
+		repo := repository.NewCardRepository(testDB.GORM)
+		ownerID := insertAuthUser(t, ctx)
+		cg := insertCardgroup(t, ctx, ownerID)
+		cancelledCtx, cancel := context.WithCancel(ctx)
+		cancel()
+
+		folded, err := repo.FoldFrontCaseToTx(cancelledCtx, testDB.GORM, string(cg.ID), []string{"Apple"})
+		require.Equal(t, context.Canceled, err)
+		require.Zero(t, folded)
 	})
 
 	t.Run("empty fronts does not access database", func(t *testing.T) {

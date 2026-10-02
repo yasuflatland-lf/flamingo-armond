@@ -415,7 +415,8 @@ func (r *masterCardRepo) DeleteMany(ctx context.Context, ids []string) (int64, e
 // UpsertManyTx upserts master cards by (master_cardgroup_id, front). Existing
 // rows have `back` and `position` overwritten; the database trigger advances
 // updated_at. Returns the per-row Inserted/Updated split. Empty input is a no-op
-// (handled by the shared helper). Operates on the supplied tx only.
+// (handled by the shared helper). Operates on the supplied tx only, which must be
+// a transaction: inputs above bulkStatementChunkRows run as several statements.
 func (r *masterCardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.MasterCard) (UpsertManyTxResult, error) {
 	rows := make([]upsertCardRow, len(cards))
 	for i, c := range cards {
@@ -452,7 +453,8 @@ func (r *masterCardRepo) ListFrontsByMasterCardgroupTx(ctx context.Context, tx *
 
 // DeleteByMasterCardgroupAndFrontsTx hard-deletes master cards by the scoped
 // (master_cardgroup_id, front) natural key. Empty fronts short-circuits to
-// (0, nil) inside the shared helper.
+// (0, nil) inside the shared helper. Inputs above bulkStatementChunkRows run as
+// several statements, so tx must be a transaction.
 func (r *masterCardRepo) DeleteByMasterCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, masterCardgroupID string, fronts []string) (int64, error) {
 	affected, err := deleteByGroupAndFrontsTx(ctx, tx, masterCardgroupID, fronts, "master_cards", "master_cardgroup_id")
 	if err != nil {
