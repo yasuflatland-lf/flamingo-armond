@@ -106,6 +106,34 @@ describe("AdminMasterForm", () => {
     });
   });
 
+  it("sends an empty string to clear a stored description in edit mode", async () => {
+    const submit = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderWithIntl(
+      <AdminMasterForm mode="edit" master={EXISTING} submitting={false} submit={submit} />,
+    );
+    await user.clear(screen.getByTestId("master-field-description"));
+    await user.click(screen.getByTestId("master-form-submit"));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(submit.mock.calls[0]?.[0]).toMatchObject({ description: "" });
+  });
+
+  it("keeps an unset description null in edit mode", async () => {
+    const submit = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderWithIntl(
+      <AdminMasterForm
+        mode="edit"
+        master={{ ...EXISTING, description: null }}
+        submitting={false}
+        submit={submit}
+      />,
+    );
+    await user.click(screen.getByTestId("master-form-submit"));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(submit.mock.calls[0]?.[0]).toMatchObject({ description: null });
+  });
+
   it("surfaces a field validation error from the parent", () => {
     renderWithIntl(
       <AdminMasterForm

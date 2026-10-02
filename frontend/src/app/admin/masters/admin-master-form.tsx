@@ -11,7 +11,10 @@ import { trimLikeGo } from "@/schemas/go-text";
 import { masterDescriptionSchema, masterNameSchema, masterSortOrderSchema } from "@/schemas/master";
 import type { AdminMasterListItem } from "./admin-master-row";
 
-/** Values emitted by the form. Empty optional strings collapse to null. */
+/**
+ * Values emitted by the form. Empty optional strings collapse to null, except a
+ * cleared stored description, which is "" because null leaves it unchanged.
+ */
 export type MasterFormValues = {
   name: string;
   description: string | null;
@@ -28,9 +31,11 @@ type Props = {
   onDirtyChange?: (dirty: boolean) => void;
 };
 
-function emptyToNull(s: string): string | null {
+// null means "unchanged" on update, so a cleared stored description must send "".
+function descriptionInput(s: string, stored: string | null | undefined): string | null {
   const trimmed = trimLikeGo(s);
-  return trimmed.length === 0 ? null : trimmed;
+  if (trimmed.length > 0) return trimmed;
+  return stored ? "" : null;
 }
 
 export function AdminMasterForm({
@@ -59,7 +64,7 @@ export function AdminMasterForm({
       const parsedSortOrder = Number(sortOrderRaw);
       const values: MasterFormValues = {
         name: trimLikeGo(value.name),
-        description: emptyToNull(value.description),
+        description: descriptionInput(value.description, master?.description),
         isDefaultStarter: value.isDefaultStarter,
         // The sortOrder field validator blocks submit on a non-integer; guard the
         // conversion too so NaN / Infinity can never reach the mutation.

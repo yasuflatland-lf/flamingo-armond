@@ -125,7 +125,11 @@ export function AdminUserProfileSheet({
             id: user.id,
             expectedVersion: user.version,
             ...(profileDirty
-              ? { displayName: trimLikeGo(value.displayName), bio: value.bio || null }
+              ? {
+                  displayName: trimLikeGo(value.displayName),
+                  // `|| null` alone would leave a cleared bio in place: null means "unchanged".
+                  bio: value.bio || (user.bio ? "" : null),
+                }
               : {}),
             roleIds: Array.from(stagedRoleIds),
           },

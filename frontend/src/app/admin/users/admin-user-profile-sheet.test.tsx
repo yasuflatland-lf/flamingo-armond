@@ -168,6 +168,66 @@ describe("AdminUserProfileSheet", () => {
     });
   });
 
+  it("sends an empty bio string to clear a stored bio, not null", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn();
+    // The mock only matches "": null means "unchanged", so it would leave the bio in place.
+    const mocks = [
+      {
+        request: {
+          query: AdminEditUserDocument,
+          variables: {
+            id: "u-1",
+            expectedVersion: 41,
+            displayName: "Alice",
+            bio: "",
+            roleIds: [ADMIN_ROLE.id],
+          },
+        },
+        result: { data: { adminEditUser: successPayload() } },
+      },
+    ];
+
+    renderSheet({ mocks, onSaved });
+
+    await user.clear(screen.getByLabelText(/bio/i));
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("sends a null bio when an unset bio stays empty", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn();
+    const mocks = [
+      {
+        request: {
+          query: AdminEditUserDocument,
+          variables: {
+            id: "u-1",
+            expectedVersion: 41,
+            displayName: "Alice 2",
+            bio: null,
+            roleIds: [ADMIN_ROLE.id],
+          },
+        },
+        result: { data: { adminEditUser: successPayload() } },
+      },
+    ];
+
+    renderSheet({ user: makeUser({ bio: null }), mocks, onSaved });
+
+    await user.clear(screen.getByLabelText(/display name/i));
+    await user.type(screen.getByLabelText(/display name/i), "Alice 2");
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("sends a U+FEFF display name like Go strings.TrimSpace, not native trim", async () => {
     const user = userEvent.setup();
     const onSaved = vi.fn();
