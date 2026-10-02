@@ -274,6 +274,8 @@ func TestSwipeUsecase_HandleSwipe_StaleTabNextMorning_NotDueIgnored(t *testing.T
 	require.Equal(t, before, existing.State, "the scheduling state must be left byte-identical")
 	require.Contains(t, buf.String(), `"msg":"swipe: not-due review ignored"`)
 	require.Contains(t, buf.String(), `"card_id":"card-1"`)
+	require.Contains(t, buf.String(), `"due":"2026-09-30T12:00:00Z"`)
+	require.Contains(t, buf.String(), `"learn_day_end":"2026-09-30T00:00:00+09:00"`)
 	require.NotContains(t, buf.String(), `"msg":"swipe: repeat review ignored"`)
 }
 
@@ -316,32 +318,46 @@ func TestSwipeUsecase_HandleSwipe_DueBoundary(t *testing.T) {
 	now := time.Date(2026, 9, 29, 0, 0, 0, 0, time.UTC) // 09:00 JST
 	end := domain.EndOfLearnDay(now)
 	require.True(t, end.Equal(time.Date(2026, 9, 29, 15, 0, 0, 0, time.UTC)))
+	// 01:00 JST on 09-30 while the UTC date is still 09-29: a day end derived
+	// from the UTC date would drop this learn day's due cards until 09:00 JST.
+	afterJSTMidnight := time.Date(2026, 9, 29, 16, 0, 0, 0, time.UTC)
 	lastReview := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
 
 	cases := []struct {
 		name     string
+		now      time.Time
 		due      time.Time
 		wantSkip bool
 	}{
 		{
 			name:     "exactly at EndOfLearnDay is tomorrow",
+			now:      now,
 			due:      end,
 			wantSkip: true,
 		},
 		{
 			name:     "one nanosecond before EndOfLearnDay is due today",
+			now:      now,
 			due:      end.Add(-time.Nanosecond),
 			wantSkip: false,
 		},
 		{
 			name:     "overdue since yesterday applies",
+			now:      now,
 			due:      time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC),
 			wantSkip: false,
 		},
 		{
 			name:     "due two days later is ignored",
+			now:      now,
 			due:      time.Date(2026, 10, 1, 15, 0, 0, 0, time.UTC),
 			wantSkip: true,
+		},
+		{
+			name:     "due later the same JST day before the UTC date catches up applies",
+			now:      afterJSTMidnight,
+			due:      time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC), // 21:00 JST on 09-30
+			wantSkip: false,
 		},
 	}
 
@@ -351,7 +367,7 @@ func TestSwipeUsecase_HandleSwipe_DueBoundary(t *testing.T) {
 
 			existing := reviewedCardFSRS(lastReview)
 			existing.State.Due = tc.due
-			uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(existing, now, nil)
+			uc, userFSRSRepo, swipeRepo := newSwipeLearnDayFixture(existing, tc.now, nil)
 
 			outcome, err := swipeCard1(uc)
 
