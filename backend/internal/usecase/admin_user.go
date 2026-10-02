@@ -487,7 +487,7 @@ func sameUserID(a, b string) bool {
 }
 
 // canonicalUUIDKey returns the canonical lower-case form of s when Postgres
-// (parsePgUUID) or google/uuid accepts it, and s unchanged otherwise.
+// (parsePgUUID) or google/uuid Validate accepts it, and s unchanged otherwise.
 func canonicalUUIDKey(s string) string {
 	// Not uuid.Parse alone: it rejects Postgres-only spellings (39-char, braced
 	// hyphen-less) that still select the same row.
@@ -496,7 +496,8 @@ func canonicalUUIDKey(s string) string {
 	}
 	// Not dropping the uuid.Parse fallback: the repository accepts only canonical
 	// ids, so a urn:uuid: spelling would appear missing and escape the duplicate check.
-	if u, err := uuid.Parse(s); err == nil {
+	// Not uuid.Parse unguarded: its 38-char case never checks the braces.
+	if u, err := uuid.Parse(s); err == nil && uuid.Validate(s) == nil {
 		return u.String()
 	}
 	return s

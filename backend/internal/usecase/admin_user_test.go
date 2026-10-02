@@ -1252,6 +1252,8 @@ func TestParsePgUUID(t *testing.T) {
 		"0190a3c47d2e7b1a9c3f4e5d6a7b8c9d}",
 		"0190a3c4--7d2e-7b1a-9c3f-4e5d6a7b8c9d",
 		"0190a3c47d2e7b1a9c3f4e5d6a7b8c9d-",
+		"01-90a3c47d2e7b1a9c3f4e5d6a7b8c9d",
+		"0190a3-c47d2e7b1a9c3f4e5d6a7b8c9d",
 		"urn:uuid:" + canonical,
 		" " + canonical,
 		"0190a3c47d2e7b1a9c3f4e5d6a7b8c9",
@@ -1278,6 +1280,9 @@ func TestNormalizeAdminEditRoleIDs_CanonicalisesUUIDs(t *testing.T) {
 		wantErr *InputValidationInfo
 	}{
 		{name: "two spellings of one uuid are duplicates", in: []string{upper, lower}, wantErr: &InputValidationInfo{Field: "roleIds", Message: "role IDs must be unique"}},
+		{name: "a re-spelling after the canonical form is a duplicate", in: []string{lower, upper}, wantErr: &InputValidationInfo{Field: "roleIds", Message: "role IDs must be unique"}},
+		{name: "a postgres-only re-spelling after the canonical form is a duplicate", in: []string{lower, "{0190a3c47d2e7b1a9c3f4e5d6a7b8c9d}"}, wantErr: &InputValidationInfo{Field: "roleIds", Message: "role IDs must be unique"}},
+		{name: "38-char spelling without braces passes through", in: []string{"x" + lower + "y"}, want: []string{"x" + lower + "y"}},
 		{name: "upper-case uuid is lower-cased", in: []string{upper}, want: []string{lower}},
 		{name: "urn:uuid spelling is canonicalised", in: []string{"urn:uuid:" + upper}, want: []string{lower}},
 		{name: "urn:uuid spelling duplicates its canonical form", in: []string{"urn:uuid:" + lower, lower}, wantErr: &InputValidationInfo{Field: "roleIds", Message: "role IDs must be unique"}},
@@ -1501,6 +1506,39 @@ func TestAdminUser_EditUser_DemoteOther_KeepingAdminSkipsGuard(t *testing.T) {
 	if userRoles.hasRoleCalls != 0 || userRoles.countCalls != 0 {
 		t.Fatalf("hasRole=%d count=%d, want neither when the submitted set keeps admin",
 			userRoles.hasRoleCalls, userRoles.countCalls)
+	}
+}
+
+// TestAdminUser_EditUser_DemoteOther_TargetNotFoundAtMembershipRead pins that a
+// target the membership read reports missing (a malformed id) is a validation
+// failure on "id", not an internal error, and that no write follows it.
+func TestAdminUser_EditUser_DemoteOther_TargetNotFoundAtMembershipRead(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	roles := &mockAdminRoleRepository{
+		roles: map[string]*domain.Role{
+			"r-general": {ID: "r-general", Name: "general"},
+		},
+	}
+	userRoles := &mockAdminUserRoleRepository{hasRoleErr: repository.ErrUserNotFound}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
+
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "not-a-uuid", AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
+	if err != nil {
+		t.Fatalf("EditUser: unexpected error: %v", err)
+	}
+	assertAdminEditUserOutcomeXOR(t, outcome)
+	want := InputValidationInfo{Field: "id", Message: "user not found"}
+	if outcome.Validation == nil || *outcome.Validation != want {
+		t.Fatalf("Validation = %+v, want %+v", outcome.Validation, want)
+	}
+	if users.updateTxCalls != 0 || userRoles.setCalls != 0 {
+		t.Fatalf("update=%d set=%d, want no write after the membership read fails",
+			users.updateTxCalls, userRoles.setCalls)
 	}
 }
 
