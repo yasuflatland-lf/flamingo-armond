@@ -104,4 +104,29 @@ describe("i18n catalog parity", () => {
       argumentViolations({ k: "{count, plural, other {<b># items</b>}}" }, { k: "<b>items</b>" }),
     ).toEqual(["k: ja drops non-plural argument count"]);
   });
+
+  it("reports ja-only arguments, dropped or renamed tags, select-branch arguments and unparsable messages", () => {
+    expect(argumentViolations({ k: "Hi" }, { k: "Hi {name}" })).toEqual([
+      "k: ja-only argument name",
+    ]);
+    expect(argumentViolations({ k: "<b>x</b>" }, { k: "x" })).toEqual([
+      "k: ja drops non-plural argument <b>",
+    ]);
+    expect(argumentViolations({ k: "<b>x</b>" }, { k: "<i>x</i>" })).toEqual([
+      "k: ja-only argument <i>",
+      "k: ja drops non-plural argument <b>",
+    ]);
+    expect(
+      argumentViolations(
+        { k: "{g, select, a {{name} A} other {B}}" },
+        { k: "{g, select, other {B}}" },
+      ),
+    ).toEqual(["k: ja drops non-plural argument name"]);
+    expect(argumentViolations({ k: "Hi {name" }, { k: "Hi {name}" })).toEqual([
+      "k: unparsable (en)",
+    ]);
+    expect(argumentViolations({ k: "Hi {name}" }, { k: "Hi {name" })).toEqual([
+      "k: unparsable (ja)",
+    ]);
+  });
 });
