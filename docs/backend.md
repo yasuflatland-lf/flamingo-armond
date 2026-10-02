@@ -65,9 +65,8 @@ These values target a public API on Render. Revisit if the threat model or deplo
 | `NOTION_SYNC_TOKEN` | no\* | — | Bearer token for `POST /internal/notion-sync`. |
 | `NOTION_MAX_ATTEMPTS` | no | `5` | Retry attempt cap for Notion 429/5xx responses. Must be positive when set. |
 | `NOTION_MAX_ELAPSED` | no | `20s` | Maximum cumulative Notion retry wait per request. Kept below the server's 30s `WriteTimeout`; must be a positive Go duration when set. |
-| `SUPER_USER_EMAILS` | no | *(empty)* | Comma-separated trusted email addresses promoted to `admin` on first authenticated request. See `docs/backend-auth.md` § "Bootstrap admin". |
 
-`PORT`, `SHUTDOWN_TIMEOUT`, `NOTION_MAX_ATTEMPTS`, `NOTION_MAX_ELAPSED`, and `SUPER_USER_EMAILS` are optional with safe defaults. The three `SUPABASE_JWT_*` variables, `SUPABASE_DB_URL`, and `PING_TOKEN` are strictly required — the server refuses to start if any is missing.
+`PORT`, `SHUTDOWN_TIMEOUT`, `NOTION_MAX_ATTEMPTS`, and `NOTION_MAX_ELAPSED` are optional with safe defaults. The three `SUPABASE_JWT_*` variables, `SUPABASE_DB_URL`, and `PING_TOKEN` are strictly required — the server refuses to start if any is missing.
 
 \* **Optional as a group.** When any of the four `NOTION_*` sync vars (`NOTION_TOKEN`, `NOTION_PAGE_IDS`, `NOTION_MASTER_CARDGROUP_NAME`, `NOTION_SYNC_TOKEN`) is absent or whitespace-only, the `POST /internal/notion-sync` route is disabled and the server still starts — a single `WARN` log line is emitted listing the missing var names (via `OptionalConfigFromEnv` in `run()`). The exception: when the group is otherwise present, `NOTION_PAGE_IDS` must contain at least one non-whitespace ID — a comma/whitespace-only value fails startup.
 

@@ -44,23 +44,6 @@ type UserCardFSRSRepositoryForCard interface {
 	FindByUserAndCardIDs(ctx context.Context, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
 }
 
-type CardObserver interface {
-	OnCardCreated(ctx context.Context, card *domain.Card)
-	OnCardUpdated(ctx context.Context, card *domain.Card)
-}
-
-type noopCardObserver struct{}
-
-func (noopCardObserver) OnCardCreated(context.Context, *domain.Card) {}
-func (noopCardObserver) OnCardUpdated(context.Context, *domain.Card) {}
-
-func normalizeCardObserver(observer CardObserver) CardObserver {
-	if observer == nil {
-		return noopCardObserver{}
-	}
-	return observer
-}
-
 // CardUsecase is the card CRUD and paginated-list surface.
 type CardUsecase interface {
 	Card(ctx context.Context, id string) (*domain.Card, error)
@@ -76,7 +59,6 @@ type cardUsecase struct {
 	cardgroupRepo CardgroupRepositoryForCard
 	userFSRSRepo  UserCardFSRSRepositoryForCard
 	tx            txRunner
-	observer      CardObserver
 	logger        *slog.Logger
 }
 
@@ -85,7 +67,6 @@ func NewCardUsecase(
 	cardRepo CardRepository,
 	cardgroupRepo CardgroupRepositoryForCard,
 	userCardFSRSRepo UserCardFSRSRepositoryForCard,
-	observer CardObserver,
 	logger *slog.Logger,
 ) CardUsecase {
 	if logger == nil {
@@ -95,7 +76,6 @@ func NewCardUsecase(
 		cardRepo:      cardRepo,
 		cardgroupRepo: cardgroupRepo,
 		userFSRSRepo:  userCardFSRSRepo,
-		observer:      normalizeCardObserver(observer),
 		logger:        logger,
 	}
 	uc.tx = newTxRunner(db)
@@ -110,7 +90,6 @@ func NewCardUsecaseWithTx(
 	cardgroupRepo CardgroupRepositoryForCard,
 	tx func(ctx context.Context, fn func(tx repository.Tx) error) error,
 	userCardFSRSRepo UserCardFSRSRepositoryForCard,
-	observer CardObserver,
 	logger *slog.Logger,
 ) CardUsecase {
 	if logger == nil {
@@ -121,7 +100,6 @@ func NewCardUsecaseWithTx(
 		cardgroupRepo: cardgroupRepo,
 		tx:            tx,
 		userFSRSRepo:  userCardFSRSRepo,
-		observer:      normalizeCardObserver(observer),
 		logger:        logger,
 	}
 }
@@ -300,7 +278,6 @@ func (u *cardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 		}
 		return CreateCardOutcome{}, wrapInfraErr(err, "usecase: card: create: repo create")
 	}
-	u.observer.OnCardCreated(ctx, card)
 	return CreateCardOutcome{Card: card}, nil
 }
 
@@ -379,7 +356,6 @@ func (u *cardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 		}
 		return UpdateCardOutcome{}, wrapInfraErr(err, "usecase: card: update: repo update")
 	}
-	u.observer.OnCardUpdated(ctx, updated)
 	return UpdateCardOutcome{Card: updated}, nil
 }
 

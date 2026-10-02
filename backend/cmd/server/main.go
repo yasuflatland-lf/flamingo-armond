@@ -151,8 +151,8 @@ func (r *appRepos) loaderDeps() loaderDeps {
 
 // buildResolver wires every usecase, the ping/notion handlers, and the GraphQL
 // resolver from the repository bundle. Extracted from run() so the wiring is
-// independently testable, mirroring bootstrapSuperUserPromoter. notionSyncHandler
-// is nil when notion sync is disabled.
+// independently testable, mirroring warnIfNoAdmin. notionSyncHandler is nil
+// when notion sync is disabled.
 func buildResolver(
 	repos *appRepos,
 	authSvc *auth.Service,
@@ -164,7 +164,7 @@ func buildResolver(
 ) (*resolver.Resolver, *ping.Handler, *notionsync.Handler, error) {
 	masterDeckUC := usecase.NewMasterDeckUsecase(repos.masterCardgroup, repos.masterCard, repos.card, repos.cardgroup, repos.gorm, logger)
 	userUC := usecase.NewUserUsecase(repos.gorm, repos.user, repos.userRole, authSvc, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(repos.cardgroup, authSvc, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(repos.gorm, repos.cardgroup, authSvc, logger)
 	learnUC := usecase.NewLearnUsecase(repos.card, repos.cardgroup, repos.userPreference, service.NewOrderingPolicy(), 0, 0, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(repos.gorm, repos.card, repos.cardgroup, repos.swipeRecord, service.NewFSRSScheduler(), repos.userCardFSRS, logger)
 	cardImportUC := usecase.NewCardImportUsecase(repos.cardgroup, repos.card, repos.gorm, logger)
@@ -176,15 +176,14 @@ func buildResolver(
 	pingHandler := ping.New(repos.pingRecord, pingToken)
 
 	var notionSyncHandler *notionsync.Handler
-	var cardObserver usecase.CardObserver
 	if !notionSyncDisabled {
 		var err error
-		cardObserver, notionSyncHandler, err = buildNotionIntegration(repos, notionEnv, logger)
+		notionSyncHandler, err = buildNotionIntegration(repos, notionEnv, logger)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 	}
-	cardUC := usecase.NewCardUsecase(repos.gorm, repos.card, repos.cardgroup, repos.userCardFSRS, cardObserver, logger)
+	cardUC := usecase.NewCardUsecase(repos.gorm, repos.card, repos.cardgroup, repos.userCardFSRS, logger)
 	// Type the word list as the domain.CEFRWordList port so the dependency
 	// edge the constructor creates is domain_service -> domain (allowed),
 	// rather than attributing the concrete *cefr.WordList type to a
@@ -192,7 +191,7 @@ func buildResolver(
 	var cefrWords domain.CEFRWordList = cefr.NewWordList()
 	cefrClassifier := service.NewCEFRClassifier(cefrWords)
 	cefrUC := usecase.NewCEFRUsecase(cefrClassifier)
-	masterCatalogUC := usecase.NewMasterCatalogUsecase(repos.masterCardgroup, masterDeckUC, repos.cardgroup, adminGate, logger)
+	masterCatalogUC := usecase.NewMasterCatalogUsecase(repos.masterCardgroup, masterDeckUC, adminGate, logger)
 	masterCardUC := usecase.NewMasterCardUsecase(repos.gorm, repos.masterCard, repos.masterCardgroup, adminGate, logger)
 	statsUC := usecase.NewStats(repos.userCardFSRS, repos.swipeRecord, repos.cardgroup, nil)
 
@@ -201,28 +200,23 @@ func buildResolver(
 }
 
 // buildNotionIntegration constructs the optional Notion sync infrastructure (the
-// fetcher, writer, and card writebacker) plus the sync handler, reading retry
-// tuning from the environment. Extracted from buildResolver so the optional
-// wiring and its single error path are independently testable, mirroring
-// bootstrapSuperUserPromoter. The caller gates this on notionSyncDisabled to
+// fetcher and the master sync usecase) plus the sync handler, reading retry
+// tuning from the environment. The caller gates this on notionSyncDisabled to
 // preserve the disabled-path nil semantics; the only error path is
 // notion.RetryConfigFromEnv failing on a malformed env var.
 func buildNotionIntegration(
 	repos *appRepos,
 	notionEnv notionsync.EnvConfig,
 	logger *slog.Logger,
-) (usecase.CardObserver, *notionsync.Handler, error) {
+) (*notionsync.Handler, error) {
 	retryCfg, err := notion.RetryConfigFromEnv()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	retryCfg.Logger = logger
 	notionFetcher := notion.NewFetcher(notionEnv.NotionToken, retryCfg)
-	notionWriter := notion.NewWriter(notionEnv.NotionToken, retryCfg)
-	cardObserver := notion.NewCardWritebacker(notionWriter, notionEnv.HandlerConfig.PageIDs[0], logger)
 	notionSyncUC := usecase.NewMasterNotionSyncUsecase(notionFetcher, repos.masterCardgroup, repos.masterCard, repos.gorm, logger)
-	notionSyncHandler := notionsync.New(notionSyncUC, notionEnv.HandlerConfig)
-	return cardObserver, notionSyncHandler, nil
+	return notionsync.New(notionSyncUC, notionEnv.HandlerConfig), nil
 }
 
 func newGraphQLServer(r *resolver.Resolver, introspectionEnabled bool) *handler.Server {
@@ -255,7 +249,6 @@ func newGraphQLServer(r *resolver.Resolver, introspectionEnabled bool) *handler.
 func newRouter(
 	resolvers *resolver.Resolver,
 	authMW echo.MiddlewareFunc,
-	promoter *auth.SuperUserPromoter,
 	ld loaderDeps,
 	pingHandler *ping.Handler,
 	notionSyncHandler *notionsync.Handler,
@@ -319,7 +312,7 @@ func newRouter(
 			return r.Method + " " + r.URL.Path
 		}),
 	)
-	q := e.Group("/query", authMW, promoter.Middleware(), loader.MiddlewareWithUserCardFSRS(ld.user, ld.role, ld.userRole, ld.cardgroup, ld.card, ld.userPreference, ld.swipeRecord, ld.userCardFSRS))
+	q := e.Group("/query", authMW, loader.MiddlewareWithUserCardFSRS(ld.user, ld.role, ld.userRole, ld.cardgroup, ld.card, ld.userPreference, ld.swipeRecord, ld.userCardFSRS))
 	q.POST("", echo.WrapHandler(otelGQLHandler))
 
 	// Gate the Playground UI on the same single introspectionEnabled flag as the
@@ -333,44 +326,24 @@ func newRouter(
 	return e
 }
 
-// bootstrapSuperUserPromoter constructs the SuperUserPromoter and emits the
-// startup INFO/WARN logs for the super-user bootstrap path. Extracted so its
-// branching logic can be unit-tested without spinning up the full run() server.
-//
-// Returns the promoter and an error only when the admin role lookup fails for
-// a non-empty SUPER_USER_EMAILS configuration. A failure to count existing
-// admin role-holders is non-fatal: the WARN log records the error_chain and
-// the function returns a pass-through promoter.
-func bootstrapSuperUserPromoter(
-	ctx context.Context,
-	logger *slog.Logger,
-	authSvc *auth.Service,
-	roleRepo repository.RoleRepository,
-	userRoleRepo repository.UserRoleRepository,
-	emailsEnv string,
-) (*auth.SuperUserPromoter, error) {
-	superUserEmails := auth.ParseSuperUserSet(emailsEnv)
-	if len(superUserEmails) > 0 {
-		adminRole, err := roleRepo.FindByName(ctx, domain.AdminRoleName)
-		if err != nil {
-			return nil, eris.Wrap(err, "run: lookup admin role for super-user bootstrap")
-		}
-		logger.Info("super-user bootstrap enabled", "email_count", len(superUserEmails))
-		var roleAsg auth.RoleAssigner = userRoleRepo
-		return auth.NewSuperUserPromoter(superUserEmails, adminRole.ID, authSvc, roleAsg, logger), nil
-	}
-	// No SUPER_USER_EMAILS configured. Check whether at least one admin
-	// already exists in the DB; if not, the operator has no escape hatch
-	// and we emit a single-line WARN to make the misconfiguration visible.
-	// A failed count query is non-fatal — log the eris chain and continue.
-	if adminCount, err := userRoleRepo.CountAdmins(ctx); err != nil {
-		logging.LogWarn(ctx, logger, "super-user bootstrap: admin count check failed",
+// adminCounter is the narrow port warnIfNoAdmin needs from the user-role repository.
+type adminCounter interface {
+	CountAdmins(ctx context.Context) (int64, error)
+}
+
+// warnIfNoAdmin logs a WARN when no user holds the admin role, so a deployment
+// whose admin seed task never ran is visible at boot. A failed count is
+// non-fatal: the eris chain is logged and startup continues.
+func warnIfNoAdmin(ctx context.Context, logger *slog.Logger, counter adminCounter) {
+	adminCount, err := counter.CountAdmins(ctx)
+	if err != nil {
+		logging.LogWarn(ctx, logger, "admin bootstrap: admin count check failed",
 			eris.Wrap(err, "run: count admin users for bootstrap check"))
-	} else if adminCount == 0 {
-		logger.Warn("super-user bootstrap: no admin configured and no admin role-holder exists",
-			"admin_count", adminCount)
+		return
 	}
-	return auth.NewSuperUserPromoter(nil, "", nil, nil, logger), nil
+	if adminCount == 0 {
+		logger.Warn("admin bootstrap: no admin role-holder exists", "admin_count", adminCount)
+	}
 }
 
 func run(ctx context.Context, logger *slog.Logger) error {
@@ -431,10 +404,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	authSvc := auth.NewService(roleChk)
 	adminGate := usecase.NewAdminGate(authSvc)
 
-	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, repos.role, repos.userRole, os.Getenv("SUPER_USER_EMAILS"))
-	if err != nil {
-		return err
-	}
+	warnIfNoAdmin(ctx, logger, repos.userRole)
 
 	resolvers, pingHandler, notionSyncHandler, err := buildResolver(repos, authSvc, adminGate, logger, notionEnv, notionSyncDisabled, pingToken)
 	if err != nil {
@@ -444,7 +414,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	// constructs reads otel.GetTextMapPropagator() eagerly (it is newRouter, not
 	// the buildResolver call just above, that constructs that handler). See comment
 	// above telemetry.Init for the full ordering invariant.
-	e := newRouter(resolvers, authMW, promoter, repos.loaderDeps(), pingHandler, notionSyncHandler, srvCfg.introspectionEnabled)
+	e := newRouter(resolvers, authMW, repos.loaderDeps(), pingHandler, notionSyncHandler, srvCfg.introspectionEnabled)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")

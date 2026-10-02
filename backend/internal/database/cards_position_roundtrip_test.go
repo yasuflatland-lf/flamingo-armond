@@ -44,8 +44,10 @@ func TestCardsPositionDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back past the nineteen migrations newer than add_position_to_cards
-	// (lower_new_card_ratio_default, tighten_new_card_ratio_check, realign_fsrs_snapshot_columns_to_v4,
+	// Step back past the twenty-one migrations newer than add_position_to_cards
+	// (reset_legacy_new_card_ratio, revoke_client_writes,
+	// lower_new_card_ratio_default, tighten_new_card_ratio_check,
+	// realign_fsrs_snapshot_columns_to_v4,
 	// widen_updated_at_triggers_to_insert, widen_text_length_checks,
 	// add_cardgroup_fk_to_swipe_records, add_stability_before_to_swipe_records,
 	// add_last_rating_to_user_card_fsrs,
@@ -56,9 +58,9 @@ func TestCardsPositionDownUpRoundtrip(t *testing.T) {
 	// add_learn_display_mode_to_user_preferences, add_master_tables,
 	// restrict_definer_function_exposure, pin_trigger_function_search_path,
 	// enable_rls_schema_migrations), then past add_position_to_cards itself.
-	// Twenty steps are required because add_position_to_cards is no longer near
+	// Twenty-two steps are required because add_position_to_cards is no longer near
 	// the newest migration; bump this count when adding migrations after it.
-	if err := m.Steps(-20); err != nil {
+	if err := m.Steps(-22); err != nil {
 		t.Fatalf("migrate down to before add_position_to_cards: %v", err)
 	}
 

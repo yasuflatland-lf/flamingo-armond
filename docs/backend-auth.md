@@ -13,7 +13,7 @@ GET  /playground  open (no auth)
 POST /query       AuthMiddleware → gqlgen handler
 ```
 
-When an `Authorization` header is **absent**, the request passes through as anonymous — no `auth.AuthUser` is attached to the context. Resolvers themselves enforce identity per request via the usecase layer. When the header is **present and valid**, `auth.UserFrom(ctx)` returns the verified `*auth.AuthUser` (`Sub`, `Email`, `EmailVerified`). When the header is **present but invalid**, the middleware short-circuits with HTTP 401 and sets `WWW-Authenticate: Bearer realm="api"`.
+When an `Authorization` header is **absent**, the request passes through as anonymous — no `auth.AuthUser` is attached to the context. Resolvers themselves enforce identity per request via the usecase layer. When the header is **present and valid**, `auth.UserFrom(ctx)` returns the verified `*auth.AuthUser` (`Sub`, `Email`). When the header is **present but invalid**, the middleware short-circuits with HTTP 401 and sets `WWW-Authenticate: Bearer realm="api"`.
 
 ### Middleware layering
 
@@ -28,7 +28,7 @@ func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
         // anonymous — return guest data or error depending on the resolver's policy
         return nil, nil
     }
-    // u.Sub, u.Email, u.EmailVerified are available here
+    // u.Sub and u.Email are available here
     _ = u.Sub
     return nil, nil
 }
@@ -83,9 +83,8 @@ See also the general env-vars table above.
 | `SUPABASE_JWKS_URL` | yes | — | JWKS endpoint URL (e.g. `https://<project>.supabase.co/auth/v1/.well-known/jwks.json`) |
 | `SUPABASE_JWT_AUDIENCE` | yes | — | Expected `aud` claim value |
 | `SUPABASE_JWT_ISSUER` | yes | — | Expected `iss` claim value |
-| `SUPER_USER_EMAILS` | no | *(empty)* | Comma-separated list of trusted email addresses (Supabase / Google OAuth). On the first authenticated request from a matching account whose JWT carries `email_verified=true`, the backend grants the `admin` role. Empty disables the feature. |
 
-The three `SUPABASE_JWT_*` variables are required. `ConfigFromEnv()` returns an error and the server fails to start if any is missing or empty — silent misconfiguration is not allowed. `SUPER_USER_EMAILS` is optional; when empty the bootstrap-admin middleware is constructed as a zero-cost pass-through.
+The three `SUPABASE_JWT_*` variables are required. `ConfigFromEnv()` returns an error and the server fails to start if any is missing or empty — silent misconfiguration is not allowed.
 
 ### Authorization gates: object-level vs. field-level
 
@@ -116,7 +115,7 @@ The "self or admin" check is the right granularity for fields where the owning u
 
 A user who is allowed to edit final role sets can remove their own admin role and lock the system out of admin operations. The usecase layer must reject "the caller is removing the admin role from themselves" before the DB write:
 
-1. Compare `callerID == targetUserID`.
+1. Compare `callerID` and `targetUserID` as uuid values (`sameUserID` in `backend/internal/usecase/admin_user.go`), not as strings: Postgres `uuid_in` resolves an upper-case, hyphen-less, braced or every-4-digit-hyphenated spelling to the same row, so a string compare lets a caller bypass the guard.
 2. Resolve the submitted final `roleIds` to role names.
 3. If the final set for the caller no longer contains the `"admin"` role, return the `CannotRevokeOwnAdminRoleError` union variant from `adminEditUser`.
 
@@ -124,47 +123,35 @@ This guard belongs in the usecase, not in the UI: the UI is one of N possible ca
 
 ### Bootstrap admin via `SUPER_USER_EMAILS`
 
-A fresh deployment has zero admin rows, but every existing admin-management mutation is gated on `AdminGate.Require` and the `user_roles` RLS policy requires `is_admin(auth.uid())` — a chicken-and-egg deadlock. The `auth.SuperUserPromoter` post-auth Echo middleware breaks the loop without weakening either gate: when the first authenticated request from an email listed in `SUPER_USER_EMAILS` arrives, the middleware grants that user the `admin` role and lets the request continue. Subsequent requests short-circuit on the `IsAdmin == true` branch, so steady-state cost is one cached role lookup. See `backend/internal/auth/superuser.go`.
+A fresh deployment has zero admin rows, but every admin-management mutation is gated on `AdminGate.Require` and the `user_roles` RLS policy requires `is_admin(auth.uid())` — a chicken-and-egg deadlock. The backend never grants roles on its own. The first admin is written directly into `public.user_roles` by an operator-run seed task that reads `SUPER_USER_EMAILS`:
 
-**`email_verified=true` is a mandatory security gate, not a heuristic.** Supabase only sets the claim once the OAuth provider has confirmed the user controls the address. Promoting on email-match alone would let any account that *claims* an env-listed address (e.g. via a misconfigured identity provider) inherit admin. The middleware reads the claim from `AuthUser.EmailVerified` (threaded through `supabaseClaims.EmailVerified` and `auth/middleware.go`'s `AuthUser` constructor) and returns `next(c)` without any DB call when the claim is missing or false. Because `encoding/json` leaves an absent boolean at zero (`false`), the absence-equals-deny posture is automatic — the JSON `omitempty` tag on `EmailVerified` only affects marshal output and never the decode path.
+| Environment | Command | `SUPER_USER_EMAILS` is read from |
+|---|---|---|
+| Local | `make sync-env` (also runs on `make setup`) | `backend/.env.local` |
+| Local, one address | `make seed-admin EMAIL=you@example.com` | not read; the `EMAIL` argument is used |
+| Production | `make seed-admin-prod` (also runs inside `make setup-prod-postapply`) | root `.env`, exported to the shell by mise |
 
-**No automatic revocation.** Removing an email from `SUPER_USER_EMAILS` does not strip the role; an admin must update the user's final role set through `adminEditUser`. This is deliberate: a typo in the env var should not silently lock the service out of every admin operation on the next deploy.
+`make sync-env` seeds only while `backend/.env.local` starts with the `# managed-by: sync-env` marker line; for a user-owned file it skips the seed entirely, so use `make seed-admin EMAIL=you@example.com` instead.
 
-**Demoting a still-listed account does not stick.** The paragraph above covers the env-removal direction; this one covers its opposite. When an admin revokes the admin role from a user whose email is *still listed* in `SUPER_USER_EMAILS`, the demotion holds only while the promoter's in-process confirmed-admin cache still carries that account's sub — and that cache is populated only by a request from that same account, on the `IsAdmin == true` branch or after a successful promotion. A demoted account that has not issued an authenticated request since the process started therefore misses the cache on its very next request, and the promoter re-grants the admin role immediately, with no restart involved. That is the usual case: the demotion target is typically idle, and the demotion itself is performed by a *different* admin, which never records the target's sub. A restart or redeploy empties the cache for everyone, so re-promotion becomes certain for every still-listed address at that point. This is intended: `SUPER_USER_EMAILS` is the declaration of who must always be able to reach admin, so an entry left in the env var wins over a manual demotion. To make a demotion durable, do it in this order:
+Each task runs `INSERT INTO public.user_roles ... ON CONFLICT DO NOTHING` for every listed address that already has an `auth.users` row. It is idempotent and reports an address that has not signed in yet as a no-op, so sign in once and re-run. After the grant, sign out and back in (or wait for a token refresh) so the custom access token hook re-mints the JWT with `app_metadata.role = "admin"`.
 
-1. Remove the email from `SUPER_USER_EMAILS`.
-2. Redeploy (or restart) the backend so the new value is in effect.
-3. Demote the user via `adminEditUser`, submitting a final role set that omits `admin`.
+`SUPER_USER_EMAILS` is an input to these seed tasks only; the backend server does not read it. Listing an address has no effect until a seed task runs, and removing one never revokes a role — demote through `adminEditUser`.
 
-Doing step 3 first only appears to work: the demotion survives until the account is next seen by a process that has not cached its sub — guaranteed after any restart or redeploy, and frequently much sooner on a live process. The demotion's database write is not rolled back — the promoter simply inserts the `admin` role again — so the symptom is an account that silently reacquires admin rather than one whose demotion failed.
+**Why there is no sign-in auto-promotion.** Supabase access tokens carry no top-level `email_verified` claim (only OIDC ID tokens do), and `user_metadata` is writable by the user, so the backend has no trustworthy per-request signal that the caller controls a listed address. The seed tasks run with operator authority instead.
 
-**Failure mode: WARN + continue, never 5xx.** Both `IsAdmin` and `AssignToUser` failures are logged via `logging.LogWarn` (carrying the eris `error_chain`) and the middleware falls through to `next(c)`. The promotion is best-effort — a transient DB blip during a routine page load should not surface as a user-facing error. Any downstream resolver that actually requires admin remains protected by `AdminGate.Require`, which is fail-closed.
+### Detecting a deployment with no admin
 
-**Concurrent first-login is safe.** `repository.RoleRepository.AssignToUser` uses `INSERT ... ON CONFLICT DO NOTHING`, so two simultaneous requests from the same user that both read `IsAdmin == false` produce two harmless inserts — both return `nil`, both proceed.
-
-**Constructor invariants are enforced via panic.** When `emails` is non-empty but any of `checker`, `assigner`, or `adminRoleID` is nil/empty, `NewSuperUserPromoter` panics during `run()`. This is a fail-fast for operator misconfiguration: the alternative — returning an error or silently building a half-configured promoter — would either bury the misconfiguration in a startup log or leave a per-request nil-deref hazard. Empty-emails callers (the OFF path) intentionally pass `nil, "", nil, nil`; the panic guard only fires when the operator opted into the feature but wired it wrong.
-
-### Confirming the bootstrap is armed
-
-The backend logs a single INFO line on successful startup when `SUPER_USER_EMAILS` is non-empty:
+On startup the backend counts `public.user_roles` rows that reference the `admin` role (`warnIfNoAdmin` in `backend/cmd/server/main.go`). When the count is zero it logs:
 
 ```
-{"level":"INFO","msg":"super-user bootstrap enabled","email_count":N}
+{"level":"WARN","msg":"admin bootstrap: no admin role-holder exists","admin_count":0}
 ```
 
-`email_count` is the number of normalised, deduplicated entries the parser accepted from the env var. If `email_count` differs from what you put in the env (or is `0` when you expected a non-zero value), the parser dropped malformed entries silently — recheck for stray quotes or empty comma-separated fields.
-
-When `SUPER_USER_EMAILS` is empty AND no row in `public.user_roles` references the `admin` role, the backend additionally logs:
-
-```
-{"level":"WARN","msg":"super-user bootstrap: no admin configured and no admin role-holder exists","admin_count":0}
-```
-
-This is the deliberate "you have no escape hatch" warning — the next signed-in user has no path to admin without operator intervention. Set `SUPER_USER_EMAILS` and restart, or run the SQL fallback below. The check tolerates DB unavailability: a failed count query logs `eris`-wrapped WARN context but does not block startup.
+Run the seed task for the environment from the table above. A failed count query logs `admin bootstrap: admin count check failed` with the eris `error_chain` and does not block startup.
 
 ### Manual SQL fallback (post-`make db-reset`)
 
-`make db-reset` re-runs all migrations and resets `public.user_roles` to empty, so any previously bootstrapped admin loses the role until the user makes their next authenticated request with a listed address (a page reload suffices — no new OAuth login is required). To re-promote without waiting for the next request:
+`make db-reset` recreates the local Postgres database, so `auth.users` and every app table are dropped and every admin loses the role. The repo keeps no `supabase/migrations`; the app schema (including `public.roles` and an empty `public.user_roles`) returns only when the backend re-applies its migrations on boot. Restart the backend, sign in again with each listed account, then re-run `make sync-env`, or insert the row directly:
 
 ```bash
 psql "$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')" <<'SQL'
@@ -182,7 +169,7 @@ Or use the Make target wrapper:
 make seed-admin EMAIL=you@example.com
 ```
 
-The Make target executes the same INSERT through the local Supabase Postgres container (no `Authorization` header round-trip required).
+The Make target runs the same `user_roles` INSERT, preceded by a `public.users` upsert, with host `psql` against the local Supabase `DB_URL`.
 
 ### Multi-layer security test coverage
 

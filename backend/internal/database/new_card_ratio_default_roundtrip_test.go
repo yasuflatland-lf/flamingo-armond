@@ -8,11 +8,9 @@ import (
 	"backend/internal/database"
 )
 
-// TestNewCardRatioDefaultDownUpRoundtrip pins the new_card_ratio_num column
-// default against a real Postgres: 1/5 at head, 4/5 after rolling back
-// lower_new_card_ratio_default, 1/5 again after reapplying it. It only checks
-// the default applied to freshly inserted rows; it does not assert that
-// pre-existing rows survive the roundtrip.
+// TestNewCardRatioDefaultDownUpRoundtrip checks freshly inserted defaults:
+// 1/5 at head, 4/5 after rollback, and 1/5 after reapplying the target.
+// Pre-existing row survival is not asserted.
 func TestNewCardRatioDefaultDownUpRoundtrip(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
@@ -36,7 +34,9 @@ func TestNewCardRatioDefaultDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	if err := m.Steps(-1); err != nil {
+	// reset_legacy_new_card_ratio and revoke_client_writes sit above
+	// lower_new_card_ratio_default, so three steps reach it.
+	if err := m.Steps(-3); err != nil {
 		t.Fatalf("migrate down lower_new_card_ratio_default: %v", err)
 	}
 	requireDefaultRatio(t, ctx, sqlDB, 4, 5)

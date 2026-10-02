@@ -133,11 +133,11 @@ func TestComputeMetrics(t *testing.T) {
 			},
 		},
 		{
-			// A successful review answered later than the interval it was due
-			// within is a review, but not an on-time recall.
+			// A successful review whose due fell on the previous JST day, so the
+			// review is late: a review, but not an on-time recall.
 			name: "new-format review easy later than scheduled is a review but not a retention",
 			swipes: []domain.SwipeRecord{
-				swipeBefore(domain.RatingEasy, now, state(5, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now.Add(-time.Hour)),
+				swipeBefore(domain.RatingEasy, now, state(5, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now.AddDate(0, 0, -1)),
 			},
 			want: PerformanceMetrics{
 				SuccessRate:   1,
@@ -149,13 +149,105 @@ func TestComputeMetrics(t *testing.T) {
 			},
 		},
 		{
-			// The old day comparison counted this successful review as on time
-			// because its truncated elapsed-day count equalled the scheduled
-			// interval. The due instant shows it was already late, so it is now
-			// correctly excluded from retention.
-			name: "new-format review just after due is not on time",
+			// Reviewed a minute past the due instant but on the same JST learn
+			// day, which is the day the queue served the card on.
+			name: "review one minute after due on the same JST day is on time",
 			swipes: []domain.SwipeRecord{
-				swipeBefore(domain.RatingGood, now, state(5, 9, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now.Add(-time.Nanosecond)),
+				swipeBefore(
+					domain.RatingGood,
+					time.Date(2026, 4, 30, 1, 1, 0, 0, time.UTC), // 10:01 JST
+					state(5, 9, domain.FSRSPhaseReview),
+					domain.FSRSPhaseReview,
+					time.Date(2026, 4, 30, 1, 0, 0, 0, time.UTC), // 10:00 JST
+				),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   1,
+				AvgDifficulty: 0.5,
+				RetentionRate: 1,
+				StudyStreak:   1,
+				LapseRate:     0,
+				ReviewCount:   1,
+			},
+		},
+		{
+			// Requiring the review to reach the due instant would call this
+			// late, yet the queue serves the card all day.
+			name: "review earlier on the due's JST day than the due instant is on time",
+			swipes: []domain.SwipeRecord{
+				swipeBefore(
+					domain.RatingGood,
+					time.Date(2026, 4, 30, 1, 0, 0, 0, time.UTC), // 10:00 JST
+					state(5, 9, domain.FSRSPhaseReview),
+					domain.FSRSPhaseReview,
+					time.Date(2026, 4, 30, 11, 0, 0, 0, time.UTC), // 20:00 JST
+				),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   1,
+				AvgDifficulty: 0.5,
+				RetentionRate: 1,
+				StudyStreak:   1,
+				LapseRate:     0,
+				ReviewCount:   1,
+			},
+		},
+		{
+			// Requiring the review's JST day to equal the due's would call this late.
+			name: "review on a JST day before the due's is on time",
+			swipes: []domain.SwipeRecord{
+				swipeBefore(
+					domain.RatingGood,
+					time.Date(2026, 4, 30, 1, 0, 0, 0, time.UTC), // 4/30 10:00 JST
+					state(5, 9, domain.FSRSPhaseReview),
+					domain.FSRSPhaseReview,
+					time.Date(2026, 5, 2, 1, 0, 0, 0, time.UTC), // 5/2 10:00 JST
+				),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   1,
+				AvgDifficulty: 0.5,
+				RetentionRate: 1,
+				StudyStreak:   1,
+				LapseRate:     0,
+				ReviewCount:   1,
+			},
+		},
+		{
+			// A review at 23:59 JST is on time for a due at 00:30 JST that day,
+			// even across UTC dates; a day end taken from the UTC date fails here.
+			name: "review at the end of the due's JST day is on time even across a UTC date change",
+			swipes: []domain.SwipeRecord{
+				swipeBefore(
+					domain.RatingGood,
+					time.Date(2026, 4, 30, 14, 59, 0, 0, time.UTC), // 4/30 23:59 JST
+					state(5, 9, domain.FSRSPhaseReview),
+					domain.FSRSPhaseReview,
+					time.Date(2026, 4, 29, 15, 30, 0, 0, time.UTC), // 4/30 00:30 JST
+				),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   1,
+				AvgDifficulty: 0.5,
+				RetentionRate: 1,
+				StudyStreak:   1,
+				LapseRate:     0,
+				ReviewCount:   1,
+			},
+		},
+		{
+			// Due and review share the UTC calendar date 4/29, so a UTC
+			// elapsed-day comparison would call this on time. The JST due-day
+			// bound ends at 4/30 00:00 JST, so the 00:01 JST review is late.
+			name: "review at 00:01 JST the day after due is late",
+			swipes: []domain.SwipeRecord{
+				swipeBefore(
+					domain.RatingGood,
+					time.Date(2026, 4, 29, 15, 1, 0, 0, time.UTC), // 4/30 00:01 JST
+					state(5, 9, domain.FSRSPhaseReview),
+					domain.FSRSPhaseReview,
+					time.Date(2026, 4, 29, 11, 0, 0, 0, time.UTC), // 4/29 20:00 JST
+				),
 			},
 			want: PerformanceMetrics{
 				SuccessRate:   1,
@@ -167,7 +259,71 @@ func TestComputeMetrics(t *testing.T) {
 			},
 		},
 		{
-			// ReviewedAt == DueBefore exactly is on time (inclusive boundary).
+			// An inclusive day end (!After) would call this on time.
+			name: "review exactly at the JST midnight ending the due's day is late",
+			swipes: []domain.SwipeRecord{
+				swipeBefore(
+					domain.RatingGood,
+					time.Date(2026, 4, 29, 15, 0, 0, 0, time.UTC), // 4/30 00:00:00 JST
+					state(5, 9, domain.FSRSPhaseReview),
+					domain.FSRSPhaseReview,
+					time.Date(2026, 4, 29, 11, 0, 0, 0, time.UTC), // 4/29 20:00 JST
+				),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   1,
+				AvgDifficulty: 0.5,
+				RetentionRate: 0,
+				StudyStreak:   1,
+				LapseRate:     0,
+				ReviewCount:   1,
+			},
+		},
+		{
+			// One microsecond, the stored timestamptz precision, before the
+			// strict day end; an end pulled earlier would call this late.
+			name: "review one microsecond before the JST midnight ending the due's day is on time",
+			swipes: []domain.SwipeRecord{
+				swipeBefore(
+					domain.RatingGood,
+					time.Date(2026, 4, 29, 14, 59, 59, 999999000, time.UTC), // 4/29 23:59:59.999999 JST
+					state(5, 9, domain.FSRSPhaseReview),
+					domain.FSRSPhaseReview,
+					time.Date(2026, 4, 29, 11, 0, 0, 0, time.UTC), // 4/29 20:00 JST
+				),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   1,
+				AvgDifficulty: 0.5,
+				RetentionRate: 1,
+				StudyStreak:   0,
+				LapseRate:     0,
+				ReviewCount:   1,
+			},
+		},
+		{
+			name: "again on the due day is a lapse, never an on-time recall",
+			swipes: []domain.SwipeRecord{
+				swipeBefore(
+					domain.RatingAgain,
+					time.Date(2026, 4, 30, 1, 1, 0, 0, time.UTC),
+					stateWithLapses(5, 0, domain.FSRSPhaseRelearning, 1),
+					domain.FSRSPhaseReview,
+					time.Date(2026, 4, 30, 1, 0, 0, 0, time.UTC),
+				),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   0,
+				AvgDifficulty: 0.5,
+				RetentionRate: 0,
+				StudyStreak:   1,
+				LapseRate:     1,
+				ReviewCount:   1,
+			},
+		},
+		{
+			// ReviewedAt == DueBefore is on time: the due instant is inside its
+			// own JST due day.
 			name: "new-format review at the exact due instant is on time",
 			swipes: []domain.SwipeRecord{
 				swipeBefore(domain.RatingGood, now, state(5, 9, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now),
@@ -207,7 +363,7 @@ func TestComputeMetrics(t *testing.T) {
 			swipes: []domain.SwipeRecord{
 				swipeBefore(domain.RatingAgain, now, stateWithLapses(5, 0, domain.FSRSPhaseRelearning, 1), domain.FSRSPhaseReview, now),
 				swipeBefore(domain.RatingHard, now, state(5, 8, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now),
-				swipeBefore(domain.RatingEasy, now, state(5, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now.Add(-time.Hour)),
+				swipeBefore(domain.RatingEasy, now, state(5, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now.AddDate(0, 0, -1)),
 				swipeBefore(domain.RatingEasy, now, state(5, 1, domain.FSRSPhaseReview), domain.FSRSPhaseLearning, now),
 			},
 			want: PerformanceMetrics{
@@ -237,6 +393,24 @@ func TestComputeMetrics(t *testing.T) {
 				StudyStreak:   3,
 				LapseRate:     0,
 				ReviewCount:   4,
+			},
+		},
+		{
+			// Every other case sits at difficulty 5, so a constant 0.5 would pass
+			// them. The FSRS floor of 1.0 and 3.0 average to 0.2 only when each
+			// stored difficulty is divided by ten, floor included.
+			name: "average difficulty is the mean of per-swipe difficulty over ten",
+			swipes: []domain.SwipeRecord{
+				swipe(domain.RatingGood, now, state(1, 7, domain.FSRSPhaseReview)),
+				swipe(domain.RatingGood, now, state(3, 7, domain.FSRSPhaseReview)),
+			},
+			want: PerformanceMetrics{
+				SuccessRate:   1,
+				AvgDifficulty: 0.2,
+				RetentionRate: 1,
+				StudyStreak:   1,
+				LapseRate:     0,
+				ReviewCount:   2,
 			},
 		},
 	}
@@ -303,7 +477,7 @@ func TestComputeMetrics_KnownReviewCount(t *testing.T) {
 		got := ComputeMetrics([]domain.SwipeRecord{
 			swipeBefore(domain.RatingAgain, now, stateWithLapses(5, 0, domain.FSRSPhaseRelearning, 1), domain.FSRSPhaseReview, now),
 			swipeBefore(domain.RatingHard, now, state(5, 8, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now),
-			swipeBefore(domain.RatingEasy, now, state(5, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now.Add(-time.Hour)),
+			swipeBefore(domain.RatingEasy, now, state(5, 10, domain.FSRSPhaseReview), domain.FSRSPhaseReview, now.AddDate(0, 0, -1)),
 			swipeBefore(domain.RatingEasy, now, state(5, 1, domain.FSRSPhaseReview), domain.FSRSPhaseLearning, now),
 		}, now)
 
@@ -485,78 +659,10 @@ func TestStudyStreak_ReturnsUnclampedRunLength(t *testing.T) {
 	require.Equal(t, 366, studyStreak(daysSeen, now))
 }
 
-func TestModeFromMetricsThresholdBoundaries(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name        string
-		reviewCount int
-		successRate float64
-		want        PerformanceMode
-	}{
-		{"under minimum reviews defaults", 19, 1, ModeDefault},
-		{"below difficult threshold", 20, 0.599, ModeDifficult},
-		{"at default threshold", 20, 0.60, ModeDefault},
-		{"below good threshold", 20, 0.749, ModeDefault},
-		{"at good threshold", 20, 0.75, ModeGood},
-		{"below easy threshold", 20, 0.849, ModeGood},
-		{"at easy threshold", 20, 0.85, ModeEasy},
-		{"below mastered threshold", 20, 0.949, ModeEasy},
-		{"at mastered threshold", 20, 0.95, ModeMastered},
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := ModeFromMetrics(PerformanceMetrics{
-				SuccessRate:   tc.successRate,
-				AvgDifficulty: 0.5,
-				ReviewCount:   tc.reviewCount,
-			})
-
-			require.Equal(t, tc.want, got)
-		})
-	}
-}
-
-func TestModeFromMetricsDifficultyAdjustments(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name          string
-		successRate   float64
-		avgDifficulty float64
-		want          PerformanceMode
-	}{
-		{"high difficulty decreases mode", 0.80, 0.70, ModeDefault},
-		{"low difficulty increases mode", 0.80, 0.30, ModeEasy},
-		{"neutral difficulty leaves mode", 0.80, 0.50, ModeGood},
-		{"high difficulty clamps at difficult", 0.50, 0.90, ModeDifficult},
-		{"low difficulty clamps at mastered", 0.99, 0.10, ModeMastered},
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := ModeFromMetrics(PerformanceMetrics{
-				SuccessRate:   tc.successRate,
-				AvgDifficulty: tc.avgDifficulty,
-				ReviewCount:   MinReviewsForModeCalculation,
-			})
-
-			require.Equal(t, tc.want, got)
-		})
-	}
-}
-
 // TestNormalizedDifficulty pins the difficulty/10 mapping at its boundary
-// values. The FSRS floor of exactly 1.0 must normalize to 0.1 (the
-// low-difficulty band), not 1.0 — the bug that inverted the mode for mastered
-// cards left a strict `> 1` guard that skipped the division at the floor.
+// values. The FSRS floor of exactly 1.0 must normalize to 0.1, not 1.0: a
+// strict `> 1` guard would skip the division at the floor and report mastered
+// cards as maximally difficult.
 func TestNormalizedDifficulty(t *testing.T) {
 	t.Parallel()
 
@@ -565,7 +671,7 @@ func TestNormalizedDifficulty(t *testing.T) {
 		difficulty float64
 		want       float64
 	}{
-		{"fsrs floor maps to low band", 1.0, 0.1},
+		{"fsrs floor maps to one tenth", 1.0, 0.1},
 		{"just above floor", 1.5, 0.15},
 		{"midscale", 5.0, 0.5},
 		{"fsrs ceiling maps to one", 10.0, 1.0},
@@ -596,60 +702,6 @@ func TestNormalizedDifficultyMonotonic(t *testing.T) {
 		require.GreaterOrEqualf(t, got, prev,
 			"normalizedDifficulty must be non-decreasing: difficulty %.1f gave %.4f after %.4f", d, got, prev)
 		prev = got
-	}
-}
-
-// TestModeFromMetricsFSRSFloorNotDecremented drives a 20-swipe history whose
-// cards all sit at the FSRS difficulty floor of 1.0. The mastered cards must
-// normalize into the low-difficulty band (0.1) and raise the mode, never trip
-// the high-difficulty threshold and decrement it below the success-rate band.
-func TestModeFromMetricsFSRSFloorNotDecremented(t *testing.T) {
-	t.Parallel()
-
-	now := time.Date(2026, 4, 30, 3, 0, 0, 0, time.UTC)
-
-	swipes := make([]domain.SwipeRecord, 0, MinReviewsForModeCalculation)
-	for i := 0; i < 16; i++ {
-		swipes = append(swipes, swipe(domain.RatingGood, now, state(1.0, 1, domain.FSRSPhaseReview)))
-	}
-	for i := 0; i < 4; i++ {
-		swipes = append(swipes, swipe(domain.RatingAgain, now, state(1.0, 1, domain.FSRSPhaseReview)))
-	}
-
-	metrics := ComputeMetrics(swipes, now)
-	// 16/20 successes selects the Good success-rate band (0.75 <= rate < 0.85).
-	require.InDelta(t, 0.80, metrics.SuccessRate, 0.000000001)
-	// All cards at the floor normalize to 0.1, the low-difficulty band.
-	require.InDelta(t, 0.10, metrics.AvgDifficulty, 0.000000001)
-
-	got := ModeFromMetrics(metrics)
-	// The floor difficulty is <= 0.3, so the mode is raised to ModeEasy; it must
-	// not be decremented below the Good band the success rate selected.
-	require.GreaterOrEqual(t, int(got), int(ModeGood))
-	require.Equal(t, ModeEasy, got)
-}
-
-func TestPerformanceModeIsValid(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name string
-		mode PerformanceMode
-		want bool
-	}{
-		{"below range", -1, false},
-		{"difficult lower bound", ModeDifficult, true},
-		{"mastered upper bound", ModeMastered, true},
-		{"above range", 5, false},
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			require.Equal(t, tc.want, tc.mode.IsValid())
-		})
 	}
 }
 

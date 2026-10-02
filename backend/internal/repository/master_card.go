@@ -37,13 +37,17 @@ func classifyMasterCardFKError(err error) error {
 	return nil
 }
 
+// masterCardsFrontIndex is the unique (master_cardgroup_id, front) citext index
+// on public.master_cards.
+const masterCardsFrontIndex = "uq_master_cards_cg_front"
+
 // classifyMasterCardDuplicateFront maps a Postgres unique violation on the
 // (master_cardgroup_id, front) citext index to ErrCardDuplicateFront, and
 // returns nil for any other error. Both write paths — INSERT (Create) and
 // UPDATE (Update) — can hit the same constraint, so they share this
 // classifier rather than each spelling out the code/constraint pair.
 func classifyMasterCardDuplicateFront(err error) error {
-	if pgConstraintViolation(err, "23505", "uq_master_cards_cg_front") {
+	if pgConstraintViolation(err, "23505", masterCardsFrontIndex) {
 		return ErrCardDuplicateFront
 	}
 	return nil
@@ -107,6 +111,9 @@ type MasterCardUpdate struct {
 // with "master_cards" and "master_cardgroup_id".
 type MasterCardRepository interface {
 	ListByMasterCardgroup(ctx context.Context, masterCardgroupID string) ([]*domain.MasterCard, error)
+	// ListByMasterCardgroupTx reads on the caller's transaction so a write
+	// transaction (copy or merge) needs no second pooled connection.
+	ListByMasterCardgroupTx(ctx context.Context, tx *gorm.DB, masterCardgroupID string) ([]*domain.MasterCard, error)
 	// FindByID returns the master card with the given primary key, or ErrNotFound
 	// when no such row exists. The usecase uses it to hydrate a pagination cursor's
 	// ordering column (position / created_at / updated_at) for a single decoded
@@ -167,11 +174,23 @@ func NewMasterCardRepository(db *gorm.DB) MasterCardRepository { return &masterC
 // clause, but the empty-input guard keeps the contract explicit and mirrors the
 // GORM empty-IN discipline in `.claude/rules/go-library-gotchas.md`.
 func (r *masterCardRepo) ListByMasterCardgroup(ctx context.Context, masterCardgroupID string) ([]*domain.MasterCard, error) {
+	return listByMasterCardgroup(r.db.WithContext(ctx), masterCardgroupID)
+}
+
+// ListByMasterCardgroupTx reads on the caller's transaction so a write
+// transaction (copy or merge) needs no second pooled connection.
+func (r *masterCardRepo) ListByMasterCardgroupTx(ctx context.Context, tx *gorm.DB, masterCardgroupID string) ([]*domain.MasterCard, error) {
+	return listByMasterCardgroup(tx.WithContext(ctx), masterCardgroupID)
+}
+
+// listByMasterCardgroup is the enumeration shared by the pooled and tx entry
+// points, so the order and the empty-id guard cannot drift between them.
+func listByMasterCardgroup(db *gorm.DB, masterCardgroupID string) ([]*domain.MasterCard, error) {
 	if masterCardgroupID == "" {
 		return nil, nil
 	}
 	var rows []gormMasterCard
-	if err := r.db.WithContext(ctx).
+	if err := db.
 		Where("master_cardgroup_id = ?", masterCardgroupID).
 		Order("position ASC, id ASC").
 		Find(&rows).Error; err != nil {
@@ -344,6 +363,9 @@ func (r *masterCardRepo) Create(ctx context.Context, c *domain.MasterCard) error
 		if classified := classifyTextLengthViolation(err); classified != nil {
 			return classified
 		}
+		if classified := classifyFrontIndexRowTooLarge(err, masterCardsFrontIndex); classified != nil {
+			return classified
+		}
 		return eris.Wrap(err, "repository: master card: create")
 	}
 	c.UpdatedAt = row.UpdatedAt
@@ -390,6 +412,9 @@ func (r *masterCardRepo) Update(ctx context.Context, id string, patch MasterCard
 		if classified := classifyTextLengthViolation(res.Error); classified != nil {
 			return nil, classified
 		}
+		if classified := classifyFrontIndexRowTooLarge(res.Error, masterCardsFrontIndex); classified != nil {
+			return nil, classified
+		}
 		return nil, eris.Wrap(res.Error, "repository: master card: update")
 	}
 	return refetchAfterUpdate(res.RowsAffected, ErrNotFound,
@@ -415,7 +440,8 @@ func (r *masterCardRepo) DeleteMany(ctx context.Context, ids []string) (int64, e
 // UpsertManyTx upserts master cards by (master_cardgroup_id, front). Existing
 // rows have `back` and `position` overwritten; the database trigger advances
 // updated_at. Returns the per-row Inserted/Updated split. Empty input is a no-op
-// (handled by the shared helper). Operates on the supplied tx only.
+// (handled by the shared helper). Operates on the supplied tx only, which must be
+// a transaction: inputs above bulkStatementChunkRows run as several statements.
 func (r *masterCardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.MasterCard) (UpsertManyTxResult, error) {
 	rows := make([]upsertCardRow, len(cards))
 	for i, c := range cards {
@@ -436,6 +462,9 @@ func (r *masterCardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []
 		if classified := classifyTextLengthViolation(err); classified != nil {
 			return UpsertManyTxResult{}, classified
 		}
+		if classified := classifyFrontIndexRowTooLarge(err, masterCardsFrontIndex); classified != nil {
+			return UpsertManyTxResult{}, classified
+		}
 		return UpsertManyTxResult{}, eris.Wrap(err, "repository: master card: upsert many")
 	}
 	return res, nil
@@ -452,7 +481,8 @@ func (r *masterCardRepo) ListFrontsByMasterCardgroupTx(ctx context.Context, tx *
 
 // DeleteByMasterCardgroupAndFrontsTx hard-deletes master cards by the scoped
 // (master_cardgroup_id, front) natural key. Empty fronts short-circuits to
-// (0, nil) inside the shared helper.
+// (0, nil) inside the shared helper. Inputs above bulkStatementChunkRows run as
+// several statements, so tx must be a transaction.
 func (r *masterCardRepo) DeleteByMasterCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, masterCardgroupID string, fronts []string) (int64, error) {
 	affected, err := deleteByGroupAndFrontsTx(ctx, tx, masterCardgroupID, fronts, "master_cards", "master_cardgroup_id")
 	if err != nil {
