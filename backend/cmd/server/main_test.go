@@ -283,20 +283,16 @@ func TestBuildResolver_NotionEnabledRetryConfigError(t *testing.T) {
 // TestBuildNotionIntegration_RetryConfigError drives the extracted helper's only
 // error path directly: a malformed NOTION_MAX_ATTEMPTS makes
 // notion.RetryConfigFromEnv fail, so buildNotionIntegration must return that error
-// unchanged and nil for both the card observer and the sync handler. The error
-// path returns before any DB-backed wiring, so no testcontainer Postgres is
-// needed, mirroring the fake-driven bootstrapSuperUserPromoter unit tests.
+// unchanged and a nil sync handler. The error path returns before any DB-backed
+// wiring, so no testcontainer Postgres is needed.
 func TestBuildNotionIntegration_RetryConfigError(t *testing.T) {
 	t.Setenv("NOTION_MAX_ATTEMPTS", "not-a-number")
 
-	observer, handler, err := buildNotionIntegration(
+	handler, err := buildNotionIntegration(
 		&appRepos{}, notionsync.EnvConfig{}, slog.New(slog.DiscardHandler),
 	)
 	if err == nil {
 		t.Fatal("expected error from invalid NOTION_MAX_ATTEMPTS, got nil")
-	}
-	if observer != nil {
-		t.Errorf("expected nil card observer on error, got %v", observer)
 	}
 	if handler != nil {
 		t.Errorf("expected nil notion sync handler on error, got %v", handler)
@@ -714,7 +710,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	logger := slog.New(slog.DiscardHandler)
 	userUC := usecase.NewUserUsecase(nil, userRepo, userRoleRepo, nil, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(db.GORM, cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
-	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, nil, logger)
+	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM, logger)
@@ -1953,7 +1949,7 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM, logger)
 	userUC := usecase.NewUserUsecase(nil, userRepo, userRoleRepo, nil, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(db.GORM, cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
-	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, nil, logger)
+	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	lastViewedUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
