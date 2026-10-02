@@ -11,14 +11,14 @@
 # (defaults: <repo-root>/.setup-prod.state.yml, confirm: false).
 #
 # Env wiring is automated: after the operator imports the project from GitHub
-# (the import wizard cannot be driven via API), this phase registers the five
-# required env vars via the Vercel env API (PATCH existing, POST new; see the
-# reconcile step below). NEXT_PUBLIC_SITE_URL is derived from the production
-# URL the operator enters here, so no separate value is needed. The repoId captured
-# here feeds Phase 6's deploy kick (POST /v13/deployments needs repoId, not the
-# "owner/repo" string). The first build at import time is expected to fail
-# because env is not yet present; Phase 6 triggers a fresh deploy that picks up
-# the values registered here.
+# (the import wizard cannot be driven via API), this phase reconciles five env
+# vars: GET /v9/projects/{id}/env, PATCH existing vars at
+# /v9/projects/{id}/env/{envId}, and POST new vars to /v10/projects/{id}/env
+# (see "Reconcile env vars" below). The repoId captured here feeds Phase 6's
+# deploy kick (POST /v13/deployments needs repoId, not the "owner/repo"
+# string). The first build at import time is expected to fail because env is
+# not yet present; Phase 6 triggers a fresh deploy that picks up the values
+# registered here.
 
 - name: Phase 4 cannot run in unattended mode
   ansible.builtin.fail:
@@ -107,14 +107,14 @@
   ansible.builtin.debug:
     msg:
       - "These five env vars will be registered automatically via the Vercel API"
-      - "after you provide the project ID. SKIP the Environment Variables section"
+      - "after you provide the project ID and production URL. SKIP the Environment Variables section"
       - "in the import wizard — leave it empty."
       - ""
       - "  BACKEND_URL                   = {{ backend_url }}            (Production, Preview)"
       - "  NEXT_PUBLIC_SUPABASE_URL      = {{ supabase_url }}           (All Environments)"
       - "  NEXT_PUBLIC_SUPABASE_ANON_KEY = {{ supabase_anon_key }}      (All Environments)"
       - "  ONBOARDING_GATE_SECRET        = (generated, value hidden)    (Production, Preview)"
-      - "  NEXT_PUBLIC_SITE_URL          = (the production URL you enter below)  (Production)"
+      - "  NEXT_PUBLIC_SITE_URL          = (collected below)            (Production, Preview)"
 
 - name: Show Vercel import wizard steps
   ansible.builtin.pause:
@@ -127,7 +127,7 @@
          The function region is pinned to sin1 (Singapore) by
          frontend/vercel.json -- no dashboard region step is needed.
       4. SKIP the Environment Variables section -- leave it empty.
-         The playbook registers the five required env vars via the Vercel
+         The playbook registers the five env vars via the Vercel
          API as soon as you provide the project ID and production URL below.
       5. Click Deploy. The first build will fail because env is not yet
          registered -- this is EXPECTED. Phase 6 (postapply) triggers a
@@ -229,10 +229,9 @@
   register: production_url_prompt
   when: not confirm
 
-# Trailing slashes are stripped because downstream consumers join paths onto
-# the URL: Phase 6 builds "{{ production_url }}/api/ping" (a trailing slash
-# yields "//api/ping", which Vercel answers with a 308 redirect that never
-# reaches the handler), and the frontend builds "${NEXT_PUBLIC_SITE_URL}/sitemap.xml".
+# Trailing slashes are stripped because downstream consumers join paths as
+# "{{ production_url }}/api/ping"; a trailing slash yields "//api/ping",
+# which Vercel answers with a 308 redirect that never reaches the handler.
 - name: Resolve production_url (keep existing on empty input)
   ansible.builtin.set_fact:
     production_url: >-
@@ -241,8 +240,6 @@
           else existing_state.production_url | default(''))
          | regex_replace('/+$', '') }}
 
-# Validated before any env write so a malformed URL aborts the phase with
-# nothing registered, instead of leaving the project half-configured.
 - name: Validate production_url shape
   ansible.builtin.assert:
     that:
@@ -286,11 +283,9 @@
         value: "{{ supabase_anon_key }}"
         target: [production, preview, development]
         type: plain
-      # Production only: Preview deployments must not advertise the production
-      # origin in canonical metadata (metadataBase, robots.txt, sitemap.xml).
       - key: NEXT_PUBLIC_SITE_URL
         value: "{{ production_url }}"
-        target: [production]
+        target: [production, preview]
         type: plain
   no_log: true
 

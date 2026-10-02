@@ -241,8 +241,8 @@ Set these env vars (scopes given for the manual path; `make setup-prod` Phase 4 
 | `BACKEND_URL` | Production / Preview | Render service URL from Step 2. |
 | `NEXT_PUBLIC_SUPABASE_URL` | All | `https://<project-ref>.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | All | Publishable key from Step 1.3. |
+| `NEXT_PUBLIC_SITE_URL` | Production / Preview | Canonical site origin, no trailing slash (e.g. the Vercel production URL from this step, or a custom domain). Required in production — `frontend/src/env.ts` throws at build time when unset. Preview builds fall back to the deployment's own `https://<VERCEL_URL>` when unset. |
 | `ONBOARDING_GATE_SECRET` | Production / Preview | HMAC key (≥ 32 chars) for the middleware onboarding gate's fast-path cookie. Generate with `openssl rand -hex 32`; use a distinct value per environment. Optional — unset only costs a backend display-name lookup per gated navigation. See [`frontend/onboarding-gate.md` § "Signed fast-path cookie"](./frontend/onboarding-gate.md#signed-fast-path-cookie). |
-| `NEXT_PUBLIC_SITE_URL` | Production | The Vercel production URL — `https://…` with no trailing slash (e.g. `https://flamingo-armond-frontend.vercel.app`). Canonical origin for `metadataBase`, `robots.txt`, and `sitemap.xml`; when unset the app falls back to `http://localhost:3000`, so production metadata would point at localhost. Production scope only, so Preview deployments do not advertise the production origin. Inlined at build time — changing it requires a redeploy. |
 
 Under the automated path the first build (kicked off when the import wizard's **Deploy** button is clicked) **will fail** because env is not yet present — this is expected. Phase 6 (postapply) triggers a fresh deploy via `POST /v13/deployments` after Phase 4 has registered env, and the second build succeeds.
 
