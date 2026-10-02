@@ -1,9 +1,9 @@
 package usecase
 
 // White-box tests for translateTextLengthViolation, the usecase-side half of the
-// 23514 CHECK backstop. The function is unexported so the tests live in the same
-// package; no DB is required because the repository error is constructed
-// directly.
+// 23514 CHECK and 54000 index-row backstops. The function is unexported so the
+// tests live in the same package; no DB is required because the repository error
+// is constructed directly.
 
 import (
 	"context"
@@ -108,10 +108,10 @@ func TestCopyMasterToUser_TextLengthViolation_BecomesValidationError(t *testing.
 	const masterID = "m-textlen"
 	newDeps := func() (*fakeMasterCGRepo, *fakeMasterCardRepo) {
 		return &fakeMasterCGRepo{byID: map[string]*domain.MasterCardgroup{
-				masterID: masterCG(masterID, "Deck"),
-			}}, &fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
-				masterID: {masterCard("mc1", masterID, "f1", "b1", 0)},
-			}}
+			masterID: masterCG(masterID, "Deck"),
+		}}, &fakeMasterCardRepo{byMaster: map[string][]*domain.MasterCard{
+			masterID: {masterCard("mc1", masterID, "f1", "b1", 0)},
+		}}
 	}
 
 	t.Run("cardgroup name violation from CreateTx", func(t *testing.T) {

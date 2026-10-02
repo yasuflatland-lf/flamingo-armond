@@ -33,21 +33,22 @@ func pgInvalidTextRepresentation(err error) bool {
 const textLengthConstraintSuffix = "_length"
 
 // TextLengthViolationError reports a Postgres CHECK violation (SQLSTATE 23514)
-// on one of the "<table>_<column>_length" constraints that back the card and
-// cardgroup text columns.
+// on one of the "<table>_<column>_length" constraints, or a front too large for
+// its unique btree index (SQLSTATE 54000, see classifyFrontIndexRowTooLarge).
 //
 // The domain layer already enforces the user-visible length rule in grapheme
-// clusters, and the database bound is deliberately far wider, so this is a
-// backstop that fires only for pathological input -- a grapheme cluster admits
-// an unbounded combining-mark run, so no finite code-point bound closes the gap.
-// When it fires, the input is still user-supplied text that is too long for the
-// column -- classifying it as an internal error would hide a fixable input
-// problem behind a generic failure.
+// clusters. The CHECK's code-point bound is deliberately far wider, but a grapheme
+// cluster admits an unbounded combining-mark run, so no finite code-point bound
+// closes the gap; the index limit is an engine limit in compressed bytes that a
+// poorly compressible front can exceed. Either way the input is still
+// user-supplied text too long for the column -- classifying it as an internal
+// error would hide a fixable input problem behind a generic failure.
 // The usecase layer maps this to a field-scoped BAD_USER_INPUT via
 // translateTextLengthViolation.
 //
-// Field is the column the constraint guards ("front", "back", "name"), derived
-// from the constraint name so callers do not need a per-table lookup table.
+// Constraint is the violated CHECK constraint, or the index name for a 54000.
+// Field is the guarded column ("front", "back", "name"): derived from the
+// constraint name for a 23514, always "front" for a 54000.
 // Pointer receiver on Error() so callers recover it with
 // errors.AsType[*TextLengthViolationError] even after eris.Wrap.
 type TextLengthViolationError struct {
@@ -91,4 +92,28 @@ func textLengthConstraintField(name string) (string, bool) {
 		return "", false
 	}
 	return stem[i+1:], true
+}
+
+// indexFormTupleRoutine prefixes the Postgres function that raises the unnamed
+// index-row-size 54000 (index_form_tuple or index_form_tuple_context, by version).
+const indexFormTupleRoutine = "index_form_tuple"
+
+// classifyFrontIndexRowTooLarge maps SQLSTATE 54000 from indexing a front into
+// frontIndex to a *TextLengthViolationError on "front"; anything else is nil. The
+// btree check names the index; the index-tuple check names none, so it is matched
+// by Routine and pinned on front, the only variable-length indexed column on cards
+// and master_cards. Other unnamed 54000s, such as the XID-wraparound stop, are nil.
+func classifyFrontIndexRowTooLarge(err error, frontIndex string) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "54000" {
+		return nil
+	}
+	// Matching the message text instead of Routine is rejected: lc_messages can
+	// translate it.
+	named := pgErr.ConstraintName == frontIndex
+	indexTuple := pgErr.ConstraintName == "" && strings.HasPrefix(pgErr.Routine, indexFormTupleRoutine)
+	if !named && !indexTuple {
+		return nil
+	}
+	return &TextLengthViolationError{Constraint: frontIndex, Field: "front"}
 }
