@@ -170,9 +170,9 @@ The backend never grants the `admin` role on its own. The `make sync-env` seed t
 3. Run `make sync-env`. The seed task prints one line per address; an address that has not signed in yet is skipped, so re-run after its first sign-in. The seed runs only while `backend/.env.local` starts with the `# managed-by: sync-env` marker line; for a user-owned file (marker deleted or hand-made file), it is skipped entirely and prints only the generic `user-owned (no marker); skipping` notice, so run `make seed-admin EMAIL=you@example.com` for each address instead.
 4. Sign out and sign back in (or wait for a token refresh) so the JWT carries the new role. The Admin pill appears in the global header and `/admin/*` routes become reachable.
 
-**After `make db-reset`:** `public.user_roles` is wiped. Restart the backend so migrations re-create `public.roles`, sign in again if your `auth.users` row was also removed, then run `make sync-env`.
+**After `make db-reset`:** the local database is recreated empty, including `auth.users` and every app table. Restart the backend so its migrations re-create the schema (including `public.roles`), sign in again with each listed account, then run `make sync-env`.
 
-**Manual SQL fallback** (only if `make sync-env` is unavailable and you are debugging — e.g. the Authorization-header propagation gap, or you need an admin without a successful login round-trip):
+**Manual SQL fallback** (only if neither `make sync-env` nor `make seed-admin` can run; like them, it needs an existing `auth.users` row, so sign in once first):
 
 ```bash
 psql "$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')" <<'SQL'
