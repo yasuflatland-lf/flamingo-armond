@@ -2425,8 +2425,8 @@ func (f failingCountRepo) CountAdmins(_ context.Context) (int64, error) {
 }
 
 // existingAdminRepo satisfies repository.UserRoleRepository with CountAdmins
-// returning a fixed count. Used by deterministic tests for the admin-exists
-// branch (admin role-holders already exist → no WARN emitted).
+// returning a fixed count. Used by the deterministic tests for the zero-admin
+// branch (count 0 → WARN) and the admin-exists branch (count > 0 → no WARN).
 type existingAdminRepo struct {
 	panicUserRoleRepo
 	count int64
@@ -2580,6 +2580,47 @@ func TestWarnIfNoAdmin_WarnOnCountError(t *testing.T) {
 		if rec["msg"] == wantNoAdminMsg {
 			t.Errorf("unexpected log line %q: should only appear when count succeeds with 0", wantNoAdminMsg)
 		}
+	}
+}
+
+// TestWarnIfNoAdmin_WarnOnStdlibCountError proves the eris.Wrap at the log
+// site is load-bearing: a plain errors.New from the counter has no stack, so
+// error_chain.root.stack is present only because warnIfNoAdmin wraps it.
+func TestWarnIfNoAdmin_WarnOnStdlibCountError(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	warnIfNoAdmin(t.Context(), logger, failingCountRepo{err: errors.New("plain stdlib failure")})
+
+	records := decodeLogRecords(t, &buf)
+	if len(records) != 1 {
+		t.Fatalf("want exactly 1 log record, got %d: %s", len(records), buf.String())
+	}
+	chain, _ := records[0]["error_chain"].(map[string]any)
+	root, _ := chain["root"].(map[string]any)
+	if stack, _ := root["stack"].([]any); len(stack) == 0 {
+		t.Errorf("error_chain.root.stack must be non-empty for a stdlib counter error; got error_chain=%v", records[0]["error_chain"])
+	}
+}
+
+// TestWarnIfNoAdmin_WarnsWhenCountIsZero drives the zero-admin branch with a
+// stub, so it never skips, and pins the admin_count attribute the docs quote.
+func TestWarnIfNoAdmin_WarnsWhenCountIsZero(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	warnIfNoAdmin(t.Context(), logger, existingAdminRepo{count: 0})
+
+	records := decodeLogRecords(t, &buf)
+	if len(records) != 1 {
+		t.Fatalf("want exactly 1 log record, got %d: %s", len(records), buf.String())
+	}
+	rec := records[0]
+	if rec["level"] != "WARN" || rec["msg"] != "admin bootstrap: no admin role-holder exists" {
+		t.Errorf("want WARN %q, got level=%v msg=%v", "admin bootstrap: no admin role-holder exists", rec["level"], rec["msg"])
+	}
+	if got, ok := rec["admin_count"].(float64); !ok || got != 0 {
+		t.Errorf("want admin_count=0 present, got %v (present=%v)", rec["admin_count"], ok)
 	}
 }
 
