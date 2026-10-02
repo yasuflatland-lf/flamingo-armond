@@ -79,9 +79,7 @@ describe("GET /auth/verify-session", () => {
   });
 
   it("non-auth failure: redirects to / without signing out", async () => {
-    vi.mocked(gqlFetch).mockRejectedValueOnce(
-      new Error('GraphQL errors: [{"extensions":{"code":"INTERNAL"}}]'),
-    );
+    vi.mocked(gqlFetch).mockRejectedValueOnce(gqlError("INTERNAL"));
 
     const response = await GET(makeRequest());
 
