@@ -111,6 +111,9 @@ importers:
       '@biomejs/biome':
         specifier: 2.5.14
         version: 2.5.14
+      '@formatjs/icu-messageformat-parser':
+        specifier: ^3.5.17
+        version: 3.5.20
       '@graphql-codegen/cli':
         specifier: ^7.0.0
         version: 7.4.3(@parcel/watcher@2.6.0)(@types/node@24.13.6)(graphql@17.0.2)(typescript@6.0.3)
