@@ -114,7 +114,7 @@
       - "  NEXT_PUBLIC_SUPABASE_URL      = {{ supabase_url }}           (All Environments)"
       - "  NEXT_PUBLIC_SUPABASE_ANON_KEY = {{ supabase_anon_key }}      (All Environments)"
       - "  ONBOARDING_GATE_SECRET        = (generated, value hidden)    (Production, Preview)"
-      - "  NEXT_PUBLIC_SITE_URL          = (collected below)            (Production, Preview)"
+      - "  NEXT_PUBLIC_SITE_URL          = (collected below)            (Production)"
 
 - name: Show Vercel import wizard steps
   ansible.builtin.pause:
@@ -283,9 +283,13 @@
         value: "{{ supabase_anon_key }}"
         target: [production, preview, development]
         type: plain
+      # Production only. Preview stays unset on purpose: frontend/src/env.ts
+      # backfills it from the deployment's own VERCEL_URL, but only while the
+      # value is unset, so a registered production origin would switch that
+      # fallback off and every preview would advertise the production origin.
       - key: NEXT_PUBLIC_SITE_URL
         value: "{{ production_url }}"
-        target: [production, preview]
+        target: [production]
         type: plain
   no_log: true
 
