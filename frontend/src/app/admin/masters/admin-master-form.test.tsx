@@ -53,12 +53,33 @@ describe("AdminMasterForm", () => {
     expect(firstCallArg).toMatchObject({ name: "New Deck", sortOrder: 7 });
   });
 
+  it("trims name and description like Go strings.TrimSpace on submit", async () => {
+    const submit = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderWithIntl(<AdminMasterForm mode="create" submitting={false} submit={submit} />);
+    await user.type(screen.getByTestId("master-field-name"), "\uFEFF");
+    await user.type(screen.getByTestId("master-field-description"), "\u0085");
+    await user.click(screen.getByTestId("master-form-submit"));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(submit.mock.calls[0]?.[0]).toMatchObject({ name: "\uFEFF", description: null });
+  });
+
   it("blocks submit when sortOrder is not a whole number", async () => {
     const submit = vi.fn();
     const user = userEvent.setup();
     renderWithIntl(<AdminMasterForm mode="create" submitting={false} submit={submit} />);
     await user.type(screen.getByTestId("master-field-name"), "Deck");
     await user.type(screen.getByTestId("master-field-sortOrder"), "1.5");
+    await user.click(screen.getByTestId("master-form-submit"));
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("blocks submit when sortOrder exceeds int32", async () => {
+    const submit = vi.fn();
+    const user = userEvent.setup();
+    renderWithIntl(<AdminMasterForm mode="create" submitting={false} submit={submit} />);
+    await user.type(screen.getByTestId("master-field-name"), "Deck");
+    await user.type(screen.getByTestId("master-field-sortOrder"), "2147483648");
     await user.click(screen.getByTestId("master-form-submit"));
     expect(submit).not.toHaveBeenCalled();
   });
@@ -83,6 +104,34 @@ describe("AdminMasterForm", () => {
       sortOrder: null,
       isDefaultStarter: false,
     });
+  });
+
+  it("sends an empty string to clear a stored description in edit mode", async () => {
+    const submit = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderWithIntl(
+      <AdminMasterForm mode="edit" master={EXISTING} submitting={false} submit={submit} />,
+    );
+    await user.clear(screen.getByTestId("master-field-description"));
+    await user.click(screen.getByTestId("master-form-submit"));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(submit.mock.calls[0]?.[0]).toMatchObject({ description: "" });
+  });
+
+  it("keeps an unset description null in edit mode", async () => {
+    const submit = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderWithIntl(
+      <AdminMasterForm
+        mode="edit"
+        master={{ ...EXISTING, description: null }}
+        submitting={false}
+        submit={submit}
+      />,
+    );
+    await user.click(screen.getByTestId("master-form-submit"));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(submit.mock.calls[0]?.[0]).toMatchObject({ description: null });
   });
 
   it("surfaces a field validation error from the parent", () => {
