@@ -636,3 +636,18 @@ describe("authentication boundary", () => {
     expect(mockRedirect).toHaveBeenCalledWith("/login");
   });
 });
+
+describe("returnTo sanitisation at the page boundary", () => {
+  it.each([
+    ["/cards/new", "/cards/new"],
+    ["/\t/evil.com", null],
+    ["//evil.com", null],
+    [["/a", "//evil.com"], null],
+  ])("hands searchParams.returnTo %j to NewCardgroupClient as %j", async (raw, expected) => {
+    const element = await NewCardgroupPage({
+      searchParams: Promise.resolve({ returnTo: raw as unknown as string }),
+    });
+
+    expect(element.props.returnTo).toBe(expected);
+  });
+});

@@ -101,6 +101,39 @@ describe("sanitizeReturnTo", () => {
     expect(sanitizeReturnTo(input)).toBe(expected);
   });
 
+  it.each([
+    ["?x=1"],
+    ["#h"],
+    ["a/b"],
+    ["//["],
+    ["javascript:alert(1)"],
+    ["data:text/html,x"],
+    ["http:evil.com"],
+    ["//user@evil.com"],
+    ["/\t/user:pw@evil.com"],
+    ["/\t/ｅvil.com"],
+    ["//%65vil.com"],
+    ["//internal.invalid:8080/x"],
+    ["/.//evil.com"],
+    ["/%2e%2e//evil.com"],
+    [" //evil.com"],
+  ])("rejects %j", (input) => {
+    expect(sanitizeReturnTo(input)).toBeNull();
+  });
+
+  it.each([
+    ["/%2F/evil.com", "/%2F/evil.com"],
+    ["/%5Cevil.com", "/%5Cevil.com"],
+    ["/@evil.com", "/@evil.com"],
+    ["/　/evil.com", "/%E3%80%80/evil.com"],
+    ["/a/../learn/abc", "/learn/abc"],
+    ["/ok\t", "/ok"],
+    // A sentinel-host spoof keeps only its path; the host never reaches the caller.
+    ["/\t/internal.invalid/x", "/x"],
+  ])("accepts %j as the same-origin path %j", (input, expected) => {
+    expect(sanitizeReturnTo(input)).toBe(expected);
+  });
+
   it.each([[["/a", "//evil.com"]], [5], [{}]])("rejects non-string runtime value %j", (value) => {
     expect(sanitizeReturnTo(value as unknown as string)).toBeNull();
   });
