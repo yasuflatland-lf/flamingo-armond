@@ -271,6 +271,30 @@ func TestUserRoleRepository_SetUserRolesTx_RoleNotFoundRollsBack(t *testing.T) {
 	assertUserRoleIDs(t, ctx, repo, userID, []string{adminID})
 }
 
+func TestUserRoleRepository_SetUserRolesTx_MalformedRoleID(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	userID := insertAuthUser(t, ctx)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
+
+	generalID := insertRole(t, ctx, "general")
+	if err := repo.AssignRoleToUser(ctx, userID, generalID); err != nil {
+		t.Fatalf("AssignRoleToUser: %v", err)
+	}
+	adminID := insertRole(t, ctx, "admin")
+
+	for _, malformed := range []string{"not-a-uuid", "urn:uuid:" + adminID} {
+		err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			return repo.SetUserRolesTx(ctx, tx, userID, []string{adminID, malformed})
+		})
+		if !errors.Is(err, repository.ErrRoleNotFound) {
+			t.Fatalf("SetUserRolesTx(%q): want ErrRoleNotFound, got %v", malformed, err)
+		}
+
+		assertUserRoleIDs(t, ctx, repo, userID, []string{generalID})
+	}
+}
+
 // TestUserRoleRepository_SetUserRolesTx_DuplicateRoleIDsDeDupe pins the batched
 // existence check: duplicate ids in a single call collapse into uniqueRoleIDs
 // before the COUNT comparison, so a repeated (but existing) role validates and

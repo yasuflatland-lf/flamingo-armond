@@ -31,8 +31,8 @@ type mockCardgroupRepoForResolver struct {
 	findByIDErr    error
 
 	// FindPageByOwner returns the page rows plus the filtered totalCount the
-	// connection reads. countResult/countErr remain for the filter-less
-	// CountByOwner caller (the cardgroup-limit check).
+	// connection reads. countResult/countErr back CountByOwnerTx (the
+	// cardgroup-limit check).
 	findPageResult []*domain.Cardgroup
 	findPageTotal  int64
 	findPageErr    error
@@ -44,7 +44,7 @@ type mockCardgroupRepoForResolver struct {
 	updateResult *domain.Cardgroup
 	updateErr    error
 
-	// createErr controls the return value of Create. Used by the deleted-account
+	// createErr controls the return value of CreateTx. Used by the deleted-account
 	// test to inject repository.ErrCardgroupOwnerNotFound.
 	createErr error
 }
@@ -65,12 +65,16 @@ func (m *mockCardgroupRepoForResolver) FindPageByOwner(
 	return m.findPageResult, m.findPageTotal, m.findPageErr
 }
 
-func (m *mockCardgroupRepoForResolver) CountByOwner(_ context.Context, _ string, _ *string) (int64, error) {
+func (m *mockCardgroupRepoForResolver) CountByOwnerTx(_ context.Context, _ repository.Tx, _ string) (int64, error) {
 	return m.countResult, m.countErr
 }
 
-func (m *mockCardgroupRepoForResolver) Create(_ context.Context, _ *domain.Cardgroup) error {
+func (m *mockCardgroupRepoForResolver) CreateTx(_ context.Context, _ repository.Tx, _ *domain.Cardgroup) error {
 	return m.createErr
+}
+
+func (m *mockCardgroupRepoForResolver) AcquireUserCardgroupLockTx(_ context.Context, _ repository.Tx, _ string) error {
+	return nil
 }
 
 func (m *mockCardgroupRepoForResolver) Update(_ context.Context, _ string, _ repository.CardgroupUpdate) (*domain.Cardgroup, error) {
@@ -105,7 +109,7 @@ func newCardgroupSrv(repo usecase.CardgroupRepository) *handler.Server {
 // to supply a custom AdminChecker stub. Use this when a test needs to exercise
 // the cardgroup-limit code path (isAdmin: false).
 func newCardgroupSrvWithAdmin(repo usecase.CardgroupRepository, admin usecase.AdminChecker) *handler.Server {
-	cgUC := usecase.NewCardgroupUsecase(repo, admin, newDiscardLogger())
+	cgUC := usecase.NewCardgroupUsecase(nil, repo, admin, newDiscardLogger())
 	r := resolver.NewResolver(nil, cgUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
@@ -546,7 +550,7 @@ func createCardgroupBodyWithLimit(name string) string {
 func TestResolver_CreateCardgroup_LimitReached(t *testing.T) {
 	t.Parallel()
 
-	// CountByOwner returns 5 — the non-admin caller is at the limit.
+	// CountByOwnerTx returns 5 — the non-admin caller is at the limit.
 	repo := &mockCardgroupRepoForResolver{countResult: 5}
 	// isAdmin: false so the limit check is not bypassed.
 	srv := newCardgroupSrvWithAdmin(repo, stubAdminCheckerForResolver{isAdmin: false})

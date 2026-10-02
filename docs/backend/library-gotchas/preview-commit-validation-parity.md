@@ -75,7 +75,7 @@ but `validateImportRows` and the downstream commit-path constructors are two
 consumers that read *different branches* of the same `domain.ParseCardText`
 result — so they can still disagree on inputs the shared helper never sees. The
 shared-cap parity holds today only because `textdic.Process` guarantees two
-properties of every `ParsedWord` it returns — plus one DB backstop that no
+properties of every `ParsedWord` it returns — plus two DB backstops that no
 parser property covers:
 
 - **A1 — non-empty.** Each returned word's front and back are non-empty. The
@@ -92,6 +92,15 @@ parser property covers:
   commit with SQLSTATE 23514, surfaced as `BAD_USER_INPUT` ("&lt;field&gt; is too
   long"); migration `20260722000000_widen_text_length_checks` documents this as
   an accepted residue.
+- **DB index row-size backstop — outside the shared-cap parity.** The unique
+  `(cardgroup_id, front)` / `(master_cardgroup_id, front)` btree indexes limit
+  an index row to about 2,704 compressed bytes, a unit `validateImportRows`
+  does not measure. A poorly compressible front — for example 500 random CJK
+  bases with 4 random combining marks each, 2,500 code points and far below the
+  10,000-code-point CHECK — can therefore preview as valid but fail commit with
+  SQLSTATE 54000. `classifyFrontIndexRowTooLarge`
+  (`backend/internal/repository/pgerr.go`) classifies it, so it surfaces as
+  `BAD_USER_INPUT` ("front is too long").
 
 Why each parser property is load-bearing for the parity:
 

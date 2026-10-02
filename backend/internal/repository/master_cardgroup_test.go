@@ -345,10 +345,10 @@ func TestMasterCardgroupRepository_Delete_NotFound(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// ListPublishedDefaultStarters filter + ordering
+// ListPublishedDefaultStartersTx filter + ordering
 // ---------------------------------------------------------------------------
 
-func TestMasterCardgroupRepository_ListPublishedDefaultStarters_FilterAndOrder(t *testing.T) {
+func TestMasterCardgroupRepository_ListPublishedDefaultStartersTx_FilterAndOrder(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repo := repository.NewMasterCardgroupRepository(testDB.GORM)
@@ -392,7 +392,7 @@ func TestMasterCardgroupRepository_ListPublishedDefaultStarters_FilterAndOrder(t
 	mE.SortOrder = 3
 	require.NoError(t, repo.Create(ctx, mE))
 
-	all, err := repo.ListPublishedDefaultStarters(ctx)
+	all, err := repo.ListPublishedDefaultStartersTx(ctx, testDB.GORM)
 	require.NoError(t, err)
 
 	// Filter down to only the rows we created in this test.
@@ -418,7 +418,7 @@ func TestMasterCardgroupRepository_ListPublishedDefaultStarters_FilterAndOrder(t
 	// Self-healing: adding a card to (e) makes it a valid starter again with no
 	// admin action, and it lands last by sort_order.
 	insertMasterCards(t, ctx, mE.ID, 1)
-	all, err = repo.ListPublishedDefaultStarters(ctx)
+	all, err = repo.ListPublishedDefaultStartersTx(ctx, testDB.GORM)
 	require.NoError(t, err)
 	healed := filterMasterCardgroupsByIDs(all, []string{mA.ID, mB.ID, mE.ID})
 	require.Equal(t, []string{mB.ID, mA.ID, mE.ID}, masterCardgroupIDs(healed),
