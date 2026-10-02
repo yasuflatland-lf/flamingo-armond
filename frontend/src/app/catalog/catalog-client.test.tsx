@@ -333,6 +333,44 @@ describe("<CatalogClient>", () => {
     expect(await screen.findByText("Travel Phrases")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByTestId("catalog-query-error")).toBeNull());
   });
+
+  async function renderFailingSearch(code: string) {
+    const user = userEvent.setup();
+    const searchMock = {
+      request: {
+        query: MasterCatalogDocument,
+        variables: { ...CATALOG_DEFAULT_VARS, search: "zzz" },
+      },
+      result: { errors: [new GraphQLError("boom", { extensions: { code } })] },
+    };
+
+    renderClient([searchMock], makeConnection([M1]), new InMemoryCache());
+
+    expect(await screen.findByText("Business English")).toBeInTheDocument();
+    await user.type(screen.getByTestId("catalog-search"), "zzz");
+
+    return screen.findByTestId("catalog-query-error");
+  }
+
+  it("renders the sign-in banner, not the no-match state, when a search fails with UNAUTHENTICATED", async () => {
+    const banner = await renderFailingSearch("UNAUTHENTICATED");
+
+    expect(banner).toHaveTextContent("Your session has expired.");
+    expect(within(banner).getByRole("link", { name: "Sign in again" })).toHaveAttribute(
+      "href",
+      "/login",
+    );
+    expect(within(banner).queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryByTestId("catalog-empty-search")).toBeNull();
+  });
+
+  it("renders the permission banner without Retry, not the no-match state, when a search fails with FORBIDDEN", async () => {
+    const banner = await renderFailingSearch("FORBIDDEN");
+
+    expect(banner).toHaveTextContent("You do not have permission.");
+    expect(within(banner).queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryByTestId("catalog-empty-search")).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

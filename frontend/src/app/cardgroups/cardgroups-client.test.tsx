@@ -458,11 +458,21 @@ describe("<CardgroupsClient>", () => {
   it("renders the sign-in banner when a search query fails with UNAUTHENTICATED", async () => {
     const { banner } = await renderFailingSearch("UNAUTHENTICATED");
 
+    expect(banner).toHaveTextContent("Your session has expired.");
     expect(within(banner).getByRole("link", { name: "Sign in again" })).toHaveAttribute(
       "href",
       "/login",
     );
     expect(within(banner).queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryByTestId("cardgroups-empty-search")).toBeNull();
+  });
+
+  it("renders the permission banner without Retry when a search query fails with FORBIDDEN", async () => {
+    const { banner } = await renderFailingSearch("FORBIDDEN");
+
+    expect(banner).toHaveTextContent("You do not have permission.");
+    expect(within(banner).queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryByTestId("cardgroups-empty-search")).toBeNull();
   });
 
   it("recovers from a failed search when the query-error Retry is clicked", async () => {
