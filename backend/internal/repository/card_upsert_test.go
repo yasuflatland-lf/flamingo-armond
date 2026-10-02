@@ -443,7 +443,8 @@ func TestCardRepository_FoldFrontCaseToTx(t *testing.T) {
 // Waiting is confirmed via pg_blocking_pids, not a sleep: a fold that starts after the commit would
 // see the row, skip the rename and never collide.
 func TestCardRepository_FoldFrontCaseToTx_ConcurrentExactInsert_ReturnsDuplicateFront(t *testing.T) {
-	t.Parallel()
+	// Not parallel: stage and the blocked fold hold two connections of the shared test pool while
+	// each poll acquires another, so parallel tests holding the rest would deadlock the pool.
 	ctx := context.Background()
 	repo := repository.NewCardRepository(testDB.GORM)
 	ownerID := insertAuthUser(t, ctx)
