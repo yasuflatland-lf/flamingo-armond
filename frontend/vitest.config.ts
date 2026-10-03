@@ -16,7 +16,8 @@ export default defineConfig({
     // Expose vitest globals (describe, it, afterEach, etc.) so that
     // @testing-library/react can hook into afterEach for automatic DOM cleanup.
     globals: true,
-    // Extend expect with jest-dom matchers for jsdom-based component tests
+    // Shared by every environment, not split into a jsdom-only project: fast-check.ts
+    // pins the seed for the node-env schema properties, and Stryker reuses this config.
     setupFiles: ["src/__test-setup__/jest-dom.ts", "src/__test-setup__/fast-check.ts"],
     env: {
       BACKEND_URL: "http://localhost:1323",

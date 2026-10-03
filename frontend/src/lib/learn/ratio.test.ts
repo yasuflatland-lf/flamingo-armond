@@ -82,6 +82,9 @@ describe("equalsPercent", () => {
       const { numerator: n, denominator: d } = r;
       const onGrid = (100 * n) % (STEP * d) === 0 && 100 * n >= MIN * d && 100 * n <= MAX * d;
       expect(equalsPercent(r, gridPercent(r)), `${n}/${d}`).toBe(onGrid);
+      for (let p = MIN; p <= MAX; p += STEP) {
+        expect(equalsPercent(r, p), `${n}/${d}@${p}`).toBe(onGrid && exactGrid(n, d) === p);
+      }
     }
   });
 
