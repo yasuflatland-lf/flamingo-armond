@@ -62,17 +62,12 @@ func (r *cardWalkFSRSRepo) FindByUserAndCardIDs(
 }
 
 // cardWalkRepo is an in-memory CardRepository supporting exactly the slice of
-// the interface these walks need: forward AND backward paging over one
+// the interface these walks need: forward paging over one
 // cardgroup's cards ordered by (orderKey ASC, id ASC), where orderKey is
 // updated_at or the DUE COALESCE. Any other ordering is rejected loudly so a
 // future test cannot silently exercise an unimplemented branch. FindByID
 // returns the CURRENT row, which is what makes the v1 re-hydration path observe
 // a mutation made between two page fetches.
-//
-// The backward branch models the repository's direction-flip + reverse: it
-// keeps the rows that sort strictly BEFORE the cursor and returns the ones
-// closest to it, still in ASC order, so the usecase's leading-edge trim
-// (TrimAndDetectBackward) sees the same slice shape SQL would hand it.
 type cardWalkRepo struct {
 	cards []*domain.Card
 	// fsrs supplies the due values the DUE ordering coalesces over. A nil fsrs
@@ -112,16 +107,6 @@ func cardAfterInAscTuple(rowKey time.Time, rowID string, curKey time.Time, curID
 	return rowKey.After(curKey)
 }
 
-// cardBeforeInAscTuple is the mirror predicate for backward paging. It is not
-// !cardAfterInAscTuple — the cursor row itself sorts neither after nor before
-// itself, and both edges must exclude it.
-func cardBeforeInAscTuple(rowKey time.Time, rowID string, curKey time.Time, curID string) bool {
-	if rowKey.Equal(curKey) {
-		return rowID < curID
-	}
-	return rowKey.Before(curKey)
-}
-
 // cardWalkCursorKey extracts the boundary value the active ordering compares
 // against. A cursor that reaches the repository without its column populated is
 // a usecase bug, so it is surfaced rather than defaulted to the zero time.
@@ -145,8 +130,8 @@ func cardWalkCursorKey(orderBy repository.CardOrderBy, c *repository.CardCursor)
 func (r *cardWalkRepo) FindPageByCardgroupForUser(
 	_ context.Context,
 	_, cardgroupID string,
-	after, before *repository.CardCursor,
-	first, last int,
+	after *repository.CardCursor,
+	first int,
 	orderBy repository.CardOrderBy,
 	dir repository.SortOrder,
 	_ *string,
@@ -188,27 +173,8 @@ func (r *cardWalkRepo) FindPageByCardgroupForUser(
 		}
 		scoped = rest
 	}
-	if before != nil {
-		key, err := cardWalkCursorKey(orderBy, before)
-		if err != nil {
-			return nil, 0, nil, err
-		}
-		rest := make([]*domain.Card, 0, len(scoped))
-		for _, c := range scoped {
-			if cardBeforeInAscTuple(r.cardWalkKey(orderBy, c), c.ID, key, before.ID) {
-				rest = append(rest, c)
-			}
-		}
-		scoped = rest
-	}
 	if first > 0 && len(scoped) > first {
 		scoped = scoped[:first]
-	}
-	// Backward paging takes the rows CLOSEST to the before cursor, which are the
-	// trailing ones in ASC order — the in-memory equivalent of the repository's
-	// "invert ORDER BY, LIMIT last+1, reverse" path.
-	if last > 0 && len(scoped) > last {
-		scoped = scoped[len(scoped)-last:]
 	}
 	return scoped, total, r.walkOrderKeys(orderBy, scoped), nil
 }
@@ -337,24 +303,6 @@ func fetchCardWalkPage(t *testing.T, uc CardUsecase, orderBy CardOrderBy, after 
 	})
 	if err != nil {
 		t.Fatalf("unexpected error paging: %v", err)
-	}
-	return out
-}
-
-// fetchCardWalkPageBackward runs one backward page of the given size, optionally
-// before a cursor. Passing a nil cursor asks for the tail of the listing.
-func fetchCardWalkPageBackward(
-	t *testing.T, uc CardUsecase, orderBy CardOrderBy, before *string, last int,
-) *CardConnectionOutput {
-	t.Helper()
-	out, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
-		CardgroupID: "cg1",
-		Last:        intPtr(last),
-		Before:      before,
-		OrderBy:     orderByPtr(orderBy),
-	})
-	if err != nil {
-		t.Fatalf("unexpected error paging backward: %v", err)
 	}
 	return out
 }
@@ -734,76 +682,8 @@ func TestCardCursorWalk_Due_EmitIssuesNoFSRSLookup(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Backward paging, legacy cursors, and the emitted ordering metadata.
+// Legacy cursors and the emitted ordering metadata.
 // ---------------------------------------------------------------------------
-
-// TestCardCursorWalk_BackwardV2_BoundaryRowEdited_NoDuplicate is the backward
-// mirror of S1. Paging backwards from the tail, the leading boundary row of the
-// first backward page is edited so its ordering key moves to the tail of the
-// listing. With the captured key the previous page still ends exactly where the
-// first began and repeats nothing the caller has already seen.
-func TestCardCursorWalk_BackwardV2_BoundaryRowEdited_NoDuplicate(t *testing.T) {
-	t.Parallel()
-
-	repo := newCardWalkFixture("")
-	uc := newCardWalkUsecase(repo, repo.fsrs)
-
-	// Tail of the listing under (updated_at ASC, id ASC): c-d, c-e.
-	page1 := fetchCardWalkPageBackward(t, uc, CardOrderByUpdatedAt, nil, 2)
-	if got := cardWalkIDs(page1); len(got) != 2 || got[0] != "c-d" || got[1] != "c-e" {
-		t.Fatalf("backward page 1 = %v, want [c-d c-e]", got)
-	}
-	if !page1.HasPrev {
-		t.Fatal("backward page 1 must report hasPreviousPage: c-a/c-b/c-c are still ahead")
-	}
-	if page1.HasNext {
-		t.Fatal("backward page 1 without a before cursor is the tail; hasNextPage must be false")
-	}
-
-	prev := encodeCardWalkCursor(page1, page1.StartCur)
-
-	// c-d — the leading boundary row of the page just served — is edited so it
-	// now sorts last. A v1 cursor would re-read it and walk from the bottom.
-	setCardWalkUpdatedAt(t, repo, "c-d", cdWalkAt(99))
-
-	page2 := fetchCardWalkPageBackward(t, uc, CardOrderByUpdatedAt, &prev, 2)
-	got := cardWalkIDs(page2)
-	if len(got) != 2 || got[0] != "c-b" || got[1] != "c-c" {
-		t.Fatalf("backward page 2 = %v, want [c-b c-c]", got)
-	}
-	for _, id := range got {
-		if id == "c-d" || id == "c-e" {
-			t.Fatalf("backward page 2 repeated %q from page 1: %v", id, got)
-		}
-	}
-	if !page2.HasNext {
-		t.Fatal("a backward page taken before a cursor must report hasNextPage")
-	}
-	if !page2.HasPrev {
-		t.Fatal("c-a is still ahead of backward page 2; hasPreviousPage must be true")
-	}
-}
-
-// TestCardCursorWalk_BackwardV1Cursor_StillDuplicates pins the defect on the
-// backward edge: an id-only cursor re-reads the edited boundary row, finds it
-// now sorts last, and hands back rows the caller already saw.
-func TestCardCursorWalk_BackwardV1Cursor_StillDuplicates(t *testing.T) {
-	t.Parallel()
-
-	repo := newCardWalkFixture("")
-	uc := newCardWalkUsecase(repo, repo.fsrs)
-
-	page1 := fetchCardWalkPageBackward(t, uc, CardOrderByUpdatedAt, nil, 2)
-	legacy := cursor.Encode(page1.StartCur)
-
-	setCardWalkUpdatedAt(t, repo, "c-d", cdWalkAt(99))
-
-	page2 := fetchCardWalkPageBackward(t, uc, CardOrderByUpdatedAt, &legacy, 2)
-	got := cardWalkIDs(page2)
-	if len(got) == 0 || got[len(got)-1] != "c-e" {
-		t.Fatalf("v1 cursor should re-serve c-e after the boundary row moves to the tail; backward page 2 = %v", got)
-	}
-}
 
 // TestCardCursorWalk_LegacyBareIDStillPages verifies the oldest cursor form — a
 // bare UUID with no envelope at all — still decodes and pages.

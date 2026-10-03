@@ -135,12 +135,6 @@ query whose error path is identical in both cases. The smell is specifically
 
 ## Analogous pattern in this codebase
 
-`TrimAndDetect[T]` and `TrimAndDetectBackward[T]` encode direction via two
-function names rather than a `reverse bool` flag. The separation makes the
-pagination helper's directionality self-documenting at every call site. See
-[`.claude/rules/pagination.md`](../../../.claude/rules/pagination.md) for the
-`+1` fetch trick those helpers support.
-
 `clampLimit` and `clampPracticeLimit` (`backend/internal/usecase/learn.go`)
 clamp two different request limits whose **default differs because the semantic
 unit differs**. `clampLimit` serves the learn queue, where the unit is a *page*

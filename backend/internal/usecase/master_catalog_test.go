@@ -48,9 +48,7 @@ type mockMasterCatalogRepository struct {
 
 type findPublishedPageCall struct {
 	After   *repository.MasterCatalogCursor
-	Before  *repository.MasterCatalogCursor
 	First   int
-	Last    int
 	OrderBy repository.MasterCatalogOrderBy
 	Dir     repository.SortOrder
 	Search  *string
@@ -58,14 +56,14 @@ type findPublishedPageCall struct {
 
 func (m *mockMasterCatalogRepository) FindPublishedPage(
 	_ context.Context,
-	after, before *repository.MasterCatalogCursor,
-	first, last int,
+	after *repository.MasterCatalogCursor,
+	first int,
 	orderBy repository.MasterCatalogOrderBy,
 	dir repository.SortOrder,
 	search *string,
 ) ([]*repository.MasterCatalogItem, int64, error) {
 	m.findPageCalls = append(m.findPageCalls, findPublishedPageCall{
-		After: after, Before: before, First: first, Last: last,
+		After: after, First: first,
 		OrderBy: orderBy, Dir: dir, Search: search,
 	})
 	if m.findPageErr != nil {
@@ -93,14 +91,14 @@ func (m *mockMasterCatalogRepository) FindByID(_ context.Context, id string) (*d
 
 func (m *mockMasterCatalogRepository) FindPageAnyStatus(
 	_ context.Context,
-	after, before *repository.MasterCatalogCursor,
-	first, last int,
+	after *repository.MasterCatalogCursor,
+	first int,
 	orderBy repository.MasterCatalogOrderBy,
 	dir repository.SortOrder,
 	search *string,
 ) ([]*repository.MasterCatalogItem, int64, error) {
 	m.findAdminCalls = append(m.findAdminCalls, findPublishedPageCall{
-		After: after, Before: before, First: first, Last: last,
+		After: after, First: first,
 		OrderBy: orderBy, Dir: dir, Search: search,
 	})
 	if m.findAdminErr != nil {
@@ -279,56 +277,6 @@ func TestListPublishedConnection_Forward_NoExtraRow_NoNextPage(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Backward pagination
-// ---------------------------------------------------------------------------
-
-func TestListPublishedConnection_Backward_TrimsLeadingRow_SetsHasPrev(t *testing.T) {
-	// Cursor hydration requires a published row for `before`.
-	cur := cursor.Encode("z")
-	repo := &mockMasterCatalogRepository{
-		findPageTotal: 10,
-		findByIDFn: func(id string) (*domain.MasterCardgroup, error) {
-			return catalogItem(id, 0).Cardgroup, nil
-		},
-		// last=2 → repo asked for 3; repo (already reversed) returns 3 → trim leading.
-		findPageResult: []*repository.MasterCatalogItem{
-			catalogItem("x", 1), catalogItem("y", 2), catalogItem("w", 3),
-		},
-	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
-
-	out, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
-		Last:   intPtr(2),
-		Before: &cur,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(out.Items) != 2 {
-		t.Fatalf("want 2 items after backward trim, got %d", len(out.Items))
-	}
-	if !out.HasPrev {
-		t.Fatal("want HasPrev=true (extra row trimmed)")
-	}
-	if !out.HasNext {
-		t.Fatal("want HasNext=true (before cursor present)")
-	}
-	// Leading row trimmed: keep the last 2 (y, w).
-	if out.Items[0].Cardgroup.ID != "y" || out.Items[1].Cardgroup.ID != "w" {
-		t.Fatalf("want [y w] after leading trim, got [%s %s]",
-			out.Items[0].Cardgroup.ID, out.Items[1].Cardgroup.ID)
-	}
-
-	call := repo.findPageCalls[0]
-	if call.Last != 3 {
-		t.Fatalf("want repo last=3 (+1 trick), got %d", call.Last)
-	}
-	if call.Before == nil || call.Before.ID != "z" {
-		t.Fatalf("want before cursor id=z hydrated, got %+v", call.Before)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Order resolution
 // ---------------------------------------------------------------------------
 
@@ -356,19 +304,45 @@ func TestListPublishedConnection_OrderByName_Desc(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Page-size validation
+// Relay argument guard
 // ---------------------------------------------------------------------------
 
-func TestListPublishedConnection_FirstAndLast_Rejected(t *testing.T) {
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+// TestListPublishedConnection_AfterWithoutFirst pins the resolveRelayPage wiring
+// in listMasterCatalogCore: a resolvable after cursor with no first is rejected
+// with BAD_USER_INPUT on "after" and the page query never runs.
+func TestListPublishedConnection_AfterWithoutFirst(t *testing.T) {
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{
+		findByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Pub"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
 
-	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
-		First: intPtr(2),
-		Last:  intPtr(2),
-	})
-	var ve *ucerr.ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("want ValidationError, got %v", err)
+	after := cursor.Encode("m1")
+	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{After: &after})
+	assertValidationError(t, err, "after", "after requires first")
+	if len(repo.findPageCalls) != 0 {
+		t.Fatalf("page query must not run, got %d calls", len(repo.findPageCalls))
+	}
+}
+
+// TestListAdminConnection_AfterWithoutFirst is the admin-surface twin of
+// TestListPublishedConnection_AfterWithoutFirst (a DRAFT cursor is valid here).
+func TestListAdminConnection_AfterWithoutFirst(t *testing.T) {
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{
+		findByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Draft"), Status: domain.MasterStatusDraft}, nil
+		},
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	after := cursor.Encode("m1")
+	_, err := uc.ListAdminConnection(authedCtx("admin1"), MasterCatalogConnectionInput{After: &after})
+	assertValidationError(t, err, "after", "after requires first")
+	if len(repo.findAdminCalls) != 0 {
+		t.Fatalf("page query must not run, got %d calls", len(repo.findAdminCalls))
 	}
 }
 
@@ -597,14 +571,14 @@ func TestListAdminConnection_CursorAcceptsDraftViaFindByID(t *testing.T) {
 	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
 
 	_, err := uc.ListAdminConnection(authedCtx("admin1"), MasterCatalogConnectionInput{
-		Last:   intPtr(2),
-		Before: &cur,
+		First: intPtr(2),
+		After: &cur,
 	})
 	if err != nil {
 		t.Fatalf("admin cursor must hydrate a draft via FindByID, got %v", err)
 	}
-	if repo.findAdminCalls[0].Before == nil || repo.findAdminCalls[0].Before.ID != "draft-id" {
-		t.Fatalf("want before cursor id=draft-id hydrated, got %+v", repo.findAdminCalls[0].Before)
+	if repo.findAdminCalls[0].After == nil || repo.findAdminCalls[0].After.ID != "draft-id" {
+		t.Fatalf("want after cursor id=draft-id hydrated, got %+v", repo.findAdminCalls[0].After)
 	}
 }
 
@@ -635,7 +609,7 @@ func TestResolveMasterCatalogOrderBy_Invalid(t *testing.T) {
 }
 
 func TestResolveMasterCatalogPageSize_ClampsAtMax(t *testing.T) {
-	first, _, err := resolveStandardPageSize(intPtr(1000), nil)
+	first, err := resolveStandardPageSize(intPtr(1000))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -645,12 +619,12 @@ func TestResolveMasterCatalogPageSize_ClampsAtMax(t *testing.T) {
 }
 
 func TestResolveMasterCatalogPageSize_DefaultWhenAbsent(t *testing.T) {
-	first, last, err := resolveStandardPageSize(nil, nil)
+	first, err := resolveStandardPageSize(nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if first != defaultPageSize || last != 0 {
-		t.Fatalf("want default first=%d last=0, got first=%d last=%d", defaultPageSize, first, last)
+	if first != defaultPageSize {
+		t.Fatalf("want default first=%d, got first=%d", defaultPageSize, first)
 	}
 }
 
@@ -1149,34 +1123,6 @@ func TestFindPublishedMaster_CountCards_PropagatesCancelled(t *testing.T) {
 	assertCancelled(t, err)
 	if err != context.Canceled {
 		t.Fatalf("expected unwrapped context.Canceled, got %v", err)
-	}
-}
-
-func TestListPublishedConnection_AfterWithLast_Rejected(t *testing.T) {
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
-
-	after := "v1:abc"
-	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
-		Last:  intPtr(2),
-		After: &after,
-	})
-	var ve *ucerr.ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("want ValidationError for after+last, got %v", err)
-	}
-}
-
-func TestListAdminConnection_AfterWithLast_Rejected(t *testing.T) {
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
-
-	after := "v1:abc"
-	_, err := uc.ListAdminConnection(authedCtx("u1"), MasterCatalogConnectionInput{
-		Last:  intPtr(2),
-		After: &after,
-	})
-	var ve *ucerr.ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("want ValidationError for after+last, got %v", err)
 	}
 }
 

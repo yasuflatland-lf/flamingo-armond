@@ -25,14 +25,12 @@ func TestCursorSpec_IDDirection(t *testing.T) {
 		name      string
 		dir       SortOrder
 		userSpec  bool
-		invertID  bool
 		wantOrder string
 		wantWhere string
 	}{
-		{"default forward", SortAsc, false, false, "created_at ASC, id ASC", "(created_at > ? OR (created_at = ? AND id > ?))"},
-		{"default backward", SortDesc, false, false, "created_at DESC, id DESC", "(created_at < ? OR (created_at = ? AND id < ?))"},
-		{"overridden forward", SortDesc, true, false, "created_at DESC, id ASC", "(created_at < ? OR (created_at = ? AND id > ?))"},
-		{"overridden backward", SortAsc, true, true, "created_at ASC, id DESC", "(created_at > ? OR (created_at = ? AND id < ?))"},
+		{"default ASC", SortAsc, false, "created_at ASC, id ASC", "(created_at > ? OR (created_at = ? AND id > ?))"},
+		{"default DESC", SortDesc, false, "created_at DESC, id DESC", "(created_at < ? OR (created_at = ? AND id < ?))"},
+		{"user spec id ASC override", SortDesc, true, "created_at DESC, id ASC", "(created_at < ? OR (created_at = ? AND id > ?))"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -42,9 +40,6 @@ func TestCursorSpec_IDDirection(t *testing.T) {
 			}
 			if c.userSpec {
 				spec = userCursorSpec(gormUser{ID: "uid", CreatedAt: now})
-			}
-			if c.invertID {
-				spec.idDir = InvertDir(spec.idDir)
 			}
 			require.Equal(t, c.wantOrder, buildOrderClause(spec, c.dir))
 			clause, args, err := buildCursorWhere(spec, c.dir, "uid")

@@ -43,15 +43,14 @@ type CardCursor struct {
 func (r *cardRepo) FindPageByCardgroupForUser(
 	ctx context.Context,
 	userID, cardgroupID string,
-	after, before *CardCursor,
-	first, last int,
+	after *CardCursor,
+	first int,
 	orderBy CardOrderBy,
 	dir SortOrder,
 	search *string,
 ) ([]*domain.Card, int64, map[string]time.Time, error) {
 	userID = coalesceUserIDForJoin(userID)
 	first = ClampPageSize(first)
-	last = ClampPageSize(last)
 
 	// Base query scoped to the cardgroup.
 	base := r.db.WithContext(ctx).Model(&gormCard{}).Where("cards.cardgroup_id = ?", cardgroupID)
@@ -71,13 +70,9 @@ func (r *cardRepo) FindPageByCardgroupForUser(
 		return nil, 0, nil, eris.Wrap(err, "repository: count cards by cardgroup")
 	}
 
-	if first == 0 && last == 0 {
+	if first == 0 {
 		return []*domain.Card{}, total, nil, nil
 	}
-
-	// Backward paging executes the query with the inverted direction and
-	// reverses the slice afterwards.
-	effectiveDir, limit, cursor, reverse := paginateSetup(dir, first, last, after, before)
 
 	q := base
 	if orderBy == CardOrderByDue {
@@ -87,28 +82,24 @@ func (r *cardRepo) FindPageByCardgroupForUser(
 		// different snapshot.
 		q = q.Select("cards.*, "+cardCursorSpec(CardOrderByDue, nil).orderCol+" AS order_key").
 			Joins("LEFT JOIN user_card_fsrs ucs ON ucs.user_id = ? AND ucs.card_id = cards.id", userID).
-			Order(orderClause(orderBy, effectiveDir))
+			Order(orderClause(orderBy, dir))
 	} else {
-		q = q.Order(orderClause(orderBy, effectiveDir))
+		q = q.Order(orderClause(orderBy, dir))
 	}
 
-	if cursor != nil {
-		clauseStr, args, err := cursorWhere(orderBy, effectiveDir, cursor)
+	if after != nil {
+		clauseStr, args, err := cursorWhere(orderBy, dir, after)
 		if err != nil {
 			return nil, 0, nil, eris.Wrap(err, "repository: build cursor where")
 		}
 		q = q.Where(clauseStr, args...)
 	}
 
-	q = q.Limit(limit)
+	q = q.Limit(first)
 
 	var rows []gormCard
 	if err := q.Find(&rows).Error; err != nil {
 		return nil, 0, nil, eris.Wrap(err, "repository: find page by cardgroup")
-	}
-
-	if reverse {
-		ReverseSlice(rows)
 	}
 
 	out := make([]*domain.Card, len(rows))

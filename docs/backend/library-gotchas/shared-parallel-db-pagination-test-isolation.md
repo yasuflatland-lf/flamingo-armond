@@ -8,8 +8,8 @@ rows coexist in that one database for the duration of the run. A repository
 query that is **not** scoped to the test's own rows therefore sees every other
 parallel test's rows too.
 
-This is a silent trap specifically for a **no-cursor** `first=N` / `last=N`
-pagination call. Such a call returns the `N` globally-ordered rows for the whole
+This is a silent trap specifically for a **no-cursor** `first=N` pagination
+call. Such a call returns the `N` globally-ordered rows for the whole
 table, not the test's rows. When another parallel test has inserted rows that
 sort ahead of this test's fixtures (e.g. a lower `sort_order`, an earlier
 `created_at`), the page comes back full of other tests' rows and the test's own
@@ -19,7 +19,7 @@ insertion order.
 ```go
 // FLAKY: first=2 with no cursor returns the two globally-lowest sort_order rows,
 // which other parallel tests' published rows can occupy.
-fwd, _ := repo.FindPublishedPage(ctx, nil, nil, 2, 0, OrderBySortOrder, Asc, nil)
+fwd, _ := repo.FindPublishedPage(ctx, nil, 2, OrderBySortOrder, Asc, nil)
 ours := filterByIDs(fwd, ourIDs)   // often empty — fwd holds other tests' rows
 require.GreaterOrEqual(t, len(ours), 1)   // fails
 ```
@@ -31,9 +31,9 @@ Two isolation techniques, both already used in
    per-test `base := uuid.NewString()` and pass `search := base` to the query.
    The `ILIKE %base%` predicate narrows the result to exactly this test's rows,
    so even `first=2` deterministically returns the test's two lowest rows. This
-   is the fix applied to `FindPublishedPage_ForwardAndBackward` and the pattern
-   `CountPublished_ExcludesDraft` was written with from the start.
-2. **Cursor anchored to a fixture row.** A query with an `after`/`before` cursor
+   is the fix applied to `FindPublishedPage_Forward` and the pattern
+   `FindPublishedPage_TotalExcludesDraft` was written with from the start.
+2. **Cursor anchored to a fixture row.** A query with an `after` cursor
    pinned to one of the test's own rows windows the result around that row, which
    already excludes most foreign rows; combine with a `filterByIDs` pass to drop
    any stragglers that share the cursor's order-field value.
@@ -45,6 +45,6 @@ the isolation must happen in the query (search or cursor) so the test's rows are
 actually in the returned window.
 
 **Reference:** `backend/internal/repository/master_catalog_test.go` —
-`TestMasterCardgroupRepository_FindPublishedPage_ForwardAndBackward` (search
-isolation), `TestMasterCardgroupRepository_CountPublished_ExcludesDraft`
+`TestMasterCardgroupRepository_FindPublishedPage_Forward` (search
+isolation), `TestMasterCardgroupRepository_FindPublishedPage_TotalExcludesDraft`
 (search isolation), and the `filterCatalogByIDs` / `catalogIDs` helpers.

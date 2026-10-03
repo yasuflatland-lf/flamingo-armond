@@ -119,15 +119,14 @@ func masterCatalogCursorFieldValue(orderBy MasterCatalogOrderBy, c *MasterCatalo
 // (mirrors card_pagination.go's FindPageByCardgroupForUser).
 func (r *masterCardgroupRepo) findCatalogPage(
 	ctx context.Context,
-	after, before *MasterCatalogCursor,
-	first, last int,
+	after *MasterCatalogCursor,
+	first int,
 	orderBy MasterCatalogOrderBy,
 	dir SortOrder,
 	search *string,
 	publishedOnly bool,
 ) ([]*MasterCatalogItem, int64, error) {
 	first = ClampPageSize(first)
-	last = ClampPageSize(last)
 
 	// totalCount comes from a COUNT(*) on the SAME filtered base (the
 	// published + non-empty visibility filter when publishedOnly, plus the
@@ -151,13 +150,9 @@ func (r *masterCardgroupRepo) findCatalogPage(
 		return nil, 0, eris.Wrap(err, "repository: master cardgroup: count catalog page")
 	}
 
-	if first == 0 && last == 0 {
+	if first == 0 {
 		return []*MasterCatalogItem{}, total, nil
 	}
-
-	// Backward paging executes the query with the inverted direction and
-	// reverses the slice afterwards.
-	effectiveDir, limit, cursor, reverse := paginateSetup(dir, first, last, after, before)
 
 	q := r.db.WithContext(ctx).
 		Table("master_cardgroups AS mcg").
@@ -170,22 +165,18 @@ func (r *masterCardgroupRepo) findCatalogPage(
 	if pattern, ok := searchLikePattern(search); ok {
 		q = q.Where("mcg.name ILIKE ?", pattern)
 	}
-	if cursor != nil {
-		clauseSQL, args, err := masterCatalogCursorWhere(orderBy, effectiveDir, cursor)
+	if after != nil {
+		clauseSQL, args, err := masterCatalogCursorWhere(orderBy, dir, after)
 		if err != nil {
 			return nil, 0, eris.Wrap(err, "repository: master cardgroup: build catalog cursor where")
 		}
 		q = q.Where(clauseSQL, args...)
 	}
-	q = q.Order(masterCatalogOrderClause(orderBy, effectiveDir)).Limit(limit)
+	q = q.Order(masterCatalogOrderClause(orderBy, dir)).Limit(first)
 
 	var rows []gormMasterCatalogRow
 	if err := q.Find(&rows).Error; err != nil {
 		return nil, 0, eris.Wrap(err, "repository: master cardgroup: find catalog page")
-	}
-
-	if reverse {
-		ReverseSlice(rows)
 	}
 
 	out := make([]*MasterCatalogItem, len(rows))
@@ -207,13 +198,13 @@ func (r *masterCardgroupRepo) findCatalogPage(
 // stay deterministic even when the primary sort column has duplicates.
 func (r *masterCardgroupRepo) FindPublishedPage(
 	ctx context.Context,
-	after, before *MasterCatalogCursor,
-	first, last int,
+	after *MasterCatalogCursor,
+	first int,
 	orderBy MasterCatalogOrderBy,
 	dir SortOrder,
 	search *string,
 ) ([]*MasterCatalogItem, int64, error) {
-	return r.findCatalogPage(ctx, after, before, first, last, orderBy, dir, search, true)
+	return r.findCatalogPage(ctx, after, first, orderBy, dir, search, true)
 }
 
 // FindPageAnyStatus returns the cursor-paginated admin catalog list (drafts and
@@ -222,11 +213,11 @@ func (r *masterCardgroupRepo) FindPublishedPage(
 // published deck that has lost all of its cards.
 func (r *masterCardgroupRepo) FindPageAnyStatus(
 	ctx context.Context,
-	after, before *MasterCatalogCursor,
-	first, last int,
+	after *MasterCatalogCursor,
+	first int,
 	orderBy MasterCatalogOrderBy,
 	dir SortOrder,
 	search *string,
 ) ([]*MasterCatalogItem, int64, error) {
-	return r.findCatalogPage(ctx, after, before, first, last, orderBy, dir, search, false)
+	return r.findCatalogPage(ctx, after, first, orderBy, dir, search, false)
 }
