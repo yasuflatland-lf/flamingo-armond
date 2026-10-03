@@ -31,7 +31,6 @@ type UserRepository interface {
 }
 
 type UserRolesRepository interface {
-	ListByUser(ctx context.Context, userID string) ([]*domain.Role, error)
 	// AcquireAdminRoleLockTx serializes admin-count-changing mutations; see
 	// repository.UserRoleRepository for the race it closes.
 	AcquireAdminRoleLockTx(ctx context.Context, tx repository.Tx) error

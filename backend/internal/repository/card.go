@@ -88,8 +88,6 @@ type CardReadRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Card, error)
 	FindByIDForUpdateTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error)
-	ListByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error)
-	ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, cardgroupID string) ([]string, error)
 	// FindByCardgroupAndFront returns the card identified by the (cardgroup_id,
 	// front) unique key, or ErrNotFound when no such row exists. The front value
 	// is matched exactly; trimming is the caller's responsibility.
@@ -103,22 +101,20 @@ type CardReadRepository interface {
 }
 
 type CardPageRepository interface {
-	FindPageByCardgroup(
-		ctx context.Context,
-		cardgroupID string,
-		after, before *CardCursor,
-		first, last int,
-		orderBy CardOrderBy,
-		dir SortOrder,
-		search *string,
-	) (cards []*domain.Card, totalCount int64, err error)
-	// FindPageByCardgroupForUser additionally returns orderKeys: the value the
-	// query ORDERED BY for each returned row, keyed by card id, taken from the
-	// same result set. The caller mints v2 cursors from it instead of re-reading
-	// the ordering value afterwards — the DUE ordering keys off
-	// COALESCE(user_card_fsrs.due, cards.created_at), which a second query would
-	// resolve against a later snapshot. orderKeys is nil when orderBy is ID,
-	// whose ordering key is the id the cursor already carries.
+	// FindPageByCardgroupForUser returns a window of cards for a cardgroup
+	// ordered by (orderField, id) so cursors stay deterministic. Forward paging
+	// uses `after` + `first`; backward paging uses `before` + `last`. totalCount
+	// reflects every row in the cardgroup, not just the page.
+	// When search is non-nil and non-empty, only cards whose front OR back
+	// contains the search text (case-insensitive ILIKE partial match) are
+	// returned; the search is applied to both totalCount and the page window.
+	// orderKeys holds the value the query ORDERED BY for each returned row,
+	// keyed by card id, taken from the same result set. The caller mints v2
+	// cursors from it instead of re-reading the ordering value afterwards — the
+	// DUE ordering keys off COALESCE(user_card_fsrs.due, cards.created_at),
+	// which a second query would resolve against a later snapshot. orderKeys is
+	// nil when orderBy is ID, whose ordering key is the id the cursor already
+	// carries.
 	FindPageByCardgroupForUser(
 		ctx context.Context,
 		userID, cardgroupID string,
@@ -158,12 +154,6 @@ type CardWriteRepository interface {
 	// slice GORM v2 omits the `WHERE id IN (?)` clause altogether, which would
 	// convert this `Delete` into an unbounded mass delete — far worse than a slow scan.
 	DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error)
-	// DeleteByCardgroupAndFrontsTx hard-deletes cards by the scoped (cardgroup_id, front) natural
-	// key; callers must verify the cardgroup is reachable by the calling owner first. Inputs above
-	// bulkStatementChunkRows run as several statements, so tx must be a transaction. Empty fronts
-	// returns (0, nil) without touching the DB: GORM v2 drops an empty `IN ?`, which would delete
-	// every card in the cardgroup (`.claude/rules/go-library-gotchas.md` § GORM empty IN).
-	DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
 	// UpsertManyTx upserts cards by (cardgroup_id, front), overwriting `back` and `position`;
 	// the database trigger advances updated_at. Returns the per-row split between Inserted
 	// and Updated. Empty input is a no-op. Inputs above bulkStatementChunkRows run as several
@@ -224,29 +214,6 @@ func (r *cardRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*dom
 		out[card.ID] = card
 	}
 	return out, nil
-}
-
-func (r *cardRepo) ListByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error) {
-	var rows []gormCard
-	if err := r.db.WithContext(ctx).
-		Where("cardgroup_id = ?", cardgroupID).
-		Order("created_at ASC, id ASC").
-		Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: card: find by cardgroup")
-	}
-	out := make([]*domain.Card, len(rows))
-	for i := range rows {
-		out[i] = cardToDomain(rows[i])
-	}
-	return out, nil
-}
-
-func (r *cardRepo) ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, cardgroupID string) ([]string, error) {
-	fronts, err := listFrontsByGroupTx(ctx, tx, cardgroupID, "cards", "cardgroup_id")
-	if err != nil {
-		return nil, eris.Wrap(err, "repository: card: list fronts by cardgroup")
-	}
-	return fronts, nil
 }
 
 func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {

@@ -149,14 +149,6 @@ func (r *cardRepo) DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID strin
 	return res.RowsAffected, nil
 }
 
-func (r *cardRepo) DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error) {
-	affected, err := deleteByGroupAndFrontsTx(ctx, tx, cardgroupID, fronts, "cards", "cardgroup_id")
-	if err != nil {
-		return 0, eris.Wrap(err, "repository: card: delete by cardgroup and fronts")
-	}
-	return affected, nil
-}
-
 // upsertCardRow is the domain-agnostic, normalized representation of a card row
 // consumed by upsertManyTx. It mirrors exactly the columns that upsertManyTx
 // writes — (id, <fkColumn>, front, back, created_at, position) — so

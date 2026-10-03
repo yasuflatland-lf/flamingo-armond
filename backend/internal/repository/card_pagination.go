@@ -40,26 +40,6 @@ type CardCursor struct {
 	UpdatedAt *time.Time
 }
 
-// FindPageByCardgroup returns a window of cards for a cardgroup ordered by
-// (orderField, id) so cursors stay deterministic. Forward paging uses `after`
-// + `first`; backward paging uses `before` + `last`. totalCount reflects every
-// row in the cardgroup, not just the page.
-// When search is non-nil and non-empty, only cards whose front OR back contains
-// the search text (case-insensitive ILIKE partial match) are returned.
-// The search is applied to both totalCount and the page window.
-func (r *cardRepo) FindPageByCardgroup(
-	ctx context.Context,
-	cardgroupID string,
-	after, before *CardCursor,
-	first, last int,
-	orderBy CardOrderBy,
-	dir SortOrder,
-	search *string,
-) ([]*domain.Card, int64, error) {
-	cards, total, _, err := r.FindPageByCardgroupForUser(ctx, "", cardgroupID, after, before, first, last, orderBy, dir, search)
-	return cards, total, err
-}
-
 func (r *cardRepo) FindPageByCardgroupForUser(
 	ctx context.Context,
 	userID, cardgroupID string,

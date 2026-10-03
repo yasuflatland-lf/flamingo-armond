@@ -36,7 +36,7 @@ func insertCards(t *testing.T, ctx context.Context, repo repository.CardReposito
 	return cards
 }
 
-func TestCardRepository_FindPageByCardgroup_ForwardByID(t *testing.T) {
+func TestCardRepository_FindPageByCardgroupForUser_ForwardByID(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -47,8 +47,8 @@ func TestCardRepository_FindPageByCardgroup_ForwardByID(t *testing.T) {
 	// Sort the inserted cards by their UUID so we know what "id ASC" returns.
 	sorted := sortByID(cards)
 
-	got, total, err := repo.FindPageByCardgroup(
-		ctx, string(cg.ID), nil, nil, 2, 0, repository.CardOrderByID, repository.SortAsc, nil,
+	got, total, _, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg.ID), nil, nil, 2, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(5), total)
@@ -56,8 +56,8 @@ func TestCardRepository_FindPageByCardgroup_ForwardByID(t *testing.T) {
 	require.Equal(t, sorted[0].ID, got[0].ID)
 	require.Equal(t, sorted[1].ID, got[1].ID)
 
-	got, total, err = repo.FindPageByCardgroup(
-		ctx, string(cg.ID),
+	got, total, _, err = repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg.ID),
 		&repository.CardCursor{ID: sorted[1].ID}, nil,
 		2, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
@@ -67,8 +67,8 @@ func TestCardRepository_FindPageByCardgroup_ForwardByID(t *testing.T) {
 	require.Equal(t, sorted[2].ID, got[0].ID)
 	require.Equal(t, sorted[3].ID, got[1].ID)
 
-	got, total, err = repo.FindPageByCardgroup(
-		ctx, string(cg.ID),
+	got, total, _, err = repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg.ID),
 		&repository.CardCursor{ID: sorted[3].ID}, nil,
 		2, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
@@ -78,7 +78,7 @@ func TestCardRepository_FindPageByCardgroup_ForwardByID(t *testing.T) {
 	require.Equal(t, sorted[4].ID, got[0].ID)
 }
 
-func TestCardRepository_FindPageByCardgroup_BackwardByID(t *testing.T) {
+func TestCardRepository_FindPageByCardgroupForUser_BackwardByID(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -89,8 +89,8 @@ func TestCardRepository_FindPageByCardgroup_BackwardByID(t *testing.T) {
 	sorted := sortByID(cards)
 
 	// last=2, before=nil should return the final two ids in ASC order.
-	got, total, err := repo.FindPageByCardgroup(
-		ctx, string(cg.ID), nil, nil, 0, 2, repository.CardOrderByID, repository.SortAsc, nil,
+	got, total, _, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg.ID), nil, nil, 0, 2, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(5), total)
@@ -99,8 +99,8 @@ func TestCardRepository_FindPageByCardgroup_BackwardByID(t *testing.T) {
 	require.Equal(t, sorted[4].ID, got[1].ID)
 
 	// last=2, before=cards[3] should return cards[1..2] in ASC order.
-	got, _, err = repo.FindPageByCardgroup(
-		ctx, string(cg.ID),
+	got, _, _, err = repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg.ID),
 		nil, &repository.CardCursor{ID: sorted[3].ID},
 		0, 2, repository.CardOrderByID, repository.SortAsc, nil,
 	)
@@ -110,15 +110,15 @@ func TestCardRepository_FindPageByCardgroup_BackwardByID(t *testing.T) {
 	require.Equal(t, sorted[2].ID, got[1].ID)
 }
 
-func TestCardRepository_FindPageByCardgroup_EmptyGroup(t *testing.T) {
+func TestCardRepository_FindPageByCardgroupForUser_EmptyGroup(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
 	cg := insertCardgroup(t, ctx, ownerID)
 	repo := repository.NewCardRepository(testDB.GORM)
 
-	got, total, err := repo.FindPageByCardgroup(
-		ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, nil,
+	got, total, _, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), total)
@@ -126,7 +126,7 @@ func TestCardRepository_FindPageByCardgroup_EmptyGroup(t *testing.T) {
 	require.Empty(t, got)
 }
 
-func TestCardRepository_FindPageByCardgroup_SinglePage(t *testing.T) {
+func TestCardRepository_FindPageByCardgroupForUser_SinglePage(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -135,15 +135,15 @@ func TestCardRepository_FindPageByCardgroup_SinglePage(t *testing.T) {
 
 	insertCards(t, ctx, repo, cg.ID, 3)
 
-	got, total, err := repo.FindPageByCardgroup(
-		ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, nil,
+	got, total, _, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), total)
 	require.Len(t, got, 3)
 }
 
-func TestCardRepository_FindPageByCardgroup_OrderByDue(t *testing.T) {
+func TestCardRepository_FindPageByCardgroupForUser_OrderByDue(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -202,7 +202,7 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue(t *testing.T) {
 	require.Equal(t, cards[2].ID, got[0].ID)
 }
 
-func TestCardRepository_FindPageByCardgroup_OrderByCreatedAtDesc(t *testing.T) {
+func TestCardRepository_FindPageByCardgroupForUser_OrderByCreatedAtDesc(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -212,8 +212,8 @@ func TestCardRepository_FindPageByCardgroup_OrderByCreatedAtDesc(t *testing.T) {
 	cards := insertCards(t, ctx, repo, cg.ID, 4)
 	// DESC: newest first → cards[3], cards[2], cards[1], cards[0].
 
-	got, total, err := repo.FindPageByCardgroup(
-		ctx, string(cg.ID), nil, nil, 2, 0, repository.CardOrderByCreatedAt, repository.SortDesc, nil,
+	got, total, _, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg.ID), nil, nil, 2, 0, repository.CardOrderByCreatedAt, repository.SortDesc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(4), total)
@@ -225,8 +225,8 @@ func TestCardRepository_FindPageByCardgroup_OrderByCreatedAtDesc(t *testing.T) {
 		ID:        cards[2].ID,
 		CreatedAt: &cards[2].CreatedAt,
 	}
-	got, _, err = repo.FindPageByCardgroup(
-		ctx, string(cg.ID), cursor, nil, 2, 0, repository.CardOrderByCreatedAt, repository.SortDesc, nil,
+	got, _, _, err = repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg.ID), cursor, nil, 2, 0, repository.CardOrderByCreatedAt, repository.SortDesc, nil,
 	)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
@@ -234,7 +234,7 @@ func TestCardRepository_FindPageByCardgroup_OrderByCreatedAtDesc(t *testing.T) {
 	require.Equal(t, cards[0].ID, got[1].ID)
 }
 
-func TestCardRepository_FindPageByCardgroup_TotalCountIsScopedToCardgroup(t *testing.T) {
+func TestCardRepository_FindPageByCardgroupForUser_TotalCountIsScopedToCardgroup(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -245,23 +245,23 @@ func TestCardRepository_FindPageByCardgroup_TotalCountIsScopedToCardgroup(t *tes
 	insertCards(t, ctx, repo, cg1.ID, 3)
 	insertCards(t, ctx, repo, cg2.ID, 5)
 
-	_, total, err := repo.FindPageByCardgroup(
-		ctx, string(cg1.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, nil,
+	_, total, _, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg1.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), total)
 
-	_, total, err = repo.FindPageByCardgroup(
-		ctx, string(cg2.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, nil,
+	_, total, _, err = repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg2.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(5), total)
 }
 
-// TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue
+// TestCardRepository_FindPageByCardgroupForUser_OrderByDue_TieBreakOnEqualDue
 // verifies the secondary `id` key keeps order deterministic when multiple
 // cards share the same Due value — pages must not skip or duplicate.
-// TestCardRepository_FindPageByCardgroup_OrderByDue_StatelessCardKeyFallsBackToCreatedAt
+// TestCardRepository_FindPageByCardgroupForUser_OrderByDue_StatelessCardKeyFallsBackToCreatedAt
 // covers the NULL branch of the projected ordering key. A card the viewer has
 // never reviewed has no user_card_fsrs row, so the LEFT JOIN yields NULL and
 // COALESCE falls back to cards.created_at — for both the ORDER BY and the
@@ -271,7 +271,7 @@ func TestCardRepository_FindPageByCardgroup_TotalCountIsScopedToCardgroup(t *tes
 // This branch only exists in SQL: the usecase-level fakes model the fallback in
 // Go, so a projection that dropped the COALESCE (or aliased the raw ucs.due)
 // would still pass every unit test and would emit a zero-time cursor here.
-func TestCardRepository_FindPageByCardgroup_OrderByDue_StatelessCardKeyFallsBackToCreatedAt(t *testing.T) {
+func TestCardRepository_FindPageByCardgroupForUser_OrderByDue_StatelessCardKeyFallsBackToCreatedAt(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -306,7 +306,7 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue_StatelessCardKeyFallsBack
 	require.Equal(t, got[1].ID, next[0].ID)
 }
 
-func TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue(t *testing.T) {
+func TestCardRepository_FindPageByCardgroupForUser_OrderByDue_TieBreakOnEqualDue(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -364,10 +364,10 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue(t *tes
 	require.Equal(t, sorted[2].ID, page2[0].ID)
 }
 
-// TestCardRepository_FindPageByCardgroup_PageCapAllowsMaxPlusOne verifies that
+// TestCardRepository_FindPageByCardgroupForUser_PageCapAllowsMaxPlusOne verifies that
 // pageCap (101) accepts first=101 so the usecase's +1 trick can detect a next
 // page when the caller requests the documented maximum of 100.
-func TestCardRepository_FindPageByCardgroup_PageCapAllowsMaxPlusOne(t *testing.T) {
+func TestCardRepository_FindPageByCardgroupForUser_PageCapAllowsMaxPlusOne(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -378,26 +378,26 @@ func TestCardRepository_FindPageByCardgroup_PageCapAllowsMaxPlusOne(t *testing.T
 	insertCards(t, ctx, repo, cg.ID, 101)
 
 	// first=101 must return all 101 rows because pageCap == 101.
-	cards101, total101, err := repo.FindPageByCardgroup(
-		ctx, string(cg.ID), nil, nil, 101, 0, repository.CardOrderByID, repository.SortAsc, nil,
+	cards101, total101, _, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg.ID), nil, nil, 101, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(101), total101)
 	require.Len(t, cards101, 101)
 
 	// first=100 must be limited to 100 rows, confirming the cap still applies.
-	cards100, total100, err := repo.FindPageByCardgroup(
-		ctx, string(cg.ID), nil, nil, 100, 0, repository.CardOrderByID, repository.SortAsc, nil,
+	cards100, total100, _, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg.ID), nil, nil, 100, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(101), total100)
 	require.Len(t, cards100, 100)
 }
 
-// TestCardRepository_FindPageByCardgroup_ZeroPageReturnsTotal verifies the C2
+// TestCardRepository_FindPageByCardgroupForUser_ZeroPageReturnsTotal verifies the C2
 // fix: first=0 && last=0 short-circuits the row fetch but still returns the
 // real totalCount from the separate COUNT(*) query.
-func TestCardRepository_FindPageByCardgroup_ZeroPageReturnsTotal(t *testing.T) {
+func TestCardRepository_FindPageByCardgroupForUser_ZeroPageReturnsTotal(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -406,8 +406,8 @@ func TestCardRepository_FindPageByCardgroup_ZeroPageReturnsTotal(t *testing.T) {
 
 	insertCards(t, ctx, repo, cg.ID, 5)
 
-	cards, total, err := repo.FindPageByCardgroup(
-		ctx, string(cg.ID), nil, nil, 0, 0, repository.CardOrderByID, repository.SortAsc, nil,
+	cards, total, _, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg.ID), nil, nil, 0, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	// No rows requested, but the slice must be non-nil and empty.
@@ -417,7 +417,7 @@ func TestCardRepository_FindPageByCardgroup_ZeroPageReturnsTotal(t *testing.T) {
 	require.Equal(t, int64(5), total)
 }
 
-// TestCardRepo_FindPageByCardgroup_Search_WithAfter verifies that the ILIKE
+// TestCardRepo_FindPageByCardgroupForUser_Search_WithAfter verifies that the ILIKE
 // search filter is preserved when an `after` cursor is present. A bug that
 // drops the predicate on the cursor branch would return non-matching cards on
 // the second page, causing both the wrong IDs and a wrong page-3 hasNextPage
@@ -434,7 +434,7 @@ func TestCardRepository_FindPageByCardgroup_ZeroPageReturnsTotal(t *testing.T) {
 //  3. Page 2 (first=2, after=cursor, search="apple") → exactly 1 card
 //     (front-apple-2), totalCount=3, hasNextPage=false.
 //  4. Assert no non-matching card ever appears in either page.
-func TestCardRepo_FindPageByCardgroup_Search_WithAfter(t *testing.T) {
+func TestCardRepo_FindPageByCardgroupForUser_Search_WithAfter(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -474,8 +474,8 @@ func TestCardRepo_FindPageByCardgroup_Search_WithAfter(t *testing.T) {
 	search := "apple"
 
 	// --- Page 1 ---
-	page1, total1, err := repo.FindPageByCardgroup(
-		ctx, string(cg.ID), nil, nil,
+	page1, total1, _, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg.ID), nil, nil,
 		// Request 2+1 (the +1 trick) so the usecase can detect hasNextPage.
 		3, 0,
 		repository.CardOrderByCreatedAt, repository.SortAsc,
@@ -505,8 +505,8 @@ func TestCardRepo_FindPageByCardgroup_Search_WithAfter(t *testing.T) {
 	}
 
 	// --- Page 2 ---
-	page2, total2, err := repo.FindPageByCardgroup(
-		ctx, string(cg.ID), cursor, nil,
+	page2, total2, _, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg.ID), cursor, nil,
 		3, 0,
 		repository.CardOrderByCreatedAt, repository.SortAsc,
 		&search,
@@ -525,12 +525,12 @@ func TestCardRepo_FindPageByCardgroup_Search_WithAfter(t *testing.T) {
 	}
 }
 
-// TestCardRepo_FindPageByCardgroup_EmptySearchTreatedAsNil verifies that an
+// TestCardRepo_FindPageByCardgroupForUser_EmptySearchTreatedAsNil verifies that an
 // all-whitespace search has no effect — same as nil — because searchLikePattern
 // returns ok=false for trimmed-empty input. The whitespace term must NOT reach
 // SQL as "%   %" (which would filter out every card) and must NOT zero the page
 // or totalCount. Mirrors the cardgroup blank-search guard.
-func TestCardRepo_FindPageByCardgroup_EmptySearchTreatedAsNil(t *testing.T) {
+func TestCardRepo_FindPageByCardgroupForUser_EmptySearchTreatedAsNil(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -540,8 +540,8 @@ func TestCardRepo_FindPageByCardgroup_EmptySearchTreatedAsNil(t *testing.T) {
 	insertCards(t, ctx, repo, cg.ID, 3)
 
 	whitespace := "   "
-	got, total, err := repo.FindPageByCardgroup(
-		ctx, string(cg.ID), nil, nil, 100, 0,
+	got, total, _, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cg.ID), nil, nil, 100, 0,
 		repository.CardOrderByID, repository.SortAsc, &whitespace,
 	)
 	require.NoError(t, err)

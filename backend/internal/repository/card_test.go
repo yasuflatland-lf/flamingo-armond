@@ -17,6 +17,27 @@ import (
 	"backend/internal/repository"
 )
 
+// cardReadbackRow is the subset of a cards row the repository tests read back
+// after a write through listCardsByCardgroup.
+type cardReadbackRow struct {
+	ID          string
+	CardgroupID domain.CardgroupID
+	Front       domain.CardText
+	Back        domain.CardText
+	Position    int
+}
+
+// listCardsByCardgroup reads every card of a cardgroup straight from the
+// table, ordered by (created_at, id), as a test-local read-back.
+func listCardsByCardgroup(t *testing.T, ctx context.Context, cardgroupID string) []*cardReadbackRow {
+	t.Helper()
+	var rows []*cardReadbackRow
+	require.NoError(t, testDB.GORM.WithContext(ctx).Table("cards").
+		Where("cardgroup_id = ?", cardgroupID).
+		Order("created_at ASC, id ASC").Find(&rows).Error)
+	return rows
+}
+
 func newCard(cardgroupID domain.CardgroupID, front, back string) *domain.Card {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	return &domain.Card{
@@ -69,29 +90,6 @@ func TestCardRepository_CRUD(t *testing.T) {
 	require.NoError(t, repo.Delete(ctx, card.ID))
 	_, err = repo.FindByID(ctx, card.ID)
 	require.True(t, errors.Is(err, repository.ErrNotFound), "got %v", err)
-}
-
-func TestCardRepository_FindByCardgroup_Scoped(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	cg1 := insertCardgroup(t, ctx, ownerID)
-	cg2 := insertCardgroup(t, ctx, ownerID)
-	repo := repository.NewCardRepository(testDB.GORM)
-
-	card1 := newCard(cg1.ID, "front 1", "back 1")
-	card2 := newCard(cg2.ID, "front 2", "back 2")
-	require.NoError(t, repo.Create(ctx, card1))
-	require.NoError(t, repo.Create(ctx, card2))
-
-	got, err := repo.ListByCardgroup(ctx, string(cg1.ID))
-	require.NoError(t, err)
-	ids := map[string]bool{}
-	for _, card := range got {
-		ids[card.ID] = true
-	}
-	require.True(t, ids[card1.ID])
-	require.False(t, ids[card2.ID])
 }
 
 func TestCardRepository_FindByIDs(t *testing.T) {
@@ -521,149 +519,6 @@ func TestCardRepo_FindByCardgroupAndFront(t *testing.T) {
 	}
 }
 
-func TestCardRepository_ListFrontsByCardgroupTx_Scoped(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardRepository(testDB.GORM)
-
-	cgA := insertCardgroup(t, ctx, ownerID)
-	cgB := insertCardgroup(t, ctx, ownerID)
-	require.NoError(t, repo.Create(ctx, newCard(cgA.ID, "banana", "back-a1")))
-	require.NoError(t, repo.Create(ctx, newCard(cgA.ID, "apple", "back-a2")))
-	require.NoError(t, repo.Create(ctx, newCard(cgB.ID, "carrot", "back-b1")))
-
-	var fronts []string
-	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var txErr error
-		fronts, txErr = repo.ListFrontsByCardgroupTx(ctx, tx, string(cgA.ID))
-		return txErr
-	})
-	require.NoError(t, err)
-	require.Equal(t, []string{"apple", "banana"}, fronts)
-}
-
-func TestCardRepository_DeleteByCardgroupAndFrontsTx_EmptySlice(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardRepository(testDB.GORM)
-	cg := insertCardgroup(t, ctx, ownerID)
-	card := newCard(cg.ID, "keep", "back")
-	require.NoError(t, repo.Create(ctx, card))
-
-	var affected int64
-	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var txErr error
-		affected, txErr = repo.DeleteByCardgroupAndFrontsTx(ctx, tx, string(cg.ID), nil)
-		return txErr
-	})
-	require.NoError(t, err)
-	require.Equal(t, int64(0), affected)
-
-	got, err := repo.FindByID(ctx, card.ID)
-	require.NoError(t, err)
-	require.Equal(t, card.ID, got.ID)
-}
-
-func TestCardRepository_DeleteByCardgroupAndFrontsTx_ScopedDelete(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardRepository(testDB.GORM)
-
-	cgA := insertCardgroup(t, ctx, ownerID)
-	cgB := insertCardgroup(t, ctx, ownerID)
-	deleteA := newCard(cgA.ID, "shared", "back-a")
-	keepA := newCard(cgA.ID, "keep-a", "back-a")
-	keepB := newCard(cgB.ID, "shared", "back-b")
-	require.NoError(t, repo.Create(ctx, deleteA))
-	require.NoError(t, repo.Create(ctx, keepA))
-	require.NoError(t, repo.Create(ctx, keepB))
-
-	var affected int64
-	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var txErr error
-		affected, txErr = repo.DeleteByCardgroupAndFrontsTx(ctx, tx, string(cgA.ID), []string{"shared"})
-		return txErr
-	})
-	require.NoError(t, err)
-	require.Equal(t, int64(1), affected)
-
-	_, err = repo.FindByID(ctx, deleteA.ID)
-	require.ErrorIs(t, err, repository.ErrNotFound)
-	_, err = repo.FindByID(ctx, keepA.ID)
-	require.NoError(t, err)
-	gotB, err := repo.FindByID(ctx, keepB.ID)
-	require.NoError(t, err)
-	require.Equal(t, keepB.ID, gotB.ID)
-}
-
-// TestCardRepository_DeleteByCardgroupAndFrontsTx_NonOverlappingFrontsScoped
-// pins the cross-cardgroup scoping contract for the (cardgroup_id, front)
-// natural-key delete: a delete scoped to cgB with a front that exists ONLY in
-// cgA must not touch cgA's row. This complements the _ScopedDelete test, which
-// covers the overlapping-front case; here the front is unique to the wrong
-// cardgroup, which is the regression target if a future refactor drops the
-// `cardgroup_id = ?` clause.
-func TestCardRepository_DeleteByCardgroupAndFrontsTx_NonOverlappingFrontsScoped(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardRepository(testDB.GORM)
-
-	cgA := insertCardgroup(t, ctx, ownerID)
-	cgB := insertCardgroup(t, ctx, ownerID)
-	cardA := newCard(cgA.ID, "front-only-in-a", "back-a")
-	require.NoError(t, repo.Create(ctx, cardA))
-
-	var affected int64
-	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var txErr error
-		affected, txErr = repo.DeleteByCardgroupAndFrontsTx(ctx, tx, string(cgB.ID), []string{"front-only-in-a"})
-		return txErr
-	})
-	require.NoError(t, err)
-	require.Equal(t, int64(0), affected,
-		"deleting via cgB must not match a row that lives in cgA")
-
-	got, err := repo.FindByID(ctx, cardA.ID)
-	require.NoError(t, err, "row owned by cgA must still exist")
-	require.Equal(t, cardA.ID, got.ID)
-}
-
-func TestCardRepository_DeleteByCardgroupAndFrontsTx_DeleteByFronts(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardRepository(testDB.GORM)
-	cg := insertCardgroup(t, ctx, ownerID)
-
-	cardA := newCard(cg.ID, "alpha", "back-a")
-	cardB := newCard(cg.ID, "beta", "back-b")
-	cardC := newCard(cg.ID, "gamma", "back-c")
-	require.NoError(t, repo.Create(ctx, cardA))
-	require.NoError(t, repo.Create(ctx, cardB))
-	require.NoError(t, repo.Create(ctx, cardC))
-
-	var affected int64
-	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var txErr error
-		affected, txErr = repo.DeleteByCardgroupAndFrontsTx(ctx, tx, string(cg.ID), []string{"alpha", "gamma"})
-		return txErr
-	})
-	require.NoError(t, err)
-	require.Equal(t, int64(2), affected)
-
-	_, err = repo.FindByID(ctx, cardA.ID)
-	require.ErrorIs(t, err, repository.ErrNotFound)
-	gotB, err := repo.FindByID(ctx, cardB.ID)
-	require.NoError(t, err)
-	require.Equal(t, cardB.ID, gotB.ID)
-	_, err = repo.FindByID(ctx, cardC.ID)
-	require.ErrorIs(t, err, repository.ErrNotFound)
-}
-
 func TestCardRepository_OnCardgroupDeleteCascade(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -757,7 +612,7 @@ func TestCardRepo_Create_OtherUniqueViolationNotMisclassified(t *testing.T) {
 
 func strPtr(s string) *string { return &s }
 
-// TestCardRepo_FindPageByCardgroup_Search verifies the search filter:
+// TestCardRepo_FindPageByCardgroupForUser_Search verifies the search filter:
 //   - hits on front substring
 //   - hits on back substring
 //   - miss when neither front nor back matches
@@ -765,7 +620,7 @@ func strPtr(s string) *string { return &s }
 //   - empty string search skips the filter (all cards returned)
 //   - LIKE metacharacters (%, _, \) in the search query are treated literally
 //   - search is case-insensitive (ILIKE)
-func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
+func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -802,8 +657,8 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 
 	t.Run("hit on front substring", func(t *testing.T) {
 		t.Parallel()
-		got, total, err := repo.FindPageByCardgroup(
-			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("apple"),
+		got, total, _, err := repo.FindPageByCardgroupForUser(
+			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("apple"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total, "totalCount must reflect search filter")
@@ -815,8 +670,8 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 	t.Run("hit on back substring", func(t *testing.T) {
 		t.Parallel()
 		// "dessert" appears in both apple and banana backs.
-		got, total, err := repo.FindPageByCardgroup(
-			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("dessert"),
+		got, total, _, err := repo.FindPageByCardgroupForUser(
+			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("dessert"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(2), total)
@@ -827,8 +682,8 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 
 	t.Run("miss: no match", func(t *testing.T) {
 		t.Parallel()
-		got, total, err := repo.FindPageByCardgroup(
-			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("zzznomatch"),
+		got, total, _, err := repo.FindPageByCardgroupForUser(
+			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("zzznomatch"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(0), total)
@@ -837,8 +692,8 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 
 	t.Run("nil search returns all cards", func(t *testing.T) {
 		t.Parallel()
-		got, total, err := repo.FindPageByCardgroup(
-			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, nil,
+		got, total, _, err := repo.FindPageByCardgroupForUser(
+			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, nil,
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(5), total)
@@ -851,8 +706,8 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 	// called directly (e.g. from tests or future non-GraphQL callers).
 	t.Run("empty string search returns all cards (defensive)", func(t *testing.T) {
 		t.Parallel()
-		got, total, err := repo.FindPageByCardgroup(
-			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr(""),
+		got, total, _, err := repo.FindPageByCardgroupForUser(
+			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr(""),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(5), total)
@@ -862,8 +717,8 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 	t.Run("percent metachar treated literally", func(t *testing.T) {
 		t.Parallel()
 		// "100%" must only match cardCherry whose front contains that literal string.
-		got, total, err := repo.FindPageByCardgroup(
-			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("100%"),
+		got, total, _, err := repo.FindPageByCardgroupForUser(
+			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("100%"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
@@ -874,8 +729,8 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 	t.Run("underscore metachar treated literally", func(t *testing.T) {
 		t.Parallel()
 		// "a_b" must only match cardUnderscore, not every two-char prefix (LIKE _ = any single char).
-		got, total, err := repo.FindPageByCardgroup(
-			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("a_b"),
+		got, total, _, err := repo.FindPageByCardgroupForUser(
+			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("a_b"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
@@ -885,8 +740,8 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 
 	t.Run("backslash metachar treated literally", func(t *testing.T) {
 		t.Parallel()
-		got, total, err := repo.FindPageByCardgroup(
-			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr(`back\slash`),
+		got, total, _, err := repo.FindPageByCardgroupForUser(
+			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr(`back\slash`),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
@@ -897,8 +752,8 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 	t.Run("case insensitive", func(t *testing.T) {
 		t.Parallel()
 		// "COLD" appears uppercase in banana's back; search with lowercase must still match.
-		got, total, err := repo.FindPageByCardgroup(
-			ctx, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("cold"),
+		got, total, _, err := repo.FindPageByCardgroupForUser(
+			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("cold"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
@@ -961,11 +816,11 @@ func TestCardRepository_FindDueCards_ReviewRowsPrecedeNewRows(t *testing.T) {
 	)
 }
 
-// TestCardRepo_FindPageByCardgroup_Search_CrossTenantNonLeak verifies that a
+// TestCardRepo_FindPageByCardgroupForUser_Search_CrossTenantNonLeak verifies that a
 // search applied to one cardgroup does not surface rows from another cardgroup
 // even when both contain cards with the same front/back text. This is the
 // cross-tenant test required by docs/backend/library-gotchas/repository-cross-tenant-negative-test.md.
-func TestCardRepo_FindPageByCardgroup_Search_CrossTenantNonLeak(t *testing.T) {
+func TestCardRepo_FindPageByCardgroupForUser_Search_CrossTenantNonLeak(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -981,8 +836,8 @@ func TestCardRepo_FindPageByCardgroup_Search_CrossTenantNonLeak(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, cardB))
 
 	// Query cgB with a search that matches the shared front.
-	got, total, err := repo.FindPageByCardgroup(
-		ctx, string(cgB.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("shared"),
+	got, total, _, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, string(cgB.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("shared"),
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total, "only cardgroup B's card should match")

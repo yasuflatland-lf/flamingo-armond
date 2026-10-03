@@ -116,7 +116,7 @@ func masterCatalogCursorFieldValue(orderBy MasterCatalogOrderBy, c *MasterCatalo
 // one master card exists` (see masterCardsExistPredicate) — and everything else
 // is identical for the published and admin lists. FindPublishedPage and
 // FindPageAnyStatus are thin wrappers over it
-// (mirrors card_pagination.go's FindPageByCardgroup -> FindPageByCardgroupForUser).
+// (mirrors card_pagination.go's FindPageByCardgroupForUser).
 func (r *masterCardgroupRepo) findCatalogPage(
 	ctx context.Context,
 	after, before *MasterCatalogCursor,
