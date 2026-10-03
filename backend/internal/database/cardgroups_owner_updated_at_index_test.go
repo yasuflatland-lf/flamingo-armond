@@ -30,7 +30,8 @@ var (
 
 // TestCardgroupsOwnerUpdatedAtIndex_DownUpRoundtrip pins the composite's exact
 // definition and the absence of the two indexes it replaces, the rollback that
-// restores them, and that the default myCardgroupsConnection page needs no Sort.
+// restores them, and that a replica of the default myCardgroupsConnection page
+// query plans without a Sort node.
 //
 // t.Parallel() is intentionally absent: migrations change global suite state.
 func TestCardgroupsOwnerUpdatedAtIndex_DownUpRoundtrip(t *testing.T) {
@@ -106,8 +107,10 @@ func requireCardgroupsIndexDefs(t *testing.T, ctx context.Context, sqlDB *sql.DB
 	}
 }
 
-// requireCardgroupsPageIsIndexOrdered asserts that the UPDATED_AT page of
-// FindPageByOwner, in both directions, scans the composite without a Sort node.
+// requireCardgroupsPageIsIndexOrdered asserts that an owner-scoped, cursorless
+// replica of FindPageByOwner's UPDATED_AT page, in both directions, scans the
+// composite without a Sort node. It does not run FindPageByOwner: keep the SQL
+// in cardgroupsPagePlan in sync with repository.cardgroupOrderClause.
 func requireCardgroupsPageIsIndexOrdered(t *testing.T, ctx context.Context, sqlDB *sql.DB) {
 	t.Helper()
 	for _, dir := range []string{"DESC", "ASC"} {
@@ -131,7 +134,8 @@ func (n explainNode) nodeTypes() []string {
 }
 
 // cardgroupsPagePlan returns the plan of an owner-scoped first page ordered by
-// (updated_at, id) in dir, with sequential scans and explicit sorts disabled.
+// (updated_at, id) in dir, with sequential scans and Sort nodes cost-penalized
+// (enable_seqscan/enable_sort = off).
 func cardgroupsPagePlan(t *testing.T, ctx context.Context, sqlDB *sql.DB, dir string) explainNode {
 	t.Helper()
 	// A pinned connection, not the pool: SET is session-scoped.
