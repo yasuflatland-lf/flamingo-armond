@@ -11,13 +11,21 @@ const SUB = "11111111-1111-4111-8111-111111111111";
 const NOW = 1_700_000_000_000;
 const TTL = ONBOARDING_COOKIE_TTL_SECONDS;
 
+// Not minLength 0: Web Crypto rejects a zero-length HMAC key.
+const nonEmpty = fc.string({ minLength: 1 });
+// Not sub + suffix: a strict superstring always changes the length, so a MAC
+// that binds only the length would pass.
+const distinctPair = fc.tuple(nonEmpty, nonEmpty).filter(([a, b]) => a !== b);
+
 describe("onboarding cookie", () => {
-  it("verifies its own value exactly while now sits inside (exp - TTL, exp) (property)", async () => {
+  it("verifies its own value exactly while now sits in [exp - TTL, exp) (property)", async () => {
     await fc.assert(
       fc.asyncProperty(
-        fc.string({ minLength: 1 }),
-        fc.string({ minLength: 1 }),
+        nonEmpty,
+        nonEmpty,
         fc.integer({ min: 1e12, max: 2e12 }),
+        // Not one uniform ±TTL arm alone: it lands on the exact expiry second
+        // ~1/7200 of the time, so 100 runs would miss the exp <= now boundary.
         fc.oneof(
           fc.integer({ min: -(TTL + 10) * 1000, max: (TTL + 10) * 1000 }),
           fc.integer({ min: -1500, max: 1500 }),
@@ -37,16 +45,15 @@ describe("onboarding cookie", () => {
   it("rejects its value for any other sub, any other secret, or any one-character edit (property)", async () => {
     await fc.assert(
       fc.asyncProperty(
-        fc.string({ minLength: 1 }),
-        fc.string({ minLength: 1 }),
-        fc.string({ minLength: 1 }),
+        distinctPair,
+        distinctPair,
         fc.nat(),
-        async (secret, sub, other, at) => {
+        async ([secret, otherSecret], [sub, otherSub], at) => {
           const value = await signOnboardingCookie(secret, sub, NOW);
           const i = at % value.length;
           const edited = value.slice(0, i) + (value[i] === "A" ? "B" : "A") + value.slice(i + 1);
-          expect(await verifyOnboardingCookie(value, secret, sub + other, NOW)).toBe(false);
-          expect(await verifyOnboardingCookie(value, secret + other, sub, NOW)).toBe(false);
+          expect(await verifyOnboardingCookie(value, secret, otherSub, NOW)).toBe(false);
+          expect(await verifyOnboardingCookie(value, otherSecret, sub, NOW)).toBe(false);
           expect(await verifyOnboardingCookie(edited, secret, sub, NOW)).toBe(false);
         },
       ),

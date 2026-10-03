@@ -20,16 +20,63 @@ const base = {
 /** Travel in px, biased onto every threshold edge. */
 const px = fc.oneof(
   fc.integer({ min: -500, max: 500 }),
-  fc.constantFrom(14, 15, 40, 41, 96, 97, 160, 161).chain((v) => fc.constantFrom(v, -v)),
+  // 96 is a literal, not an import: DOWN_COMMIT_PY is module-private.
+  fc
+    .constantFrom(
+      ...[DIRECTION_LOCK_PX, HORIZONTAL_FLICK_MIN_PX, 96, HORIZONTAL_COMMIT_PX].flatMap((v) => [
+        v,
+        v + 1,
+      ]),
+    )
+    .chain((v) => fc.constantFrom(v, -v)),
 );
-const speed = fc.double({ min: 0, max: 3, noNaN: true });
+// Not fc.double: it samples bit patterns, so ~92% of draws sit below 1e-6 and
+// 100 runs never reach the 0.35 / 0.9 thresholds.
+const speed = fc.oneof(
+  fc.integer({ min: 0, max: 300 }).map((n) => n / 100),
+  fc.constantFrom(0.35, 0.36, HORIZONTAL_COMMIT_VX, HORIZONTAL_COMMIT_VX + 0.01),
+);
+const unit = fc.oneof(
+  fc.integer({ min: -100, max: 100 }).map((n) => n / 100),
+  fc.constantFrom(0.9, 0.91),
+);
 const gesture = fc.record({
   active: fc.boolean(),
   mx: px,
   my: px,
   vx: speed,
   vy: speed,
-  yDir: fc.double({ min: -1, max: 1, noNaN: true }),
+  yDir: unit,
+});
+// Not the shared `gesture`: a released horizontal swipe that also lands on a
+// commit edge with vx near the flick threshold is too rare for 100 runs.
+const horizontalGesture = fc.record({
+  active: fc.constant(false),
+  mx: fc
+    .oneof(
+      fc.integer({ min: DIRECTION_LOCK_PX + 1, max: 300 }),
+      fc.constantFrom(
+        HORIZONTAL_FLICK_MIN_PX,
+        HORIZONTAL_FLICK_MIN_PX + 1,
+        HORIZONTAL_COMMIT_PX,
+        HORIZONTAL_COMMIT_PX + 1,
+      ),
+    )
+    .chain((v) => fc.constantFrom(v, -v)),
+  my: fc.integer({ min: -DIRECTION_LOCK_PX, max: DIRECTION_LOCK_PX }),
+  vx: speed,
+  vy: speed,
+  yDir: unit,
+});
+// Not the shared `gesture`: a released down swipe inside (14, 96] with vy or
+// yDir near its threshold is too rare for 100 runs.
+const downGesture = fc.record({
+  active: fc.constant(false),
+  mx: fc.integer({ min: -DIRECTION_LOCK_PX, max: DIRECTION_LOCK_PX }),
+  my: fc.oneof(fc.integer({ min: DIRECTION_LOCK_PX + 1, max: 200 }), fc.constantFrom(96, 97)),
+  vx: speed,
+  vy: speed,
+  yDir: unit,
 });
 
 describe("evaluateSwipeGesture — laws (property)", () => {
@@ -39,6 +86,8 @@ describe("evaluateSwipeGesture — laws (property)", () => {
       fc.property(
         gesture,
         inside,
+        // Not [-14, 14]: the negative tail pins that an upward drag never locks
+        // (there is no up direction).
         fc.integer({ min: -500, max: DIRECTION_LOCK_PX }),
         (g, mx, my) => {
           const r = evaluateSwipeGesture({ ...g, mx, my });
@@ -75,9 +124,9 @@ describe("evaluateSwipeGesture — laws (property)", () => {
 
   it("commits a released horizontal swipe iff travel > COMMIT_PX or a flick (travel > FLICK_MIN_PX and vx > COMMIT_VX)", () => {
     fc.assert(
-      fc.property(gesture, (g) => {
-        const r = evaluateSwipeGesture({ ...g, active: false });
-        if (r.direction !== "left" && r.direction !== "right") return true;
+      fc.property(horizontalGesture, (g) => {
+        const r = evaluateSwipeGesture(g);
+        if (r.direction !== "left" && r.direction !== "right") return false;
         const x = Math.abs(g.mx);
         const flick = x > HORIZONTAL_FLICK_MIN_PX && g.vx > HORIZONTAL_COMMIT_VX;
         return r.shouldSwipe === (x > HORIZONTAL_COMMIT_PX || flick);
@@ -87,9 +136,9 @@ describe("evaluateSwipeGesture — laws (property)", () => {
 
   it("commits a released down swipe iff travel > 96px, vy > 0.35 or yDir > 0.9", () => {
     fc.assert(
-      fc.property(gesture, (g) => {
-        const r = evaluateSwipeGesture({ ...g, active: false });
-        if (r.direction !== "down") return true;
+      fc.property(downGesture, (g) => {
+        const r = evaluateSwipeGesture(g);
+        if (r.direction !== "down") return false;
         return r.shouldSwipe === (Math.abs(g.my) > 96 || g.vy > 0.35 || g.yDir > 0.9);
       }),
     );
