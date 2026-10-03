@@ -183,7 +183,7 @@ func buildResolver(
 			return nil, nil, nil, err
 		}
 	}
-	cardUC := usecase.NewCardUsecase(repos.card, repos.cardgroup, repos.userCardFSRS, logger)
+	cardUC := usecase.NewCardUsecase(repos.card, repos.cardgroup, logger)
 	// Type the word list as the domain.CEFRWordList port so the dependency
 	// edge the constructor creates is domain_service -> domain (allowed),
 	// rather than attributing the concrete *cefr.WordList type to a

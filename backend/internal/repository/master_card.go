@@ -71,7 +71,7 @@ type gormMasterCard struct {
 func (gormMasterCard) TableName() string { return "master_cards" }
 
 // MasterCardOrderBy is the allowlist of columns paginated master-card queries may
-// sort by, mirroring CardOrderBy. The string values are the snake_case column
+// sort by, mirroring CardgroupOrderBy. The string values are the snake_case column
 // names; the GraphQL MasterCardOrderBy enum (ID / POSITION / CREATED_AT /
 // UPDATED_AT) maps onto these in the usecase layer. Lexicographic tuple order is
 // always (orderField, id) so cursors stay deterministic even when the order field
@@ -140,13 +140,9 @@ type MasterCardRepository interface {
 	// convert this Delete into an unbounded mass delete — see
 	// `.claude/rules/go-library-gotchas.md` § GORM empty IN.
 	DeleteMany(ctx context.Context, ids []string) (int64, error)
-	// FindPageByMasterCardgroup returns a window of master cards for a master
-	// cardgroup ordered by (orderField, id). Paging is forward-only (after +
-	// first). The returned totalCount is search-aware: it reflects every row in
-	// the group AND the search filter when one is active, not just the page. The usecase consumes this totalCount directly. The return
-	// shape mirrors cardRepo.FindPageByCardgroupForUser so the usecase page helpers
-	// (assemblePage / TrimAndDetect) consume it identically — master cards carry no
-	// per-viewer / FSRS state, so there is no userID parameter.
+	// FindPageByMasterCardgroup returns at most first rows after the cursor,
+	// ordered by (orderField, id) within the requested master cardgroup.
+	// Search filters both the page and totalCount, as in FindPageByCardgroup.
 	FindPageByMasterCardgroup(
 		ctx context.Context,
 		masterCardgroupID string,

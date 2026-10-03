@@ -155,7 +155,7 @@ cardRepo      := repository.NewCardRepository(db.GORM)
 
 userUC      := usecase.NewUserUsecase(userRepo, userRoleRepo, authSvc, logger)
 cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
-cardUC      := usecase.NewCardUsecase(cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
+cardUC      := usecase.NewCardUsecase(cardRepo, cardgroupRepo, logger)
 // ... swipeUC, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, learnUC
 
 resolvers := resolver.NewResolver(
@@ -173,7 +173,7 @@ Cross-aggregate references use IDs only — never embed a pointer to another agg
 
 ### Cursor pagination
 
-Relay-style Connection queries (e.g. `cardsByCardgroupConnection`) follow a fixed shape across schema, resolver, usecase, and repository. See `.claude/rules/pagination.md` for the full design; detailed cases are in `docs/pagination/` (tuple comparison, `+1` fetch trick, `totalCount` trade-off, cross-aggregate validation, three-layer enum sync, and `cursorFieldValue` error handling).
+Relay-style Connection queries (e.g. `cardsByCardgroupConnection`) follow a fixed shape across schema, resolver, usecase, and repository. See `.claude/rules/pagination.md` for the full design; detailed cases are in `docs/pagination/` (tuple comparison, `+1` fetch trick, `totalCount` trade-off, cross-aggregate validation, three-layer enum sync, and `cardgroupCursorFieldValue` error handling).
 
 ### Consumer-driven repository interfaces
 

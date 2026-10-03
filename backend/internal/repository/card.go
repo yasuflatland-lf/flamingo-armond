@@ -63,18 +63,6 @@ type gormCard struct {
 	CreatedAt   time.Time `gorm:"column:created_at"`
 	UpdatedAt   time.Time `gorm:"column:updated_at;->"`
 	Position    int       `gorm:"column:position"`
-	// OrderKey carries the value the page query ORDERED BY, projected into the
-	// same result set. It backs no column on `cards`: the `->` tag makes it
-	// read-only so GORM never tries to write or migrate it, and it stays nil on
-	// every query that does not alias a column `order_key`.
-	//
-	// It exists for the DUE ordering, whose key is `COALESCE(ucs.due,
-	// cards.created_at)` over a LEFT JOIN and therefore appears on no card
-	// column. Recovering that value with a second query would read a different
-	// snapshot than the one that ordered the page, so a concurrent review of the
-	// boundary card would mint a cursor keyed to a position the page never used.
-	// Selecting it alongside the row keeps emit and order on one snapshot.
-	OrderKey *time.Time `gorm:"->;column:order_key"`
 }
 
 func (gormCard) TableName() string { return "cards" }
@@ -101,20 +89,9 @@ type CardReadRepository interface {
 }
 
 type CardPageRepository interface {
-	// FindPageByCardgroupForUser pages a cardgroup's cards forward by (orderBy, id) from `after`,
-	// returning at most `first` rows. A non-blank search (ILIKE on front/back) filters both the window and
-	// totalCount. userID only picks the viewer's user_card_fsrs row for DUE ordering; it is not an
-	// ownership check. orderKeys maps card id to the ORDER BY value read in the same query (nil for ID),
-	// so v2 cursors never re-read it from a later snapshot.
-	FindPageByCardgroupForUser(
-		ctx context.Context,
-		userID, cardgroupID string,
-		after *CardCursor,
-		first int,
-		orderBy CardOrderBy,
-		dir SortOrder,
-		search *string,
-	) (cards []*domain.Card, totalCount int64, orderKeys map[string]time.Time, err error)
+	// FindPageByCardgroup returns at most first cards in id ASC order.
+	// A non-blank search filters both the page and totalCount by front/back.
+	FindPageByCardgroup(ctx context.Context, cardgroupID string, after *CardCursor, first int, search *string) ([]*domain.Card, int64, error)
 }
 
 // CardSessionRepository reads a learn/practice session's card pool. Unlike

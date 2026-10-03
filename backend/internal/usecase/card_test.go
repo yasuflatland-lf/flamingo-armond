@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
@@ -38,19 +37,11 @@ type mockCardRepository struct {
 	findPageRows  []*domain.Card
 	findPageTotal int64
 	findPageErr   error
-	// findPageDue overrides the DUE ordering key the fake reports per card id,
-	// standing in for the viewer's user_card_fsrs row. Cards absent from the map
-	// report their CreatedAt, mirroring the production COALESCE(ucs.due,
-	// cards.created_at). Setting an entry AFTER a page is fetched is what proves
-	// the emitted cursor came from the page read rather than a later one.
-	findPageDue map[string]time.Time
-	// captured arguments from the most recent FindPageByCardgroupForUser call.
+	// captured arguments from the most recent FindPageByCardgroup call.
 	capturedFindPage struct {
 		cardgroupID string
 		after       *repository.CardCursor
 		first       int
-		orderBy     repository.CardOrderBy
-		dir         repository.SortOrder
 		search      *string
 	}
 
@@ -89,65 +80,28 @@ func (m *mockCardRepository) Delete(_ context.Context, _ string) error {
 	m.deleteCalled = true
 	return m.deleteErr
 }
-func (m *mockCardRepository) FindPageByCardgroupForUser(
+func (m *mockCardRepository) FindPageByCardgroup(
 	_ context.Context,
-	_ string,
 	cardgroupID string,
 	after *repository.CardCursor,
 	first int,
-	orderBy repository.CardOrderBy,
-	dir repository.SortOrder,
 	search *string,
-) ([]*domain.Card, int64, map[string]time.Time, error) {
+) ([]*domain.Card, int64, error) {
 	m.capturedFindPage.cardgroupID = cardgroupID
 	m.capturedFindPage.after = after
 	m.capturedFindPage.first = first
-	m.capturedFindPage.orderBy = orderBy
-	m.capturedFindPage.dir = dir
 	m.capturedFindPage.search = search
-	return m.findPageRows, m.findPageTotal, m.pageOrderKeys(orderBy), m.findPageErr
-}
-
-// pageOrderKeys mirrors the production repository: the page query reports the
-// value it ordered each returned row by, read from its own result set. Deriving
-// it here — instead of returning nil — keeps the fake honest about the contract
-// the usecase now depends on, and keeps a fake that forgets to model an ordering
-// from silently emitting a zero-time cursor.
-func (m *mockCardRepository) pageOrderKeys(orderBy repository.CardOrderBy) map[string]time.Time {
-	if orderBy == repository.CardOrderByID {
-		return nil
-	}
-	keys := make(map[string]time.Time, len(m.findPageRows))
-	for _, card := range m.findPageRows {
-		switch orderBy {
-		case repository.CardOrderByCreatedAt:
-			keys[card.ID] = card.CreatedAt
-		case repository.CardOrderByUpdatedAt:
-			keys[card.ID] = card.UpdatedAt
-		case repository.CardOrderByDue:
-			if due, ok := m.findPageDue[card.ID]; ok {
-				keys[card.ID] = due
-			} else {
-				keys[card.ID] = card.CreatedAt
-			}
-		}
-	}
-	return keys
+	return m.findPageRows, m.findPageTotal, m.findPageErr
 }
 
 type mockUserCardFSRSRepository struct {
-	byCardID map[string]*domain.UserCardFSRS
-	findErr  error
-	// findByUserAndCardIDsCalls counts the lookups the code under test issues.
-	// The cursor-emit path must issue zero: the page query already reported the
-	// ordering key, and a second read would resolve a later snapshot.
-	findByUserAndCardIDsCalls int
-	upserted                  *domain.UserCardFSRS
-	upsertErr                 error
+	byCardID  map[string]*domain.UserCardFSRS
+	findErr   error
+	upserted  *domain.UserCardFSRS
+	upsertErr error
 }
 
 func (m *mockUserCardFSRSRepository) FindByUserAndCardIDs(_ context.Context, _ string, ids []string) (map[string]*domain.UserCardFSRS, error) {
-	m.findByUserAndCardIDsCalls++
 	if m.findErr != nil {
 		return nil, m.findErr
 	}
@@ -246,7 +200,7 @@ func TestCardUsecase_Create(t *testing.T) {
 			t.Parallel()
 			cardRepo := &mockCardRepository{}
 			cgRepo := &mockCardgroupRepoForCard{findResult: tc.cardgroup, findErr: tc.cardgroupErr}
-			uc := NewCardUsecase(cardRepo, cgRepo, nil, newTestLogger())
+			uc := NewCardUsecase(cardRepo, cgRepo, newTestLogger())
 
 			got, err := uc.Create(tc.ctx, tc.input)
 
@@ -285,7 +239,7 @@ func TestCardUsecase_Create_FrontTooLong(t *testing.T) {
 
 	cardRepo := &mockCardRepository{}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}}
-	uc := NewCardUsecase(cardRepo, cgRepo, nil, newTestLogger())
+	uc := NewCardUsecase(cardRepo, cgRepo, newTestLogger())
 
 	_, err := uc.Create(authedCtx("u1"), CreateCardInput{
 		CardgroupID: "cg1",
@@ -300,7 +254,7 @@ func TestCardUsecase_Create_BackTooLong(t *testing.T) {
 
 	cardRepo := &mockCardRepository{}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}}
-	uc := NewCardUsecase(cardRepo, cgRepo, nil, newTestLogger())
+	uc := NewCardUsecase(cardRepo, cgRepo, newTestLogger())
 
 	_, err := uc.Create(authedCtx("u1"), CreateCardInput{
 		CardgroupID: "cg1",
@@ -319,7 +273,7 @@ func TestCardUsecase_Create_CardgroupDeletedValidation(t *testing.T) {
 
 	cardRepo := &mockCardRepository{createErr: repository.ErrCardCardgroupNotFound}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}}
-	uc := NewCardUsecase(cardRepo, cgRepo, nil, newTestLogger())
+	uc := NewCardUsecase(cardRepo, cgRepo, newTestLogger())
 
 	_, err := uc.Create(authedCtx("u1"), CreateCardInput{
 		CardgroupID: "cg1",
@@ -343,7 +297,7 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 		t.Parallel()
 		uc := NewCardUsecase(&mockCardRepository{findResult: existing},
 			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-			nil, newTestLogger(),
+			newTestLogger(),
 		)
 		_, err := uc.Update(authedCtx("u2"), "card1", UpdateCardInput{Front: ptr("new")})
 		assertUnauthenticated(t, err)
@@ -367,7 +321,7 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 		}
 		uc := NewCardUsecase(cardRepo,
 			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-			nil, newTestLogger(),
+			newTestLogger(),
 		)
 		outcome, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Front: ptr(" new front ")})
 		if err != nil {
@@ -411,7 +365,7 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 		}
 		uc := NewCardUsecase(cardRepo,
 			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-			nil, newTestLogger(),
+			newTestLogger(),
 		)
 		outcome, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Back: ptr(" new back ")})
 		if err != nil {
@@ -452,7 +406,7 @@ func TestCardUsecase_Update_EmptyFront_ValidationVariant(t *testing.T) {
 	cardRepo := &mockCardRepository{findResult: existing}
 	uc := NewCardUsecase(cardRepo,
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		nil, newTestLogger(),
+		newTestLogger(),
 	)
 
 	outcome, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Front: ptr("")})
@@ -486,7 +440,7 @@ func TestCardUsecase_Update_FrontTooLong(t *testing.T) {
 	cardRepo := &mockCardRepository{findResult: existing}
 	uc := NewCardUsecase(cardRepo,
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		nil, newTestLogger(),
+		newTestLogger(),
 	)
 
 	overMax := strings.Repeat("a", 501)
@@ -515,7 +469,7 @@ func TestCardUsecase_Update_BackTooLong(t *testing.T) {
 	cardRepo := &mockCardRepository{findResult: existing}
 	uc := NewCardUsecase(cardRepo,
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		nil, newTestLogger(),
+		newTestLogger(),
 	)
 
 	overMax := strings.Repeat("a", 501)
@@ -547,7 +501,7 @@ func TestCardUsecase_Update_RepoError_InfraChannel(t *testing.T) {
 	}
 	uc := NewCardUsecase(cardRepo,
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		nil, newTestLogger(),
+		newTestLogger(),
 	)
 
 	_, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Front: ptr("new front")})
@@ -577,7 +531,7 @@ func TestCardUsecase_Update_DuplicateFront_ValidationError(t *testing.T) {
 	}
 	uc := NewCardUsecase(cardRepo,
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		nil, newTestLogger(),
+		newTestLogger(),
 	)
 
 	outcome, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Front: ptr("color")})
@@ -596,7 +550,7 @@ func TestCardUsecase_Delete_NotFoundMasksExistence(t *testing.T) {
 
 	uc := NewCardUsecase(&mockCardRepository{findErr: repository.ErrNotFound},
 		&mockCardgroupRepoForCard{},
-		nil, newTestLogger(),
+		newTestLogger(),
 	)
 
 	err := uc.Delete(authedCtx("u1"), "missing")
@@ -612,7 +566,7 @@ func TestCardUsecase_Card_UnknownAndForeignAreIndistinguishable(t *testing.T) {
 
 	unknownUC := NewCardUsecase(&mockCardRepository{findErr: repository.ErrNotFound},
 		&mockCardgroupRepoForCard{},
-		nil, newTestLogger(),
+		newTestLogger(),
 	)
 	unknownCard, unknownErr := unknownUC.Card(authedCtx("u1"), "missing")
 
@@ -624,7 +578,7 @@ func TestCardUsecase_Card_UnknownAndForeignAreIndistinguishable(t *testing.T) {
 			ID:      domain.CardgroupID("cg1"),
 			OwnerID: "u2",
 		}},
-		nil, newTestLogger(),
+		newTestLogger(),
 	)
 	foreignCard, foreignErr := foreignUC.Card(authedCtx("u1"), "card1")
 
@@ -647,7 +601,7 @@ func TestCardUsecase_Card_FindByID_PropagatesCancelled(t *testing.T) {
 
 	uc := NewCardUsecase(&mockCardRepository{findErr: context.Canceled},
 		&mockCardgroupRepoForCard{},
-		nil, newTestLogger(),
+		newTestLogger(),
 	)
 
 	card, err := uc.Card(authedCtx("u1"), "card1")
@@ -666,7 +620,7 @@ func TestCardUsecase_RepoErrorsBecomeInternal(t *testing.T) {
 
 	uc := NewCardUsecase(&mockCardRepository{findErr: errors.New("db died")},
 		&mockCardgroupRepoForCard{},
-		nil, newTestLogger(),
+		newTestLogger(),
 	)
 	_, err := uc.Card(authedCtx("u1"), "card1")
 	assertInternalChain(t, err, "usecase: card: find by id")
@@ -674,7 +628,7 @@ func TestCardUsecase_RepoErrorsBecomeInternal(t *testing.T) {
 
 func TestCardUsecase_ListCardsByCardgroupConnection_Anonymous(t *testing.T) {
 	t.Parallel()
-	uc := NewCardUsecase(&mockCardRepository{}, &mockCardgroupRepoForCard{}, nil, newTestLogger())
+	uc := NewCardUsecase(&mockCardRepository{}, &mockCardgroupRepoForCard{}, newTestLogger())
 	_, err := uc.ListCardsByCardgroupConnection(anonCtx(), CardConnectionInput{CardgroupID: "cg1"})
 	assertUnauthenticated(t, err)
 }
@@ -683,24 +637,10 @@ func TestCardUsecase_ListCardsByCardgroupConnection_NonOwner(t *testing.T) {
 	t.Parallel()
 	uc := NewCardUsecase(&mockCardRepository{},
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		nil, newTestLogger(),
+		newTestLogger(),
 	)
 	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u2"), CardConnectionInput{CardgroupID: "cg1"})
 	assertUnauthenticated(t, err)
-}
-
-func TestCardUsecase_ListCardsByCardgroupConnection_InvalidOrderBy(t *testing.T) {
-	t.Parallel()
-	uc := NewCardUsecase(&mockCardRepository{},
-		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		nil, newTestLogger(),
-	)
-	bad := CardOrderBy("STABILITY")
-	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
-		CardgroupID: "cg1",
-		OrderBy:     &bad,
-	})
-	assertValidationError(t, err, "orderBy", "")
 }
 
 // TestCardUsecase_ListCardsByCardgroupConnection_AfterWithoutFirst pins the
@@ -711,14 +651,12 @@ func TestCardUsecase_ListCardsByCardgroupConnection_AfterWithoutFirst(t *testing
 	cardRepo := &mockCardRepository{}
 	uc := NewCardUsecase(cardRepo,
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		nil, newTestLogger(),
+		newTestLogger(),
 	)
-	ob := CardOrderByID
 	after := cursor.Encode("card-abc")
 	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
 		CardgroupID: "cg1",
 		After:       &after,
-		OrderBy:     &ob,
 	})
 	assertValidationError(t, err, "after", "after requires first")
 	if cardRepo.capturedFindPage.first != 0 || cardRepo.capturedFindPage.after != nil {
@@ -737,7 +675,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_DefaultsAndPaging(t *testing
 	cardRepo := &mockCardRepository{findPageRows: rows, findPageTotal: 50}
 	uc := NewCardUsecase(cardRepo,
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		nil, newTestLogger(),
+		newTestLogger(),
 	)
 
 	out, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
@@ -768,195 +706,9 @@ func TestCardUsecase_ListCardsByCardgroupConnection_DefaultsAndPaging(t *testing
 	if cardRepo.capturedFindPage.first != 21 {
 		t.Fatalf("expected repo.first=21, got %d", cardRepo.capturedFindPage.first)
 	}
-	if cardRepo.capturedFindPage.orderBy != repository.CardOrderByID {
-		t.Fatalf("expected default orderBy=id, got %q", cardRepo.capturedFindPage.orderBy)
-	}
-	if cardRepo.capturedFindPage.dir != repository.SortAsc {
-		t.Fatalf("expected default dir=ASC, got %q", cardRepo.capturedFindPage.dir)
-	}
 }
 
-func intPtr(v int) *int                     { return &v }
-func orderByPtr(v CardOrderBy) *CardOrderBy { return &v }
-
-// TestCardUsecase_ListCardsByCardgroupConnection_CursorCrossCardgroup makes
-// sure a cursor pointing at a card in a different cardgroup is rejected with
-// BAD_USER_INPUT instead of leaking through to the repo (which would happily
-// query rows from any cardgroup once the SQL is built).
-func TestCardUsecase_ListCardsByCardgroupConnection_CursorCrossCardgroup(t *testing.T) {
-	t.Parallel()
-
-	t.Run("after rejected", func(t *testing.T) {
-		t.Parallel()
-		cardRepo := &mockCardRepository{
-			findResult: &domain.Card{ID: "c-foreign", CardgroupID: domain.CardgroupID("cg-other")},
-		}
-		uc := NewCardUsecase(cardRepo,
-			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-			nil, newTestLogger(),
-		)
-		_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
-			CardgroupID: "cg1",
-			First:       intPtr(10),
-			After:       ptr("c-foreign"),
-			OrderBy:     orderByPtr(CardOrderByDue),
-		})
-		assertValidationError(t, err, "after", "")
-	})
-}
-
-// TestCardUsecase_ListCardsByCardgroupConnection_DueKeyComesFromThePageRead
-// pins the snapshot the DUE ordering key is taken from.
-//
-// DUE is the one ordering whose key lives on no card column: it is
-// COALESCE(user_card_fsrs.due, cards.created_at) over the viewer's FSRS row. An
-// earlier implementation recovered it with a SECOND query after the page came
-// back, so a review of the boundary card landing between the two reads produced
-// a cursor keyed to a position the page never served — the next page then
-// skipped every row still ahead of it, which is precisely the failure the v2
-// envelope exists to prevent.
-//
-// The fixture reproduces that interleaving directly: the page is served while
-// c-B is still stateless (key = its created_at), and only afterwards does c-B
-// acquire an FSRS row far in the future. A key sourced from a later read would
-// report that future value; a key sourced from the page read reports created_at.
-func TestCardUsecase_ListCardsByCardgroupConnection_DueKeyComesFromThePageRead(t *testing.T) {
-	t.Parallel()
-
-	createdB := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
-	// The due date c-B acquires AFTER its page was served.
-	reviewedB := time.Date(2099, 12, 31, 23, 59, 59, 0, time.UTC)
-
-	rows := []*domain.Card{
-		{ID: "c-A", CardgroupID: "cg1", CreatedAt: createdB.Add(-time.Hour)},
-		{ID: "c-B", CardgroupID: "cg1", CreatedAt: createdB},
-	}
-	cardRepo := &mockCardRepository{findPageRows: rows, findPageTotal: 2}
-	fsrs := &mockUserCardFSRSRepository{}
-	uc := NewCardUsecase(cardRepo,
-		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		fsrs, newTestLogger(),
-	)
-
-	// Serve the page while c-B has no FSRS row: the page orders it by created_at.
-	orderBy := CardOrderByDue
-	out, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
-		CardgroupID: "cg1",
-		First:       intPtr(2),
-		OrderBy:     &orderBy,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// c-B is reviewed immediately afterwards. Any read issued after the page
-	// would now see reviewedB.
-	cardRepo.findPageDue = map[string]time.Time{"c-B": reviewedB}
-
-	got := out.OrderKeys["c-B"]
-	if want := encodeTimeOrderKey(createdB); got != want {
-		t.Fatalf("OrderKeys[c-B] = %q, want %q — the key must come from the page read, "+
-			"not from a later snapshot in which c-B had already been reviewed", got, want)
-	}
-	if got == encodeTimeOrderKey(reviewedB) {
-		t.Fatal("OrderKeys[c-B] carries the post-page due date: the emit path re-read the FSRS state")
-	}
-	// The emit path must not issue an FSRS query at all — the page read already
-	// reported the key.
-	if fsrs.findByUserAndCardIDsCalls != 0 {
-		t.Fatalf("emit path issued %d FSRS lookups; the page query already reported the key",
-			fsrs.findByUserAndCardIDsCalls)
-	}
-}
-
-// TestCardUsecase_ListCardsByCardgroupConnection_ResolveCursorHydratesDueField
-// pins down that resolveCardCursor populates the field matching the active
-// orderBy on the *CardCursor passed to FindPageByCardgroupForUser.
-func TestCardUsecase_ListCardsByCardgroupConnection_ResolveCursorHydratesDueField(t *testing.T) {
-	t.Parallel()
-
-	dueT := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
-	createdT := time.Date(2031, 5, 6, 7, 8, 9, 0, time.UTC)
-	updatedT := time.Date(2032, 7, 8, 9, 10, 11, 0, time.UTC)
-
-	cases := []struct {
-		name     string
-		orderBy  CardOrderBy
-		assertFn func(t *testing.T, c *repository.CardCursor)
-	}{
-		{
-			name:    "Due",
-			orderBy: CardOrderByDue,
-			assertFn: func(t *testing.T, c *repository.CardCursor) {
-				if c.Due == nil || !c.Due.Equal(dueT) {
-					t.Fatalf("expected Due=%v, got %v", dueT, c.Due)
-				}
-			},
-		},
-		{
-			name:    "CreatedAt",
-			orderBy: CardOrderByCreatedAt,
-			assertFn: func(t *testing.T, c *repository.CardCursor) {
-				if c.CreatedAt == nil || !c.CreatedAt.Equal(createdT) {
-					t.Fatalf("expected CreatedAt=%v, got %v", createdT, c.CreatedAt)
-				}
-			},
-		},
-		{
-			name:    "UpdatedAt",
-			orderBy: CardOrderByUpdatedAt,
-			assertFn: func(t *testing.T, c *repository.CardCursor) {
-				if c.UpdatedAt == nil || !c.UpdatedAt.Equal(updatedT) {
-					t.Fatalf("expected UpdatedAt=%v, got %v", updatedT, c.UpdatedAt)
-				}
-			},
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			cardRepo := &mockCardRepository{
-				findResult: &domain.Card{
-					ID:          "c-1",
-					CardgroupID: domain.CardgroupID("cg1"),
-					CreatedAt:   createdT,
-					UpdatedAt:   updatedT,
-				},
-			}
-			userFSRSRepo := &mockUserCardFSRSRepository{
-				byCardID: map[string]*domain.UserCardFSRS{
-					"c-1": {
-						UserID: "u1",
-						CardID: "c-1",
-						State:  domain.FSRSState{Due: dueT},
-					},
-				},
-			}
-			uc := NewCardUsecase(cardRepo,
-				&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-				userFSRSRepo, newTestLogger(),
-			)
-			_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
-				CardgroupID: "cg1",
-				First:       intPtr(5),
-				After:       ptr("c-1"),
-				OrderBy:     orderByPtr(tc.orderBy),
-			})
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			got := cardRepo.capturedFindPage.after
-			if got == nil {
-				t.Fatal("expected after cursor to be passed to repo, got nil")
-			}
-			if got.ID != "c-1" {
-				t.Fatalf("expected cursor ID=c-1, got %q", got.ID)
-			}
-			tc.assertFn(t, got)
-		})
-	}
-}
+func intPtr(v int) *int { return &v }
 
 // TestCardUsecase_ResolveCursor_MalformedV1_ReturnsBadUserInput verifies that
 // a "v1:" envelope with an invalid base64 payload is rejected with
@@ -966,23 +718,19 @@ func TestCardUsecase_ResolveCursor_MalformedV1_ReturnsBadUserInput(t *testing.T)
 
 	uc := NewCardUsecase(&mockCardRepository{},
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		nil, newTestLogger(),
+		newTestLogger(),
 	)
 	malformed := "v1:!!!not-base64!!!"
 	_, err := uc.(*cardUsecase).resolveCardCursor(
-		context.Background(),
-		&malformed, "cg1", repository.CardOrderByID, cardIDOrdering(), "after",
+		&malformed, cardIDOrdering(), "after",
 	)
 	assertValidationError(t, err, "after", "")
 }
 
-// cardIDOrdering is the PageOrdering ListCardsByCardgroupConnection resolves to
-// when the client sends no orderBy/orderDirection: the schema default (ID, ASC).
-// Direct resolveCardCursor unit tests pass it so the ordering guard sees the
-// same value the connection method would have computed.
+// cardIDOrdering is the fixed ordering used by card connections.
 func cardIDOrdering() PageOrdering {
 	return PageOrdering{
-		OrderBy:   string(repository.CardOrderByID),
+		OrderBy:   "id",
 		Direction: string(repository.SortAsc),
 	}
 }
@@ -992,15 +740,16 @@ func cardIDOrdering() PageOrdering {
 // envelope is no longer rejected on sight — but one taken under a different
 // column or direction than the request resolved to must still be
 // BAD_USER_INPUT, or its captured key would be compared against a column it
-// never described. The ID orderBy is used so the rejection is provably ahead of
-// any repository lookup.
+// never described. Card connections are fixed at (id, ASC) and resolveCardCursor
+// makes no repository call, so the rejection comes from requireCursorOrdering
+// alone.
 func TestCardUsecase_ResolveCursor_V2OrderingMismatch_Rejected(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockCardRepository{}
 	uc := NewCardUsecase(repo,
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		nil, newTestLogger(),
+		newTestLogger(),
 	)
 	v2 := cursor.EncodeV2(cursor.Payload{
 		ID:        "card-abc",
@@ -1009,27 +758,25 @@ func TestCardUsecase_ResolveCursor_V2OrderingMismatch_Rejected(t *testing.T) {
 		OrderKey:  "2026-07-20T00:00:00Z",
 	})
 	_, err := uc.(*cardUsecase).resolveCardCursor(
-		context.Background(),
-		&v2, "cg1", repository.CardOrderByID, cardIDOrdering(), "after",
+		&v2, cardIDOrdering(), "after",
 	)
 	assertValidationError(t, err, "after", "cursor does not match the requested ordering")
 }
 
 // TestCardUsecase_ResolveCursor_V1EncodedID verifies that a v1 encoded cursor
-// decodes to the raw ID and proceeds without error for the ID-only orderBy
-// (no DB lookup required for CardOrderByID).
+// decodes to the raw ID and proceeds without error (the fixed ID ordering needs
+// no DB lookup).
 func TestCardUsecase_ResolveCursor_V1EncodedID(t *testing.T) {
 	t.Parallel()
 
 	uc := NewCardUsecase(&mockCardRepository{},
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		nil, newTestLogger(),
+		newTestLogger(),
 	)
 	// "v1:" + base64.RawURLEncoding.EncodeToString([]byte("card-abc")) == "v1:Y2FyZC1hYmM"
 	encoded := "v1:Y2FyZC1hYmM"
 	c, err := uc.(*cardUsecase).resolveCardCursor(
-		context.Background(),
-		&encoded, "cg1", repository.CardOrderByID, cardIDOrdering(), "after",
+		&encoded, cardIDOrdering(), "after",
 	)
 	if err != nil {
 		t.Fatalf("unexpected error for v1 encoded cursor: %v", err)
@@ -1072,7 +819,7 @@ func TestCardUsecase_Create_Duplicate(t *testing.T) {
 		findByCardgroupAndFrontResult: fixture,
 	}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}}
-	uc := NewCardUsecase(cardRepo, cgRepo, nil, newTestLogger())
+	uc := NewCardUsecase(cardRepo, cgRepo, newTestLogger())
 
 	// Submit with surrounding whitespace to regression-guard the TrimSpace contract.
 	got, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "  hello  ", Back: "world"})
@@ -1117,7 +864,7 @@ func TestCardUsecase_Create_DuplicateLookupRace(t *testing.T) {
 		findByCardgroupAndFrontErr: eris.New("db: connection reset"),
 	}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID(wantCardgroupID), OwnerID: "u1"}}
-	uc := NewCardUsecase(cardRepo, cgRepo, nil, newTestLogger())
+	uc := NewCardUsecase(cardRepo, cgRepo, newTestLogger())
 
 	_, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: wantCardgroupID, Front: "hello", Back: "world"})
 	// Load-bearing: eris.Wrap at the call site must produce a rich chain even for external errors.
@@ -1139,7 +886,7 @@ func TestCardUsecase_Create_DuplicateLookupRace_RowVanished(t *testing.T) {
 		findByCardgroupAndFrontErr: repository.ErrNotFound,
 	}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID(wantCardgroupID), OwnerID: "u1"}}
-	uc := NewCardUsecase(cardRepo, cgRepo, nil, newTestLogger())
+	uc := NewCardUsecase(cardRepo, cgRepo, newTestLogger())
 
 	_, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: wantCardgroupID, Front: "hello", Back: "world"})
 	// Load-bearing: eris.Wrap in production must produce a rich chain even when
@@ -1164,7 +911,7 @@ func TestCardUsecase_Create_DuplicateLookupCancelled(t *testing.T) {
 		findByCardgroupAndFrontErr: context.Canceled,
 	}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID(wantCardgroupID), OwnerID: "u1"}}
-	uc := NewCardUsecase(cardRepo, cgRepo, nil, newTestLogger())
+	uc := NewCardUsecase(cardRepo, cgRepo, newTestLogger())
 
 	_, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: wantCardgroupID, Front: "hello", Back: "world"})
 	if !errors.Is(err, context.Canceled) {
@@ -1233,7 +980,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_SearchPassthrough(t *testing
 			cgRepo := &mockCardgroupRepoForCard{
 				findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"},
 			}
-			uc := NewCardUsecase(cardRepo, cgRepo, nil, newTestLogger())
+			uc := NewCardUsecase(cardRepo, cgRepo, newTestLogger())
 
 			_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
 				CardgroupID: "cg1",
@@ -1257,65 +1004,5 @@ func TestCardUsecase_ListCardsByCardgroupConnection_SearchPassthrough(t *testing
 				t.Fatalf("expected search=%q, got %q", *tc.wantSearch, *got)
 			}
 		})
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Cursor-hydration context-cancellation pass-through (resolveCardCursor)
-//
-// A context.Canceled surfaced during cursor hydration must reach the caller
-// unwrapped so the resolver's gqlerr.FromUsecaseError routes it to Cancelled
-// via errors.Is. assertCancelled alone is too weak — errors.Is walks the eris
-// chain, so it passes even for eris.Wrap(context.Canceled, ...); the bare
-// err == context.Canceled check pins that no wrap snuck in. See
-// docs/backend/error-wrapping/pin-unwrapped-context-error-with-identity-check.md.
-// ---------------------------------------------------------------------------
-
-// TestCardUsecase_ListCardsByCardgroupConnection_CursorFindByIDCancelled pins the
-// FindByID wrap site: a non-ID orderBy reaches cardRepo.FindByID during cursor
-// hydration; a context.Canceled from it must pass through unwrapped.
-func TestCardUsecase_ListCardsByCardgroupConnection_CursorFindByIDCancelled(t *testing.T) {
-	t.Parallel()
-	cardRepo := &mockCardRepository{findErr: context.Canceled}
-	uc := NewCardUsecase(cardRepo,
-		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		nil, newTestLogger(),
-	)
-	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
-		CardgroupID: "cg1",
-		First:       intPtr(10),
-		After:       ptr("cur-1"),
-		OrderBy:     orderByPtr(CardOrderByDue), // non-ID ordering triggers FindByID
-	})
-
-	assertCancelled(t, err)
-	if err != context.Canceled {
-		t.Fatalf("expected unwrapped context.Canceled, got %v", err)
-	}
-}
-
-// TestCardUsecase_ListCardsByCardgroupConnection_CursorFSRSCancelled pins the FSRS
-// wrap site: OrderByDue reaches the userFSRSRepo.FindByUserAndCardIDs lookup during
-// cursor hydration; a context.Canceled from it must pass through unwrapped.
-func TestCardUsecase_ListCardsByCardgroupConnection_CursorFSRSCancelled(t *testing.T) {
-	t.Parallel()
-	cardRepo := &mockCardRepository{
-		findResult: &domain.Card{ID: "cur-1", CardgroupID: domain.CardgroupID("cg1")},
-	}
-	fsrsRepo := &mockUserCardFSRSRepository{findErr: context.Canceled}
-	uc := NewCardUsecase(cardRepo,
-		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		fsrsRepo, newTestLogger(),
-	)
-	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
-		CardgroupID: "cg1",
-		First:       intPtr(10),
-		After:       ptr("cur-1"),
-		OrderBy:     orderByPtr(CardOrderByDue), // OrderByDue reaches the FSRS lookup
-	})
-
-	assertCancelled(t, err)
-	if err != context.Canceled {
-		t.Fatalf("expected unwrapped context.Canceled, got %v", err)
 	}
 }
