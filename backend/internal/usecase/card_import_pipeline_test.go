@@ -52,7 +52,7 @@ func TestCardImportUsecase_Import_OverSizePayloadIsTopLevelValidationError(t *te
 
 	repo := &mockDictCardRepo{}
 	tx, txCalls := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx)
 	uc.processCardImport = oneWordProcess(t, false)
 
 	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{CardgroupID: "cg-target", Payload: b64(overCapPayload())})
@@ -85,7 +85,7 @@ func TestCardImportUsecase_Import_PayloadExactlyAtByteCapIsAccepted(t *testing.T
 
 	repo := &mockDictCardRepo{inserted: 1}
 	tx, txCalls := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx)
 	uc.processCardImport = oneWordProcess(t, true)
 
 	out, err := uc.Import(authedCtx("user-1"), ImportCardsInput{CardgroupID: "cg-target", Payload: b64(atCapPayload())})
@@ -116,7 +116,7 @@ func TestMasterCard_ImportMasterCards_PayloadExactlyAtByteCapIsAccepted(t *testi
 func TestCardImportUsecase_Validate_OverSizePayloadIsHardLineZero(t *testing.T) {
 	t.Parallel()
 
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil)
 	uc.processCardImport = oneWordProcess(t, false)
 
 	out, err := uc.Validate(authedCtx("user-1"), b64(overCapPayload()))

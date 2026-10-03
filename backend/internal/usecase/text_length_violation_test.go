@@ -87,7 +87,7 @@ func TestCardgroupUsecase_Create_TextLengthViolation_SurfacesAsValidationOutcome
 			"repository: cardgroup: create",
 		),
 	}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "My Group"})
 
@@ -158,7 +158,7 @@ func TestCardImportUsecase_TextLengthViolation_BecomesValidationError(t *testing
 		Field:      "back",
 	}}
 	tx, _ := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx)
 
 	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -183,7 +183,7 @@ func TestCardgroupUsecase_Update_TextLengthViolation_SurfacesAsValidationOutcome
 			"repository: cardgroup: update",
 		),
 	}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	outcome, err := uc.Update(cgAuthedCtx("user-1"), "cg1", UpdateCardgroupInput{Name: ptr("New Name")})
 

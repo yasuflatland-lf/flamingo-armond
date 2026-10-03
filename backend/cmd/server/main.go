@@ -164,15 +164,15 @@ func buildResolver(
 ) (*resolver.Resolver, *ping.Handler, *notionsync.Handler, error) {
 	masterDeckUC := usecase.NewMasterDeckUsecase(repos.masterCardgroup, repos.masterCard, repos.card, repos.cardgroup, repos.gorm, logger)
 	userUC := usecase.NewUserUsecase(repos.gorm, repos.user, repos.userRole, authSvc, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(repos.gorm, repos.cardgroup, authSvc, logger)
-	learnUC := usecase.NewLearnUsecase(repos.card, repos.cardgroup, repos.userPreference, service.NewOrderingPolicy(), 0, 0, nil, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(repos.gorm, repos.cardgroup, authSvc)
+	learnUC := usecase.NewLearnUsecase(repos.card, repos.cardgroup, repos.userPreference, service.NewOrderingPolicy(), 0, 0, nil)
 	swipeUC := usecase.NewSwipeUsecase(repos.gorm, repos.card, repos.cardgroup, repos.swipeRecord, service.NewFSRSScheduler(), repos.userCardFSRS, logger)
-	cardImportUC := usecase.NewCardImportUsecase(repos.cardgroup, repos.card, repos.gorm, logger)
-	adminUserUC := usecase.NewAdminUser(repos.gorm, repos.user, repos.role, repos.userRole, adminGate, logger)
-	adminRoleUC := usecase.NewAdminRole(repos.role, adminGate, logger)
-	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(repos.userPreference, repos.user, logger)
-	updateLearnDisplayModeUC := usecase.NewUpdateLearnDisplayMode(repos.userPreference, repos.user, logger)
-	updateNewCardRatioUC := usecase.NewUpdateNewCardRatio(repos.userPreference, repos.user, logger)
+	cardImportUC := usecase.NewCardImportUsecase(repos.cardgroup, repos.card, repos.gorm)
+	adminUserUC := usecase.NewAdminUser(repos.gorm, repos.user, repos.role, repos.userRole, adminGate)
+	adminRoleUC := usecase.NewAdminRole(repos.role, adminGate)
+	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(repos.userPreference, repos.user)
+	updateLearnDisplayModeUC := usecase.NewUpdateLearnDisplayMode(repos.userPreference, repos.user)
+	updateNewCardRatioUC := usecase.NewUpdateNewCardRatio(repos.userPreference, repos.user)
 	pingHandler := ping.New(repos.pingRecord, pingToken)
 
 	var notionSyncHandler *notionsync.Handler
@@ -191,7 +191,7 @@ func buildResolver(
 	var cefrWords domain.CEFRWordList = cefr.NewWordList()
 	cefrClassifier := service.NewCEFRClassifier(cefrWords)
 	cefrUC := usecase.NewCEFRUsecase(cefrClassifier)
-	masterCatalogUC := usecase.NewMasterCatalogUsecase(repos.masterCardgroup, masterDeckUC, adminGate, logger)
+	masterCatalogUC := usecase.NewMasterCatalogUsecase(repos.masterCardgroup, masterDeckUC, adminGate)
 	masterCardUC := usecase.NewMasterCardUsecase(repos.gorm, repos.masterCard, repos.masterCardgroup, adminGate, logger)
 	statsUC := usecase.NewStats(repos.userCardFSRS, repos.swipeRecord, repos.cardgroup, nil)
 

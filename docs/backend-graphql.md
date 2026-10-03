@@ -153,8 +153,8 @@ cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 cardRepo      := repository.NewCardRepository(db.GORM)
 // ... additional repositories, authSvc, adminGate, etc.
 
-userUC      := usecase.NewUserUsecase(userRepo, userRoleRepo, authSvc, logger)
-cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
+userUC      := usecase.NewUserUsecase(db.GORM, userRepo, userRoleRepo, authSvc, logger)
+cardgroupUC := usecase.NewCardgroupUsecase(db.GORM, cardgroupRepo, authSvc)
 cardUC      := usecase.NewCardUsecase(cardRepo, cardgroupRepo, logger)
 // ... swipeUC, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, learnUC
 
