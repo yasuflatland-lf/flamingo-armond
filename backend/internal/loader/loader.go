@@ -76,7 +76,6 @@ type userCardFSRSReader interface {
 type contextKey struct{}
 
 type Loaders struct {
-	User               *dataloader.Loader[string, *domain.User]
 	RoleByUserID       *RoleByUserIDLoader
 	LastSignInByUserID *LastSignInByUserIDLoader
 	Cardgroup          *dataloader.Loader[string, *domain.Cardgroup]
@@ -87,7 +86,6 @@ type Loaders struct {
 
 func New(userRepo repository.UserRepository, userRoleRepo repository.UserRoleRepository, cardgroupRepo repository.CardgroupRepository, cardRepo repository.CardReadRepository, userPreferenceRepo repository.UserPreferenceRepository) *Loaders {
 	return &Loaders{
-		User:               dataloader.NewBatchedLoader(userBatchFunc(userRepo)),
 		RoleByUserID:       dataloader.NewBatchedLoader(roleByUserIDBatchFunc(userRoleRepo)),
 		LastSignInByUserID: dataloader.NewBatchedLoader(lastSignInByUserIDBatchFunc(userRepo)),
 		Cardgroup:          dataloader.NewBatchedLoader(cardgroupBatchFunc(cardgroupRepo)),
