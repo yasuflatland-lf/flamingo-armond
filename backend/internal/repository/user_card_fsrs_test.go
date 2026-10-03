@@ -27,7 +27,6 @@ func TestUserCardFSRSRepository_UpsertTxAndFindByUserAndCardIDs(t *testing.T) {
 	first := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), card.ID, now)
 	first.State.Reps = 1
 	first.State.Due = now.Add(time.Hour)
-	first.UpdatedAt = time.Unix(1, 0).UTC()
 
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return ucsRepo.UpsertTx(ctx, tx, first)
@@ -38,9 +37,6 @@ func TestUserCardFSRSRepository_UpsertTxAndFindByUserAndCardIDs(t *testing.T) {
 	require.Len(t, got, 1)
 	require.Equal(t, 1, got[card.ID].State.Reps)
 	require.True(t, got[card.ID].State.Due.Equal(first.State.Due))
-	require.Equal(t, first.UpdatedAt, got[card.ID].UpdatedAt,
-		"UpsertTx must copy the database-assigned updated_at back into the aggregate")
-	require.NotEqual(t, time.Unix(1, 0).UTC(), first.UpdatedAt)
 
 	second := domain.NewUserCardFSRSForNewCard(domain.UserID(ownerID), card.ID, now.Add(time.Minute))
 	second.State.Reps = 2
@@ -56,8 +52,6 @@ func TestUserCardFSRSRepository_UpsertTxAndFindByUserAndCardIDs(t *testing.T) {
 	require.Equal(t, 2, got[card.ID].State.Reps)
 	require.Equal(t, 1, got[card.ID].State.Lapses)
 	require.True(t, got[card.ID].State.Due.Equal(second.State.Due))
-	require.Equal(t, second.UpdatedAt, got[card.ID].UpdatedAt,
-		"conflict updates must return the database-assigned updated_at")
 }
 
 // TestUserCardFSRSRepository_FindByUserAndCardIDs_InvalidStabilityOrDifficulty

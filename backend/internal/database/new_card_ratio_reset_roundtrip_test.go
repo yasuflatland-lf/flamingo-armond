@@ -59,10 +59,11 @@ func TestResetLegacyNewCardRatio_DownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// cardgroups_owner_updated_at_index, drop_redundant_fk_indexes,
-	// drop_user_card_fsrs_last_rating and drop_swipe_records_user_cardgroup_index
-	// sit above reset_legacy_new_card_ratio, so five steps reach it.
-	if err := m.Steps(-5); err != nil {
+	// drop_ping_records_updated_at, cardgroups_owner_updated_at_index,
+	// drop_redundant_fk_indexes, drop_user_card_fsrs_last_rating and
+	// drop_swipe_records_user_cardgroup_index sit above
+	// reset_legacy_new_card_ratio, so six steps reach it.
+	if err := m.Steps(-6); err != nil {
 		t.Fatalf("migrate down reset_legacy_new_card_ratio: %v", err)
 	}
 	for _, r := range rows {
@@ -111,14 +112,14 @@ func TestResetLegacyNewCardRatio_RewritesLegacyUnreducedRow(t *testing.T) {
 		}
 	}()
 
-	// Step back eight migrations newest-first:
-	// cardgroups_owner_updated_at_index, drop_redundant_fk_indexes,
-	// drop_user_card_fsrs_last_rating, drop_swipe_records_user_cardgroup_index,
-	// reset_legacy_new_card_ratio, revoke_client_writes,
-	// lower_new_card_ratio_default, then tighten_new_card_ratio_check, so the
-	// looser den <= 100 CHECK is in force. Bump this count when adding migrations
-	// after tighten_new_card_ratio_check.
-	if err := m.Steps(-8); err != nil {
+	// Step back nine migrations newest-first:
+	// drop_ping_records_updated_at, cardgroups_owner_updated_at_index,
+	// drop_redundant_fk_indexes, drop_user_card_fsrs_last_rating,
+	// drop_swipe_records_user_cardgroup_index, reset_legacy_new_card_ratio,
+	// revoke_client_writes, lower_new_card_ratio_default, then
+	// tighten_new_card_ratio_check, so the looser den <= 100 CHECK is in force.
+	// Bump this count when adding migrations after tighten_new_card_ratio_check.
+	if err := m.Steps(-9); err != nil {
 		t.Fatalf("migrate down to before tighten_new_card_ratio_check: %v", err)
 	}
 

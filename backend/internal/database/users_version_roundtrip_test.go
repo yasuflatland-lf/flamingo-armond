@@ -38,37 +38,38 @@ func TestUsersVersionDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back through the 27 migrations listed newest-first until
+	// Step back through the 28 migrations listed newest-first until
 	// add_version_to_users (the target) is also rolled back:
-	//   1. cardgroups_owner_updated_at_index
-	//   2. drop_redundant_fk_indexes
-	//   3. drop_user_card_fsrs_last_rating
-	//   4. drop_swipe_records_user_cardgroup_index
-	//   5. reset_legacy_new_card_ratio
-	//   6. revoke_client_writes
-	//   7. lower_new_card_ratio_default
-	//   8. tighten_new_card_ratio_check
-	//   9. realign_fsrs_snapshot_columns_to_v4
-	//   10. widen_updated_at_triggers_to_insert
-	//   11. widen_text_length_checks
-	//   12. add_cardgroup_fk_to_swipe_records
-	//   13. add_stability_before_to_swipe_records
-	//   14. add_last_rating_to_user_card_fsrs
-	//   15. add_pre_swipe_snapshot_to_swipe_records
-	//   16. add_new_card_ratio_to_user_preferences
-	//   17. index_hygiene_users_swipe_records
-	//   18. drop_master_cardgroup_metadata_columns
-	//   19. master_cards_front_citext
-	//   20. add_user_card_fsrs_card_id_index
-	//   21. add_learn_display_mode_to_user_preferences
-	//   22. add_master_tables
-	//   23. restrict_definer_function_exposure
-	//   24. pin_trigger_function_search_path
-	//   25. enable_rls_schema_migrations
-	//   26. add_position_to_cards
-	//   27. add_version_to_users  ← target (rolls back the version column)
+	//   1. drop_ping_records_updated_at
+	//   2. cardgroups_owner_updated_at_index
+	//   3. drop_redundant_fk_indexes
+	//   4. drop_user_card_fsrs_last_rating
+	//   5. drop_swipe_records_user_cardgroup_index
+	//   6. reset_legacy_new_card_ratio
+	//   7. revoke_client_writes
+	//   8. lower_new_card_ratio_default
+	//   9. tighten_new_card_ratio_check
+	//   10. realign_fsrs_snapshot_columns_to_v4
+	//   11. widen_updated_at_triggers_to_insert
+	//   12. widen_text_length_checks
+	//   13. add_cardgroup_fk_to_swipe_records
+	//   14. add_stability_before_to_swipe_records
+	//   15. add_last_rating_to_user_card_fsrs
+	//   16. add_pre_swipe_snapshot_to_swipe_records
+	//   17. add_new_card_ratio_to_user_preferences
+	//   18. index_hygiene_users_swipe_records
+	//   19. drop_master_cardgroup_metadata_columns
+	//   20. master_cards_front_citext
+	//   21. add_user_card_fsrs_card_id_index
+	//   22. add_learn_display_mode_to_user_preferences
+	//   23. add_master_tables
+	//   24. restrict_definer_function_exposure
+	//   25. pin_trigger_function_search_path
+	//   26. enable_rls_schema_migrations
+	//   27. add_position_to_cards
+	//   28. add_version_to_users  ← target (rolls back the version column)
 	// Bump the count here when adding migrations after add_version_to_users.
-	if err := m.Steps(-27); err != nil {
+	if err := m.Steps(-28); err != nil {
 		t.Fatalf("migrate down to before add_version_to_users: %v", err)
 	}
 
