@@ -19,11 +19,12 @@ import (
 // Cursor stability across edits of the ordering key.
 //
 // The master-card listing orders by position ASC — a column an admin batch
-// import rewrites for every conflicting row. A cursor that carries only a row id has to re-read that row at serve time to recover its ordering value,
-// so changing the row between two page fetches moves the bookmark: rows already
-// returned come back a second time (S1) or rows the caller has not seen yet are
-// skipped (S2). A v2 cursor carries the ordering value captured when the page was
-// served, so the bookmark stays put.
+// import rewrites for every conflicting row. A cursor that carries only a row
+// id has to re-read that row at serve time to recover its ordering value, so
+// changing the row between two page fetches moves the bookmark: rows already
+// returned come back a second time (S1) or rows the caller has not seen yet
+// are skipped (S2). A v2 cursor carries the ordering value captured when the
+// page was served, so the bookmark stays put.
 //
 // These walks use masterCardWalkRepo, an in-memory repository implementing the
 // same (orderKey, id) tuple comparison the SQL repository emits, so the

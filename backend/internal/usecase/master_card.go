@@ -75,9 +75,8 @@ type MasterCardConnectionInput struct {
 // id would move whenever the row it points at is repositioned. Ordering is the
 // fixed (orderBy, direction) this page was served under; OrderKeys maps each
 // returned master card id to the serialized position it held at serve time.
-// Both are consumed only at the
-// resolver→model boundary — the output itself still carries RAW ids, never
-// pre-encoded cursors.
+// Both are consumed only at the resolver→model boundary — the output itself
+// still carries RAW ids, never pre-encoded cursors.
 type MasterCardConnectionOutput struct {
 	Cards      []*domain.MasterCard
 	TotalCount int64
@@ -599,8 +598,9 @@ func applyMasterCardOrderKey(c *repository.MasterCardCursor, key string) error {
 }
 
 // resolveMasterCardCursor decodes an opaque cursor string into a
-// *repository.MasterCardCursor with the position ordering column populated. The cursor may be a v2 envelope ("v2:" + base64 JSON), a v1
-// envelope ("v1:" + base64), or a legacy bare UUID; all three are accepted.
+// *repository.MasterCardCursor with the position ordering column populated.
+// The cursor may be a v2 envelope ("v2:" + base64 JSON), a v1 envelope
+// ("v1:" + base64), or a legacy bare UUID; all three are accepted.
 // Returns BAD_USER_INPUT when the cursor cannot be decoded, was taken under a
 // different ordering, carries an ordering-key value that does not parse, the
 // master card cannot be found, or it belongs to a different master cardgroup —

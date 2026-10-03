@@ -79,9 +79,9 @@ type MasterCatalogItem struct {
 // carried only an id would move whenever an admin re-orders the deck it points
 // at. Ordering is the fixed (orderBy, direction) this page was served under;
 // OrderKeys maps each returned master cardgroup id to the serialized sort_order
-// it held at serve time. Both are consumed only at the
-// resolver→model boundary — the output itself still carries RAW ids, never
-// pre-encoded cursors.
+// it held at serve time. Both are consumed only at the resolver→model
+// boundary — the output itself still carries RAW ids, never pre-encoded
+// cursors.
 type MasterCatalogConnectionOutput struct {
 	Items      []*MasterCatalogItem
 	TotalCount int64
