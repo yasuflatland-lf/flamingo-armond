@@ -5,7 +5,7 @@ When mapping `extensions.code` to a user-facing banner, treat `UNAUTHENTICATED` 
 ## The rule
 
 - **`UNAUTHENTICATED`** → generic copy ("Your session has expired. Please sign in again.") **and** redirect the user toward `/login`. The only recovery is to re-authenticate, so the server's specific reason adds nothing.
-- **`FORBIDDEN`** → preserve the server's banner message (via `getBackendErrorBanner(err)` or `toMessage(err)`). The server message names the *specific* reason ("cannot delete a protected role", "you cannot demote your own admin role") that the user needs to understand why the action was refused.
+- **`FORBIDDEN`** → preserve the server's banner message (via `getBackendErrorBanner(err)` or `toMessage(err)`). The server message names the *specific* reason (`cannot delete system role "admin"`, "you cannot demote your own admin role") that the user needs to understand why the action was refused.
 
 ## Why the asymmetry
 
@@ -20,7 +20,7 @@ if (codes.includes("UNAUTHENTICATED") || codes.includes("FORBIDDEN")) {
 setError(toMessage(err));
 ```
 
-The bug surfaces in real flows like the admin role delete. The UI disables delete for system roles, but a race (a concurrent role promotion) can still cause the server to return `FORBIDDEN` with message `cannot delete a protected role`. The generic auth copy hides that message — the user thinks they need to sign in again, signs out, signs back in, retries, and gets the same failure. The actionable message ("this role is protected, you can't delete it") never reaches them.
+The bug surfaces in real flows like the admin role delete. The UI renders no delete control for system roles, but a race can still cause the server to return `FORBIDDEN` with message `cannot delete system role "<name>"`. The generic auth copy hides that message — the user thinks they need to sign in again, signs out, signs back in, retries, and gets the same failure. The actionable message ("this is a system role, you can't delete it") never reaches them.
 
 The asymmetric handling is:
 
