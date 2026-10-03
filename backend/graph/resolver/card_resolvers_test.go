@@ -51,16 +51,14 @@ func (m *cardMockRepo) FindPracticeCardsForUser(_ context.Context, _ string, _ s
 	m.findPracticeLimit = limit
 	return m.findPracticeRows, m.findPracticeErr
 }
-func (m *cardMockRepo) FindPageByCardgroupForUser(
+func (m *cardMockRepo) FindPageByCardgroup(
 	_ context.Context,
-	_, _ string,
+	_ string,
 	_ *repository.CardCursor,
 	_ int,
-	_ repository.CardOrderBy,
-	_ repository.SortOrder,
 	_ *string,
-) ([]*domain.Card, int64, map[string]time.Time, error) {
-	return nil, 0, nil, nil
+) ([]*domain.Card, int64, error) {
+	return nil, 0, nil
 }
 func (m *cardMockRepo) FindByCardgroupAndFront(_ context.Context, _, _ string) (*domain.Card, error) {
 	return nil, nil
@@ -119,7 +117,7 @@ func newCardSrv(
 	cardRepo usecase.CardRepository,
 	cgRepo usecase.CardgroupRepositoryForCard,
 ) *handler.Server {
-	cardUC := usecase.NewCardUsecase(cardRepo, cgRepo, nil, newDiscardLogger())
+	cardUC := usecase.NewCardUsecase(cardRepo, cgRepo, newDiscardLogger())
 	r := resolver.NewResolver(nil, nil, cardUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
@@ -375,7 +373,7 @@ func TestResolver_CreateCard_DuplicateFront_ReturnsCardDuplicateFrontError(t *te
 // newUpdateCardSrv builds a gqlgen Server backed by a CardUsecase wired with
 // the supplied card repo and cardgroup repo for authorization.
 func newUpdateCardSrv(cardRepo usecase.CardRepository, cgRepo usecase.CardgroupRepositoryForCard) *handler.Server {
-	cardUC := usecase.NewCardUsecase(cardRepo, cgRepo, nil, newDiscardLogger())
+	cardUC := usecase.NewCardUsecase(cardRepo, cgRepo, newDiscardLogger())
 	r := resolver.NewResolver(nil, nil, cardUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})

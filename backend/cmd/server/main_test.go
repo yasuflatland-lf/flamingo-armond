@@ -776,7 +776,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	logger := slog.New(slog.DiscardHandler)
 	userUC := usecase.NewUserUsecase(nil, userRepo, userRoleRepo, nil, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(db.GORM, cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
-	cardUC := usecase.NewCardUsecase(cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
+	cardUC := usecase.NewCardUsecase(cardRepo, cardgroupRepo, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM, logger)
@@ -2012,7 +2012,7 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM, logger)
 	userUC := usecase.NewUserUsecase(nil, userRepo, userRoleRepo, nil, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(db.GORM, cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
-	cardUC := usecase.NewCardUsecase(cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
+	cardUC := usecase.NewCardUsecase(cardRepo, cardgroupRepo, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	lastViewedUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
@@ -2621,7 +2621,7 @@ func (panicQueryResolver) LearnNextDueCards(_ context.Context, _ string, _ *int)
 func (panicQueryResolver) PracticeTodaysCards(_ context.Context, _ string, _ *int) ([]*model.Card, error) {
 	return nil, nil
 }
-func (panicQueryResolver) CardsByCardgroupConnection(_ context.Context, _ string, _ *int, _ *string, _ *string, _ *model.CardOrderBy, _ *model.SortOrder) (*model.CardConnection, error) {
+func (panicQueryResolver) CardsByCardgroupConnection(_ context.Context, _ string, _ *int, _ *string, _ *string) (*model.CardConnection, error) {
 	return nil, nil
 }
 func (panicQueryResolver) ValidateCardImport(_ context.Context, _ model.ValidateCardImportInput) (*model.CardImportValidationResult, error) {

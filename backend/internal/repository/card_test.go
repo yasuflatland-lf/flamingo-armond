@@ -612,7 +612,7 @@ func TestCardRepo_Create_OtherUniqueViolationNotMisclassified(t *testing.T) {
 
 func strPtr(s string) *string { return &s }
 
-// TestCardRepo_FindPageByCardgroupForUser_Search verifies the search filter:
+// TestCardRepo_FindPageByCardgroup_Search verifies the search filter:
 //   - hits on front substring
 //   - hits on back substring
 //   - miss when neither front nor back matches
@@ -620,7 +620,7 @@ func strPtr(s string) *string { return &s }
 //   - empty string search skips the filter (all cards returned)
 //   - LIKE metacharacters (%, _, \) in the search query are treated literally
 //   - search is case-insensitive (ILIKE)
-func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
+func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -657,8 +657,8 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 
 	t.Run("hit on front substring", func(t *testing.T) {
 		t.Parallel()
-		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr("apple"),
+		got, total, err := repo.FindPageByCardgroup(
+			ctx, string(cg.ID), nil, 10, strPtr("apple"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total, "totalCount must reflect search filter")
@@ -670,8 +670,8 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 	t.Run("hit on back substring", func(t *testing.T) {
 		t.Parallel()
 		// "dessert" appears in both apple and banana backs.
-		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr("dessert"),
+		got, total, err := repo.FindPageByCardgroup(
+			ctx, string(cg.ID), nil, 10, strPtr("dessert"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(2), total)
@@ -682,8 +682,8 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 
 	t.Run("miss: no match", func(t *testing.T) {
 		t.Parallel()
-		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr("zzznomatch"),
+		got, total, err := repo.FindPageByCardgroup(
+			ctx, string(cg.ID), nil, 10, strPtr("zzznomatch"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(0), total)
@@ -692,8 +692,8 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 
 	t.Run("nil search returns all cards", func(t *testing.T) {
 		t.Parallel()
-		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, nil,
+		got, total, err := repo.FindPageByCardgroup(
+			ctx, string(cg.ID), nil, 10, nil,
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(5), total)
@@ -706,8 +706,8 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 	// called directly (e.g. from tests or future non-GraphQL callers).
 	t.Run("empty string search returns all cards (defensive)", func(t *testing.T) {
 		t.Parallel()
-		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr(""),
+		got, total, err := repo.FindPageByCardgroup(
+			ctx, string(cg.ID), nil, 10, strPtr(""),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(5), total)
@@ -717,8 +717,8 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 	t.Run("percent metachar treated literally", func(t *testing.T) {
 		t.Parallel()
 		// "100%" must only match cardCherry whose front contains that literal string.
-		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr("100%"),
+		got, total, err := repo.FindPageByCardgroup(
+			ctx, string(cg.ID), nil, 10, strPtr("100%"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
@@ -729,8 +729,8 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 	t.Run("underscore metachar treated literally", func(t *testing.T) {
 		t.Parallel()
 		// "a_b" must only match cardUnderscore, not every two-char prefix (LIKE _ = any single char).
-		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr("a_b"),
+		got, total, err := repo.FindPageByCardgroup(
+			ctx, string(cg.ID), nil, 10, strPtr("a_b"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
@@ -740,8 +740,8 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 
 	t.Run("backslash metachar treated literally", func(t *testing.T) {
 		t.Parallel()
-		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr(`back\slash`),
+		got, total, err := repo.FindPageByCardgroup(
+			ctx, string(cg.ID), nil, 10, strPtr(`back\slash`),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
@@ -752,8 +752,8 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 	t.Run("case insensitive", func(t *testing.T) {
 		t.Parallel()
 		// "COLD" appears uppercase in banana's back; search with lowercase must still match.
-		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr("cold"),
+		got, total, err := repo.FindPageByCardgroup(
+			ctx, string(cg.ID), nil, 10, strPtr("cold"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
@@ -816,11 +816,11 @@ func TestCardRepository_FindDueCards_ReviewRowsPrecedeNewRows(t *testing.T) {
 	)
 }
 
-// TestCardRepo_FindPageByCardgroupForUser_Search_CrossTenantNonLeak verifies that a
+// TestCardRepo_FindPageByCardgroup_Search_CrossTenantNonLeak verifies that a
 // search applied to one cardgroup does not surface rows from another cardgroup
 // even when both contain cards with the same front/back text. This is the
 // cross-tenant test required by docs/backend/library-gotchas/repository-cross-tenant-negative-test.md.
-func TestCardRepo_FindPageByCardgroupForUser_Search_CrossTenantNonLeak(t *testing.T) {
+func TestCardRepo_FindPageByCardgroup_Search_CrossTenantNonLeak(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -836,8 +836,8 @@ func TestCardRepo_FindPageByCardgroupForUser_Search_CrossTenantNonLeak(t *testin
 	require.NoError(t, repo.Create(ctx, cardB))
 
 	// Query cgB with a search that matches the shared front.
-	got, total, _, err := repo.FindPageByCardgroupForUser(
-		ctx, ownerID, string(cgB.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr("shared"),
+	got, total, err := repo.FindPageByCardgroup(
+		ctx, string(cgB.ID), nil, 10, strPtr("shared"),
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total, "only cardgroup B's card should match")

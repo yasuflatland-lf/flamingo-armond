@@ -19,32 +19,6 @@ import (
 // the new row resolves through the default arm and the test fails — catching
 // the silent default->BAD_USER_INPUT drift before it ships.
 
-func TestResolveOrderBy_AllCardOrderByValuesMapped(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		in   CardOrderBy
-		want repository.CardOrderBy
-	}{
-		{CardOrderByID, repository.CardOrderByID},
-		{CardOrderByCreatedAt, repository.CardOrderByCreatedAt},
-		{CardOrderByUpdatedAt, repository.CardOrderByUpdatedAt},
-		{CardOrderByDue, repository.CardOrderByDue},
-	}
-	for _, c := range cases {
-		ob := c.in
-		got, _, err := resolveCardOrderBy(&ob, nil)
-		if err != nil {
-			t.Errorf("resolveCardOrderBy(%q): unexpected error %v", c.in, err)
-		}
-		if got == "" {
-			t.Errorf("resolveCardOrderBy(%q): mapped to the empty repository value (default arm)", c.in)
-		}
-		if got != c.want {
-			t.Errorf("resolveCardOrderBy(%q) = %q, want %q", c.in, got, c.want)
-		}
-	}
-}
-
 func TestResolveCardgroupOrderBy_AllValuesMapped(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
