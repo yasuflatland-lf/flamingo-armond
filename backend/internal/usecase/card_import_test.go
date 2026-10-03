@@ -16,6 +16,35 @@ import (
 	"backend/internal/textdic"
 )
 
+func TestCardImportErrorKindFromSkipKind(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		kind textdic.SkipKind
+		want CardImportErrorKind
+	}{
+		{name: "hard", kind: textdic.SkipKindHard, want: CardImportErrKindHard},
+		{name: "front only", kind: textdic.SkipKindFrontOnly, want: CardImportErrKindFrontOnly},
+		{name: "back only", kind: textdic.SkipKindBackOnly, want: CardImportErrKindBackOnly},
+		{name: "unrecognized", kind: textdic.SkipKindUnrecognized, want: CardImportErrKindUnrecognized},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := cardImportErrorKindFromSkipKind(tc.kind)
+			if err != nil || got != tc.want {
+				t.Fatalf("cardImportErrorKindFromSkipKind(%d) = %q, %v; want %q, nil", tc.kind, got, err, tc.want)
+			}
+		})
+	}
+	for _, kind := range []textdic.SkipKind{textdic.SkipKindUnknown, textdic.SkipKind(99)} {
+		got, err := cardImportErrorKindFromSkipKind(kind)
+		if got != "" || err == nil || !strings.Contains(err.Error(), "unmapped textdic skip kind") {
+			t.Errorf("cardImportErrorKindFromSkipKind(%d) = %q, %v; want empty kind and unmapped error", kind, got, err)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Test doubles
 // ---------------------------------------------------------------------------

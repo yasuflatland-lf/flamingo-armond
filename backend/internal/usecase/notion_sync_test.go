@@ -943,11 +943,6 @@ func TestAllCardImportErrorsSkipped(t *testing.T) {
 			input: []CardImportError{{Kind: CardImportErrKindDuplicate}},
 			want:  false,
 		},
-		{
-			name:  "UNKNOWN only — programming-error sentinel is not a skip",
-			input: []CardImportError{{Kind: CardImportErrKindUnknown}},
-			want:  false,
-		},
 	}
 
 	for _, tc := range cases {
