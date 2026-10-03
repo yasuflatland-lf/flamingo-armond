@@ -13,8 +13,8 @@ import (
 
 // genFSRSInput draws a validated FSRSState and a review instant. Stability is
 // log-uniform over the domain range with its bounds and the new-card
-// placeholder mixed in; now is usually after LastReview (same UTC day, days or
-// years later) and occasionally up to an hour before it (backward clock step).
+// placeholder mixed in; now is usually after LastReview (within 3 hours, days
+// or years later) and occasionally up to an hour before it (backward clock step).
 func genFSRSInput() *rapid.Generator[fsrsInput] {
 	base := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	return rapid.Custom(func(t *rapid.T) fsrsInput {
@@ -26,7 +26,7 @@ func genFSRSInput() *rapid.Generator[fsrsInput] {
 		var now time.Time
 		switch rapid.IntRange(0, 3).Draw(t, "clock") {
 		case 0:
-			now = last.Add(time.Duration(rapid.Int64Range(0, int64(3*time.Hour)).Draw(t, "sameDay")))
+			now = last.Add(time.Duration(rapid.Int64Range(0, int64(3*time.Hour)).Draw(t, "withinHours")))
 		case 1:
 			now = last.Add(-time.Duration(rapid.Int64Range(1, int64(time.Hour)).Draw(t, "backward")))
 		default:

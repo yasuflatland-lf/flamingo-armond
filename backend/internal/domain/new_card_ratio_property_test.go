@@ -35,11 +35,24 @@ func newCardRatioOracle(num, den int) (int, int, error) {
 	return rn, rd, nil
 }
 
+// newCardRatioSentinels reports which ParseNewCardRatio sentinels err matches,
+// so a joined error carrying a competing reason fails instead of passing errors.Is.
+func newCardRatioSentinels(err error) [5]bool {
+	return [5]bool{
+		errors.Is(err, ErrNewCardRatioDenominatorNotPositive),
+		errors.Is(err, ErrNewCardRatioShareOutOfRange),
+		errors.Is(err, ErrNewCardRatioDenominatorTooLarge),
+		errors.Is(err, ErrNewCardRatioDenominatorNotRepresentable),
+		errors.Is(err, ErrNewCardRatioNewShareTooHigh),
+	}
+}
+
 func checkRatioAgainstOracle(t require.TestingT, num, den int) {
 	got, err := ParseNewCardRatio(num, den)
 	wn, wd, werr := newCardRatioOracle(num, den)
 	if werr != nil {
-		require.True(t, errors.Is(err, werr), "ParseNewCardRatio(%d, %d) = %v, want %v", num, den, err, werr)
+		require.Equal(t, newCardRatioSentinels(werr), newCardRatioSentinels(err),
+			"ParseNewCardRatio(%d, %d) = %v, want exactly %v", num, den, err, werr)
 		require.True(t, got.IsZero(), "rejected input must return the zero value")
 		return
 	}
@@ -81,7 +94,7 @@ func TestParseNewCardRatio_Property_ScaleInvariantAndTotal(t *testing.T) {
 		require.Equal(t, a, b)
 		require.Equal(t, ea == nil, eb == nil)
 		if ea != nil {
-			require.ErrorIs(t, eb, ea)
+			require.Equal(t, newCardRatioSentinels(ea), newCardRatioSentinels(eb))
 		}
 	})
 }

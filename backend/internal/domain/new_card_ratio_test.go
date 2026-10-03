@@ -8,9 +8,10 @@ import (
 )
 
 // TestParseNewCardRatio_RegressionPins keeps the named inputs behind past
-// fixes: 73/100 and 33/100 once reached learn and served zero new cards in a
-// 20-card session, and 3/7 was accepted before the divisibility rule; 5/17 is
-// the formal model's counterexample.
+// fixes: 73/100 once reached learn and served zero new cards in a 20-card
+// session; 33/100 is the off-grid example the frontend documented; 3/7 was
+// accepted before the divisibility rule; 5/17 is the formal model's
+// counterexample.
 func TestParseNewCardRatio_RegressionPins(t *testing.T) {
 	t.Parallel()
 
