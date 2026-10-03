@@ -35,7 +35,6 @@ func (u *UserCardFSRS) ApplyRating(scheduler FSRSScheduler, rating Rating, now t
         return eris.Errorf("user_card_fsrs: invalid rating %d", rating)
     }
     u.State = scheduler.Apply(u.State, rating, now)
-    u.UpdatedAt = now
     return nil
 }
 ```
