@@ -48,7 +48,7 @@ type swipeUsecase struct {
 	userFSRSRepo   UserCardFSRSRepoForSwipe
 	scheduler      *service.FSRSScheduler
 	applyRating    func(current *domain.UserCardFSRS, scheduler domain.FSRSScheduler, rating domain.Rating, now time.Time) error
-	newSwipeRecord func(userID domain.UserID, cardID string, cardgroupID domain.CardgroupID, rating domain.Rating, reviewedAt time.Time, stateBefore, stateAfter domain.FSRSState) (*domain.SwipeRecord, error)
+	newSwipeRecord func(userID domain.UserID, cardID string, cardgroupID domain.CardgroupID, rating domain.Rating, reviewedAt time.Time, stateBefore domain.FSRSState, difficultyAfter float64) (*domain.SwipeRecord, error)
 	tx             txRunner
 	clock          Clock
 	logger         *slog.Logger
@@ -230,7 +230,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		if err := u.userFSRSRepo.UpsertTx(ctx, tx, current); err != nil {
 			return wrapInfraErr(err, "usecase: swipe: upsert user-card fsrs")
 		}
-		sr, err := u.newSwipeRecord(domain.UserID(user.Sub), card.ID, card.CardgroupID, rating, now, before, current.State)
+		sr, err := u.newSwipeRecord(domain.UserID(user.Sub), card.ID, card.CardgroupID, rating, now, before, current.State.Difficulty)
 		if err != nil {
 			return eris.Wrap(err, "usecase: swipe: new swipe record")
 		}
