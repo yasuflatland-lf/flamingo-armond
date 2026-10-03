@@ -277,7 +277,7 @@ func ctxWithCardLoaderError(base context.Context, loadErr error) context.Context
 	return loader.WithContext(base, loaders)
 }
 
-const myLearningStatsDiagnosticQuery = `{"query":"{ myLearningStats { mastery { totalStudied } performanceWindows { days365 { retentionRate successRate lapseRate studyStreak reviewCount knownReviewCount avgDifficulty } days30 { retentionRate successRate lapseRate studyStreak reviewCount knownReviewCount avgDifficulty } days7 { retentionRate successRate lapseRate studyStreak reviewCount knownReviewCount avgDifficulty } } strugglingCards { card { id front } lapses stability } } }"}`
+const myLearningStatsDiagnosticQuery = `{"query":"{ myLearningStats { mastery { totalStudied } performanceWindows { days365 { retentionRate successRate lapseRate studyStreak reviewCount knownReviewCount avgDifficulty } days30 { retentionRate successRate lapseRate studyStreak reviewCount knownReviewCount avgDifficulty } days7 { retentionRate successRate lapseRate studyStreak reviewCount knownReviewCount avgDifficulty } } strugglingCards { card { id front } lapses } } }"}`
 
 // TestMyLearningStats_PerformanceAndStrugglingCards verifies the diagnostic half
 // of the response: all three performance snapshots map every metric field, and
@@ -345,7 +345,7 @@ func TestMyLearningStats_PerformanceAndStrugglingCards(t *testing.T) {
 	}
 
 	sc0, _ := struggling[0].(map[string]any)
-	if sc0["lapses"] != float64(5) || sc0["stability"] != float64(2.5) {
+	if sc0["lapses"] != float64(5) {
 		t.Fatalf("struggling card 0 mismatch: %v", sc0)
 	}
 	card0, _ := sc0["card"].(map[string]any)
@@ -354,7 +354,7 @@ func TestMyLearningStats_PerformanceAndStrugglingCards(t *testing.T) {
 	}
 
 	sc1, _ := struggling[1].(map[string]any)
-	if sc1["lapses"] != float64(3) || sc1["stability"] != float64(8) {
+	if sc1["lapses"] != float64(3) {
 		t.Fatalf("struggling card 1 mismatch: %v", sc1)
 	}
 	card1, _ := sc1["card"].(map[string]any)

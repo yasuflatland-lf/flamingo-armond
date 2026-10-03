@@ -1,13 +1,7 @@
 """Per-user FSRS scheduling state for a single card."""
 type UserCardState {
   due: Time!
-  stability: Float!
-  difficulty: Float!
   state: Int!
-  reps: Int!
-  lapses: Int!
-  lastReview: Time!
-  scheduledDays: Int!
 }
 
 """
@@ -49,7 +43,6 @@ type Card {
   """
   cefrLevel: CEFRLevel
   createdAt: Time!
-  updatedAt: Time!
 }
 
 """Input for creating a new card."""
