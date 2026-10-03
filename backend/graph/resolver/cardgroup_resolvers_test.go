@@ -303,7 +303,7 @@ func TestResolver_Cardgroup_ForeignOwned_IdenticalToNotFound(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// helpers.go — toCardgroupConnectionModel
+// connection.go — toCardgroupConnectionModel
 // ---------------------------------------------------------------------------
 //
 // This helper lives in package resolver but is package-private. The tests

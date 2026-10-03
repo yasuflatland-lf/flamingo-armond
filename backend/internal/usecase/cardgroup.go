@@ -54,9 +54,8 @@ type CardgroupConnectionInput struct {
 // carried only an id would move whenever the row it points at is edited.
 // Ordering is the fixed (orderBy, direction) this page was served under;
 // OrderKeys maps each returned cardgroup id to the serialized updated_at it
-// held at serve time. Both are
-// consumed only at the resolver→model boundary — the output itself still
-// carries RAW ids, never pre-encoded cursors.
+// held at serve time. Both are consumed only at the resolver→model boundary —
+// the output itself still carries RAW ids, never pre-encoded cursors.
 type CardgroupConnectionOutput struct {
 	Cardgroups []*domain.Cardgroup
 	TotalCount int64
@@ -432,8 +431,9 @@ func applyCardgroupOrderKey(c *repository.CardgroupCursor, key string) error {
 }
 
 // resolveCardgroupCursor decodes an opaque cursor string into a
-// *repository.CardgroupCursor with the updated_at ordering column populated. The cursor may be a v2 envelope ("v2:" + base64 JSON), a v1
-// envelope ("v1:" + base64), or a legacy bare UUID; all three are accepted.
+// *repository.CardgroupCursor with the updated_at ordering column populated.
+// The cursor may be a v2 envelope ("v2:" + base64 JSON), a v1 envelope
+// ("v1:" + base64), or a legacy bare UUID; all three are accepted.
 // Returns BAD_USER_INPUT when the cursor cannot be decoded, was taken under a
 // different ordering, carries an ordering-key value that does not parse, the
 // cardgroup cannot be found, or the cardgroup belongs to another owner — the

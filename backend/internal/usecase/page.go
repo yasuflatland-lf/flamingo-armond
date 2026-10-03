@@ -146,10 +146,12 @@ type PageOrdering struct {
 }
 
 // requireCursorOrdering rejects a v2 cursor whose embedded ordering disagrees
-// with the ordering the current request resolved to. Serving such a cursor
-// would compare the stored ordering-key value against a different column (or
-// the same column in the opposite direction) and silently return a wrong page,
-// so it is a BAD_USER_INPUT — the same shape as "cursor not found".
+// with the connection's fixed ordering. With one ordering per connection, a
+// mismatch means a bookmark an older client took under an ordering the server
+// no longer serves. Serving such a cursor would compare the stored
+// ordering-key value against a different column (or the same column in the
+// opposite direction) and silently return a wrong page, so it is a
+// BAD_USER_INPUT — the same shape as "cursor not found".
 //
 // v1 envelopes and legacy bare ids carry no ordering and pass through: they
 // fall back to the re-hydration path, which is ordering-agnostic by
