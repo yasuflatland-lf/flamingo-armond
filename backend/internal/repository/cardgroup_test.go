@@ -1,7 +1,7 @@
 package repository_test
 
-// TestMain, testDB, insertAuthUser, sqlDBHandle, and insertNAuthUsers are
-// defined in user_test.go and shared across this package.
+// TestMain, testDB, insertAuthUser, and sqlDBHandle are defined in
+// user_test.go and shared across this package.
 
 import (
 	"context"

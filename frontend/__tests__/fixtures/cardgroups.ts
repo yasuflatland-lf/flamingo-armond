@@ -5,14 +5,7 @@
  * so snapshot assertions remain stable across runs.
  */
 
-import {
-  type Card,
-  type CardConnection,
-  type CardEdge,
-  type Cardgroup,
-  LearnDisplayMode,
-  type PageInfo,
-} from "@/generated/base-types";
+import type { Card, CardConnection, CardEdge, Cardgroup, PageInfo } from "@/generated/base-types";
 
 const userCardState = (due: string) => ({
   __typename: "UserCardState" as const,
@@ -35,23 +28,6 @@ const cardgroupFixture: Cardgroup = {
   __typename: "Cardgroup",
   id: "cardgroup-001",
   name: "Test Cardgroup",
-  ownerId: "user-admin-1",
-  // owner is a resolved field; omit here as fixtures target flat data payloads.
-  // Tests that need the nested owner object should use makeCardgroup with an override.
-  owner: {
-    __typename: "User",
-    id: "user-admin-1",
-    version: 0,
-    displayName: "Admin User",
-    bio: null,
-    avatarUrl: null,
-    lastSignInAt: null,
-    lastViewedCardgroup: null,
-    learnDisplayMode: LearnDisplayMode.FlipToReveal,
-    newCardRatio: { __typename: "NewCardRatio", numerator: 4, denominator: 5 },
-    roles: [],
-  },
-  createdAt: "2026-01-15T00:00:00Z",
   updatedAt: "2026-01-15T00:00:00Z",
 };
 

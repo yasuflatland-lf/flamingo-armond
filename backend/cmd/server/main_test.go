@@ -19,8 +19,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -737,14 +735,6 @@ func (f *jwtFixture) sign(t *testing.T, sub string) string {
 // the opened DB so callers can insert auth.users rows directly.
 func newGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Server, *database.DB) {
 	t.Helper()
-	return newGraphQLTestServerWithUserRepo(t, f, nil)
-}
-
-// newGraphQLTestServerWithUserRepo builds the same chain as newGraphQLTestServer
-// but lets the caller swap the User repository (for instrumented test doubles).
-// A nil userRepo means "use the default GORM-backed repository".
-func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repository.UserRepository) (*httptest.Server, *database.DB) {
-	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
@@ -764,9 +754,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	}
 	t.Cleanup(db.Close)
 
-	if userRepo == nil {
-		userRepo = repository.NewUserRepository(db.GORM)
-	}
+	userRepo := repository.NewUserRepository(db.GORM)
 	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	cardRepo := repository.NewCardRepository(db.GORM)
@@ -791,64 +779,6 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	ts := httptest.NewServer(e)
 	t.Cleanup(ts.Close)
 	return ts, db
-}
-
-// countingUserRepo wraps a real UserRepository and counts calls to each method.
-// It is used by TestGraphQL_Cardgroup_OwnerLoader_NoNPlus1 to assert that the
-// DataLoader batches all owner look-ups into a single FindByIDs call rather
-// than issuing one FindByID per cardgroup.
-type countingUserRepo struct {
-	inner        repository.UserRepository
-	findByID     atomic.Int32
-	findByIDs    atomic.Int32
-	mu           sync.Mutex
-	receivedKeys [][]string
-}
-
-func (c *countingUserRepo) FindByID(ctx context.Context, id string) (*domain.User, error) {
-	c.findByID.Add(1)
-	return c.inner.FindByID(ctx, id)
-}
-
-func (c *countingUserRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*domain.User, error) {
-	c.findByIDs.Add(1)
-	c.mu.Lock()
-	c.receivedKeys = append(c.receivedKeys, append([]string(nil), ids...))
-	c.mu.Unlock()
-	return c.inner.FindByIDs(ctx, ids)
-}
-
-func (c *countingUserRepo) Update(ctx context.Context, id string, patch repository.UserUpdate) (*domain.User, error) {
-	return c.inner.Update(ctx, id, patch)
-}
-func (c *countingUserRepo) UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch repository.UserUpdate) error {
-	return c.inner.UpdateTx(ctx, tx, id, patch)
-}
-func (c *countingUserRepo) UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string, patch repository.UserUpdate, expectedVersion int64) error {
-	return c.inner.UpdateTxVersioned(ctx, tx, id, patch, expectedVersion)
-}
-
-// ListPage forwards to the inner repository so any future test that exercises
-// the cursor-paginated user list keeps working.
-func (c *countingUserRepo) ListPage(
-	ctx context.Context,
-	after, before *string,
-	first, last int,
-	search *string,
-) ([]*domain.User, int64, error) {
-	return c.inner.ListPage(ctx, after, before, first, last, search)
-}
-
-func (c *countingUserRepo) DeleteAuthUserTx(ctx context.Context, tx *gorm.DB, id string) error {
-	return c.inner.DeleteAuthUserTx(ctx, tx, id)
-}
-
-func (c *countingUserRepo) AuthUserExists(ctx context.Context, id string) (bool, error) {
-	return c.inner.AuthUserExists(ctx, id)
-}
-
-func (c *countingUserRepo) LastSignInByUserIDs(ctx context.Context, ids []string) (map[string]*time.Time, error) {
-	return c.inner.LastSignInByUserIDs(ctx, ids)
 }
 
 // insertAuthUser inserts a row into auth.users so the handle_new_user trigger
@@ -1448,7 +1378,7 @@ func TestLoader_Middleware_DoesNotBreakQuery(t *testing.T) {
 // Uses the CreateCardgroupResult union selection set; validates __typename before extracting the id.
 func createTestCardgroup(t *testing.T, srvURL, bearer, name string) string {
 	t.Helper()
-	gqlQuery := fmt.Sprintf(`mutation { createCardgroup(input: {name: %s}) { __typename ... on CreateCardgroupSuccess { cardgroup { id name ownerId } } ... on InputValidationError { field message } } }`, gqlStringLit(name))
+	gqlQuery := fmt.Sprintf(`mutation { createCardgroup(input: {name: %s}) { __typename ... on CreateCardgroupSuccess { cardgroup { id name } } ... on InputValidationError { field message } } }`, gqlStringLit(name))
 	body, err := json.Marshal(map[string]string{"query": gqlQuery})
 	if err != nil {
 		t.Fatalf("json.Marshal body: %v", err)
@@ -1574,7 +1504,7 @@ func TestGraphQL_CreateCardgroup_Then_MyCardgroupsConnection(t *testing.T) {
 
 	cgID := createTestCardgroup(t, ts.URL, tok, "Vocab 1")
 
-	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroupsConnection(first: 100) { edges { node { id name ownerId } } totalCount } }"}`, tok)
+	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroupsConnection(first: 100) { edges { node { id name } } totalCount } }"}`, tok)
 	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
 		t.Fatalf("myCardgroupsConnection errors: %v", errs)
 	}
@@ -1590,9 +1520,6 @@ func TestGraphQL_CreateCardgroup_Then_MyCardgroupsConnection(t *testing.T) {
 	}
 	if cg["name"] != "Vocab 1" {
 		t.Fatalf("expected name=Vocab 1, got %v", cg["name"])
-	}
-	if cg["ownerId"] != sub {
-		t.Fatalf("expected ownerId=%q, got %v", sub, cg["ownerId"])
 	}
 	if got := conn["totalCount"].(float64); got != 1 {
 		t.Fatalf("expected totalCount=1, got %v", got)
@@ -1813,97 +1740,6 @@ func TestGraphQL_Cardgroup_NonOwner_ReturnsNullNoError(t *testing.T) {
 	if string(foreignJSON) != string(missingJSON) {
 		t.Fatalf("existence oracle: foreign-owned response %s differs from non-existent response %s", foreignJSON, missingJSON)
 	}
-}
-
-func TestGraphQL_Cardgroup_OwnerLoaderResolves(t *testing.T) {
-	f := newJWTFixture(t)
-	ts, _ := newGraphQLTestServer(t, f)
-	ctx := context.Background()
-	sub := insertAuthUser(t, ctx)
-	tok := f.sign(t, sub)
-
-	createTestCardgroup(t, ts.URL, tok, "Loader Test")
-
-	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroupsConnection(first: 100) { edges { node { id name owner { id displayName } } } totalCount } }"}`, tok)
-	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
-		t.Fatalf("myCardgroupsConnection with owner errors: %v", errs)
-	}
-	conn, _ := resp["data"].(map[string]any)["myCardgroupsConnection"].(map[string]any)
-	list, _ := conn["edges"].([]any)
-	if len(list) == 0 {
-		t.Fatalf("expected at least one cardgroup; resp=%v", resp)
-	}
-	if got := conn["totalCount"].(float64); got != 1 {
-		t.Fatalf("expected totalCount=1, got %v", got)
-	}
-	for i, item := range list {
-		cg, _ := item.(map[string]any)["node"].(map[string]any)
-		owner, _ := cg["owner"].(map[string]any)
-		if owner == nil {
-			t.Fatalf("cardgroup[%d]: owner is nil; cg=%v", i, cg)
-		}
-		if owner["id"] != sub {
-			t.Fatalf("cardgroup[%d]: owner.id=%v, want %q", i, owner["id"], sub)
-		}
-	}
-}
-
-func TestGraphQL_Cardgroup_OwnerLoader_NoNPlus1(t *testing.T) {
-	f := newJWTFixture(t)
-	ctx := context.Background()
-	sub := insertAuthUser(t, ctx)
-	tok := f.sign(t, sub)
-
-	// Wrap the real repo in a counter so we can assert batching behaviour.
-	realDB, err := database.Open(ctx, database.Config{URL: testDBURL})
-	if err != nil {
-		t.Fatalf("db open for counter: %v", err)
-	}
-	t.Cleanup(realDB.Close)
-	counter := &countingUserRepo{inner: repository.NewUserRepository(realDB.GORM)}
-
-	ts, _ := newGraphQLTestServerWithUserRepo(t, f, counter)
-
-	const n = 100
-	for i := range n {
-		createTestCardgroup(t, ts.URL, tok, fmt.Sprintf("Batch Group %d", i+1))
-	}
-
-	resp := postGraphQL(t, ts.URL+"/query",
-		`{"query":"query BatchOwner { myCardgroupsConnection(first: 100) { edges { node { id owner { id displayName } } } totalCount } }"}`, tok)
-	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
-		t.Fatalf("myCardgroupsConnection batch errors: %v", errs)
-	}
-	conn, _ := resp["data"].(map[string]any)["myCardgroupsConnection"].(map[string]any)
-	list, _ := conn["edges"].([]any)
-	if len(list) != n {
-		t.Fatalf("expected %d cardgroups, got %d", n, len(list))
-	}
-	if got := conn["totalCount"].(float64); got != float64(n) {
-		t.Fatalf("expected totalCount=%d, got %v", n, got)
-	}
-	for i, item := range list {
-		cg, _ := item.(map[string]any)["node"].(map[string]any)
-		owner, _ := cg["owner"].(map[string]any)
-		if owner == nil {
-			t.Fatalf("cardgroup[%d]: owner is nil", i)
-		}
-		if owner["id"] != sub {
-			t.Fatalf("cardgroup[%d]: owner.id=%v, want %q", i, owner["id"], sub)
-		}
-	}
-
-	// Assert batching: the DataLoader must call FindByIDs exactly once (all 100
-	// cardgroups share the same owner ID, which the loader deduplicates), and
-	// must never fall back to the per-item FindByID path.
-	if got := counter.findByID.Load(); got != 0 {
-		t.Errorf("FindByID called %d times; want 0 (loader must not use per-item path)", got)
-	}
-	if got := counter.findByIDs.Load(); got != 1 {
-		t.Errorf("FindByIDs called %d times; want exactly 1 (single batched call)", got)
-	}
-	t.Logf("N+1 check: FindByID=%d FindByIDs=%d (keys per call: %v)",
-		counter.findByID.Load(), counter.findByIDs.Load(), counter.receivedKeys)
 }
 
 // TestGraphQL_CreateCardgroup_NameTooShort verifies that an empty name is
@@ -2671,11 +2507,10 @@ func newPanicResolverRoot() *panicResolverRoot {
 	return &panicResolverRoot{inner: resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)}
 }
 
-func (p *panicResolverRoot) Card() generated.CardResolver           { return p.inner.Card() }
-func (p *panicResolverRoot) Cardgroup() generated.CardgroupResolver { return p.inner.Cardgroup() }
-func (p *panicResolverRoot) Mutation() generated.MutationResolver   { return p.inner.Mutation() }
-func (p *panicResolverRoot) Query() generated.QueryResolver         { return panicQueryResolver{} }
-func (p *panicResolverRoot) User() generated.UserResolver           { return p.inner.User() }
+func (p *panicResolverRoot) Card() generated.CardResolver         { return p.inner.Card() }
+func (p *panicResolverRoot) Mutation() generated.MutationResolver { return p.inner.Mutation() }
+func (p *panicResolverRoot) Query() generated.QueryResolver       { return panicQueryResolver{} }
+func (p *panicResolverRoot) User() generated.UserResolver         { return p.inner.User() }
 
 // newPanicGraphQLServer builds a gqlgen handler.Server wired with
 // panicResolverRoot so that { health } panics. The server uses the shared
