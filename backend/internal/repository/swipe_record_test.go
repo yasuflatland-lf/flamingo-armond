@@ -125,9 +125,10 @@ func TestSwipeRecordRepository_ListByUserSince_InclusiveBoundaryAndScopes(t *tes
 }
 
 // TestSwipeRecordRepository_OutOfRangePhaseBefore_ReturnsError proves a
-// phase_before value outside domain.FSRSPhase.IsValid surfaces a
-// repository error rather than reconstituting a SwipeRecord with an invalid
-// snapshot phase.
+// phase_before value outside domain.FSRSPhase.IsValid surfaces a repository
+// error from BOTH read paths rather than reconstituting an invalid snapshot.
+// ListByUserSince feeds /stats: a silently dropped row there would compute the
+// metrics over a partial window with no error.
 func TestSwipeRecordRepository_OutOfRangePhaseBefore_ReturnsError(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -151,9 +152,22 @@ func TestSwipeRecordRepository_OutOfRangePhaseBefore_ReturnsError(t *testing.T) 
 		5.0, 99, 2.5, reviewedAt,
 	).Error)
 
-	_, err := swipeRepo.FindByIDs(ctx, []string{rowID})
-	require.Error(t, err, "an out-of-range phase_before must propagate as an error")
-	require.Contains(t, err.Error(), "swipe record: invalid phase_before value 99")
+	reads := map[string]func() error{
+		"FindByIDs": func() error {
+			_, err := swipeRepo.FindByIDs(ctx, []string{rowID})
+			return err
+		},
+		"ListByUserSince": func() error {
+			_, err := swipeRepo.ListByUserSince(ctx, ownerID, reviewedAt.Add(-time.Hour))
+			return err
+		},
+	}
+	for name, read := range reads {
+		t.Run(name, func(t *testing.T) {
+			require.ErrorContains(t, read(), "swipe record: invalid phase_before value 99",
+				"an out-of-range phase_before must propagate as an error")
+		})
+	}
 }
 
 // TestSwipeRecordRepository_OnDeleteCardgroup_CascadesSwipeRecords proves the
