@@ -152,17 +152,11 @@ func TestAdminMasterCardsConnection_Success(t *testing.T) {
 	}}
 	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
 
-	orderBy := model.MasterCardOrderByPosition
-	dir := model.SortOrderAsc
-	conn, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, &orderBy, &dir)
+	conn, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 
-	// Input mapping: model enums translated to usecase enums.
-	require.NotNil(t, stub.gotListInput.OrderBy)
-	assert.Equal(t, usecase.MasterCardOrderByPosition, *stub.gotListInput.OrderBy)
-	require.NotNil(t, stub.gotListInput.OrderDirection)
-	assert.Equal(t, usecase.SortOrderAsc, *stub.gotListInput.OrderDirection)
+	// Input mapping: the deck id passes through.
 	assert.Equal(t, "m1", stub.gotListInput.MasterCardgroupID)
 
 	// Output mapping: edges, node fields, totalCount, pageInfo.
@@ -185,7 +179,7 @@ func TestAdminMasterCardsConnection_WrapsForbidden(t *testing.T) {
 	stub := &stubMasterCardUC{listErr: ucerr.NewForbiddenError("admin only")}
 	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
 
-	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil)
+	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil)
 	require.Error(t, err)
 	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
 }
@@ -213,7 +207,7 @@ func TestAdminMasterCardsConnection_WrapsUnauthenticated(t *testing.T) {
 	stub := &stubMasterCardUC{listErr: ucerr.ErrUnauthenticated}
 	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
 
-	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil)
+	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil)
 	require.Error(t, err)
 	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeUnauthenticated), "want UNAUTHENTICATED wire code")
 }
@@ -241,7 +235,7 @@ func TestAdminMasterCardsConnection_WrapsInternal(t *testing.T) {
 	stub := &stubMasterCardUC{listErr: eris.New("usecase: db: query timeout")}
 	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
 
-	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil)
+	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil)
 	require.Error(t, err)
 	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
 }
@@ -250,18 +244,15 @@ func TestAdminMasterCardsConnection_WrapsInternal(t *testing.T) {
 // Non-nil input translation (test item 3)
 // ---------------------------------------------------------------------------
 
-// TestAdminMasterCardsConnection_TranslatesNonNilInputs verifies that model
-// enum arguments are translated to the correct usecase enum values before being
-// passed to the usecase. This is the resolver's sole translation responsibility
-// and is not covered by the usecase-layer tests.
+// TestAdminMasterCardsConnection_TranslatesNonNilInputs verifies that non-nil
+// arguments reach the usecase input unchanged. This is the resolver's sole
+// mapping responsibility and is not covered by the usecase-layer tests.
 func TestAdminMasterCardsConnection_TranslatesNonNilInputs(t *testing.T) {
 	t.Parallel()
 
 	first := 5
 	afterCur := cursor.Encode("after-id")
 	search := "foo"
-	orderBy := model.MasterCardOrderByCreatedAt
-	dir := model.SortOrderDesc
 
 	stub := &stubMasterCardUC{listOut: &usecase.MasterCardConnectionOutput{}}
 	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
@@ -272,19 +263,11 @@ func TestAdminMasterCardsConnection_TranslatesNonNilInputs(t *testing.T) {
 		&first,
 		&afterCur,
 		&search,
-		&orderBy,
-		&dir,
 	)
 	require.NoError(t, err)
 
 	in := stub.gotListInput
 	assert.Equal(t, "m1", in.MasterCardgroupID, "MasterCardgroupID must pass through")
-
-	require.NotNil(t, in.OrderBy, "OrderBy must be non-nil when provided")
-	assert.Equal(t, usecase.MasterCardOrderByCreatedAt, *in.OrderBy, "OrderBy must translate to usecase enum")
-
-	require.NotNil(t, in.OrderDirection, "OrderDirection must be non-nil when provided")
-	assert.Equal(t, usecase.SortOrderDesc, *in.OrderDirection, "OrderDirection must translate to usecase enum")
 
 	require.NotNil(t, in.Search, "Search must be non-nil when provided")
 	assert.Equal(t, "foo", *in.Search, "Search must pass through unchanged")
@@ -326,7 +309,7 @@ func TestAdminMasterCardsConnection_CursorRoundTrip(t *testing.T) {
 	}}
 	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
 
-	conn, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil)
+	conn, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 	require.Len(t, conn.Edges, 2)
@@ -385,21 +368,14 @@ func TestMasterCardsConnection_Success(t *testing.T) {
 	}}
 	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
 
-	orderBy := model.MasterCardOrderByPosition
-	dir := model.SortOrderAsc
-	conn, err := qr.MasterCardsConnection(context.Background(), "m1", nil, nil, nil, &orderBy, &dir)
+	conn, err := qr.MasterCardsConnection(context.Background(), "m1", nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 
 	// The public resolver must route through ListPublicMasterCards: the admin
-	// list input must stay zero, and the public input must carry the translated
-	// arguments.
+	// list input must stay zero, and the public input must carry the arguments.
 	assert.Equal(t, "", stub.gotListInput.MasterCardgroupID, "admin ListMasterCards must not be called")
 	assert.Equal(t, "m1", stub.gotPublicListInput.MasterCardgroupID)
-	require.NotNil(t, stub.gotPublicListInput.OrderBy)
-	assert.Equal(t, usecase.MasterCardOrderByPosition, *stub.gotPublicListInput.OrderBy)
-	require.NotNil(t, stub.gotPublicListInput.OrderDirection)
-	assert.Equal(t, usecase.SortOrderAsc, *stub.gotPublicListInput.OrderDirection)
 
 	require.Len(t, conn.Edges, 1)
 	assert.Equal(t, 1, conn.TotalCount)
@@ -428,7 +404,7 @@ func TestMasterCardsConnection_WrapsUsecaseError(t *testing.T) {
 			t.Parallel()
 			stub := &stubMasterCardUC{publicListErr: tc.err}
 			qr := &queryResolver{&Resolver{MasterCardUC: stub}}
-			_, err := qr.MasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil)
+			_, err := qr.MasterCardsConnection(context.Background(), "m1", nil, nil, nil)
 			require.Error(t, err)
 			assert.True(t, gqlerrtest.IsCode(err, tc.want), "want wire code %s", tc.want)
 		})

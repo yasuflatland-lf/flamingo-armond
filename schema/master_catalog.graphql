@@ -22,13 +22,6 @@ type MasterCardgroup {
   updatedAt: Time!
 }
 
-"""Field to order the master catalog by in paginated queries."""
-enum MasterCatalogOrderBy {
-  SORT_ORDER
-  CREATED_AT
-  NAME
-}
-
 """One master cardgroup plus the cursor pointing at it."""
 type MasterCatalogEdge {
   """
@@ -67,13 +60,12 @@ extend type Query {
   even when more rows exist. A negative `first` is clamped to 0 and therefore
   behaves identically.
   Optional case-insensitive substring search on name.
+  Ordered by `sortOrder` ascending.
   """
   masterCatalog(
     first: Int,
     after: ID,
-    search: String,
-    orderBy: MasterCatalogOrderBy = SORT_ORDER,
-    orderDirection: SortOrder = ASC
+    search: String
   ): MasterCatalogConnection!
 }
 
@@ -86,9 +78,7 @@ extend type Query {
   adminMasters(
     first: Int,
     after: ID,
-    search: String,
-    orderBy: MasterCatalogOrderBy = SORT_ORDER,
-    orderDirection: SortOrder = ASC
+    search: String
   ): MasterCatalogConnection!
 }
 

@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"testing"
 	"time"
@@ -16,7 +17,7 @@ import (
 // ---------------------------------------------------------------------------
 // Cursor stability across edits of the ordering key.
 //
-// The cardgroup listing defaults to UPDATED_AT DESC — a mutable column. A
+// The cardgroup listing orders by updated_at DESC — a mutable column. A
 // cursor that carries only a row id has to re-read that row at serve time to
 // recover its ordering value, so editing the row between two page fetches moves
 // the bookmark: rows already returned come back a second time (S1) or rows the
@@ -62,17 +63,8 @@ func (r *cursorWalkRepo) FindPageByOwner(
 	ownerID string,
 	after *repository.CardgroupCursor,
 	first int,
-	orderBy repository.CardgroupOrderBy,
-	dir repository.SortOrder,
 	_ *string,
 ) ([]*domain.Cardgroup, int64, error) {
-	if orderBy != repository.CardgroupOrderByUpdatedAt || dir != repository.SortDesc {
-		return nil, 0, eris.Errorf(
-			"cursorWalkRepo: only the (updated_at, DESC) ordering is implemented; got orderBy=%q dir=%q",
-			orderBy, dir,
-		)
-	}
-
 	owned := make([]*domain.Cardgroup, 0, len(r.rows))
 	for _, cg := range r.rows {
 		if cg.IsOwnedBy(domain.UserID(ownerID)) {
@@ -377,10 +369,10 @@ func TestCardgroupCursorWalk_OrderKeysCoverEveryReturnedRow(t *testing.T) {
 	out := fetchWalkPage(t, newWalkUsecase(repo), nil)
 
 	if out.Ordering != (PageOrdering{
-		OrderBy:   string(repository.CardgroupOrderByUpdatedAt),
+		OrderBy:   "updated_at",
 		Direction: string(repository.SortDesc),
 	}) {
-		t.Fatalf("Ordering = %+v, want the schema default (updated_at, DESC)", out.Ordering)
+		t.Fatalf("Ordering = %+v, want the fixed (updated_at, DESC)", out.Ordering)
 	}
 	for _, cg := range out.Cardgroups {
 		got, ok := out.OrderKeys[string(cg.ID)]
@@ -442,11 +434,11 @@ func TestResolveCardgroupCursor_V2OrderingMismatch_ReturnsBadUserInput(t *testin
 
 	cases := map[string]cursor.Payload{
 		"different column": {
-			ID: "cg-a", OrderBy: string(repository.CardgroupOrderByName),
+			ID: "cg-a", OrderBy: "name",
 			Direction: string(repository.SortDesc), OrderKey: "Deck cg-a",
 		},
 		"different direction": {
-			ID: "cg-a", OrderBy: string(repository.CardgroupOrderByUpdatedAt),
+			ID: "cg-a", OrderBy: "updated_at",
 			Direction: string(repository.SortAsc), OrderKey: walkBase.Format(time.RFC3339Nano),
 		},
 	}
@@ -475,7 +467,7 @@ func TestResolveCardgroupCursor_V2MalformedOrderKey_ReturnsBadUserInput(t *testi
 	uc := newWalkUsecase(newCursorWalkFixture())
 	cur := cursor.EncodeV2(cursor.Payload{
 		ID:        "cg-a",
-		OrderBy:   string(repository.CardgroupOrderByUpdatedAt),
+		OrderBy:   "updated_at",
 		Direction: string(repository.SortDesc),
 		OrderKey:  "not-a-timestamp",
 	})
@@ -500,7 +492,7 @@ func TestResolveCardgroupCursor_V2ForeignOwner_ReturnsCursorNotFound(t *testing.
 
 	cur := cursor.EncodeV2(cursor.Payload{
 		ID:        "cg-foreign",
-		OrderBy:   string(repository.CardgroupOrderByUpdatedAt),
+		OrderBy:   "updated_at",
 		Direction: string(repository.SortDesc),
 		OrderKey:  walkBase.Add(-3 * time.Minute).Format(time.RFC3339Nano),
 	})
@@ -521,7 +513,7 @@ func TestResolveCardgroupCursor_V2UnknownID_ReturnsCursorNotFound(t *testing.T) 
 	uc := newWalkUsecase(newCursorWalkFixture())
 	cur := cursor.EncodeV2(cursor.Payload{
 		ID:        "cg-deleted",
-		OrderBy:   string(repository.CardgroupOrderByUpdatedAt),
+		OrderBy:   "updated_at",
 		Direction: string(repository.SortDesc),
 		OrderKey:  walkBase.Format(time.RFC3339Nano),
 	})
@@ -533,59 +525,22 @@ func TestResolveCardgroupCursor_V2UnknownID_ReturnsCursorNotFound(t *testing.T) 
 	assertValidationError(t, err, "after", "cursor not found")
 }
 
-// TestApplyCardgroupOrderKey_PerColumn covers the decode half of the ordering
-// key for every column in the allowlist, including the ID column (whose key is
-// empty because the id is already carried) and the impossible default arm,
-// which must stay INTERNAL rather than degrade to BAD_USER_INPUT.
-func TestApplyCardgroupOrderKey_PerColumn(t *testing.T) {
+// TestApplyCardgroupOrderKey_UpdatedAt covers the decode half of the ordering
+// key: a well-formed key hydrates UpdatedAt, a malformed one is
+// errCursorKeyMalformed so the caller maps it to BAD_USER_INPUT.
+func TestApplyCardgroupOrderKey_UpdatedAt(t *testing.T) {
 	t.Parallel()
 
-	when := walkBase.Format(time.RFC3339Nano)
-
 	c := &repository.CardgroupCursor{ID: "cg-a"}
-	if err := applyCardgroupOrderKey(c, repository.CardgroupOrderByID, ""); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if c.Name != nil || c.CreatedAt != nil || c.UpdatedAt != nil {
-		t.Fatalf("orderBy=id must hydrate no extra column, got %+v", c)
-	}
-
-	c = &repository.CardgroupCursor{ID: "cg-a"}
-	if err := applyCardgroupOrderKey(c, repository.CardgroupOrderByName, "Deck cg-a"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if c.Name == nil || *c.Name != "Deck cg-a" {
-		t.Fatalf("orderBy=name must hydrate Name, got %+v", c)
-	}
-
-	c = &repository.CardgroupCursor{ID: "cg-a"}
-	if err := applyCardgroupOrderKey(c, repository.CardgroupOrderByCreatedAt, when); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if c.CreatedAt == nil || !c.CreatedAt.Equal(walkBase) {
-		t.Fatalf("orderBy=created_at must hydrate CreatedAt, got %+v", c)
-	}
-
-	c = &repository.CardgroupCursor{ID: "cg-a"}
-	if err := applyCardgroupOrderKey(c, repository.CardgroupOrderByUpdatedAt, when); err != nil {
+	if err := applyCardgroupOrderKey(c, walkBase.Format(time.RFC3339Nano)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if c.UpdatedAt == nil || !c.UpdatedAt.Equal(walkBase) {
-		t.Fatalf("orderBy=updated_at must hydrate UpdatedAt, got %+v", c)
+		t.Fatalf("applyCardgroupOrderKey must hydrate UpdatedAt, got %+v", c)
 	}
 
-	err := applyCardgroupOrderKey(&repository.CardgroupCursor{}, repository.CardgroupOrderBy("not_a_real_column"), "")
-	assertInternalChain(t, err, "usecase: cardgroup: unhandled orderBy")
-}
-
-// TestCardgroupOrderKey_UnknownOrderBy covers the encode half's impossible
-// default arm: an unmapped column is a caller bug, surfaced as INTERNAL rather
-// than an empty key that would silently produce an unanchored cursor.
-func TestCardgroupOrderKey_UnknownOrderBy(t *testing.T) {
-	t.Parallel()
-
-	_, err := cardgroupOrderKeys(repository.CardgroupOrderBy("not_a_real_column"), []*domain.Cardgroup{
-		{ID: domain.CardgroupID("cg-a"), OwnerID: "u1"},
-	})
-	assertInternalChain(t, err, "usecase: cardgroup: unhandled orderBy")
+	err := applyCardgroupOrderKey(&repository.CardgroupCursor{}, "not-a-timestamp")
+	if !errors.Is(err, errCursorKeyMalformed) {
+		t.Fatalf("want errCursorKeyMalformed, got %v", err)
+	}
 }

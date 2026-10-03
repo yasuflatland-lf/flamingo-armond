@@ -16,7 +16,7 @@ import (
 // ListPublicMasterCards
 //
 // The page-assembly body reuses the SAME shared helpers as ListMasterCards
-// (resolveRelayPage / resolveMasterCardOrderBy / resolveMasterCardCursor /
+// (resolveRelayPage / resolveMasterCardCursor /
 // assemblePage), exhaustively tested for the admin path in master_card_test.go.
 // These tests pin what is specific to the public method and NOT covered by the
 // admin tests: the authentication check, the catalog-visibility gate, the
@@ -141,12 +141,10 @@ func TestListPublicMasterCards_AfterWithoutFirst(t *testing.T) {
 		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) { return publishedMasterDeck("id-1"), nil },
 	}
 	uc := newMasterCardUC(t, mc, mcg, false)
-	ob := MasterCardOrderByID
 	after := cursor.Encode("mc-1")
 	_, err := uc.ListPublicMasterCards(authedCtx("u1"), MasterCardConnectionInput{
 		MasterCardgroupID: "id-1",
 		After:             &after,
-		OrderBy:           &ob,
 	})
 	assertValidationError(t, err, "after", "after requires first")
 	if len(mc.findPageCalls) != 0 || len(mc.findByIDCalls) != 0 {
@@ -214,7 +212,7 @@ func TestListPublicMasterCards_FindPage_PropagatesCancelled(t *testing.T) {
 }
 
 // context.Canceled surfaced during cursor hydration (resolveMasterCardCursor →
-// FindByID, reached when orderBy is non-ID) must propagate unwrapped end-to-end
+// FindByID) must propagate unwrapped end-to-end
 // through the public method. resolveMasterCardCursor is shared with the admin
 // path, but this pins that ListPublicMasterCards itself adds no wrap on that path
 // for the security-sensitive public endpoint.
@@ -227,13 +225,11 @@ func TestListPublicMasterCards_CursorHydration_PropagatesCancelled(t *testing.T)
 		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) { return publishedMasterDeck("id-1"), nil },
 	}
 	uc := newMasterCardUC(t, mc, mcg, true)
-	ob := MasterCardOrderByPosition // non-ID ordering triggers FindByID in resolveMasterCardCursor
 	after := cursor.Encode("cur-1")
 	_, err := uc.ListPublicMasterCards(authedCtx("u1"), MasterCardConnectionInput{
 		MasterCardgroupID: "id-1",
 		First:             intPtr(5),
 		After:             &after,
-		OrderBy:           &ob,
 	})
 	assertCancelled(t, err)
 	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
