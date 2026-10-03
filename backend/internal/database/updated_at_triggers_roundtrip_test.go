@@ -136,10 +136,11 @@ func TestUpdatedAtTriggersDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// reset_legacy_new_card_ratio, revoke_client_writes,
+	// drop_swipe_records_user_cardgroup_index, reset_legacy_new_card_ratio,
+	// revoke_client_writes,
 	// lower_new_card_ratio_default, tighten_new_card_ratio_check, and
 	// realign_fsrs_snapshot_columns_to_v4 sit above the trigger migration.
-	require.NoError(t, m.Steps(-6))
+	require.NoError(t, m.Steps(-7))
 	requireUpdatedAtTriggerEvents(t, ctx, sqlDB, false)
 	_, legacyInsertedAt := insertCardgroupWithUpdatedAt(t, ctx, sqlDB, ownerID, sentinel)
 	require.True(t, sentinel.Equal(legacyInsertedAt), "down migration must preserve supplied updated_at")

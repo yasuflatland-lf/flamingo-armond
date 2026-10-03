@@ -87,35 +87,11 @@ func TestSwipeRecordsCardgroupIDSchema(t *testing.T) {
 		t.Fatalf("swipe_records.cardgroup_id is_nullable=%q, want NO", isNullable)
 	}
 
-	var indexdef string
-	if err := sqlDB.QueryRowContext(ctx, `
-		SELECT pg_get_indexdef(indexrelid)
-		FROM pg_index
-		WHERE indexrelid = 'public.idx_swipe_records_user_cardgroup'::regclass
-	`).Scan(&indexdef); err != nil {
-		t.Fatalf("query idx_swipe_records_user_cardgroup definition: %v", err)
-	}
-	const wantIndexDef = "CREATE INDEX idx_swipe_records_user_cardgroup ON public.swipe_records USING btree (user_id, cardgroup_id, reviewed_at DESC)"
-	if indexdef != wantIndexDef {
-		t.Fatalf("idx_swipe_records_user_cardgroup definition=%q, want %q", indexdef, wantIndexDef)
-	}
-
-	var indexedTable string
-	if err := sqlDB.QueryRowContext(ctx, `
-		SELECT tablename
-		FROM pg_indexes
-		WHERE schemaname = 'public'
-		  AND tablename = 'swipe_records'
-		  AND indexname = 'idx_swipe_records_user_cardgroup'
-	`).Scan(&indexedTable); err != nil {
-		t.Fatalf("query pg_indexes for idx_swipe_records_user_cardgroup: %v", err)
-	}
 }
 
 // TestSwipeRecordsCardgroupIDForeignKey pins the foreign key and its backing
-// index. The composite idx_swipe_records_user_cardgroup leads with user_id, so it
-// cannot serve a lookup or cascade keyed on cardgroup_id alone; the single-column
-// index asserted here is what the foreign key actually uses.
+// index. No composite index on swipe_records covers cardgroup_id; the
+// single-column index asserted here is what the foreign key uses.
 func TestSwipeRecordsCardgroupIDForeignKey(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
