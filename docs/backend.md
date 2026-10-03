@@ -122,21 +122,22 @@ A repository `Update` that receives a no-op patch (all fields nil or unchanged) 
 
 ### Context cancellation propagation
 
-When a resolver calls a downstream service (DB, JWKS, role lookup) and the caller's context is cancelled, the returned error wraps `context.Canceled` or `context.DeadlineExceeded`. **Forward those errors as-is** rather than wrapping them with `gqlerr.Internal` — wrapping them logs an ERROR line and emits an `INTERNAL` envelope for what is actually a client-driven cancellation (browser closed, navigation away, deadline hit). The pattern for blocking auth calls is:
+When a resolver calls a downstream service (DB, JWKS, role lookup) and the caller's context is cancelled, the returned error wraps `context.Canceled` or `context.DeadlineExceeded`. **Forward those errors as-is** rather than wrapping them with `gqlerr.Internal` — wrapping them logs an ERROR line and emits an `INTERNAL` envelope for what is actually a client-driven cancellation (browser closed, navigation away, deadline hit). Blocking admin checks live in the usecase layer (see [Inject `AdminChecker` for admin-exempt business logic](backend/library-gotchas/admin-checker-inject-for-admin-exempt-business-logic.md)); `AdminGate.Require` in `backend/internal/usecase/admin_gate.go` shows the pattern:
 
 ```go
-isAdmin, err := r.AuthSvc.IsAdmin(ctx, caller.Sub)
+isAdmin, err := g.checker.IsAdmin(ctx, caller.Sub)
 if err != nil {
-    if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-        return nil, err
+    if isContextDone(err) || errors.Is(err, ucerr.ErrUnauthenticated) {
+        return "", err
     }
-    return nil, gqlerr.Internal(ctx, err)
+    // ...
+    return "", eris.Wrap(err, callerPrefix)
 }
 ```
 
-Applies to every resolver that performs a blocking external call. Without this guard, `slog.ErrorContext` and any downstream alerting (Sentry, dashboards) get polluted by client cancellations that are not server bugs.
+Applies to every resolver or usecase that performs a blocking external call. At the resolver layer, `classifyLoaderErr` in `backend/graph/resolver/helpers.go` is the equivalent form: it maps `context.Canceled` / `context.DeadlineExceeded` to `gqlerr.Cancelled` and wraps only the remaining errors with `gqlerr.Internal`. Without this guard, `slog.ErrorContext` and any downstream alerting (Sentry, dashboards) get polluted by client cancellations that are not server bugs.
 
-The same rule extends to **usecases that wrap a `db.Transaction` or call an injected service** (e.g. `CardgroupOwnershipFinder.FindByID`, `CardRepository.UpsertManyTx`). When a usecase is the layer that catches the error, return `context.Canceled` / `context.DeadlineExceeded` as-is and wrap only the genuine residual errors with the usecase's `eris` prefix. `cardImportUsecase.Import` applies this at both the ownership lookup and transaction-runner boundaries: owner lookup context errors pass through from `authorizeCardgroupOrBadInput`, and transaction errors pass through when `isContextDone(err)` matches.
+**Usecases that wrap a `db.Transaction` or call an injected service** (e.g. `CardgroupOwnershipFinder.FindByID`, `CardRepository.UpsertManyTx`) follow the same rule. When a usecase is the layer that catches the error, return `context.Canceled` / `context.DeadlineExceeded` as-is and wrap only the genuine residual errors with the usecase's `eris` prefix. `cardImportUsecase.Import` applies this at both the ownership lookup and transaction-runner boundaries: owner lookup context errors pass through from `authorizeCardgroupOrBadInput`, and transaction errors pass through when `isContextDone(err)` matches.
 
 ### Legacy ports: revisit boundaries before re-translating
 
