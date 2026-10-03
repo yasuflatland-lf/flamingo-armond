@@ -19,8 +19,6 @@ export const AdminMastersQuery = graphql(`
   query AdminMasters(
     $first: Int
     $after: ID
-    $last: Int
-    $before: ID
     $search: String
     $orderBy: MasterCatalogOrderBy
     $orderDirection: SortOrder
@@ -28,8 +26,6 @@ export const AdminMastersQuery = graphql(`
     adminMasters(
       first: $first
       after: $after
-      last: $last
-      before: $before
       search: $search
       orderBy: $orderBy
       orderDirection: $orderDirection
