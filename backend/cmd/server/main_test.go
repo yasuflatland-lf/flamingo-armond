@@ -1351,6 +1351,9 @@ func TestGraphQL_PropagatesTraceparent(t *testing.T) {
 	}
 }
 
+// TestLoader_Middleware_DoesNotBreakQuery selects me.lastSignInAt so the
+// request resolves LastSignInByUserID through the real router's
+// loader.Middleware, pinning that the router forwards its user repository.
 func TestLoader_Middleware_DoesNotBreakQuery(t *testing.T) {
 	f := newJWTFixture(t)
 	ts, _ := newGraphQLTestServer(t, f)
@@ -1358,7 +1361,7 @@ func TestLoader_Middleware_DoesNotBreakQuery(t *testing.T) {
 	userID := insertAuthUser(t, context.Background())
 	tok := f.sign(t, userID)
 
-	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ me { id } }"}`, tok)
+	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ me { id lastSignInAt } }"}`, tok)
 
 	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
 		t.Fatalf("unexpected errors (loader middleware may have broken request): %v", errs)
@@ -1370,6 +1373,9 @@ func TestLoader_Middleware_DoesNotBreakQuery(t *testing.T) {
 	}
 	if me["id"] != userID {
 		t.Fatalf("expected me.id=%q, got %v", userID, me["id"])
+	}
+	if _, ok := me["lastSignInAt"]; !ok {
+		t.Fatalf("expected data.me.lastSignInAt key (null is fine), got %v", me)
 	}
 }
 

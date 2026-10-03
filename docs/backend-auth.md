@@ -88,7 +88,9 @@ The three `SUPABASE_JWT_*` variables are required. `ConfigFromEnv()` returns an 
 
 ### Authorization gates: object-level vs. field-level
 
-A `@hasRole(ADMIN)`-style gate on a top-level query (e.g. `Query.users`) does **not** protect fields on the returned type that any other resolver might also expose. `User.roles` is reachable from `me` and any future resolver that returns a `User` — the admin-only gate on `Query.users` covers exactly one of those entry points.
+A `@hasRole(ADMIN)`-style gate on a top-level query (e.g. `Query.users`) does **not** protect fields on the returned type that any other resolver might also expose. `User.roles` is reachable from `me`, the admin `users` connection and `adminUser`, every mutation payload that returns a `User`, and any future resolver that returns a `User` — the admin-only gate on `Query.users` covers exactly one of those entry points.
+
+Only `User.roles` and `User.lastSignInAt` run `requireSelfOrAdmin` (`backend/graph/resolver/helpers.go`). `User.lastViewedCardgroup`, `User.learnDisplayMode` and `User.newCardRatio` resolve straight off `obj.ID` through the `UserPreference` loader with no caller check, so a resolver that returns a `User` other than the caller must gate itself or add field-level guards to those three fields first.
 
 Field-level resolvers that expose privileged data must perform their own admin-or-self check inside the field resolver itself:
 

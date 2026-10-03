@@ -23,7 +23,7 @@ const userCardState = (due: string) => ({
 // Cardgroup fixture
 // ---------------------------------------------------------------------------
 
-/** A single cardgroup owned by the admin user fixture. */
+/** A single baseline cardgroup. */
 const cardgroupFixture: Cardgroup = {
   __typename: "Cardgroup",
   id: "cardgroup-001",

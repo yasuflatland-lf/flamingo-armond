@@ -304,7 +304,15 @@ func emptyUserPreferenceRepo() *countingUserPreferenceRepo {
 func TestMiddleware_For_Roundtrip(t *testing.T) {
 	t.Parallel()
 
-	repo := &countingRepo{}
+	var calls atomic.Int32
+	var receivedKeys atomic.Value
+	repo := &countingRepo{
+		lastSignInByUserIDs: func(_ context.Context, ids []string) (map[string]*time.Time, error) {
+			calls.Add(1)
+			receivedKeys.Store(append([]string(nil), ids...))
+			return map[string]*time.Time{}, nil
+		},
+	}
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -326,6 +334,19 @@ func TestMiddleware_For_Roundtrip(t *testing.T) {
 	}
 	if got.UserCardFSRS != nil {
 		t.Fatalf("Loaders.UserCardFSRS is not nil without a viewer or reader")
+	}
+	if got.LastSignInByUserID == nil {
+		t.Fatalf("Loaders.LastSignInByUserID is nil")
+	}
+	if _, err := got.LastSignInByUserID.Load(context.Background(), "u-1")(); err != nil {
+		t.Fatalf("LastSignInByUserID.Load: %v", err)
+	}
+	if n := calls.Load(); n != 1 {
+		t.Fatalf("LastSignInByUserIDs calls = %d, want 1 (Middleware must forward userRepo)", n)
+	}
+	keys, _ := receivedKeys.Load().([]string)
+	if len(keys) != 1 || keys[0] != "u-1" {
+		t.Fatalf("LastSignInByUserIDs keys = %v, want [u-1]", keys)
 	}
 }
 
