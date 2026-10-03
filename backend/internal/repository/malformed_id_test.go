@@ -241,7 +241,8 @@ func TestClassifyMalformedClientIDAtRepositoryLookups(t *testing.T) {
 func TestFindRolesByIDs_DropsMalformedIDsWithoutQuerying(t *testing.T) {
 	t.Parallel()
 
-	got, err := NewRoleRepository(newInvalidTextRepresentationDB(t)).FindByIDs(context.Background(), []string{
+	db := newInvalidTextRepresentationDB(t)
+	got, err := NewRoleRepository(db).FindByIDsTx(context.Background(), db, []string{
 		"malformed", "urn:uuid:0190a3c4-7d2e-7b1a-9c3f-4e5d6a7b8c9d",
 	})
 	if err != nil {

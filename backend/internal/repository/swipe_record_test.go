@@ -37,17 +37,36 @@ func TestSwipeRecordRepository_CreateTxAndFind(t *testing.T) {
 		return swipeRepo.CreateTx(ctx, tx, sr)
 	}))
 
-	byID, err := swipeRepo.FindByIDs(ctx, []string{sr.ID})
+	var rows []struct {
+		ID              string
+		CardgroupID     string
+		Rating          int
+		Reps            int
+		PhaseBefore     int16
+		StabilityBefore float64
+		DueBefore       time.Time
+	}
+	require.NoError(t, testDB.GORM.WithContext(ctx).Table("swipe_records").
+		Where("id = ?", sr.ID).Find(&rows).Error)
+	require.Len(t, rows, 1)
+	require.Equal(t, sr.ID, rows[0].ID)
+	require.Equal(t, string(cg.ID), rows[0].CardgroupID)
+	require.Equal(t, int(domain.RatingEasy), rows[0].Rating)
+	require.Equal(t, int(state.Reps), rows[0].Reps)
+	require.Equal(t, int16(domain.FSRSPhaseReview), rows[0].PhaseBefore)
+	require.InDelta(t, 6.6, rows[0].StabilityBefore, 0.000000001)
+	require.True(t, stateBefore.Due.Equal(rows[0].DueBefore))
+
+	records, err := swipeRepo.ListByUserSince(ctx, ownerID, reviewedAt.Add(-time.Microsecond))
 	require.NoError(t, err)
-	require.Len(t, byID, 1)
-	require.Equal(t, sr.ID, byID[sr.ID].ID)
-	require.Equal(t, cg.ID, byID[sr.ID].CardgroupID)
-	require.Equal(t, domain.RatingEasy, byID[sr.ID].Rating)
-	require.Equal(t, state.Reps, byID[sr.ID].StateAfter.Reps)
-	// The pre-swipe snapshot survives the CreateTx -> read roundtrip.
-	require.Equal(t, domain.FSRSPhaseReview, byID[sr.ID].PhaseBefore)
-	require.InDelta(t, 6.6, byID[sr.ID].StabilityBefore, 0.000000001)
-	require.True(t, stateBefore.Due.Equal(byID[sr.ID].DueBefore))
+	require.Len(t, records, 1)
+	require.Equal(t, sr.ID, records[0].ID)
+	require.Equal(t, cg.ID, records[0].CardgroupID)
+	require.Equal(t, domain.RatingEasy, records[0].Rating)
+	require.Equal(t, state.Reps, records[0].StateAfter.Reps)
+	require.Equal(t, domain.FSRSPhaseReview, records[0].PhaseBefore)
+	require.InDelta(t, 6.6, records[0].StabilityBefore, 0.000000001)
+	require.True(t, stateBefore.Due.Equal(records[0].DueBefore))
 
 	history, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cg.ID))
 	require.NoError(t, err)
@@ -201,10 +220,6 @@ func TestSwipeRecordRepository_OutOfRangeState_ReturnsError(t *testing.T) {
 	}))
 
 	reads := map[string]func() error{
-		"FindByIDs": func() error {
-			_, err := swipeRepo.FindByIDs(ctx, []string{corrupt.ID})
-			return err
-		},
 		"FindByUserAndCardgroup": func() error {
 			_, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cg.ID))
 			return err
@@ -251,7 +266,7 @@ func TestSwipeRecordRepository_OutOfRangePhaseBefore_ReturnsError(t *testing.T) 
 		reviewedAt, 2.5, 5.0, 0, 0, 0, int(domain.FSRSPhaseNew), reviewedAt, 99, 2.5, reviewedAt,
 	).Error)
 
-	_, err := swipeRepo.FindByIDs(ctx, []string{rowID})
+	_, err := swipeRepo.ListByUserSince(ctx, ownerID, reviewedAt.Add(-time.Microsecond))
 	require.Error(t, err, "an out-of-range phase_before must propagate as an error")
 	require.Contains(t, err.Error(), "swipe record: invalid phase_before value 99")
 }
@@ -290,17 +305,16 @@ func TestSwipeRecordRepository_OnDeleteCardgroup_CascadesSwipeRecords(t *testing
 		return swipeRepo.CreateTx(ctx, tx, sr)
 	}))
 
-	before, err := swipeRepo.FindByIDs(ctx, []string{sr.ID})
-	require.NoError(t, err)
-	require.Len(t, before, 1, "swipe record must exist before the cardgroup delete")
-
 	sqlDB := sqlDBHandle(t)
+	var count int
+	require.NoError(t, sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM public.swipe_records WHERE id = $1`, sr.ID).Scan(&count))
+	require.Equal(t, 1, count, "swipe record must exist before the cardgroup delete")
+
 	_, err = sqlDB.ExecContext(ctx, `DELETE FROM public.cardgroups WHERE id = $1`, string(cgAtSwipe.ID))
 	require.NoError(t, err, "deleting the cardgroup must not be blocked by the foreign key")
 
-	after, err := swipeRepo.FindByIDs(ctx, []string{sr.ID})
-	require.NoError(t, err)
-	require.Empty(t, after, "swipe record survived the cardgroup delete: the FK is not ON DELETE CASCADE")
+	require.NoError(t, sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM public.swipe_records WHERE id = $1`, sr.ID).Scan(&count))
+	require.Zero(t, count, "swipe record survived the cardgroup delete: the FK is not ON DELETE CASCADE")
 
 	// The card itself lives in a different deck and must be untouched, proving the
 	// cascade travelled through cardgroup_id rather than through cards.card_id.

@@ -24,8 +24,8 @@ Separate into two interfaces owned by two files:
 
 ```
 repository/
-  role.go       — RoleRepository: 7 CRUD methods
-                  FindByID, FindByName, FindByIDs, Create, Update, Delete, ListAll
+  role.go       — RoleRepository: 6 CRUD methods
+                  FindByID, FindByName, Create, Update, Delete, ListAll
   user_role.go  — UserRoleRepository: 6 membership methods
                   HasRole, AssignToUser, RevokeFromUser,
                   ListByUser, ListByUserIDs, CountAdmins
@@ -78,7 +78,7 @@ After the interface split, update these sites in dependency order:
    This keeps the auth package free of the membership repository import and lets test
    stubs implement only the one method they exercise.
 3. **Usecase narrow interfaces**: split existing narrow interfaces that mixed CRUD lookups
-   with membership writes into two (e.g. `adminRoleRepository` for `FindByIDs` and
+   with membership writes into two (e.g. `adminRoleRepository` for `FindByIDsTx` and
    `adminUserRoleRepository` for `AssignToUser`/`RevokeFromUser`).
 4. **Composition root** (`cmd/server/main.go`): instantiate both concrete repositories and
    pass each to the right consumer.

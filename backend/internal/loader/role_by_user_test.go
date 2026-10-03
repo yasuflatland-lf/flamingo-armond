@@ -70,12 +70,10 @@ func newLoadersForRoleByUser(userRoleRepo repository.UserRoleRepository) *loader
 				return map[string]*domain.User{}, nil
 			},
 		},
-		emptyRoleRepo(),
 		userRoleRepo,
 		emptyCardgroupRepo(),
 		emptyCardRepo(),
 		emptyUserPreferenceRepo(),
-		nil,
 	)
 }
 

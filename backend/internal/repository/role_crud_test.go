@@ -86,10 +86,10 @@ func TestRoleRepository_FindByIDsTx_ReturnsRolesInTx(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestRoleRepository_FindByIDs_DropsMalformedKeepsValid pins the partial-match
+// TestRoleRepository_FindByIDsTx_DropsMalformedKeepsValid pins the partial-match
 // contract: malformed and urn:uuid: ids are dropped before the IN query, so
 // the canonical id is still returned.
-func TestRoleRepository_FindByIDs_DropsMalformedKeepsValid(t *testing.T) {
+func TestRoleRepository_FindByIDsTx_DropsMalformedKeepsValid(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repo := repository.NewRoleRepository(testDB.GORM)
@@ -97,12 +97,7 @@ func TestRoleRepository_FindByIDs_DropsMalformedKeepsValid(t *testing.T) {
 	roleID := insertRole(t, ctx, "find-ids-mixed-"+uuid.NewString())
 	ids := []string{roleID, "not-a-uuid", "urn:uuid:" + roleID}
 
-	got, err := repo.FindByIDs(ctx, ids)
-	require.NoError(t, err)
-	require.Len(t, got, 1)
-	require.NotNil(t, got[roleID])
-
-	err = testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		got, err := repo.FindByIDsTx(ctx, tx, ids)
 		require.NoError(t, err)
 		require.Len(t, got, 1)
