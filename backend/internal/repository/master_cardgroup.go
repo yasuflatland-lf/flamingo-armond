@@ -104,18 +104,16 @@ type MasterCardgroupRepository interface {
 	// the conjunction `status = published AND at least one master card exists`;
 	// it is enforced in SQL and is never caller-overridable, so a published deck
 	// whose cards have all been deleted is absent from the list and from the
-	// total alike. Forward paging uses (after, first);
-	// backward paging uses (before, last) and the slice is reversed in memory so
-	// the caller observes the same display order regardless of direction. An
-	// optional case-insensitive substring search filters by name (ILIKE
-	// metacharacters in the search are escaped so they match literally). The
-	// returned total applies the same visibility + search filter as the page
-	// query and is computed before the zero-page short-circuit, so a
-	// totalCount-only request still observes the real count.
+	// total alike. Paging is forward-only (after, first). An optional
+	// case-insensitive substring search filters by name (ILIKE metacharacters
+	// in the search are escaped so they match literally). The returned total
+	// applies the same visibility + search filter as the page query and is
+	// computed before the zero-page short-circuit, so a totalCount-only request
+	// still observes the real count.
 	FindPublishedPage(
 		ctx context.Context,
-		after, before *MasterCatalogCursor,
-		first, last int,
+		after *MasterCatalogCursor,
+		first int,
 		orderBy MasterCatalogOrderBy,
 		dir SortOrder,
 		search *string,
@@ -152,8 +150,8 @@ type MasterCardgroupRepository interface {
 	// FindPublishedPage.
 	FindPageAnyStatus(
 		ctx context.Context,
-		after, before *MasterCatalogCursor,
-		first, last int,
+		after *MasterCatalogCursor,
+		first int,
 		orderBy MasterCatalogOrderBy,
 		dir SortOrder,
 		search *string,

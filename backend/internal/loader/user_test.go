@@ -156,8 +156,8 @@ func (r *countingCardgroupRepo) Delete(_ context.Context, _ string) error {
 func (r *countingCardgroupRepo) FindPageByOwner(
 	_ context.Context,
 	_ string,
-	_, _ *repository.CardgroupCursor,
-	_, _ int,
+	_ *repository.CardgroupCursor,
+	_ int,
 	_ repository.CardgroupOrderBy,
 	_ repository.SortOrder,
 	_ *string,
@@ -190,8 +190,8 @@ func (r *countingCardRepo) FindByIDs(ctx context.Context, ids []string) (map[str
 }
 func (r *countingCardRepo) FindPageByCardgroupForUser(
 	_ context.Context, _, _ string,
-	_, _ *repository.CardCursor,
-	_, _ int,
+	_ *repository.CardCursor,
+	_ int,
 	_ repository.CardOrderBy, _ repository.SortOrder,
 	_ *string,
 ) ([]*domain.Card, int64, map[string]time.Time, error) {
@@ -260,8 +260,8 @@ func (r *countingRepo) UpdateTxVersioned(_ context.Context, _ *gorm.DB, _ string
 // accidental coupling instead of silently returning a fabricated empty page.
 func (r *countingRepo) ListPage(
 	_ context.Context,
-	_, _ *string,
-	_, _ int,
+	_ *string,
+	_ int,
 	_ *string,
 ) ([]*domain.User, int64, error) {
 	panic("countingRepo.ListPage not configured")

@@ -101,16 +101,16 @@ type CardReadRepository interface {
 }
 
 type CardPageRepository interface {
-	// FindPageByCardgroupForUser pages a cardgroup's cards by (orderBy, id): `after`+`first` forward,
-	// `before`+`last` backward. A non-blank search (ILIKE on front/back) filters both the window and
+	// FindPageByCardgroupForUser pages a cardgroup's cards forward by (orderBy, id) from `after`,
+	// returning at most `first` rows. A non-blank search (ILIKE on front/back) filters both the window and
 	// totalCount. userID only picks the viewer's user_card_fsrs row for DUE ordering; it is not an
 	// ownership check. orderKeys maps card id to the ORDER BY value read in the same query (nil for ID),
 	// so v2 cursors never re-read it from a later snapshot.
 	FindPageByCardgroupForUser(
 		ctx context.Context,
 		userID, cardgroupID string,
-		after, before *CardCursor,
-		first, last int,
+		after *CardCursor,
+		first int,
 		orderBy CardOrderBy,
 		dir SortOrder,
 		search *string,

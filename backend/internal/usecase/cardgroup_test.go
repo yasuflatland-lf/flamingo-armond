@@ -79,9 +79,7 @@ type mockCardgroupRepository struct {
 type findPageByOwnerCall struct {
 	OwnerID string
 	After   *repository.CardgroupCursor
-	Before  *repository.CardgroupCursor
 	First   int
-	Last    int
 	OrderBy repository.CardgroupOrderBy
 	Dir     repository.SortOrder
 	Search  *string
@@ -139,8 +137,8 @@ func (m *mockCardgroupRepository) Delete(_ context.Context, _ string) error {
 func (m *mockCardgroupRepository) FindPageByOwner(
 	_ context.Context,
 	ownerID string,
-	after, before *repository.CardgroupCursor,
-	first, last int,
+	after *repository.CardgroupCursor,
+	first int,
 	orderBy repository.CardgroupOrderBy,
 	dir repository.SortOrder,
 	search *string,
@@ -148,9 +146,7 @@ func (m *mockCardgroupRepository) FindPageByOwner(
 	m.findPageCalls = append(m.findPageCalls, findPageByOwnerCall{
 		OwnerID: ownerID,
 		After:   after,
-		Before:  before,
 		First:   first,
-		Last:    last,
 		OrderBy: orderBy,
 		Dir:     dir,
 		Search:  search,
@@ -1015,72 +1011,6 @@ func TestCardgroupUsecase_Delete_FindByIDCancelled_IdentityPreserved(t *testing.
 // ListCardgroupsByOwnerConnection — mixed-direction guard tests
 // ---------------------------------------------------------------------------
 
-// TestCardgroupUC_ConnectionGuards_AfterAndBefore verifies that supplying both
-// after and before is rejected with BAD_USER_INPUT before any repo call.
-func TestCardgroupUC_ConnectionGuards_AfterAndBefore(t *testing.T) {
-	t.Parallel()
-	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
-
-	after := "cursor-a"
-	before := "cursor-b"
-	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("user-1"), CardgroupConnectionInput{
-		After:  &after,
-		Before: &before,
-	})
-
-	assertValidationError(t, err, "after", "")
-}
-
-// TestCardgroupUC_ConnectionGuards_FirstAndBefore verifies that combining first
-// (forward page size) with before (backward cursor) is rejected.
-func TestCardgroupUC_ConnectionGuards_FirstAndBefore(t *testing.T) {
-	t.Parallel()
-	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
-
-	first := 5
-	before := "cursor-b"
-	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("user-1"), CardgroupConnectionInput{
-		First:  &first,
-		Before: &before,
-	})
-
-	assertValidationError(t, err, "before", "")
-}
-
-// TestCardgroupUC_ConnectionGuards_LastAndAfter verifies that combining last
-// (backward page size) with after (forward cursor) is rejected.
-func TestCardgroupUC_ConnectionGuards_LastAndAfter(t *testing.T) {
-	t.Parallel()
-	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
-
-	last := 5
-	after := "cursor-a"
-	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("user-1"), CardgroupConnectionInput{
-		Last:  &last,
-		After: &after,
-	})
-
-	assertValidationError(t, err, "after", "")
-}
-
-// TestCardgroupUC_ConnectionGuards_BeforeAlone verifies that before without
-// a companion last value is rejected as ambiguous.
-func TestCardgroupUC_ConnectionGuards_BeforeAlone(t *testing.T) {
-	t.Parallel()
-	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
-
-	before := "cursor-b"
-	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("user-1"), CardgroupConnectionInput{
-		Before: &before,
-	})
-
-	assertValidationError(t, err, "before", "")
-}
-
 // TestCardgroupUC_ConnectionGuards_AfterAlone verifies that after without a
 // companion first value is rejected as ambiguous.
 func TestCardgroupUC_ConnectionGuards_AfterAlone(t *testing.T) {
@@ -1230,22 +1160,6 @@ func TestCardgroupUC_Connection_Anonymous(t *testing.T) {
 	}
 }
 
-// TestCardgroupUC_ConnectionGuards_FirstAndLast verifies that supplying both
-// first and last is rejected with BAD_USER_INPUT(field="first") via
-// resolveStandardPageSize.
-func TestCardgroupUC_ConnectionGuards_FirstAndLast(t *testing.T) {
-	t.Parallel()
-	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
-
-	first, last := 5, 5
-	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("u1"), CardgroupConnectionInput{
-		First: &first,
-		Last:  &last,
-	})
-	assertValidationError(t, err, "first", "")
-}
-
 // TestCardgroupUC_Connection_FirstPage_AssertFirstPlusOne verifies that the
 // usecase requests first+1 from the repository so the +1 fetch trick can
 // detect hasNextPage. This locks down the guard against a future refactor
@@ -1273,64 +1187,6 @@ func TestCardgroupUC_Connection_FirstPage_AssertFirstPlusOne(t *testing.T) {
 	}
 	if repo.findPageCalls[0].First != 3 {
 		t.Fatalf("expected repo.First=first+1=3, got %d", repo.findPageCalls[0].First)
-	}
-	if repo.findPageCalls[0].Last != 0 {
-		t.Fatalf("expected repo.Last=0 on forward page, got %d", repo.findPageCalls[0].Last)
-	}
-}
-
-// TestCardgroupUC_Connection_BackwardPagination_HappyPath verifies that
-// last+before fetches last+1 rows and the leading overflow row is trimmed,
-// HasPrev becomes true, and HasNext is true (because before != nil).
-func TestCardgroupUC_Connection_BackwardPagination_HappyPath(t *testing.T) {
-	t.Parallel()
-
-	// Repo returns last+1=3 rows already reversed by the repository — the
-	// usecase must drop the FIRST row (the overflow indicator), keeping the
-	// final 2 as the page payload.
-	cgs := []*domain.Cardgroup{
-		{ID: "cg-overflow", OwnerID: "u1", Name: "Overflow"},
-		{ID: "cg-a", OwnerID: "u1", Name: "Aplha"},
-		{ID: "cg-b", OwnerID: "u1", Name: "Beta"},
-	}
-	now := time.Now().UTC()
-	cursorCG := &domain.Cardgroup{ID: domain.CardgroupID("cg-cursor"), OwnerID: "u1", Name: "Cursor", UpdatedAt: now}
-	repo := &mockCardgroupRepository{
-		findPageResult: cgs,
-		countResult:    10,
-		findResult:     cursorCG, // hydrate the before cursor
-	}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
-
-	last := 2
-	before := "cg-cursor"
-	out, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("u1"), CardgroupConnectionInput{
-		Last:   &last,
-		Before: &before,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(out.Cardgroups) != 2 {
-		t.Fatalf("expected 2 cardgroups (leading overflow trimmed), got %d", len(out.Cardgroups))
-	}
-	if out.Cardgroups[0].ID != "cg-a" {
-		t.Fatalf("expected first=cg-a (overflow trimmed), got %s", out.Cardgroups[0].ID)
-	}
-	if !out.HasPrev {
-		t.Fatal("expected HasPrev=true (overflow row detected)")
-	}
-	if !out.HasNext {
-		t.Fatal("expected HasNext=true (before cursor present)")
-	}
-	if len(repo.findPageCalls) != 1 {
-		t.Fatalf("expected 1 FindPageByOwner call, got %d", len(repo.findPageCalls))
-	}
-	if repo.findPageCalls[0].Last != 3 {
-		t.Fatalf("expected repo.Last=last+1=3, got %d", repo.findPageCalls[0].Last)
-	}
-	if repo.findPageCalls[0].First != 0 {
-		t.Fatalf("expected repo.First=0 on backward page, got %d", repo.findPageCalls[0].First)
 	}
 }
 
@@ -1801,39 +1657,6 @@ func TestResolveCardgroupOrderBy_InvalidDirection(t *testing.T) {
 	bogus := SortOrder("SIDEWAYS")
 	_, _, err := resolveCardgroupOrderBy(nil, &bogus)
 	assertValidationError(t, err, "orderDirection", "")
-}
-
-// TestResolveCardgroupPageSize_LastClamp verifies that the "last only" branch
-// clamps an oversized last to maxPageSize.
-func TestResolveCardgroupPageSize_LastClamp(t *testing.T) {
-	t.Parallel()
-
-	last := 9999
-	first, gotLast, err := resolveStandardPageSize(nil, &last)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if first != 0 {
-		t.Fatalf("expected first=0, got %d", first)
-	}
-	if gotLast != maxPageSize {
-		t.Fatalf("expected last=%d (clamped), got %d", maxPageSize, gotLast)
-	}
-}
-
-// TestResolveCardgroupPageSize_LastNegativeClampedToZero verifies that a
-// negative last is clamped to 0 by the inner clamp function.
-func TestResolveCardgroupPageSize_LastNegativeClampedToZero(t *testing.T) {
-	t.Parallel()
-
-	last := -7
-	first, gotLast, err := resolveStandardPageSize(nil, &last)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if first != 0 || gotLast != 0 {
-		t.Fatalf("expected (0, 0) for negative last, got (%d, %d)", first, gotLast)
-	}
 }
 
 // TestResolveCardgroupCursor_NilCursor verifies that a nil/empty cursorID

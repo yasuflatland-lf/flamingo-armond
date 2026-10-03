@@ -28,8 +28,8 @@ type MasterCatalogRepository interface {
 	// --- published read (existing) ---
 	FindPublishedPage(
 		ctx context.Context,
-		after, before *repository.MasterCatalogCursor,
-		first, last int,
+		after *repository.MasterCatalogCursor,
+		first int,
 		orderBy repository.MasterCatalogOrderBy,
 		dir repository.SortOrder,
 		search *string,
@@ -40,8 +40,8 @@ type MasterCatalogRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 	FindPageAnyStatus(
 		ctx context.Context,
-		after, before *repository.MasterCatalogCursor,
-		first, last int,
+		after *repository.MasterCatalogCursor,
+		first int,
 		orderBy repository.MasterCatalogOrderBy,
 		dir repository.SortOrder,
 		search *string,
@@ -70,8 +70,8 @@ const (
 // masterCatalog. Pointer fields preserve "absent" semantics from the schema so
 // the usecase can default unset values explicitly.
 type MasterCatalogConnectionInput struct {
-	First, Last    *int
-	After, Before  *string // raw GraphQL ID strings (cursor = master cardgroup UUID)
+	First          *int
+	After          *string // raw GraphQL ID string (cursor = master cardgroup UUID)
 	Search         *string
 	OrderBy        *MasterCatalogOrderBy
 	OrderDirection *SortOrder
@@ -182,18 +182,18 @@ func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsec
 // visibility filter (catalog-visible vs. all statuses).
 type masterCatalogPageFetch func(
 	ctx context.Context,
-	after, before *repository.MasterCatalogCursor,
-	first, last int,
+	after *repository.MasterCatalogCursor,
+	first int,
 	orderBy repository.MasterCatalogOrderBy,
 	dir repository.SortOrder,
 	search *string,
 ) ([]*repository.MasterCatalogItem, int64, error)
 
 // ListPublishedConnection paginates the published master catalog with
-// Relay-style cursors. Forward paging uses (first, after); backward uses
-// (last, before). The five mixed-direction combinations are rejected with
-// BAD_USER_INPUT before the repository is touched so the caller never gets a
-// silently re-interpreted page boundary. Only PUBLISHED decks that hold at
+// forward-only Relay-style cursors (first, after). An `after` without a
+// positive `first` is rejected with BAD_USER_INPUT before the repository is
+// touched so the caller never gets a silently re-interpreted page boundary.
+// Only PUBLISHED decks that hold at
 // least one card are ever returned — that visibility filter is enforced in the
 // repository SQL and is not a caller-overridable argument, so a published deck
 // whose cards have all been deleted disappears from both the page and its
@@ -235,7 +235,7 @@ func (u *masterCatalogUsecase) listMasterCatalogCore(
 		return nil, err
 	}
 
-	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveStandardPageSize)
+	first, err := resolveRelayPage(in.First, in.After, resolveStandardPageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -251,10 +251,6 @@ func (u *masterCatalogUsecase) listMasterCatalogCore(
 	if err != nil {
 		return nil, err
 	}
-	before, err := u.resolveMasterCatalogCursor(ctx, in.Before, orderBy, ordering, "before", publishedOnly)
-	if err != nil {
-		return nil, err
-	}
 
 	// Normalize search once so the count and the page query see the same filter
 	// (nil and whitespace-only both mean "no filter").
@@ -265,9 +261,9 @@ func (u *masterCatalogUsecase) listMasterCatalogCore(
 	// filtered base before its zero-page short-circuit, so a totalCount-only
 	// request still observes the real value.
 	var total int64
-	items, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
-		func(wantFirst, wantLast int) ([]*MasterCatalogItem, error) {
-			rows, t, e := fetch(ctx, after, before, wantFirst, wantLast, orderBy, dir, search)
+	items, hasNext, hasPrev, err := assemblePage(first, after != nil,
+		func(want int) ([]*MasterCatalogItem, error) {
+			rows, t, e := fetch(ctx, after, want, orderBy, dir, search)
 			if e != nil {
 				return nil, eris.Wrap(e, opPrefix)
 			}

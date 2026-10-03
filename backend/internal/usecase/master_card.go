@@ -21,8 +21,8 @@ import (
 // methods require AdminGate; the public listing requires authentication and a
 // catalog-visible deck.
 type MasterCardUsecase interface {
-	// ListMasterCards paginates a master deck's cards with Relay-style forward
-	// (first/after) or backward (last/before) cursors. Admin-only.
+	// ListMasterCards paginates a master deck's cards with Relay-style
+	// forward-only (first/after) cursors. Admin-only.
 	ListMasterCards(ctx context.Context, in MasterCardConnectionInput) (*MasterCardConnectionOutput, error)
 	// ListPublicMasterCards paginates a PUBLISHED master deck's cards for any
 	// authenticated caller (no admin gate). The deck must be catalog-visible
@@ -67,8 +67,8 @@ const (
 // the schema so the usecase can default unset values explicitly.
 type MasterCardConnectionInput struct {
 	MasterCardgroupID string
-	First, Last       *int
-	After, Before     *string // raw GraphQL ID strings (cursor = master card UUID)
+	First             *int
+	After             *string // raw GraphQL ID string (cursor = master card UUID)
 	// Search is optional; nil disables the filter. The usecase normalizes
 	// whitespace-only strings to nil before reaching the repository.
 	Search         *string
@@ -113,8 +113,8 @@ type masterCardRepoForMasterCard interface {
 	FindPageByMasterCardgroup(
 		ctx context.Context,
 		masterCardgroupID string,
-		after, before *repository.MasterCardCursor,
-		first, last int,
+		after *repository.MasterCardCursor,
+		first int,
 		orderBy repository.MasterCardOrderBy,
 		dir repository.SortOrder,
 		search *string,
@@ -468,12 +468,12 @@ func (u *masterCardUsecase) ImportMasterCards(ctx context.Context, in ImportMast
 	return ImportMasterCardsOutput(res), nil
 }
 
-// ListMasterCards paginates a master deck's cards using Relay-style forward
-// (first/after) or backward (last/before) cursors. Admin-only. The mixed
-// direction combinations are rejected with BAD_USER_INPUT before any repository
+// ListMasterCards paginates a master deck's cards using Relay-style
+// forward-only (first/after) cursors. Admin-only. An `after` without a positive
+// `first` is rejected with BAD_USER_INPUT before any repository
 // access. totalCount is the search-aware count returned by
 // FindPageByMasterCardgroup (its internal COUNT(*) applies the active search
-// filter); the repository computes it before the first==0 && last==0
+// filter); the repository computes it before the first==0
 // short-circuit so a totalCount-only request still observes the real count.
 func (u *masterCardUsecase) ListMasterCards(
 	ctx context.Context, in MasterCardConnectionInput,
@@ -525,7 +525,7 @@ func (u *masterCardUsecase) listMasterCardsCore(
 		return nil, err
 	}
 
-	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveStandardPageSize)
+	first, err := resolveRelayPage(in.First, in.After, resolveStandardPageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -541,10 +541,6 @@ func (u *masterCardUsecase) listMasterCardsCore(
 	if err != nil {
 		return nil, err
 	}
-	before, err := u.resolveMasterCardCursor(ctx, in.Before, in.MasterCardgroupID, orderBy, ordering, "before")
-	if err != nil {
-		return nil, err
-	}
 
 	// Normalize: nil and whitespace-only both mean "no filter". After this call
 	// a non-nil search pointer holds a non-empty, trimmed string — the repository
@@ -554,12 +550,12 @@ func (u *masterCardUsecase) listMasterCardsCore(
 	// totalCount is the search-aware count returned by FindPageByMasterCardgroup
 	// (captured inside the assemblePage closure). The repository computes it
 	// before its own no-rows short-circuit, so a totalCount-only request
-	// (first==0 && last==0) still observes the real, search-filtered count.
+	// (first==0) still observes the real, search-filtered count.
 	var total int64
-	cards, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
-		func(wantFirst, wantLast int) ([]*domain.MasterCard, error) {
+	cards, hasNext, hasPrev, err := assemblePage(first, after != nil,
+		func(want int) ([]*domain.MasterCard, error) {
 			rows, t, e := u.masterCardRepo.FindPageByMasterCardgroup(
-				ctx, in.MasterCardgroupID, after, before, wantFirst, wantLast, orderBy, dir, search,
+				ctx, in.MasterCardgroupID, after, want, orderBy, dir, search,
 			)
 			if e != nil {
 				return nil, wrapInfraErr(e, opPrefix+": find page")

@@ -154,7 +154,7 @@ func TestAdminMasterCardsConnection_Success(t *testing.T) {
 
 	orderBy := model.MasterCardOrderByPosition
 	dir := model.SortOrderAsc
-	conn, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil, &orderBy, &dir)
+	conn, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, &orderBy, &dir)
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 
@@ -185,7 +185,7 @@ func TestAdminMasterCardsConnection_WrapsForbidden(t *testing.T) {
 	stub := &stubMasterCardUC{listErr: ucerr.NewForbiddenError("admin only")}
 	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
 
-	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil, nil, nil)
+	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil)
 	require.Error(t, err)
 	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
 }
@@ -213,7 +213,7 @@ func TestAdminMasterCardsConnection_WrapsUnauthenticated(t *testing.T) {
 	stub := &stubMasterCardUC{listErr: ucerr.ErrUnauthenticated}
 	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
 
-	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil, nil, nil)
+	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil)
 	require.Error(t, err)
 	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeUnauthenticated), "want UNAUTHENTICATED wire code")
 }
@@ -241,7 +241,7 @@ func TestAdminMasterCardsConnection_WrapsInternal(t *testing.T) {
 	stub := &stubMasterCardUC{listErr: eris.New("usecase: db: query timeout")}
 	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
 
-	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil, nil, nil)
+	_, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil)
 	require.Error(t, err)
 	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeInternal), "want INTERNAL wire code")
 }
@@ -271,8 +271,6 @@ func TestAdminMasterCardsConnection_TranslatesNonNilInputs(t *testing.T) {
 		"m1",
 		&first,
 		&afterCur,
-		nil,
-		nil,
 		&search,
 		&orderBy,
 		&dir,
@@ -328,7 +326,7 @@ func TestAdminMasterCardsConnection_CursorRoundTrip(t *testing.T) {
 	}}
 	qr := &queryResolver{&Resolver{MasterCardUC: stub}}
 
-	conn, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil, nil, nil)
+	conn, err := qr.AdminMasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 	require.Len(t, conn.Edges, 2)
@@ -389,7 +387,7 @@ func TestMasterCardsConnection_Success(t *testing.T) {
 
 	orderBy := model.MasterCardOrderByPosition
 	dir := model.SortOrderAsc
-	conn, err := qr.MasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil, &orderBy, &dir)
+	conn, err := qr.MasterCardsConnection(context.Background(), "m1", nil, nil, nil, &orderBy, &dir)
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 
@@ -430,7 +428,7 @@ func TestMasterCardsConnection_WrapsUsecaseError(t *testing.T) {
 			t.Parallel()
 			stub := &stubMasterCardUC{publicListErr: tc.err}
 			qr := &queryResolver{&Resolver{MasterCardUC: stub}}
-			_, err := qr.MasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil, nil, nil)
+			_, err := qr.MasterCardsConnection(context.Background(), "m1", nil, nil, nil, nil, nil)
 			require.Error(t, err)
 			assert.True(t, gqlerrtest.IsCode(err, tc.want), "want wire code %s", tc.want)
 		})
