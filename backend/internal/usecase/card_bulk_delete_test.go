@@ -2,6 +2,8 @@ package usecase
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -186,6 +188,43 @@ func TestCardUsecase_BulkDelete_AllMalformedIDs(t *testing.T) {
 	}
 	if cardRepo.deleteByIDsCalls != 0 {
 		t.Fatalf("expected 0 DeleteByIDs invocations, got %d", cardRepo.deleteByIDsCalls)
+	}
+}
+
+// TestCardUsecase_BulkDelete_RepoError_IsInternal pins that a DeleteByIDs
+// failure surfaces as an internal-class error instead of a silent (0, nil).
+func TestCardUsecase_BulkDelete_RepoError_IsInternal(t *testing.T) {
+	t.Parallel()
+	cardRepo := &mockCardRepository{deleteByIDsErr: errors.New("db: connection reset")}
+	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: &mockCardgroupRepoForCard{}, logger: newTestLogger()}
+
+	n, err := uc.BulkDelete(authedCtx("u1"), []string{uuid.NewString()})
+	if n != 0 {
+		t.Fatalf("expected 0 deleted on repo error, got %d", n)
+	}
+	assertInternalChain(t, err, "usecase: card: bulk delete")
+	if cardRepo.deleteByIDsCalls != 1 {
+		t.Fatalf("expected 1 DeleteByIDs invocation, got %d", cardRepo.deleteByIDsCalls)
+	}
+}
+
+// TestCardUsecase_BulkDelete_RepoCancelled_PassesThroughUnwrapped pins that a
+// cancelled DeleteByIDs returns context.Canceled by identity, not re-wrapped.
+func TestCardUsecase_BulkDelete_RepoCancelled_PassesThroughUnwrapped(t *testing.T) {
+	t.Parallel()
+	cardRepo := &mockCardRepository{deleteByIDsErr: context.Canceled}
+	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: &mockCardgroupRepoForCard{}, logger: newTestLogger()}
+
+	n, err := uc.BulkDelete(authedCtx("u1"), []string{uuid.NewString()})
+	if n != 0 {
+		t.Fatalf("expected 0 deleted on cancellation, got %d", n)
+	}
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %T: %v", err, err)
+	}
+	if cardRepo.deleteByIDsCalls != 1 {
+		t.Fatalf("expected 1 DeleteByIDs invocation, got %d", cardRepo.deleteByIDsCalls)
 	}
 }
 

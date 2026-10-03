@@ -176,10 +176,8 @@ func (m *mockAdminChecker) IsAdmin(_ context.Context, _ string) (bool, error) {
 // fakeTxRunner returns a txRunner that invokes fn with a nil *gorm.DB. The
 // repository under test is the mock, which ignores tx anyway, so this is
 // sufficient to exercise HandleSwipe without a real database.
-func fakeTxRunner() (txRunner, *int) {
-	calls := 0
+func fakeTxRunner() txRunner {
 	return func(_ context.Context, fn func(tx *gorm.DB) error) error {
-		calls++
 		return fn(nil)
-	}, &calls
+	}
 }
