@@ -162,7 +162,7 @@ func (r *countingCardgroupRepo) FindPageByOwner(
 ) ([]*domain.Cardgroup, int64, error) {
 	panic("countingCardgroupRepo.FindPageByOwner not configured")
 }
-func (r *countingCardgroupRepo) CountByOwner(_ context.Context, _ string, _ *string) (int64, error) {
+func (r *countingCardgroupRepo) CountByOwner(_ context.Context, _ string) (int64, error) {
 	panic("countingCardgroupRepo.CountByOwner not configured")
 }
 

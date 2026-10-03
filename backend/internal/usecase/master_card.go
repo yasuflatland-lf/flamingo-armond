@@ -437,11 +437,7 @@ func (u *masterCardUsecase) ImportMasterCards(ctx context.Context, in ImportMast
 		// ON CONFLICT INSERT (which would trip Postgres error 21000).
 		dedupeKey: frontMatchKey,
 		newRow: func(front, back domain.CardText, now time.Time) (*domain.MasterCard, error) {
-			c, err := domain.NewMasterCardFromValidated(in.MasterCardgroupID, front, back, 0, now)
-			if err != nil {
-				return nil, err
-			}
-			return c, nil
+			return domain.NewMasterCardFromValidated(in.MasterCardgroupID, front, back, 0, now)
 		},
 		tx: u.tx,
 		upsert: func(ctx context.Context, tx repository.Tx, cards []*domain.MasterCard) (repository.UpsertManyTxResult, error) {
