@@ -64,7 +64,6 @@ start
 entries
 	: entries entry { if $2.Word != "" { $$ = append($1, $2) } else { $$ = $1 } }
 	| entry { if $1.Word != "" { $$ = []node{$1} } else { $$ = []node{} } }
-	| error NEWLINE { } // Recover from a malformed entry and resume on the next line.
 	;
 
 entry

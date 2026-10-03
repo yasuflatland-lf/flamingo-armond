@@ -9,12 +9,12 @@ import (
 	"backend/internal/textdic"
 )
 
-func TestGrammar_ErrorRecoveryStaysInBounds(t *testing.T) {
+func TestGrammar_FrontOnlyLineIsSkippedInPlace(t *testing.T) {
 	t.Parallel()
 
-	// A bare WORD line ("orphan") is malformed (no DEFINITION). The grammar
-	// now skips it explicitly and resumes parsing on the next line;
-	// subsequent lines must still parse with correct line numbers.
+	// A bare WORD line ("orphan") has no DEFINITION. The `entry: WORD`
+	// production records a front-only skip and parsing continues on the
+	// next line; subsequent lines must keep their original line numbers.
 	input := "alpha " + defDog + "\n" +
 		"orphan\n" +
 		"beta " + defCat + "\n" +
@@ -25,8 +25,8 @@ func TestGrammar_ErrorRecoveryStaysInBounds(t *testing.T) {
 		t.Fatalf("unexpected fatal error: %v", err)
 	}
 
-	// At minimum the parser must recover and emit the lines that follow
-	// the malformed row with their original line numbers intact.
+	// The lines after the skipped row must be emitted with their original
+	// line numbers.
 	fronts := make(map[string]int, len(words))
 	for _, w := range words {
 		fronts[w.Front] = w.Line
@@ -41,7 +41,7 @@ func TestGrammar_ErrorRecoveryStaysInBounds(t *testing.T) {
 	} {
 		got, ok := fronts[want.front]
 		if !ok {
-			t.Errorf("expected %q to be parsed after recovery, but it was missing (got %+v)", want.front, words)
+			t.Errorf("expected %q to be parsed after the skipped row, but it was missing (got %+v)", want.front, words)
 			continue
 		}
 		if got != want.line {
