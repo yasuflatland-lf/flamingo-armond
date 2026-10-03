@@ -991,18 +991,16 @@ func TestCardRepository_FindDueCards_ReviewWindowUsesJSTDayEnd(t *testing.T) {
 	end := domain.EndOfLearnDay(now)
 	dueAt23JST := time.Date(2026, 7, 19, 14, 0, 0, 0, time.UTC)
 
-	againToday := newCard(cg.ID, "again-due-23-jst", "back")
-	goodToday := newCard(cg.ID, "good-due-23-jst", "back")
+	dueLaterToday := newCard(cg.ID, "review-due-23-jst", "back")
 	atBoundary := newCard(cg.ID, "review-due-at-day-end", "back")
 	afterBoundary := newCard(cg.ID, "review-due-after-day-end", "back")
-	for _, card := range []*domain.Card{againToday, goodToday, atBoundary, afterBoundary} {
+	for _, card := range []*domain.Card{dueLaterToday, atBoundary, afterBoundary} {
 		require.NoError(t, repo.Create(ctx, card))
 	}
 	// An earlier UTC calendar date than now, so the review rows clear the credit
 	// bound and the due cutoff alone decides inclusion.
 	lastReview := now.Add(-25 * time.Hour)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, againToday, now, dueAt23JST, lastReview, 20)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, goodToday, now, dueAt23JST, lastReview, 20)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, dueLaterToday, now, dueAt23JST, lastReview, 20)
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, atBoundary, now, end, lastReview, 20)
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, afterBoundary, now, end.Add(time.Second), lastReview, 20)
 
@@ -1013,7 +1011,7 @@ func TestCardRepository_FindDueCards_ReviewWindowUsesJSTDayEnd(t *testing.T) {
 		CreditReviewedBefore: domain.CreditReviewedBefore(now),
 	}, 10)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []string{againToday.ID, goodToday.ID}, repoCardIDs(got),
+	require.Equal(t, []string{dueLaterToday.ID}, repoCardIDs(got),
 		"reviews due later today are included; reviews due exactly at day end are excluded")
 }
 
@@ -1091,8 +1089,8 @@ func TestCardRepository_FindDueCards_ReviewWindowAdmitsOvernightReviewButNotSame
 		"at or after 09:00 JST the JST day cutoff is the tighter of the two last_review bounds")
 	due := now.Add(-time.Hour)
 
-	overnight := newCard(cg.ID, "failed-at-23-jst-last-night", "back")
-	sameLearnDay := newCard(cg.ID, "failed-at-00-30-jst-today", "back")
+	overnight := newCard(cg.ID, "reviewed-at-23-jst-last-night", "back")
+	sameLearnDay := newCard(cg.ID, "reviewed-at-00-30-jst-today", "back")
 	for _, card := range []*domain.Card{overnight, sameLearnDay} {
 		require.NoError(t, repo.Create(ctx, card))
 	}
