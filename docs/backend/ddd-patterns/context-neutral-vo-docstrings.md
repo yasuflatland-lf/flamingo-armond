@@ -45,12 +45,6 @@ type Bio struct {
 // Patch-context callers map nil → "no change", &"" → "explicit clear", &"x" → "set".
 // Read-context callers map nil → NULL column, &"" → empty stored, &"x" → populated stored.
 func (b Bio) Ptr() *string { ... }
-
-// IsSet reports whether the Bio carries a value (its internal pointer is non-nil).
-// Returns false for ParseBio(nil) (patch-context: no change) and for BioFromPtr(nil)
-// (read-context: NULL column / zero value Bio{}). Returns true for any other
-// construction, including an explicit empty string.
-func (b Bio) IsSet() bool { return b.value != nil }
 ```
 
 The accessor docstrings list the wire shape mapping (the "what") and then
@@ -72,7 +66,7 @@ errors. Its docstring talks about NULL columns and defensive copying.
 // a non-empty string means "set". ...
 func ParseBio(s *string) (Bio, error) { ... }
 
-// BioFromPtr maps a nullable text column to a Bio: nil → Bio{} (IsSet()=false,
+// BioFromPtr maps a nullable text column to a Bio: nil → Bio{} (Ptr() returns nil,
 // NULL column); a non-nil pointer — including pointer-to-empty — maps to a set
 // Bio whose Ptr() returns a defensive copy with the same string value.
 // Used by repository readers to bridge a nullable text column into the typed
@@ -96,7 +90,7 @@ explicitly disclaims the patch-context "no change" interpretation:
 //
 // DisplayName is *DisplayName so a NULL column round-trips as a nil pointer
 // (no display name set). Bio is the trinary VO Bio (by value). The zero value
-// Bio{} represents a NULL bio column (IsSet()=false); a set Bio carries either
+// Bio{} represents a NULL bio column (Ptr() returns nil); a set Bio carries either
 // an explicit empty-string value or non-empty text. The trinary's "no change"
 // meaning applies in the UpdateProfileInput patch context, not here.
 type User struct {

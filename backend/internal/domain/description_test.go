@@ -9,7 +9,7 @@ import (
 )
 
 // TestDescriptionFromPtr verifies the helper that bridges a *string repository
-// read into the trinary VO. nil → Description{} (IsSet=false); non-nil pointer
+// read into the trinary VO. nil → Description{} (Ptr() nil); non-nil pointer
 // copies the underlying string and exposes it via Ptr() in defensive-copy fashion.
 func TestDescriptionFromPtr(t *testing.T) {
 	t.Parallel()
@@ -17,7 +17,6 @@ func TestDescriptionFromPtr(t *testing.T) {
 	t.Run("nil pointer maps to unset Description", func(t *testing.T) {
 		t.Parallel()
 		d := DescriptionFromPtr(nil)
-		require.False(t, d.IsSet())
 		require.Nil(t, d.Ptr())
 	})
 
@@ -25,7 +24,6 @@ func TestDescriptionFromPtr(t *testing.T) {
 		t.Parallel()
 		s := "an intro deck"
 		d := DescriptionFromPtr(&s)
-		require.True(t, d.IsSet())
 		require.NotNil(t, d.Ptr())
 		require.Equal(t, "an intro deck", *d.Ptr())
 	})
@@ -34,7 +32,6 @@ func TestDescriptionFromPtr(t *testing.T) {
 		t.Parallel()
 		s := ""
 		d := DescriptionFromPtr(&s)
-		require.True(t, d.IsSet())
 		require.NotNil(t, d.Ptr())
 		require.Equal(t, "", *d.Ptr())
 	})
@@ -57,44 +54,37 @@ func TestParseDescription(t *testing.T) {
 	cases := []struct {
 		name        string
 		input       *string
-		wantIsSet   bool
 		wantValue   *string
 		sentinelErr error
 	}{
 		{
 			name:      "nil input — no change",
 			input:     nil,
-			wantIsSet: false,
 			wantValue: nil,
 		},
 		{
 			name:      "empty pointer — explicit clear",
 			input:     strPtr(""),
-			wantIsSet: true,
 			wantValue: strPtr(""),
 		},
 		{
 			name:      "whitespace only — trimmed to explicit clear",
 			input:     strPtr("   "),
-			wantIsSet: true,
 			wantValue: strPtr(""),
 		},
 		{
 			name:      "normal string",
 			input:     strPtr("A short deck description"),
-			wantIsSet: true,
 			wantValue: strPtr("A short deck description"),
 		},
 		{
 			name:      "surrounding whitespace trimmed",
 			input:     strPtr("  hello  "),
-			wantIsSet: true,
 			wantValue: strPtr("hello"),
 		},
 		{
 			name:      "exactly DescriptionMax graphemes — ok",
 			input:     strPtr(strings.Repeat("a", DescriptionMax)),
-			wantIsSet: true,
 			wantValue: strPtr(strings.Repeat("a", DescriptionMax)),
 		},
 		{
@@ -120,7 +110,6 @@ func TestParseDescription(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, tc.wantIsSet, got.IsSet())
 			require.Equal(t, tc.wantValue, got.Ptr())
 		})
 	}

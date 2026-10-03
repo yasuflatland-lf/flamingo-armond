@@ -110,8 +110,10 @@ example. The distinction:
 
 - See [`.claude/rules/scope-discipline.md`](../../../.claude/rules/scope-discipline.md)
   for the general rule and the analogous example from issue #181 (`ResolvePageSize`).
-- `backend/internal/domain/bio.go` — `BioFromPtr` (kept; wired by repository
-  read path) is co-located with `Bio.Ptr()` / `Bio.IsSet()` (kept; wired by
-  patch construction).
+- `backend/internal/domain/bio.go` — `BioFromPtr` (kept; wired by the repository
+  read path) is co-located with `Bio.Ptr()` (kept; wired by the usecase patch
+  construction in `usecase/user.go` and the resolver mapper in
+  `graph/resolver/mapper.go`). A boolean presence accessor that duplicated
+  `Ptr() != nil` had no production caller and was deleted.
 - `backend/internal/usecase/card.go` — `front.String()` / `back.String()` are
   the live callers that keep `CardText.String()` from being deleted.

@@ -283,7 +283,7 @@ func TestInterleave_PrefixFidelityAcrossAcceptedRatios(t *testing.T) {
 				continue
 			}
 
-			ids := cardIDs(interleave(newC, reviewC, ratio.NewShare(), ratio.ReviewShare()))
+			ids := cardIDs(interleave(newC, reviewC, ratio.Numerator(), ratio.ReviewShare()))
 			served := 0
 			for k := 1; k <= maxPrefix; k++ {
 				if newSet[ids[k-1]] {
@@ -309,7 +309,7 @@ func TestInterleave_ServesNewCardEarlierThanTheOldCycle(t *testing.T) {
 	newC, reviewC, newSet := deepBuckets(bucketDepth)
 
 	firstNewSlot := func(ratio domain.NewCardRatio) int {
-		for i, id := range cardIDs(interleave(newC, reviewC, ratio.NewShare(), ratio.ReviewShare())) {
+		for i, id := range cardIDs(interleave(newC, reviewC, ratio.Numerator(), ratio.ReviewShare())) {
 			if newSet[id] {
 				return i + 1
 			}
@@ -352,7 +352,7 @@ func TestInterleave_NewShareNeverExceedsCapOnAnyPrefix(t *testing.T) {
 				continue
 			}
 
-			ids := cardIDs(interleave(newC, reviewC, ratio.NewShare(), ratio.ReviewShare()))
+			ids := cardIDs(interleave(newC, reviewC, ratio.Numerator(), ratio.ReviewShare()))
 			served := 0
 			for k := 1; k <= maxPrefix; k++ {
 				if newSet[ids[k-1]] {
@@ -376,7 +376,7 @@ func TestInterleave_FourFifthsShortSessions(t *testing.T) {
 	ratio, err := domain.ParseNewCardRatio(4, 5)
 	require.NoError(t, err)
 	newC, reviewC, newSet := deepBuckets(domain.DefaultLearnSessionSize)
-	ids := cardIDs(interleave(newC, reviewC, ratio.NewShare(), ratio.ReviewShare()))
+	ids := cardIDs(interleave(newC, reviewC, ratio.Numerator(), ratio.ReviewShare()))
 
 	cases := []struct {
 		limit, wantNew, wantReview int
@@ -405,7 +405,7 @@ func TestInterleave_AdvertisedDefaultSessionSplit(t *testing.T) {
 	newC, reviewC, newSet := deepBuckets(2 * domain.DefaultLearnSessionSize)
 	ratio := domain.DefaultNewCardRatio
 
-	ids := cardIDs(interleave(newC, reviewC, ratio.NewShare(), ratio.ReviewShare()))
+	ids := cardIDs(interleave(newC, reviewC, ratio.Numerator(), ratio.ReviewShare()))
 	served := countNew(ids[:domain.DefaultLearnSessionSize], newSet)
 
 	require.Equal(t, 4, served, "a default 20-card session must serve 4 new cards")

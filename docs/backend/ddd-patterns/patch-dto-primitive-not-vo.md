@@ -23,7 +23,7 @@ struct VO (e.g. `Bio` instead of `*string`) does not add safety here:
   already enforced by the upstream `Parse*` call in the usecase.
 - The repository's `Updates(map)` site takes `any` values and writes them
   verbatim. A struct VO would have to be translated back to `*string` at
-  this site (`if bio.IsSet() { updates["bio"] = *bio.Ptr() }`), adding two
+  this site (`if p := bio.Ptr(); p != nil { updates["bio"] = *p }`), adding two
   lines per field for no semantic gain.
 - The DTO retains its role as a *data carrier* — it does not validate, it
   does not enforce, it just describes the patch.
@@ -70,8 +70,8 @@ demote it back:
 
 ```go
 // HYPOTHETICAL — what the retyping would force at the repository.
-if patch.Bio.IsSet() {
-    updates["bio"] = *patch.Bio.Ptr()
+if p := patch.Bio.Ptr(); p != nil {
+    updates["bio"] = *p
 }
 ```
 

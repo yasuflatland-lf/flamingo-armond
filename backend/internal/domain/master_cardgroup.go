@@ -89,19 +89,17 @@ func (m *MasterCardgroup) IsPublished() bool {
 // bumped ONLY on the draft -> published transition; this asymmetry with
 // Unpublish (which never touches the version) is the core publication rule and
 // is encoded here, in the aggregate, rather than in repository SQL.
-func (m *MasterCardgroup) Publish() error {
+func (m *MasterCardgroup) Publish() {
 	if m.IsPublished() {
-		return nil
+		return
 	}
 	m.Status = MasterStatusPublished
 	m.Version++
-	return nil
 }
 
 // Unpublish transitions the master cardgroup back to the draft state. The
 // version is deliberately left unchanged — only Publish bumps it — so the
 // version counter tracks publication events, not unpublications.
-func (m *MasterCardgroup) Unpublish() error {
+func (m *MasterCardgroup) Unpublish() {
 	m.Status = MasterStatusDraft
-	return nil
 }

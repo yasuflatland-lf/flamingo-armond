@@ -24,7 +24,7 @@ func (p *OrderingPolicy) Apply(due []domain.DueCard, ratio domain.NewCardRatio) 
 		}
 	}
 	newCards, reviewCards := partition(due)
-	return interleave(newCards, reviewCards, ratio.NewShare(), ratio.ReviewShare())
+	return interleave(newCards, reviewCards, ratio.Numerator(), ratio.ReviewShare())
 }
 
 // partition splits due into new (FSRSPhaseNew) vs review (everything else),

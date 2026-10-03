@@ -9,7 +9,7 @@ import (
 )
 
 // TestBioFromPtr verifies the helper that bridges a *string repository read
-// into the trinary VO. nil → Bio{} (IsSet=false); non-nil pointer copies the
+// into the trinary VO. nil → Bio{} (Ptr() nil); non-nil pointer copies the
 // underlying string and exposes it via Ptr() in defensive-copy fashion.
 func TestBioFromPtr(t *testing.T) {
 	t.Parallel()
@@ -17,7 +17,6 @@ func TestBioFromPtr(t *testing.T) {
 	t.Run("nil pointer maps to unset Bio", func(t *testing.T) {
 		t.Parallel()
 		b := BioFromPtr(nil)
-		require.False(t, b.IsSet())
 		require.Nil(t, b.Ptr())
 	})
 
@@ -25,7 +24,6 @@ func TestBioFromPtr(t *testing.T) {
 		t.Parallel()
 		s := "hello"
 		b := BioFromPtr(&s)
-		require.True(t, b.IsSet())
 		require.NotNil(t, b.Ptr())
 		require.Equal(t, "hello", *b.Ptr())
 	})
@@ -34,7 +32,6 @@ func TestBioFromPtr(t *testing.T) {
 		t.Parallel()
 		s := ""
 		b := BioFromPtr(&s)
-		require.True(t, b.IsSet())
 		require.NotNil(t, b.Ptr())
 		require.Equal(t, "", *b.Ptr())
 	})
@@ -57,44 +54,37 @@ func TestParseBio(t *testing.T) {
 	cases := []struct {
 		name        string
 		input       *string
-		wantIsSet   bool
 		wantValue   *string
 		sentinelErr error
 	}{
 		{
 			name:      "nil input — no change",
 			input:     nil,
-			wantIsSet: false,
 			wantValue: nil,
 		},
 		{
 			name:      "empty pointer — explicit clear",
 			input:     strPtr(""),
-			wantIsSet: true,
 			wantValue: strPtr(""),
 		},
 		{
 			name:      "whitespace only — trimmed to explicit clear",
 			input:     strPtr("   "),
-			wantIsSet: true,
 			wantValue: strPtr(""),
 		},
 		{
 			name:      "normal string",
 			input:     strPtr("Hello world"),
-			wantIsSet: true,
 			wantValue: strPtr("Hello world"),
 		},
 		{
 			name:      "surrounding whitespace trimmed",
 			input:     strPtr("  hello  "),
-			wantIsSet: true,
 			wantValue: strPtr("hello"),
 		},
 		{
 			name:      "exactly 500 graphemes — ok",
 			input:     strPtr(strings.Repeat("a", 500)),
-			wantIsSet: true,
 			wantValue: strPtr(strings.Repeat("a", 500)),
 		},
 		{
@@ -120,7 +110,6 @@ func TestParseBio(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, tc.wantIsSet, got.IsSet())
 			if tc.wantValue == nil {
 				require.Nil(t, got.Ptr())
 			} else {
