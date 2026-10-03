@@ -21,7 +21,6 @@ type mockSwipeRecordRepoForSwipe struct {
 	// pre-rating phase rather than a post-hoc read of a possibly-mutated state
 	// (docs/backend/library-gotchas/mock-snapshot-for-ordering-assertion.md).
 	phaseBeforeAtCreate domain.FSRSPhase
-	phaseAfterAtCreate  *domain.FSRSPhase
 	// stabilityBeforeAtCreate is the same kind of value snapshot for
 	// created.StabilityBefore.
 	stabilityBeforeAtCreate float64
@@ -35,8 +34,6 @@ func (m *mockSwipeRecordRepoForSwipe) CreateTx(_ context.Context, _ *gorm.DB, sr
 	if sr != nil {
 		m.phaseBeforeAtCreate = sr.PhaseBefore
 		m.stabilityBeforeAtCreate = sr.StabilityBefore
-		after := sr.StateAfter.Phase
-		m.phaseAfterAtCreate = &after
 	}
 	return nil
 }
@@ -90,8 +87,8 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 	if userFSRSRepo.upserted.State.Reps != 1 {
 		t.Fatalf("expected first swipe to produce reps=1, got %+v", userFSRSRepo.upserted.State)
 	}
-	if swipeRepo.created == nil || swipeRepo.created.StateAfter != userFSRSRepo.upserted.State {
-		t.Fatalf("swipe snapshot must match upserted user state, swipe=%+v ucs=%+v", swipeRepo.created, userFSRSRepo.upserted)
+	if swipeRepo.created == nil || swipeRepo.created.DifficultyAfter != userFSRSRepo.upserted.State.Difficulty {
+		t.Fatalf("swipe DifficultyAfter must match the upserted user difficulty, swipe=%+v ucs=%+v", swipeRepo.created, userFSRSRepo.upserted)
 	}
 	if swipeRepo.created.CardgroupID != "cg-1" {
 		t.Fatalf("created swipe cardgroup=%q, want cg-1", swipeRepo.created.CardgroupID)
@@ -101,9 +98,9 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 // TestSwipeUsecase_HandleSwipe_RecordsPreRatingPhase proves the swipe record
 // handed to CreateTx carries the phase the card was in BEFORE applyRating
 // mutated it, not the post-rating phase. For a brand-new card the pre-swipe
-// phase is FSRSPhaseNew; a RatingEasy graduation advances StateAfter.Phase past
-// New, so asserting PhaseBefore == New AND StateAfter.Phase != New pins that the
-// snapshot was captured before the mutation. The same argument pins
+// phase is FSRSPhaseNew; a RatingEasy graduation advances the upserted state's
+// Phase past New, so asserting PhaseBefore == New AND the upserted Phase != New
+// pins that the snapshot was captured before the mutation. The same argument pins
 // StabilityBefore against the new-card starting stability. The mock snapshots
 // both at CreateTx call time
 // (docs/backend/library-gotchas/mock-snapshot-for-ordering-assertion.md).
@@ -146,8 +143,8 @@ func TestSwipeUsecase_HandleSwipe_RecordsPreRatingPhase(t *testing.T) {
 	if swipeRepo.phaseBeforeAtCreate != domain.FSRSPhaseNew {
 		t.Fatalf("PhaseBefore=%d, want FSRSPhaseNew (%d)", swipeRepo.phaseBeforeAtCreate, domain.FSRSPhaseNew)
 	}
-	if swipeRepo.phaseAfterAtCreate == nil || *swipeRepo.phaseAfterAtCreate == domain.FSRSPhaseNew {
-		t.Fatalf("StateAfter.Phase must have advanced past FSRSPhaseNew, got %v", swipeRepo.phaseAfterAtCreate)
+	if userFSRSRepo.upserted == nil || userFSRSRepo.upserted.State.Phase == domain.FSRSPhaseNew {
+		t.Fatalf("upserted State.Phase must have advanced past FSRSPhaseNew, got %+v", userFSRSRepo.upserted)
 	}
 	if !swipeRepo.created.DueBefore.Equal(swipeRepo.created.ReviewedAt) {
 		t.Fatalf("DueBefore=%v, want the new card's review instant %v", swipeRepo.created.DueBefore, swipeRepo.created.ReviewedAt)
@@ -158,8 +155,8 @@ func TestSwipeUsecase_HandleSwipe_RecordsPreRatingPhase(t *testing.T) {
 	if swipeRepo.stabilityBeforeAtCreate != wantStability {
 		t.Fatalf("StabilityBefore=%v, want %v", swipeRepo.stabilityBeforeAtCreate, wantStability)
 	}
-	if swipeRepo.created.StateAfter.Stability == wantStability {
-		t.Fatalf("StateAfter.Stability must have advanced past the new-card stability %v", wantStability)
+	if userFSRSRepo.upserted.State.Stability == wantStability {
+		t.Fatalf("upserted State.Stability must have advanced past the new-card stability %v", wantStability)
 	}
 }
 

@@ -217,7 +217,7 @@ func ComputeMetrics(swipes []domain.SwipeRecord, now time.Time) PerformanceMetri
 			}
 		}
 
-		difficultySum += normalizedDifficulty(swipe.StateAfter.Difficulty)
+		difficultySum += normalizedDifficulty(swipe.DifficultyAfter)
 		daysSeen[domain.LearnDayKey(swipe.ReviewedAt)] = struct{}{}
 	}
 
