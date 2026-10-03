@@ -409,7 +409,7 @@ func TestRejectOrderedCursor(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := rejectOrderedCursor(tc.payload, "before")
+			err := rejectOrderedCursor(tc.payload, "after")
 			if !tc.wantErr {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -420,8 +420,8 @@ func TestRejectOrderedCursor(t *testing.T) {
 			if !errors.As(err, &ve) {
 				t.Fatalf("want ValidationError, got %v", err)
 			}
-			if ve.Field != "before" {
-				t.Fatalf("want field before, got %q", ve.Field)
+			if ve.Field != "after" {
+				t.Fatalf("want field after, got %q", ve.Field)
 			}
 		})
 	}

@@ -131,6 +131,29 @@ func TestListPublicMasterCards_Success(t *testing.T) {
 	}
 }
 
+// TestListPublicMasterCards_AfterWithoutFirst pins that the public entry point
+// reaches the shared after-requires-first guard: with the published gate passing,
+// a resolvable after cursor with no first is still rejected before the page read.
+func TestListPublicMasterCards_AfterWithoutFirst(t *testing.T) {
+	t.Parallel()
+	mc := &mockMasterCardReadRepo{}
+	mcg := &mockMasterCardgroupReadRepo{
+		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) { return publishedMasterDeck("id-1"), nil },
+	}
+	uc := newMasterCardUC(t, mc, mcg, false)
+	ob := MasterCardOrderByID
+	after := cursor.Encode("mc-1")
+	_, err := uc.ListPublicMasterCards(authedCtx("u1"), MasterCardConnectionInput{
+		MasterCardgroupID: "id-1",
+		After:             &after,
+		OrderBy:           &ob,
+	})
+	assertValidationError(t, err, "after", "after requires first")
+	if len(mc.findPageCalls) != 0 || len(mc.findByIDCalls) != 0 {
+		t.Fatalf("repository must not be touched: page=%d byID=%d", len(mc.findPageCalls), len(mc.findByIDCalls))
+	}
+}
+
 // A whitespace-only search normalizes to nil before reaching the repository
 // (same invariant ListMasterCards relies on). The published gate must pass so
 // the page query runs.

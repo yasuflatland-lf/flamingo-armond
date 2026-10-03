@@ -91,24 +91,28 @@ func buildOrderClause(spec cursorSpec, dir SortOrder) string {
 	return spec.orderCol + " " + d + ", " + idCol + " " + idDir
 }
 
+// cursorOp maps a sort direction to the strictly-after comparison operator:
+// ASC yields `>`, DESC yields `<`.
+func cursorOp(dir SortOrder) string {
+	if dir == SortDesc {
+		return "<"
+	}
+	return ">"
+}
+
 // buildCursorWhere builds the tuple-comparison WHERE for a cursorSpec, cursor id,
 // and direction. ASC yields `>`, DESC yields `<`. An id-order spec emits the
 // single `id op ?` form; otherwise it hydrates the cursor field value and
 // delegates to cursorTupleWhere. Returns the cursor-missing error from
 // spec.fieldValue unchanged.
 func buildCursorWhere(spec cursorSpec, dir SortOrder, idVal any) (string, []any, error) {
-	fieldOp := ">"
-	if dir == SortDesc {
-		fieldOp = "<"
-	}
+	fieldOp := cursorOp(dir)
 	if spec.isIDOrder {
 		return spec.idColumn() + " " + fieldOp + " ?", []any{idVal}, nil
 	}
 	idOp := fieldOp
-	if spec.idDir == SortAsc {
-		idOp = ">"
-	} else if spec.idDir == SortDesc {
-		idOp = "<"
+	if spec.idDir != "" {
+		idOp = cursorOp(spec.idDir)
 	}
 	val, err := spec.fieldValue()
 	if err != nil {

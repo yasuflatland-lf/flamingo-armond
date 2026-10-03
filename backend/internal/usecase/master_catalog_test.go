@@ -304,8 +304,47 @@ func TestListPublishedConnection_OrderByName_Desc(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Page-size validation
+// Relay argument guard
 // ---------------------------------------------------------------------------
+
+// TestListPublishedConnection_AfterWithoutFirst pins the resolveRelayPage wiring
+// in listMasterCatalogCore: a resolvable after cursor with no first is rejected
+// with BAD_USER_INPUT on "after" and the page query never runs.
+func TestListPublishedConnection_AfterWithoutFirst(t *testing.T) {
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{
+		findByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Pub"), Status: domain.MasterStatusPublished}, nil
+		},
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	after := cursor.Encode("m1")
+	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{After: &after})
+	assertValidationError(t, err, "after", "after requires first")
+	if len(repo.findPageCalls) != 0 {
+		t.Fatalf("page query must not run, got %d calls", len(repo.findPageCalls))
+	}
+}
+
+// TestListAdminConnection_AfterWithoutFirst is the admin-surface twin of
+// TestListPublishedConnection_AfterWithoutFirst (a DRAFT cursor is valid here).
+func TestListAdminConnection_AfterWithoutFirst(t *testing.T) {
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{
+		findByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Draft"), Status: domain.MasterStatusDraft}, nil
+		},
+	}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	after := cursor.Encode("m1")
+	_, err := uc.ListAdminConnection(authedCtx("admin1"), MasterCatalogConnectionInput{After: &after})
+	assertValidationError(t, err, "after", "after requires first")
+	if len(repo.findAdminCalls) != 0 {
+		t.Fatalf("page query must not run, got %d calls", len(repo.findAdminCalls))
+	}
+}
 
 // ---------------------------------------------------------------------------
 // totalCount computed before short-circuit

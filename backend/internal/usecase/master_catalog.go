@@ -192,13 +192,11 @@ type masterCatalogPageFetch func(
 // ListPublishedConnection paginates the published master catalog with
 // forward-only Relay-style cursors (first, after). An `after` without a
 // positive `first` is rejected with BAD_USER_INPUT before the repository is
-// touched so the caller never gets a silently re-interpreted page boundary.
-// Only PUBLISHED decks that hold at
-// least one card are ever returned — that visibility filter is enforced in the
-// repository SQL and is not a caller-overridable argument, so a published deck
-// whose cards have all been deleted disappears from both the page and its
-// totalCount until a card is restored. Unauthenticated callers receive
-// UNAUTHENTICATED.
+// touched (see validateRelayArgs). Only PUBLISHED decks that hold at least one
+// card are ever returned — that visibility filter is enforced in the repository
+// SQL and is not a caller-overridable argument, so a published deck whose cards
+// have all been deleted disappears from both the page and its totalCount until
+// a card is restored. Unauthenticated callers receive UNAUTHENTICATED.
 func (u *masterCatalogUsecase) ListPublishedConnection(
 	ctx context.Context, in MasterCatalogConnectionInput,
 ) (*MasterCatalogConnectionOutput, error) {

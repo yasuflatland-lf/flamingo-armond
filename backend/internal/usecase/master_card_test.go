@@ -251,6 +251,26 @@ func TestMasterCard_ListMasterCards_PageSizeClampedToMax(t *testing.T) {
 	}
 }
 
+// TestMasterCard_ListMasterCards_AfterWithoutFirst pins the resolveRelayPage
+// wiring in listMasterCardsCore: a resolvable after cursor with no first is
+// rejected with BAD_USER_INPUT on "after" before any repository access.
+func TestMasterCard_ListMasterCards_AfterWithoutFirst(t *testing.T) {
+	t.Parallel()
+	mc := &mockMasterCardReadRepo{}
+	uc := newMasterCardUC(t, mc, &mockMasterCardgroupReadRepo{}, true)
+	ob := MasterCardOrderByID
+	after := cursor.Encode("mc-1")
+	_, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
+		MasterCardgroupID: "id-1",
+		After:             &after,
+		OrderBy:           &ob,
+	})
+	assertValidationError(t, err, "after", "after requires first")
+	if len(mc.findPageCalls) != 0 || len(mc.findByIDCalls) != 0 {
+		t.Fatalf("repository must not be touched: page=%d byID=%d", len(mc.findPageCalls), len(mc.findByIDCalls))
+	}
+}
+
 func TestMasterCard_ListMasterCards_OrderByTranslation(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

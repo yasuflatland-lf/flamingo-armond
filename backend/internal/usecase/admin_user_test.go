@@ -666,9 +666,50 @@ func TestAdminUser_List_FirstOverCap(t *testing.T) {
 	assertValidationError(t, err, "first", "")
 }
 
-// TestAdminUser_List_AfterWithoutFirst rejects supplying an after cursor with
-// no companion first value. Without first, the server cannot determine page
-// size or direction, so the request must be rejected.
+// TestAdminUser_List_FirstZero_TotalCountOnly pins the lower accepted boundary
+// of resolveAdminPageSize: first=0 is a totalCount-only request, not an error.
+func TestAdminUser_List_FirstZero_TotalCountOnly(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{listTotal: 7}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
+
+	out, err := uc.List(adminCallerCtx("admin-1"), intPtr(0), nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if users.listCalls != 1 || users.lastListFirst != 0 {
+		t.Fatalf("want one ListPage call with first=0, got calls=%d first=%d", users.listCalls, users.lastListFirst)
+	}
+	if len(out.Users) != 0 || out.TotalCount != 7 {
+		t.Fatalf("want empty page with TotalCount=7, got len=%d total=%d", len(out.Users), out.TotalCount)
+	}
+	if out.HasNext || out.HasPrev {
+		t.Fatalf("want HasNext=false HasPrev=false, got %v %v", out.HasNext, out.HasPrev)
+	}
+}
+
+// TestAdminUser_List_FirstAtCap pins the upper accepted boundary of
+// resolveAdminPageSize: first=maxPageSize is served (asking the repo for +1).
+func TestAdminUser_List_FirstAtCap(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
+
+	if _, err := uc.List(adminCallerCtx("admin-1"), intPtr(maxPageSize), nil, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if users.lastListFirst != maxPageSize+1 {
+		t.Fatalf("want repo first=%d, got %d", maxPageSize+1, users.lastListFirst)
+	}
+}
+
+// TestAdminUser_List_AfterWithoutFirst rejects an after cursor with no positive
+// first: validateRelayArgs refuses to serve the cursor at a default page size
+// the client never asked for, and the repository is never reached.
 func TestAdminUser_List_AfterWithoutFirst(t *testing.T) {
 	t.Parallel()
 
@@ -679,7 +720,7 @@ func TestAdminUser_List_AfterWithoutFirst(t *testing.T) {
 	after := "u-a"
 	// No first — only after.
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, &after, nil)
-	assertValidationError(t, err, "after", "")
+	assertValidationError(t, err, "after", "after requires first")
 	if users.listCalls != 0 {
 		t.Fatalf("expected no repo call on after-without-first, got %d", users.listCalls)
 	}
