@@ -2,10 +2,9 @@
 --
 -- 1. Add (owner_id, updated_at DESC, id DESC).
 --    myCardgroupsConnection (repository.cardgroupRepo.FindPageByOwner) always
---    filters WHERE owner_id = ? and, in the schema default ordering, orders by
---    (updated_at DESC, id DESC) with a cursor predicate on the same tuple. The
---    composite serves that page as an index-ordered LIMIT scan in both
---    directions (backward index scan for ASC).
+--    filters WHERE owner_id = ? and orders by the fixed (updated_at DESC,
+--    id DESC) with a cursor predicate on the same tuple. The composite serves
+--    that page as an index-ordered LIMIT scan.
 --
 -- 2. Drop idx_cardgroups_updated_at.
 --    No query filters or orders by updated_at without an owner_id predicate.
