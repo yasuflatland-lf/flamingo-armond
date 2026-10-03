@@ -1,9 +1,6 @@
 package resolver
 
-import (
-	"backend/internal/auth"
-	"backend/internal/usecase"
-)
+import "backend/internal/usecase"
 
 type Resolver struct {
 	UserUC                   usecase.UserUsecase
@@ -11,7 +8,6 @@ type Resolver struct {
 	CardUC                   usecase.CardUsecase
 	LearnUC                  usecase.LearnUsecase
 	SwipeUC                  usecase.SwipeUsecase
-	AuthSvc                  *auth.Service
 	CardImportUC             usecase.CardImportUsecase
 	AdminUserUC              usecase.AdminUserUsecase
 	AdminRoleUC              usecase.AdminRoleUsecase
@@ -31,7 +27,6 @@ func NewResolver(
 	cardgroupUC usecase.CardgroupUsecase,
 	cardUC usecase.CardUsecase,
 	swipeUC usecase.SwipeUsecase,
-	authSvc *auth.Service,
 	cardImportUC usecase.CardImportUsecase,
 	adminUserUC usecase.AdminUserUsecase,
 	adminRoleUC usecase.AdminRoleUsecase,
@@ -49,7 +44,6 @@ func NewResolver(
 		CardgroupUC:              cardgroupUC,
 		CardUC:                   cardUC,
 		SwipeUC:                  swipeUC,
-		AuthSvc:                  authSvc,
 		CardImportUC:             cardImportUC,
 		AdminUserUC:              adminUserUC,
 		AdminRoleUC:              adminRoleUC,
