@@ -42,15 +42,23 @@ func likeMatch(s, p string) bool {
 // TestEscapeLikePattern_Property_MatchesLiteralSubstring: for any needle and
 // haystack over an alphabet dense in LIKE meta-characters, the pattern
 // "%" + escapeLikePattern(needle) + "%" matches exactly when the haystack
-// contains the needle as a literal substring.
+// contains the needle as a literal substring. A third of the draws replace
+// the needle's % and _ with 'a' in the haystack, so it matches only if a
+// meta-character is left unescaped.
 func TestEscapeLikePattern_Property_MatchesLiteralSubstring(t *testing.T) {
 	t.Parallel()
+	wildcardsAsLetters := strings.NewReplacer("_", "a", "%", "a")
 	alphabet := rapid.StringOf(rapid.SampledFrom([]rune{'a', 'b', '%', '_', '\\', '\u732b'}))
 	rapid.Check(t, func(t *rapid.T) {
 		needle := alphabet.Draw(t, "needle")
-		hay := alphabet.Draw(t, "hay")
-		if rapid.Bool().Draw(t, "embed") {
+		var hay string
+		switch rapid.IntRange(0, 2).Draw(t, "shape") {
+		case 0:
+			hay = alphabet.Draw(t, "hay")
+		case 1:
 			hay = alphabet.Draw(t, "pre") + needle + alphabet.Draw(t, "post")
+		default:
+			hay = alphabet.Draw(t, "pre") + wildcardsAsLetters.Replace(needle) + alphabet.Draw(t, "post")
 		}
 		require.Equal(t, strings.Contains(hay, needle), likeMatch(hay, "%"+escapeLikePattern(needle)+"%"),
 			"needle %q hay %q", needle, hay)
