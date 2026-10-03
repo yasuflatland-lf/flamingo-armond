@@ -740,8 +740,9 @@ func cardIDOrdering() PageOrdering {
 // envelope is no longer rejected on sight — but one taken under a different
 // column or direction than the request resolved to must still be
 // BAD_USER_INPUT, or its captured key would be compared against a column it
-// never described. The ID orderBy is used so the rejection is provably ahead of
-// any repository lookup.
+// never described. Card connections are fixed at (id, ASC) and resolveCardCursor
+// makes no repository call, so the rejection comes from requireCursorOrdering
+// alone.
 func TestCardUsecase_ResolveCursor_V2OrderingMismatch_Rejected(t *testing.T) {
 	t.Parallel()
 
@@ -763,8 +764,8 @@ func TestCardUsecase_ResolveCursor_V2OrderingMismatch_Rejected(t *testing.T) {
 }
 
 // TestCardUsecase_ResolveCursor_V1EncodedID verifies that a v1 encoded cursor
-// decodes to the raw ID and proceeds without error for the ID-only orderBy
-// (no DB lookup required for ID ordering).
+// decodes to the raw ID and proceeds without error (the fixed ID ordering needs
+// no DB lookup).
 func TestCardUsecase_ResolveCursor_V1EncodedID(t *testing.T) {
 	t.Parallel()
 

@@ -94,7 +94,10 @@ func TestCardCursorWalk_LegacyBareIDStillPages(t *testing.T) {
 	}
 }
 
-func TestCardCursorWalk_OrderKeysCoverEveryReturnedRow(t *testing.T) {
+// TestCardCursorWalk_IDOrderingEmitsEmptyOrderKeys pins that card connections
+// are fixed at (id, ASC): every page reports that ordering with an empty
+// non-nil OrderKeys map, and the walk visits every in-scope card exactly once.
+func TestCardCursorWalk_IDOrderingEmitsEmptyOrderKeys(t *testing.T) {
 	t.Parallel()
 	uc := newCardWalkUsecase(newCardWalkFixture())
 	out := fetchCardWalkPage(t, uc, nil)
