@@ -11,10 +11,4 @@ const cardgroupNameSchema = z
     message: "name must be at most 100 characters",
   });
 
-export const newCardgroupSchema = z.object({
-  name: cardgroupNameSchema,
-});
-
-export const updateCardgroupSchema = z.object({
-  name: cardgroupNameSchema,
-});
+export const cardgroupSchema = z.object({ name: cardgroupNameSchema });

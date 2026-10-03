@@ -12,15 +12,9 @@ const cardSideSchema = (fieldName: string) =>
       message: `${fieldName} must be at most 500 characters`,
     });
 
-export const newCardSchema = z.object({
-  cardgroupId: z.string().min(1, { message: "cardgroupId is required" }),
-  front: cardSideSchema("front"),
-  back: cardSideSchema("back"),
-});
-
 // Both front and back are required in the form even for updates;
 // the form always re-submits both fields for simplicity.
-export const updateCardSchema = z.object({
+export const cardSchema = z.object({
   front: cardSideSchema("front"),
   back: cardSideSchema("back"),
 });
