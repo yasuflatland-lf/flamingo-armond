@@ -284,17 +284,13 @@ func insertNamedCardgroups(t *testing.T, ctx context.Context, ownerID string, na
 	return cgs
 }
 
-func sortCardgroupsByUpdatedAt(cgs []*domain.Cardgroup, dir repository.SortOrder) []*domain.Cardgroup {
+// sortCardgroupsByUpdatedAt returns a copy of cgs in the connection's fixed
+// (updated_at DESC, id DESC) order.
+func sortCardgroupsByUpdatedAt(cgs []*domain.Cardgroup) []*domain.Cardgroup {
 	sorted := append([]*domain.Cardgroup(nil), cgs...)
 	sort.Slice(sorted, func(i, j int) bool {
 		if sorted[i].UpdatedAt.Equal(sorted[j].UpdatedAt) {
-			if dir == repository.SortAsc {
-				return sorted[i].ID < sorted[j].ID
-			}
 			return sorted[i].ID > sorted[j].ID
-		}
-		if dir == repository.SortAsc {
-			return sorted[i].UpdatedAt.Before(sorted[j].UpdatedAt)
 		}
 		return sorted[i].UpdatedAt.After(sorted[j].UpdatedAt)
 	})
@@ -328,8 +324,7 @@ func TestCardgroupRepo_FindPageByOwner_EmptyResult(t *testing.T) {
 	repo := repository.NewCardgroupRepository(testDB.GORM)
 
 	got, _, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, 10,
-		repository.CardgroupOrderByCreatedAt, repository.SortAsc, nil,
+		ctx, ownerID, nil, 10, nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, got)
@@ -352,8 +347,7 @@ func TestCardgroupRepo_FindPageByOwner_ExactMatch(t *testing.T) {
 
 	search := "Exact Match"
 	got, _, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, 10,
-		repository.CardgroupOrderByCreatedAt, repository.SortAsc, &search,
+		ctx, ownerID, nil, 10, &search,
 	)
 	require.NoError(t, err)
 	require.Len(t, got, 1, "exactly one group should match the search term")
@@ -376,8 +370,7 @@ func TestCardgroupRepo_FindPageByOwner_PartialMatch(t *testing.T) {
 
 	search := "apple"
 	got, total, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, 10,
-		repository.CardgroupOrderByCreatedAt, repository.SortAsc, &search,
+		ctx, ownerID, nil, 10, &search,
 	)
 	require.NoError(t, err)
 	names := cardgroupNameSet(got)
@@ -412,8 +405,7 @@ func TestCardgroupRepo_FindPageByOwner_LIKEEscape(t *testing.T) {
 
 	search := "100%"
 	got, _, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, 10,
-		repository.CardgroupOrderByCreatedAt, repository.SortAsc, &search,
+		ctx, ownerID, nil, 10, &search,
 	)
 	require.NoError(t, err)
 	names := cardgroupNameSet(got)
@@ -443,8 +435,7 @@ func TestCardgroupRepo_FindPageByOwner_LIKEUnderscoreEscape(t *testing.T) {
 
 	search := "a_b"
 	got, _, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, 10,
-		repository.CardgroupOrderByCreatedAt, repository.SortAsc, &search,
+		ctx, ownerID, nil, 10, &search,
 	)
 	require.NoError(t, err)
 	names := cardgroupNameSet(got)
@@ -470,8 +461,7 @@ func TestCardgroupRepo_FindPageByOwner_LIKEBackslashEscape(t *testing.T) {
 	// Search for the literal backslash-containing name.
 	search := `back\slash`
 	got, _, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, 10,
-		repository.CardgroupOrderByCreatedAt, repository.SortAsc, &search,
+		ctx, ownerID, nil, 10, &search,
 	)
 	require.NoError(t, err)
 	names := cardgroupNameSet(got)
@@ -496,16 +486,14 @@ func TestCardgroupRepo_FindPageByOwner_CrossTenant(t *testing.T) {
 
 	// Query scoped to ownerB.
 	gotB, _, err := repo.FindPageByOwner(
-		ctx, ownerB, nil, 20,
-		repository.CardgroupOrderByCreatedAt, repository.SortAsc, nil,
+		ctx, ownerB, nil, 20, nil,
 	)
 	require.NoError(t, err)
 	idsB := cardgroupIDSetFromSlice(gotB)
 
 	// Fetch ownerA's IDs to assert they do not bleed into ownerB's results.
 	gotA, _, err := repo.FindPageByOwner(
-		ctx, ownerA, nil, 20,
-		repository.CardgroupOrderByCreatedAt, repository.SortAsc, nil,
+		ctx, ownerA, nil, 20, nil,
 	)
 	require.NoError(t, err)
 
@@ -534,32 +522,30 @@ func TestCardgroupRepo_FindPageByOwner_PlusOneFetch(t *testing.T) {
 	for i := range names {
 		names[i] = fmt.Sprintf("cg-%02d", i)
 	}
-	insertNamedCardgroups(t, ctx, ownerID, names)
+	cgs := insertNamedCardgroups(t, ctx, ownerID, names)
 
 	// Request first=3 (which represents the usecase sending first+1=3 when
 	// the user asked for first=2). The repo must return exactly 3 rows.
 	got, _, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, 3,
-		repository.CardgroupOrderByCreatedAt, repository.SortAsc, nil,
+		ctx, ownerID, nil, 3, nil,
 	)
 	require.NoError(t, err)
 	require.Len(t, got, 3,
 		"first=3 must return exactly 3 rows so the usecase can detect hasNextPage")
 
-	// Verify the rows are in ASC order and belong to the right owner.
+	// Verify the rows belong to the right owner and are the first three under
+	// the fixed (updated_at DESC, id DESC) ordering.
 	for _, cg := range got {
 		require.Equal(t, ownerID, string(cg.OwnerID))
 	}
-	sortedGot := make([]*domain.Cardgroup, len(got))
-	copy(sortedGot, got)
-	sort.Slice(sortedGot, func(i, j int) bool { return sortedGot[i].CreatedAt.Before(sortedGot[j].CreatedAt) })
+	expected := sortCardgroupsByUpdatedAt(cgs)
 	for i, cg := range got {
-		require.Equal(t, sortedGot[i].ID, cg.ID, "rows must be in CreatedAt ASC order")
+		require.Equal(t, expected[i].ID, cg.ID, "rows must be in updated_at DESC, id DESC order")
 	}
 }
 
 // ---------------------------------------------------------------------------
-// FindPageByOwner — orderBy column variants
+// FindPageByOwner — fixed (updated_at DESC, id DESC) ordering
 // ---------------------------------------------------------------------------
 
 // pickOwnerCardgroups filters got down to only the cardgroups whose IDs are
@@ -575,59 +561,9 @@ func pickOwnerCardgroups(got []*domain.Cardgroup, expectIDs map[string]struct{})
 	return out
 }
 
-// TestCardgroupRepo_FindPageByOwner_OrderBy_Name_Asc verifies that
-// orderBy=name + SortAsc returns the rows in lexicographic ascending order.
-func TestCardgroupRepo_FindPageByOwner_OrderBy_Name_Asc(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardgroupRepository(testDB.GORM)
-
-	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"Charlie", "Alpha", "Bravo"})
-	want := map[string]struct{}{
-		string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {},
-	}
-
-	got, _, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, 100,
-		repository.CardgroupOrderByName, repository.SortAsc, nil,
-	)
-	require.NoError(t, err)
-	mine := pickOwnerCardgroups(got, want)
-	require.Len(t, mine, 3)
-	require.Equal(t, "Alpha", mine[0].Name.String())
-	require.Equal(t, "Bravo", mine[1].Name.String())
-	require.Equal(t, "Charlie", mine[2].Name.String())
-}
-
-// TestCardgroupRepo_FindPageByOwner_OrderBy_Name_Desc verifies that
-// orderBy=name + SortDesc returns the rows in lexicographic descending order.
-func TestCardgroupRepo_FindPageByOwner_OrderBy_Name_Desc(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardgroupRepository(testDB.GORM)
-
-	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"Bravo", "Alpha", "Charlie"})
-	want := map[string]struct{}{
-		string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {},
-	}
-
-	got, _, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, 100,
-		repository.CardgroupOrderByName, repository.SortDesc, nil,
-	)
-	require.NoError(t, err)
-	mine := pickOwnerCardgroups(got, want)
-	require.Len(t, mine, 3)
-	require.Equal(t, "Charlie", mine[0].Name.String())
-	require.Equal(t, "Bravo", mine[1].Name.String())
-	require.Equal(t, "Alpha", mine[2].Name.String())
-}
-
-// TestCardgroupRepo_FindPageByOwner_OrderBy_UpdatedAt_Desc verifies that
-// orderBy=updated_at + SortDesc returns the most recently updated row first.
-func TestCardgroupRepo_FindPageByOwner_OrderBy_UpdatedAt_Desc(t *testing.T) {
+// TestCardgroupRepo_FindPageByOwner_UpdatedAt_Desc verifies the fixed ordering
+// returns the most recently updated row first.
+func TestCardgroupRepo_FindPageByOwner_UpdatedAt_Desc(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -643,207 +579,52 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_UpdatedAt_Desc(t *testing.T) {
 	cgs[1] = updatedCG
 
 	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
-	got, _, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, 100,
-		repository.CardgroupOrderByUpdatedAt, repository.SortDesc, nil,
-	)
+	got, _, err := repo.FindPageByOwner(ctx, ownerID, nil, 100, nil)
 	require.NoError(t, err)
 	mine := pickOwnerCardgroups(got, want)
 	require.Len(t, mine, 3)
-	expected := sortCardgroupsByUpdatedAt(cgs, repository.SortDesc)
-	require.Equal(t, expected[0].ID, mine[0].ID, "most recently updated row sorts first under updated_at DESC")
+	expected := sortCardgroupsByUpdatedAt(cgs)
+	require.Equal(t, cgs[1].ID, expected[0].ID, "sanity: the bumped row has the latest updated_at")
+	for i := range mine {
+		require.Equal(t, expected[i].ID, mine[i].ID, "rows must be in updated_at DESC, id DESC order")
+	}
 }
 
-// TestCardgroupRepo_FindPageByOwner_OrderBy_UpdatedAt_Asc verifies the ASC
-// counterpart: the row with the earliest updated_at sorts first.
-func TestCardgroupRepo_FindPageByOwner_OrderBy_UpdatedAt_Asc(t *testing.T) {
+// TestCardgroupRepo_FindPageByOwner_Cursor_UpdatedAtTie_TupleComparison verifies
+// that two cardgroups sharing an updated_at fall back to id DESC, and that a
+// cursor on the first tied row still reaches the second — `updated_at < ?` alone
+// would skip it.
+func TestCardgroupRepo_FindPageByOwner_Cursor_UpdatedAtTie_TupleComparison(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
 	repo := repository.NewCardgroupRepository(testDB.GORM)
 
-	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"first", "second", "third"})
+	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"older", "tie-a", "tie-b"})
+	// One statement runs in one transaction, so the trigger stamps both rows with
+	// the same now() — a deterministic updated_at tie that is newer than "older".
 	time.Sleep(5 * time.Millisecond)
-	updated := "third updated"
-	updatedCG, err := repo.Update(ctx, string(cgs[2].ID), repository.CardgroupUpdate{Name: &updated})
-	require.NoError(t, err)
-	cgs[2] = updatedCG
-
-	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
-	got, _, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, 100,
-		repository.CardgroupOrderByUpdatedAt, repository.SortAsc, nil,
-	)
-	require.NoError(t, err)
-	mine := pickOwnerCardgroups(got, want)
-	require.Len(t, mine, 3)
-	expected := sortCardgroupsByUpdatedAt(cgs, repository.SortAsc)
-	require.Equal(t, expected[0].ID, mine[0].ID,
-		"earliest updated row sorts first under updated_at ASC")
-}
-
-// TestCardgroupRepo_FindPageByOwner_OrderBy_CreatedAt_Desc verifies that
-// orderBy=created_at + SortDesc returns the most recently created row first.
-func TestCardgroupRepo_FindPageByOwner_OrderBy_CreatedAt_Desc(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardgroupRepository(testDB.GORM)
-
-	// insertNamedCardgroups staggers CreatedAt by 1ms, so cgs[2] is newest.
-	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"a", "b", "c"})
+	require.NoError(t, testDB.GORM.WithContext(ctx).Exec(
+		"UPDATE cardgroups SET name = name WHERE id IN (?, ?)", string(cgs[1].ID), string(cgs[2].ID),
+	).Error)
 	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
 
-	got, _, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, 100,
-		repository.CardgroupOrderByCreatedAt, repository.SortDesc, nil,
-	)
-	require.NoError(t, err)
-	mine := pickOwnerCardgroups(got, want)
-	require.Len(t, mine, 3)
-	require.Equal(t, cgs[2].ID, mine[0].ID, "newest row sorts first under created_at DESC")
-	require.Equal(t, cgs[0].ID, mine[2].ID, "oldest row sorts last under created_at DESC")
-}
-
-// TestCardgroupRepo_FindPageByOwner_OrderBy_ID_Desc verifies that orderBy=id
-// + SortDesc emits a single ORDER BY column (no secondary `id` since the
-// primary already is `id`). Asserts ID-descending ordering.
-func TestCardgroupRepo_FindPageByOwner_OrderBy_ID_Desc(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardgroupRepository(testDB.GORM)
-
-	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"a", "b", "c"})
-	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
-
-	got, _, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, 100,
-		repository.CardgroupOrderByID, repository.SortDesc, nil,
-	)
-	require.NoError(t, err)
-	mine := pickOwnerCardgroups(got, want)
-	require.Len(t, mine, 3)
-	for i := 1; i < len(mine); i++ {
-		require.Greater(t, mine[i-1].ID, mine[i].ID,
-			"rows must be sorted by ID descending")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// FindPageByOwner — cursor (after) tuple-comparison variants
-// ---------------------------------------------------------------------------
-
-// TestCardgroupRepo_FindPageByOwner_Cursor_AfterByName verifies that the
-// (name, id) tuple-comparison WHERE works for a forward cursor on
-// orderBy=name + SortAsc: the cursor row itself must be excluded.
-func TestCardgroupRepo_FindPageByOwner_Cursor_AfterByName(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardgroupRepository(testDB.GORM)
-
-	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"Apple", "Banana", "Cherry"})
-	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
-
-	// Cursor at "Banana"; expect only "Cherry" after it.
-	bananaName := cgs[1].Name.String()
-	cursor := &repository.CardgroupCursor{
-		ID:   string(cgs[1].ID),
-		Name: &bananaName,
-	}
-	got, _, err := repo.FindPageByOwner(
-		ctx, ownerID, cursor, 100,
-		repository.CardgroupOrderByName, repository.SortAsc, nil,
-	)
-	require.NoError(t, err)
-	mine := pickOwnerCardgroups(got, want)
-	require.Len(t, mine, 1)
-	require.Equal(t, "Cherry", mine[0].Name.String())
-}
-
-// TestCardgroupRepo_FindPageByOwner_Cursor_AfterByID verifies the orderBy=id
-// branch of cardgroupCursorWhere: only the `id op ?` form, no tuple compare.
-func TestCardgroupRepo_FindPageByOwner_Cursor_AfterByID(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardgroupRepository(testDB.GORM)
-
-	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"a", "b", "c"})
-	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
-
-	// Sort our IDs so we know which one is "first" under id ASC.
-	sortedIDs := make([]string, 3)
-	copy(sortedIDs, []string{string(cgs[0].ID), string(cgs[1].ID), string(cgs[2].ID)})
-	sort.Strings(sortedIDs)
-
-	cursor := &repository.CardgroupCursor{ID: sortedIDs[0]}
-	got, _, err := repo.FindPageByOwner(
-		ctx, ownerID, cursor, 100,
-		repository.CardgroupOrderByID, repository.SortAsc, nil,
-	)
-	require.NoError(t, err)
-	mine := pickOwnerCardgroups(got, want)
-	require.Len(t, mine, 2, "two rows after the first cursor")
-	require.Equal(t, domain.CardgroupID(sortedIDs[1]), mine[0].ID)
-	require.Equal(t, domain.CardgroupID(sortedIDs[2]), mine[1].ID)
-}
-
-// TestCardgroupRepo_FindPageByOwner_Cursor_NameTie_TupleComparison verifies
-// that two cardgroups sharing the same name are ordered deterministically by
-// the (name, id) tuple — paging across the tie does not skip or duplicate.
-func TestCardgroupRepo_FindPageByOwner_Cursor_NameTie_TupleComparison(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardgroupRepository(testDB.GORM)
-
-	// Three cardgroups, two share the name "Tie".
-	cgs := insertNamedCardgroups(t, ctx, ownerID, []string{"Tie", "Tie", "Zebra"})
-	want := map[string]struct{}{string(cgs[0].ID): {}, string(cgs[1].ID): {}, string(cgs[2].ID): {}}
-
-	// Page 1: first=1 under name ASC — must be one of the two Ties.
-	page1, _, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, 1,
-		repository.CardgroupOrderByName, repository.SortAsc, nil,
-	)
-	require.NoError(t, err)
-	mine1 := pickOwnerCardgroups(page1, want)
-	// page1 may contain rows from other parallel tests; pick our own. Since
-	// "Tie" sorts before "Zebra" lexicographically and only one is requested,
-	// the first row from our tenant must be a Tie. But cross-test pollution
-	// can put a foreign row first; explicitly fetch our first by paging
-	// with a higher limit and slicing.
-	_ = mine1
-
-	// Refetch with a high limit and pick our three deterministic rows.
-	all, _, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, 100,
-		repository.CardgroupOrderByName, repository.SortAsc, nil,
-	)
+	all, _, err := repo.FindPageByOwner(ctx, ownerID, nil, 100, nil)
 	require.NoError(t, err)
 	mine := pickOwnerCardgroups(all, want)
 	require.Len(t, mine, 3)
-	// The two Tie rows must come back-to-back; the third row is Zebra.
-	require.Equal(t, "Tie", mine[0].Name.String())
-	require.Equal(t, "Tie", mine[1].Name.String())
-	require.Equal(t, "Zebra", mine[2].Name.String())
+	require.True(t, mine[0].UpdatedAt.Equal(mine[1].UpdatedAt), "sanity: the two tied rows share updated_at")
+	require.Greater(t, mine[0].ID, mine[1].ID, "an updated_at tie falls back to id DESC")
+	require.Equal(t, cgs[0].ID, mine[2].ID, "the untouched row has the oldest updated_at")
 
-	// Page after the FIRST tie row using its (name, id) cursor — the next
-	// row must be the OTHER tie row, then Zebra. The tuple compare keeps
-	// the second tie reachable; without it, `name > 'Tie'` would skip past it.
-	tieName := mine[0].Name.String()
-	cursor := &repository.CardgroupCursor{ID: string(mine[0].ID), Name: &tieName}
-	pageAfter, _, err := repo.FindPageByOwner(
-		ctx, ownerID, cursor, 100,
-		repository.CardgroupOrderByName, repository.SortAsc, nil,
-	)
+	ua := mine[0].UpdatedAt
+	cursor := &repository.CardgroupCursor{ID: string(mine[0].ID), UpdatedAt: &ua}
+	pageAfter, _, err := repo.FindPageByOwner(ctx, ownerID, cursor, 100, nil)
 	require.NoError(t, err)
 	myAfter := pickOwnerCardgroups(pageAfter, want)
 	require.Len(t, myAfter, 2, "tuple compare must not skip the second tie row")
 	require.Equal(t, mine[1].ID, myAfter[0].ID, "second tie row must come next")
-	require.Equal(t, "Zebra", myAfter[1].Name.String())
+	require.Equal(t, cgs[0].ID, myAfter[1].ID)
 }
 
 // ---------------------------------------------------------------------------
@@ -897,8 +678,7 @@ func TestCardgroupRepo_FindPageByOwner_EmptySearchTreatedAsNil(t *testing.T) {
 
 	whitespace := "   "
 	got, _, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, 100,
-		repository.CardgroupOrderByCreatedAt, repository.SortAsc, &whitespace,
+		ctx, ownerID, nil, 100, &whitespace,
 	)
 	require.NoError(t, err)
 	mine := pickOwnerCardgroups(got, want)
@@ -918,8 +698,7 @@ func TestCardgroupRepo_FindPageByOwner_FirstZero(t *testing.T) {
 	insertNamedCardgroups(t, ctx, ownerID, []string{"x", "y"})
 
 	got, _, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, 0,
-		repository.CardgroupOrderByCreatedAt, repository.SortAsc, nil,
+		ctx, ownerID, nil, 0, nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, got)
@@ -938,8 +717,7 @@ func TestCardgroupRepo_FindPageByOwner_NegativeFirstClampedToZero(t *testing.T) 
 	insertNamedCardgroups(t, ctx, ownerID, []string{"x"})
 
 	got, _, err := repo.FindPageByOwner(
-		ctx, ownerID, nil, -10,
-		repository.CardgroupOrderByCreatedAt, repository.SortAsc, nil,
+		ctx, ownerID, nil, -10, nil,
 	)
 	require.NoError(t, err)
 	require.Empty(t, got, "negative first must clamp to 0 and short-circuit")

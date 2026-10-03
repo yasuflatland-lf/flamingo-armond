@@ -9,7 +9,7 @@ import (
 	"backend/internal/domain"
 )
 
-// SortOrder mirrors the GraphQL SortOrder enum.
+// SortOrder is the sort direction buildOrderClause and buildCursorWhere render.
 type SortOrder string
 
 const (

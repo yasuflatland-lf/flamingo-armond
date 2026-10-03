@@ -60,55 +60,40 @@ func (r *masterCardgroupRepo) CountCards(ctx context.Context, masterCardgroupID 
 }
 
 // masterCatalogCursorSpec describes the catalog aggregate's cursor geometry.
-// MasterCatalogOrderBy has no `id` member, so isIDOrder is always false and both
-// the primary sort column and the `mcg.id` tie-break are always emitted. The
-// columns are prefixed with the `mcg` alias used by findCatalogPage.
-func masterCatalogCursorSpec(orderBy MasterCatalogOrderBy, c *MasterCatalogCursor) cursorSpec {
+// The catalog orders by `sort_order`, so isIDOrder is always false and both the
+// primary sort column and the `mcg.id` tie-break are always emitted. The columns
+// are prefixed with the `mcg` alias used by findCatalogPage.
+func masterCatalogCursorSpec(c *MasterCatalogCursor) cursorSpec {
 	return cursorSpec{
 		alias:      "mcg",
-		orderCol:   "mcg." + string(orderBy),
+		orderCol:   "mcg.sort_order",
 		isIDOrder:  false,
-		fieldValue: func() (any, error) { return masterCatalogCursorFieldValue(orderBy, c) },
+		fieldValue: func() (any, error) { return masterCatalogCursorFieldValue(c) },
 	}
 }
 
-// masterCatalogOrderClause renders the SQL ORDER BY tail with a secondary
-// mcg.id tie-break so cursors stay deterministic when the primary sort column
-// has duplicates. MasterCatalogOrderBy has no `id` member, so both columns are
-// always emitted. The columns are prefixed with the `mcg` alias used by
-// findCatalogPage.
-func masterCatalogOrderClause(orderBy MasterCatalogOrderBy, dir SortOrder) string {
-	return buildOrderClause(masterCatalogCursorSpec(orderBy, nil), dir)
+// masterCatalogOrderClause renders the fixed (mcg.sort_order ASC, mcg.id ASC)
+// ORDER BY tail; the id tie-break keeps cursors deterministic when two decks
+// share a sort_order.
+func masterCatalogOrderClause() string {
+	return buildOrderClause(masterCatalogCursorSpec(nil), SortAsc)
 }
 
 // masterCatalogCursorWhere builds the tuple-comparison WHERE for the supplied
-// cursor and direction. ASC yields `>`, DESC yields `<`. Returns an error when
-// the cursor lacks the column required by the active orderBy — that is a caller
-// bug, not user-supplied input. Columns are prefixed with the `mcg` alias used
-// by findCatalogPage.
-func masterCatalogCursorWhere(orderBy MasterCatalogOrderBy, dir SortOrder, c *MasterCatalogCursor) (string, []any, error) {
-	return buildCursorWhere(masterCatalogCursorSpec(orderBy, c), dir, c.ID)
+// cursor. Returns an error when the cursor lacks SortOrder — that is a caller
+// bug, not user-supplied input.
+func masterCatalogCursorWhere(c *MasterCatalogCursor) (string, []any, error) {
+	return buildCursorWhere(masterCatalogCursorSpec(c), SortAsc, c.ID)
 }
 
-// masterCatalogCursorFieldValue returns the cursor value for the active orderBy
-// field. The usecase layer hydrates the relevant column before calling
-// FindPublishedPage or FindPageAnyStatus, so a missing column is a caller bug.
-func masterCatalogCursorFieldValue(orderBy MasterCatalogOrderBy, c *MasterCatalogCursor) (any, error) {
-	switch orderBy {
-	case MasterCatalogOrderBySortOrder:
-		if c.SortOrder != nil {
-			return *c.SortOrder, nil
-		}
-	case MasterCatalogOrderByCreatedAt:
-		if c.CreatedAt != nil {
-			return *c.CreatedAt, nil
-		}
-	case MasterCatalogOrderByName:
-		if c.Name != nil {
-			return *c.Name, nil
-		}
+// masterCatalogCursorFieldValue returns the cursor's sort_order value. The
+// usecase layer hydrates it before calling FindPublishedPage or
+// FindPageAnyStatus, so a nil is a caller bug.
+func masterCatalogCursorFieldValue(c *MasterCatalogCursor) (any, error) {
+	if c.SortOrder != nil {
+		return *c.SortOrder, nil
 	}
-	return nil, eris.Errorf("repository: master cardgroup: cursor missing %s column", orderBy)
+	return nil, eris.New("repository: master cardgroup: cursor missing sort_order column")
 }
 
 // findCatalogPage is the shared cursor-paginated catalog engine. publishedOnly
@@ -121,8 +106,6 @@ func (r *masterCardgroupRepo) findCatalogPage(
 	ctx context.Context,
 	after *MasterCatalogCursor,
 	first int,
-	orderBy MasterCatalogOrderBy,
-	dir SortOrder,
 	search *string,
 	publishedOnly bool,
 ) ([]*MasterCatalogItem, int64, error) {
@@ -166,13 +149,13 @@ func (r *masterCardgroupRepo) findCatalogPage(
 		q = q.Where("mcg.name ILIKE ?", pattern)
 	}
 	if after != nil {
-		clauseSQL, args, err := masterCatalogCursorWhere(orderBy, dir, after)
+		clauseSQL, args, err := masterCatalogCursorWhere(after)
 		if err != nil {
 			return nil, 0, eris.Wrap(err, "repository: master cardgroup: build catalog cursor where")
 		}
 		q = q.Where(clauseSQL, args...)
 	}
-	q = q.Order(masterCatalogOrderClause(orderBy, dir)).Limit(first)
+	q = q.Order(masterCatalogOrderClause()).Limit(first)
 
 	var rows []gormMasterCatalogRow
 	if err := q.Find(&rows).Error; err != nil {
@@ -194,17 +177,15 @@ func (r *masterCardgroupRepo) findCatalogPage(
 }
 
 // FindPublishedPage returns the cursor-paginated published catalog list (drafts
-// and published-but-empty decks excluded). Order is (orderBy, id) so cursors
-// stay deterministic even when the primary sort column has duplicates.
+// and published-but-empty decks excluded). Order is (sort_order ASC, id ASC) so
+// cursors stay deterministic even when two decks share a sort_order.
 func (r *masterCardgroupRepo) FindPublishedPage(
 	ctx context.Context,
 	after *MasterCatalogCursor,
 	first int,
-	orderBy MasterCatalogOrderBy,
-	dir SortOrder,
 	search *string,
 ) ([]*MasterCatalogItem, int64, error) {
-	return r.findCatalogPage(ctx, after, first, orderBy, dir, search, true)
+	return r.findCatalogPage(ctx, after, first, search, true)
 }
 
 // FindPageAnyStatus returns the cursor-paginated admin catalog list (drafts and
@@ -215,9 +196,7 @@ func (r *masterCardgroupRepo) FindPageAnyStatus(
 	ctx context.Context,
 	after *MasterCatalogCursor,
 	first int,
-	orderBy MasterCatalogOrderBy,
-	dir SortOrder,
 	search *string,
 ) ([]*MasterCatalogItem, int64, error) {
-	return r.findCatalogPage(ctx, after, first, orderBy, dir, search, false)
+	return r.findCatalogPage(ctx, after, first, search, false)
 }

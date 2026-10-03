@@ -100,14 +100,6 @@ type UpdateCardOutcome struct {
 
 const cardOrderColumn = "id"
 
-// SortOrder mirrors the schema SortOrder enum.
-type SortOrder string
-
-const (
-	SortOrderAsc  SortOrder = "ASC"
-	SortOrderDesc SortOrder = "DESC"
-)
-
 // CardConnectionInput captures the GraphQL pagination arguments. Pointer
 // fields preserve "absent" semantics from the schema.
 type CardConnectionInput struct {

@@ -180,13 +180,11 @@ func (r *mutationResolver) MergeMasterCardgroup(ctx context.Context, input model
 }
 
 // MasterCatalog is the resolver for the masterCatalog field.
-func (r *queryResolver) MasterCatalog(ctx context.Context, first *int, after *string, search *string, orderBy *model.MasterCatalogOrderBy, orderDirection *model.SortOrder) (*model.MasterCatalogConnection, error) {
+func (r *queryResolver) MasterCatalog(ctx context.Context, first *int, after *string, search *string) (*model.MasterCatalogConnection, error) {
 	out, err := r.MasterCatalogUC.ListPublishedConnection(ctx, usecase.MasterCatalogConnectionInput{
-		First:          first,
-		After:          after,
-		Search:         search,
-		OrderBy:        toUsecaseOrderBy[model.MasterCatalogOrderBy, usecase.MasterCatalogOrderBy](orderBy),
-		OrderDirection: toUsecaseOrderBy[model.SortOrder, usecase.SortOrder](orderDirection),
+		First:  first,
+		After:  after,
+		Search: search,
 	})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
@@ -195,13 +193,11 @@ func (r *queryResolver) MasterCatalog(ctx context.Context, first *int, after *st
 }
 
 // AdminMasters is the resolver for the adminMasters field.
-func (r *queryResolver) AdminMasters(ctx context.Context, first *int, after *string, search *string, orderBy *model.MasterCatalogOrderBy, orderDirection *model.SortOrder) (*model.MasterCatalogConnection, error) {
+func (r *queryResolver) AdminMasters(ctx context.Context, first *int, after *string, search *string) (*model.MasterCatalogConnection, error) {
 	out, err := r.MasterCatalogUC.ListAdminConnection(ctx, usecase.MasterCatalogConnectionInput{
-		First:          first,
-		After:          after,
-		Search:         search,
-		OrderBy:        toUsecaseOrderBy[model.MasterCatalogOrderBy, usecase.MasterCatalogOrderBy](orderBy),
-		OrderDirection: toUsecaseOrderBy[model.SortOrder, usecase.SortOrder](orderDirection),
+		First:  first,
+		After:  after,
+		Search: search,
 	})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)

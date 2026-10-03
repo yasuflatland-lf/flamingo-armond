@@ -218,7 +218,7 @@ func TestAdminMasters_Success(t *testing.T) {
 	}}
 	qr := &queryResolver{&Resolver{MasterCatalogUC: stub}}
 
-	conn, err := qr.AdminMasters(context.Background(), nil, nil, nil, nil, nil)
+	conn, err := qr.AdminMasters(context.Background(), nil, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, conn.Edges, 1)
 	assert.Equal(t, "m1", conn.Edges[0].Node.ID)
@@ -232,7 +232,7 @@ func TestAdminMasters_WrapsForbidden(t *testing.T) {
 	stub := &stubMasterCatalogUC{adminErr: ucerr.NewForbiddenError("admin only")}
 	qr := &queryResolver{&Resolver{MasterCatalogUC: stub}}
 
-	_, err := qr.AdminMasters(context.Background(), nil, nil, nil, nil, nil)
+	_, err := qr.AdminMasters(context.Background(), nil, nil, nil)
 	require.Error(t, err)
 	assert.True(t, gqlerrtest.IsCode(err, gqlerr.CodeForbidden), "want FORBIDDEN wire code")
 }
