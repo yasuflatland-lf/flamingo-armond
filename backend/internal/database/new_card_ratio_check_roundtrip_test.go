@@ -49,11 +49,12 @@ func TestNewCardRatioCheckDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// drop_redundant_fk_indexes, drop_user_card_fsrs_last_rating,
-	// drop_swipe_records_user_cardgroup_index, reset_legacy_new_card_ratio,
-	// revoke_client_writes and lower_new_card_ratio_default sit above
-	// tighten_new_card_ratio_check, so seven steps restore the looser CHECK.
-	if err := m.Steps(-7); err != nil {
+	// cardgroups_owner_updated_at_index, drop_redundant_fk_indexes,
+	// drop_user_card_fsrs_last_rating, drop_swipe_records_user_cardgroup_index,
+	// reset_legacy_new_card_ratio, revoke_client_writes and
+	// lower_new_card_ratio_default sit above tighten_new_card_ratio_check, so
+	// eight steps restore the looser CHECK.
+	if err := m.Steps(-8); err != nil {
 		t.Fatalf("migrate down tighten_new_card_ratio_check: %v", err)
 	}
 	requireRatioAccepted(t, ctx, sqlDB, 1, 3)
