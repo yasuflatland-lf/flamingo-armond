@@ -34,7 +34,8 @@ the right sentinel for each field. Nil sentinels panic at the construction bound
 ### Trinary value object for optional profile fields
 
 `Bio` encodes "no change" / "explicit clear" / "set" in a struct with a private
-`*string`. `IsSet()` and `Ptr()` expose the trinary without an out-of-band flag.
+`*string`. `Ptr()` exposes the trinary without an out-of-band flag: `nil` is
+no-change, a pointer to `""` is explicit clear, anything else is set.
 `ParseBio(nil)` returns the no-change case; whitespace-only inputs collapse to
 explicit-clear after trimming.
 

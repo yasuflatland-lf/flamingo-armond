@@ -393,7 +393,7 @@ func (r *masterCardgroupRepo) Unpublish(ctx context.Context, id string) (*domain
 // two divergent Updates(map) statements. op is the caller-supplied verb embedded
 // in the wrap prefix so the error chain attributes to publish vs. unpublish.
 func (r *masterCardgroupRepo) applyStatusTransition(
-	ctx context.Context, id, op string, transition func(*domain.MasterCardgroup) error,
+	ctx context.Context, id, op string, transition func(*domain.MasterCardgroup),
 ) (*domain.MasterCardgroup, error) {
 	var out *domain.MasterCardgroup
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -409,9 +409,7 @@ func (r *masterCardgroupRepo) applyStatusTransition(
 		if err != nil {
 			return err
 		}
-		if err := transition(m); err != nil {
-			return eris.Wrap(err, "repository: master cardgroup: "+op+": apply")
-		}
+		transition(m)
 		res := tx.Model(&gormMasterCardgroup{}).Where("id = ?", id).
 			Updates(map[string]any{"status": string(m.Status), "version": m.Version})
 		if res.Error != nil {

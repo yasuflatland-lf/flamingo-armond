@@ -170,8 +170,8 @@ func TestFindByID_Success(t *testing.T) {
 	if got.DisplayName != nil {
 		t.Fatalf("DisplayName: want nil, got %v", *got.DisplayName)
 	}
-	if got.Bio.IsSet() {
-		t.Fatalf("Bio: want IsSet=false, got Ptr=%v", got.Bio.Ptr())
+	if p := got.Bio.Ptr(); p != nil {
+		t.Fatalf("Bio: want nil, got %q", *p)
 	}
 	if got.AvatarURL != nil {
 		t.Fatalf("AvatarURL: want nil, got %v", *got.AvatarURL)
@@ -265,8 +265,8 @@ func TestUpdate_Success_DisplayNameOnly(t *testing.T) {
 	if got.DisplayName == nil || string(*got.DisplayName) != name {
 		t.Fatalf("DisplayName: got %v, want %q", got.DisplayName, name)
 	}
-	if got.Bio.IsSet() {
-		t.Fatalf("Bio should remain IsSet=false, got Ptr=%v", got.Bio.Ptr())
+	if p := got.Bio.Ptr(); p != nil {
+		t.Fatalf("Bio: want nil, got %q", *p)
 	}
 	if got.AvatarURL != nil {
 		t.Fatalf("AvatarURL should remain nil, got %v", *got.AvatarURL)
@@ -295,7 +295,7 @@ func TestUpdate_PartialBioOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	if !got.Bio.IsSet() || got.Bio.Ptr() == nil || *got.Bio.Ptr() != bio {
+	if p := got.Bio.Ptr(); p == nil || *p != bio {
 		t.Fatalf("Bio: got Ptr=%v, want %q", got.Bio.Ptr(), bio)
 	}
 	if got.DisplayName == nil || string(*got.DisplayName) != name {
