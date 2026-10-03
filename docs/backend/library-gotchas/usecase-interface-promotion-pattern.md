@@ -19,7 +19,7 @@ type CardgroupUsecase interface {
     ListCardgroupsByOwnerConnection(ctx context.Context, in CardgroupConnectionInput) (*CardgroupConnectionOutput, error)
 }
 
-// Unexported concrete struct — holds narrow repository interfaces.
+// Unexported concrete struct — holds its narrow dependencies (repository, admin checker, tx runner).
 type cardgroupUsecase struct {
     repo  CardgroupRepository
     admin AdminChecker
