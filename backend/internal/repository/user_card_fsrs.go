@@ -23,7 +23,6 @@ type gormUserCardFSRS struct {
 	LastReview    time.Time `gorm:"column:last_review"`
 	ScheduledDays int       `gorm:"column:scheduled_days"`
 	CreatedAt     time.Time `gorm:"column:created_at"`
-	UpdatedAt     time.Time `gorm:"column:updated_at;->"`
 }
 
 func (gormUserCardFSRS) TableName() string { return "user_card_fsrs" }
@@ -63,10 +62,9 @@ func (r *userCardFSRSRepo) UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.
 			"last_review":    u.State.LastReview,
 			"scheduled_days": u.State.ScheduledDays,
 		}),
-	}, clause.Returning{Columns: []clause.Column{{Name: "updated_at"}}}).Create(row).Error; err != nil {
+	}).Create(row).Error; err != nil {
 		return eris.Wrap(err, "repository: user card fsrs: upsert")
 	}
-	u.UpdatedAt = row.UpdatedAt
 	return nil
 }
 
@@ -192,7 +190,6 @@ func userCardFSRSToRow(u *domain.UserCardFSRS) *gormUserCardFSRS {
 		LastReview:    u.State.LastReview,
 		ScheduledDays: u.State.ScheduledDays,
 		CreatedAt:     u.CreatedAt,
-		UpdatedAt:     u.UpdatedAt,
 	}
 }
 
@@ -242,6 +239,5 @@ func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
 			LastReview:    row.LastReview,
 		},
 		CreatedAt: row.CreatedAt,
-		UpdatedAt: row.UpdatedAt,
 	}, nil
 }
