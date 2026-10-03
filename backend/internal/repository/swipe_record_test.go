@@ -49,42 +49,6 @@ func TestSwipeRecordRepository_CreateTxAndFind(t *testing.T) {
 	require.InDelta(t, 6.6, byID[sr.ID].StabilityBefore, 0.000000001)
 	require.True(t, stateBefore.Due.Equal(byID[sr.ID].DueBefore))
 
-	history, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cg.ID))
-	require.NoError(t, err)
-	require.Len(t, history, 1)
-	require.Equal(t, sr.ID, history[0].ID)
-	require.Equal(t, cg.ID, history[0].CardgroupID)
-}
-
-func TestSwipeRecordRepository_FindByUserAndCardgroup_UsesDenormalizedCardgroup(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	cgAtSwipe := insertCardgroup(t, ctx, ownerID)
-	cgCurrent := insertCardgroup(t, ctx, ownerID)
-	cardRepo := repository.NewCardRepository(testDB.GORM)
-	swipeRepo := repository.NewSwipeRecordRepository(testDB.GORM)
-
-	card := newCard(cgCurrent.ID, "front denormalized", "back")
-	require.NoError(t, cardRepo.Create(ctx, card))
-	reviewedAt := time.Now().UTC().Truncate(time.Microsecond)
-	state := domain.NewFSRSStateForNewCard(reviewedAt)
-	sr, err := domain.NewSwipeRecord(domain.UserID(ownerID), card.ID, cgAtSwipe.ID, domain.RatingGood, reviewedAt, state, state)
-	require.NoError(t, err)
-
-	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return swipeRepo.CreateTx(ctx, tx, sr)
-	}))
-
-	historyAtSwipe, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cgAtSwipe.ID))
-	require.NoError(t, err)
-	require.Len(t, historyAtSwipe, 1)
-	require.Equal(t, sr.ID, historyAtSwipe[0].ID)
-	require.Equal(t, cgAtSwipe.ID, historyAtSwipe[0].CardgroupID)
-
-	historyCurrent, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cgCurrent.ID))
-	require.NoError(t, err)
-	require.Empty(t, historyCurrent)
 }
 
 // TestSwipeRecordRepository_ListByUserSince_InclusiveBoundaryAndScopes proves
@@ -203,10 +167,6 @@ func TestSwipeRecordRepository_OutOfRangeState_ReturnsError(t *testing.T) {
 	reads := map[string]func() error{
 		"FindByIDs": func() error {
 			_, err := swipeRepo.FindByIDs(ctx, []string{corrupt.ID})
-			return err
-		},
-		"FindByUserAndCardgroup": func() error {
-			_, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cg.ID))
 			return err
 		},
 		"ListByUserSince": func() error {

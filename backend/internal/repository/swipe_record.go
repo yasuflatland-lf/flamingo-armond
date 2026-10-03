@@ -35,7 +35,6 @@ func (gormSwipeRecord) TableName() string { return "swipe_records" }
 
 type SwipeRecordRepository interface {
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.SwipeRecord, error)
-	FindByUserAndCardgroup(ctx context.Context, userID, cardgroupID string) ([]*domain.SwipeRecord, error)
 	ListByUserSince(ctx context.Context, userID string, since time.Time) ([]*domain.SwipeRecord, error)
 	CreateTx(ctx context.Context, tx *gorm.DB, sr *domain.SwipeRecord) error
 }
@@ -61,25 +60,6 @@ func (r *swipeRecordRepo) FindByIDs(ctx context.Context, ids []string) (map[stri
 			return nil, err
 		}
 		out[sr.ID] = sr
-	}
-	return out, nil
-}
-
-func (r *swipeRecordRepo) FindByUserAndCardgroup(ctx context.Context, userID, cardgroupID string) ([]*domain.SwipeRecord, error) {
-	var rows []gormSwipeRecord
-	if err := r.db.WithContext(ctx).
-		Where("user_id = ? AND cardgroup_id = ?", userID, cardgroupID).
-		Order("reviewed_at DESC, id DESC").
-		Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: swipe record: find by user and cardgroup")
-	}
-	out := make([]*domain.SwipeRecord, len(rows))
-	for i := range rows {
-		sr, err := swipeRecordToDomain(rows[i])
-		if err != nil {
-			return nil, err
-		}
-		out[i] = sr
 	}
 	return out, nil
 }
