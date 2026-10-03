@@ -25,8 +25,6 @@ export const MyCardgroupsConnectionQuery = graphql(`
   query MyCardgroupsConnection(
     $first: Int
     $after: ID
-    $last: Int
-    $before: ID
     $search: String
     $orderBy: CardgroupOrderBy
     $orderDirection: SortOrder
@@ -34,8 +32,6 @@ export const MyCardgroupsConnectionQuery = graphql(`
     myCardgroupsConnection(
       first: $first
       after: $after
-      last: $last
-      before: $before
       search: $search
       orderBy: $orderBy
       orderDirection: $orderDirection
