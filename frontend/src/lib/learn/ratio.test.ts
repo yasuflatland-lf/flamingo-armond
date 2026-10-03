@@ -1,14 +1,26 @@
 import { describe, expect, it } from "vitest";
-import {
-  equalsPercent,
-  gridPercent,
-  MAX,
-  MIN,
-  type Ratio,
-  STEP,
-  shareTenths,
-  tenthsToPercent,
-} from "./ratio";
+import { equalsPercent, gridPercent, MAX, MIN, STEP, shareTenths, tenthsToPercent } from "./ratio";
+
+/** Every ratio the helpers accept: 0 <= n <= d <= 100 (5150 pairs), a superset of what the backend stores. */
+const ALL_RATIOS = Array.from({ length: 100 }, (_, i) => i + 1).flatMap((d) =>
+  Array.from({ length: d + 1 }, (_, n) => ({ numerator: n, denominator: d })),
+);
+
+/** Round-half-up of 1000n/d from the integer quotient and remainder. */
+function exactTenths(n: number, d: number): number {
+  const remainder = (1000 * n) % d;
+  const quotient = (1000 * n - remainder) / d;
+  return 2 * remainder >= d ? quotient + 1 : quotient;
+}
+
+/** Nearest 5% step by exact comparison of |100n/d - 5k| (ties to the larger k), then clamped. */
+function exactGrid(n: number, d: number): number {
+  let best = 0;
+  for (let k = 1; k <= 20; k++) {
+    if (Math.abs(100 * n - 5 * k * d) <= Math.abs(100 * n - 5 * best * d)) best = k;
+  }
+  return Math.min(MAX, Math.max(MIN, 5 * best));
+}
 
 describe("ratio constants", () => {
   it("pins the 5%-step control range", () => {
@@ -19,14 +31,12 @@ describe("ratio constants", () => {
 });
 
 describe("shareTenths", () => {
-  it("returns an exact tenths count for a share that lands on a whole percent", () => {
-    expect(shareTenths({ numerator: 4, denominator: 5 })).toBe(800);
-    expect(shareTenths({ numerator: 33, denominator: 100 })).toBe(330);
-  });
-
-  it("keeps the tenth for an off-grid share that needs one", () => {
-    // 1/8 = 12.5% exactly, so the tenths count is integral without rounding.
-    expect(shareTenths({ numerator: 1, denominator: 8 })).toBe(125);
+  it("equals round-half-up of 1000n/d for every ratio with d <= 100 (exhaustive)", () => {
+    for (const r of ALL_RATIOS) {
+      expect(shareTenths(r), `${r.numerator}/${r.denominator}`).toBe(
+        exactTenths(r.numerator, r.denominator),
+      );
+    }
   });
 
   it("rounds a repeating share to the nearest tenth in both directions", () => {
@@ -40,34 +50,20 @@ describe("shareTenths", () => {
     expect(shareTenths({ numerator: 1, denominator: 16 })).toBe(63);
     expect(shareTenths({ numerator: 3, denominator: 16 })).toBe(188);
   });
-
-  it("handles the smallest and largest storable shares", () => {
-    expect(shareTenths({ numerator: 1, denominator: 100 })).toBe(10);
-    expect(shareTenths({ numerator: 99, denominator: 100 })).toBe(990);
-  });
 });
 
 describe("gridPercent", () => {
-  it("returns the share itself when it is already a grid step", () => {
-    expect(gridPercent({ numerator: 4, denominator: 5 })).toBe(80);
-    expect(gridPercent({ numerator: 1, denominator: 2 })).toBe(50);
-  });
-
-  it("snaps an off-grid share to the nearest step", () => {
-    expect(gridPercent({ numerator: 33, denominator: 100 })).toBe(35);
-    expect(gridPercent({ numerator: 1, denominator: 3 })).toBe(35);
-    expect(gridPercent({ numerator: 32, denominator: 100 })).toBe(30);
+  it("is the nearest 5% step clamped to [MIN, MAX] for every ratio with d <= 100 (exhaustive)", () => {
+    for (const r of ALL_RATIOS) {
+      expect(gridPercent(r), `${r.numerator}/${r.denominator}`).toBe(
+        exactGrid(r.numerator, r.denominator),
+      );
+    }
   });
 
   it("rounds half up when the share sits midway between two steps", () => {
     // 3/8 = 37.5%, exactly between the 35% and 40% steps.
     expect(gridPercent({ numerator: 3, denominator: 8 })).toBe(40);
-  });
-
-  it("clamps a share below the range up to MIN", () => {
-    // 1% rounds to grid index 0 (0%), which the clamp lifts to MIN.
-    expect(gridPercent({ numerator: 1, denominator: 100 })).toBe(MIN);
-    expect(gridPercent({ numerator: 2, denominator: 100 })).toBe(MIN);
   });
 
   it("clamps a share above the range down to MAX", () => {
@@ -78,51 +74,28 @@ describe("gridPercent", () => {
     expect(gridPercent({ numerator: 99, denominator: 100 })).toBe(MAX);
     expect(gridPercent({ numerator: 98, denominator: 100 })).toBe(MAX);
   });
-
-  it("leaves the shares just inside the range unclamped", () => {
-    // 3% rounds up to 5% and 77% rounds down to 75% on their own.
-    expect(gridPercent({ numerator: 3, denominator: 100 })).toBe(5);
-    expect(gridPercent({ numerator: 77, denominator: 100 })).toBe(75);
-  });
 });
 
 describe("equalsPercent", () => {
-  it("is true when the stored fraction is exactly that percent", () => {
-    expect(equalsPercent({ numerator: 4, denominator: 5 }, 80)).toBe(true);
-    expect(equalsPercent({ numerator: 33, denominator: 100 }, 33)).toBe(true);
+  it("holds for gridPercent(r) exactly when r is an in-range grid step (exhaustive)", () => {
+    for (const r of ALL_RATIOS) {
+      const { numerator: n, denominator: d } = r;
+      const onGrid = (100 * n) % (STEP * d) === 0 && 100 * n >= MIN * d && 100 * n <= MAX * d;
+      expect(equalsPercent(r, gridPercent(r)), `${n}/${d}`).toBe(onGrid);
+    }
   });
 
   it("is false for a fraction that only rounds to that percent", () => {
     // 1/3 displays as 33.3% but is not 33%.
     expect(equalsPercent({ numerator: 1, denominator: 3 }, 33)).toBe(false);
   });
-
-  it("is false for a neighbouring percent", () => {
-    expect(equalsPercent({ numerator: 4, denominator: 5 }, 85)).toBe(false);
-    expect(equalsPercent({ numerator: 4, denominator: 5 }, 75)).toBe(false);
-  });
 });
 
 describe("tenthsToPercent", () => {
-  it("converts a whole-percent tenths count", () => {
-    expect(tenthsToPercent(800)).toBe(80);
-    expect(tenthsToPercent(0)).toBe(0);
-    expect(tenthsToPercent(1000)).toBe(100);
-  });
-
-  it("keeps one decimal for an off-grid tenths count", () => {
-    expect(tenthsToPercent(333)).toBe(33.3);
-    expect(tenthsToPercent(63)).toBe(6.3);
-  });
-
-  it("prints back as the same one-decimal string", () => {
-    expect(tenthsToPercent(333).toFixed(1)).toBe("33.3");
-    expect(tenthsToPercent(667).toFixed(1)).toBe("66.7");
-  });
-
-  it("keeps a complement pair summing to exactly 100", () => {
-    const ratio: Ratio = { numerator: 1, denominator: 3 };
-    const tenths = shareTenths(ratio);
-    expect(tenthsToPercent(tenths) + tenthsToPercent(1000 - tenths)).toBe(100);
+  it("prints every tenths count back as t/10 and keeps complements summing to 100 (exhaustive)", () => {
+    for (let t = 0; t <= 1000; t++) {
+      expect(tenthsToPercent(t).toFixed(1)).toBe(`${Math.floor(t / 10)}.${t % 10}`);
+      expect(tenthsToPercent(t) + tenthsToPercent(1000 - t)).toBe(100);
+    }
   });
 });

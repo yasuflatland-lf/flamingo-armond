@@ -17,7 +17,7 @@ export default defineConfig({
     // @testing-library/react can hook into afterEach for automatic DOM cleanup.
     globals: true,
     // Extend expect with jest-dom matchers for jsdom-based component tests
-    setupFiles: ["src/__test-setup__/jest-dom.ts"],
+    setupFiles: ["src/__test-setup__/jest-dom.ts", "src/__test-setup__/fast-check.ts"],
     env: {
       BACKEND_URL: "http://localhost:1323",
       NEXT_PUBLIC_SUPABASE_URL: "http://localhost:54321",
