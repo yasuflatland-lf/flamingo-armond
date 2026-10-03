@@ -595,6 +595,18 @@ func TestCardUsecase_Update_DuplicateFront_ValidationError(t *testing.T) {
 	}
 }
 
+func TestCardUsecase_Update_NotFoundMasksExistence(t *testing.T) {
+	t.Parallel()
+
+	uc := NewCardUsecase(nil, &mockCardRepository{findErr: repository.ErrNotFound},
+		&mockCardgroupRepoForCard{},
+		nil, newTestLogger(),
+	)
+
+	_, err := uc.Update(authedCtx("u1"), "missing", UpdateCardInput{})
+	assertUnauthenticated(t, err)
+}
+
 func TestCardUsecase_Delete_NotFoundMasksExistence(t *testing.T) {
 	t.Parallel()
 

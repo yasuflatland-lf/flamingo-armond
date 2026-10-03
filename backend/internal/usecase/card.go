@@ -258,6 +258,10 @@ func (u *cardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 	return CreateCardOutcome{Card: card}, nil
 }
 
+// Update applies a front/back patch to a card the caller owns. An unknown id
+// and a card in another user's cardgroup both return ucerr.ErrUnauthenticated,
+// so the mutation cannot be used as an existence oracle over other users' card
+// ids.
 func (u *cardUsecase) Update(ctx context.Context, id string, in UpdateCardInput) (UpdateCardOutcome, error) {
 	user := auth.UserFrom(ctx)
 	if err := requireCallerSub(user); err != nil {
@@ -336,6 +340,9 @@ func (u *cardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 	return UpdateCardOutcome{Card: updated}, nil
 }
 
+// Delete removes a card the caller owns. An unknown id and a card in another
+// user's cardgroup both return ucerr.ErrUnauthenticated, so the mutation cannot
+// be used as an existence oracle over other users' card ids.
 func (u *cardUsecase) Delete(ctx context.Context, id string) error {
 	user := auth.UserFrom(ctx)
 	if err := requireCallerSub(user); err != nil {

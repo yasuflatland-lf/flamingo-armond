@@ -35,13 +35,12 @@ type cardMockRepo struct {
 
 	// Fields used by UpdateCard tests.
 	findByIDResult *domain.Card
-	findByIDErr    error
 	updateResult   *domain.Card
 	updateErr      error
 }
 
 func (m *cardMockRepo) FindByID(_ context.Context, _ string) (*domain.Card, error) {
-	return m.findByIDResult, m.findByIDErr
+	return m.findByIDResult, nil
 }
 func (m *cardMockRepo) FindDueCardsForUser(_ context.Context, _ string, _ string, _ domain.LearnWindow, limit int) ([]domain.DueCard, error) {
 	m.findDueLimit = limit
