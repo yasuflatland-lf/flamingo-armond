@@ -15,8 +15,9 @@ error sentinels, which makes them poor roommates.
    table (`user_roles`). The join table typically has its own `gormXxx` struct.
 3. The concrete repository file imports `clause.OnConflict` (for the join-table's
    idempotent insert) alongside plain `Find`/`Create`/`Update`/`Delete` GORM calls.
-4. Different consumers only call one half: a DataLoader calls `FindByIDs`; an auth
-   middleware calls only `HasRole`; a usecase calls only `AssignToUser`/`RevokeFromUser`.
+4. Different consumers only call one half: the admin self-demotion guard calls only
+   `FindByIDsTx`; an auth middleware calls only `HasRole`; a usecase calls only
+   `AssignToUser`/`RevokeFromUser`.
 
 ## The split
 
@@ -25,7 +26,7 @@ Separate into two interfaces owned by two files:
 ```
 repository/
   role.go       — RoleRepository: 7 CRUD methods
-                  FindByID, FindByName, FindByIDs, Create, Update, Delete, ListAll
+                  FindByID, FindByName, FindByIDsTx, Create, Update, Delete, ListAll
   user_role.go  — UserRoleRepository: 6 membership methods
                   HasRole, AssignToUser, RevokeFromUser,
                   ListByUser, ListByUserIDs, CountAdmins
@@ -78,7 +79,7 @@ After the interface split, update these sites in dependency order:
    This keeps the auth package free of the membership repository import and lets test
    stubs implement only the one method they exercise.
 3. **Usecase narrow interfaces**: split existing narrow interfaces that mixed CRUD lookups
-   with membership writes into two (e.g. `adminRoleRepository` for `FindByIDs` and
+   with membership writes into two (e.g. `adminRoleRepository` for `FindByIDsTx` and
    `adminUserRoleRepository` for `AssignToUser`/`RevokeFromUser`).
 4. **Composition root** (`cmd/server/main.go`): instantiate both concrete repositories and
    pass each to the right consumer.

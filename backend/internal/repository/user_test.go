@@ -854,25 +854,6 @@ func TestRoleRepository_FindByName_SeededAdmin(t *testing.T) {
 	}
 }
 
-func TestRoleRepository_FindByIDs(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	repo := repository.NewRoleRepository(testDB.GORM)
-	admin, err := repo.FindByName(ctx, "admin")
-	if err != nil {
-		t.Fatalf("FindByName(admin): %v", err)
-	}
-
-	got, err := repo.FindByIDs(ctx, []string{admin.ID})
-	if err != nil {
-		t.Fatalf("FindByIDs: %v", err)
-	}
-	if got[admin.ID] == nil || got[admin.ID].Name != "admin" {
-		t.Fatalf("FindByIDs missing admin role: %+v", got)
-	}
-}
-
 func TestRoleRepository_NotFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
