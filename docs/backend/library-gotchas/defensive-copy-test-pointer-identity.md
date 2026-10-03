@@ -74,5 +74,5 @@ identity), not the rebind axis.
 
 ## Reference
 
-- `backend/internal/domain/bio_test.go` — `TestBioFromPtr` / `"Ptr returns a fresh pointer on each call"`.
+- `backend/internal/domain/text_vo_property_test.go` — `TestTrinaryText_Property_BioAndDescription` asserts `require.NotSame` on two `Ptr()` calls for every generated Bio and Description.
 - `backend/internal/domain/bio.go` — `Bio.Ptr()` allocates a fresh `*string` on every call.
