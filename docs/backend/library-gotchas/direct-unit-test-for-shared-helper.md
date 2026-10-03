@@ -17,7 +17,10 @@ whose generator reaches every edge in the checklist below.
 func TestTrimAndDetect_Property_TrimsOnlyOverflow(t *testing.T) {
     t.Parallel()
     rapid.Check(t, func(t *rapid.T) {
-        items := rapid.SliceOfN(rapid.Int(), 0, 30).Draw(t, "items") // nil one draw in ten
+        items := rapid.SliceOfN(rapid.Int(), 0, 30).Draw(t, "items")
+        if rapid.IntRange(0, 9).Draw(t, "nil") == 0 {             // nil one draw in ten
+            items = nil
+        }
         want := rapid.IntRange(-3, 35).Draw(t, "want")                // covers want<=0, len<want, len==want, len==want+1
         got, more := TrimAndDetect(items, want)
         if want > 0 && len(items) > want {
@@ -26,12 +29,13 @@ func TestTrimAndDetect_Property_TrimsOnlyOverflow(t *testing.T) {
             return
         }
         require.False(t, more)
+        require.Equal(t, items == nil, got == nil)
         require.Equal(t, items, got)
     })
 }
 ```
 
-The full test, including the `nil` draw, is in `backend/internal/usecase/page_property_test.go`.
+The full test is in `backend/internal/usecase/page_property_test.go`.
 
 ## Directionality assertion for symmetric helpers
 
