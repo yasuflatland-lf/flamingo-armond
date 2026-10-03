@@ -26,10 +26,6 @@ func (r *countingSwipeRecordRepo) FindByIDs(ctx context.Context, ids []string) (
 	return r.findByIDs(ctx, ids)
 }
 
-func (r *countingSwipeRecordRepo) FindByUserAndCardgroup(context.Context, string, string) ([]*domain.SwipeRecord, error) {
-	panic("countingSwipeRecordRepo.FindByUserAndCardgroup not configured")
-}
-
 func (r *countingSwipeRecordRepo) ListByUserSince(context.Context, string, time.Time) ([]*domain.SwipeRecord, error) {
 	panic("countingSwipeRecordRepo.ListByUserSince not configured")
 }

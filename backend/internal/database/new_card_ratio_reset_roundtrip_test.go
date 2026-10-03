@@ -59,7 +59,9 @@ func TestResetLegacyNewCardRatio_DownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	if err := m.Steps(-1); err != nil {
+	// drop_swipe_records_user_cardgroup_index sits above
+	// reset_legacy_new_card_ratio, so two steps reach it.
+	if err := m.Steps(-2); err != nil {
 		t.Fatalf("migrate down reset_legacy_new_card_ratio: %v", err)
 	}
 	for _, r := range rows {
@@ -108,11 +110,12 @@ func TestResetLegacyNewCardRatio_RewritesLegacyUnreducedRow(t *testing.T) {
 		}
 	}()
 
-	// Step back four migrations newest-first: reset_legacy_new_card_ratio,
+	// Step back five migrations newest-first:
+	// drop_swipe_records_user_cardgroup_index, reset_legacy_new_card_ratio,
 	// revoke_client_writes, lower_new_card_ratio_default, then
 	// tighten_new_card_ratio_check, so the looser den <= 100 CHECK is in force.
 	// Bump this count when adding migrations after tighten_new_card_ratio_check.
-	if err := m.Steps(-4); err != nil {
+	if err := m.Steps(-5); err != nil {
 		t.Fatalf("migrate down to before tighten_new_card_ratio_check: %v", err)
 	}
 
