@@ -20,13 +20,13 @@ enum CardImportErrorKind {
   UNKNOWN
   """Hard error: payload-level (oversized / empty) or grammar/lexer error not recovered by skip productions."""
   HARD
-  """Skipped: a lone WORD line with no DEFINITION attached. The dropped front term is in `snippet`."""
+  """Skipped: a lone WORD line with no DEFINITION attached."""
   FRONT_ONLY
-  """Skipped: a lone DEFINITION line with no preceding front. The dropped back text is in `snippet`."""
+  """Skipped: a lone DEFINITION line with no preceding front."""
   BACK_ONLY
-  """Skipped: an unrecognized character was encountered. The recovered line content is in `snippet`."""
+  """Skipped: an unrecognized character was encountered; the rest of the line is dropped."""
   UNRECOGNIZED
-  """Post-parse dedupe: a duplicate row was dropped. The dropped row's `front` and `back` are populated."""
+  """Post-parse dedupe: a duplicate row was dropped."""
   DUPLICATE
 }
 
@@ -38,12 +38,6 @@ type CardImportError implements UserError {
   message: String!
   """Closed classifier for the parse event."""
   kind: CardImportErrorKind!
-  """Parser-extracted snippet. Populated for FRONT_ONLY (the WORD token text), BACK_ONLY (the DEFINITION token text), and UNRECOGNIZED (the recovered malformed line). Null for HARD and DUPLICATE."""
-  snippet: String
-  """Dedupe-duplicate only: the front term of the dropped row. Null for every other kind."""
-  front: String
-  """Dedupe-duplicate only: the back text of the dropped row. Null for every other kind."""
-  back: String
 }
 
 """

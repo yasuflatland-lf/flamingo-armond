@@ -40,8 +40,6 @@ type StrugglingCard {
   card: Card!
   """Number of times the card was rated Again on a repeat exposure (the FSRS lapse counter)."""
   lapses: Int!
-  """The card's current FSRS memory stability, in days."""
-  stability: Float!
 }
 
 """Disjoint three-tier mastery counts across all studied cards. The three tiers sum to totalStudied."""

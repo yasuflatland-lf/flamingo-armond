@@ -92,8 +92,8 @@ func TestUserCardFSRSRepository_FindByUserAndCardIDs_InvalidLastRating(t *testin
 // [MinDifficulty, MaxDifficulty] FSRS scale. Neither column carries a CHECK
 // constraint and no application write path yields such a value, so raw SQL is
 // the only way to seed one — the guard is defence in depth against a row edited
-// outside the application. Without it a NaN stability reconstitutes silently and
-// breaks JSON marshalling of the UserCardState GraphQL Float it feeds. The
+// outside the application. Without it a NaN stability or below-floor difficulty
+// on a non-New card reaches go-fsrs, making FSRSScheduler.Apply panic. The
 // mastery-tier harm travels through the sibling ListFSRSStatesByUser projection,
 // which carries its own stability guard.
 func TestUserCardFSRSRepository_FindByUserAndCardIDs_InvalidStabilityOrDifficulty(t *testing.T) {
@@ -355,8 +355,8 @@ func TestUserCardFSRSRepository_ListFSRSStatesByUser_InvalidPhaseErrors(t *testi
 // the stability guard mirrors the userCardFSRSToDomain one on the /stats
 // projection. This is the path domain.ClassifyMastery consumes, so an unchecked
 // NaN would be silently bucketed into the Learned mastery tier (NaN fails both
-// of its comparisons) and would break JSON marshalling of the GraphQL Float
-// StrugglingCard.stability feeds. Raw SQL is the only way to seed such a value:
+// of its comparisons) and corrupt service.TopStruggling's lower-stability-first
+// tie-break. Raw SQL is the only way to seed such a value:
 // the column carries no CHECK constraint and no application write path yields
 // one.
 func TestUserCardFSRSRepository_ListFSRSStatesByUser_InvalidStabilityErrors(t *testing.T) {
