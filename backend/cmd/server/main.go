@@ -127,24 +127,20 @@ func newAppRepos(db *database.DB, logger *slog.Logger) *appRepos {
 // loaderDeps is the subset of repositories the GraphQL loader middleware needs.
 type loaderDeps struct {
 	user           repository.UserRepository
-	role           repository.RoleRepository
 	userRole       repository.UserRoleRepository
 	cardgroup      repository.CardgroupRepository
 	card           repository.CardRepository
 	userPreference repository.UserPreferenceRepository
-	swipeRecord    repository.SwipeRecordRepository
 	userCardFSRS   repository.UserCardFSRSRepository
 }
 
 func (r *appRepos) loaderDeps() loaderDeps {
 	return loaderDeps{
 		user:           r.user,
-		role:           r.role,
 		userRole:       r.userRole,
 		cardgroup:      r.cardgroup,
 		card:           r.card,
 		userPreference: r.userPreference,
-		swipeRecord:    r.swipeRecord,
 		userCardFSRS:   r.userCardFSRS,
 	}
 }
@@ -312,7 +308,7 @@ func newRouter(
 			return r.Method + " " + r.URL.Path
 		}),
 	)
-	q := e.Group("/query", authMW, loader.MiddlewareWithUserCardFSRS(ld.user, ld.role, ld.userRole, ld.cardgroup, ld.card, ld.userPreference, ld.swipeRecord, ld.userCardFSRS))
+	q := e.Group("/query", authMW, loader.Middleware(ld.user, ld.userRole, ld.cardgroup, ld.card, ld.userPreference, ld.userCardFSRS))
 	q.POST("", echo.WrapHandler(otelGQLHandler))
 
 	// Gate the Playground UI on the same single introspectionEnabled flag as the

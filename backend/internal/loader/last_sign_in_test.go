@@ -13,12 +13,10 @@ import (
 func newLoadersForLastSignIn(userRepo repository.UserRepository) *loader.Loaders {
 	return loader.New(
 		userRepo,
-		emptyRoleRepo(),
 		emptyUserRoleRepo(),
 		emptyCardgroupRepo(),
 		emptyCardRepo(),
 		emptyUserPreferenceRepo(),
-		nil,
 	)
 }
 
