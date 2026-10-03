@@ -33,7 +33,7 @@ type CardRepository interface {
 	FindByCardgroupAndFront(ctx context.Context, cardgroupID, front string) (*domain.Card, error)
 	Update(ctx context.Context, id string, patch repository.CardUpdate) (*domain.Card, error)
 	Delete(ctx context.Context, id string) error
-	DeleteByIDsTx(ctx context.Context, tx repository.Tx, ownerID string, ids []string) (int64, error)
+	DeleteByIDs(ctx context.Context, ownerID string, ids []string) (int64, error)
 }
 
 type CardgroupRepositoryForCard interface {
@@ -58,37 +58,12 @@ type cardUsecase struct {
 	cardRepo      CardRepository
 	cardgroupRepo CardgroupRepositoryForCard
 	userFSRSRepo  UserCardFSRSRepositoryForCard
-	tx            txRunner
 	logger        *slog.Logger
 }
 
 func NewCardUsecase(
-	db repository.Tx,
 	cardRepo CardRepository,
 	cardgroupRepo CardgroupRepositoryForCard,
-	userCardFSRSRepo UserCardFSRSRepositoryForCard,
-	logger *slog.Logger,
-) CardUsecase {
-	if logger == nil {
-		panic("usecase: card: logger is required")
-	}
-	uc := &cardUsecase{
-		cardRepo:      cardRepo,
-		cardgroupRepo: cardgroupRepo,
-		userFSRSRepo:  userCardFSRSRepo,
-		logger:        logger,
-	}
-	uc.tx = newTxRunner(db)
-	return uc
-}
-
-// NewCardUsecaseWithTx constructs a CardUsecase with an explicit transaction
-// runner. Intended for unit tests that need to exercise BulkDelete without a
-// real database. Production code must use NewCardUsecase instead.
-func NewCardUsecaseWithTx(
-	cardRepo CardRepository,
-	cardgroupRepo CardgroupRepositoryForCard,
-	tx func(ctx context.Context, fn func(tx repository.Tx) error) error,
 	userCardFSRSRepo UserCardFSRSRepositoryForCard,
 	logger *slog.Logger,
 ) CardUsecase {
@@ -98,7 +73,6 @@ func NewCardUsecaseWithTx(
 	return &cardUsecase{
 		cardRepo:      cardRepo,
 		cardgroupRepo: cardgroupRepo,
-		tx:            tx,
 		userFSRSRepo:  userCardFSRSRepo,
 		logger:        logger,
 	}
@@ -725,7 +699,7 @@ func (u *cardUsecase) resolveCardCursor(
 
 // BulkDelete removes the cards in `ids` whose cardgroup is owned by the
 // authenticated caller. Ownership is enforced exclusively by the SQL subselect
-// in DeleteByIDsTx (one DELETE scoped to cardgroups owned by the caller);
+// in DeleteByIDs (one DELETE scoped to cardgroups owned by the caller);
 // foreign-owned ids are silently skipped at the SQL layer. Malformed (non-UUID)
 // ids cannot exist and are silently dropped before the SQL runs. Returns the
 // number of rows actually deleted. At most maxBulkDelete ids may be supplied
@@ -746,17 +720,9 @@ func (u *cardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, erro
 		return 0, nil
 	}
 
-	var deleted int64
-	err := runInTx(ctx, u.tx, func(tx repository.Tx) error {
-		n, err := u.cardRepo.DeleteByIDsTx(ctx, tx, user.Sub, valid)
-		if err != nil {
-			return err
-		}
-		deleted = n
-		return nil
-	})
+	deleted, err := u.cardRepo.DeleteByIDs(ctx, user.Sub, valid)
 	if err != nil {
-		return 0, wrapInfraErr(err, "usecase: card: bulk delete: transaction")
+		return 0, wrapInfraErr(err, "usecase: card: bulk delete")
 	}
 	if deleted < int64(len(ids)) {
 		u.logger.LogAttrs(ctx, slog.LevelInfo, "bulk delete: partial match",

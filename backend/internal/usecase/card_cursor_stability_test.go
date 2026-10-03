@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/rotisserie/eris"
-	"gorm.io/gorm"
 
 	"backend/internal/cursor"
 	"backend/internal/domain"
@@ -239,7 +238,7 @@ func (r *cardWalkRepo) Update(_ context.Context, _ string, _ repository.CardUpda
 
 func (r *cardWalkRepo) Delete(_ context.Context, _ string) error { return nil }
 
-func (r *cardWalkRepo) DeleteByIDsTx(_ context.Context, _ *gorm.DB, _ string, _ []string) (int64, error) {
+func (r *cardWalkRepo) DeleteByIDs(_ context.Context, _ string, _ []string) (int64, error) {
 	return 0, nil
 }
 
@@ -297,7 +296,7 @@ func newCardWalkFixture(statelessID string) *cardWalkRepo {
 // reports cg1 as owned by u1, so authorizeCardgroupOrBadInput lets the listing
 // through. Passing fsrs=nil exercises the unconfigured-FSRS-repository fallback.
 func newCardWalkUsecase(repo *cardWalkRepo, fsrs UserCardFSRSRepositoryForCard) CardUsecase {
-	return NewCardUsecase(nil, repo,
+	return NewCardUsecase(repo,
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
 		fsrs, newTestLogger(),
 	)

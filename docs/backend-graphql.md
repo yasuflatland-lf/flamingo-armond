@@ -155,7 +155,7 @@ cardRepo      := repository.NewCardRepository(db.GORM)
 
 userUC      := usecase.NewUserUsecase(userRepo, userRoleRepo, authSvc, logger)
 cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
-cardUC      := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
+cardUC      := usecase.NewCardUsecase(cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
 // ... swipeUC, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, learnUC
 
 resolvers := resolver.NewResolver(
@@ -245,9 +245,9 @@ Reading the input name instead would force the guard to also know that admin exi
 
 ### Card bulk delete
 
-The `deleteCards(ids: [ID!]!) -> Int` mutation deletes cards owned by the authenticated caller and returns the count of rows actually deleted. Ownership is enforced exclusively by the SQL subselect in `DeleteByIDsTx` (`DELETE ... WHERE cardgroup_id IN (SELECT id FROM cardgroups WHERE owner_id = ?)`); this is one round-trip, atomic with respect to role changes mid-request, and avoids an authorization-bypass surface that arises when two separate layers each guard ownership — a maintainer can drop one layer believing the other still covers it. At most `maxBulkDelete = 100` ids may be supplied per call; exceeding the cap returns `BAD_USER_INPUT` on the `ids` field. `maxBulkDelete = 100` deliberately mirrors `maxPageSize = 100` so a client can delete exactly one page of results in one call — UX consistency is the reason the values match, not a Postgres bind-parameter constraint. The repository's `DeleteByIDsTx` short-circuits on `len(ids) == 0` before touching GORM: `Where("id IN ?", emptySlice).Delete(&T{})` silently omits the `IN` clause entirely and becomes an unbounded mass DELETE — the most dangerous GORM v2 hazard because it compiles cleanly.
+The `deleteCards(ids: [ID!]!) -> Int` mutation deletes cards owned by the authenticated caller and returns the count of rows actually deleted. Ownership is enforced exclusively by the SQL subselect in `DeleteByIDs` (`DELETE ... WHERE cardgroup_id IN (SELECT id FROM cardgroups WHERE owner_id = ?)`); this is one round-trip, atomic with respect to role changes mid-request, and avoids an authorization-bypass surface that arises when two separate layers each guard ownership — a maintainer can drop one layer believing the other still covers it. At most `maxBulkDelete = 100` ids may be supplied per call; exceeding the cap returns `BAD_USER_INPUT` on the `ids` field. `maxBulkDelete = 100` deliberately mirrors `maxPageSize = 100` so a client can delete exactly one page of results in one call — UX consistency is the reason the values match, not a Postgres bind-parameter constraint. The repository's `DeleteByIDs` short-circuits on `len(ids) == 0` before touching GORM: `Where("id IN ?", emptySlice).Delete(&T{})` silently omits the `IN` clause entirely and becomes an unbounded mass DELETE — the most dangerous GORM v2 hazard because it compiles cleanly.
 
-When `DeleteByIDsTx` processes fewer ids than were requested (foreign-owned ids are silently skipped), emit one structured `slog.Info` line with `user_id`, `requested`, and `processed` counts. Never log the id list itself — UUID enumeration is an information-leak vector. Without this signal, IDOR probing is invisible to operators.
+When `DeleteByIDs` processes fewer ids than were requested (foreign-owned ids are silently skipped), emit one structured `slog.Info` line with `user_id`, `requested`, and `processed` counts. Never log the id list itself — UUID enumeration is an information-leak vector. Without this signal, IDOR probing is invisible to operators.
 
 ### `setLastViewedCardgroup` and `User.lastViewedCardgroup`
 
