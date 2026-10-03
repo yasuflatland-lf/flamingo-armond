@@ -106,9 +106,9 @@ type MasterCardUpdate struct {
 }
 
 // MasterCardRepository provides persistence operations for the MasterCard
-// aggregate. The bulk Tx methods share the table-parameterized helpers in
-// card.go (upsertManyTx / listFrontsByGroupTx / deleteByGroupAndFrontsTx)
-// with "master_cards" and "master_cardgroup_id".
+// aggregate. The bulk Tx methods use the table-parameterized helpers in
+// bulk_card_tx.go (upsertManyTx, also used by cardRepo; listFrontsByGroupTx /
+// deleteByGroupAndFrontsTx) with "master_cards" and "master_cardgroup_id".
 type MasterCardRepository interface {
 	ListByMasterCardgroup(ctx context.Context, masterCardgroupID string) ([]*domain.MasterCard, error)
 	// ListByMasterCardgroupTx reads on the caller's transaction so a write
@@ -481,7 +481,7 @@ func (r *masterCardRepo) ListFrontsByMasterCardgroupTx(ctx context.Context, tx *
 
 // DeleteByMasterCardgroupAndFrontsTx hard-deletes master cards by the scoped
 // (master_cardgroup_id, front) natural key. Empty fronts short-circuits to
-// (0, nil) inside the shared helper. Inputs above bulkStatementChunkRows run as
+// (0, nil) inside deleteByGroupAndFrontsTx. Inputs above bulkStatementChunkRows run as
 // several statements, so tx must be a transaction.
 func (r *masterCardRepo) DeleteByMasterCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, masterCardgroupID string, fronts []string) (int64, error) {
 	affected, err := deleteByGroupAndFrontsTx(ctx, tx, masterCardgroupID, fronts, "master_cards", "master_cardgroup_id")
