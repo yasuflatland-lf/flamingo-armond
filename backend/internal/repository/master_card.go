@@ -133,7 +133,7 @@ type MasterCardRepository interface {
 	Update(ctx context.Context, id string, patch MasterCardUpdate) (*domain.MasterCard, error)
 	// DeleteMany hard-deletes the master cards whose ids are in the list and
 	// returns the number of rows actually deleted. Master decks are admin-owned
-	// and global, so there is no owner scope (unlike cardRepo.DeleteByIDsTx).
+	// and global, so there is no owner scope (unlike cardRepo.DeleteByIDs).
 	//
 	// Empty ids short-circuits to (0, nil) without touching the DB. With an empty
 	// slice GORM v2 omits the `WHERE id IN (?)` clause altogether, which would
