@@ -142,6 +142,21 @@ func TestOptionalConfigFromEnv(t *testing.T) {
 			t.Errorf("MasterCardgroupName = %q, want %q", cfg.HandlerConfig.MasterCardgroupName, "Master Deck")
 		}
 	})
+
+	t.Run("NOTION_PAGE_IDS entries with surrounding whitespace are trimmed", func(t *testing.T) {
+		setNotionEnv(t, map[string]string{"NOTION_PAGE_IDS": "page-1, page-2 ,page-3"})
+		cfg, missing, err := OptionalConfigFromEnv()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(missing) != 0 {
+			t.Fatalf("missing = %v, want empty", missing)
+		}
+		want := []string{"page-1", "page-2", "page-3"}
+		if !reflect.DeepEqual(cfg.HandlerConfig.PageIDs, want) {
+			t.Errorf("PageIDs = %v, want %v", cfg.HandlerConfig.PageIDs, want)
+		}
+	})
 }
 
 func TestSplitCSV(t *testing.T) {
