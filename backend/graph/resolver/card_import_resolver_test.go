@@ -48,7 +48,7 @@ func newCardImportOnlySrv() *handler.Server {
 }
 
 func validateCardImportQuery(payload string) string {
-	return `{"query":"{ validateCardImport(input: { payload: \"` + payload + `\" }) { valid parsedCards { front back line } errors { line message kind snippet front back } } }"}`
+	return `{"query":"{ validateCardImport(input: { payload: \"` + payload + `\" }) { valid parsedCards { front back line } errors { line message kind } } }"}`
 }
 
 // TestValidateCardImport_AuthenticatedHappyPath verifies that an authenticated
@@ -170,10 +170,8 @@ func newImportCardsSrv(cardImportUC usecase.CardImportUsecase) *handler.Server {
 // importCardsMutation returns a JSON-encoded GraphQL mutation body for
 // importCards. Both arguments are embedded literally so the caller must
 // escape them if needed; for test use the values are always safe ASCII/base64.
-// The errors selection set includes front and back so resolver mapping of those
-// optional fields can be asserted.
 func importCardsMutation(cardgroupID, payload string) string {
-	return `{"query":"mutation { importCards(input: { cardgroupId: \"` + cardgroupID + `\", payload: \"` + payload + `\" }) { inserted updated errors { line message kind snippet front back } } }"}`
+	return `{"query":"mutation { importCards(input: { cardgroupId: \"` + cardgroupID + `\", payload: \"` + payload + `\" }) { inserted updated errors { line message kind } } }"}`
 }
 
 // TestImportCards_ResolverHappyPath drives the full GraphQL transport with
@@ -225,21 +223,12 @@ func TestImportCards_ResolverHappyPath(t *testing.T) {
 	if msg, _ := firstErr["message"].(string); msg != "duplicate" {
 		t.Fatalf("expected errors[0].message=%q, got %q", "duplicate", msg)
 	}
-	// A syntax-level error has no parsed front/back — the resolver must leave
-	// both fields as null (i.e. the key is absent or nil in the JSON map).
-	if v, present := firstErr["front"]; present && v != nil {
-		t.Fatalf("expected errors[0].front=null for syntax error, got %v", v)
-	}
-	if v, present := firstErr["back"]; present && v != nil {
-		t.Fatalf("expected errors[0].back=null for syntax error, got %v", v)
-	}
 }
 
-// TestImportCards_ResolverMapsValidationErrorFrontBack verifies that when
-// the CardImportUsecase returns a CardImportError with non-empty
-// Front and Back (the duplicate-front dedup path), the resolver maps them to
-// non-nil *string pointers and the GraphQL response carries the values.
-func TestImportCards_ResolverMapsValidationErrorFrontBack(t *testing.T) {
+// TestImportCards_ResolverMapsValidationErrorLine verifies that when the
+// CardImportUsecase returns a CardImportError on the duplicate-front dedup
+// path, the resolver carries its line number into the GraphQL response.
+func TestImportCards_ResolverMapsValidationErrorLine(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockCardImportUsecase{
@@ -278,15 +267,6 @@ func TestImportCards_ResolverMapsValidationErrorFrontBack(t *testing.T) {
 	if line, _ := entry["line"].(float64); int(line) != 3 {
 		t.Fatalf("expected errors[0].line=3, got %v", entry["line"])
 	}
-	// front and back must be present and non-nil for a parsed duplicate row.
-	front, _ := entry["front"].(string)
-	if front != "apple" {
-		t.Fatalf("expected errors[0].front=%q, got %v", "apple", entry["front"])
-	}
-	back, _ := entry["back"].(string)
-	if back != "fruit" {
-		t.Fatalf("expected errors[0].back=%q, got %v", "fruit", entry["back"])
-	}
 }
 
 // TestImportCards_ResolverPropagatesUnauthenticated verifies that when the
@@ -309,20 +289,17 @@ func TestImportCards_ResolverPropagatesUnauthenticated(t *testing.T) {
 	}
 }
 
-// TestValidateCardImport_ResolverKindAndSnippet verifies that the
-// validateCardImport resolver maps the kind and snippet fields from the
-// usecase output to the GraphQL response wire shape. A lone-front payload
-// ("orphan" with no back) must produce an error whose kind is "FRONT_ONLY"
-// and whose snippet is the WORD token text (see
-// TestImportCards_ResolverKindHardSnippetNull for the HARD/null-snippet
-// pair).
-func TestValidateCardImport_ResolverKindAndSnippet(t *testing.T) {
+// TestValidateCardImport_ResolverKind verifies that the validateCardImport
+// resolver maps the kind field from the usecase output to the GraphQL
+// response wire shape. A lone-front payload ("orphan" with no back) must
+// produce an error whose kind is "FRONT_ONLY" (see
+// TestImportCards_ResolverKindHard for the HARD counterpart).
+func TestValidateCardImport_ResolverKind(t *testing.T) {
 	t.Parallel()
 
 	srv := newCardImportOnlySrv()
 
 	// A lone front with no back produces one FRONT_ONLY skip error.
-	// Snippet carries the WORD token text; front and back must be null.
 	raw := "orphan"
 	payload := base64.StdEncoding.EncodeToString([]byte(raw))
 	resp := gqlRequest(t, srv, authedCtx("u1"), validateCardImportQuery(payload))
@@ -345,25 +322,13 @@ func TestValidateCardImport_ResolverKindAndSnippet(t *testing.T) {
 	if kind, _ := entry["kind"].(string); kind != "FRONT_ONLY" {
 		t.Fatalf("errors[0].kind = %q, want %q", kind, "FRONT_ONLY")
 	}
-	// snippet must be the WORD token text.
-	if snip, _ := entry["snippet"].(string); snip != "orphan" {
-		t.Fatalf("errors[0].snippet = %q, want %q", snip, "orphan")
-	}
-	// front and back must be null (skip errors do not carry dedupe token text).
-	if v, present := entry["front"]; present && v != nil {
-		t.Fatalf("errors[0].front = %v, want null for skip error", v)
-	}
-	if v, present := entry["back"]; present && v != nil {
-		t.Fatalf("errors[0].back = %v, want null for skip error", v)
-	}
 }
 
-// TestImportCards_ResolverKindHardSnippetNull verifies that the
-// importCards resolver maps a hard parser error (HARD kind) with an empty
-// snippet. Every whole-payload reject is a top-level BAD_USER_INPUT that never
-// reaches the resolver's mapper, so this test uses the mock usecase to inject a
-// HARD-kind error directly.
-func TestImportCards_ResolverKindHardSnippetNull(t *testing.T) {
+// TestImportCards_ResolverKindHard verifies that the importCards resolver maps
+// a hard parser error to the HARD kind. Every whole-payload reject is a
+// top-level BAD_USER_INPUT that never reaches the resolver's mapper, so this
+// test uses the mock usecase to inject a HARD-kind error directly.
+func TestImportCards_ResolverKindHard(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockCardImportUsecase{
@@ -375,7 +340,6 @@ func TestImportCards_ResolverKindHardSnippetNull(t *testing.T) {
 					Line:    0,
 					Message: "unrecoverable parse failure",
 					Kind:    usecase.CardImportErrKindHard,
-					Snippet: "",
 				},
 			},
 		},
@@ -402,16 +366,11 @@ func TestImportCards_ResolverKindHardSnippetNull(t *testing.T) {
 	if kind, _ := entry["kind"].(string); kind != "HARD" {
 		t.Fatalf("errors[0].kind = %q, want %q", kind, "HARD")
 	}
-	// snippet must be null for hard errors.
-	if v, present := entry["snippet"]; present && v != nil {
-		t.Fatalf("errors[0].snippet = %v, want null for HARD error", v)
-	}
 }
 
-// TestImportCards_ResolverKindDuplicateSnippetNull verifies the dedupe
-// duplicate path: kind == "DUPLICATE", front and back are non-nil, snippet
-// is null.
-func TestImportCards_ResolverKindDuplicateSnippetNull(t *testing.T) {
+// TestImportCards_ResolverKindDuplicate verifies that the importCards resolver
+// maps a dedupe duplicate to the DUPLICATE kind.
+func TestImportCards_ResolverKindDuplicate(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockCardImportUsecase{
@@ -425,7 +384,6 @@ func TestImportCards_ResolverKindDuplicateSnippetNull(t *testing.T) {
 					Kind:    usecase.CardImportErrKindDuplicate,
 					Front:   "apple",
 					Back:    "fruit",
-					Snippet: "",
 				},
 			},
 		},
@@ -451,16 +409,5 @@ func TestImportCards_ResolverKindDuplicateSnippetNull(t *testing.T) {
 	// kind must be the DUPLICATE enum value.
 	if kind, _ := entry["kind"].(string); kind != "DUPLICATE" {
 		t.Fatalf("errors[0].kind = %q, want %q", kind, "DUPLICATE")
-	}
-	// front and back must be non-nil for a dedupe duplicate.
-	if front, _ := entry["front"].(string); front != "apple" {
-		t.Fatalf("errors[0].front = %v, want %q", entry["front"], "apple")
-	}
-	if back, _ := entry["back"].(string); back != "fruit" {
-		t.Fatalf("errors[0].back = %v, want %q", entry["back"], "fruit")
-	}
-	// snippet must be null for the dedupe path.
-	if v, present := entry["snippet"]; present && v != nil {
-		t.Fatalf("errors[0].snippet = %v, want null for DUPLICATE error", v)
 	}
 }
