@@ -127,13 +127,11 @@ func newCardgroupUsecaseWithTx(tx txRunner, repo CardgroupRepository, admin Admi
 	return &cardgroupUsecase{repo: repo, admin: admin, tx: tx, logger: logger}
 }
 
-// Cardgroup returns a single cardgroup by id. A missing row and a row owned by
-// another user both return (nil, nil) so the nullable GraphQL field resolves to
-// null with no error in either case. Collapsing the two into a byte-identical
-// response stops an authenticated caller from using the query as an existence
-// oracle over other users' cardgroup ids — the same non-disclosure collapse the
-// write paths make via authorizeCardgroupOrUnauthenticated and that
-// setLastViewedCardgroup makes for "not found or not owned".
+// Cardgroup returns the caller's cardgroup by id, or (nil, nil) when the row is
+// missing or owned by another user, so the query never confirms that a foreign id
+// exists. updateCardgroup / deleteCardgroup and setLastViewedCardgroup collapse
+// the same two cases; operations gated by authorizeCardgroupOrBadInput do not
+// (see that helper).
 func (u *cardgroupUsecase) Cardgroup(ctx context.Context, id string) (*domain.Cardgroup, error) {
 	user := auth.UserFrom(ctx)
 	if err := requireCallerSub(user); err != nil {

@@ -193,10 +193,16 @@ The usecase layer defines its own narrow repository interface — a strict subse
 
 ### Authorization at the usecase layer
 
-Owner checks live in the usecase, not in Postgres RLS. Both read and write collapse a foreign-owned id into the same outcome as a missing id so existence is never leaked; the outcome *value* differs by read vs. write:
+Owner checks live in the usecase, not in Postgres RLS. Whether an operation reveals that another user's id exists depends on which ownership helper it uses; the helper docstrings in [`backend/internal/usecase/ownership.go`](../backend/internal/usecase/ownership.go) state the contract.
 
-- Non-owner `cardgroup(id:)` read → return `null`, byte-identical to a missing id (both `data.cardgroup = null`, no top-level error), so the query cannot be used as an existence oracle over other users' cardgroups.
-- Non-owner write (`updateCardgroup`, `deleteCardgroup`) → return `UNAUTHENTICATED`, byte-identical to a missing id.
+Operations addressed by the resource's own id collapse a foreign-owned id into the same outcome as a missing id, so the response never distinguishes the two:
+
+- `cardgroup(id:)` → `null` for both (`data.cardgroup = null`, no top-level error).
+- `updateCardgroup`, `deleteCardgroup`, `updateCard`, `deleteCard` → `UNAUTHENTICATED` for both.
+- `deleteCards` → both are skipped and excluded from the returned count.
+- `setLastViewedCardgroup` → the same `InputValidationError` variant for both (see [Existence-oracle prevention via collapsed `BAD_USER_INPUT`](#existence-oracle-prevention-via-collapsed-bad_user_input)).
+
+The operations that take a `cardgroupId` argument deliberately keep the two cases apart: `createCard`, `importCards`, `cardsByCardgroupConnection`, `learnNextDueCards`, `practiceTodaysCards`, `handleSwipe`, `mergeMasterCardgroup`, and `mergeMasterCardgroupPreview` run `authorizeCardgroupOrBadInput`, so a missing cardgroup is `BAD_USER_INPUT` on `cardgroupId` (`handleSwipe` returns it as the `InputValidationError` variant) and a foreign-owned one is `UNAUTHENTICATED`. A stale id (a deck deleted in another tab, an old bookmark) is the caller's own recoverable mistake, and the distinct code lets the client recover; the edit page, for example, redirects it to `/cardgroups` instead of `/login`. The cost is that these operations confirm whether a cardgroup id the caller already holds exists. Existence hiding for them rests on the ids being unguessable: cardgroup ids are UUIDv7 values from `domain.NewID`, whose `rand_b` field carries 62 random bits (the installed `google/uuid` fills `rand_a` from the clock), so the distinction cannot be used to enumerate the id space. A new operation that must not confirm existence takes `authorizeCardgroupOrUnauthenticated` instead.
 
 Although authorization itself is not delegated to Postgres, every application table in the `public` schema has Row Level Security enabled. The `anon` and `authenticated` API roles hold `SELECT` but no `INSERT` / `UPDATE` / `DELETE` / `TRUNCATE` privilege on those tables (migration `20260927000001_revoke_client_writes`), so PostgREST and pg_graphql callers can at most read, and the policies below decide which rows. The write clauses stay as defence in depth in case a privilege is ever re-granted:
 
@@ -272,7 +278,7 @@ The mutation returns the outcome union `SetLastViewedCardgroupResult! = SetLastV
 
 #### Existence-oracle prevention via collapsed `BAD_USER_INPUT`
 
-"Cardgroup does not exist" and "cardgroup exists but is owned by another user" both surface as the same `BAD_USER_INPUT` on the `cardgroupId` field — never `UNAUTHENTICATED`, never a separate "not found" code. A distinguishable response would let an attacker brute-force cardgroup UUIDs to enumerate which IDs exist on the platform. The repository returns `errors.Join(ErrCardgroupNotFound, ErrNotFound)` for both cases (the `RowsAffected == 0` branch cannot tell them apart by design); the usecase translates the specific sentinel to `gqlerr.BadUserInput("cardgroupId", "cardgroup not found or not owned")`. This mirrors the same posture the `cardgroup(id:)` query takes — see [Authorization at the usecase layer](#authorization-at-the-usecase-layer) — and the [cross-aggregate cursor validation rule](pagination/cursor-cross-aggregate-validation.md).
+"Cardgroup does not exist" and "cardgroup exists but is owned by another user" both surface as the same `InputValidationError` variant (`field: "cardgroupId"`, `message: "cardgroup not found or not owned"`) — never `UNAUTHENTICATED`, never a separate "not found" code. A distinguishable response would confirm whether a cardgroup id the caller holds exists. The repository returns `errors.Join(ErrCardgroupNotFound, ErrNotFound)` for both cases (the `RowsAffected == 0` branch cannot tell them apart by design); the usecase translates the specific sentinel to `NewInputValidationInfo("cardgroupId", "cardgroup not found or not owned")` on the outcome's `Validation` field, and the resolver returns it as the union variant. This mirrors the same posture the `cardgroup(id:)` query takes — see [Authorization at the usecase layer](#authorization-at-the-usecase-layer) — and the [cross-aggregate cursor validation rule](pagination/cursor-cross-aggregate-validation.md).
 
 The sentinel `repository.ErrCardgroupNotFound` lives in `repository/user_preference.go` (the aggregate that owns the FK), not in `repository/user.go`. It follows the `errors.Join(specific, general)` "missing"-sentinel convention from `.claude/rules/error-wrapping.md`: callers branching on the general `ErrNotFound` continue to work without modification, and the usecase can match the specific sentinel first to attach the per-field message.
 
@@ -300,6 +306,7 @@ the card repository):
 Authentication is checked first, so an unauthenticated caller receives `UNAUTHENTICATED`
 even when the requested cardgroup does not exist. That ordering keeps anonymous callers
 from using either query as an existence oracle over cardgroup ids.
+An authenticated caller can still tell a missing cardgroup (`BAD_USER_INPUT`) from another user's (`UNAUTHENTICATED`); [Authorization at the usecase layer](#authorization-at-the-usecase-layer) explains why that distinction is kept.
 
 `practiceTodaysCards` returns exactly the reviewed cards that `learnNextDueCards` withholds by `last_review`: its lower bound is `LearnWindow.PracticeReviewedAfter()`, the earlier of the JST day start and the UTC date start.
 
