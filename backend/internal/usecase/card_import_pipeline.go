@@ -106,7 +106,10 @@ func runCardImport[R any](ctx context.Context, payload string, p cardImportPipel
 		return cardImportResult{}, ucerr.NewValidationError(caps[0].Field, caps[0].Message)
 	}
 
-	mappedErrs := cardImportErrorsFromTextdic(parseErrs)
+	mappedErrs, err := cardImportErrorsFromTextdic(parseErrs)
+	if err != nil {
+		return cardImportResult{}, err
+	}
 
 	// validated is parallel to the raw words; key each row's VOs by the dedup key
 	// (last occurrence wins, matching the dedupe survivor) so the post-dedup build
