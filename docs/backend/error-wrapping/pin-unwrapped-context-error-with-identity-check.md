@@ -137,8 +137,8 @@ Pin the contract with two tests per sub-op:
 
 | Test | Asserts |
 |---|---|
-| `TestAdminUser_EditUser_UpdateTxVersionedCancelled` | `context.Canceled` identity (`err == context.Canceled`) on the profile branch |
-| `TestAdminUser_EditUser_CancelledFromRoleSet` | Same identity on the roles branch |
+| `TestAdminUser_EditUser_UpdateTxVersionedCancelled` | `context.Canceled` identity (`err == context.Canceled`) on the update-profile step |
+| `TestAdminUser_EditUser_CancelledFromRoleSet` | Same identity on the replace-roles step |
 
 A single cancellation test that only checks chain shape (`assertCancelled`)
 passes even when the inner wrap snuck in. The dual-assertion pattern from

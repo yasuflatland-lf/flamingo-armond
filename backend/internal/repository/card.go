@@ -101,20 +101,11 @@ type CardReadRepository interface {
 }
 
 type CardPageRepository interface {
-	// FindPageByCardgroupForUser returns a window of cards for a cardgroup
-	// ordered by (orderField, id) so cursors stay deterministic. Forward paging
-	// uses `after` + `first`; backward paging uses `before` + `last`. totalCount
-	// reflects every row in the cardgroup, not just the page.
-	// When search is non-nil and non-empty, only cards whose front OR back
-	// contains the search text (case-insensitive ILIKE partial match) are
-	// returned; the search is applied to both totalCount and the page window.
-	// orderKeys holds the value the query ORDERED BY for each returned row,
-	// keyed by card id, taken from the same result set. The caller mints v2
-	// cursors from it instead of re-reading the ordering value afterwards — the
-	// DUE ordering keys off COALESCE(user_card_fsrs.due, cards.created_at),
-	// which a second query would resolve against a later snapshot. orderKeys is
-	// nil when orderBy is ID, whose ordering key is the id the cursor already
-	// carries.
+	// FindPageByCardgroupForUser pages a cardgroup's cards by (orderBy, id): `after`+`first` forward,
+	// `before`+`last` backward. A non-blank search (ILIKE on front/back) filters both the window and
+	// totalCount. userID only picks the viewer's user_card_fsrs row for DUE ordering; it is not an
+	// ownership check. orderKeys maps card id to the ORDER BY value read in the same query (nil for ID),
+	// so v2 cursors never re-read it from a later snapshot.
 	FindPageByCardgroupForUser(
 		ctx context.Context,
 		userID, cardgroupID string,

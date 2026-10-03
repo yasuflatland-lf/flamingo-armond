@@ -39,11 +39,9 @@ Concrete: `EditUser` in `backend/internal/usecase/admin_user.go` wraps each sub-
 
 ```go
 err = u.tx(ctx, func(tx *gorm.DB) error {
-    if profilePatch {
-        if err := u.users.UpdateTxVersioned(...); err != nil {
-            if isContextDone(err) { return err }
-            return eris.Wrap(err, "usecase: admin user edit: update profile")
-        }
+    if err := u.users.UpdateTxVersioned(...); err != nil {
+        if isContextDone(err) { return err }
+        return eris.Wrap(err, "usecase: admin user edit: update profile")
     }
     if err := u.userRoles.SetUserRolesTx(...); err != nil {
         if isContextDone(err) { return err }

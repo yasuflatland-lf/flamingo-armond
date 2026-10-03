@@ -294,12 +294,15 @@ func TestMasterCardRepository_UpsertManyTx_EmptySlice(t *testing.T) {
 }
 
 // TestMasterCardRepository_ListFrontsByMasterCardgroupTx verifies that
-// ListFrontsByMasterCardgroupTx returns the sorted front values for the group.
+// ListFrontsByMasterCardgroupTx returns the sorted front values for the group
+// only: a second group's card whose front sorts inside the range must not leak in.
 func TestMasterCardRepository_ListFrontsByMasterCardgroupTx(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	mcg := insertMCGForCardTest(t, ctx, "ListFronts-Group")
+	other := insertMCGForCardTest(t, ctx, "ListFronts-OtherGroup")
 	repo := repository.NewMasterCardRepository(testDB.GORM)
+	require.NoError(t, repo.Create(ctx, newMasterCard(other.ID, "ListFronts-banana2", "back-other", 0)))
 
 	cards := []*domain.MasterCard{
 		newMasterCard(mcg.ID, "ListFronts-cherry", "back-c", 2),

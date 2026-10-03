@@ -1827,11 +1827,10 @@ func TestAdminUser_EditUser_InfraErrorFromTx(t *testing.T) {
 }
 
 // TestAdminUser_EditUser_UpdateTxVersionedInfraError_PinsUpdateProfileWrap
-// fires the profile branch of the tx callback and asserts that the inner
-// per-sub-op wrap ("update profile") is present in the chain. Without this
-// test, a future regression that drops the inner wrap on UpdateTxVersioned
-// would still pass TestAdminUser_EditUser_InfraErrorFromTx because the outer
-// "tx" frame continues to match.
+// fails the UpdateTxVersioned step of the tx callback and asserts that the
+// inner per-sub-op wrap ("update profile") is present in the chain. Without
+// it, dropping that inner wrap would still pass
+// TestAdminUser_EditUser_InfraErrorFromTx via the outer "tx" frame.
 func TestAdminUser_EditUser_UpdateTxVersionedInfraError_PinsUpdateProfileWrap(t *testing.T) {
 	t.Parallel()
 
@@ -1852,7 +1851,7 @@ func TestAdminUser_EditUser_UpdateTxVersionedInfraError_PinsUpdateProfileWrap(t 
 }
 
 // TestAdminUser_EditUser_UpdateTxVersionedCancelled pins the inner
-// isContextDone short-circuit on the profile branch of the tx callback.
+// isContextDone short-circuit on the UpdateTxVersioned step of the tx callback.
 // context.Canceled must propagate as bare-identity (not wrapped), per
 // pin-unwrapped-context-error-with-identity-check.
 func TestAdminUser_EditUser_UpdateTxVersionedCancelled(t *testing.T) {
