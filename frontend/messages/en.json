@@ -322,7 +322,6 @@
     "seedError": "Could not set up the default decks. Please try again.",
     "startWithDeck": "Start learning",
     "starting": "Setting up your environment...",
-    "imported": "Added",
     "importError": "Could not start with that cardgroup. Please try again.",
     "importNotFound": "This cardgroup is no longer available.",
     "sessionExpired": "Your session has expired. ",
