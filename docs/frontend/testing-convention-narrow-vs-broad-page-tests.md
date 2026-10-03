@@ -2,11 +2,11 @@
 
 > Part of [`frontend/CLAUDE.md`](../../frontend/CLAUDE.md). See the index for related chapters.
 
-All tests live under `frontend/__tests__/` using Vitest + Testing Library. Two naming conventions split responsibility:
+Tests live in two trees — co-located `frontend/src/**/*.test.{ts,tsx}` next to the source, and `frontend/__tests__/` for broad page tests and some narrow flow tests (e.g. `cards-pagination.test.tsx`) — using Vitest + Testing Library. Two naming conventions split responsibility:
 
-**Narrow tests** (`<feature>-<flow>.test.tsx`) isolate a single user-facing flow introduced by a feature PR. Examples: `cards-pagination.test.tsx` (pagination + fetchMore only), `cards-bulk-delete.test.tsx` (selection and delete only), `admin-users-roles.test.tsx` (assign/revoke roles only), `admin-roles-crud.test.tsx` (create/update/delete only), `admin-layout.test.tsx` (admin gate only). Each narrow test is shipped by the feature PR that introduced its flow, locking in expected behaviour.
+**Narrow tests** (`<feature>-<flow>.test.tsx`) isolate a single user-facing flow introduced by a feature PR. Examples: `cards-pagination.test.tsx` (pagination + fetchMore only), `cards-bulk-delete.test.tsx` (selection and delete only), `admin-users-roles.test.tsx` (assign/revoke roles only), `admin-roles-crud.test.tsx` (create/update/delete only), `src/app/admin/layout.test.tsx` (admin gate only). Each narrow test is shipped by the feature PR that introduced its flow, locking in expected behaviour.
 
-**Broad tests** (`<page>.test.tsx`) guard the page-level composition and integration points across PRs. Examples: `cardgroups-list.test.tsx`, `cardgroup-edit.test.tsx`, `catalog-list.test.tsx`, `admin-roles.test.tsx`, `admin-users-list.test.tsx`. Each broad test covers SSR auth gate, initial render, empty state, and error boundaries — without duplicating the narrow test's flow-specific assertions.
+**Broad tests** (`<page>.test.tsx`) guard the page-level composition and integration points across PRs. Examples: `cardgroups-list.test.tsx`, `cardgroup-edit.test.tsx`, `catalog-list.test.tsx`, `admin-roles.test.tsx`, `admin-users-list.test.tsx`. Each broad test covers initial render, empty state, and error boundaries — plus the SSR auth gate only when the page has no co-located `src/app/**/page.test.tsx` — without duplicating the narrow test's flow-specific assertions.
 
 **Anti-pattern**: Do not name a flow-specific test with a page-level name. If a feature PR introduces a flow that is the only flow on its page, still name the test `<page>-<flow>.test.tsx` to reserve the `<page>.test.tsx` slot for the future broad test.
 
@@ -19,9 +19,9 @@ All tests live under `frontend/__tests__/` using Vitest + Testing Library. Two n
 
 ### The narrow / broad split is a contract
 
-Putting a flow-detail assertion in a broad-named file (e.g. a role-checkbox toggle inside `admin-users-list.test.tsx`) silently locks in implementation detail and forces the broad test to break on every refactor of the narrow flow. The narrow / broad split is not a guideline — it is a contract: broad tests assert only page-level composition (SSR auth gate, initial render, empty state, error boundaries); flow-specific assertions belong in their narrow companion file.
+Putting a flow-detail assertion in a broad-named file (e.g. a role-checkbox toggle inside `admin-users-list.test.tsx`) silently locks in implementation detail and forces the broad test to break on every refactor of the narrow flow. The narrow / broad split is not a guideline — it is a contract: broad tests assert only page-level composition (initial render, empty state, error boundaries, plus the SSR auth gate when the page has no co-located `page.test.tsx`); flow-specific assertions belong in their narrow companion file.
 
-A page can host **both** a co-located `<page>.test.tsx` (next to the source under `src/app/...`) and a `__tests__/<page>.test.tsx` (broad scope) file. The co-located test focuses on the page's local refactor surface (e.g. stubbing the client component); the `__tests__/` file mounts the full tree end-to-end. Coverage between the two MUST be deconflicted manually — the author of any new broad test must read both before adding assertions, otherwise duplicate redirect / auth-gate cases accumulate across the two files.
+A page can host **both** a co-located `<page>.test.tsx` (next to the source under `src/app/...`) and a `__tests__/<page>.test.tsx` (broad scope) file. The co-located test focuses on the page's local refactor surface (e.g. stubbing the client component); the `__tests__/` file mounts the full tree end-to-end. Coverage between the two MUST be deconflicted manually — the author of any new broad test must read both before adding assertions, otherwise duplicate redirect / auth-gate cases accumulate across the two files. When both exist, the co-located test is the single owner of the page's auth-gate matrix (anonymous / stale / error redirect, UNAUTHENTICATED redirect, non-auth rethrow) — these are branches of the page's own RSC function — and the broad file does not repeat them. The non-auth rethrow is the page's error-boundary contract, so for such pages the broad file's "error boundaries" coverage is limited to error UI rendered by the mounted tree (e.g. a client-side error banner).
 
 ### Suspense refactor: test the `Content` component directly, not the outer `Page`
 
@@ -30,7 +30,7 @@ When a route is refactored to use `loading.tsx` + `<Suspense>`, the outer `page.
 The correct pattern after a Suspense refactor is two test groups:
 
 1. **Outer shell test** — calls `await Page()` and asserts that the element is a `<Suspense>` whose `fallback` is the skeleton and whose `children` is the `Content` component reference. No gqlFetch mock required.
-2. **Content tests** — call `await Content()` directly (using the named export added for this purpose) and render the result. These test all data-layer branches: empty state, populated state, UNAUTHENTICATED redirect, non-auth error rethrow.
+2. **Content tests** — call `await Content()` directly (using the named export added for this purpose) and render the result. These test the data-layer branches: empty state, populated state and — only when the page has no co-located `page.test.tsx` — the UNAUTHENTICATED redirect and non-auth error rethrow. When a co-located `page.test.tsx` exists, it owns those two branches (see [the narrow / broad split contract](#the-narrow--broad-split-is-a-contract)).
 
 ```ts
 import CardgroupsPage, { CardgroupsContent } from "./page";
@@ -80,16 +80,11 @@ vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "anonymo
 
 Do not reach for `@/lib/supabase/server` stubs when testing a page that uses `requireAuthenticated`; the `getUser()` path is not exercised and the factory mock is unused overhead.
 
-### Auth-gate migration touches both the narrow and broad test
+### Auth-gate migration: update every test that instantiates the page
 
-When a page's auth gate changes (e.g. from calling `getUser()` in the RSC body to reading `readAuthContext(await headers())`), the change requires updating **two** test files, not one:
+When a page's auth gate changes (e.g. from calling `getUser()` in the RSC body to reading `readAuthContext(await headers())`), the co-located `frontend/src/app/<route>/page.test.tsx` that owns the auth-gate matrix changes with it. A broad `frontend/__tests__/<feature>.test.tsx` that calls the page's default export also runs the gate on every render, even though it asserts none of the gate's branches, so its auth mock must be migrated in the same change (for the `getUser()` → headers example: swap the `@/lib/supabase/server` `getUser` mock for a `next/headers` mock). A grep scoped to `frontend/src/app/` misses it.
 
-1. The co-located narrow test `frontend/src/app/<route>/page.test.tsx`.
-2. The broad integration test `frontend/__tests__/<feature>.test.tsx` that instantiates the same page.
-
-A grep scoped to `frontend/src/app/` misses the broad `frontend/__tests__/` test. Both must be updated — swapping the `@/lib/supabase/server` `getUser` mock for a `next/headers` mock — and both must pass before the change is complete. The broad test is not a duplicate: it exercises the page as a full route, not just its RSC function in isolation.
-
-Concrete examples: `app/cardgroups/page.tsx` is covered by both `src/app/cardgroups/page.test.tsx` and `__tests__/cardgroups-list.test.tsx`; `app/cardgroups/[id]/edit/page.tsx` by both `src/app/cardgroups/[id]/edit/page.test.tsx` and `__tests__/cardgroup-edit.test.tsx`.
+Concrete examples: `__tests__/cardgroup-edit.test.tsx`, `__tests__/stats.test.tsx` and `__tests__/admin-masters-edit.test.tsx` call `EditCardgroupPage`, `StatsPage` and `EditMasterPage`, so a gate migration on `app/cardgroups/[id]/edit/page.tsx`, `app/stats/page.tsx` or `app/admin/masters/[id]/edit/page.tsx` must also update that broad file's `next/headers` mock. `__tests__/cardgroups-list.test.tsx` calls only `CardgroupsContent` (the gate runs in the outer `CardgroupsPage`), so a gate migration on `app/cardgroups/page.tsx` touches only the co-located test.
 
 Failure mode if the broad test is missed: it still mocks `@/lib/supabase/server` while the page no longer calls `getUser()`, and the unmocked `headers()` call throws `` `headers` was called outside a request scope ``, failing CI with a confusing error unrelated to the auth logic under test.
 
