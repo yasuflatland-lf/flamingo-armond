@@ -40,24 +40,36 @@ Mark a field in `gqlgen.yml` as `resolver: true` to make gqlgen generate a dedic
 ```yaml
 # gqlgen.yml
 models:
-  Cardgroup:
+  Card:
     fields:
-      owner:
+      userCardState:
         resolver: true
 ```
 
-gqlgen generates a `cardgroupResolver.Owner(ctx, obj)` method. The struct field stays in the generated model for JSON marshalling but is left `nil` in the repository helper; the resolver populates it lazily via the User DataLoader. Any resolver that calls a loader must wrap the error before returning — bare loader errors lack `extensions.code`:
+gqlgen generates a `cardResolver.UserCardState(ctx, obj)` method. The struct field stays in the generated model for JSON marshalling but is left `nil` by the `toCardModel` mapper; the resolver populates it lazily via the per-viewer UserCardFSRS DataLoader. Any resolver that calls a loader must classify the error before returning — bare loader errors lack `extensions.code`. `classifyLoaderErr` maps a cancelled or deadline-exceeded context to `CANCELLED` and everything else to a labelled `INTERNAL` (`backend/graph/resolver/card.resolvers.go`):
 
 ```go
-u, err := loader.For(ctx).User.Load(ctx, obj.OwnerID)()
-if err != nil {
-    return nil, gqlerr.Internal(ctx, err)
+func (r *cardResolver) UserCardState(ctx context.Context, obj *model.Card) (*model.UserCardState, error) {
+    user := auth.UserFrom(ctx)
+    if user == nil {
+        return nil, gqlerr.Unauthenticated()
+    }
+    loaders := loader.For(ctx)
+    if loaders == nil || loaders.UserCardFSRS == nil {
+        return nil, gqlerr.Internal(ctx, eris.New("loader: user card fsrs loader not installed for /query"))
+    }
+    ucs, err := loaders.UserCardFSRS.Load(ctx, obj.ID)()
+    if err != nil {
+        return nil, classifyLoaderErr(ctx, err, "resolver: user card state")
+    }
+    ucs = domain.UserCardFSRSOrNew(ucs, domain.UserID(user.Sub), obj.ID, obj.CreatedAt)
+    return toUserCardStateModel(ucs), nil
 }
 ```
 
 ### Resolver field-name collision
 
-When the schema has both a query named `cardgroup(id:)` and a type named `Cardgroup`, the `*Resolver` struct cannot have a field also named `Cardgroup` — it collides with the gqlgen-generated `Cardgroup() CardgroupResolver` method. Name the struct field `CardgroupUC` (or another non-colliding name). Future entities with a query name matching their type name (Card, Swipe, etc.) will hit the same issue.
+For every type that has at least one `resolver: true` field, gqlgen generates a `<Type>() <Type>Resolver` method on `*Resolver`; whether a query shares the type's name does not matter. The `*Resolver` struct therefore cannot have a field named after such a type. `Card` has field resolvers (`cardgroup`, `userCardState`, `cefrLevel`), so `card.resolvers.go` carries `func (r *Resolver) Card() generated.CardResolver`, and a struct field named `Card` would collide with it. Name the struct field `CardUC` (or another non-colliding name), as `resolver.go` does. Adding the first `resolver: true` field to any other type creates the same constraint for that type's name.
 
 ### `Time` scalar binding
 
@@ -134,8 +146,8 @@ Resolvers are intentionally thin: extract `model.UpdateProfileInput`, map it to 
 ```go
 type Resolver struct {
     UserUC      usecase.UserUsecase       // "UC" suffix avoids collision with resolver methods
-    CardgroupUC usecase.CardgroupUsecase  // (e.g. the Cardgroup() field resolver)
-    CardUC      usecase.CardUsecase
+    CardgroupUC usecase.CardgroupUsecase
+    CardUC      usecase.CardUsecase       // (e.g. the Card() field resolver)
     // ... plus LearnUC, SwipeUC, AuthSvc, CardImportUC, AdminUserUC,
     //     AdminRoleUC, LastViewedCardgroupUC — see resolver.go for the full set.
 }
@@ -169,7 +181,7 @@ parameter to `NewResolver`), wire it in `run()`. See [Resolver field-name collis
 
 ### Aggregate boundary policy
 
-Cross-aggregate references use IDs only — never embed a pointer to another aggregate's struct. For example, `domain.Cardgroup` holds `OwnerID string`, not `Owner *domain.User`, and `domain.Card` holds `CardgroupID string`, not `Cardgroup *domain.Cardgroup`. This prevents cyclic imports, keeps aggregates independently serialisable, and enforces the DDD consistency boundary. The actual object is resolved lazily by GraphQL field resolvers via the per-request DataLoader.
+Cross-aggregate references use IDs only — never embed a pointer to another aggregate's struct. For example, `domain.Cardgroup` holds `OwnerID string`, not `Owner *domain.User`, and `domain.Card` holds `CardgroupID string`, not `Cardgroup *domain.Cardgroup`. This prevents cyclic imports, keeps aggregates independently serialisable, and enforces the DDD consistency boundary. Where the schema exposes the related object (e.g. `Card.cardgroup`), a GraphQL field resolver loads it lazily via the per-request DataLoader.
 
 ### Cursor pagination
 
@@ -408,11 +420,11 @@ A fresh `Loaders` instance is created for every request so the per-request
 cache never bleeds across authenticated users. Resolvers pull it out of `ctx`:
 
 ```go
-user, err := loader.For(ctx).User.Load(ctx, userID)()
+cg, err := loader.For(ctx).Cardgroup.Load(ctx, cardgroupID)()
 ```
 
 `loader.For` returns `nil` when the middleware was not installed; dereferencing
-the returned pointer (`.User.Load(...)`) will then panic. Keep the middleware
+the returned pointer (`.Cardgroup.Load(...)`) will then panic. Keep the middleware
 wired to every route that touches a loader. Once a resolver actually calls a
 loader in production, consider replacing `For` with a `MustFor` variant (panics
 with a clear message on nil) or a `(loaders, error)` two-value return so
@@ -426,7 +438,7 @@ as the input keys. dataloader/v7 enforces this 1:1 invariant at runtime.
 **Adding a new entity (five touch points):**
 
 1. Add `FindByIDs(ctx context.Context, ids []string) (map[string]*domain.X, error)` to the repository interface.
-2. Create `backend/internal/loader/<entity>.go` with an `<entity>BatchFunc(repo)` that maps the result map back to the ordered output slice (see `user.go` for the pattern).
+2. Create `backend/internal/loader/<entity>.go` with an `<entity>BatchFunc(repo)` that maps the result map back to the ordered output slice (see `cardgroup.go` for the pattern).
 3. Add `<Entity> *dataloader.Loader[string, *domain.<Entity>]` to `Loaders`.
 4. Initialise it in `loader.New(...)` and pass its repository through `loader.Middleware(...)`.
 5. Add the new repository parameter to `newGraphQLTestServer` (and any test-server variants) in `cmd/server/main_test.go`.

@@ -53,11 +53,7 @@ func TestCardgroupLoader_BatchesNCallsIntoOne(t *testing.T) {
 		ids[i] = fmt.Sprintf("cg-%03d", i)
 	}
 
-	emptyUser := &countingRepo{
-		findByIDs: func(_ context.Context, _ []string) (map[string]*domain.User, error) {
-			return map[string]*domain.User{}, nil
-		},
-	}
+	emptyUser := &countingRepo{}
 
 	results, errs := loadAllCardgroups(context.Background(), loader.New(emptyUser, emptyUserRoleRepo(), cgRepo, emptyCardRepo(), emptyUserPreferenceRepo()), ids)
 
@@ -96,11 +92,7 @@ func TestCardgroupLoader_PartialNotFound(t *testing.T) {
 		},
 	}
 
-	emptyUser := &countingRepo{
-		findByIDs: func(_ context.Context, _ []string) (map[string]*domain.User, error) {
-			return map[string]*domain.User{}, nil
-		},
-	}
+	emptyUser := &countingRepo{}
 
 	ids := []string{"present-1", "missing", "present-2"}
 	results, errs := loadAllCardgroups(context.Background(), loader.New(emptyUser, emptyUserRoleRepo(), cgRepo, emptyCardRepo(), emptyUserPreferenceRepo()), ids)
@@ -135,11 +127,7 @@ func TestCardgroupLoader_BatchFuncError(t *testing.T) {
 		},
 	}
 
-	emptyUser := &countingRepo{
-		findByIDs: func(_ context.Context, _ []string) (map[string]*domain.User, error) {
-			return map[string]*domain.User{}, nil
-		},
-	}
+	emptyUser := &countingRepo{}
 
 	ids := []string{"x", "y", "z"}
 	_, errs := loadAllCardgroups(context.Background(), loader.New(emptyUser, emptyUserRoleRepo(), cgRepo, emptyCardRepo(), emptyUserPreferenceRepo()), ids)

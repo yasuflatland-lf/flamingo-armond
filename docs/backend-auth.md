@@ -88,7 +88,7 @@ The three `SUPABASE_JWT_*` variables are required. `ConfigFromEnv()` returns an 
 
 ### Authorization gates: object-level vs. field-level
 
-A `@hasRole(ADMIN)`-style gate on a top-level query (e.g. `Query.users`) does **not** protect fields on the returned type that any other resolver might also expose. `User.roles` is reachable from `me`, `cardgroup.owner`, and any future resolver that returns a `User` — the admin-only gate on `Query.users` covers exactly one of those entry points.
+A `@hasRole(ADMIN)`-style gate on a top-level query (e.g. `Query.users`) does **not** protect fields on the returned type that any other resolver might also expose. `User.roles` is reachable from `me` and any future resolver that returns a `User` — the admin-only gate on `Query.users` covers exactly one of those entry points.
 
 Field-level resolvers that expose privileged data must perform their own admin-or-self check inside the field resolver itself:
 

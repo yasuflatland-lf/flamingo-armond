@@ -65,11 +65,7 @@ var _ repository.UserRoleRepository = (*roleBatchRepoStub)(nil)
 
 func newLoadersForRoleByUser(userRoleRepo repository.UserRoleRepository) *loader.Loaders {
 	return loader.New(
-		&countingRepo{
-			findByIDs: func(_ context.Context, _ []string) (map[string]*domain.User, error) {
-				return map[string]*domain.User{}, nil
-			},
-		},
+		&countingRepo{},
 		userRoleRepo,
 		emptyCardgroupRepo(),
 		emptyCardRepo(),
