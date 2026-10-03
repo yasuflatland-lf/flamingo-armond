@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"strings"
 
 	"github.com/rotisserie/eris"
@@ -156,7 +157,8 @@ func decodeV2Body(raw []byte) (v2Body, error) {
 	if err := dec.Decode(&body); err != nil {
 		return v2Body{}, eris.Wrap(err, "cursor: invalid v2 json payload")
 	}
-	if dec.More() {
+	// dec.More reports false before a stray '}' or ']', so require EOF instead.
+	if _, err := dec.Token(); err != io.EOF {
 		return v2Body{}, eris.New("cursor: trailing data after v2 json payload")
 	}
 	for _, f := range []struct {

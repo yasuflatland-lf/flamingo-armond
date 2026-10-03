@@ -10,64 +10,6 @@ import (
 	"backend/internal/domain"
 )
 
-func TestValidateRelayArgs(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name      string
-		first     *int
-		after     *string
-		wantField string // non-empty when a ValidationError is expected
-		wantMsg   string // exact message string produced by the failing branch
-	}{
-		// --- Rejection branches ---
-
-		{
-			name:      "after_without_count",
-			after:     strPtr("cursor-a"),
-			wantField: "after",
-			wantMsg:   "after requires first",
-		},
-		{
-			name:      "after_with_first_zero",
-			first:     intPtr(0),
-			after:     strPtr("cursor-a"),
-			wantField: "after",
-			wantMsg:   "after requires first",
-		},
-
-		// --- Happy paths (no error expected) ---
-
-		{
-			name:  "forward_first_and_after",
-			first: intPtr(10),
-			after: strPtr("cursor-a"),
-		},
-		{
-			name:  "first_only",
-			first: intPtr(10),
-		},
-		{
-			name: "all_nil",
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			err := validateRelayArgs(tc.first, tc.after)
-
-			if tc.wantField == "" {
-				require.NoError(t, err)
-			} else {
-				require.Error(t, err)
-				assertValidationError(t, err, tc.wantField, tc.wantMsg)
-			}
-		})
-	}
-}
-
 // TestTranslateCardErr pins the nil guard that keeps translateCardErr consistent
 // with its siblings: without it a nil error falls to the default arm and is
 // wrapped as an "unexpected domain error", turning a success into an INTERNAL

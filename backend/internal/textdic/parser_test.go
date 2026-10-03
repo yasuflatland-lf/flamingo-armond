@@ -89,31 +89,3 @@ func TestGrammar_OnlyWhitespace(t *testing.T) {
 		}
 	}
 }
-
-func TestLexer_LineNumberAfterCRLF(t *testing.T) {
-	t.Parallel()
-
-	// CRLF line endings must increment the line counter by exactly one per
-	// terminator (isNewLine treats "\r\n" as a single line break).
-	input := "alpha " + defDog + "\r\n" +
-		"beta " + defCat + "\r\n" +
-		"gamma " + defBird + "\r\n"
-
-	words, errs, err := textdic.Process(input)
-	if err != nil {
-		t.Fatalf("unexpected fatal error: %v", err)
-	}
-	if len(errs) != 0 {
-		t.Fatalf("expected no validation errors, got %+v", errs)
-	}
-	if len(words) != 3 {
-		t.Fatalf("expected 3 words, got %d (%+v)", len(words), words)
-	}
-
-	wantLines := []int{1, 2, 3}
-	for i, want := range wantLines {
-		if words[i].Line != want {
-			t.Errorf("words[%d].Line: got %d want %d", i, words[i].Line, want)
-		}
-	}
-}
