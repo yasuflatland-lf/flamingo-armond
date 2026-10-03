@@ -490,4 +490,31 @@ describe("AdminMastersClient (broad page test)", () => {
     expect(empty).toHaveTextContent("No masters found.");
     expect(screen.queryByTestId("admin-masters-list")).not.toBeInTheDocument();
   });
+
+  // T6: Empty state reached through the network. AdminMastersPage renders
+  // <AdminMastersClient /> without seed data, so a first visit resolves the
+  // initial AdminMasters query over the network; T5 starts from a warm cache.
+  test("renders empty-state copy when the initial network load returns no edges", async () => {
+    const connection = makeConnection([], false);
+
+    const mocks = [
+      {
+        request: {
+          query: AdminMastersDocument,
+          variables: { ...BASE_VARS, search: null },
+        },
+        result: { data: { adminMasters: connection } },
+      },
+    ];
+
+    renderWithIntl(
+      <MockedProvider mocks={mocks as never}>
+        <AdminMastersClient />
+      </MockedProvider>,
+    );
+
+    const empty = await screen.findByTestId("admin-masters-empty");
+    expect(empty).toHaveTextContent("No masters found.");
+    expect(screen.queryByTestId("admin-masters-list")).not.toBeInTheDocument();
+  });
 });
