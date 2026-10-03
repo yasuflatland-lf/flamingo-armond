@@ -122,15 +122,16 @@ A repository `Update` that receives a no-op patch (all fields nil or unchanged) 
 
 ### Context cancellation propagation
 
-When a resolver calls a downstream service (DB, JWKS, role lookup) and the caller's context is cancelled, the returned error wraps `context.Canceled` or `context.DeadlineExceeded`. **Forward those errors as-is** rather than wrapping them with `gqlerr.Internal` — wrapping them logs an ERROR line and emits an `INTERNAL` envelope for what is actually a client-driven cancellation (browser closed, navigation away, deadline hit). The pattern for blocking auth calls is:
+When a resolver calls a downstream service (DB, JWKS, role lookup) and the caller's context is cancelled, the returned error wraps `context.Canceled` or `context.DeadlineExceeded`. **Forward those errors as-is** rather than wrapping them with `gqlerr.Internal` — wrapping them logs an ERROR line and emits an `INTERNAL` envelope for what is actually a client-driven cancellation (browser closed, navigation away, deadline hit). Blocking admin checks live in the usecase layer (see [Inject `AdminChecker` for admin-exempt business logic](backend/library-gotchas/admin-checker-inject-for-admin-exempt-business-logic.md)); `AdminGate.Require` in `backend/internal/usecase/admin_gate.go` shows the pattern:
 
 ```go
-isAdmin, err := r.AuthSvc.IsAdmin(ctx, caller.Sub)
+isAdmin, err := g.checker.IsAdmin(ctx, caller.Sub)
 if err != nil {
-    if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-        return nil, err
+    if isContextDone(err) || errors.Is(err, ucerr.ErrUnauthenticated) {
+        return "", err
     }
-    return nil, gqlerr.Internal(ctx, err)
+    // ...
+    return "", eris.Wrap(err, callerPrefix)
 }
 ```
 
