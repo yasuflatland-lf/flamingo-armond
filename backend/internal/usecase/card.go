@@ -46,7 +46,6 @@ type UserCardFSRSRepositoryForCard interface {
 
 // CardUsecase is the card CRUD and paginated-list surface.
 type CardUsecase interface {
-	Card(ctx context.Context, id string) (*domain.Card, error)
 	Create(ctx context.Context, in CreateCardInput) (CreateCardOutcome, error)
 	Update(ctx context.Context, id string, in UpdateCardInput) (UpdateCardOutcome, error)
 	Delete(ctx context.Context, id string) error
@@ -211,28 +210,6 @@ const (
 	maxPageSize     = 100
 	maxBulkDelete   = 100
 )
-
-// Card reads a single card the caller owns. An unknown id and a card owned by
-// someone else both return ucerr.ErrUnauthenticated, so the query cannot be used
-// as an existence oracle over another user's card ids. Update / Delete collapse
-// the same two cases identically.
-func (u *cardUsecase) Card(ctx context.Context, id string) (*domain.Card, error) {
-	user := auth.UserFrom(ctx)
-	if err := requireCallerSub(user); err != nil {
-		return nil, err
-	}
-	card, err := u.cardRepo.FindByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ucerr.ErrUnauthenticated
-		}
-		return nil, wrapInfraErr(err, "usecase: card: find by id")
-	}
-	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, card.CardgroupID, domain.UserID(user.Sub)); err != nil {
-		return nil, err
-	}
-	return card, nil
-}
 
 // Create persists a new card and returns a CreateCardOutcome that signals the
 // duplicate-front case as data (via outcome.Duplicate) rather than as an error.
