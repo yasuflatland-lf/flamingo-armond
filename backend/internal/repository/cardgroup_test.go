@@ -638,9 +638,9 @@ func TestCardgroupRepo_CountByOwner(t *testing.T) {
 	require.Equal(t, int64(3), total)
 }
 
-// TestCardgroupRepo_FindPageByOwner_EmptySearchTreatedAsNil verifies the
-// same trimmed-empty-search path on FindPageByOwner: all rows must be
-// returned when the search is whitespace-only.
+// TestCardgroupRepo_FindPageByOwner_EmptySearchTreatedAsNil verifies that a
+// whitespace-only search does not filter FindPageByOwner: all rows are
+// returned, because searchLikePattern returns ok=false for trimmed-empty input.
 func TestCardgroupRepo_FindPageByOwner_EmptySearchTreatedAsNil(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
