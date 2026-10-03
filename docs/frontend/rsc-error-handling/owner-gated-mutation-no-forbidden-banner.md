@@ -2,7 +2,7 @@
 
 > Part of the [frontend RSC error handling](../../../.claude/rules/frontend-rsc-error-handling.md) rules.
 
-Cardgroup-scoped resources (the `cardgroup(id:)` read, and writes like `updateCardgroup` / `importCards`) deliberately return **`UNAUTHENTICATED`** to a non-owner, never `FORBIDDEN`, so a caller cannot distinguish "exists but not yours" from "not authenticated" and cannot probe existence by ID enumeration. The backend rationale and exact return paths live in [`docs/backend-graphql.md` § "Authorization at the usecase layer"](../../backend-graphql.md#authorization-at-the-usecase-layer) and § "Existence-oracle prevention via collapsed `BAD_USER_INPUT`" — read those for the WHY; this chapter is the presentation-side consequence.
+Cardgroup-scoped resources deliberately return **`UNAUTHENTICATED`** to a non-owner, never `FORBIDDEN`. For the operations addressed by the resource's own id (`updateCardgroup`, `deleteCardgroup`, `updateCard`, `deleteCard`) a missing id returns the same `UNAUTHENTICATED`, and `cardgroup(id:)` returns `null` for both, so the caller cannot tell "exists but not yours" from "does not exist". The operations that take a `cardgroupId` argument (`importCards`, `createCard`, `cardsByCardgroupConnection`, and the others listed in the backend section) return `BAD_USER_INPUT` for a missing cardgroup, so they do confirm whether an id the caller already holds exists; the ids are unguessable, so this does not allow enumeration. The backend rationale and exact return paths live in [`docs/backend-graphql.md` § "Authorization at the usecase layer"](../../backend-graphql.md#authorization-at-the-usecase-layer) and § "Existence-oracle prevention via collapsed `BAD_USER_INPUT`" — read those for the WHY; this chapter is the presentation-side consequence.
 
 ## A client component for an owner-gated mutation must NOT add a FORBIDDEN-specific branch
 
@@ -15,7 +15,7 @@ This is the opposite posture from the admin role-CRUD flows in [`UNAUTHENTICATED
 
 ## The route gate makes the usecase owner-check a defensive backstop
 
-Because the `cardgroup(id:)` query returns `UNAUTHENTICATED` to non-owners, the owner-gated RSC page redirects on it before any owner-gated UI renders: `frontend/src/app/cardgroups/[id]/edit/page.tsx` calls `redirectIfAuthError(err, "/login")` in its catch arm (and `/cards` redirects to `/edit`). A non-owner therefore never reaches the batch-import form or any owner-gated mutation through the UI. The usecase-layer owner-check (`authorizeCardgroupOrBadInput` in `backend/internal/usecase/ownership.go`, called from `cardImportUsecase.Import`) is a **defensive backstop** reachable only by a hand-crafted GraphQL request that bypasses the RSC redirect — not the primary UX gate.
+Because the `cardsByCardgroupConnection` query the page runs alongside `cardgroup(id:)` returns `UNAUTHENTICATED` to a non-owner (`cardgroup(id:)` itself returns `null`), the owner-gated RSC page redirects on it before any owner-gated UI renders: `frontend/src/app/cardgroups/[id]/edit/page.tsx` calls `redirectIfAuthError(err, "/login")` in its catch arm (and `/cards` redirects to `/edit`). A non-owner therefore never reaches the batch-import form or any owner-gated mutation through the UI. The usecase-layer owner-check (`authorizeCardgroupOrBadInput` in `backend/internal/usecase/ownership.go`, called from `cardImportUsecase.Import`) is a **defensive backstop** reachable only by a hand-crafted GraphQL request that bypasses the RSC redirect — not the primary UX gate.
 
 ## Worked example
 
