@@ -11,20 +11,13 @@ import (
 )
 
 type gormSwipeRecord struct {
-	ID            string    `gorm:"column:id;primaryKey;type:uuid"`
-	UserID        string    `gorm:"column:user_id"`
-	CardID        string    `gorm:"column:card_id"`
-	CardgroupID   string    `gorm:"column:cardgroup_id;type:uuid"`
-	Rating        int       `gorm:"column:rating"`
-	ReviewedAt    time.Time `gorm:"column:reviewed_at"`
-	Due           time.Time `gorm:"column:due"`
-	Stability     float64   `gorm:"column:stability"`
-	Difficulty    float64   `gorm:"column:difficulty"`
-	ScheduledDays int       `gorm:"column:scheduled_days"`
-	Reps          int       `gorm:"column:reps"`
-	Lapses        int       `gorm:"column:lapses"`
-	State         int       `gorm:"column:state"`
-	LastReview    time.Time `gorm:"column:last_review"`
+	ID          string    `gorm:"column:id;primaryKey;type:uuid"`
+	UserID      string    `gorm:"column:user_id"`
+	CardID      string    `gorm:"column:card_id"`
+	CardgroupID string    `gorm:"column:cardgroup_id;type:uuid"`
+	Rating      int       `gorm:"column:rating"`
+	ReviewedAt  time.Time `gorm:"column:reviewed_at"`
+	Difficulty  float64   `gorm:"column:difficulty"`
 	// Pre-swipe snapshot columns. All three are NOT NULL.
 	PhaseBefore     int16     `gorm:"column:phase_before"`
 	StabilityBefore float64   `gorm:"column:stability_before"`
@@ -101,14 +94,7 @@ func swipeRecordToRow(sr *domain.SwipeRecord) *gormSwipeRecord {
 		CardgroupID:     string(sr.CardgroupID),
 		Rating:          int(sr.Rating),
 		ReviewedAt:      sr.ReviewedAt,
-		Due:             sr.StateAfter.Due,
-		Stability:       sr.StateAfter.Stability,
-		Difficulty:      sr.StateAfter.Difficulty,
-		ScheduledDays:   sr.StateAfter.ScheduledDays,
-		Reps:            sr.StateAfter.Reps,
-		Lapses:          sr.StateAfter.Lapses,
-		State:           int(sr.StateAfter.Phase),
-		LastReview:      sr.StateAfter.LastReview,
+		Difficulty:      sr.DifficultyAfter,
 		PhaseBefore:     int16(sr.PhaseBefore),
 		StabilityBefore: sr.StabilityBefore,
 		DueBefore:       sr.DueBefore,
@@ -120,31 +106,18 @@ func swipeRecordToDomain(row gormSwipeRecord) (*domain.SwipeRecord, error) {
 	if !rating.IsValid() {
 		return nil, eris.Errorf("repository: swipe record: invalid Rating value %d for swipe record %s", row.Rating, row.ID)
 	}
-	phase := domain.FSRSPhase(row.State)
-	if !phase.IsValid() {
-		return nil, eris.Errorf("repository: swipe record: invalid FSRSPhase value %d for swipe record %s", row.State, row.ID)
-	}
 	phaseBefore := domain.FSRSPhase(row.PhaseBefore)
 	if !phaseBefore.IsValid() {
 		return nil, eris.Errorf("repository: swipe record: invalid phase_before value %d for swipe record %s", row.PhaseBefore, row.ID)
 	}
 	return &domain.SwipeRecord{
-		ID:          row.ID,
-		UserID:      domain.UserID(row.UserID),
-		CardID:      row.CardID,
-		CardgroupID: domain.CardgroupID(row.CardgroupID),
-		Rating:      rating,
-		ReviewedAt:  row.ReviewedAt,
-		StateAfter: domain.FSRSState{
-			Due:           row.Due,
-			Stability:     row.Stability,
-			Difficulty:    row.Difficulty,
-			ScheduledDays: row.ScheduledDays,
-			Reps:          row.Reps,
-			Lapses:        row.Lapses,
-			Phase:         phase,
-			LastReview:    row.LastReview,
-		},
+		ID:              row.ID,
+		UserID:          domain.UserID(row.UserID),
+		CardID:          row.CardID,
+		CardgroupID:     domain.CardgroupID(row.CardgroupID),
+		Rating:          rating,
+		ReviewedAt:      row.ReviewedAt,
+		DifficultyAfter: row.Difficulty,
 		PhaseBefore:     phaseBefore,
 		StabilityBefore: row.StabilityBefore,
 		DueBefore:       row.DueBefore,
