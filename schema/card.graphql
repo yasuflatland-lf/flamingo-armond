@@ -125,8 +125,6 @@ type CardConnection {
 }
 
 extend type Query {
-  """Single card by ID. Returns UNAUTHENTICATED for non-owners (existence is not leaked)."""
-  card(id: ID!): Card
   """
   Next batch of cards for a learning session: never-seen cards, newest-added first,
   interleaved with review cards at the caller's own `User.newCardRatio` setting
