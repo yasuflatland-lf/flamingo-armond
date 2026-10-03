@@ -23,8 +23,8 @@ type CardRepository interface {
 	FindPageByCardgroupForUser(
 		ctx context.Context,
 		userID, cardgroupID string,
-		after, before *repository.CardCursor,
-		first, last int,
+		after *repository.CardCursor,
+		first int,
 		orderBy repository.CardOrderBy,
 		dir repository.SortOrder,
 		search *string,
@@ -141,9 +141,9 @@ const (
 // CardConnectionInput captures the GraphQL pagination arguments. Pointer
 // fields preserve "absent" semantics from the schema.
 type CardConnectionInput struct {
-	CardgroupID   string
-	First, Last   *int
-	After, Before *string // raw GraphQL ID strings (cursor = card UUID)
+	CardgroupID string
+	First       *int
+	After       *string // raw GraphQL ID string (cursor = card UUID)
 	// Search is optional; nil disables the filter. The usecase normalizes
 	// whitespace-only strings to nil before reaching the repository.
 	Search         *string
@@ -355,7 +355,7 @@ func (u *cardUsecase) Delete(ctx context.Context, id string) error {
 }
 
 // ListCardsByCardgroupConnection paginates a cardgroup's cards using
-// Relay-style forward (first/after) or backward (last/before) cursors.
+// Relay-style forward-only (first/after) cursors.
 func (u *cardUsecase) ListCardsByCardgroupConnection(
 	ctx context.Context, in CardConnectionInput,
 ) (*CardConnectionOutput, error) {
@@ -367,7 +367,7 @@ func (u *cardUsecase) ListCardsByCardgroupConnection(
 		return nil, err
 	}
 
-	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveStandardPageSize)
+	first, err := resolveRelayPage(in.First, in.After, resolveStandardPageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -383,10 +383,6 @@ func (u *cardUsecase) ListCardsByCardgroupConnection(
 	if err != nil {
 		return nil, err
 	}
-	before, err := u.resolveCardCursor(ctx, in.Before, in.CardgroupID, orderBy, ordering, "before")
-	if err != nil {
-		return nil, err
-	}
 
 	// Normalize: nil and whitespace-only both mean "no filter". After this,
 	// a non-nil search pointer is guaranteed to hold a non-empty, trimmed
@@ -399,10 +395,10 @@ func (u *cardUsecase) ListCardsByCardgroupConnection(
 	// more row than the trimmed page; cardOrderKeys reads it per returned card,
 	// so the extra entry is simply never looked up.
 	var pageKeys map[string]time.Time
-	cards, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
-		func(wantFirst, wantLast int) ([]*domain.Card, error) {
+	cards, hasNext, hasPrev, err := assemblePage(first, after != nil,
+		func(want int) ([]*domain.Card, error) {
 			rows, t, k, e := u.cardRepo.FindPageByCardgroupForUser(
-				ctx, user.Sub, in.CardgroupID, after, before, wantFirst, wantLast, orderBy, dir, search,
+				ctx, user.Sub, in.CardgroupID, after, want, orderBy, dir, search,
 			)
 			if e != nil {
 				return nil, wrapInfraErr(e, "usecase: card: list by cardgroup: find page")

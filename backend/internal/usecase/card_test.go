@@ -48,9 +48,7 @@ type mockCardRepository struct {
 	capturedFindPage struct {
 		cardgroupID string
 		after       *repository.CardCursor
-		before      *repository.CardCursor
 		first       int
-		last        int
 		orderBy     repository.CardOrderBy
 		dir         repository.SortOrder
 		search      *string
@@ -95,17 +93,15 @@ func (m *mockCardRepository) FindPageByCardgroupForUser(
 	_ context.Context,
 	_ string,
 	cardgroupID string,
-	after, before *repository.CardCursor,
-	first, last int,
+	after *repository.CardCursor,
+	first int,
 	orderBy repository.CardOrderBy,
 	dir repository.SortOrder,
 	search *string,
 ) ([]*domain.Card, int64, map[string]time.Time, error) {
 	m.capturedFindPage.cardgroupID = cardgroupID
 	m.capturedFindPage.after = after
-	m.capturedFindPage.before = before
 	m.capturedFindPage.first = first
-	m.capturedFindPage.last = last
 	m.capturedFindPage.orderBy = orderBy
 	m.capturedFindPage.dir = dir
 	m.capturedFindPage.search = search
@@ -707,45 +703,6 @@ func TestCardUsecase_ListCardsByCardgroupConnection_InvalidOrderBy(t *testing.T)
 	assertValidationError(t, err, "orderBy", "")
 }
 
-func TestCardUsecase_ListCardsByCardgroupConnection_BothFirstAndLast(t *testing.T) {
-	t.Parallel()
-	uc := NewCardUsecase(&mockCardRepository{},
-		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		nil, newTestLogger(),
-	)
-	first := 5
-	last := 5
-	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
-		CardgroupID: "cg1",
-		First:       &first,
-		Last:        &last,
-	})
-	assertValidationError(t, err, "first", "")
-}
-
-// TestCardUsecase_ListCardsByCardgroupConnection_AfterWithLast verifies that a
-// mixed-direction combo (forward cursor `after` paired with backward count
-// `last`) is rejected with BAD_USER_INPUT via validateRelayArgs, rather than
-// being silently re-interpreted. See .claude/rules/pagination.md and
-// docs/pagination/reject-mixed-direction-combos.md.
-func TestCardUsecase_ListCardsByCardgroupConnection_AfterWithLast(t *testing.T) {
-	t.Parallel()
-	uc := NewCardUsecase(&mockCardRepository{},
-		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		nil, newTestLogger(),
-	)
-	// validateRelayArgs runs before cursor decoding, so `after` need only be
-	// non-nil to exercise the mixed-direction guard.
-	after := "any-cursor"
-	last := 5
-	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
-		CardgroupID: "cg1",
-		After:       &after,
-		Last:        &last,
-	})
-	assertValidationError(t, err, "after", "")
-}
-
 func TestCardUsecase_ListCardsByCardgroupConnection_DefaultsAndPaging(t *testing.T) {
 	t.Parallel()
 
@@ -823,72 +780,6 @@ func TestCardUsecase_ListCardsByCardgroupConnection_CursorCrossCardgroup(t *test
 		})
 		assertValidationError(t, err, "after", "")
 	})
-
-	t.Run("before rejected", func(t *testing.T) {
-		t.Parallel()
-		cardRepo := &mockCardRepository{
-			findResult: &domain.Card{ID: "c-foreign", CardgroupID: domain.CardgroupID("cg-other")},
-		}
-		uc := NewCardUsecase(cardRepo,
-			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-			nil, newTestLogger(),
-		)
-		_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
-			CardgroupID: "cg1",
-			Last:        intPtr(10),
-			Before:      ptr("c-foreign"),
-			OrderBy:     orderByPtr(CardOrderByDue),
-		})
-		assertValidationError(t, err, "before", "")
-	})
-}
-
-// TestCardUsecase_ListCardsByCardgroupConnection_BackwardPaging exercises the
-// last/before flow: the +1 trick fires on the leading edge and HasNext is true
-// because `before != nil`.
-func TestCardUsecase_ListCardsByCardgroupConnection_BackwardPaging(t *testing.T) {
-	t.Parallel()
-
-	rows := []*domain.Card{
-		{ID: "c-A", CardgroupID: "cg1"},
-		{ID: "c-B", CardgroupID: "cg1"},
-		{ID: "c-C", CardgroupID: "cg1"},
-		{ID: "c-D", CardgroupID: "cg1"},
-	}
-	cardRepo := &mockCardRepository{findPageRows: rows, findPageTotal: 10}
-	uc := NewCardUsecase(cardRepo,
-		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
-		nil, newTestLogger(),
-	)
-
-	out, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
-		CardgroupID: "cg1",
-		Last:        intPtr(3),
-		Before:      ptr("c-X"),
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(out.Cards) != 3 {
-		t.Fatalf("expected 3 cards after trim, got %d", len(out.Cards))
-	}
-	if out.Cards[0].ID != "c-B" || out.Cards[1].ID != "c-C" || out.Cards[2].ID != "c-D" {
-		t.Fatalf("expected [c-B, c-C, c-D], got %v",
-			[]string{out.Cards[0].ID, out.Cards[1].ID, out.Cards[2].ID})
-	}
-	if !out.HasPrev {
-		t.Fatal("expected HasPrev=true (len(rows) > last signals more rows precede)")
-	}
-	if !out.HasNext {
-		t.Fatal("expected HasNext=true because before!=nil")
-	}
-	if out.StartCur != "c-B" || out.EndCur != "c-D" {
-		t.Fatalf("expected StartCur=c-B EndCur=c-D, got %q/%q", out.StartCur, out.EndCur)
-	}
-	// Repo should have been asked for last+1 trailing rows.
-	if cardRepo.capturedFindPage.last != 4 {
-		t.Fatalf("expected repo.last=4 (last+1), got %d", cardRepo.capturedFindPage.last)
-	}
 }
 
 // TestCardUsecase_ListCardsByCardgroupConnection_DueKeyComesFromThePageRead

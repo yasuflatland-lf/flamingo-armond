@@ -113,7 +113,7 @@ func TestMasterCardgroupRepository_FindPublishedPage_DraftNeverLeaks(t *testing.
 	pub := insertCatalogVisibleMCG(t, ctx, "Pub "+base, 1)
 	draft := insertDraftMCG(t, ctx, "Draft "+base)
 
-	page, _, err := repo.FindPublishedPage(ctx, nil, nil, repository.PageCap, 0,
+	page, _, err := repo.FindPublishedPage(ctx, nil, repository.PageCap,
 		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, nil)
 	require.NoError(t, err)
 
@@ -137,7 +137,7 @@ func TestMasterCardgroupRepository_FindPublishedPage_CardCount(t *testing.T) {
 	insertMasterCards(t, ctx, threeCards.ID, 3)
 	oneCard := insertCatalogVisibleMCG(t, ctx, "OneCard "+base, 2)
 
-	page, _, err := repo.FindPublishedPage(ctx, nil, nil, repository.PageCap, 0,
+	page, _, err := repo.FindPublishedPage(ctx, nil, repository.PageCap,
 		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, nil)
 	require.NoError(t, err)
 
@@ -174,7 +174,7 @@ func TestMasterCardgroupRepository_FindPublishedPage_EmptyDeckExcludedFromPageAn
 	// The shared base UUID suffix isolates this test's two rows from the other
 	// tests running against the same database.
 	search := base
-	page, total, err := repo.FindPublishedPage(ctx, nil, nil, repository.PageCap, 0,
+	page, total, err := repo.FindPublishedPage(ctx, nil, repository.PageCap,
 		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, &search)
 	require.NoError(t, err)
 
@@ -189,7 +189,7 @@ func TestMasterCardgroupRepository_FindPublishedPage_EmptyDeckExcludedFromPageAn
 	// a read-side predicate, so there is no stale write-side state to repair.
 	insertMasterCards(t, ctx, empty.ID, 1)
 
-	page, total, err = repo.FindPublishedPage(ctx, nil, nil, repository.PageCap, 0,
+	page, total, err = repo.FindPublishedPage(ctx, nil, repository.PageCap,
 		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, &search)
 	require.NoError(t, err)
 	require.Equal(t, []string{withCards.ID, empty.ID}, catalogIDs(page),
@@ -213,7 +213,7 @@ func TestMasterCardgroupRepository_FindPublishedPage_TotalExcludesDraft(t *testi
 
 	// A name search isolates this test's rows from the shared DB.
 	search := "CountPub " + base
-	_, total, err := repo.FindPublishedPage(ctx, nil, nil, repository.PageCap, 0,
+	_, total, err := repo.FindPublishedPage(ctx, nil, repository.PageCap,
 		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, &search)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total, "only the published row matching the search counts")
@@ -337,10 +337,10 @@ func TestMasterCardgroupRepository_FindPublishedByIDTx_LocksRowForShare(t *testi
 }
 
 // ---------------------------------------------------------------------------
-// Forward + backward pagination round-trip
+// Forward pagination round-trip
 // ---------------------------------------------------------------------------
 
-func TestMasterCardgroupRepository_FindPublishedPage_ForwardAndBackward(t *testing.T) {
+func TestMasterCardgroupRepository_FindPublishedPage_Forward(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repo := repository.NewMasterCardgroupRepository(testDB.GORM)
@@ -362,7 +362,7 @@ func TestMasterCardgroupRepository_FindPublishedPage_ForwardAndBackward(t *testi
 
 	// Forward page 1: first=2, no cursor. The two lowest sort_order rows of the
 	// isolated set come back in order: [m1, m2].
-	fwd1, _, err := repo.FindPublishedPage(ctx, nil, nil, 2, 0,
+	fwd1, _, err := repo.FindPublishedPage(ctx, nil, 2,
 		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, &search)
 	require.NoError(t, err)
 	ours1 := filterCatalogByIDs(fwd1, ourIDs)
@@ -371,22 +371,12 @@ func TestMasterCardgroupRepository_FindPublishedPage_ForwardAndBackward(t *testi
 
 	// Forward from m1: cursor after m1 → [m2, m3].
 	afterM1 := &repository.MasterCatalogCursor{ID: m1.ID, SortOrder: &m1.SortOrder}
-	fwd2, _, err := repo.FindPublishedPage(ctx, afterM1, nil, repository.PageCap, 0,
+	fwd2, _, err := repo.FindPublishedPage(ctx, afterM1, repository.PageCap,
 		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, &search)
 	require.NoError(t, err)
 	ours2 := filterCatalogByIDs(fwd2, ourIDs)
 	require.Equal(t, []string{m2.ID, m3.ID}, catalogIDs(ours2),
 		"forward after m1 yields [m2, m3] in sort order")
-
-	// Backward before m3: should yield [m1, m2] in display order after the
-	// internal direction-flip + reverse.
-	beforeM3 := &repository.MasterCatalogCursor{ID: m3.ID, SortOrder: &m3.SortOrder}
-	bwd, _, err := repo.FindPublishedPage(ctx, nil, beforeM3, 0, repository.PageCap,
-		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, &search)
-	require.NoError(t, err)
-	oursBwd := filterCatalogByIDs(bwd, ourIDs)
-	require.Equal(t, []string{m1.ID, m2.ID}, catalogIDs(oursBwd),
-		"backward before m3 yields [m1, m2] in display order")
 }
 
 // ---------------------------------------------------------------------------
@@ -408,7 +398,7 @@ func TestMasterCardgroupRepository_FindPublishedPage_OrderByNameDesc(t *testing.
 	search := base
 
 	// NAME DESC, first page of 2: highest name first → [CName, BName].
-	fwd, _, err := repo.FindPublishedPage(ctx, nil, nil, 2, 0,
+	fwd, _, err := repo.FindPublishedPage(ctx, nil, 2,
 		repository.MasterCatalogOrderByName, repository.SortDesc, &search)
 	require.NoError(t, err)
 	require.Equal(t, []string{c.ID, b.ID}, catalogIDs(filterCatalogByIDs(fwd, ourIDs)),
@@ -418,7 +408,7 @@ func TestMasterCardgroupRepository_FindPublishedPage_OrderByNameDesc(t *testing.
 	// masterCatalogCursorWhere → [BName, AName].
 	cName := string(c.Name)
 	afterC := &repository.MasterCatalogCursor{ID: c.ID, Name: &cName}
-	next, _, err := repo.FindPublishedPage(ctx, afterC, nil, repository.PageCap, 0,
+	next, _, err := repo.FindPublishedPage(ctx, afterC, repository.PageCap,
 		repository.MasterCatalogOrderByName, repository.SortDesc, &search)
 	require.NoError(t, err)
 	require.Equal(t, []string{b.ID, a.ID}, catalogIDs(filterCatalogByIDs(next, ourIDs)),
@@ -438,7 +428,7 @@ func TestMasterCardgroupRepository_FindPublishedPage_MissingCursorColumn(t *test
 	// zero-value fallback would emit a wrong-but-valid predicate and skip rows;
 	// the repository must surface this caller bug as an error instead.
 	badCursor := &repository.MasterCatalogCursor{ID: uuid.NewString()} // Name == nil
-	_, _, err := repo.FindPublishedPage(ctx, badCursor, nil, 10, 0,
+	_, _, err := repo.FindPublishedPage(ctx, badCursor, 10,
 		repository.MasterCatalogOrderByName, repository.SortAsc, nil)
 	require.Error(t, err)
 }
@@ -461,7 +451,7 @@ func TestMasterCardgroupRepository_SearchEscapesLikeMetacharacters(t *testing.T)
 	b := insertCatalogVisibleMCG(t, ctx, "pct50x"+base, 2)
 
 	search := "50%" + base
-	page, total, err := repo.FindPublishedPage(ctx, nil, nil, repository.PageCap, 0,
+	page, total, err := repo.FindPublishedPage(ctx, nil, repository.PageCap,
 		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, &search)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total,

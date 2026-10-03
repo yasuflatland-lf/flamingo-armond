@@ -135,7 +135,7 @@ func TestQueryResolver_MasterCatalog_Success(t *testing.T) {
 	first := 10
 	orderBy := model.MasterCatalogOrderByName
 	dir := model.SortOrderDesc
-	conn, err := qr.MasterCatalog(context.Background(), &first, nil, nil, nil, nil, &orderBy, &dir)
+	conn, err := qr.MasterCatalog(context.Background(), &first, nil, nil, &orderBy, &dir)
 	require.NoError(t, err)
 	require.Len(t, conn.Edges, 1)
 	assert.Equal(t, "x", conn.Edges[0].Node.ID)
@@ -169,7 +169,7 @@ func TestQueryResolver_MasterCatalog_WrapsUsecaseError(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			qr := &queryResolver{&Resolver{MasterCatalogUC: &stubMasterCatalogUC{err: tc.err}}}
-			_, err := qr.MasterCatalog(context.Background(), nil, nil, nil, nil, nil, nil, nil)
+			_, err := qr.MasterCatalog(context.Background(), nil, nil, nil, nil, nil)
 			require.Error(t, err)
 			assert.True(t, gqlerrtest.IsCode(err, tc.want), "want wire code %s", tc.want)
 		})

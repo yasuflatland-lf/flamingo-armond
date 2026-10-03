@@ -106,12 +106,10 @@ func (r *queryResolver) Cardgroup(ctx context.Context, id string) (*model.Cardgr
 }
 
 // MyCardgroupsConnection is the resolver for the myCardgroupsConnection field.
-func (r *queryResolver) MyCardgroupsConnection(ctx context.Context, first *int, after *string, last *int, before *string, search *string, orderBy *model.CardgroupOrderBy, orderDirection *model.SortOrder) (*model.CardgroupConnection, error) {
+func (r *queryResolver) MyCardgroupsConnection(ctx context.Context, first *int, after *string, search *string, orderBy *model.CardgroupOrderBy, orderDirection *model.SortOrder) (*model.CardgroupConnection, error) {
 	out, err := r.CardgroupUC.ListCardgroupsByOwnerConnection(ctx, usecase.CardgroupConnectionInput{
 		First:          first,
-		Last:           last,
 		After:          after,
-		Before:         before,
 		Search:         search,
 		OrderBy:        toUsecaseOrderBy[model.CardgroupOrderBy, usecase.CardgroupOrderBy](orderBy),
 		OrderDirection: toUsecaseOrderBy[model.SortOrder, usecase.SortOrder](orderDirection),

@@ -26,7 +26,7 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockCardgroupRepoForResolver struct {
-	// FindByID is exercised when a resolver test passes after/before cursors.
+	// FindByID is exercised when a resolver test passes an after cursor.
 	findByIDResult *domain.Cardgroup
 	findByIDErr    error
 
@@ -56,8 +56,8 @@ func (m *mockCardgroupRepoForResolver) FindByID(_ context.Context, _ string) (*d
 func (m *mockCardgroupRepoForResolver) FindPageByOwner(
 	_ context.Context,
 	_ string,
-	_, _ *repository.CardgroupCursor,
-	_, _ int,
+	_ *repository.CardgroupCursor,
+	_ int,
 	_ repository.CardgroupOrderBy,
 	_ repository.SortOrder,
 	_ *string,
@@ -219,13 +219,13 @@ func TestResolver_MyCardgroupsConnection_Unauthenticated_ReturnsUnauthenticated(
 
 // TestResolver_MyCardgroupsConnection_UsecaseError_PropagatesBadUserInput
 // verifies the resolver propagates a typed GraphQL error from the usecase
-// rather than swallowing it. Triggering it: pass after AND before so the
+// rather than swallowing it. Triggering it: pass after without first so the
 // usecase rejects with BAD_USER_INPUT before reaching the repository.
 func TestResolver_MyCardgroupsConnection_UsecaseError_PropagatesBadUserInput(t *testing.T) {
 	t.Parallel()
 
 	srv := newCardgroupSrv(&mockCardgroupRepoForResolver{})
-	body := `{"query":"{ myCardgroupsConnection(first: 2, after: \"cg-a\", before: \"cg-b\") { totalCount } }"}`
+	body := `{"query":"{ myCardgroupsConnection(after: \"cg-a\") { totalCount } }"}`
 	resp := gqlRequest(t, srv, authedCtx("u1"), body)
 
 	ext := errExtensions(t, resp)
@@ -397,16 +397,14 @@ type capturingCardgroupRepo struct {
 	findPageOrderBy repository.CardgroupOrderBy
 	findPageDir     repository.SortOrder
 	findPageFirst   int
-	findPageLast    int
 	findPageAfter   *repository.CardgroupCursor
-	findPageBefore  *repository.CardgroupCursor
 }
 
 func (c *capturingCardgroupRepo) FindPageByOwner(
 	_ context.Context,
 	_ string,
-	after, before *repository.CardgroupCursor,
-	first, last int,
+	after *repository.CardgroupCursor,
+	first int,
 	orderBy repository.CardgroupOrderBy,
 	dir repository.SortOrder,
 	_ *string,
@@ -414,9 +412,7 @@ func (c *capturingCardgroupRepo) FindPageByOwner(
 	c.findPageOrderBy = orderBy
 	c.findPageDir = dir
 	c.findPageFirst = first
-	c.findPageLast = last
 	c.findPageAfter = after
-	c.findPageBefore = before
 	return c.findPageResult, c.findPageTotal, c.findPageErr
 }
 

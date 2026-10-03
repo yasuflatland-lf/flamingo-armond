@@ -24,28 +24,28 @@ extend type Query {
   """Admin-only single master cardgroup incl. DRAFT. Non-admin callers receive FORBIDDEN."""
   adminMaster(id: ID!): MasterCardgroup
   """
-  Admin-only paginated cards in a master deck. Forward (first, after) / backward (last, before).
+  Admin-only paginated cards in a master deck. Forward-only cursor pagination (first, after).
   Cursors are opaque, server-encoded values: pass an edge cursor back verbatim and never build
   one from a node id. Default page size 20; max 100.
   `first: 0` is a deliberate deviation from the Relay spec for callers that want only
   `totalCount`: no edges are fetched and `hasNextPage` / `hasPreviousPage` are both false
-  even when more rows exist. A negative `first` or `last` is clamped to 0 and therefore
+  even when more rows exist. A negative `first` is clamped to 0 and therefore
   behaves identically. Being admin-gated does not put this connection on the `users`
   page-size contract: out-of-range values are clamped here, never rejected.
   Optional case-insensitive substring search on front OR back.
   """
   adminMasterCardsConnection(
-    masterCardgroupId: ID!, first: Int, after: ID, last: Int, before: ID,
+    masterCardgroupId: ID!, first: Int, after: ID,
     search: String, orderBy: MasterCardOrderBy = POSITION, orderDirection: SortOrder = ASC
   ): MasterCardConnection!
   """
   Public paginated cards in a PUBLISHED master deck, for any authenticated caller.
-  Forward (first, after) / backward (last, before). Cursors are opaque, server-encoded
+  Forward-only cursor pagination (first, after). Cursors are opaque, server-encoded
   values: pass an edge cursor back verbatim and never build one from a node id.
   Default page size 20; max 100.
   `first: 0` is a deliberate deviation from the Relay spec for callers that want only
   `totalCount`: no edges are fetched and `hasNextPage` / `hasPreviousPage` are both false
-  even when more rows exist. A negative `first` or `last` is clamped to 0 and therefore
+  even when more rows exist. A negative `first` is clamped to 0 and therefore
   behaves identically.
   Optional case-insensitive substring search on front OR back.
   A DRAFT, card-less or unknown deck is rejected as BAD_USER_INPUT
@@ -53,7 +53,7 @@ extend type Query {
   never revealed). Anonymous callers receive UNAUTHENTICATED.
   """
   masterCardsConnection(
-    masterCardgroupId: ID!, first: Int, after: ID, last: Int, before: ID,
+    masterCardgroupId: ID!, first: Int, after: ID,
     search: String, orderBy: MasterCardOrderBy = POSITION, orderDirection: SortOrder = ASC
   ): MasterCardConnection!
   """

@@ -2,7 +2,7 @@
 
 > Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by [`docs/pagination/resolve-connection-edge-by-node-id.md`](resolve-connection-edge-by-node-id.md).
 
-Cursors are opaque to clients. The schema declares `cursor: ID!` and `pageInfo.startCursor`/`endCursor: ID`. Clients must treat these values as opaque handles and pass them back unchanged as `after`/`before` arguments — do NOT decode, inspect, or construct them.
+Cursors are opaque to clients. The schema declares `cursor: ID!` and `pageInfo.startCursor`/`endCursor: ID`. Clients must treat these values as opaque handles and pass them back unchanged as the `after` argument — do NOT decode, inspect, or construct them.
 
 Two envelopes exist. Which one a connection emits depends on whether its ordering key can change while a client is paging.
 
@@ -82,7 +82,7 @@ The usecase layer operates on raw entity UUIDs internally and never calls an enc
 
 ## Decoding site
 
-All five connections decode their incoming `after`/`before` argument through the shared `decodeCursorOrBadInput` helper in `backend/internal/usecase/page.go`, which wraps `cursor.Decode`. A malformed payload (invalid base64, or a v2 body that is not the expected JSON) is surfaced as `BAD_USER_INPUT`, matching existing UUID-parse failures.
+All five connections decode their incoming `after` argument through the shared `decodeCursorOrBadInput` helper in `backend/internal/usecase/page.go`, which wraps `cursor.Decode`. A malformed payload (invalid base64, or a v2 body that is not the expected JSON) is surfaced as `BAD_USER_INPUT`, matching existing UUID-parse failures.
 
 Where that call sits differs by envelope. The four v2 connections each own a per-aggregate method — `resolveCardCursor`, `resolveCardgroupCursor`, `resolveMasterCardCursor`, `resolveMasterCatalogCursor` — because they have post-decode work to do. The v1 admin-users connection has no such method: it calls the helper inline from `adminUserUsecase.List`, so do not grep for a `resolveAdminUserCursor`.
 

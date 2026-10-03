@@ -54,8 +54,8 @@ func (m *cardMockRepo) FindPracticeCardsForUser(_ context.Context, _ string, _ s
 func (m *cardMockRepo) FindPageByCardgroupForUser(
 	_ context.Context,
 	_, _ string,
-	_, _ *repository.CardCursor,
-	_, _ int,
+	_ *repository.CardCursor,
+	_ int,
 	_ repository.CardOrderBy,
 	_ repository.SortOrder,
 	_ *string,

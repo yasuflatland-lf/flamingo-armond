@@ -180,12 +180,10 @@ func (r *mutationResolver) MergeMasterCardgroup(ctx context.Context, input model
 }
 
 // MasterCatalog is the resolver for the masterCatalog field.
-func (r *queryResolver) MasterCatalog(ctx context.Context, first *int, after *string, last *int, before *string, search *string, orderBy *model.MasterCatalogOrderBy, orderDirection *model.SortOrder) (*model.MasterCatalogConnection, error) {
+func (r *queryResolver) MasterCatalog(ctx context.Context, first *int, after *string, search *string, orderBy *model.MasterCatalogOrderBy, orderDirection *model.SortOrder) (*model.MasterCatalogConnection, error) {
 	out, err := r.MasterCatalogUC.ListPublishedConnection(ctx, usecase.MasterCatalogConnectionInput{
 		First:          first,
-		Last:           last,
 		After:          after,
-		Before:         before,
 		Search:         search,
 		OrderBy:        toUsecaseOrderBy[model.MasterCatalogOrderBy, usecase.MasterCatalogOrderBy](orderBy),
 		OrderDirection: toUsecaseOrderBy[model.SortOrder, usecase.SortOrder](orderDirection),
@@ -197,12 +195,10 @@ func (r *queryResolver) MasterCatalog(ctx context.Context, first *int, after *st
 }
 
 // AdminMasters is the resolver for the adminMasters field.
-func (r *queryResolver) AdminMasters(ctx context.Context, first *int, after *string, last *int, before *string, search *string, orderBy *model.MasterCatalogOrderBy, orderDirection *model.SortOrder) (*model.MasterCatalogConnection, error) {
+func (r *queryResolver) AdminMasters(ctx context.Context, first *int, after *string, search *string, orderBy *model.MasterCatalogOrderBy, orderDirection *model.SortOrder) (*model.MasterCatalogConnection, error) {
 	out, err := r.MasterCatalogUC.ListAdminConnection(ctx, usecase.MasterCatalogConnectionInput{
 		First:          first,
-		Last:           last,
 		After:          after,
-		Before:         before,
 		Search:         search,
 		OrderBy:        toUsecaseOrderBy[model.MasterCatalogOrderBy, usecase.MasterCatalogOrderBy](orderBy),
 		OrderDirection: toUsecaseOrderBy[model.SortOrder, usecase.SortOrder](orderDirection),

@@ -83,19 +83,18 @@ type CardgroupRepository interface {
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Cardgroup, error)
 	// FindPageByOwner returns a window of cardgroups owned by ownerID ordered
 	// by (orderBy, id) together with the total number of rows matching the same
-	// owner + search filter. Forward paging uses (after, first); backward paging
-	// uses (before, last) and the slice is reversed in memory so the caller
-	// observes the same display order regardless of direction. An optional
-	// case-insensitive substring search filters by name (ILIKE metacharacters in
-	// the search are escaped so they match literally); the returned total honours
-	// that same filter, so it never lies under an active search. The COUNT runs
-	// before the zero-page short-circuit so a caller requesting only the total
-	// still sees a real value.
+	// owner + search filter. Paging is forward-only: at most `first` rows
+	// strictly after the `after` cursor. An optional case-insensitive substring
+	// search filters by name (ILIKE metacharacters in the search are escaped so
+	// they match literally); the returned total honours that same filter, so it
+	// never lies under an active search. The COUNT runs before the zero-page
+	// short-circuit so a caller requesting only the total still sees a real
+	// value.
 	FindPageByOwner(
 		ctx context.Context,
 		ownerID string,
-		after, before *CardgroupCursor,
-		first, last int,
+		after *CardgroupCursor,
+		first int,
 		orderBy CardgroupOrderBy,
 		dir SortOrder,
 		search *string,
@@ -160,9 +159,7 @@ func (r *cardgroupRepo) FindByName(ctx context.Context, ownerID, name string) (*
 
 // FindPageByOwner implements the cursor-paginated cardgroup list scoped to
 // ownerID. Order is (orderBy, id) so cursors stay deterministic even when
-// the primary sort column has duplicates. Backward paging inverts the SQL
-// direction, applies LIMIT, and reverses the slice in memory so the caller
-// sees the same display order as forward paging. The search argument, when
+// the primary sort column has duplicates. The search argument, when
 // non-empty after trimming, filters by `name ILIKE %escaped%` with LIKE
 // metacharacters escaped so user-supplied `%` and `_` match literally.
 // totalCount is a COUNT(*) over the SAME filtered base query, so it honours
@@ -170,14 +167,13 @@ func (r *cardgroupRepo) FindByName(ctx context.Context, ownerID, name string) (*
 func (r *cardgroupRepo) FindPageByOwner(
 	ctx context.Context,
 	ownerID string,
-	after, before *CardgroupCursor,
-	first, last int,
+	after *CardgroupCursor,
+	first int,
 	orderBy CardgroupOrderBy,
 	dir SortOrder,
 	search *string,
 ) ([]*domain.Cardgroup, int64, error) {
 	first = ClampPageSize(first)
-	last = ClampPageSize(last)
 
 	// Base query scoped to the owner (and search filter, if active). Both the
 	// COUNT and the page window derive from it so totalCount applies the same
@@ -195,31 +191,23 @@ func (r *cardgroupRepo) FindPageByOwner(
 		return nil, 0, eris.Wrap(err, "repository: cardgroup: count by owner")
 	}
 
-	if first == 0 && last == 0 {
+	if first == 0 {
 		return []*domain.Cardgroup{}, total, nil
 	}
 
-	// Backward paging executes the query with the inverted direction and
-	// reverses the slice afterwards.
-	effectiveDir, limit, cursor, reverse := paginateSetup(dir, first, last, after, before)
-
 	q := base
-	if cursor != nil {
-		clauseSQL, args, err := cardgroupCursorWhere(orderBy, effectiveDir, cursor)
+	if after != nil {
+		clauseSQL, args, err := cardgroupCursorWhere(orderBy, dir, after)
 		if err != nil {
 			return nil, 0, eris.Wrap(err, "repository: cardgroup: build cursor where")
 		}
 		q = q.Where(clauseSQL, args...)
 	}
-	q = q.Order(cardgroupOrderClause(orderBy, effectiveDir)).Limit(limit)
+	q = q.Order(cardgroupOrderClause(orderBy, dir)).Limit(first)
 
 	var rows []gormCardgroup
 	if err := q.Find(&rows).Error; err != nil {
 		return nil, 0, eris.Wrap(err, "repository: cardgroup: find page by owner")
-	}
-
-	if reverse {
-		ReverseSlice(rows)
 	}
 
 	out := make([]*domain.Cardgroup, len(rows))
