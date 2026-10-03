@@ -46,7 +46,7 @@ setError(toMessage(err));
 
 ## Worked example
 
-`frontend/src/app/admin/roles/admin-roles-client.tsx`, `handleDelete` → `scheduleDelete({ onCommitFailed })` — the branch above is the production pattern. The corresponding test (`frontend/__tests__/admin-roles-crud.test.tsx` → `shows an error banner when deleteRole returns FORBIDDEN`) pins the server message reaching the banner: the assertion is `toHaveTextContent(/cannot delete a protected role/i)`, not the generic copy.
+`frontend/src/app/admin/roles/admin-roles-client.tsx`, `handleDelete` → `scheduleDelete({ onCommitFailed })` — the branch above is the production pattern. The corresponding test (`frontend/src/app/admin/roles/admin-roles-client.test.tsx` → `keeps the server's FORBIDDEN message verbatim when deleting a system role is refused`) pins the server message reaching the banner: the assertion is `toHaveTextContent('cannot delete system role "admin"')`, not the generic copy.
 
 ## When the asymmetry does not apply
 

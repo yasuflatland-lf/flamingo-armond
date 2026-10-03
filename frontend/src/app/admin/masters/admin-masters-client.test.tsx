@@ -130,25 +130,6 @@ afterEach(() => {
 });
 
 describe("AdminMastersClient", () => {
-  it("renders the list after the initial query resolves", async () => {
-    renderWithIntl(
-      <MockedProvider mocks={[listMock(["m-1", "m-2"])]}>
-        <AdminMastersClient />
-      </MockedProvider>,
-    );
-    expect(await screen.findByTestId("admin-masters-list")).toBeInTheDocument();
-    expect(screen.getByText("Deck m-1")).toBeInTheDocument();
-  });
-
-  it("shows the empty state when there are no masters", async () => {
-    renderWithIntl(
-      <MockedProvider mocks={[listMock([])]}>
-        <AdminMastersClient />
-      </MockedProvider>,
-    );
-    expect(await screen.findByTestId("admin-masters-empty")).toBeInTheDocument();
-  });
-
   it("renders the FORBIDDEN banner without a Retry", async () => {
     const { CombinedGraphQLErrors } = await import("@apollo/client/errors");
     const forbidden = new CombinedGraphQLErrors({

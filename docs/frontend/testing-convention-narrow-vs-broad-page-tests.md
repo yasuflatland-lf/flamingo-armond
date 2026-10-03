@@ -4,7 +4,7 @@
 
 Tests live in two trees — co-located `frontend/src/**/*.test.{ts,tsx}` next to the source, and `frontend/__tests__/` for broad page tests and some narrow flow tests (e.g. `cards-pagination.test.tsx`) — using Vitest + Testing Library. Two naming conventions split responsibility:
 
-**Narrow tests** (`<feature>-<flow>.test.tsx`) isolate a single user-facing flow introduced by a feature PR. Examples: `cards-pagination.test.tsx` (pagination + fetchMore only), `cards-bulk-delete.test.tsx` (selection and delete only), `admin-users-roles.test.tsx` (assign/revoke roles only), `admin-roles-crud.test.tsx` (create/update/delete only), `src/app/admin/layout.test.tsx` (admin gate only). Each narrow test is shipped by the feature PR that introduced its flow, locking in expected behaviour.
+**Narrow tests** (`<feature>-<flow>.test.tsx`) isolate a single user-facing flow introduced by a feature PR. Examples: `cards-pagination.test.tsx` (pagination + fetchMore only), `cards-bulk-delete.test.tsx` (selection and delete only), `src/app/admin/layout.test.tsx` (admin gate only). Each narrow test is shipped by the feature PR that introduced its flow, locking in expected behaviour.
 
 **Broad tests** (`<page>.test.tsx`) guard the page-level composition and integration points across PRs. Examples: `cardgroups-list.test.tsx`, `cardgroup-edit.test.tsx`, `catalog-list.test.tsx`, `admin-roles.test.tsx`, `admin-users-list.test.tsx`. Each broad test covers initial render, empty state, and error boundaries — plus the SSR auth gate only when the page has no co-located `src/app/**/page.test.tsx` — without duplicating the narrow test's flow-specific assertions.
 
@@ -13,7 +13,7 @@ Tests live in two trees — co-located `frontend/src/**/*.test.{ts,tsx}` next to
 **Shared utilities** live under `frontend/__tests__/utils/` and `frontend/__tests__/fixtures/`:
 
 - `mock-apollo-paginated.ts` — one-mock-per-fetchMore helper with inline documentation. Provides `installApolloMockLeakSpy`, which captures `console.warn` calls matching `"No more mocked responses for the query"`; calling `assertNoLeaks()` in `afterEach` throws if any were recorded, catching double-fetch regressions.
-- `fixtures/users.ts` and `fixtures/cardgroups.ts` — shared test data.
+- `fixtures/cardgroups.ts` — shared test data.
 
 **JSDoc on shared utilities is part of the contract.** Reviewers should treat shared helpers under `__tests__/utils/` as if a new contributor will copy their usage examples verbatim — runnable copy-paste-ready snippets, not approximations. Document which fields each state-mutating knob touches (e.g. a `setError` that does not clear a previously-set user) so chained calls have predictable observed behaviour.
 
