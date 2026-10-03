@@ -330,7 +330,7 @@ func TestCardgroupRepo_FindPageByOwner_EmptyResult(t *testing.T) {
 	require.NotNil(t, got)
 	require.Empty(t, got)
 
-	total, err := repo.CountByOwner(ctx, ownerID, nil)
+	total, err := repo.CountByOwner(ctx, ownerID)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), total)
 }
@@ -352,10 +352,6 @@ func TestCardgroupRepo_FindPageByOwner_ExactMatch(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 1, "exactly one group should match the search term")
 	require.Equal(t, "Exact Match", got[0].Name.String())
-
-	total, err := repo.CountByOwner(ctx, ownerID, &search)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), total)
 }
 
 // TestCardgroupRepo_FindPageByOwner_PartialMatch confirms that a substring
@@ -384,7 +380,7 @@ func TestCardgroupRepo_FindPageByOwner_PartialMatch(t *testing.T) {
 	require.Equal(t, int64(2), total,
 		"totalCount from FindPageByOwner must honour the search filter, not the unfiltered total")
 
-	unfiltered, err := repo.CountByOwner(ctx, ownerID, nil)
+	unfiltered, err := repo.CountByOwner(ctx, ownerID)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), unfiltered, "sanity: the owner really has 3 cardgroups")
 	require.NotEqual(t, unfiltered, total,
@@ -415,10 +411,6 @@ func TestCardgroupRepo_FindPageByOwner_LIKEEscape(t *testing.T) {
 	// the pattern "%%100%%" would match "1000" too.
 	require.NotContains(t, names, "1000", "unescaped '%' would wrongly match '1000'; escaping must prevent that")
 	require.Len(t, got, 1, "only one row should match the literal '100%%' search")
-
-	total, err := repo.CountByOwner(ctx, ownerID, &search)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), total)
 }
 
 // TestCardgroupRepo_FindPageByOwner_LIKEUnderscoreEscape verifies that an
@@ -503,7 +495,7 @@ func TestCardgroupRepo_FindPageByOwner_CrossTenant(t *testing.T) {
 	}
 
 	// CountByOwner for ownerB must return exactly 2 (its own rows only).
-	totalB, err := repo.CountByOwner(ctx, ownerB, nil)
+	totalB, err := repo.CountByOwner(ctx, ownerB)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), totalB,
 		"CountByOwner must count only ownerB's cardgroups")
@@ -628,12 +620,12 @@ func TestCardgroupRepo_FindPageByOwner_Cursor_UpdatedAtTie_TupleComparison(t *te
 }
 
 // ---------------------------------------------------------------------------
-// CountByOwner — additional branches
+// CountByOwner
 // ---------------------------------------------------------------------------
 
-// TestCardgroupRepo_CountByOwner_NoSearch verifies that CountByOwner with a
-// nil search returns the unfiltered count, scoped to ownerID.
-func TestCardgroupRepo_CountByOwner_NoSearch(t *testing.T) {
+// TestCardgroupRepo_CountByOwner verifies that CountByOwner returns the
+// owner's total cardgroup count, scoped to ownerID.
+func TestCardgroupRepo_CountByOwner(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -641,27 +633,9 @@ func TestCardgroupRepo_CountByOwner_NoSearch(t *testing.T) {
 
 	insertNamedCardgroups(t, ctx, ownerID, []string{"x", "y", "z"})
 
-	total, err := repo.CountByOwner(ctx, ownerID, nil)
+	total, err := repo.CountByOwner(ctx, ownerID)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), total)
-}
-
-// TestCardgroupRepo_CountByOwner_EmptySearchTreatedAsNil verifies that an
-// all-whitespace search has no effect on the count — same as nil — because
-// searchLikePattern returns ok=false for trimmed-empty input.
-func TestCardgroupRepo_CountByOwner_EmptySearchTreatedAsNil(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	repo := repository.NewCardgroupRepository(testDB.GORM)
-
-	insertNamedCardgroups(t, ctx, ownerID, []string{"a", "b"})
-
-	whitespace := "   "
-	total, err := repo.CountByOwner(ctx, ownerID, &whitespace)
-	require.NoError(t, err)
-	require.Equal(t, int64(2), total,
-		"all-whitespace search must NOT filter the count (treated as no search)")
 }
 
 // TestCardgroupRepo_FindPageByOwner_EmptySearchTreatedAsNil verifies the
