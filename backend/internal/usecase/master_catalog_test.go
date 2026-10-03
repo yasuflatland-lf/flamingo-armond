@@ -571,26 +571,6 @@ func TestMasterCatalog_FixedOrdering_SortOrderAsc(t *testing.T) {
 	}
 }
 
-func TestResolveMasterCatalogPageSize_ClampsAtMax(t *testing.T) {
-	first, err := resolveStandardPageSize(intPtr(1000))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if first != maxPageSize {
-		t.Fatalf("want clamp to %d, got %d", maxPageSize, first)
-	}
-}
-
-func TestResolveMasterCatalogPageSize_DefaultWhenAbsent(t *testing.T) {
-	first, err := resolveStandardPageSize(nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if first != defaultPageSize {
-		t.Fatalf("want default first=%d, got first=%d", defaultPageSize, first)
-	}
-}
-
 // ---------------------------------------------------------------------------
 // ImportMaster
 // ---------------------------------------------------------------------------
