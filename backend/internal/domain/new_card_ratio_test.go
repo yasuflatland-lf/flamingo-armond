@@ -15,7 +15,6 @@ func TestParseNewCardRatio_ReducesToLowestTerms(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 4, r.Numerator())
 	require.Equal(t, 5, r.Denominator())
-	require.Equal(t, 4, r.NewShare())
 	require.Equal(t, 1, r.ReviewShare())
 }
 
@@ -56,7 +55,7 @@ func TestParseNewCardRatio_AllowsMaxDenominator(t *testing.T) {
 	// below the 80% ceiling, so it is accepted at the boundary.
 	r, err := ParseNewCardRatio(13, NewCardRatioDenMax)
 	require.NoError(t, err)
-	require.Equal(t, 13, r.NewShare())
+	require.Equal(t, 13, r.Numerator())
 	require.Equal(t, 7, r.ReviewShare())
 }
 
@@ -175,7 +174,6 @@ func TestParseNewCardRatio_AcceptsEveryDividingDenominator(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.num, r.Numerator())
 			require.Equal(t, tc.den, r.Denominator())
-			require.Equal(t, tc.num, r.NewShare())
 			require.Equal(t, tc.den-tc.num, r.ReviewShare())
 			require.Zero(t, DefaultLearnSessionSize%r.Denominator(),
 				"an accepted denominator must divide the default session")
@@ -243,7 +241,6 @@ func TestDefaultNewCardRatio_IsOneFifth(t *testing.T) {
 
 	require.Equal(t, 1, DefaultNewCardRatio.Numerator())
 	require.Equal(t, 5, DefaultNewCardRatio.Denominator())
-	require.Equal(t, 1, DefaultNewCardRatio.NewShare())
 	require.Equal(t, 4, DefaultNewCardRatio.ReviewShare())
 	require.False(t, DefaultNewCardRatio.IsZero())
 }
@@ -267,7 +264,6 @@ func TestNewCardRatio_SharesForThreeTenths(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 3, r.Numerator())
 	require.Equal(t, 10, r.Denominator())
-	require.Equal(t, 3, r.NewShare())
 	require.Equal(t, 7, r.ReviewShare())
 }
 

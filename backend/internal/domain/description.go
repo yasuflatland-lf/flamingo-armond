@@ -12,8 +12,8 @@ var ErrDescriptionTooLong = eris.Errorf("master cardgroup: description exceeds %
 // object bounded at DescriptionMax graphemes. It supports nil (no change),
 // pointer-to-"" (explicit clear), or pointer-to-non-empty (set). It embeds the
 // shared trinaryText so the trim + grapheme-cap + trinary rule and the
-// Ptr()/IsSet() accessors are single-sourced with Bio; see trinary_text.go. The
-// zero value Description{} is the no-value case (IsSet()=false).
+// Ptr() accessor are single-sourced with Bio; see trinary_text.go. The
+// zero value Description{} is the no-value case (Ptr() returns nil).
 type Description struct {
 	trinaryText
 }
@@ -29,7 +29,7 @@ func ParseDescription(s *string) (Description, error) {
 }
 
 // DescriptionFromPtr maps a nullable text column to a Description: nil → Description{}
-// (IsSet()=false, NULL column); a non-nil pointer — including pointer-to-empty —
+// (Ptr() returns nil, NULL column); a non-nil pointer — including pointer-to-empty —
 // maps to a set Description whose Ptr() returns a defensive copy with the same
 // string value. Used by repository readers to bridge a nullable text column into
 // the typed domain field.
