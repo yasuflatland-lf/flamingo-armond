@@ -16,6 +16,59 @@ import (
 	"backend/internal/textdic"
 )
 
+func TestCardImportErrorKindFromSkipKind(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		kind textdic.SkipKind
+		want CardImportErrorKind
+	}{
+		{name: "hard", kind: textdic.SkipKindHard, want: CardImportErrKindHard},
+		{name: "front only", kind: textdic.SkipKindFrontOnly, want: CardImportErrKindFrontOnly},
+		{name: "back only", kind: textdic.SkipKindBackOnly, want: CardImportErrKindBackOnly},
+		{name: "unrecognized", kind: textdic.SkipKindUnrecognized, want: CardImportErrKindUnrecognized},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := cardImportErrorKindFromSkipKind(tc.kind)
+			if err != nil || got != tc.want {
+				t.Fatalf("cardImportErrorKindFromSkipKind(%d) = %q, %v; want %q, nil", tc.kind, got, err, tc.want)
+			}
+		})
+	}
+	for _, kind := range []textdic.SkipKind{textdic.SkipKindUnknown, textdic.SkipKind(99)} {
+		got, err := cardImportErrorKindFromSkipKind(kind)
+		if got != "" || err == nil || !strings.Contains(err.Error(), "unmapped textdic skip kind") {
+			t.Errorf("cardImportErrorKindFromSkipKind(%d) = %q, %v; want empty kind and unmapped error", kind, got, err)
+		}
+	}
+}
+
+func TestCardImportErrorsFromTextdic(t *testing.T) {
+	t.Parallel()
+	t.Run("maps every field", func(t *testing.T) {
+		t.Parallel()
+		got, err := cardImportErrorsFromTextdic([]textdic.ValidationError{
+			{Line: 3, Message: "m", Kind: textdic.SkipKindFrontOnly, Snippet: "s"},
+		})
+		want := CardImportError{Line: 3, Message: "m", Kind: CardImportErrKindFrontOnly, Snippet: "s"}
+		if err != nil || len(got) != 1 || got[0] != want {
+			t.Fatalf("cardImportErrorsFromTextdic = %+v, %v; want [%+v], nil", got, err, want)
+		}
+	})
+	t.Run("unmapped kind aborts", func(t *testing.T) {
+		t.Parallel()
+		got, err := cardImportErrorsFromTextdic([]textdic.ValidationError{
+			{Line: 1, Kind: textdic.SkipKindHard},
+			{Line: 2, Kind: textdic.SkipKindUnknown},
+		})
+		if got != nil || err == nil || !strings.Contains(err.Error(), "unmapped textdic skip kind") {
+			t.Fatalf("cardImportErrorsFromTextdic = %+v, %v; want nil slice and unmapped error", got, err)
+		}
+	})
+}
+
 // ---------------------------------------------------------------------------
 // Test doubles
 // ---------------------------------------------------------------------------
