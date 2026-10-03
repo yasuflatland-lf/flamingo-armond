@@ -775,7 +775,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	logger := slog.New(slog.DiscardHandler)
 	userUC := usecase.NewUserUsecase(nil, userRepo, userRoleRepo, nil, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(db.GORM, cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(db.GORM, cardgroupRepo, stubAdminChecker{isAdmin: true})
 	cardUC := usecase.NewCardUsecase(cardRepo, cardgroupRepo, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
@@ -2011,10 +2011,10 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 	logger := slog.New(slog.DiscardHandler)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM, logger)
 	userUC := usecase.NewUserUsecase(nil, userRepo, userRoleRepo, nil, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(db.GORM, cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(db.GORM, cardgroupRepo, stubAdminChecker{isAdmin: true})
 	cardUC := usecase.NewCardUsecase(cardRepo, cardgroupRepo, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
-	lastViewedUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
+	lastViewedUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	e := newRouter(
 		resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, lastViewedUC, nil, nil, nil, nil, nil, nil, nil),

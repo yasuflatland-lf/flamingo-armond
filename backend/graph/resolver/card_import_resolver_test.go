@@ -40,7 +40,7 @@ func (m *mockUserRoleRepository) HasRoleTx(_ context.Context, _ *gorm.DB, _ stri
 // newCardImportOnlySrv builds a server with only CardImportUsecase wired; only
 // the validateCardImport resolver is exercised here.
 func newCardImportOnlySrv() *handler.Server {
-	cardImportUC := usecase.NewCardImportUsecaseWithTx(cardImportResolverCardgroupRepo{}, nil, nil, newDiscardLogger())
+	cardImportUC := usecase.NewCardImportUsecaseWithTx(cardImportResolverCardgroupRepo{}, nil, nil)
 	r := resolver.NewResolver(nil, nil, nil, nil, cardImportUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})

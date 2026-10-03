@@ -133,7 +133,6 @@ func newLearnSrv(cardRepo *cardMockRepo, cgRepo *cardMockCGRepo) *handler.Server
 		20,
 		100,
 		nil,
-		newDiscardLogger(),
 	)
 	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, learnUC, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))

@@ -199,7 +199,7 @@ func fetchWalkPage(t *testing.T, uc CardgroupUsecase, after *string) *CardgroupC
 }
 
 func newWalkUsecase(repo *cursorWalkRepo) CardgroupUsecase {
-	return NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	return NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 }
 
 // setUpdatedAt moves a row's ordering key, simulating an edit made from another

@@ -180,7 +180,7 @@ func cgDefaultAdmin() *mockAdminChecker {
 func TestCardgroupUsecase_Cardgroup_Anonymous(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	_, err := uc.Cardgroup(anonCtx(), "cg1")
 
@@ -193,7 +193,7 @@ func TestCardgroupUsecase_Cardgroup_Anonymous(t *testing.T) {
 func TestCardgroupUsecase_Cardgroup_NotFound_ReturnsNilNoError(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{findErr: repository.ErrNotFound}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	got, err := uc.Cardgroup(cgAuthedCtx("user-1"), "cg-missing")
 
@@ -209,7 +209,7 @@ func TestCardgroupUsecase_Cardgroup_OwnerSeesOwn(t *testing.T) {
 	t.Parallel()
 	cg := &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "user-1", Name: "Mine"}
 	repo := &mockCardgroupRepository{findResult: cg}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	got, err := uc.Cardgroup(cgAuthedCtx("user-1"), "cg1")
 
@@ -225,7 +225,7 @@ func TestCardgroupUsecase_Cardgroup_FindByID_PropagatesCancelled(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockCardgroupRepository{findErr: context.Canceled}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	cardgroup, err := uc.Cardgroup(cgAuthedCtx("user-1"), "cg1")
 
@@ -247,7 +247,7 @@ func TestCardgroupUsecase_Cardgroup_NonOwner_ReturnsNilNoError(t *testing.T) {
 	t.Parallel()
 	cg := &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "user-1", Name: "Mine"}
 	repo := &mockCardgroupRepository{findResult: cg}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	got, err := uc.Cardgroup(cgAuthedCtx("user-2"), "cg1")
 
@@ -264,7 +264,7 @@ func TestCardgroupUsecase_Cardgroup_NonOwner_ReturnsNilNoError(t *testing.T) {
 func TestCardgroupUsecase_Create_Anonymous(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	_, err := uc.Create(anonCtx(), CreateCardgroupInput{Name: "Hello"})
 
@@ -277,7 +277,7 @@ func TestCardgroupUsecase_Create_Anonymous(t *testing.T) {
 func TestCardgroupUsecase_Create_EmptyName_ValidationVariant(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: ""})
 
@@ -301,7 +301,7 @@ func TestCardgroupUsecase_Create_EmptyName_ValidationVariant(t *testing.T) {
 func TestCardgroupUsecase_Create_TooLong_ValidationVariant(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: strings.Repeat("a", 101)})
 
@@ -325,7 +325,7 @@ func TestCardgroupUsecase_Create_TooLong_ValidationVariant(t *testing.T) {
 func TestCardgroupUsecase_Create_Trims(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "  Hello  "})
 
@@ -346,7 +346,7 @@ func TestCardgroupUsecase_Create_Trims(t *testing.T) {
 func TestCardgroupUsecase_Create_Success_AssignsOwnerToCaller(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "My Group"})
 
@@ -381,7 +381,7 @@ func TestCardgroupUsecase_Create_Success_AssignsOwnerToCaller(t *testing.T) {
 func TestCardgroupUsecase_Create_DeletedOwner_ReturnsUnauthenticated(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{createErr: repository.ErrCardgroupOwnerNotFound}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	_, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "My Group"})
 
@@ -393,7 +393,7 @@ func TestCardgroupUsecase_Create_DeletedOwner_ReturnsUnauthenticated(t *testing.
 func TestCardgroupUsecase_Create_RepoError_Wrapped(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{createErr: errors.New("db died")}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	_, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "My Group"})
 
@@ -408,7 +408,7 @@ func TestCardgroupUsecase_Create_RepoError_Wrapped(t *testing.T) {
 func TestCardgroupUsecase_Create_GeneralUser_UnderLimit_Succeeds(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{countResult: 4}
-	uc := NewCardgroupUsecase(nil, repo, &mockAdminChecker{isAdmin: false}, newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, &mockAdminChecker{isAdmin: false})
 
 	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "Fifth"})
 
@@ -432,7 +432,7 @@ func TestCardgroupUsecase_Create_GeneralUser_UnderLimit_Succeeds(t *testing.T) {
 func TestCardgroupUsecase_Create_GeneralUser_AtLimit_Rejected(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{countResult: domain.GeneralUserCardgroupLimit}
-	uc := NewCardgroupUsecase(nil, repo, &mockAdminChecker{isAdmin: false}, newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, &mockAdminChecker{isAdmin: false})
 
 	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "Sixth"})
 
@@ -463,7 +463,7 @@ func TestCardgroupUsecase_Create_GeneralUser_AtLimit_Rejected(t *testing.T) {
 func TestCardgroupUsecase_Create_GeneralUser_AboveLimit_Rejected(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{countResult: 6}
-	uc := NewCardgroupUsecase(nil, repo, &mockAdminChecker{isAdmin: false}, newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, &mockAdminChecker{isAdmin: false})
 
 	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "Seventh"})
 
@@ -490,7 +490,7 @@ func TestCardgroupUsecase_Create_Admin_SkipsCounting(t *testing.T) {
 	// reject a general user, an admin is never subjected to it.
 	repo := &mockCardgroupRepository{countResult: domain.GeneralUserCardgroupLimit}
 	admin := &mockAdminChecker{isAdmin: true}
-	uc := NewCardgroupUsecase(nil, repo, admin, newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, admin)
 
 	outcome, err := uc.Create(cgAuthedCtx("admin-1"), CreateCardgroupInput{Name: "AdminGroup"})
 
@@ -515,7 +515,7 @@ func TestCardgroupUsecase_Create_IsAdminError_Wrapped(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
 	admin := &mockAdminChecker{err: errors.New("auth: lookup failed")}
-	uc := NewCardgroupUsecase(nil, repo, admin, newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, admin)
 
 	_, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "Group"})
 
@@ -534,7 +534,7 @@ func TestCardgroupUsecase_Create_IsAdminError_Wrapped(t *testing.T) {
 func TestCardgroupUsecase_Create_CountByOwnerError_Wrapped(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{countErr: errors.New("db: count failed")}
-	uc := NewCardgroupUsecase(nil, repo, &mockAdminChecker{isAdmin: false}, newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, &mockAdminChecker{isAdmin: false})
 
 	_, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "Group"})
 
@@ -562,7 +562,7 @@ func TestCardgroupUsecase_Create_GeneralUser_LocksCountsAndCreatesOnOneTx(t *tes
 	t.Parallel()
 	sentinel := &gorm.DB{}
 	repo := &mockCardgroupRepository{countResult: 4}
-	uc := newCardgroupUsecaseWithTx(sentinelTxRunner(sentinel), repo, &mockAdminChecker{isAdmin: false}, newTestLogger())
+	uc := newCardgroupUsecaseWithTx(sentinelTxRunner(sentinel), repo, &mockAdminChecker{isAdmin: false})
 
 	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "Fifth"})
 
@@ -596,7 +596,7 @@ func TestCardgroupUsecase_Create_IsAdminRunsBeforeTheSingleTx(t *testing.T) {
 	adminInTx := false
 	admin := &mockAdminChecker{isAdmin: false, onCall: func() { adminInTx = inTx }}
 	repo := &mockCardgroupRepository{countResult: 4}
-	uc := newCardgroupUsecaseWithTx(runner, repo, admin, newTestLogger())
+	uc := newCardgroupUsecaseWithTx(runner, repo, admin)
 
 	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "Fifth"})
 
@@ -619,7 +619,7 @@ func TestCardgroupUsecase_Create_IsAdminRunsBeforeTheSingleTx(t *testing.T) {
 func TestCardgroupUsecase_Create_GeneralUser_AtLimit_NoInsertOnTx(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{countResult: 5}
-	uc := newCardgroupUsecaseWithTx(sentinelTxRunner(&gorm.DB{}), repo, &mockAdminChecker{isAdmin: false}, newTestLogger())
+	uc := newCardgroupUsecaseWithTx(sentinelTxRunner(&gorm.DB{}), repo, &mockAdminChecker{isAdmin: false})
 
 	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "Sixth"})
 
@@ -639,7 +639,7 @@ func TestCardgroupUsecase_Create_GeneralUser_AtLimit_NoInsertOnTx(t *testing.T) 
 func TestCardgroupUsecase_Create_LockError_Wrapped(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{lockErr: errors.New("db: lock failed")}
-	uc := NewCardgroupUsecase(nil, repo, &mockAdminChecker{isAdmin: false}, newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, &mockAdminChecker{isAdmin: false})
 
 	_, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "Group"})
 
@@ -657,7 +657,7 @@ func TestCardgroupUsecase_Create_IsAdminCancelled_IdentityPreserved(t *testing.T
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
 	admin := &mockAdminChecker{err: context.Canceled}
-	uc := NewCardgroupUsecase(nil, repo, admin, newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, admin)
 
 	_, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "Group"})
 
@@ -686,7 +686,7 @@ func TestCardgroupUsecase_Create_LimitAndInvalidName_NameValidationFirst(t *test
 	t.Parallel()
 	repo := &mockCardgroupRepository{countResult: domain.GeneralUserCardgroupLimit}
 	admin := &mockAdminChecker{isAdmin: false}
-	uc := NewCardgroupUsecase(nil, repo, admin, newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, admin)
 
 	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: ""})
 
@@ -721,7 +721,7 @@ func TestCardgroupUsecase_Create_LimitAndInvalidName_NameValidationFirst(t *test
 func TestCardgroupUsecase_Update_Anonymous(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	_, err := uc.Update(anonCtx(), "cg1", UpdateCardgroupInput{Name: ptr("New")})
 
@@ -735,7 +735,7 @@ func TestCardgroupUsecase_Update_NonOwner_Unauthenticated(t *testing.T) {
 	t.Parallel()
 	cg := &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "user-1", Name: "Original"}
 	repo := &mockCardgroupRepository{findResult: cg}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	_, err := uc.Update(cgAuthedCtx("user-2"), "cg1", UpdateCardgroupInput{Name: ptr("Hacked")})
 
@@ -748,7 +748,7 @@ func TestCardgroupUsecase_Update_NonOwner_Unauthenticated(t *testing.T) {
 func TestCardgroupUsecase_Update_NotFound_Unauthenticated(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{findErr: repository.ErrNotFound}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	_, err := uc.Update(cgAuthedCtx("user-1"), "cg-missing", UpdateCardgroupInput{Name: ptr("Anything")})
 
@@ -763,7 +763,7 @@ func TestCardgroupUsecase_Update_NameChange_Success(t *testing.T) {
 	existing := &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "user-1", Name: "Old"}
 	updated := &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "user-1", Name: "New"}
 	repo := &mockCardgroupRepository{findResult: existing, updateResult: updated}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	outcome, err := uc.Update(cgAuthedCtx("user-1"), "cg1", UpdateCardgroupInput{Name: ptr("New")})
 
@@ -802,7 +802,7 @@ func TestCardgroupUsecase_Update_EmptyPatch_NoWrite(t *testing.T) {
 	t.Parallel()
 	existing := &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "user-1", Name: "Original"}
 	repo := &mockCardgroupRepository{findResult: existing}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	outcome, err := uc.Update(cgAuthedCtx("user-1"), "cg1", UpdateCardgroupInput{Name: nil})
 
@@ -824,7 +824,7 @@ func TestCardgroupUsecase_Update_EmptyName_ValidationVariant(t *testing.T) {
 	t.Parallel()
 	existing := &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "user-1", Name: "Original"}
 	repo := &mockCardgroupRepository{findResult: existing}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	outcome, err := uc.Update(cgAuthedCtx("user-1"), "cg1", UpdateCardgroupInput{Name: ptr("")})
 
@@ -849,7 +849,7 @@ func TestCardgroupUsecase_Update_TooLongName_ValidationVariant(t *testing.T) {
 	t.Parallel()
 	existing := &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "user-1", Name: "Original"}
 	repo := &mockCardgroupRepository{findResult: existing}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	outcome, err := uc.Update(cgAuthedCtx("user-1"), "cg1", UpdateCardgroupInput{Name: ptr(strings.Repeat("a", 101))})
 
@@ -877,7 +877,7 @@ func TestCardgroupUsecase_Update_RepoError_InfraChannel(t *testing.T) {
 		findResult: existing,
 		updateErr:  errors.New("db: connection lost"),
 	}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	_, err := uc.Update(cgAuthedCtx("user-1"), "cg1", UpdateCardgroupInput{Name: ptr("New")})
 
@@ -896,7 +896,7 @@ func TestCardgroupUsecase_Update_RepoError_InfraChannel(t *testing.T) {
 func TestCardgroupUsecase_Update_FindByIDCancelled_IdentityPreserved(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{findErr: context.Canceled}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	_, err := uc.Update(cgAuthedCtx("user-1"), "cg1", UpdateCardgroupInput{Name: ptr("New")})
 
@@ -914,7 +914,7 @@ func TestCardgroupUsecase_Update_FindByIDCancelled_IdentityPreserved(t *testing.
 func TestCardgroupUsecase_Delete_Anonymous(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	err := uc.Delete(anonCtx(), "cg1")
 
@@ -928,7 +928,7 @@ func TestCardgroupUsecase_Delete_NonOwner_Unauthenticated(t *testing.T) {
 	t.Parallel()
 	cg := &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "user-1", Name: "Mine"}
 	repo := &mockCardgroupRepository{findResult: cg}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	err := uc.Delete(cgAuthedCtx("user-2"), "cg1")
 
@@ -944,7 +944,7 @@ func TestCardgroupUsecase_Delete_NonOwner_Unauthenticated(t *testing.T) {
 func TestCardgroupUsecase_Delete_NotFound_Unauthenticated(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{findErr: repository.ErrNotFound}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	err := uc.Delete(cgAuthedCtx("user-1"), "cg-missing")
 
@@ -958,7 +958,7 @@ func TestCardgroupUsecase_Delete_Success(t *testing.T) {
 	t.Parallel()
 	cg := &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "user-1", Name: "Mine"}
 	repo := &mockCardgroupRepository{findResult: cg}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	err := uc.Delete(cgAuthedCtx("user-1"), "cg1")
 
@@ -979,7 +979,7 @@ func TestCardgroupUsecase_Delete_Success(t *testing.T) {
 func TestCardgroupUsecase_Delete_FindByIDCancelled_IdentityPreserved(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{findErr: context.Canceled}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	err := uc.Delete(cgAuthedCtx("user-1"), "cg1")
 
@@ -1002,7 +1002,7 @@ func TestCardgroupUsecase_Delete_FindByIDCancelled_IdentityPreserved(t *testing.
 func TestCardgroupUC_ConnectionGuards_AfterAlone(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	after := "cursor-a"
 	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("user-1"), CardgroupConnectionInput{
@@ -1028,7 +1028,7 @@ func TestCardgroupUC_Connection_CursorFromOtherOwner_BadUserInput(t *testing.T) 
 	// The cursor ID maps to a cardgroup owned by owner-A, not owner-B.
 	foreignCG := &domain.Cardgroup{ID: domain.CardgroupID("cg-owner-a"), OwnerID: "owner-a", Name: "Foreign"}
 	repo := &mockCardgroupRepository{findResult: foreignCG}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	first := 5
 	after := "cg-owner-a"
@@ -1062,7 +1062,7 @@ func TestCardgroupUC_Connection_FirstPage(t *testing.T) {
 		findPageResult: cgs,
 		findPageTotal:  3,
 	}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	first := 2
 	out, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("user-1"), CardgroupConnectionInput{
@@ -1107,7 +1107,7 @@ func TestCardgroupUC_Connection_Search(t *testing.T) {
 		findPageResult: matched,
 		findPageTotal:  1,
 	}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	first := 10
 	search := "app"
@@ -1139,7 +1139,7 @@ func TestCardgroupUC_Connection_Search(t *testing.T) {
 func TestCardgroupUC_Connection_Anonymous(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	first := 10
 	_, err := uc.ListCardgroupsByOwnerConnection(anonCtx(), CardgroupConnectionInput{First: &first})
@@ -1162,7 +1162,7 @@ func TestCardgroupUC_Connection_FirstPage_AssertFirstPlusOne(t *testing.T) {
 		{ID: "cg3", OwnerID: "u1", Name: "C"},
 	}
 	repo := &mockCardgroupRepository{findPageResult: cgs, countResult: 3}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	first := 2
 	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("u1"), CardgroupConnectionInput{
@@ -1188,7 +1188,7 @@ func TestCardgroupUC_Connection_FixedOrdering_UpdatedAtDesc(t *testing.T) {
 		findPageResult: []*domain.Cardgroup{},
 		countResult:    0,
 	}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	first := 5
 	out, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("u1"), CardgroupConnectionInput{
@@ -1213,7 +1213,7 @@ func TestCardgroupUC_Connection_DefaultPageSize_WhenAllNil(t *testing.T) {
 		findPageResult: []*domain.Cardgroup{},
 		countResult:    0,
 	}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("u1"), CardgroupConnectionInput{})
 	if err != nil {
@@ -1235,7 +1235,7 @@ func TestCardgroupUC_Connection_PageSize_Clamp(t *testing.T) {
 		findPageResult: []*domain.Cardgroup{},
 		countResult:    0,
 	}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	first := 200 // above maxPageSize=100
 	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("u1"), CardgroupConnectionInput{
@@ -1261,7 +1261,7 @@ func TestCardgroupUC_Connection_PageSize_NegativeFirst(t *testing.T) {
 		findPageResult: []*domain.Cardgroup{},
 		countResult:    0,
 	}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	first := -5
 	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("u1"), CardgroupConnectionInput{
@@ -1287,7 +1287,7 @@ func TestCardgroupUC_Connection_CursorHydration_UpdatedAt(t *testing.T) {
 		findPageResult: []*domain.Cardgroup{},
 		countResult:    0,
 	}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	first := 5
 	after := "cg-cursor"
@@ -1314,7 +1314,7 @@ func TestCardgroupUC_Connection_CursorHydration_NotFound_BadUserInput(t *testing
 	t.Parallel()
 
 	repo := &mockCardgroupRepository{findErr: repository.ErrNotFound}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	first := 5
 	after := "cg-missing"
@@ -1331,7 +1331,7 @@ func TestCardgroupUC_Connection_CursorHydration_RepoError_Internal(t *testing.T)
 	t.Parallel()
 
 	repo := &mockCardgroupRepository{findErr: errors.New("db dead")}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	first := 5
 	after := "cg-cursor"
@@ -1350,7 +1350,7 @@ func TestCardgroupUC_Connection_FindPageRepoError_Internal(t *testing.T) {
 	repo := &mockCardgroupRepository{
 		findPageErr: errors.New("db dead"),
 	}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	first := 5
 	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("u1"), CardgroupConnectionInput{
@@ -1369,7 +1369,7 @@ func TestCardgroupUC_Connection_FindPageRepoError_Internal(t *testing.T) {
 func TestResolveCardgroupCursor_NilCursor(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	c, err := uc.(*cardgroupUsecase).resolveCardgroupCursor(
 		context.Background(),
@@ -1402,7 +1402,7 @@ func TestResolveCardgroupCursor_OtherOwner(t *testing.T) {
 
 	foreignCG := &domain.Cardgroup{ID: domain.CardgroupID("cg-x"), OwnerID: "owner-a", Name: "Foreign"}
 	repo := &mockCardgroupRepository{findResult: foreignCG}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	id := "cg-x"
 	_, err := uc.(*cardgroupUsecase).resolveCardgroupCursor(
@@ -1429,7 +1429,7 @@ func TestResolveCardgroupCursor_MalformedV1_ReturnsBadUserInput(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	malformed := "v1:!!!not-base64!!!"
 	_, err := uc.(*cardgroupUsecase).resolveCardgroupCursor(
@@ -1446,7 +1446,7 @@ func TestResolveCardgroupCursor_V1EncodedID(t *testing.T) {
 
 	cg := &domain.Cardgroup{ID: domain.CardgroupID("cg-cursor"), OwnerID: "u1", Name: "X"}
 	repo := &mockCardgroupRepository{findResult: cg}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	// Encode the raw ID into the v1 envelope the way the resolver would.
 	encoded := "v1:Y2ctY3Vyc29y" // base64.RawURLEncoding.EncodeToString([]byte("cg-cursor"))
@@ -1579,7 +1579,7 @@ func TestLockCardgroupQuotaTx_ContextErrors_IdentityPreserved(t *testing.T) {
 func TestCardgroupUsecase_Create_CountByOwnerCancelled_IdentityPreserved(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{countErr: context.Canceled}
-	uc := NewCardgroupUsecase(nil, repo, &mockAdminChecker{isAdmin: false}, newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, &mockAdminChecker{isAdmin: false})
 
 	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "Group"})
 
@@ -1615,7 +1615,7 @@ func TestCardgroupUsecase_Create_CountByOwnerCancelled_IdentityPreserved(t *test
 func TestCardgroupUC_Connection_CursorFindByIDCancelled(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{findErr: context.Canceled}
-	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin(), newTestLogger())
+	uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
 
 	first := 5
 	after := "cur-1"

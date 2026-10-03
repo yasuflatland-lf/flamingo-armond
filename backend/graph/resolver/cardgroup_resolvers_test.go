@@ -107,7 +107,7 @@ func newCardgroupSrv(repo usecase.CardgroupRepository) *handler.Server {
 // to supply a custom AdminChecker stub. Use this when a test needs to exercise
 // the cardgroup-limit code path (isAdmin: false).
 func newCardgroupSrvWithAdmin(repo usecase.CardgroupRepository, admin usecase.AdminChecker) *handler.Server {
-	cgUC := usecase.NewCardgroupUsecase(nil, repo, admin, newDiscardLogger())
+	cgUC := usecase.NewCardgroupUsecase(nil, repo, admin)
 	r := resolver.NewResolver(nil, cgUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
