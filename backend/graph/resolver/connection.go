@@ -99,9 +99,8 @@ func toCardConnectionModel(ctx context.Context, out *usecase.CardConnectionOutpu
 	if out == nil {
 		return &model.CardConnection{Edges: []*model.CardEdge{}, PageInfo: &model.PageInfo{}}
 	}
-	// The card listing's DEFAULT ordering key is the immutable ID, but its opt-in
-	// DUE / UPDATED_AT orderings both move, so its cursors must carry the
-	// ordering-key value captured at serve time.
+	// Cards are fixed at (id ASC), so the key is immutable and OrderKeys is empty;
+	// the connection stays on v2 so all four ordered connections share one encoder.
 	enc := orderedCursorEncoder(out.Ordering, out.OrderKeys)
 	edges := buildEdges(ctx, out.Cards, "toCardConnectionModel", enc,
 		toCardModel,
