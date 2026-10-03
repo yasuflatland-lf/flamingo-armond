@@ -46,7 +46,7 @@ models:
         resolver: true
 ```
 
-gqlgen generates a `cardResolver.UserCardState(ctx, obj)` method. The struct field stays in the generated model for JSON marshalling but is left `nil` by the `toCardModel` mapper; the resolver populates it lazily via the per-viewer UserCardFSRS DataLoader. Any resolver that calls a loader must classify the error before returning — bare loader errors lack `extensions.code`. `classifyLoaderErr` maps a cancelled or deadline-exceeded context to `CANCELLED` and everything else to a labelled `INTERNAL` (`backend/graph/resolver/card.resolvers.go`):
+gqlgen generates a `cardResolver.UserCardState(ctx, obj)` method. The struct field stays in the generated model for JSON marshalling but is left `nil` by the `toCardModel` mapper; the resolver populates it lazily via the per-viewer UserCardFSRS DataLoader. Any resolver that calls a loader must classify the error before returning — bare loader errors lack `extensions.code`. `classifyLoaderErr` (`backend/graph/resolver/helpers.go`) maps a cancelled or deadline-exceeded context to `CANCELLED` and everything else to a labelled `INTERNAL`. The resolver in `backend/graph/resolver/card.resolvers.go`:
 
 ```go
 func (r *cardResolver) UserCardState(ctx context.Context, obj *model.Card) (*model.UserCardState, error) {
@@ -69,7 +69,7 @@ func (r *cardResolver) UserCardState(ctx context.Context, obj *model.Card) (*mod
 
 ### Resolver field-name collision
 
-For every type that has at least one `resolver: true` field, gqlgen generates a `<Type>() <Type>Resolver` method on `*Resolver`; whether a query shares the type's name does not matter. The `*Resolver` struct therefore cannot have a field named after such a type. `Card` has field resolvers (`cardgroup`, `userCardState`, `cefrLevel`), so `card.resolvers.go` carries `func (r *Resolver) Card() generated.CardResolver`, and a struct field named `Card` would collide with it. Name the struct field `CardUC` (or another non-colliding name), as `resolver.go` does. Adding the first `resolver: true` field to any other type creates the same constraint for that type's name.
+For every type that has at least one field resolver (`resolver: true` in `gqlgen.yml` or `@goField(forceResolver: true)` in the schema), gqlgen generates a `<Type>() <Type>Resolver` method on `*Resolver`; whether a query shares the type's name does not matter. The `*Resolver` struct therefore cannot have a field named after such a type. `Card` has field resolvers (`cardgroup`, `userCardState`, `cefrLevel`), so `card.resolvers.go` carries `func (r *Resolver) Card() generated.CardResolver`, and a struct field named `Card` would collide with it. Name the struct field `CardUC` (or another non-colliding name), as `resolver.go` does. `User` is in the same position through both forms (`roles`, `lastViewedCardgroup` and `lastSignInAt` in `gqlgen.yml`; `learnDisplayMode` and `newCardRatio` via `@goField`), hence `UserUC`. Adding the first field resolver of either form to any other type creates the same constraint for that type's name.
 
 ### `Time` scalar binding
 
@@ -177,7 +177,7 @@ resolvers := resolver.NewResolver(
 ```
 
 Adding a new feature: build a usecase, add a field to `Resolver` (and a
-parameter to `NewResolver`), wire it in `run()`. See [Resolver field-name collision](#resolver-field-name-collision) if the entity name matches a query name.
+parameter to `NewResolver`), wire it in `run()`. See [Resolver field-name collision](#resolver-field-name-collision) if the entity's GraphQL type has (or will get) a field resolver.
 
 ### Aggregate boundary policy
 
@@ -417,18 +417,24 @@ q := e.Group("/query", authMW, loader.Middleware(
 `UserCardFSRS` loader scoped to that viewer.
 
 A fresh `Loaders` instance is created for every request so the per-request
-cache never bleeds across authenticated users. Resolvers pull it out of `ctx`:
+cache never bleeds across authenticated users. Resolvers pull it out of `ctx`
+(`cardResolver.Cardgroup` in `backend/graph/resolver/card.resolvers.go`):
 
 ```go
-cg, err := loader.For(ctx).Cardgroup.Load(ctx, cardgroupID)()
+loaders, gqlErr := loadersOrInternal(ctx)
+if gqlErr != nil {
+    return nil, gqlErr
+}
+cg, err := loaders.Cardgroup.Load(ctx, obj.CardgroupID)()
+if err != nil {
+    return nil, classifyLoaderErr(ctx, err, "resolver: cardgroup")
+}
 ```
 
-`loader.For` returns `nil` when the middleware was not installed; dereferencing
-the returned pointer (`.Cardgroup.Load(...)`) will then panic. Keep the middleware
-wired to every route that touches a loader. Once a resolver actually calls a
-loader in production, consider replacing `For` with a `MustFor` variant (panics
-with a clear message on nil) or a `(loaders, error)` two-value return so
-middleware misconfiguration is caught explicitly rather than as a nil-dereference.
+`loader.For` returns `nil` when the middleware was not installed. Resolvers
+therefore go through `loadersOrInternal` (`backend/graph/resolver/helpers.go`),
+which turns a missing middleware into an `INTERNAL` error instead of a nil
+dereference. Keep the middleware wired to every route that touches a loader.
 
 **Library:** `github.com/graph-gophers/dataloader/v7` (generics edition).
 The batch function receives `[]string` keys and must return
@@ -450,7 +456,7 @@ as the input keys. dataloader/v7 enforces this 1:1 invariant at runtime.
 1. **Return `[]*domain.Role{}` (empty slice) — not `nil` — for a key with zero children.** A `nil` slice marshals to JSON `null`, while a non-nullable list field (`roles: [Role!]!`) requires `[]`. Returning `nil` produces a `null` payload that the gqlgen runtime then rejects as a non-nullable violation, surfaced as `INTERNAL` rather than the empty list the schema actually expects.
 2. **Drive the batch with one SQL JOIN, not N individual lookups.** The `FindByUserIDs` repository method runs `SELECT ... FROM user_roles JOIN roles ... WHERE user_id IN (?)` and groups results into `map[userID][]*Role` in Go. A naive batch function that loops `for _, id := range ids { repo.FindByUserID(id) }` defeats the entire point of DataLoader — it produces N round-trips per request despite the loader interface looking correct from the outside.
 
-**Loader error wrapping:** Every resolver that calls `loaders.X.Load(ctx, key)()` must wrap the returned error via `gqlerr.Internal(ctx, err)` (or another typed gqlerr) before returning. Bare loader errors have no `extensions.code` and leak internal details.
+**Loader error wrapping:** Every resolver that calls `loaders.X.Load(ctx, key)()` must classify the returned error via `classifyLoaderErr(ctx, err, "resolver: <field>")` (`backend/graph/resolver/helpers.go`) before returning. It maps a cancelled or deadline-exceeded context to `CANCELLED` and wraps everything else in a labelled `INTERNAL`; a bare loader error has no `extensions.code` and leaks internal details.
 
 **Transactional usecases must not call DataLoader:** DataLoaders are request-scoped and use the normal repository DB handle, not the `*gorm.DB` transaction handle passed into `db.Transaction(...)`. A usecase that needs read-your-writes consistency must call transaction-aware repository methods such as `FindByIDForUpdateTx`, `UpsertTx`, or `UpsertManyTx` directly with the `tx` argument. Keep `loader.For(ctx)` out of `internal/usecase/*` files.
 
