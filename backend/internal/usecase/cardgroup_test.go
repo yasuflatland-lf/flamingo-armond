@@ -1008,11 +1008,12 @@ func TestCardgroupUsecase_Delete_FindByIDCancelled_IdentityPreserved(t *testing.
 }
 
 // ---------------------------------------------------------------------------
-// ListCardgroupsByOwnerConnection — mixed-direction guard tests
+// ListCardgroupsByOwnerConnection — after-requires-first guard
 // ---------------------------------------------------------------------------
 
-// TestCardgroupUC_ConnectionGuards_AfterAlone verifies that after without a
-// companion first value is rejected as ambiguous.
+// TestCardgroupUC_ConnectionGuards_AfterAlone verifies that an after cursor
+// without a positive first is rejected with BAD_USER_INPUT on "after" before any
+// repository call.
 func TestCardgroupUC_ConnectionGuards_AfterAlone(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
@@ -1023,7 +1024,10 @@ func TestCardgroupUC_ConnectionGuards_AfterAlone(t *testing.T) {
 		After: &after,
 	})
 
-	assertValidationError(t, err, "after", "")
+	assertValidationError(t, err, "after", "after requires first")
+	if len(repo.findPageCalls) != 0 {
+		t.Fatalf("page query must not run, got %d calls", len(repo.findPageCalls))
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1308,8 +1312,8 @@ func TestCardgroupUC_Connection_DefaultOrderBy_WhenNil(t *testing.T) {
 }
 
 // TestCardgroupUC_Connection_DefaultPageSize_WhenAllNil verifies that when
-// neither first nor last is supplied (and neither is a cursor), the
-// resolveStandardPageSize default of 20 is used.
+// neither first nor after is supplied, the resolveStandardPageSize default of
+// 20 is used.
 func TestCardgroupUC_Connection_DefaultPageSize_WhenAllNil(t *testing.T) {
 	t.Parallel()
 

@@ -71,7 +71,7 @@ type v2Body struct {
 // Encode wraps a raw entity ID in the v1 opaque cursor envelope.
 // The encoded form is "v1:" + RawURLBase64(id) — padding-free and URL-safe.
 // Clients must treat the result as an opaque string and pass it back unchanged
-// as an after/before pagination argument.
+// as the `after` pagination argument.
 //
 // Use Encode for connections whose ordering key is immutable (the admin-users
 // listing orders by created_at, for example). Connections that order by a

@@ -12,10 +12,10 @@ import (
 )
 
 // validateRelayArgs rejects an `after` cursor without a positive `first` as
-// BAD_USER_INPUT on "after": the repository trusts its inputs, so the cursor
-// would otherwise be served at a page size the client never asked for. A
-// request with neither argument is the legitimate first page. Call it before
-// any repository access; it returns nil when the arguments are coherent.
+// BAD_USER_INPUT on "after". The repository trusts its inputs: an omitted first
+// would serve the cursor at a default page size the client never asked for, and
+// a first <= 0 would silently drop it. A request with neither argument is the
+// legitimate first page. Call it before any repository access.
 func validateRelayArgs(first *int, after *string) error {
 	if after != nil && (first == nil || *first <= 0) {
 		return ucerr.NewValidationError("after", "after requires first")

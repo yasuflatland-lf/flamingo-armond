@@ -169,8 +169,7 @@ func newAdminUserWithDeps(
 // the absolute cap.
 //
 // An `after` without a positive `first` is rejected with BAD_USER_INPUT before
-// the repository is touched, so callers never get a silently re-interpreted
-// page boundary.
+// the repository is touched (see validateRelayArgs).
 func (u *adminUserUsecase) List(
 	ctx context.Context,
 	first *int,

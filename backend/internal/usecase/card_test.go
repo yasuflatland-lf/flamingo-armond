@@ -703,6 +703,29 @@ func TestCardUsecase_ListCardsByCardgroupConnection_InvalidOrderBy(t *testing.T)
 	assertValidationError(t, err, "orderBy", "")
 }
 
+// TestCardUsecase_ListCardsByCardgroupConnection_AfterWithoutFirst pins the
+// resolveRelayPage wiring: a resolvable after cursor with no first is rejected
+// with BAD_USER_INPUT on "after" and the page query never runs.
+func TestCardUsecase_ListCardsByCardgroupConnection_AfterWithoutFirst(t *testing.T) {
+	t.Parallel()
+	cardRepo := &mockCardRepository{}
+	uc := NewCardUsecase(cardRepo,
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg1"), OwnerID: "u1"}},
+		nil, newTestLogger(),
+	)
+	ob := CardOrderByID
+	after := cursor.Encode("card-abc")
+	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
+		CardgroupID: "cg1",
+		After:       &after,
+		OrderBy:     &ob,
+	})
+	assertValidationError(t, err, "after", "after requires first")
+	if cardRepo.capturedFindPage.first != 0 || cardRepo.capturedFindPage.after != nil {
+		t.Fatalf("page query must not run, got %+v", cardRepo.capturedFindPage)
+	}
+}
+
 func TestCardUsecase_ListCardsByCardgroupConnection_DefaultsAndPaging(t *testing.T) {
 	t.Parallel()
 

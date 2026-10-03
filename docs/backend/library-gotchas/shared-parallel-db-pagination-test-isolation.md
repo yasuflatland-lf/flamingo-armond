@@ -8,8 +8,8 @@ rows coexist in that one database for the duration of the run. A repository
 query that is **not** scoped to the test's own rows therefore sees every other
 parallel test's rows too.
 
-This is a silent trap specifically for a **no-cursor** `first=N` / `last=N`
-pagination call. Such a call returns the `N` globally-ordered rows for the whole
+This is a silent trap specifically for a **no-cursor** `first=N` pagination
+call. Such a call returns the `N` globally-ordered rows for the whole
 table, not the test's rows. When another parallel test has inserted rows that
 sort ahead of this test's fixtures (e.g. a lower `sort_order`, an earlier
 `created_at`), the page comes back full of other tests' rows and the test's own

@@ -359,11 +359,9 @@ func (u *cardgroupUsecase) Delete(ctx context.Context, id string) error {
 // ListCardgroupsByOwnerConnection paginates the authenticated caller's
 // cardgroups with forward-only Relay-style cursors (first, after). An `after`
 // without a positive `first` is rejected with BAD_USER_INPUT before the
-// repository is touched so the caller never gets a silently re-interpreted
-// page boundary. Cursors that
-// reference a cardgroup belonging to another owner are also rejected as
-// BAD_USER_INPUT (returning UNAUTHENTICATED would leak existence of other
-// users' cardgroups).
+// repository is touched (see validateRelayArgs). Cursors that reference a
+// cardgroup belonging to another owner are also rejected as BAD_USER_INPUT
+// (returning UNAUTHENTICATED would leak existence of other users' cardgroups).
 func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 	ctx context.Context, in CardgroupConnectionInput,
 ) (*CardgroupConnectionOutput, error) {
