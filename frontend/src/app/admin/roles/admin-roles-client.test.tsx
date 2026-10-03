@@ -235,6 +235,9 @@ describe("AdminRolesClient", () => {
       {
         request: { query: AdminDeleteRoleDocument, variables: { id: CUSTOM_ROLE.id } },
         result: deleteResult,
+        // Not the default of 1: MockLink would turn a second fire into "No more
+        // mocked responses" and never reach deleteResult, hiding a double commit.
+        maxUsageCount: 2,
       },
     ];
 
@@ -259,6 +262,12 @@ describe("AdminRolesClient", () => {
     vi.advanceTimersByTime(5100);
     vi.useRealTimers();
     await waitFor(() => expect(deleteResult).toHaveBeenCalledTimes(1));
+    // Settle past MockLink's 20-49 ms response delay so a second fire or a
+    // rollback through onCommitFailed would be visible below.
+    await act(() => new Promise((r) => setTimeout(r, 100)));
+    expect(deleteResult).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("admin-roles-error")).toBeNull();
+    expect(screen.queryByTestId(`admin-role-row-${CUSTOM_ROLE.id}`)).toBeNull();
     expect(screen.getByTestId(`admin-role-row-${ADMIN_ROLE.id}`)).toBeInTheDocument();
   });
 });
