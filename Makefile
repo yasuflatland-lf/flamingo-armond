@@ -91,7 +91,7 @@ codegen: ## Run gqlgen (backend) and graphql-codegen (frontend)
 	pnpm --filter frontend codegen
 
 codegen-yacc: ## Regenerate the goyacc-driven dictionary parser
-	cd backend && go tool goyacc -o internal/textdic/parser.go -p yy internal/textdic/grammar.y
+	cd backend && go tool goyacc -v /dev/null -o internal/textdic/parser.go -p yy internal/textdic/grammar.y
 	rm -f backend/y.output y.output
 
 ##@ Test & clean
