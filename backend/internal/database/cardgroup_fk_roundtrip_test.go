@@ -42,9 +42,9 @@ func TestSwipeRecordsCardgroupFKDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back nine migrations newest-first:
-	// drop_swipe_records_user_cardgroup_index, reset_legacy_new_card_ratio,
-	// revoke_client_writes,
+	// Step back ten migrations newest-first:
+	// drop_user_card_fsrs_last_rating, drop_swipe_records_user_cardgroup_index,
+	// reset_legacy_new_card_ratio, revoke_client_writes,
 	// lower_new_card_ratio_default, tighten_new_card_ratio_check,
 	// realign_fsrs_snapshot_columns_to_v4,
 	// widen_updated_at_triggers_to_insert,
@@ -52,7 +52,7 @@ func TestSwipeRecordsCardgroupFKDownUpRoundtrip(t *testing.T) {
 	// The Steps(1) below
 	// re-applies only the cardgroup FK; the t.Cleanup restores the rest. Bump
 	// this count when adding migrations after add_cardgroup_fk_to_swipe_records.
-	if err := m.Steps(-9); err != nil {
+	if err := m.Steps(-10); err != nil {
 		t.Fatalf("migrate down cardgroup fk migration: %v", err)
 	}
 	if _, ok := swipeRecordsCardgroupFKDeleteRule(t, ctx, sqlDB); ok {

@@ -60,7 +60,6 @@ func TestFSRSScheduler_Apply_OutputAlwaysSatisfiesDomainGuards(t *testing.T) {
 		require.GreaterOrEqual(t, out.Due.Sub(now), 24*time.Hour, failureMessage, i, state, rating, now)
 		require.Equal(t, domain.FSRSPhaseReview, out.Phase, failureMessage, i, state, rating, now)
 		require.True(t, out.LastReview.Equal(now), failureMessage, i, state, rating, now)
-		require.Equal(t, rating, out.LastRating, failureMessage, i, state, rating, now)
 	}
 
 	require.Equal(t, iterations, executed, "property sweep must execute every iteration")

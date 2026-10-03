@@ -113,7 +113,6 @@ func TestMergeCaseFold_PreservesCardIDAndFSRS(t *testing.T) {
 		Lapses:        1,
 		Phase:         domain.FSRSPhaseReview,
 		LastReview:    studiedAt,
-		LastRating:    domain.RatingGood,
 	}
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return fsrsRepo.UpsertTx(ctx, tx, state)

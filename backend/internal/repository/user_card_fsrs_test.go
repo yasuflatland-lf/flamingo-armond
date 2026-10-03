@@ -38,7 +38,6 @@ func TestUserCardFSRSRepository_UpsertTxAndFindByUserAndCardIDs(t *testing.T) {
 	require.Len(t, got, 1)
 	require.Equal(t, 1, got[card.ID].State.Reps)
 	require.True(t, got[card.ID].State.Due.Equal(first.State.Due))
-	require.Equal(t, domain.Rating(0), got[card.ID].State.LastRating)
 	require.Equal(t, first.UpdatedAt, got[card.ID].UpdatedAt,
 		"UpsertTx must copy the database-assigned updated_at back into the aggregate")
 	require.NotEqual(t, time.Unix(1, 0).UTC(), first.UpdatedAt)
@@ -47,7 +46,6 @@ func TestUserCardFSRSRepository_UpsertTxAndFindByUserAndCardIDs(t *testing.T) {
 	second.State.Reps = 2
 	second.State.Lapses = 1
 	second.State.Due = now.Add(24 * time.Hour)
-	second.State.LastRating = domain.RatingEasy
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return ucsRepo.UpsertTx(ctx, tx, second)
 	}))
@@ -58,32 +56,8 @@ func TestUserCardFSRSRepository_UpsertTxAndFindByUserAndCardIDs(t *testing.T) {
 	require.Equal(t, 2, got[card.ID].State.Reps)
 	require.Equal(t, 1, got[card.ID].State.Lapses)
 	require.True(t, got[card.ID].State.Due.Equal(second.State.Due))
-	require.Equal(t, domain.RatingEasy, got[card.ID].State.LastRating)
 	require.Equal(t, second.UpdatedAt, got[card.ID].UpdatedAt,
 		"conflict updates must return the database-assigned updated_at")
-}
-
-func TestUserCardFSRSRepository_FindByUserAndCardIDs_InvalidLastRating(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	cg := insertCardgroup(t, ctx, ownerID)
-	cardRepo := repository.NewCardRepository(testDB.GORM)
-	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
-
-	card := newCard(cg.ID, "invalid-last-rating", "back")
-	require.NoError(t, cardRepo.Create(ctx, card))
-
-	now := time.Now().UTC().Truncate(time.Microsecond)
-	_, err := sqlDBHandle(t).ExecContext(ctx,
-		`INSERT INTO public.user_card_fsrs
-				(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, last_rating, scheduled_days)
-			 VALUES ($1, $2, $3, $4, 6.9, 5.0, 1, 0, $4, 9, 1)`,
-		ownerID, card.ID, int(domain.FSRSPhaseReview), now)
-	require.NoError(t, err, "seed a row with an invalid last_rating value via raw SQL")
-
-	_, err = ucsRepo.FindByUserAndCardIDs(ctx, ownerID, []string{card.ID})
-	require.ErrorContains(t, err, "repository: invalid last_rating value 9 for card "+card.ID)
 }
 
 // TestUserCardFSRSRepository_FindByUserAndCardIDs_InvalidStabilityOrDifficulty
@@ -132,8 +106,8 @@ func TestUserCardFSRSRepository_FindByUserAndCardIDs_InvalidStabilityOrDifficult
 			now := time.Now().UTC().Truncate(time.Microsecond)
 			_, err := sqlDBHandle(t).ExecContext(ctx,
 				`INSERT INTO public.user_card_fsrs
-						(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, last_rating, scheduled_days)
-					 VALUES ($1, $2, $3, $4, `+tc.stability+`::double precision, `+tc.difficulty+`::double precision, 1, 0, $4, NULL, 1)`,
+						(user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, scheduled_days)
+					 VALUES ($1, $2, $3, $4, `+tc.stability+`::double precision, `+tc.difficulty+`::double precision, 1, 0, $4, 1)`,
 				ownerID, card.ID, int(domain.FSRSPhaseReview), now)
 			require.NoError(t, err, "seed an out-of-range scheduling row via raw SQL")
 
