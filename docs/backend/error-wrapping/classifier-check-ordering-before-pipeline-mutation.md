@@ -72,4 +72,4 @@ The generalisation: whenever a classifier or policy decision iterates an input s
 
 Two preconditions for the `len`-equality check to be meaningful:
 - The input slice is deduplicated upstream (`normalizeAdminEditRoleIDs` filters duplicates and empty strings before the lookup). If the input can contain duplicates, the map will be shorter even when every ID resolves.
-- The partial-map return convention is documented on the repository method. `FindByIDsTx` returns a map keyed on found IDs; unknown IDs are absent. Without this contract, the `len` check is a fragile heuristic.
+- The lookup returns a partial map. `FindByIDsTx` delegates to `findRolesByIDs` in `backend/internal/repository/role.go`, which filters out non-canonical IDs before the query and returns only found rows, keyed by their stored IDs. Unknown and malformed IDs are absent from the map. Without this contract, the `len` check is a fragile heuristic.
