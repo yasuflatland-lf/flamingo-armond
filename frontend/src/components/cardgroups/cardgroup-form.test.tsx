@@ -113,6 +113,15 @@ describe("<CardgroupForm>", () => {
     expect(msg.className).toMatch(/text-destructive/);
   });
 
+  it("validationError with field !== name renders nothing under the name field", () => {
+    renderForm({
+      defaultValues: { name: "x" },
+      validationError: { field: "description", message: "description is too long" },
+    });
+
+    expect(screen.queryByText("description is too long")).not.toBeInTheDocument();
+  });
+
   it("reports isDirty via onDirtyChange when the name field is edited", async () => {
     const user = userEvent.setup();
     const onDirtyChange = vi.fn();

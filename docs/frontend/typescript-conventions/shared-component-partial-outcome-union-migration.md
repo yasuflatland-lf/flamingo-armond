@@ -157,5 +157,7 @@ change cannot quietly break either caller:
 
 `frontend/src/components/cardgroups/cardgroup-form.test.tsx` covered all three
 cases while `updateCardgroup` was on the allowlist. Once the form completed
-step 5, the two `error`-driven cases had nothing left to exercise, and the
-file keeps only the `validationError.field === "name"` case.
+step 5, the `error` prop and its parsed-field fallback were removed, so the
+file now pins the two arms of the remaining ternary:
+`validationError.field === "name"` renders the typed server message, and any
+other field renders nothing under the name input.

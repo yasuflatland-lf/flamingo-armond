@@ -17,7 +17,7 @@ type CardgroupFormProps = {
   submit: (values: { name: string }) => Promise<void>;
   /** Parent passes Apollo mutation `loading` state. */
   submitting?: boolean;
-  /** Typed InputValidationError variant surfaced by outcome-union mutations. */
+  /** Typed InputValidationError from outcome-union mutations; only field === "name" is rendered, other fields are ignored. */
   validationError?: { field: string; message: string } | null;
   /** Extra controls rendered next to the submit button (e.g. Delete button on Edit page). */
   secondarySlot?: React.ReactNode;
