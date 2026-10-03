@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"backend/internal/database"
+	"backend/internal/domain"
 )
 
 // swipeRecordsAfterStateColumns maps each post-swipe column that
@@ -23,8 +24,9 @@ var swipeRecordsAfterStateColumns = map[string]string{
 }
 
 // TestDropSwipeRecordsAfterState_DownUpRoundtrip pins the rollback shape: the
-// down restores the seven columns as NOT NULL with no default even though a row
-// already exists, and difficulty survives both directions.
+// down restores the seven columns as NOT NULL with no default over an existing
+// row, difficulty survives both directions, and the restored state is a valid
+// FSRSPhase, which the pre-drop mapper requires on every read.
 //
 // t.Parallel() is intentionally absent: migrations change global suite state.
 func TestDropSwipeRecordsAfterState_DownUpRoundtrip(t *testing.T) {
@@ -72,6 +74,7 @@ func TestDropSwipeRecordsAfterState_DownUpRoundtrip(t *testing.T) {
 		requireColumnNotNull(t, ctx, sqlDB, "swipe_records", column)
 		requireRestoredAfterStateColumnShape(t, ctx, sqlDB, column, dataType)
 	}
+	requireRestoredSwipeRecordStateValid(t, ctx, sqlDB, swipeID)
 	requireSwipeRecordRowCount(t, ctx, sqlDB, swipeID, 1)
 	requireSwipeRecordDifficulty(t, ctx, sqlDB, swipeID, 5.0)
 
@@ -103,6 +106,19 @@ func requireRestoredAfterStateColumnShape(t *testing.T, ctx context.Context, sql
 	}
 	if columnDefault.Valid {
 		t.Fatalf("swipe_records.%s column_default = %q, want NULL", column, columnDefault.String)
+	}
+}
+
+func requireRestoredSwipeRecordStateValid(t *testing.T, ctx context.Context, sqlDB *sql.DB, swipeID string) {
+	t.Helper()
+	var got int
+	if err := sqlDB.QueryRowContext(ctx,
+		`SELECT state FROM public.swipe_records WHERE id = $1`,
+		swipeID).Scan(&got); err != nil {
+		t.Fatalf("read restored swipe_records.state: %v", err)
+	}
+	if !domain.FSRSPhase(got).IsValid() {
+		t.Fatalf("restored swipe_records.state = %d is not a valid domain.FSRSPhase; the pre-drop mapper would reject every rolled-back row", got)
 	}
 }
 
