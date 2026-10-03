@@ -3,6 +3,7 @@ package resolver_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -198,6 +199,26 @@ func TestResolver_DeleteCards_Anonymous(t *testing.T) {
 	code := errCode(t, resp)
 	if code != "UNAUTHENTICATED" {
 		t.Fatalf("expected UNAUTHENTICATED, got %q", code)
+	}
+}
+
+// TestResolver_DeleteCards_RepoError_Internal verifies that a repository
+// failure surfaces as INTERNAL rather than as data.deleteCards == 0.
+func TestResolver_DeleteCards_RepoError_Internal(t *testing.T) {
+	t.Parallel()
+
+	srv := newCardSrv(&cardMockRepo{deleteByIDsErr: errors.New("db died")}, &cardMockCGRepo{})
+
+	// A valid UUID is required: a malformed id short-circuits before the repo.
+	body := `{"query":"mutation { deleteCards(ids: [\"018f0000-0000-7000-8000-000000000001\"]) }"}`
+	resp := gqlRequest(t, srv, authedCtx("u1"), body)
+
+	if code := errCode(t, resp); code != "INTERNAL" {
+		t.Fatalf("expected INTERNAL, got %q; response: %v", code, resp)
+	}
+	data, _ := resp["data"].(map[string]any)
+	if got, ok := data["deleteCards"].(float64); ok {
+		t.Fatalf("expected no numeric data.deleteCards on repo error, got %v", got)
 	}
 }
 
