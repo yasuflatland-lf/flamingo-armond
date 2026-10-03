@@ -30,12 +30,11 @@ export type CatalogImportButtonProps = {
 };
 
 /**
- * The Import CTA shared by `CatalogDeckTile` (full-width tile button) and
- * `CatalogListItem` (right-aligned inline button). Owns the three-state label
- * derivation and the imported / in-flight / idle rendering so the two layouts
- * cannot drift. The locale-independent `data-testid` (`catalog-import-{id}`) lets
+ * The Import CTA on the /catalog deck-detail header (`CatalogDeckHeader`). Owns the
+ * three-state label derivation and the imported / in-flight / idle rendering.
+ * The locale-independent `data-testid` (`catalog-import-{id}`) lets
  * e2e — which runs in the ja-JP locale — target the button without depending on
- * translated copy. The only per-layout difference is `className`.
+ * translated copy.
  *
  * Invariant: `importing` and `imported` are never both true; if they are, the
  * imported (done) state wins and the in-flight label is not shown.
