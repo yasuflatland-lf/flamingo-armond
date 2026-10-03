@@ -224,7 +224,7 @@ func toRoleModels(ctx context.Context, roles []*domain.Role) []*model.Role {
 // (an absent argument keeps the usecase default). Both enums share a `~string`
 // underlying type, so the cast is a direct value conversion. Callers supply the
 // type arguments explicitly, e.g.
-// toUsecaseOrderBy[model.CardOrderBy, usecase.CardOrderBy](args.OrderBy).
+// toUsecaseOrderBy[model.CardgroupOrderBy, usecase.CardgroupOrderBy](args.OrderBy).
 func toUsecaseOrderBy[M ~string, U ~string](o *M) *U {
 	if o == nil {
 		return nil

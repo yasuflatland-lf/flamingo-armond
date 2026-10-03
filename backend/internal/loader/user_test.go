@@ -188,14 +188,13 @@ func (r *countingCardRepo) FindByIDs(ctx context.Context, ids []string) (map[str
 	}
 	return r.findByIDs(ctx, ids)
 }
-func (r *countingCardRepo) FindPageByCardgroupForUser(
-	_ context.Context, _, _ string,
+func (r *countingCardRepo) FindPageByCardgroup(
+	_ context.Context, _ string,
 	_ *repository.CardCursor,
 	_ int,
-	_ repository.CardOrderBy, _ repository.SortOrder,
 	_ *string,
-) ([]*domain.Card, int64, map[string]time.Time, error) {
-	panic("countingCardRepo.FindPageByCardgroupForUser not configured")
+) ([]*domain.Card, int64, error) {
+	panic("countingCardRepo.FindPageByCardgroup not configured")
 }
 func (r *countingCardRepo) Create(_ context.Context, _ *domain.Card) error {
 	panic("countingCardRepo.Create not configured")

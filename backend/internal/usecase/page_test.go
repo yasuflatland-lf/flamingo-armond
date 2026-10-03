@@ -468,27 +468,27 @@ func TestOrderKeyCodecs(t *testing.T) {
 func TestResolveOrderByColumn(t *testing.T) {
 	t.Parallel()
 
-	allow := map[CardOrderBy]repository.CardOrderBy{
-		CardOrderByID:        repository.CardOrderByID,
-		CardOrderByCreatedAt: repository.CardOrderByCreatedAt,
-		CardOrderByUpdatedAt: repository.CardOrderByUpdatedAt,
-		CardOrderByDue:       repository.CardOrderByDue,
+	allow := map[CardgroupOrderBy]repository.CardgroupOrderBy{
+		CardgroupOrderByID:        repository.CardgroupOrderByID,
+		CardgroupOrderByCreatedAt: repository.CardgroupOrderByCreatedAt,
+		CardgroupOrderByUpdatedAt: repository.CardgroupOrderByUpdatedAt,
+		CardgroupOrderByName:      repository.CardgroupOrderByName,
 	}
 
-	createdAt := CardOrderByCreatedAt
-	due := CardOrderByDue
-	bogus := CardOrderBy("BOGUS")
+	createdAt := CardgroupOrderByCreatedAt
+	name := CardgroupOrderByName
+	bogus := CardgroupOrderBy("BOGUS")
 	descDir := SortOrderDesc
 	bogusDir := SortOrder("SIDEWAYS")
 
 	t.Run("nil orderBy -> default column and direction", func(t *testing.T) {
 		t.Parallel()
-		field, dir, err := resolveOrderByColumn(nil, nil, allow, repository.CardOrderByID, repository.SortAsc)
+		field, dir, err := resolveOrderByColumn(nil, nil, allow, repository.CardgroupOrderByID, repository.SortAsc)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if field != repository.CardOrderByID {
-			t.Fatalf("field: got %q, want %q", field, repository.CardOrderByID)
+		if field != repository.CardgroupOrderByID {
+			t.Fatalf("field: got %q, want %q", field, repository.CardgroupOrderByID)
 		}
 		if dir != repository.SortAsc {
 			t.Fatalf("dir: got %q, want %q", dir, repository.SortAsc)
@@ -497,23 +497,23 @@ func TestResolveOrderByColumn(t *testing.T) {
 
 	t.Run("mapped enum -> repository column", func(t *testing.T) {
 		t.Parallel()
-		field, _, err := resolveOrderByColumn(&createdAt, nil, allow, repository.CardOrderByID, repository.SortAsc)
+		field, _, err := resolveOrderByColumn(&createdAt, nil, allow, repository.CardgroupOrderByID, repository.SortAsc)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if field != repository.CardOrderByCreatedAt {
-			t.Fatalf("field: got %q, want %q", field, repository.CardOrderByCreatedAt)
+		if field != repository.CardgroupOrderByCreatedAt {
+			t.Fatalf("field: got %q, want %q", field, repository.CardgroupOrderByCreatedAt)
 		}
 	})
 
 	t.Run("mapped enum + explicit direction", func(t *testing.T) {
 		t.Parallel()
-		field, dir, err := resolveOrderByColumn(&due, &descDir, allow, repository.CardOrderByID, repository.SortAsc)
+		field, dir, err := resolveOrderByColumn(&name, &descDir, allow, repository.CardgroupOrderByID, repository.SortAsc)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if field != repository.CardOrderByDue {
-			t.Fatalf("field: got %q, want %q", field, repository.CardOrderByDue)
+		if field != repository.CardgroupOrderByName {
+			t.Fatalf("field: got %q, want %q", field, repository.CardgroupOrderByName)
 		}
 		if dir != repository.SortDesc {
 			t.Fatalf("dir: got %q, want %q", dir, repository.SortDesc)
@@ -522,7 +522,7 @@ func TestResolveOrderByColumn(t *testing.T) {
 
 	t.Run("unmapped enum -> orderBy validation error", func(t *testing.T) {
 		t.Parallel()
-		field, dir, err := resolveOrderByColumn(&bogus, nil, allow, repository.CardOrderByID, repository.SortAsc)
+		field, dir, err := resolveOrderByColumn(&bogus, nil, allow, repository.CardgroupOrderByID, repository.SortAsc)
 		var ve *ucerr.ValidationError
 		if !errors.As(err, &ve) {
 			t.Fatalf("want ValidationError, got %v", err)
@@ -537,7 +537,7 @@ func TestResolveOrderByColumn(t *testing.T) {
 
 	t.Run("invalid direction -> orderDirection validation error", func(t *testing.T) {
 		t.Parallel()
-		field, dir, err := resolveOrderByColumn(&createdAt, &bogusDir, allow, repository.CardOrderByID, repository.SortAsc)
+		field, dir, err := resolveOrderByColumn(&createdAt, &bogusDir, allow, repository.CardgroupOrderByID, repository.SortAsc)
 		var ve *ucerr.ValidationError
 		if !errors.As(err, &ve) {
 			t.Fatalf("want ValidationError, got %v", err)

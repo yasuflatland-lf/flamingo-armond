@@ -94,14 +94,6 @@ union UpdateCardResult =
     UpdateCardSuccess
   | InputValidationError
 
-"""Field to order Cards by in paginated queries. DUE uses the viewer's due state."""
-enum CardOrderBy {
-  ID
-  CREATED_AT
-  UPDATED_AT
-  DUE
-}
-
 """One element in a CardConnection."""
 type CardEdge {
   """
@@ -168,14 +160,13 @@ extend type Query {
   behaves identically.
   Optional case-insensitive substring search on front OR back (ILIKE partial match).
   Nil or empty string skips the search filter.
+  Cards are returned in insertion order (`id ASC`); the ordering is fixed.
   """
   cardsByCardgroupConnection(
     cardgroupId: ID!,
     first: Int,
     after: ID,
-    search: String,
-    orderBy: CardOrderBy = ID,
-    orderDirection: SortOrder = ASC
+    search: String
   ): CardConnection!
 }
 
