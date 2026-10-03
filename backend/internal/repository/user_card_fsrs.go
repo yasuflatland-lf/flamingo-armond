@@ -80,8 +80,8 @@ func (r *userCardFSRSRepo) UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.
 // guards used by FindByUserAndCardIDs. Stability is the load-bearing one on this
 // path: domain.ClassifyMastery is fed exclusively from this projection, and a
 // NaN stability falls through both of its comparisons and is reported as the
-// Learned mastery tier, besides breaking JSON marshalling of the GraphQL Float
-// StrugglingCard.stability feeds. FSRSStat carries no difficulty column, so
+// Learned mastery tier; it also makes service.TopStruggling's stability tie-break
+// input-order dependent. FSRSStat carries no difficulty column, so
 // there is nothing to check for it here.
 func (r *userCardFSRSRepo) ListFSRSStatesByUser(ctx context.Context, userID string) ([]domain.FSRSStat, error) {
 	var rows []domain.FSRSStat
@@ -211,9 +211,9 @@ func userCardFSRSLastRating(state domain.FSRSState) *int {
 // Every column that the domain constrains is re-checked here rather than trusted:
 // the table carries no CHECK constraints, so a row edited outside the application
 // is the one way an out-of-range value can reach the domain. Rejecting is
-// deliberate — a corrupted stability or difficulty would otherwise reach the
-// UserCardState GraphQL Floats it feeds and break JSON marshalling of the whole
-// response, which is harder to diagnose than a failed read. Reps and Lapses are
+// deliberate — non-finite or below-floor stability or difficulty on a non-New
+// card would otherwise make go-fsrs reject the next swipe. FSRSScheduler.Apply
+// panics far from the corrupt row, making diagnosis harder. Reps and Lapses are
 // also checked because the scheduler widens them to uint64, where a negative
 // persisted value becomes an enormous unsigned count; ScheduledDays is checked
 // because it is never negative by construction. The sibling
@@ -240,8 +240,8 @@ func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
 	// Reps and Lapses are unvalidated by the table (no CHECK constraints) and are
 	// widened to uint64 on the way into go-fsrs, where a negative value becomes an
 	// enormous unsigned count that the scheduler's own Reps++ then wraps to 0 —
-	// silently destroying the counter with no error. ScheduledDays feeds the
-	// GraphQL Int and the statistics, and is never negative by construction.
+	// silently destroying the counter with no error. ScheduledDays is widened to
+	// uint64 the same way and is never negative by construction.
 	if row.Reps < 0 || row.Lapses < 0 || row.ScheduledDays < 0 {
 		return nil, eris.Errorf("repository: negative counter for card %s (reps=%d lapses=%d scheduled_days=%d)",
 			row.CardID, row.Reps, row.Lapses, row.ScheduledDays)
