@@ -90,19 +90,6 @@ func (m *mockRoleByUserIDRepo) ListByUserIDs(_ context.Context, ids []string) (m
 	return out, nil
 }
 
-func (m *mockRoleByUserIDRepo) ListByUser(_ context.Context, userID string) ([]*domain.Role, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.listCallCount++
-	m.lastIDs = []string{userID}
-	roles := m.byUserID[userID]
-	if roles == nil {
-		return []*domain.Role{}, nil
-	}
-	return roles, nil
-}
-
 func (m *mockRoleByUserIDRepo) AcquireAdminRoleLockTx(_ context.Context, _ *gorm.DB) error {
 	return nil
 }
@@ -329,9 +316,7 @@ func TestAdminUserResolver_Roles_BatchesIntoOneQueryPerPage(t *testing.T) {
 	}
 
 	// The N+1 kill: exactly one batched ListByUserIDs call for the whole page,
-	// not one per row. mockRoleByUserIDRepo.ListByUser also increments
-	// listCallCount, so this simultaneously proves the non-batched path is
-	// never taken.
+	// not one per row.
 	if got := repo.listCallCount; got != 1 {
 		t.Fatalf("expected exactly 1 batched roles query per page, got %d (keys: %v)", got, repo.lastIDs)
 	}
