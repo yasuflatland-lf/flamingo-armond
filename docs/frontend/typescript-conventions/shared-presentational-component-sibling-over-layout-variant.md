@@ -68,4 +68,7 @@ are siblings: both unmask the `CatalogDeckFields` fragment
 for the `/onboarding/start` chooser. When `/catalog` moved from a card grid to a
 list, the tile was left in place and the row was added as a sibling; the tile later
 moved under `onboarding/start/` once the catalog stopped rendering it. Neither
-component takes a layout-variant prop.
+component takes a layout-variant prop. The row later dropped the action half of the
+contract (`importing` / `onImport`) when Import moved to `/catalog/[id]`, so the pair
+now illustrates only the shared-fragment half; the action-prop and duplicated-control
+bullets under "What" describe the original split.

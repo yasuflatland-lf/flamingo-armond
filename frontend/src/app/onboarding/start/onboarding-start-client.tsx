@@ -16,7 +16,7 @@ import { useSeedDefaultStarters } from "./use-seed-default-starters";
 
 // `id` is read at this level (React keys, per-cardgroup `importing` state); the
 // rest of the fields travel as a masked `CatalogDeckFields` ref that `OnboardingDeckTile`
-// unmasks — the same fragment the /catalog gallery feeds it.
+// unmasks — the same fragment the /catalog list row (`CatalogListItem`) unmasks.
 type MasterCardgroupNode = { id: string } & FragmentType<typeof CatalogDeckFieldsFragment>;
 
 interface OnboardingStartClientProps {

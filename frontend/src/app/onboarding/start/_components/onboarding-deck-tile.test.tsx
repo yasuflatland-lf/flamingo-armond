@@ -56,6 +56,14 @@ describe("<OnboardingDeckTile>", () => {
     expect(btn).toHaveTextContent("Setting up your environment...");
   });
 
+  it("renders the idle Start label and stays enabled", () => {
+    renderWithIntl(<OnboardingDeckTile node={FULL_NODE} importing={false} onImport={vi.fn()} />);
+
+    const btn = screen.getByTestId("onboarding-deck-m-1");
+    expect(btn).toBeEnabled();
+    expect(btn).toHaveTextContent("Start learning");
+  });
+
   it("calls onImport with the deck id when the idle button is clicked", async () => {
     const user = userEvent.setup();
     const onImport = vi.fn();
