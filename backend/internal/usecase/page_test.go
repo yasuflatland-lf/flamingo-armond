@@ -7,61 +7,8 @@ import (
 	"time"
 
 	"backend/internal/cursor"
-	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
 )
-
-// TestResolveSortDir covers the shared SortOrder -> repository.SortOrder helper
-// extracted from the four resolve*OrderBy functions: nil falls back to the
-// caller-supplied default, ASC/DESC map to repository.SortAsc/SortDesc, and an
-// out-of-range value is a field-level orderDirection validation error.
-func TestResolveSortDir(t *testing.T) {
-	t.Parallel()
-
-	asc := SortOrderAsc
-	desc := SortOrderDesc
-	bogus := SortOrder("SIDEWAYS")
-
-	tests := []struct {
-		name    string
-		dir     *SortOrder
-		def     repository.SortOrder
-		want    repository.SortOrder
-		wantErr bool
-	}{
-		{name: "nil -> default ASC", dir: nil, def: repository.SortAsc, want: repository.SortAsc},
-		{name: "nil -> default DESC", dir: nil, def: repository.SortDesc, want: repository.SortDesc},
-		{name: "ASC -> repository.SortAsc", dir: &asc, def: repository.SortDesc, want: repository.SortAsc},
-		{name: "DESC -> repository.SortDesc", dir: &desc, def: repository.SortAsc, want: repository.SortDesc},
-		{name: "invalid -> validation error", dir: &bogus, def: repository.SortAsc, wantErr: true},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			got, err := resolveSortDir(tc.dir, tc.def)
-			if tc.wantErr {
-				var ve *ucerr.ValidationError
-				if !errors.As(err, &ve) {
-					t.Fatalf("want ValidationError, got %v", err)
-				}
-				if ve.Field != "orderDirection" {
-					t.Fatalf("want field orderDirection, got %q", ve.Field)
-				}
-				if got != "" {
-					t.Fatalf("want empty direction on error, got %q", got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tc.want {
-				t.Fatalf("got %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
 
 func TestTrimAndDetect(t *testing.T) {
 	t.Parallel()
@@ -458,97 +405,6 @@ func TestOrderKeyCodecs(t *testing.T) {
 	if _, err := decodeIntOrderKey("not-an-int"); !errors.Is(err, errCursorKeyMalformed) {
 		t.Fatalf("want errCursorKeyMalformed, got %v", err)
 	}
-}
-
-// TestResolveOrderByColumn covers the generic table-driven orderBy resolver each
-// aggregate's resolve*OrderBy now wraps: nil orderBy yields the default column,
-// every mapped enum yields its repository column, an unmapped enum is a
-// BAD_USER_INPUT validation error, and the direction half is delegated to
-// resolveSortDir (an invalid direction surfaces its orderDirection error).
-func TestResolveOrderByColumn(t *testing.T) {
-	t.Parallel()
-
-	allow := map[CardgroupOrderBy]repository.CardgroupOrderBy{
-		CardgroupOrderByID:        repository.CardgroupOrderByID,
-		CardgroupOrderByCreatedAt: repository.CardgroupOrderByCreatedAt,
-		CardgroupOrderByUpdatedAt: repository.CardgroupOrderByUpdatedAt,
-		CardgroupOrderByName:      repository.CardgroupOrderByName,
-	}
-
-	createdAt := CardgroupOrderByCreatedAt
-	name := CardgroupOrderByName
-	bogus := CardgroupOrderBy("BOGUS")
-	descDir := SortOrderDesc
-	bogusDir := SortOrder("SIDEWAYS")
-
-	t.Run("nil orderBy -> default column and direction", func(t *testing.T) {
-		t.Parallel()
-		field, dir, err := resolveOrderByColumn(nil, nil, allow, repository.CardgroupOrderByID, repository.SortAsc)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if field != repository.CardgroupOrderByID {
-			t.Fatalf("field: got %q, want %q", field, repository.CardgroupOrderByID)
-		}
-		if dir != repository.SortAsc {
-			t.Fatalf("dir: got %q, want %q", dir, repository.SortAsc)
-		}
-	})
-
-	t.Run("mapped enum -> repository column", func(t *testing.T) {
-		t.Parallel()
-		field, _, err := resolveOrderByColumn(&createdAt, nil, allow, repository.CardgroupOrderByID, repository.SortAsc)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if field != repository.CardgroupOrderByCreatedAt {
-			t.Fatalf("field: got %q, want %q", field, repository.CardgroupOrderByCreatedAt)
-		}
-	})
-
-	t.Run("mapped enum + explicit direction", func(t *testing.T) {
-		t.Parallel()
-		field, dir, err := resolveOrderByColumn(&name, &descDir, allow, repository.CardgroupOrderByID, repository.SortAsc)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if field != repository.CardgroupOrderByName {
-			t.Fatalf("field: got %q, want %q", field, repository.CardgroupOrderByName)
-		}
-		if dir != repository.SortDesc {
-			t.Fatalf("dir: got %q, want %q", dir, repository.SortDesc)
-		}
-	})
-
-	t.Run("unmapped enum -> orderBy validation error", func(t *testing.T) {
-		t.Parallel()
-		field, dir, err := resolveOrderByColumn(&bogus, nil, allow, repository.CardgroupOrderByID, repository.SortAsc)
-		var ve *ucerr.ValidationError
-		if !errors.As(err, &ve) {
-			t.Fatalf("want ValidationError, got %v", err)
-		}
-		if ve.Field != "orderBy" {
-			t.Fatalf("want field orderBy, got %q", ve.Field)
-		}
-		if field != "" || dir != "" {
-			t.Fatalf("want empty field/dir on error, got field=%q dir=%q", field, dir)
-		}
-	})
-
-	t.Run("invalid direction -> orderDirection validation error", func(t *testing.T) {
-		t.Parallel()
-		field, dir, err := resolveOrderByColumn(&createdAt, &bogusDir, allow, repository.CardgroupOrderByID, repository.SortAsc)
-		var ve *ucerr.ValidationError
-		if !errors.As(err, &ve) {
-			t.Fatalf("want ValidationError, got %v", err)
-		}
-		if ve.Field != "orderDirection" {
-			t.Fatalf("want field orderDirection, got %q", ve.Field)
-		}
-		if field != "" || dir != "" {
-			t.Fatalf("want empty field/dir on error, got field=%q dir=%q", field, dir)
-		}
-	})
 }
 
 func TestFirstLastCursor(t *testing.T) {

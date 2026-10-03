@@ -68,9 +68,3 @@ fails.
   — gqlgen casing of the generated *type* vs *resolver method* (`CEFRLevel` vs
   `CefrLevel`). That is about generated-identifier casing within one layer, not
   the persisted-vs-wire value mismatch this doc covers.
-- [`.claude/rules/pagination.md` § "Server-side design"](../../../.claude/rules/pagination.md#server-side-design)
-  (the "Three layers of enums kept in sync" bullet) — `CardgroupOrderBy` carries the
-  *same* string values across `model` / `usecase` / `repository` (snake_case column
-  names appear only at the repository layer). The layers there differ by package,
-  not by value casing, so they pointer-cast freely; `LearnDisplayMode` cannot, which
-  is why it needs the explicit mappers above.

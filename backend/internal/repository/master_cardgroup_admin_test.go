@@ -41,8 +41,7 @@ func TestMasterCardgroupRepository_FindPageAnyStatus_TotalIncludesDraftAndPublis
 
 	// Search on the base UUID suffix so both names match (ILIKE %base%).
 	search := base
-	_, total, err := repo.FindPageAnyStatus(ctx, nil, repository.PageCap,
-		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, &search)
+	_, total, err := repo.FindPageAnyStatus(ctx, nil, repository.PageCap, &search)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), total,
 		"FindPageAnyStatus total must count both draft and published rows")
@@ -58,8 +57,7 @@ func TestMasterCardgroupRepository_FindPageAnyStatus_TotalSearchFilter(t *testin
 	insertDraftMCG(t, ctx, "AdminFilter NoMatch "+uuid.NewString())
 
 	search := "AdminFilter Match " + base
-	_, total, err := repo.FindPageAnyStatus(ctx, nil, repository.PageCap,
-		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, &search)
+	_, total, err := repo.FindPageAnyStatus(ctx, nil, repository.PageCap, &search)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total, "search filters the total by name ILIKE")
 }
@@ -114,8 +112,7 @@ func TestMasterCardgroupRepository_FindPageAnyStatus_DraftVisible(t *testing.T) 
 
 	// Search on the base UUID suffix so both names match (ILIKE %base%).
 	search := base
-	page, _, err := repo.FindPageAnyStatus(ctx, nil, repository.PageCap,
-		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, &search)
+	page, _, err := repo.FindPageAnyStatus(ctx, nil, repository.PageCap, &search)
 	require.NoError(t, err)
 
 	ours := filterCatalogByIDs(page, ourIDs)
@@ -143,8 +140,7 @@ func TestMasterCardgroupRepository_FindPageAnyStatus_OrderBySortOrder(t *testing
 	ourIDs := []string{m1.ID, m2.ID, m3.ID}
 
 	search := base
-	page, _, err := repo.FindPageAnyStatus(ctx, nil, repository.PageCap,
-		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, &search)
+	page, _, err := repo.FindPageAnyStatus(ctx, nil, repository.PageCap, &search)
 	require.NoError(t, err)
 
 	ours := filterCatalogByIDs(page, ourIDs)
@@ -164,8 +160,7 @@ func TestMasterCardgroupRepository_FindPageAnyStatus_CardCountAggregation(t *tes
 
 	// Search on the base UUID suffix so both names match (ILIKE %base%).
 	search := base
-	page, _, err := repo.FindPageAnyStatus(ctx, nil, repository.PageCap,
-		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, &search)
+	page, _, err := repo.FindPageAnyStatus(ctx, nil, repository.PageCap, &search)
 	require.NoError(t, err)
 
 	ours := filterCatalogByIDs(page, []string{withCards.ID, empty.ID})
@@ -197,8 +192,7 @@ func TestMasterCardgroupRepository_FindPageAnyStatus_ForwardPagination(t *testin
 	search := base
 
 	// Forward page 1: first=2 yields [m1, m2].
-	fwd1, _, err := repo.FindPageAnyStatus(ctx, nil, 2,
-		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, &search)
+	fwd1, _, err := repo.FindPageAnyStatus(ctx, nil, 2, &search)
 	require.NoError(t, err)
 	ours1 := filterCatalogByIDs(fwd1, ourIDs)
 	require.Equal(t, []string{m1.ID, m2.ID}, catalogIDs(ours1),

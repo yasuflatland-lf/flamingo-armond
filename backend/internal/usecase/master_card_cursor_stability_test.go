@@ -18,10 +18,8 @@ import (
 // ---------------------------------------------------------------------------
 // Cursor stability across edits of the ordering key.
 //
-// The master-card listing defaults to POSITION ASC — a column an admin batch
-// import rewrites for every conflicting row. It also offers UPDATED_AT, which
-// the same import touches on every row it overwrites. A cursor that carries only
-// a row id has to re-read that row at serve time to recover its ordering value,
+// The master-card listing orders by position ASC — a column an admin batch
+// import rewrites for every conflicting row. A cursor that carries only a row id has to re-read that row at serve time to recover its ordering value,
 // so changing the row between two page fetches moves the bookmark: rows already
 // returned come back a second time (S1) or rows the caller has not seen yet are
 // skipped (S2). A v2 cursor carries the ordering value captured when the page was
@@ -33,7 +31,7 @@ import (
 // ListPublicMasterCards without a database.
 //
 // "Moved to the head" / "moved to the tail" are used instead of "raised" /
-// "lowered" throughout: under the ASC default a SMALLER position sorts EARLIER,
+// "lowered" throughout: under the ASC ordering a SMALLER position sorts EARLIER,
 // so promoting a row to the head means decreasing its position number.
 // ---------------------------------------------------------------------------
 
@@ -45,10 +43,8 @@ const mcWalkDeckID = "deck-1"
 const mcWalkForeignDeckID = "deck-2"
 
 // masterCardWalkRepo is an in-memory master-card repository supporting exactly
-// the slice of the interface these walks need: forward paging over
-// one deck's rows ordered by (orderKey ASC, id ASC), where orderKey is position
-// or updated_at. Any other ordering is rejected loudly so a future test cannot
-// silently exercise an unimplemented branch. FindByID returns the CURRENT row,
+// the slice of the interface these walks need: forward paging over one deck's
+// rows ordered by (position ASC, id ASC). FindByID returns the CURRENT row,
 // which is what makes the v1 re-hydration path observe a mutation made between
 // two page fetches.
 type masterCardWalkRepo struct {
@@ -66,45 +62,19 @@ func (r *masterCardWalkRepo) FindByID(_ context.Context, id string) (*domain.Mas
 	return nil, repository.ErrNotFound
 }
 
-// mcWalkKey is the fake's model of the SQL sort expression, normalised to one
-// comparable scalar so a single tuple predicate serves both orderings:
-// master_cards.position for POSITION, and the nanosecond instant of
-// master_cards.updated_at for UPDATED_AT. The fixture timestamps are fixed UTC
-// values, so the nanosecond flattening is lossless here.
-func mcWalkKey(orderBy repository.MasterCardOrderBy, c *domain.MasterCard) (int64, error) {
-	switch orderBy {
-	case repository.MasterCardOrderByPosition:
-		return int64(c.Position), nil
-	case repository.MasterCardOrderByUpdatedAt:
-		return c.UpdatedAt.UnixNano(), nil
-	default:
-		return 0, eris.Errorf("masterCardWalkRepo: unhandled orderBy %q", orderBy)
+// mcWalkCursorKey extracts the position boundary the ordering compares against.
+// A cursor that reaches the repository without its position populated is a
+// usecase bug, so it is surfaced rather than defaulted to a zero key.
+func mcWalkCursorKey(c *repository.MasterCardCursor) (int, error) {
+	if c.Position == nil {
+		return 0, eris.New("masterCardWalkRepo: cursor is missing the position column")
 	}
-}
-
-// mcWalkCursorKey extracts the boundary value the active ordering compares
-// against. A cursor that reaches the repository without its column populated is
-// a usecase bug, so it is surfaced rather than defaulted to a zero key.
-func mcWalkCursorKey(orderBy repository.MasterCardOrderBy, c *repository.MasterCardCursor) (int64, error) {
-	switch orderBy {
-	case repository.MasterCardOrderByPosition:
-		if c.Position == nil {
-			return 0, eris.New("masterCardWalkRepo: cursor is missing the position column")
-		}
-		return int64(*c.Position), nil
-	case repository.MasterCardOrderByUpdatedAt:
-		if c.UpdatedAt == nil {
-			return 0, eris.New("masterCardWalkRepo: cursor is missing the updated_at column")
-		}
-		return c.UpdatedAt.UnixNano(), nil
-	default:
-		return 0, eris.Errorf("masterCardWalkRepo: unhandled orderBy %q", orderBy)
-	}
+	return *c.Position, nil
 }
 
 // mcAfterInAscTuple reports whether a row sorts strictly after the cursor under
 // the (orderKey ASC, id ASC) total order the repository emits.
-func mcAfterInAscTuple(rowKey int64, rowID string, curKey int64, curID string) bool {
+func mcAfterInAscTuple(rowKey int, rowID string, curKey int, curID string) bool {
 	if rowKey == curKey {
 		return rowID > curID
 	}
@@ -116,26 +86,8 @@ func (r *masterCardWalkRepo) FindPageByMasterCardgroup(
 	masterCardgroupID string,
 	after *repository.MasterCardCursor,
 	first int,
-	orderBy repository.MasterCardOrderBy,
-	dir repository.SortOrder,
 	_ *string,
 ) ([]*domain.MasterCard, int64, error) {
-	if dir != repository.SortAsc {
-		return nil, 0, eris.Errorf("masterCardWalkRepo: only the ASC direction is implemented; got dir=%q", dir)
-	}
-
-	// Keys are computed for EVERY fixture row, not just the scoped ones, so an
-	// ordering this fake does not implement is rejected even when the deck filter
-	// would have emptied the page first.
-	keys := make(map[string]int64, len(r.rows))
-	for _, c := range r.rows {
-		k, err := mcWalkKey(orderBy, c)
-		if err != nil {
-			return nil, 0, err
-		}
-		keys[c.ID] = k
-	}
-
 	scoped := make([]*domain.MasterCard, 0, len(r.rows))
 	for _, c := range r.rows {
 		if c.BelongsToMasterCardgroup(masterCardgroupID) {
@@ -143,21 +95,21 @@ func (r *masterCardWalkRepo) FindPageByMasterCardgroup(
 		}
 	}
 	sort.SliceStable(scoped, func(i, j int) bool {
-		if keys[scoped[i].ID] != keys[scoped[j].ID] {
-			return keys[scoped[i].ID] < keys[scoped[j].ID]
+		if scoped[i].Position != scoped[j].Position {
+			return scoped[i].Position < scoped[j].Position
 		}
 		return scoped[i].ID < scoped[j].ID
 	})
 	total := int64(len(scoped))
 
 	if after != nil {
-		key, err := mcWalkCursorKey(orderBy, after)
+		key, err := mcWalkCursorKey(after)
 		if err != nil {
 			return nil, 0, err
 		}
 		rest := make([]*domain.MasterCard, 0, len(scoped))
 		for _, c := range scoped {
-			if mcAfterInAscTuple(keys[c.ID], c.ID, key, after.ID) {
+			if mcAfterInAscTuple(c.Position, c.ID, key, after.ID) {
 				rest = append(rest, c)
 			}
 		}
@@ -172,18 +124,9 @@ func (r *masterCardWalkRepo) FindPageByMasterCardgroup(
 // mcWalkBase is a fixed instant so the fixture timestamps are deterministic.
 var mcWalkBase = time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
 
-// mcWalkAt returns the fixture instant N hours after the base.
-func mcWalkAt(hours int) time.Time {
-	return mcWalkBase.Add(time.Duration(hours) * time.Hour)
-}
-
-// newMasterCardWalkFixture builds five rows in mcWalkDeckID whose POSITION ASC
+// newMasterCardWalkFixture builds five rows in mcWalkDeckID whose position ASC
 // order is mc-a, mc-b, mc-c, mc-d, mc-e, plus one row in a different deck so the
 // deck filter and the cross-deck cursor guard have something to reject.
-//
-// Each row's updated_at is derived from its position, so the UPDATED_AT walks
-// start from the same row order as the POSITION ones and the two orderings can
-// share every fixture assertion.
 func newMasterCardWalkFixture() *masterCardWalkRepo {
 	mk := func(id string, pos int) *domain.MasterCard {
 		return &domain.MasterCard{
@@ -193,7 +136,7 @@ func newMasterCardWalkFixture() *masterCardWalkRepo {
 			Back:              domain.CardText("back-" + id),
 			Position:          pos,
 			CreatedAt:         mcWalkBase,
-			UpdatedAt:         mcWalkAt(pos),
+			UpdatedAt:         mcWalkBase,
 		}
 	}
 	foreign := mk("mc-foreign", 3)
@@ -264,25 +207,13 @@ func mcWalkIDs(out *MasterCardConnectionOutput) []string {
 }
 
 // mcFetchWalkPage runs one forward page of size two, optionally after a cursor.
-// It sends no orderBy, so the walk also covers the schema default (POSITION ASC)
-// resolution rather than pinning the column from the caller side.
 func mcFetchWalkPage(t *testing.T, uc MasterCardUsecase, after *string) *MasterCardConnectionOutput {
-	t.Helper()
-	return mcFetchWalkPageOrdered(t, uc, nil, after)
-}
-
-// mcFetchWalkPageOrdered runs one forward page of size two under the given
-// ordering — nil asks for the schema default — optionally after a cursor.
-func mcFetchWalkPageOrdered(
-	t *testing.T, uc MasterCardUsecase, orderBy *MasterCardOrderBy, after *string,
-) *MasterCardConnectionOutput {
 	t.Helper()
 	first := 2
 	out, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
 		MasterCardgroupID: mcWalkDeckID,
 		First:             &first,
 		After:             after,
-		OrderBy:           orderBy,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error paging: %v", err)
@@ -290,22 +221,12 @@ func mcFetchWalkPageOrdered(
 	return out
 }
 
-// mcOrderByPtr lifts an ordering into the pointer the connection input takes.
-func mcOrderByPtr(v MasterCardOrderBy) *MasterCardOrderBy { return &v }
-
-// mcSetPosition moves a row's POSITION ordering key, simulating the
+// mcSetPosition moves a row's position ordering key, simulating the
 // repositioning a batch import performs on every conflicting row between two
 // page fetches.
 func mcSetPosition(t *testing.T, repo *masterCardWalkRepo, id string, pos int) {
 	t.Helper()
 	mcMutateWalkRow(t, repo, id, func(c *domain.MasterCard) { c.Position = pos })
-}
-
-// mcSetUpdatedAt moves a row's UPDATED_AT ordering key, simulating the touch a
-// batch import applies to every row it overwrites between two page fetches.
-func mcSetUpdatedAt(t *testing.T, repo *masterCardWalkRepo, id string, at time.Time) {
-	t.Helper()
-	mcMutateWalkRow(t, repo, id, func(c *domain.MasterCard) { c.UpdatedAt = at })
 }
 
 // mcMutateWalkRow applies an edit to one fixture row in place, failing loudly
@@ -459,136 +380,6 @@ func TestMasterCardCursorWalk_S2_V1Cursor_StillSkips(t *testing.T) {
 // is paired with a v1 control that still exhibits the defect.
 // ---------------------------------------------------------------------------
 
-// TestMasterCardCursorWalk_UpdatedAt_S1_BoundaryRowMovedToHead_NoDuplicate is
-// the S1 scenario on the UPDATED_AT ordering: the boundary row of page 1 is
-// touched so its updated_at moves to the head of the listing before page 2 is
-// fetched. With the captured ordering key the second page starts exactly where
-// the first ended, so it repeats no row the caller has already seen.
-func TestMasterCardCursorWalk_UpdatedAt_S1_BoundaryRowMovedToHead_NoDuplicate(t *testing.T) {
-	t.Parallel()
-
-	repo := newMasterCardWalkFixture()
-	uc := newMasterCardWalkUsecase(repo)
-	updatedAt := mcOrderByPtr(MasterCardOrderByUpdatedAt)
-
-	page1 := mcFetchWalkPageOrdered(t, uc, updatedAt, nil)
-	if got := mcWalkIDs(page1); len(got) != 2 || got[0] != "mc-a" || got[1] != "mc-b" {
-		t.Fatalf("page 1 = %v, want [mc-a mc-b]", got)
-	}
-	if page1.Ordering.OrderBy != string(repository.MasterCardOrderByUpdatedAt) {
-		t.Fatalf("Ordering.OrderBy = %q, want updated_at: the walk must exercise the requested column", page1.Ordering.OrderBy)
-	}
-	next := mcEncodeWalkCursor(page1, page1.EndCur)
-
-	// A batch import overwrites mc-b, touching its updated_at to before mc-a's.
-	mcSetUpdatedAt(t, repo, "mc-b", mcWalkAt(0))
-
-	page2 := mcFetchWalkPageOrdered(t, uc, updatedAt, &next)
-	got := mcWalkIDs(page2)
-	if len(got) != 2 || got[0] != "mc-c" || got[1] != "mc-d" {
-		t.Fatalf("page 2 = %v, want [mc-c mc-d]", got)
-	}
-	for _, id := range got {
-		if id == "mc-a" || id == "mc-b" {
-			t.Fatalf("page 2 repeated %q from page 1: %v", id, got)
-		}
-	}
-}
-
-// TestMasterCardCursorWalk_UpdatedAt_S1_V1Cursor_StillDuplicates is the v1
-// control for the walk above: an id-only cursor re-reads the touched row and
-// therefore hands back a row page 1 already returned.
-func TestMasterCardCursorWalk_UpdatedAt_S1_V1Cursor_StillDuplicates(t *testing.T) {
-	t.Parallel()
-
-	repo := newMasterCardWalkFixture()
-	uc := newMasterCardWalkUsecase(repo)
-	updatedAt := mcOrderByPtr(MasterCardOrderByUpdatedAt)
-
-	page1 := mcFetchWalkPageOrdered(t, uc, updatedAt, nil)
-	legacy := cursor.Encode(page1.EndCur)
-
-	mcSetUpdatedAt(t, repo, "mc-b", mcWalkAt(0))
-
-	page2 := mcFetchWalkPageOrdered(t, uc, updatedAt, &legacy)
-	got := mcWalkIDs(page2)
-	if len(got) == 0 || got[0] != "mc-a" {
-		t.Fatalf("v1 cursor should re-serve mc-a after the boundary row moves to the head; page 2 = %v", got)
-	}
-}
-
-// TestMasterCardCursorWalk_UpdatedAt_S2_BoundaryRowMovedToTail_NoSkip is the S2
-// scenario on the UPDATED_AT ordering: the boundary row of page 1 is touched so
-// its updated_at drops below every remaining row. With the captured ordering key
-// the walk continues from where page 1 ended, so every row the caller had not
-// yet seen is still returned exactly once.
-//
-// The touched row itself is the documented exception: its ordering key moved
-// into the not-yet-visited region, so the walk legitimately meets it again. What
-// v2 fixes is that the UNSEEN rows are no longer swallowed along with it.
-func TestMasterCardCursorWalk_UpdatedAt_S2_BoundaryRowMovedToTail_NoSkip(t *testing.T) {
-	t.Parallel()
-
-	repo := newMasterCardWalkFixture()
-	uc := newMasterCardWalkUsecase(repo)
-	updatedAt := mcOrderByPtr(MasterCardOrderByUpdatedAt)
-
-	page1 := mcFetchWalkPageOrdered(t, uc, updatedAt, nil)
-	next := mcEncodeWalkCursor(page1, page1.EndCur)
-
-	// mc-b is touched so it now sorts last.
-	mcSetUpdatedAt(t, repo, "mc-b", mcWalkAt(99))
-
-	seen := append([]string{}, mcWalkIDs(page1)...)
-	cur := next
-	for page := 2; page <= 5; page++ {
-		out := mcFetchWalkPageOrdered(t, uc, updatedAt, &cur)
-		ids := mcWalkIDs(out)
-		if len(ids) == 0 {
-			break
-		}
-		seen = append(seen, ids...)
-		cur = mcEncodeWalkCursor(out, out.EndCur)
-	}
-
-	counts := map[string]int{}
-	for _, id := range seen {
-		counts[id]++
-	}
-	// mc-a was already served on page 1 and was not touched; mc-c / mc-d / mc-e
-	// were unseen when the edit landed. All four must appear exactly once.
-	for _, id := range []string{"mc-a", "mc-c", "mc-d", "mc-e"} {
-		if counts[id] != 1 {
-			t.Fatalf("row %q appeared %d times across the walk (want exactly 1); walk = %v", id, counts[id], seen)
-		}
-	}
-	if counts["mc-foreign"] != 0 {
-		t.Fatal("walk leaked a row from another deck")
-	}
-}
-
-// TestMasterCardCursorWalk_UpdatedAt_S2_V1Cursor_StillSkips is the v1 control
-// for the walk above: an id-only cursor re-reads the touched boundary row, finds
-// it now sorts last, and reports an empty second page — the "rows silently
-// vanish" symptom.
-func TestMasterCardCursorWalk_UpdatedAt_S2_V1Cursor_StillSkips(t *testing.T) {
-	t.Parallel()
-
-	repo := newMasterCardWalkFixture()
-	uc := newMasterCardWalkUsecase(repo)
-	updatedAt := mcOrderByPtr(MasterCardOrderByUpdatedAt)
-
-	page1 := mcFetchWalkPageOrdered(t, uc, updatedAt, nil)
-	legacy := cursor.Encode(page1.EndCur)
-
-	mcSetUpdatedAt(t, repo, "mc-b", mcWalkAt(99))
-
-	page2 := mcFetchWalkPageOrdered(t, uc, updatedAt, &legacy)
-	if got := mcWalkIDs(page2); len(got) != 0 {
-		t.Fatalf("v1 cursor should return an empty page after the boundary row moves to the tail, got %v", got)
-	}
-}
-
 // TestMasterCardCursorWalk_LegacyBareIDStillPages verifies the oldest cursor
 // form — a bare UUID with no envelope at all — still decodes and pages.
 func TestMasterCardCursorWalk_LegacyBareIDStillPages(t *testing.T) {
@@ -614,11 +405,8 @@ func TestMasterCardCursorWalk_OrderKeysCoverEveryReturnedRow(t *testing.T) {
 
 	out := mcFetchWalkPage(t, newMasterCardWalkUsecase(newMasterCardWalkFixture()), nil)
 
-	if out.Ordering != (PageOrdering{
-		OrderBy:   string(repository.MasterCardOrderByPosition),
-		Direction: string(repository.SortAsc),
-	}) {
-		t.Fatalf("Ordering = %+v, want the schema default (position, ASC)", out.Ordering)
+	if out.Ordering != (PageOrdering{OrderBy: "position", Direction: "ASC"}) {
+		t.Fatalf("Ordering = %+v, want the fixed (position, ASC)", out.Ordering)
 	}
 	for _, c := range out.Cards {
 		got, ok := out.OrderKeys[c.ID]
@@ -719,12 +507,12 @@ func TestResolveMasterCardCursor_V2OrderingMismatch_ReturnsBadUserInput(t *testi
 
 	cases := map[string]cursor.Payload{
 		"different column": {
-			ID: "mc-a", OrderBy: string(repository.MasterCardOrderByCreatedAt),
-			Direction: string(repository.SortAsc), OrderKey: mcWalkBase.Format(time.RFC3339Nano),
+			ID: "mc-a", OrderBy: "created_at",
+			Direction: "ASC", OrderKey: mcWalkBase.Format(time.RFC3339Nano),
 		},
 		"different direction": {
-			ID: "mc-a", OrderBy: string(repository.MasterCardOrderByPosition),
-			Direction: string(repository.SortDesc), OrderKey: "1",
+			ID: "mc-a", OrderBy: "position",
+			Direction: "DESC", OrderKey: "1",
 		},
 	}
 	for name, p := range cases {
@@ -753,8 +541,8 @@ func TestResolveMasterCardCursor_V2MalformedOrderKey_ReturnsBadUserInput(t *test
 	uc := newMasterCardWalkUsecase(newMasterCardWalkFixture())
 	cur := cursor.EncodeV2(cursor.Payload{
 		ID:        "mc-a",
-		OrderBy:   string(repository.MasterCardOrderByPosition),
-		Direction: string(repository.SortAsc),
+		OrderBy:   "position",
+		Direction: "ASC",
 		OrderKey:  "not-an-integer",
 	})
 	first := 2
@@ -776,8 +564,8 @@ func TestResolveMasterCardCursor_V2ForeignDeck_ReturnsCursorNotFound(t *testing.
 	uc := newMasterCardWalkUsecase(newMasterCardWalkFixture())
 	cur := cursor.EncodeV2(cursor.Payload{
 		ID:        "mc-foreign",
-		OrderBy:   string(repository.MasterCardOrderByPosition),
-		Direction: string(repository.SortAsc),
+		OrderBy:   "position",
+		Direction: "ASC",
 		OrderKey:  "3",
 	})
 	first := 2
@@ -798,8 +586,8 @@ func TestResolveMasterCardCursor_V2UnknownID_ReturnsCursorNotFound(t *testing.T)
 	uc := newMasterCardWalkUsecase(newMasterCardWalkFixture())
 	cur := cursor.EncodeV2(cursor.Payload{
 		ID:        "mc-deleted",
-		OrderBy:   string(repository.MasterCardOrderByPosition),
-		Direction: string(repository.SortAsc),
+		OrderBy:   "position",
+		Direction: "ASC",
 		OrderKey:  "2",
 	})
 	first := 2
@@ -811,78 +599,34 @@ func TestResolveMasterCardCursor_V2UnknownID_ReturnsCursorNotFound(t *testing.T)
 	assertValidationError(t, err, "after", "cursor not found")
 }
 
-// TestApplyMasterCardOrderKey_PerColumn covers the decode half of the ordering
-// key for every column in the allowlist, including the ID column (whose key is
-// empty because the id is already carried) and the impossible default arm, which
-// must stay INTERNAL rather than degrade to BAD_USER_INPUT.
-//
-// The two time columns are also fed a malformed key: their arms must return
-// errCursorKeyMalformed (so resolveMasterCardCursor maps them to BAD_USER_INPUT)
-// AND leave the column unhydrated. The unhydrated half is what pins the failure
-// mode a discarded decode error would open — a zero time.Time written into
-// CreatedAt/UpdatedAt passes the repository's nil-gate and becomes a bound that
-// matches every row, so the caller is handed page 1 forever instead of an error.
-func TestApplyMasterCardOrderKey_PerColumn(t *testing.T) {
+// TestApplyMasterCardOrderKey_Position covers the decode half of the ordering
+// key. A malformed key must return errCursorKeyMalformed (so
+// resolveMasterCardCursor maps it to BAD_USER_INPUT) AND leave Position
+// unhydrated: a zero position written into the cursor would pass the
+// repository's nil-gate and become a bound that silently mis-pages.
+func TestApplyMasterCardOrderKey_Position(t *testing.T) {
 	t.Parallel()
 
-	when := mcWalkBase.Format(time.RFC3339Nano)
-
 	c := &repository.MasterCardCursor{ID: "mc-a"}
-	if err := applyMasterCardOrderKey(c, repository.MasterCardOrderByID, ""); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if c.Position != nil || c.CreatedAt != nil || c.UpdatedAt != nil {
-		t.Fatalf("orderBy=id must hydrate no extra column, got %+v", c)
-	}
-
-	c = &repository.MasterCardCursor{ID: "mc-a"}
-	if err := applyMasterCardOrderKey(c, repository.MasterCardOrderByPosition, "7"); err != nil {
+	if err := applyMasterCardOrderKey(c, "7"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if c.Position == nil || *c.Position != 7 {
-		t.Fatalf("orderBy=position must hydrate Position, got %+v", c)
+		t.Fatalf("applyMasterCardOrderKey must hydrate Position, got %+v", c)
 	}
 
 	c = &repository.MasterCardCursor{ID: "mc-a"}
-	if err := applyMasterCardOrderKey(c, repository.MasterCardOrderByCreatedAt, when); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err := applyMasterCardOrderKey(c, "not-an-integer"); !errors.Is(err, errCursorKeyMalformed) {
+		t.Fatalf("a malformed key must be rejected with errCursorKeyMalformed, got %v", err)
 	}
-	if c.CreatedAt == nil || !c.CreatedAt.Equal(mcWalkBase) {
-		t.Fatalf("orderBy=created_at must hydrate CreatedAt, got %+v", c)
+	if c.Position != nil {
+		t.Fatalf("a rejected key must leave Position unhydrated, got %+v", c)
 	}
-
-	c = &repository.MasterCardCursor{ID: "mc-a"}
-	if err := applyMasterCardOrderKey(c, repository.MasterCardOrderByUpdatedAt, when); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if c.UpdatedAt == nil || !c.UpdatedAt.Equal(mcWalkBase) {
-		t.Fatalf("orderBy=updated_at must hydrate UpdatedAt, got %+v", c)
-	}
-
-	c = &repository.MasterCardCursor{ID: "mc-a"}
-	if err := applyMasterCardOrderKey(c, repository.MasterCardOrderByCreatedAt, "not-a-timestamp"); !errors.Is(err, errCursorKeyMalformed) {
-		t.Fatalf("orderBy=created_at must reject a malformed key with errCursorKeyMalformed, got %v", err)
-	}
-	if c.CreatedAt != nil {
-		t.Fatalf("a rejected created_at key must leave CreatedAt unhydrated, got %+v", c)
-	}
-
-	c = &repository.MasterCardCursor{ID: "mc-a"}
-	if err := applyMasterCardOrderKey(c, repository.MasterCardOrderByUpdatedAt, "not-a-timestamp"); !errors.Is(err, errCursorKeyMalformed) {
-		t.Fatalf("orderBy=updated_at must reject a malformed key with errCursorKeyMalformed, got %v", err)
-	}
-	if c.UpdatedAt != nil {
-		t.Fatalf("a rejected updated_at key must leave UpdatedAt unhydrated, got %+v", c)
-	}
-
-	err := applyMasterCardOrderKey(&repository.MasterCardCursor{}, repository.MasterCardOrderBy("not_a_real_column"), "")
-	assertInternalChain(t, err, "usecase: master card: unhandled orderBy")
 }
 
-// TestMasterCardOrderKeys_PerColumn covers the encode half: every column in the
-// allowlist serializes to the value the decode half above consumes, and the ID
-// column yields an empty key because the id is already carried by the cursor.
-func TestMasterCardOrderKeys_PerColumn(t *testing.T) {
+// TestMasterCardOrderKeys_Position covers the encode half: the position
+// serializes to the value the decode half above consumes.
+func TestMasterCardOrderKeys_Position(t *testing.T) {
 	t.Parallel()
 
 	card := &domain.MasterCard{
@@ -892,33 +636,8 @@ func TestMasterCardOrderKeys_PerColumn(t *testing.T) {
 		CreatedAt:         mcWalkBase,
 		UpdatedAt:         mcWalkBase.Add(time.Hour),
 	}
-	cards := []*domain.MasterCard{card}
-
-	cases := map[repository.MasterCardOrderBy]string{
-		repository.MasterCardOrderByID:        "",
-		repository.MasterCardOrderByPosition:  "7",
-		repository.MasterCardOrderByCreatedAt: mcWalkBase.Format(time.RFC3339Nano),
-		repository.MasterCardOrderByUpdatedAt: mcWalkBase.Add(time.Hour).Format(time.RFC3339Nano),
+	keys := masterCardOrderKeys([]*domain.MasterCard{card})
+	if got := keys["mc-a"]; got != "7" {
+		t.Fatalf("OrderKeys[mc-a] = %q, want %q", got, "7")
 	}
-	for orderBy, want := range cases {
-		keys, err := masterCardOrderKeys(orderBy, cards)
-		if err != nil {
-			t.Fatalf("orderBy=%q: unexpected error: %v", orderBy, err)
-		}
-		if got := keys["mc-a"]; got != want {
-			t.Fatalf("orderBy=%q: OrderKeys[mc-a] = %q, want %q", orderBy, got, want)
-		}
-	}
-}
-
-// TestMasterCardOrderKeys_UnknownOrderBy covers the encode half's impossible
-// default arm: an unmapped column is a caller bug, surfaced as INTERNAL rather
-// than an empty key that would silently produce an unanchored cursor.
-func TestMasterCardOrderKeys_UnknownOrderBy(t *testing.T) {
-	t.Parallel()
-
-	_, err := masterCardOrderKeys(repository.MasterCardOrderBy("not_a_real_column"), []*domain.MasterCard{
-		{ID: "mc-a", MasterCardgroupID: mcWalkDeckID},
-	})
-	assertInternalChain(t, err, "usecase: master card: unhandled orderBy")
 }

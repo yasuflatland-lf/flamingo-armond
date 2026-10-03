@@ -12,25 +12,12 @@ import (
 	"backend/internal/domain"
 )
 
-// MasterCatalogOrderBy is the allowlist of columns the published master catalog
-// may sort by. Tuple order is always (orderField, id) so cursors stay
-// deterministic when the order field has duplicate values.
-type MasterCatalogOrderBy string
-
-const (
-	MasterCatalogOrderBySortOrder MasterCatalogOrderBy = "sort_order"
-	MasterCatalogOrderByCreatedAt MasterCatalogOrderBy = "created_at"
-	MasterCatalogOrderByName      MasterCatalogOrderBy = "name"
-)
-
-// MasterCatalogCursor carries the cursor entity's id plus the column value
-// matching the active orderBy. The usecase hydrates the relevant column before
-// calling FindPublishedPage; an unset column for the active orderBy is a caller
-// bug.
+// MasterCatalogCursor carries the cursor entity's id plus its `sort_order`
+// value, the catalog's fixed ordering column. The usecase hydrates SortOrder
+// before calling FindPublishedPage / FindPageAnyStatus; an unset SortOrder is a
+// caller bug.
 type MasterCatalogCursor struct {
 	ID        string
-	Name      *string
-	CreatedAt *time.Time
 	SortOrder *int
 }
 
@@ -99,7 +86,7 @@ type MasterCardgroupRepository interface {
 	// second pooled connection. Starters whose cards have all been deleted are skipped.
 	ListPublishedDefaultStartersTx(ctx context.Context, tx *gorm.DB) ([]*domain.MasterCardgroup, error)
 	// FindPublishedPage returns a window of PUBLISHED, NON-EMPTY master
-	// cardgroups ordered by (orderBy, id), each bundled with its card count,
+	// cardgroups ordered by (sort_order ASC, id ASC), each bundled with its card count,
 	// plus the search-aware total of all matching rows. Catalog visibility is
 	// the conjunction `status = published AND at least one master card exists`;
 	// it is enforced in SQL and is never caller-overridable, so a published deck
@@ -114,8 +101,6 @@ type MasterCardgroupRepository interface {
 		ctx context.Context,
 		after *MasterCatalogCursor,
 		first int,
-		orderBy MasterCatalogOrderBy,
-		dir SortOrder,
 		search *string,
 	) ([]*MasterCatalogItem, int64, error)
 	// CountCards returns the number of master cards belonging to the given
@@ -152,8 +137,6 @@ type MasterCardgroupRepository interface {
 		ctx context.Context,
 		after *MasterCatalogCursor,
 		first int,
-		orderBy MasterCatalogOrderBy,
-		dir SortOrder,
 		search *string,
 	) ([]*MasterCatalogItem, int64, error)
 	// Publish atomically sets the master cardgroup status to published and

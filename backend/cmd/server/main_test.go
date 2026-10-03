@@ -2611,7 +2611,7 @@ func (panicQueryResolver) Me(_ context.Context) (*model.User, error) { return ni
 func (panicQueryResolver) Cardgroup(_ context.Context, _ string) (*model.Cardgroup, error) {
 	return nil, nil
 }
-func (panicQueryResolver) MyCardgroupsConnection(_ context.Context, _ *int, _ *string, _ *string, _ *model.CardgroupOrderBy, _ *model.SortOrder) (*model.CardgroupConnection, error) {
+func (panicQueryResolver) MyCardgroupsConnection(_ context.Context, _ *int, _ *string, _ *string) (*model.CardgroupConnection, error) {
 	return nil, nil
 }
 func (panicQueryResolver) Card(_ context.Context, _ string) (*model.Card, error) { return nil, nil }
@@ -2635,19 +2635,19 @@ func (panicQueryResolver) AdminUser(_ context.Context, _ string) (*model.User, e
 }
 func (panicQueryResolver) Roles(_ context.Context) ([]*model.Role, error)        { return nil, nil }
 func (panicQueryResolver) Role(_ context.Context, _ string) (*model.Role, error) { return nil, nil }
-func (panicQueryResolver) MasterCatalog(_ context.Context, _ *int, _ *string, _ *string, _ *model.MasterCatalogOrderBy, _ *model.SortOrder) (*model.MasterCatalogConnection, error) {
+func (panicQueryResolver) MasterCatalog(_ context.Context, _ *int, _ *string, _ *string) (*model.MasterCatalogConnection, error) {
 	return nil, nil
 }
-func (panicQueryResolver) AdminMasters(_ context.Context, _ *int, _ *string, _ *string, _ *model.MasterCatalogOrderBy, _ *model.SortOrder) (*model.MasterCatalogConnection, error) {
+func (panicQueryResolver) AdminMasters(_ context.Context, _ *int, _ *string, _ *string) (*model.MasterCatalogConnection, error) {
 	panic("not implemented")
 }
 func (panicQueryResolver) AdminMaster(_ context.Context, _ string) (*model.MasterCardgroup, error) {
 	panic("not implemented")
 }
-func (panicQueryResolver) AdminMasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *string, _ *model.MasterCardOrderBy, _ *model.SortOrder) (*model.MasterCardConnection, error) {
+func (panicQueryResolver) AdminMasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *string) (*model.MasterCardConnection, error) {
 	panic("not implemented")
 }
-func (panicQueryResolver) MasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *string, _ *model.MasterCardOrderBy, _ *model.SortOrder) (*model.MasterCardConnection, error) {
+func (panicQueryResolver) MasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *string) (*model.MasterCardConnection, error) {
 	panic("not implemented")
 }
 func (panicQueryResolver) MasterCardgroup(_ context.Context, _ string) (*model.MasterCardgroup, error) {

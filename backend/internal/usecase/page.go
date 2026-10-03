@@ -8,28 +8,8 @@ import (
 	"time"
 
 	"backend/internal/cursor"
-	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
 )
-
-// resolveSortDir maps the typed usecase SortOrder enum to the repository sort
-// direction, defaulting to def when dir is nil. The default switch arm is
-// defense in depth — gqlgen UnmarshalGQL already rejects invalid enum strings
-// upstream. Shared by every aggregate's resolve*OrderBy; only the per-aggregate
-// default direction (def) differs.
-func resolveSortDir(dir *SortOrder, def repository.SortOrder) (repository.SortOrder, error) {
-	if dir == nil {
-		return def, nil
-	}
-	switch *dir {
-	case SortOrderAsc:
-		return repository.SortAsc, nil
-	case SortOrderDesc:
-		return repository.SortDesc, nil
-	default:
-		return "", ucerr.NewValidationError("orderDirection", "invalid")
-	}
-}
 
 // resolveStandardPageSize clamps first to [0, maxPageSize]. Defaults
 // first=defaultPageSize (20) when it is omitted, matching the schema's
@@ -205,12 +185,10 @@ func rejectOrderedCursor(p cursor.Payload, field string) error {
 }
 
 // errCursorKeyMalformed marks a v2 ordering-key value that does not parse back
-// into the column type the active orderBy needs. Every apply*OrderKey helper
+// into the type of the connection's ordering column. Every apply*OrderKey helper
 // returns it in place of the underlying parse failure so the caller can map it
 // to BAD_USER_INPUT; the parse cause is deliberately dropped because no caller
-// surfaces it (each one answers with a fresh ucerr validation error). Any other
-// error from those helpers is an internal caller bug (an orderBy the helper
-// does not handle) and must stay INTERNAL.
+// surfaces it (each one answers with a fresh ucerr validation error).
 var errCursorKeyMalformed = errors.New("usecase: malformed cursor ordering key")
 
 // encodeTimeOrderKey serializes a timestamp ordering key. RFC3339 with
@@ -242,37 +220,6 @@ func decodeIntOrderKey(s string) (int, error) {
 		return 0, errCursorKeyMalformed
 	}
 	return n, nil
-}
-
-// resolveOrderByColumn maps the typed usecase orderBy enum to the repository
-// column via the supplied allowlist, defaulting to def when orderBy is nil, and
-// delegates the direction half to the shared resolveSortDir. An orderBy outside
-// the allowlist returns a BAD_USER_INPUT validation error; the default arm is
-// defense in depth — gqlgen UnmarshalGQL already rejects invalid enum strings
-// upstream. Each aggregate's resolve*OrderBy is a thin wrapper supplying its
-// own map + (default column, default direction).
-func resolveOrderByColumn[K comparable, V any](
-	orderBy *K,
-	dir *SortOrder,
-	allow map[K]V,
-	def V,
-	defDir repository.SortOrder,
-) (V, repository.SortOrder, error) {
-	field := def
-	if orderBy != nil {
-		col, ok := allow[*orderBy]
-		if !ok {
-			var zero V
-			return zero, "", ucerr.NewValidationError("orderBy", "invalid")
-		}
-		field = col
-	}
-	d, err := resolveSortDir(dir, defDir)
-	if err != nil {
-		var zero V
-		return zero, "", err
-	}
-	return field, d, nil
 }
 
 // firstLastCursor returns the id() of the first and last rows, or "","" when the

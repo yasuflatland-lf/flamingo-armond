@@ -53,14 +53,6 @@ union UpdateCardgroupResult =
     UpdateCardgroupSuccess
   | InputValidationError
 
-"""Field to order Cardgroups by in paginated queries."""
-enum CardgroupOrderBy {
-  ID
-  CREATED_AT
-  UPDATED_AT
-  NAME
-}
-
 """One cardgroup plus the cursor pointing at it."""
 type CardgroupEdge {
   """
@@ -93,13 +85,12 @@ extend type Query {
   even when more rows exist. A negative `first` is clamped to 0 and therefore
   behaves identically.
   Optional case-insensitive substring search on name.
+  Ordered by `updatedAt` descending, then `id` descending.
   """
   myCardgroupsConnection(
     first: Int,
     after: ID,
-    search: String,
-    orderBy: CardgroupOrderBy = UPDATED_AT,
-    orderDirection: SortOrder = DESC
+    search: String
   ): CardgroupConnection!
 }
 

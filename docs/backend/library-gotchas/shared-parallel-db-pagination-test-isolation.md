@@ -19,7 +19,7 @@ insertion order.
 ```go
 // FLAKY: first=2 with no cursor returns the two globally-lowest sort_order rows,
 // which other parallel tests' published rows can occupy.
-fwd, _ := repo.FindPublishedPage(ctx, nil, 2, OrderBySortOrder, Asc, nil)
+fwd, _ := repo.FindPublishedPage(ctx, nil, 2, nil)
 ours := filterByIDs(fwd, ourIDs)   // often empty — fwd holds other tests' rows
 require.GreaterOrEqual(t, len(ours), 1)   // fails
 ```

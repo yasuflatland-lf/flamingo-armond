@@ -49,18 +49,10 @@ type MasterCardUsecase interface {
 	ImportMasterCards(ctx context.Context, in ImportMasterCardsInput) (ImportMasterCardsOutput, error)
 }
 
-// MasterCardOrderBy mirrors the schema MasterCardOrderBy enum but stays in the
-// usecase layer so the repository remains independent of the GraphQL model
-// package. The string values are identical to model.MasterCardOrderBy so the
-// resolver can convert with a direct cast.
-type MasterCardOrderBy string
-
-const (
-	MasterCardOrderByID        MasterCardOrderBy = "ID"
-	MasterCardOrderByPosition  MasterCardOrderBy = "POSITION"
-	MasterCardOrderByCreatedAt MasterCardOrderBy = "CREATED_AT"
-	MasterCardOrderByUpdatedAt MasterCardOrderBy = "UPDATED_AT"
-)
+// masterCardOrdering is the master-card connection's one fixed ordering,
+// (position ASC, id ASC). The tokens match what earlier v2 cursors embedded for
+// the then-default ordering, so those cursors keep paging.
+var masterCardOrdering = PageOrdering{OrderBy: "position", Direction: "ASC"}
 
 // MasterCardConnectionInput captures the GraphQL pagination arguments for
 // adminMasterCardsConnection. Pointer fields preserve "absent" semantics from
@@ -71,21 +63,19 @@ type MasterCardConnectionInput struct {
 	After             *string // raw GraphQL ID string (cursor = master card UUID)
 	// Search is optional; nil disables the filter. The usecase normalizes
 	// whitespace-only strings to nil before reaching the repository.
-	Search         *string
-	OrderBy        *MasterCardOrderBy
-	OrderDirection *SortOrder
+	Search *string
 }
 
 // MasterCardConnectionOutput is the usecase-level page result. The resolver
 // wraps it into a model.MasterCardConnection.
 //
 // Ordering and OrderKeys exist so the resolver can emit v2 cursors: the
-// master-card listing defaults to the POSITION column, which an admin batch
+// master-card listing orders by the position column, which an admin batch
 // import rewrites for every conflicting row, so a cursor that carried only an
 // id would move whenever the row it points at is repositioned. Ordering is the
-// (orderBy, direction) this page was served under; OrderKeys maps each returned
-// master card id to the serialized value its ordering column held at serve time
-// (empty string when the ordering key IS the id). Both are consumed only at the
+// fixed (orderBy, direction) this page was served under; OrderKeys maps each
+// returned master card id to the serialized position it held at serve time.
+// Both are consumed only at the
 // resolver→model boundary — the output itself still carries RAW ids, never
 // pre-encoded cursors.
 type MasterCardConnectionOutput struct {
@@ -115,8 +105,6 @@ type masterCardRepoForMasterCard interface {
 		masterCardgroupID string,
 		after *repository.MasterCardCursor,
 		first int,
-		orderBy repository.MasterCardOrderBy,
-		dir repository.SortOrder,
 		search *string,
 	) (cards []*domain.MasterCard, totalCount int64, err error)
 	FindByID(ctx context.Context, id string) (*domain.MasterCard, error)
@@ -530,14 +518,7 @@ func (u *masterCardUsecase) listMasterCardsCore(
 		return nil, err
 	}
 
-	orderBy, dir, err := resolveMasterCardOrderBy(in.OrderBy, in.OrderDirection)
-	if err != nil {
-		return nil, err
-	}
-
-	ordering := PageOrdering{OrderBy: string(orderBy), Direction: string(dir)}
-
-	after, err := u.resolveMasterCardCursor(ctx, in.After, in.MasterCardgroupID, orderBy, ordering, "after")
+	after, err := u.resolveMasterCardCursor(ctx, in.After, in.MasterCardgroupID, "after")
 	if err != nil {
 		return nil, err
 	}
@@ -555,7 +536,7 @@ func (u *masterCardUsecase) listMasterCardsCore(
 	cards, hasNext, hasPrev, err := assemblePage(first, after != nil,
 		func(want int) ([]*domain.MasterCard, error) {
 			rows, t, e := u.masterCardRepo.FindPageByMasterCardgroup(
-				ctx, in.MasterCardgroupID, after, want, orderBy, dir, search,
+				ctx, in.MasterCardgroupID, after, want, search,
 			)
 			if e != nil {
 				return nil, wrapInfraErr(e, opPrefix+": find page")
@@ -572,11 +553,6 @@ func (u *masterCardUsecase) listMasterCardsCore(
 	// resolver can embed it in the cursor it emits. Capturing it here — rather
 	// than re-reading the row when the cursor comes back — is what makes the
 	// bookmark survive a repositioning of the boundary row.
-	keys, err := masterCardOrderKeys(orderBy, cards)
-	if err != nil {
-		return nil, err
-	}
-
 	// StartCur / EndCur carry the RAW node id; the resolver's connection layer
 	// applies the cursor encoder once. Encoding here would double-encode.
 	out := &MasterCardConnectionOutput{
@@ -584,107 +560,46 @@ func (u *masterCardUsecase) listMasterCardsCore(
 		HasNext:    hasNext,
 		HasPrev:    hasPrev,
 		Cards:      cards,
-		Ordering:   ordering,
-		OrderKeys:  keys,
+		Ordering:   masterCardOrdering,
+		OrderKeys:  masterCardOrderKeys(cards),
 	}
 	out.StartCur, out.EndCur = firstLastCursor(cards, func(c *domain.MasterCard) string { return c.ID })
 	return out, nil
 }
 
-// masterCardOrderKeys serializes the active ordering column of every row in a
-// served page, keyed by master card id. An orderBy outside the allowlist is a
-// caller bug and surfaces as INTERNAL, matching masterCardOrderKey.
-func masterCardOrderKeys(orderBy repository.MasterCardOrderBy, cards []*domain.MasterCard) (map[string]string, error) {
+// masterCardOrderKeys serializes the position ordering column of every row in
+// a served page, keyed by master card id.
+func masterCardOrderKeys(cards []*domain.MasterCard) map[string]string {
 	keys := make(map[string]string, len(cards))
 	for _, c := range cards {
 		if c == nil {
 			continue
 		}
-		k, err := masterCardOrderKey(orderBy, c)
-		if err != nil {
-			return nil, err
-		}
-		keys[c.ID] = k
+		keys[c.ID] = masterCardOrderKey(c)
 	}
-	return keys, nil
+	return keys
 }
 
-// masterCardOrderKey serializes one master card's ordering column for embedding
-// in a v2 cursor. Ordering by ID needs no key — the id is already carried by the
-// cursor — so it returns the empty string. The default arm mirrors
-// resolveMasterCardCursor's: an orderBy the switch does not handle is a caller
-// bug, surfaced as INTERNAL rather than a silently unanchored cursor.
-func masterCardOrderKey(orderBy repository.MasterCardOrderBy, card *domain.MasterCard) (string, error) {
-	switch orderBy {
-	case repository.MasterCardOrderByID:
-		return "", nil
-	case repository.MasterCardOrderByPosition:
-		return strconv.Itoa(card.Position), nil
-	case repository.MasterCardOrderByCreatedAt:
-		return encodeTimeOrderKey(card.CreatedAt), nil
-	case repository.MasterCardOrderByUpdatedAt:
-		return encodeTimeOrderKey(card.UpdatedAt), nil
-	default:
-		return "", eris.Errorf("usecase: master card: unhandled orderBy %q", orderBy)
+// masterCardOrderKey serializes one master card's position for embedding in a
+// v2 cursor.
+func masterCardOrderKey(card *domain.MasterCard) string {
+	return strconv.Itoa(card.Position)
+}
+
+// applyMasterCardOrderKey populates the repository cursor's Position from the
+// value a v2 cursor carried. A key that does not parse returns
+// errCursorKeyMalformed so the caller maps it to BAD_USER_INPUT.
+func applyMasterCardOrderKey(c *repository.MasterCardCursor, key string) error {
+	n, err := decodeIntOrderKey(key)
+	if err != nil {
+		return err
 	}
-}
-
-// applyMasterCardOrderKey populates the repository cursor column the active
-// orderBy needs from the value a v2 cursor carried. A key that does not parse
-// into the column type returns errCursorKeyMalformed so the caller maps it to
-// BAD_USER_INPUT; an unhandled orderBy stays INTERNAL.
-func applyMasterCardOrderKey(c *repository.MasterCardCursor, orderBy repository.MasterCardOrderBy, key string) error {
-	switch orderBy {
-	case repository.MasterCardOrderByID:
-		// No extra column needed; the id in the cursor is the ordering key.
-		return nil
-	case repository.MasterCardOrderByPosition:
-		n, err := decodeIntOrderKey(key)
-		if err != nil {
-			return err
-		}
-		c.Position = &n
-		return nil
-	case repository.MasterCardOrderByCreatedAt:
-		t, err := decodeTimeOrderKey(key)
-		if err != nil {
-			return err
-		}
-		c.CreatedAt = &t
-		return nil
-	case repository.MasterCardOrderByUpdatedAt:
-		t, err := decodeTimeOrderKey(key)
-		if err != nil {
-			return err
-		}
-		c.UpdatedAt = &t
-		return nil
-	default:
-		return eris.Errorf("usecase: master card: unhandled orderBy %q", orderBy)
-	}
-}
-
-// masterCardOrderByColumns is the usecase→repository orderBy allowlist for master cards.
-var masterCardOrderByColumns = map[MasterCardOrderBy]repository.MasterCardOrderBy{
-	MasterCardOrderByID:        repository.MasterCardOrderByID,
-	MasterCardOrderByPosition:  repository.MasterCardOrderByPosition,
-	MasterCardOrderByCreatedAt: repository.MasterCardOrderByCreatedAt,
-	MasterCardOrderByUpdatedAt: repository.MasterCardOrderByUpdatedAt,
-}
-
-// resolveMasterCardOrderBy maps the typed usecase enums to the repository
-// allowlist. Defaults match the schema (POSITION, ASC) when both inputs are
-// nil. The default switch arm is defense in depth — gqlgen UnmarshalGQL already
-// rejects invalid enum strings upstream.
-func resolveMasterCardOrderBy(
-	orderBy *MasterCardOrderBy, dir *SortOrder,
-) (repository.MasterCardOrderBy, repository.SortOrder, error) {
-	return resolveOrderByColumn(orderBy, dir, masterCardOrderByColumns, repository.MasterCardOrderByPosition, repository.SortAsc)
+	c.Position = &n
+	return nil
 }
 
 // resolveMasterCardCursor decodes an opaque cursor string into a
-// *repository.MasterCardCursor with the column required by the active orderBy
-// populated. The cursor may be a v2 envelope ("v2:" + base64 JSON), a v1
+// *repository.MasterCardCursor with the position ordering column populated. The cursor may be a v2 envelope ("v2:" + base64 JSON), a v1
 // envelope ("v1:" + base64), or a legacy bare UUID; all three are accepted.
 // Returns BAD_USER_INPUT when the cursor cannot be decoded, was taken under a
 // different ordering, carries an ordering-key value that does not parse, the
@@ -699,18 +614,13 @@ func resolveMasterCardOrderBy(
 // duplicates or skips rows when the ordering column is mutable, and it exists
 // only so cursors persisted by older clients keep paging.
 //
-// On every ordering where v2 actually matters — POSITION, CREATED_AT,
-// UPDATED_AT — the FindByID lookup and the cross-deck guard both run, on the v2
+// The FindByID lookup and the cross-deck guard run for every cursor, on the v2
 // path as well as the v1 one: a v2 cursor must not skip the scope check just
-// because it can hydrate itself. MasterCardOrderByID returns before the lookup
-// because there is no ordering column to hydrate and the page query is already
-// deck-scoped, so no cross-deck row can be reached through it.
+// because it can hydrate itself.
 func (u *masterCardUsecase) resolveMasterCardCursor(
 	ctx context.Context,
 	cursorStr *string,
 	masterCardgroupID string,
-	orderBy repository.MasterCardOrderBy,
-	ordering PageOrdering,
 	field string,
 ) (*repository.MasterCardCursor, error) {
 	p, present, err := decodeCursorOrBadInput(cursorStr, field)
@@ -720,14 +630,11 @@ func (u *masterCardUsecase) resolveMasterCardCursor(
 	if !present {
 		return nil, nil
 	}
-	if err := requireCursorOrdering(p, ordering, field); err != nil {
+	if err := requireCursorOrdering(p, masterCardOrdering, field); err != nil {
 		return nil, err
 	}
 	id := p.ID
 	c := &repository.MasterCardCursor{ID: id}
-	if orderBy == repository.MasterCardOrderByID {
-		return c, nil
-	}
 
 	card, err := u.masterCardRepo.FindByID(ctx, id)
 	if err != nil {
@@ -744,28 +651,14 @@ func (u *masterCardUsecase) resolveMasterCardCursor(
 	}
 
 	if p.HasOrdering {
-		if err := applyMasterCardOrderKey(c, orderBy, p.OrderKey); err != nil {
-			if errors.Is(err, errCursorKeyMalformed) {
-				return nil, ucerr.NewValidationError(field, "invalid cursor")
-			}
-			return nil, err
+		if err := applyMasterCardOrderKey(c, p.OrderKey); err != nil {
+			return nil, ucerr.NewValidationError(field, "invalid cursor")
 		}
 		return c, nil
 	}
 
 	// v1 / legacy bare-UUID fallback: re-hydrate from the current row.
-	switch orderBy {
-	case repository.MasterCardOrderByPosition:
-		pos := card.Position
-		c.Position = &pos
-	case repository.MasterCardOrderByCreatedAt:
-		ca := card.CreatedAt
-		c.CreatedAt = &ca
-	case repository.MasterCardOrderByUpdatedAt:
-		ua := card.UpdatedAt
-		c.UpdatedAt = &ua
-	default:
-		return nil, eris.Errorf("usecase: master card: unhandled orderBy %q", orderBy)
-	}
+	pos := card.Position
+	c.Position = &pos
 	return c, nil
 }

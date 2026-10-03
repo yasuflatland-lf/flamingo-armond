@@ -47,24 +47,19 @@ type mockMasterCatalogRepository struct {
 }
 
 type findPublishedPageCall struct {
-	After   *repository.MasterCatalogCursor
-	First   int
-	OrderBy repository.MasterCatalogOrderBy
-	Dir     repository.SortOrder
-	Search  *string
+	After  *repository.MasterCatalogCursor
+	First  int
+	Search *string
 }
 
 func (m *mockMasterCatalogRepository) FindPublishedPage(
 	_ context.Context,
 	after *repository.MasterCatalogCursor,
 	first int,
-	orderBy repository.MasterCatalogOrderBy,
-	dir repository.SortOrder,
 	search *string,
 ) ([]*repository.MasterCatalogItem, int64, error) {
 	m.findPageCalls = append(m.findPageCalls, findPublishedPageCall{
-		After: after, First: first,
-		OrderBy: orderBy, Dir: dir, Search: search,
+		After: after, First: first, Search: search,
 	})
 	if m.findPageErr != nil {
 		return nil, 0, m.findPageErr
@@ -93,13 +88,10 @@ func (m *mockMasterCatalogRepository) FindPageAnyStatus(
 	_ context.Context,
 	after *repository.MasterCatalogCursor,
 	first int,
-	orderBy repository.MasterCatalogOrderBy,
-	dir repository.SortOrder,
 	search *string,
 ) ([]*repository.MasterCatalogItem, int64, error) {
 	m.findAdminCalls = append(m.findAdminCalls, findPublishedPageCall{
-		After: after, First: first,
-		OrderBy: orderBy, Dir: dir, Search: search,
+		After: after, First: first, Search: search,
 	})
 	if m.findAdminErr != nil {
 		return nil, 0, m.findAdminErr
@@ -241,7 +233,7 @@ func TestListPublishedConnection_Forward_TrimsExtraRow_SetsHasNext(t *testing.T)
 		t.Fatalf("want cardCount 10 preserved, got %d", out.Items[0].CardCount)
 	}
 
-	// Verify the +1 fetch reached the repo with the default SORT_ORDER/ASC.
+	// Verify the +1 fetch reached the repo under the fixed (sort_order, ASC).
 	if len(repo.findPageCalls) != 1 {
 		t.Fatalf("want 1 FindPublishedPage call, got %d", len(repo.findPageCalls))
 	}
@@ -249,11 +241,8 @@ func TestListPublishedConnection_Forward_TrimsExtraRow_SetsHasNext(t *testing.T)
 	if call.First != 3 {
 		t.Fatalf("want repo first=3 (+1 trick), got %d", call.First)
 	}
-	if call.OrderBy != repository.MasterCatalogOrderBySortOrder {
-		t.Fatalf("want default orderBy sort_order, got %q", call.OrderBy)
-	}
-	if call.Dir != repository.SortAsc {
-		t.Fatalf("want default dir ASC, got %q", call.Dir)
+	if want := (PageOrdering{OrderBy: "sort_order", Direction: "ASC"}); out.Ordering != want {
+		t.Fatalf("want ordering %+v, got %+v", want, out.Ordering)
 	}
 }
 
@@ -273,33 +262,6 @@ func TestListPublishedConnection_Forward_NoExtraRow_NoNextPage(t *testing.T) {
 	}
 	if out.HasNext {
 		t.Fatal("want HasNext=false when no extra row returned")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Order resolution
-// ---------------------------------------------------------------------------
-
-func TestListPublishedConnection_OrderByName_Desc(t *testing.T) {
-	repo := &mockMasterCatalogRepository{findPageTotal: 0, findPageResult: nil}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
-
-	ob := MasterCatalogOrderByName
-	dir := SortOrderDesc
-	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
-		First:          intPtr(3),
-		OrderBy:        &ob,
-		OrderDirection: &dir,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	call := repo.findPageCalls[0]
-	if call.OrderBy != repository.MasterCatalogOrderByName {
-		t.Fatalf("want repo orderBy name, got %q", call.OrderBy)
-	}
-	if call.Dir != repository.SortDesc {
-		t.Fatalf("want repo dir DESC, got %q", call.Dir)
 	}
 }
 
@@ -583,28 +545,29 @@ func TestListAdminConnection_CursorAcceptsDraftViaFindByID(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Order resolver direct unit coverage
+// Fixed ordering
 // ---------------------------------------------------------------------------
 
-func TestResolveMasterCatalogOrderBy_Defaults(t *testing.T) {
-	field, dir, err := resolveMasterCatalogOrderBy(nil, nil)
+// TestMasterCatalog_FixedOrdering_SortOrderAsc verifies both catalog
+// connections serve every page under the fixed (sort_order, ASC) ordering.
+func TestMasterCatalog_FixedOrdering_SortOrderAsc(t *testing.T) {
+	want := PageOrdering{OrderBy: "sort_order", Direction: "ASC"}
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+
+	pub, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(3)})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if field != repository.MasterCatalogOrderBySortOrder {
-		t.Fatalf("want default sort_order, got %q", field)
+	if pub.Ordering != want {
+		t.Fatalf("published ordering: want %+v, got %+v", want, pub.Ordering)
 	}
-	if dir != repository.SortAsc {
-		t.Fatalf("want default ASC, got %q", dir)
-	}
-}
 
-func TestResolveMasterCatalogOrderBy_Invalid(t *testing.T) {
-	bad := MasterCatalogOrderBy("BOGUS")
-	_, _, err := resolveMasterCatalogOrderBy(&bad, nil)
-	var ve *ucerr.ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("want ValidationError for bogus orderBy, got %v", err)
+	admin, err := uc.ListAdminConnection(authedCtx("admin1"), MasterCatalogConnectionInput{First: intPtr(3)})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if admin.Ordering != want {
+		t.Fatalf("admin ordering: want %+v, got %+v", want, admin.Ordering)
 	}
 }
 
@@ -1689,7 +1652,7 @@ func TestListPublishedConnection_V2Cursor_UsesEmbeddedOrderKey(t *testing.T) {
 
 	cur := cursor.EncodeV2(cursor.Payload{
 		ID:        "cur-1",
-		OrderBy:   string(repository.MasterCatalogOrderBySortOrder),
+		OrderBy:   "sort_order",
 		Direction: string(repository.SortAsc),
 		OrderKey:  "7",
 	})
@@ -1732,11 +1695,11 @@ func TestListPublishedConnection_V2Cursor_OrderingMismatch_BadUserInput(t *testi
 
 	cases := map[string]cursor.Payload{
 		"different column": {
-			ID: "cur-1", OrderBy: string(repository.MasterCatalogOrderByName),
+			ID: "cur-1", OrderBy: "name",
 			Direction: string(repository.SortAsc), OrderKey: "Deck cur-1",
 		},
 		"different direction": {
-			ID: "cur-1", OrderBy: string(repository.MasterCatalogOrderBySortOrder),
+			ID: "cur-1", OrderBy: "sort_order",
 			Direction: string(repository.SortDesc), OrderKey: "7",
 		},
 	}
@@ -1769,7 +1732,7 @@ func TestListPublishedConnection_V2Cursor_MalformedOrderKey_BadUserInput(t *test
 
 	cur := cursor.EncodeV2(cursor.Payload{
 		ID:        "cur-1",
-		OrderBy:   string(repository.MasterCatalogOrderBySortOrder),
+		OrderBy:   "sort_order",
 		Direction: string(repository.SortAsc),
 		OrderKey:  "not-an-int",
 	})
@@ -1794,7 +1757,7 @@ func TestListPublishedConnection_V2Cursor_DraftScopeStillEnforced(t *testing.T) 
 
 	cur := cursor.EncodeV2(cursor.Payload{
 		ID:        "draft-id",
-		OrderBy:   string(repository.MasterCatalogOrderBySortOrder),
+		OrderBy:   "sort_order",
 		Direction: string(repository.SortAsc),
 		OrderKey:  "7",
 	})
@@ -1831,7 +1794,7 @@ func TestListPublishedConnection_CarriesOrderingAndOrderKeys(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	want := PageOrdering{
-		OrderBy:   string(repository.MasterCatalogOrderBySortOrder),
+		OrderBy:   "sort_order",
 		Direction: string(repository.SortAsc),
 	}
 	if out.Ordering != want {
@@ -1842,74 +1805,31 @@ func TestListPublishedConnection_CarriesOrderingAndOrderKeys(t *testing.T) {
 	}
 }
 
-// TestMasterCatalogOrderKeyCodec covers both halves of the ordering-key codec
-// for every column in the allowlist plus the impossible default arms, which
-// must stay INTERNAL rather than degrade to BAD_USER_INPUT.
+// TestMasterCatalogOrderKeyCodec covers both halves of the ordering-key codec:
+// sort_order serializes to a key that decodes back into the cursor, and a
+// malformed key is errCursorKeyMalformed rather than an INTERNAL fault.
 func TestMasterCatalogOrderKeyCodec(t *testing.T) {
 	t.Parallel()
 
-	when := time.Date(2026, 7, 20, 4, 5, 6, 789012000, time.UTC)
-	mcg := &domain.MasterCardgroup{
-		ID:        "m1",
-		Name:      domain.CardgroupName("Deck m1"),
-		SortOrder: -4,
-		CreatedAt: when,
+	mcg := &domain.MasterCardgroup{ID: "m1", Name: domain.CardgroupName("Deck m1"), SortOrder: -4}
+
+	gotKey := masterCatalogOrderKey(mcg)
+	if gotKey != "-4" {
+		t.Fatalf("key = %q, want %q", gotKey, "-4")
+	}
+	if keys := masterCatalogOrderKeys([]*MasterCatalogItem{{Cardgroup: mcg}}); keys["m1"] != "-4" {
+		t.Fatalf("OrderKeys = %v, want m1=-4", keys)
+	}
+	c := &repository.MasterCatalogCursor{ID: "m1"}
+	if err := applyMasterCatalogOrderKey(c, gotKey); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.SortOrder == nil || *c.SortOrder != -4 {
+		t.Fatalf("want SortOrder=-4, got %+v", c)
 	}
 
-	for _, tc := range []struct {
-		orderBy repository.MasterCatalogOrderBy
-		wantKey string
-		check   func(t *testing.T, c *repository.MasterCatalogCursor)
-	}{
-		{
-			orderBy: repository.MasterCatalogOrderBySortOrder,
-			wantKey: "-4",
-			check: func(t *testing.T, c *repository.MasterCatalogCursor) {
-				if c.SortOrder == nil || *c.SortOrder != -4 {
-					t.Fatalf("want SortOrder=-4, got %+v", c)
-				}
-			},
-		},
-		{
-			orderBy: repository.MasterCatalogOrderByCreatedAt,
-			wantKey: when.Format(time.RFC3339Nano),
-			check: func(t *testing.T, c *repository.MasterCatalogCursor) {
-				if c.CreatedAt == nil || !c.CreatedAt.Equal(when) {
-					t.Fatalf("want CreatedAt=%v, got %+v", when, c)
-				}
-			},
-		},
-		{
-			orderBy: repository.MasterCatalogOrderByName,
-			wantKey: "Deck m1",
-			check: func(t *testing.T, c *repository.MasterCatalogCursor) {
-				if c.Name == nil || *c.Name != "Deck m1" {
-					t.Fatalf("want Name=Deck m1, got %+v", c)
-				}
-			},
-		},
-	} {
-		t.Run(string(tc.orderBy), func(t *testing.T) {
-			t.Parallel()
-
-			gotKey, err := masterCatalogOrderKey(tc.orderBy, mcg)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if gotKey != tc.wantKey {
-				t.Fatalf("key = %q, want %q", gotKey, tc.wantKey)
-			}
-			c := &repository.MasterCatalogCursor{ID: "m1"}
-			if err := applyMasterCatalogOrderKey(c, tc.orderBy, gotKey); err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			tc.check(t, c)
-		})
+	err := applyMasterCatalogOrderKey(&repository.MasterCatalogCursor{}, "not-an-int")
+	if !errors.Is(err, errCursorKeyMalformed) {
+		t.Fatalf("want errCursorKeyMalformed, got %v", err)
 	}
-
-	_, err := masterCatalogOrderKeys(repository.MasterCatalogOrderBy("not_a_real_column"), []*MasterCatalogItem{{Cardgroup: mcg}})
-	assertInternalChain(t, err, "usecase: master catalog: unhandled orderBy")
-
-	err = applyMasterCatalogOrderKey(&repository.MasterCatalogCursor{}, repository.MasterCatalogOrderBy("not_a_real_column"), "")
-	assertInternalChain(t, err, "usecase: master catalog: unhandled orderBy")
 }
