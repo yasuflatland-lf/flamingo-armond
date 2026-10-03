@@ -74,9 +74,6 @@ type FSRSState struct {
 	Lapses        int
 	Phase         FSRSPhase
 	LastReview    time.Time
-	// LastRating is the rating of the swipe that produced this state; the zero
-	// value denotes a synthesized new-card state that no swipe has rated yet.
-	LastRating Rating
 }
 
 // NewCardStability and NewCardDifficulty are the placeholder scheduling values a

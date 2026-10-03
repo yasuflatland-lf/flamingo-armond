@@ -473,7 +473,6 @@ func upsertDueCardState(
 	card *domain.Card,
 	now, due, lastReview time.Time,
 	stability float64,
-	lastRating domain.Rating,
 ) {
 	t.Helper()
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -482,7 +481,6 @@ func upsertDueCardState(
 		state.State.Due = due
 		state.State.LastReview = lastReview
 		state.State.Stability = stability
-		state.State.LastRating = lastRating
 		state.State.Reps = 1
 		return ucsRepo.UpsertTx(ctx, tx, state)
 	}))
@@ -1003,10 +1001,10 @@ func TestCardRepository_FindDueCards_ReviewWindowUsesJSTDayEnd(t *testing.T) {
 	// An earlier UTC calendar date than now, so the review rows clear the credit
 	// bound and the due cutoff alone decides inclusion.
 	lastReview := now.Add(-25 * time.Hour)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, againToday, now, dueAt23JST, lastReview, 20, domain.RatingAgain)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, goodToday, now, dueAt23JST, lastReview, 20, domain.RatingGood)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, atBoundary, now, end, lastReview, 20, domain.RatingAgain)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, afterBoundary, now, end.Add(time.Second), lastReview, 20, domain.RatingGood)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, againToday, now, dueAt23JST, lastReview, 20)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, goodToday, now, dueAt23JST, lastReview, 20)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, atBoundary, now, end, lastReview, 20)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, afterBoundary, now, end.Add(time.Second), lastReview, 20)
 
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
@@ -1046,11 +1044,11 @@ func TestCardRepository_FindDueCards_ReviewWindowUsesUTCCreditBound(t *testing.T
 	}
 	oneSecondBeforeLastReview := bound.Add(-time.Second)
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, sameUTCDate, now, due,
-		time.Date(2026, 7, 18, 9, 0, 0, 0, time.UTC), 20, domain.RatingGood)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, atBound, now, due, bound, 20, domain.RatingGood)
+		time.Date(2026, 7, 18, 9, 0, 0, 0, time.UTC), 20)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, atBound, now, due, bound, 20)
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, oneSecondBefore, now, due,
-		oneSecondBeforeLastReview, 20, domain.RatingGood)
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, fullDayElapsed, now, due, now.Add(-25*time.Hour), 20, domain.RatingGood)
+		oneSecondBeforeLastReview, 20)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, fullDayElapsed, now, due, now.Add(-25*time.Hour), 20)
 
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
@@ -1100,9 +1098,9 @@ func TestCardRepository_FindDueCards_ReviewWindowAdmitsOvernightReviewButNotSame
 	}
 	overnightLastReview := time.Date(2026, 7, 18, 14, 0, 0, 0, time.UTC)
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, overnight, now, due,
-		overnightLastReview, 20, domain.RatingAgain)
+		overnightLastReview, 20)
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, sameLearnDay, now, due,
-		time.Date(2026, 7, 18, 15, 30, 0, 0, time.UTC), 20, domain.RatingAgain)
+		time.Date(2026, 7, 18, 15, 30, 0, 0, time.UTC), 20)
 
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.LearnWindow{
 		Now:                  now,
@@ -1285,11 +1283,11 @@ func TestCardRepository_FindPracticeCards_CoversUTCCreditBandBeforeNineJST(t *te
 		require.NoError(t, repo.Create(ctx, card))
 	}
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, eveningBefore, now, due,
-		time.Date(2026, 7, 18, 11, 0, 0, 0, time.UTC), 20, domain.RatingGood)
+		time.Date(2026, 7, 18, 11, 0, 0, 0, time.UTC), 20)
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, atCreditBound, now, due,
-		w.CreditReviewedBefore, 20, domain.RatingGood)
+		w.CreditReviewedBefore, 20)
 	upsertDueCardState(t, ctx, ucsRepo, ownerID, beforeCreditBound, now, due,
-		time.Date(2026, 7, 17, 23, 0, 0, 0, time.UTC), 20, domain.RatingGood)
+		time.Date(2026, 7, 17, 23, 0, 0, 0, time.UTC), 20)
 
 	learn, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), w, 10)
 	require.NoError(t, err)
@@ -1512,7 +1510,7 @@ func TestCardRepository_FindDueCards_ReviewRowsOrderedByRetrievabilityDesc(t *te
 		require.NoError(t, repo.Create(ctx, card))
 		upsertDueCardState(t, ctx, ucsRepo, ownerID, card, now,
 			now.Add(-time.Duration(fixture.overdue)*24*time.Hour),
-			now.Add(-time.Duration(fixture.elapsed)*24*time.Hour), fixture.stability, domain.RatingGood)
+			now.Add(-time.Duration(fixture.elapsed)*24*time.Hour), fixture.stability)
 		ids = append(ids, card.ID)
 	}
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.NewLearnWindow(now), 20)
@@ -1535,10 +1533,10 @@ func TestCardRepository_FindDueCards_ReviewKeyFloorsElapsedDays(t *testing.T) {
 	// [A, B]; the unfloored key would yield [B, A].
 	a := newCard(cg.ID, "A", "back")
 	require.NoError(t, repo.Create(ctx, a))
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, a, now, due, now.Add(-47*time.Hour), 2, domain.RatingGood)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, a, now, due, now.Add(-47*time.Hour), 2)
 	b := newCard(cg.ID, "B", "back")
 	require.NoError(t, repo.Create(ctx, b))
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, b, now, due, now.Add(-25*time.Hour), 1.2, domain.RatingGood)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, b, now, due, now.Add(-25*time.Hour), 1.2)
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.NewLearnWindow(now), 10)
 	require.NoError(t, err)
 	require.Equal(t, []string{a.ID, b.ID}, repoCardIDs(got))
@@ -1554,11 +1552,11 @@ func TestCardRepository_FindDueCards_HighStabilityReviewIsServed(t *testing.T) {
 	now := time.Date(2026, 9, 13, 3, 0, 0, 0, time.UTC)
 	card := newCard(cg.ID, "high-stability", "back")
 	require.NoError(t, repo.Create(ctx, card))
-	upsertDueCardState(t, ctx, ucsRepo, ownerID, card, now, now.Add(-24*time.Hour), now.Add(-2*24*time.Hour), 20, domain.RatingGood)
+	upsertDueCardState(t, ctx, ucsRepo, ownerID, card, now, now.Add(-24*time.Hour), now.Add(-2*24*time.Hour), 20)
 	for i := 0; i < 25; i++ {
 		low := newCard(cg.ID, fmt.Sprintf("low-stability-%d", i), "back")
 		require.NoError(t, repo.Create(ctx, low))
-		upsertDueCardState(t, ctx, ucsRepo, ownerID, low, now, now.Add(-24*time.Hour), now.Add(-10*24*time.Hour), 2, domain.RatingAgain)
+		upsertDueCardState(t, ctx, ucsRepo, ownerID, low, now, now.Add(-24*time.Hour), now.Add(-10*24*time.Hour), 2)
 	}
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, string(cg.ID), domain.NewLearnWindow(now), 20)
 	require.NoError(t, err)

@@ -66,7 +66,6 @@ func reviewedCardFSRS(lastReview time.Time) *domain.UserCardFSRS {
 			Lapses:        1,
 			Phase:         domain.FSRSPhaseReview,
 			LastReview:    lastReview,
-			LastRating:    domain.RatingGood,
 		},
 	}
 }
