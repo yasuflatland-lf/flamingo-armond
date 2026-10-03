@@ -45,6 +45,30 @@ func TestCardImportErrorKindFromSkipKind(t *testing.T) {
 	}
 }
 
+func TestCardImportErrorsFromTextdic(t *testing.T) {
+	t.Parallel()
+	t.Run("maps every field", func(t *testing.T) {
+		t.Parallel()
+		got, err := cardImportErrorsFromTextdic([]textdic.ValidationError{
+			{Line: 3, Message: "m", Kind: textdic.SkipKindFrontOnly, Snippet: "s"},
+		})
+		want := CardImportError{Line: 3, Message: "m", Kind: CardImportErrKindFrontOnly, Snippet: "s"}
+		if err != nil || len(got) != 1 || got[0] != want {
+			t.Fatalf("cardImportErrorsFromTextdic = %+v, %v; want [%+v], nil", got, err, want)
+		}
+	})
+	t.Run("unmapped kind aborts", func(t *testing.T) {
+		t.Parallel()
+		got, err := cardImportErrorsFromTextdic([]textdic.ValidationError{
+			{Line: 1, Kind: textdic.SkipKindHard},
+			{Line: 2, Kind: textdic.SkipKindUnknown},
+		})
+		if got != nil || err == nil || !strings.Contains(err.Error(), "unmapped textdic skip kind") {
+			t.Fatalf("cardImportErrorsFromTextdic = %+v, %v; want nil slice and unmapped error", got, err)
+		}
+	})
+}
+
 // ---------------------------------------------------------------------------
 // Test doubles
 // ---------------------------------------------------------------------------
