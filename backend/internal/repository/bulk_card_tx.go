@@ -129,26 +129,6 @@ UPDATE cards SET front = t.new_front FROM targets t WHERE cards.id = t.id`)
 	return res.RowsAffected, nil
 }
 
-func (r *cardRepo) DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error) {
-	if len(ids) == 0 {
-		return 0, nil
-	}
-	// Owner check at SQL: cards.cardgroup_id must reference a cardgroup the
-	// user owns. The subselect is the SOLE ownership gate — the usecase does
-	// no read-side owner check, so foreign-owned ids in the list are silently
-	// filtered out here. Do not remove the cardgroup_id IN (...) clause
-	// without adding an equivalent guard upstream.
-	res := tx.WithContext(ctx).
-		Where("id IN ? AND cardgroup_id IN (?)", ids,
-			tx.Model(&gormCardgroup{}).Select("id").Where("owner_id = ?", ownerID),
-		).
-		Delete(&gormCard{})
-	if res.Error != nil {
-		return 0, eris.Wrap(res.Error, "repository: bulk delete cards")
-	}
-	return res.RowsAffected, nil
-}
-
 // upsertCardRow is the domain-agnostic, normalized representation of a card row
 // consumed by upsertManyTx. It mirrors exactly the columns that upsertManyTx
 // writes — (id, <fkColumn>, front, back, created_at, position) — so

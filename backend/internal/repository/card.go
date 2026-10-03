@@ -136,7 +136,7 @@ type CardWriteRepository interface {
 	Create(ctx context.Context, card *domain.Card) error
 	Update(ctx context.Context, id string, patch CardUpdate) (*domain.Card, error)
 	Delete(ctx context.Context, id string) error
-	// DeleteByIDsTx hard-deletes the cards whose ids are in the list AND whose
+	// DeleteByIDs hard-deletes the cards whose ids are in the list AND whose
 	// cardgroup is owned by ownerID. Returns the number of rows actually deleted
 	// (cards owned by other users are silently skipped at SQL level so a single
 	// foreign id in the list does not abort the batch).
@@ -144,7 +144,7 @@ type CardWriteRepository interface {
 	// Empty ids short-circuits to (0, nil) without touching the DB. With an empty
 	// slice GORM v2 omits the `WHERE id IN (?)` clause altogether, which would
 	// convert this `Delete` into an unbounded mass delete — far worse than a slow scan.
-	DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error)
+	DeleteByIDs(ctx context.Context, ownerID string, ids []string) (int64, error)
 	// UpsertManyTx upserts cards by (cardgroup_id, front), overwriting `back` and `position`;
 	// the database trigger advances updated_at. Returns the per-row split between Inserted
 	// and Updated. Empty input is a no-op. Inputs above bulkStatementChunkRows run as several
@@ -303,6 +303,26 @@ func (r *cardRepo) Delete(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (r *cardRepo) DeleteByIDs(ctx context.Context, ownerID string, ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	// Owner check at SQL: cards.cardgroup_id must reference a cardgroup the
+	// user owns. The subselect is the SOLE ownership gate — the usecase does
+	// no read-side owner check, so foreign-owned ids in the list are silently
+	// filtered out here. Do not remove the cardgroup_id IN (...) clause
+	// without adding an equivalent guard upstream.
+	res := r.db.WithContext(ctx).
+		Where("id IN ? AND cardgroup_id IN (?)", ids,
+			r.db.Model(&gormCardgroup{}).Select("id").Where("owner_id = ?", ownerID),
+		).
+		Delete(&gormCard{})
+	if res.Error != nil {
+		return 0, eris.Wrap(res.Error, "repository: bulk delete cards")
+	}
+	return res.RowsAffected, nil
 }
 
 func cardToRow(card *domain.Card) *gormCard {

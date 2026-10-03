@@ -50,7 +50,7 @@ existingFront := &domain.Card{
     Back:        domain.CardText("old back"),
 }
 cardRepo := &mockCardRepository{findResult: existingFront, updateResult: existingFront}
-uc := NewCardUsecase(nil, cardRepo, nil, nil)
+uc := NewCardUsecase(cardRepo, nil, nil, newTestLogger())
 
 newFront := " new front "
 _, _ = uc.Update(ctx, "card1", UpdateCardInput{Front: &newFront})
@@ -118,9 +118,9 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
     t.Run("non owner", func(t *testing.T) {
         t.Parallel()
         // Reads existing only; no mutation through this pointer.
-        uc := NewCardUsecase(nil,
+        uc := NewCardUsecase(
             &mockCardRepository{findResult: existing},
-            nil, nil)
+            nil, nil, newTestLogger())
         _, err := uc.Update(ctx, "card1", UpdateCardInput{})
         assertUnauthenticated(t, err)
     })
@@ -139,7 +139,7 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
             findResult:   existingFront,
             updateResult: existingFront,
         }
-        uc := NewCardUsecase(nil, cardRepo, nil, nil)
+        uc := NewCardUsecase(cardRepo, nil, nil, newTestLogger())
 
         newFront := " new front "
         _, _ = uc.Update(ctx, "card1", UpdateCardInput{Front: &newFront})

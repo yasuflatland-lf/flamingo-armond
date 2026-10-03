@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/rotisserie/eris"
+	"gorm.io/gorm"
 
 	"backend/internal/usecase/ucerr"
 )
@@ -170,4 +171,15 @@ func (m *mockAdminChecker) IsAdmin(_ context.Context, _ string) (bool, error) {
 		return false, m.err
 	}
 	return m.isAdmin, nil
+}
+
+// fakeTxRunner returns a txRunner that invokes fn with a nil *gorm.DB. The
+// repository under test is the mock, which ignores tx anyway, so this is
+// sufficient to exercise HandleSwipe without a real database.
+func fakeTxRunner() (txRunner, *int) {
+	calls := 0
+	return func(_ context.Context, fn func(tx *gorm.DB) error) error {
+		calls++
+		return fn(nil)
+	}, &calls
 }
