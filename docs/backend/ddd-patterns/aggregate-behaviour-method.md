@@ -101,9 +101,9 @@ path must reproduce it.
 carries no `UpdatedAt` field: `updated_at` is database-owned, and the
 `trg_user_card_fsrs_set_updated_at` BEFORE INSERT OR UPDATE trigger assigns
 `now()` on either upsert branch, so the persisted value is the database clock,
-never the request's `now`. Nothing in the application reads it back; the queue
-predicates compare `last_review` and `due` against learn-day boundaries, never
-against `updated_at`.
+never the request's `now`. No request path reads it back; the queue predicates
+compare `last_review` and `due` against learn-day boundaries, never against
+`updated_at`. It stays as an audit column that the `cmd/seed` dump selects.
 
 ### Single-field aggregate mutation (`Cardgroup.Rename`, `Card.UpdateFront`/`UpdateBack`) (issues #212, #213)
 
@@ -179,9 +179,9 @@ bypasses the parser, which is a programmer error that classifies as `INTERNAL`, 
 `ErrCardgroupNameRequired`.
 
 **`UpdatedAt` is intentionally not stamped by the aggregate methods.** Persistence
-(GORM `AutoUpdateTime` on the `UpdatedAt` field) is the canonical source of the
-modification timestamp. Stamping `c.UpdatedAt = time.Now()` inside a behaviour
-method would couple the aggregate to a clock seam and introduce a second
-source-of-truth for the timestamp. `UserCardFSRS.ApplyRating` above follows the
-same rule more strictly: its aggregate carries no `UpdatedAt` at all, and the
-`trg_user_card_fsrs_set_updated_at` trigger owns `user_card_fsrs.updated_at`.
+is the canonical source of the modification timestamp: each table's
+`trg_<table>_set_updated_at` BEFORE INSERT OR UPDATE trigger assigns `now()`, and
+the gorm row field is read-only (`->`). Stamping `c.UpdatedAt = time.Now()` inside
+a behaviour method would couple the aggregate to a clock seam and introduce a
+second source-of-truth for the timestamp. `UserCardFSRS.ApplyRating` above follows
+the same rule more strictly: its aggregate carries no `UpdatedAt` field at all.
