@@ -70,8 +70,10 @@ func TestRoleRepository_FindByIDsTx_ReturnsRolesInTx(t *testing.T) {
 	ctx := context.Background()
 	repo := repository.NewRoleRepository(testDB.GORM)
 
-	roleAID := insertRole(t, ctx, "find-ids-tx-a-"+uuid.NewString())
-	roleBID := insertRole(t, ctx, "find-ids-tx-b-"+uuid.NewString())
+	nameA := "find-ids-tx-a-" + uuid.NewString()
+	nameB := "find-ids-tx-b-" + uuid.NewString()
+	roleAID := insertRole(t, ctx, nameA)
+	roleBID := insertRole(t, ctx, nameB)
 	missing := uuid.NewString()
 
 	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -81,6 +83,10 @@ func TestRoleRepository_FindByIDsTx_ReturnsRolesInTx(t *testing.T) {
 		require.NotNil(t, got[roleAID])
 		require.Nil(t, got[missing])
 		require.NotNil(t, got[roleBID])
+		require.Equal(t, roleAID, got[roleAID].ID)
+		require.Equal(t, domain.RoleName(nameA), got[roleAID].Name)
+		require.Equal(t, roleBID, got[roleBID].ID)
+		require.Equal(t, domain.RoleName(nameB), got[roleBID].Name)
 		return nil
 	})
 	require.NoError(t, err)

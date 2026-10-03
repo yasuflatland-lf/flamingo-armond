@@ -113,7 +113,9 @@ func NewWithUserCardFSRS(
 }
 
 // Middleware installs a fresh Loaders per request so batching and caching do
-// not bleed across requests.
+// not bleed across requests. It reads the viewer from auth.UserFrom, so it must
+// run after the auth middleware; with no viewer (or a nil userCardFSRSRepo)
+// Loaders.UserCardFSRS stays nil.
 func Middleware(
 	userRepo repository.UserRepository,
 	userRoleRepo repository.UserRoleRepository,

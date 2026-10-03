@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 
+	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/loader"
 	"backend/internal/repository"
@@ -449,6 +450,66 @@ func TestMiddleware_For_Roundtrip(t *testing.T) {
 	}
 	if got.Cardgroup == nil {
 		t.Fatalf("Loaders.Cardgroup is nil")
+	}
+	if got.UserCardFSRS != nil {
+		t.Fatalf("Loaders.UserCardFSRS is not nil without a viewer or reader")
+	}
+}
+
+func TestMiddleware_InstallsViewerScopedUserCardFSRS(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name   string
+		viewer string
+	}{
+		{name: "authenticated", viewer: "viewer-1"},
+		{name: "anonymous"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var receivedUserID atomic.Value
+			repo := &countingUserCardFSRSRepo{
+				findByUserAndCardIDs: func(_ context.Context, userID string, _ []string) (map[string]*domain.UserCardFSRS, error) {
+					receivedUserID.Store(userID)
+					return map[string]*domain.UserCardFSRS{}, nil
+				},
+			}
+			e := echo.New()
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			if tt.viewer != "" {
+				req = req.WithContext(auth.ContextWithUser(req.Context(), &auth.AuthUser{Sub: tt.viewer}))
+			}
+			c := e.NewContext(req, httptest.NewRecorder())
+
+			var got *loader.Loaders
+			handler := func(c *echo.Context) error {
+				got = loader.For(c.Request().Context())
+				return nil
+			}
+			if err := loader.Middleware(emptyUserRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo(), repo)(handler)(c); err != nil {
+				t.Fatalf("middleware: %v", err)
+			}
+			if got == nil {
+				t.Fatalf("loader.For returned nil; middleware did not install Loaders")
+			}
+			if tt.viewer == "" {
+				if got.UserCardFSRS != nil {
+					t.Fatalf("Loaders.UserCardFSRS is not nil without a viewer")
+				}
+				return
+			}
+			if got.UserCardFSRS == nil {
+				t.Fatalf("Loaders.UserCardFSRS is nil for an authenticated viewer")
+			}
+			if _, err := got.UserCardFSRS.Load(context.Background(), "card-1")(); err != nil {
+				t.Fatalf("UserCardFSRS.Load: %v", err)
+			}
+			if userID := receivedUserID.Load(); userID != tt.viewer {
+				t.Fatalf("FindByUserAndCardIDs userID = %v, want %q", userID, tt.viewer)
+			}
+		})
 	}
 }
 

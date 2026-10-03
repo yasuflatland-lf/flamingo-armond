@@ -15,8 +15,9 @@ error sentinels, which makes them poor roommates.
    table (`user_roles`). The join table typically has its own `gormXxx` struct.
 3. The concrete repository file imports `clause.OnConflict` (for the join-table's
    idempotent insert) alongside plain `Find`/`Create`/`Update`/`Delete` GORM calls.
-4. Different consumers only call one half: a DataLoader calls `FindByIDs`; an auth
-   middleware calls only `HasRole`; a usecase calls only `AssignToUser`/`RevokeFromUser`.
+4. Different consumers only call one half: the admin self-demotion guard calls only
+   `FindByIDsTx`; an auth middleware calls only `HasRole`; a usecase calls only
+   `AssignToUser`/`RevokeFromUser`.
 
 ## The split
 
@@ -24,8 +25,8 @@ Separate into two interfaces owned by two files:
 
 ```
 repository/
-  role.go       — RoleRepository: 6 CRUD methods
-                  FindByID, FindByName, Create, Update, Delete, ListAll
+  role.go       — RoleRepository: 7 CRUD methods
+                  FindByID, FindByName, FindByIDsTx, Create, Update, Delete, ListAll
   user_role.go  — UserRoleRepository: 6 membership methods
                   HasRole, AssignToUser, RevokeFromUser,
                   ListByUser, ListByUserIDs, CountAdmins
