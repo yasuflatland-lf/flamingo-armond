@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -63,6 +64,41 @@ func swipeRecordsIndexDef(t *testing.T, ctx context.Context, sqlDB *sql.DB, inde
 	return indexdef, true
 }
 
+// swipeRecordsIndexShapesOnColumn returns the sorted index shapes whose keys
+// include the given swipe_records column.
+func swipeRecordsIndexShapesOnColumn(t *testing.T, ctx context.Context, sqlDB *sql.DB, column string) []string {
+	t.Helper()
+	rows, err := sqlDB.QueryContext(ctx, `
+		SELECT substring(pg_get_indexdef(i.indexrelid) from 'USING .*$')
+		FROM pg_index i
+		WHERE i.indrelid = 'public.swipe_records'::regclass
+		  AND EXISTS (
+			SELECT 1 FROM pg_attribute a
+			WHERE a.attrelid = i.indrelid
+			  AND a.attnum = ANY(i.indkey)
+			  AND a.attname = $1
+		  )
+		ORDER BY 1
+	`, column)
+	if err != nil {
+		t.Fatalf("query swipe_records index shapes on %s: %v", column, err)
+	}
+	defer rows.Close()
+
+	var shapes []string
+	for rows.Next() {
+		var shape string
+		if err := rows.Scan(&shape); err != nil {
+			t.Fatalf("scan swipe_records index shape on %s: %v", column, err)
+		}
+		shapes = append(shapes, shape)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate swipe_records index shapes on %s: %v", column, err)
+	}
+	return shapes
+}
+
 func TestSwipeRecordsCardgroupIDSchema(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
@@ -86,12 +122,10 @@ func TestSwipeRecordsCardgroupIDSchema(t *testing.T) {
 	if isNullable != "NO" {
 		t.Fatalf("swipe_records.cardgroup_id is_nullable=%q, want NO", isNullable)
 	}
-
 }
 
-// TestSwipeRecordsCardgroupIDForeignKey pins the foreign key and its backing
-// index. No composite index on swipe_records covers cardgroup_id; the
-// single-column index asserted here is what the foreign key uses.
+// TestSwipeRecordsCardgroupIDForeignKey pins the foreign key, its backing index,
+// and the absence of other indexes covering cardgroup_id.
 func TestSwipeRecordsCardgroupIDForeignKey(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
@@ -116,6 +150,10 @@ func TestSwipeRecordsCardgroupIDForeignKey(t *testing.T) {
 	const wantIndexDef = "CREATE INDEX idx_swipe_records_cardgroup_id ON public.swipe_records USING btree (cardgroup_id)"
 	if indexdef != wantIndexDef {
 		t.Fatalf("%s definition=%q, want %q", swipeRecordsCardgroupIndexName, indexdef, wantIndexDef)
+	}
+	shapes := swipeRecordsIndexShapesOnColumn(t, ctx, sqlDB, "cardgroup_id")
+	if want := []string{"USING btree (cardgroup_id)"}; !slices.Equal(shapes, want) {
+		t.Fatalf("swipe_records index shapes on cardgroup_id=%q, want %q", shapes, want)
 	}
 }
 
