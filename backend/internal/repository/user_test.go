@@ -295,8 +295,10 @@ func TestUpdate_PartialBioOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	if p := got.Bio.Ptr(); p == nil || *p != bio {
-		t.Fatalf("Bio: got Ptr=%v, want %q", got.Bio.Ptr(), bio)
+	if p := got.Bio.Ptr(); p == nil {
+		t.Fatalf("Bio: got nil, want %q", bio)
+	} else if *p != bio {
+		t.Fatalf("Bio: got %q, want %q", *p, bio)
 	}
 	if got.DisplayName == nil || string(*got.DisplayName) != name {
 		t.Fatalf("DisplayName should remain %q, got %v", name, got.DisplayName)
