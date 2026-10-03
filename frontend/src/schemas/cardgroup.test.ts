@@ -1,21 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { assertBoundedTextLaw } from "@/test/text-arbitraries";
 import { cardgroupSchema } from "./cardgroup";
 
 describe("cardgroupSchema", () => {
-  it("accepts a valid name", () => {
-    const result = cardgroupSchema.safeParse({ name: "My Group" });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.name).toBe("My Group");
-    }
-  });
-
-  it("trims surrounding whitespace from name", () => {
-    const result = cardgroupSchema.safeParse({ name: "  trimmed  " });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.name).toBe("trimmed");
-    }
+  it("accepts 1..100 graphemes after Go TrimSpace and outputs the trimmed name (property)", () => {
+    assertBoundedTextLaw(
+      (name) => cardgroupSchema.safeParse({ name }),
+      (d: { name: string }) => d.name,
+      { max: 100, required: "name is required", tooLong: "name must be at most 100 characters" },
+    );
   });
 
   it("rejects empty string", () => {
@@ -23,15 +16,6 @@ describe("cardgroupSchema", () => {
     expect(result.success).toBe(false);
     if (!result.success && result.error.issues[0]) {
       expect(result.error.issues[0].message).toBe("name is required");
-    }
-  });
-
-  it("rejects all-whitespace string", () => {
-    const result = cardgroupSchema.safeParse({ name: "   " });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const messages = result.error.issues.map((i) => i.message);
-      expect(messages).toContain("name is required");
     }
   });
 
