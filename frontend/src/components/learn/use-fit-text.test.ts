@@ -1,20 +1,32 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { computeFitFontSize, solveFitBySearch } from "./use-fit-text";
 
 describe("computeFitFontSize", () => {
   const BOUNDS = { maxPx: 48, minPx: 18 };
 
-  it("returns the max size when the word already fits within the available width", () => {
-    expect(computeFitFontSize({ availableWidth: 300, intrinsicWidth: 200, ...BOUNDS })).toBe(48);
+  it("stays in [minPx, maxPx], never grows as the text widens, and fits unless clamped (property)", () => {
+    fc.assert(
+      fc.property(
+        fc.double({ min: 1, max: 800, noNaN: true }),
+        fc.double({ min: 1, max: 3000, noNaN: true }),
+        fc.double({ min: 1, max: 3000, noNaN: true }),
+        fc.integer({ min: 8, max: 20 }),
+        fc.integer({ min: 20, max: 64 }),
+        (availableWidth, w1, w2, minPx, maxPx) => {
+          const size = (w: number) =>
+            computeFitFontSize({ availableWidth, intrinsicWidth: w, maxPx, minPx });
+          const [narrow, wide] = w1 <= w2 ? [w1, w2] : [w2, w1];
+          const s = size(wide);
+          const fits = s === minPx || (s * wide) / maxPx <= availableWidth + 1e-9;
+          return s >= minPx && s <= maxPx && size(narrow) >= s && fits;
+        },
+      ),
+    );
   });
 
   it("treats an exact fit as fitting (no shrink at the boundary)", () => {
     expect(computeFitFontSize({ availableWidth: 200, intrinsicWidth: 200, ...BOUNDS })).toBe(48);
-  });
-
-  it("shrinks proportionally when the word overflows the available width", () => {
-    // 48 * 100 / 200 = 24
-    expect(computeFitFontSize({ availableWidth: 100, intrinsicWidth: 200, ...BOUNDS })).toBe(24);
   });
 
   it("floors the shrunk size to a whole pixel", () => {
@@ -39,17 +51,16 @@ describe("computeFitFontSize", () => {
 });
 
 describe("solveFitBySearch", () => {
-  it("returns maxPx when the largest size already fits", () => {
-    expect(solveFitBySearch(() => true, 14, 48)).toBe(48);
-  });
-
-  it("returns minPx when even the smallest size does not fit", () => {
-    expect(solveFitBySearch(() => false, 14, 48)).toBe(14);
-  });
-
-  it("finds the largest fitting size for a monotone threshold predicate", () => {
-    // fits(px) is true iff px <= 30 → the largest fitting integer size is 30.
-    expect(solveFitBySearch((px) => px <= 30, 14, 48)).toBe(30);
+  it("returns the largest fitting integer clamped to [minPx, floor(maxPx)] for a threshold predicate (property)", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 70 }),
+        fc.integer({ min: 8, max: 30 }),
+        fc.integer({ min: 30, max: 64 }),
+        (k, minPx, maxPx) =>
+          solveFitBySearch((px) => px <= k, minPx, maxPx) === Math.max(minPx, Math.min(maxPx, k)),
+      ),
+    );
   });
 
   it("floors a fractional maxPx before searching", () => {
