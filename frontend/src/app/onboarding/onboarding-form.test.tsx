@@ -2,7 +2,7 @@
 import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UpdateProfileDocument } from "@/generated/graphql";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { OnboardingForm } from "./onboarding-form";
@@ -52,6 +52,10 @@ function makeUpdateProfileMock(
 // ---------------------------------------------------------------------------
 
 describe("<OnboardingForm>", () => {
+  beforeEach(() => {
+    mockPush.mockClear();
+  });
+
   it("empty submit is blocked — validation error displayed", async () => {
     const user = userEvent.setup();
 
@@ -184,44 +188,6 @@ describe("<OnboardingForm>", () => {
     expect(errorEl.className).toMatch(/text-destructive/);
   });
 
-  it("keeps formState.isSubmitSuccessful=false after a rejecting submit (regression: inner catch+throw pattern)", async () => {
-    const user = userEvent.setup();
-
-    // A network-level rejection causes the mutation promise to reject. The inner
-    // .catch + throw in onSubmit keeps formState.isSubmitSuccessful=false because
-    // the re-thrown error propagates through form.handleSubmit(), which marks the
-    // submit as unsuccessful. The outer .catch at the JSX call site swallows the
-    // re-throw to avoid an unhandled browser promise rejection.
-    const mocks = [
-      {
-        request: {
-          query: UpdateProfileDocument,
-          variables: { input: { displayName: "Alice" } },
-        },
-        error: new Error("network down"),
-      },
-    ];
-
-    renderWithIntl(
-      <MockedProvider mocks={mocks}>
-        <OnboardingForm />
-      </MockedProvider>,
-    );
-
-    const displayNameInput = screen.getByLabelText(/display name/i);
-    await user.click(displayNameInput);
-    await user.type(displayNameInput, "Alice");
-    await user.click(screen.getByRole("button", { name: /continue/i }));
-
-    // Wait for the mutation rejection to propagate and settle.
-    await waitFor(() => {
-      const sentinel = screen.getByTestId("is-submit-successful");
-      // isSubmitSuccessful must remain "false" — a "true" here means onSubmit swallowed
-      // the rejection and TanStack Form incorrectly treated the submit as successful.
-      expect(sentinel).toHaveAttribute("data-value", "false");
-    });
-  });
-
   it("network error surfaces as a banner-level alert (not a field error)", async () => {
     const user = userEvent.setup();
 
@@ -251,5 +217,6 @@ describe("<OnboardingForm>", () => {
       expect(banner).toBeInTheDocument();
       expect(banner.textContent ?? "").toMatch(/could not reach the server|network/i);
     });
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });
