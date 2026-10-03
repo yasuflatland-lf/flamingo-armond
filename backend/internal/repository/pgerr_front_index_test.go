@@ -70,7 +70,7 @@ func TestClassifyFrontIndexRowTooLarge(t *testing.T) {
 		},
 		{
 			name:         "54000 naming a different index is not classified",
-			err:          &pgconn.PgError{Code: "54000", ConstraintName: "idx_cards_cardgroup_id"},
+			err:          &pgconn.PgError{Code: "54000", ConstraintName: "cards_pkey"},
 			frontIndex:   "uq_cards_cardgroup_front",
 			wantClassify: false,
 		},

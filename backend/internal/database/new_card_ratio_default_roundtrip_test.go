@@ -34,10 +34,11 @@ func TestNewCardRatioDefaultDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// drop_user_card_fsrs_last_rating, drop_swipe_records_user_cardgroup_index,
-	// reset_legacy_new_card_ratio, and revoke_client_writes sit above
-	// lower_new_card_ratio_default, so five steps reach it.
-	if err := m.Steps(-5); err != nil {
+	// drop_redundant_fk_indexes, drop_user_card_fsrs_last_rating,
+	// drop_swipe_records_user_cardgroup_index, reset_legacy_new_card_ratio, and
+	// revoke_client_writes sit above lower_new_card_ratio_default, so six steps
+	// reach it.
+	if err := m.Steps(-6); err != nil {
 		t.Fatalf("migrate down lower_new_card_ratio_default: %v", err)
 	}
 	requireDefaultRatio(t, ctx, sqlDB, 4, 5)
