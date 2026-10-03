@@ -11,8 +11,6 @@ export const ADMIN_MASTERS_PAGE_SIZE = 20;
  */
 export const ADMIN_MASTERS_BASE_VARS = {
   first: ADMIN_MASTERS_PAGE_SIZE,
-  orderBy: "SORT_ORDER" as const,
-  orderDirection: "ASC" as const,
 };
 
 export const AdminMastersQuery = graphql(`
@@ -20,15 +18,11 @@ export const AdminMastersQuery = graphql(`
     $first: Int
     $after: ID
     $search: String
-    $orderBy: MasterCatalogOrderBy
-    $orderDirection: SortOrder
   ) {
     adminMasters(
       first: $first
       after: $after
       search: $search
-      orderBy: $orderBy
-      orderDirection: $orderDirection
     ) {
       edges {
         cursor

@@ -26,15 +26,11 @@ export const MyCardgroupsConnectionQuery = graphql(`
     $first: Int
     $after: ID
     $search: String
-    $orderBy: CardgroupOrderBy
-    $orderDirection: SortOrder
   ) {
     myCardgroupsConnection(
       first: $first
       after: $after
       search: $search
-      orderBy: $orderBy
-      orderDirection: $orderDirection
     ) {
       edges {
         cursor
