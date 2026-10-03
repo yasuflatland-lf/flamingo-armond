@@ -21,7 +21,6 @@ type gormUserCardFSRS struct {
 	Reps          int       `gorm:"column:reps"`
 	Lapses        int       `gorm:"column:lapses"`
 	LastReview    time.Time `gorm:"column:last_review"`
-	LastRating    *int      `gorm:"column:last_rating"`
 	ScheduledDays int       `gorm:"column:scheduled_days"`
 	CreatedAt     time.Time `gorm:"column:created_at"`
 	UpdatedAt     time.Time `gorm:"column:updated_at;->"`
@@ -62,7 +61,6 @@ func (r *userCardFSRSRepo) UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.
 			"reps":           u.State.Reps,
 			"lapses":         u.State.Lapses,
 			"last_review":    u.State.LastReview,
-			"last_rating":    userCardFSRSLastRating(u.State),
 			"scheduled_days": u.State.ScheduledDays,
 		}),
 	}, clause.Returning{Columns: []clause.Column{{Name: "updated_at"}}}).Create(row).Error; err != nil {
@@ -192,19 +190,10 @@ func userCardFSRSToRow(u *domain.UserCardFSRS) *gormUserCardFSRS {
 		Reps:          u.State.Reps,
 		Lapses:        u.State.Lapses,
 		LastReview:    u.State.LastReview,
-		LastRating:    userCardFSRSLastRating(u.State),
 		ScheduledDays: u.State.ScheduledDays,
 		CreatedAt:     u.CreatedAt,
 		UpdatedAt:     u.UpdatedAt,
 	}
-}
-
-func userCardFSRSLastRating(state domain.FSRSState) *int {
-	if !state.LastRating.IsValid() {
-		return nil
-	}
-	rating := int(state.LastRating)
-	return &rating
 }
 
 // userCardFSRSToDomain reconstitutes a persisted row into the domain aggregate.
@@ -230,13 +219,6 @@ func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
 	if !domain.IsValidDifficulty(row.Difficulty) {
 		return nil, eris.Errorf("repository: invalid difficulty value %v for card %s", row.Difficulty, row.CardID)
 	}
-	lastRating := domain.Rating(0)
-	if row.LastRating != nil {
-		lastRating = domain.Rating(*row.LastRating)
-		if !lastRating.IsValid() {
-			return nil, eris.Errorf("repository: invalid last_rating value %d for card %s", *row.LastRating, row.CardID)
-		}
-	}
 	// Reps and Lapses are unvalidated by the table (no CHECK constraints) and are
 	// widened to uint64 on the way into go-fsrs, where a negative value becomes an
 	// enormous unsigned count that the scheduler's own Reps++ then wraps to 0 —
@@ -258,7 +240,6 @@ func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
 			Lapses:        row.Lapses,
 			Phase:         state,
 			LastReview:    row.LastReview,
-			LastRating:    lastRating,
 		},
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
