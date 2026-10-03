@@ -106,7 +106,7 @@ Library-quirk rules (Echo v5 signatures, GORM empty-`IN` behaviour, JWT algorith
 
 ### Role repository sentinels
 
-`repository.RoleRepository` exposes the full CRUD surface (`Create`, `Update`, `Delete`, `FindByID`, `FindByName`, `FindByIDs`, `ListAll`) plus the user-role join helpers (`AssignToUser`, `RevokeFromUser`, `ListByUser`, `ListByUserIDs`). Three sentinels classify the failure modes:
+`repository.RoleRepository` exposes the full CRUD surface (`Create`, `Update`, `Delete`, `FindByID`, `FindByName`, `FindByIDs`, `ListAll`) plus the user-role join helpers (`AssignToUser`, `RevokeFromUser`, `ListByUserIDs`). Three sentinels classify the failure modes:
 
 - `ErrUserNotFound` — joined with `ErrNotFound` (so legacy `errors.Is(_, ErrNotFound)` callers keep working).
 - `ErrRoleNotFound` — joined with `ErrNotFound` for the same reason.

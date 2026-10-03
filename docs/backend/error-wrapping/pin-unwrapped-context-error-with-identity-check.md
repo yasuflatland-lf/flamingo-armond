@@ -96,7 +96,7 @@ shape is:
 
 ```go
 err = u.tx(ctx, func(tx *gorm.DB) error {
-    if err := u.users.UpdateTx(ctx, tx, id, patch); err != nil {
+    if err := u.users.UpdateTxVersioned(ctx, tx, id, patch, input.ExpectedVersion); err != nil {
         if isContextDone(err) {
             return err  // bare identity preserved through tx
         }
@@ -121,7 +121,7 @@ if err != nil {
 Two independent guarantees combine here:
 
 - **Identity preservation across the tx layer.** Without the inner
-  `isContextDone` check, a cancellation that fires inside `UpdateTx` would
+  `isContextDone` check, a cancellation that fires inside `UpdateTxVersioned` would
   surface to the outer `if err != nil` branch as
   `eris.Wrap(context.Canceled, "...update profile")`. `errors.Is` still
   detects the cancellation, but the value returned to the resolver is no
@@ -137,7 +137,7 @@ Pin the contract with two tests per sub-op:
 
 | Test | Asserts |
 |---|---|
-| `TestAdminUser_EditUser_UpdateTxCancelled` | `context.Canceled` identity (`err == context.Canceled`) on the profile branch |
+| `TestAdminUser_EditUser_UpdateTxVersionedCancelled` | `context.Canceled` identity (`err == context.Canceled`) on the profile branch |
 | `TestAdminUser_EditUser_CancelledFromRoleSet` | Same identity on the roles branch |
 
 A single cancellation test that only checks chain shape (`assertCancelled`)

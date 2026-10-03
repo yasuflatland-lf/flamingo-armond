@@ -824,9 +824,6 @@ func (c *countingUserRepo) FindByIDs(ctx context.Context, ids []string) (map[str
 func (c *countingUserRepo) Update(ctx context.Context, id string, patch repository.UserUpdate) (*domain.User, error) {
 	return c.inner.Update(ctx, id, patch)
 }
-func (c *countingUserRepo) UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch repository.UserUpdate) error {
-	return c.inner.UpdateTx(ctx, tx, id, patch)
-}
 func (c *countingUserRepo) UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string, patch repository.UserUpdate, expectedVersion int64) error {
 	return c.inner.UpdateTxVersioned(ctx, tx, id, patch, expectedVersion)
 }
@@ -2375,9 +2372,6 @@ func (panicUserRoleRepo) AssignRoleToUser(_ context.Context, _, _ string) error 
 	panic("not used in this test")
 }
 func (panicUserRoleRepo) SetUserRolesTx(_ context.Context, _ *gorm.DB, _ string, _ []string) error {
-	panic("not used in this test")
-}
-func (panicUserRoleRepo) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {
 	panic("not used in this test")
 }
 func (panicUserRoleRepo) ListByUserIDs(_ context.Context, _ []string) (map[string][]*domain.Role, error) {

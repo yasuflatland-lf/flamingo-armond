@@ -40,7 +40,7 @@ Concrete: `EditUser` in `backend/internal/usecase/admin_user.go` wraps each sub-
 ```go
 err = u.tx(ctx, func(tx *gorm.DB) error {
     if profilePatch {
-        if err := u.users.UpdateTx(...); err != nil {
+        if err := u.users.UpdateTxVersioned(...); err != nil {
             if isContextDone(err) { return err }
             return eris.Wrap(err, "usecase: admin user edit: update profile")
         }
@@ -68,6 +68,6 @@ assertInternalChain(t, err, "usecase: admin user edit: tx")
 assertInternalChain(t, err, "usecase: admin user edit: replace roles")
 ```
 
-And a sibling test exercises the OTHER sub-op (`TestAdminUser_EditUser_UpdateTxInfraError_PinsUpdateProfileWrap`) so each per-sub-op wrap has its own pin. Without both pins, only one of the two inner wraps can drift before any test goes red.
+And a sibling test exercises the OTHER sub-op (`TestAdminUser_EditUser_UpdateTxVersionedInfraError_PinsUpdateProfileWrap`) so each per-sub-op wrap has its own pin. Without both pins, only one of the two inner wraps can drift before any test goes red.
 
 The principle generalises: any production wrap that exists primarily to annotate the chain (not to convert sentinel identity, not to add a stack frame at the originating call site) needs its own substring pin. Nested wraps that share an outer frame cannot rely on the outer frame's pin for coverage.

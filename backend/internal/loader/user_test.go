@@ -97,9 +97,6 @@ func (emptyUserRoleRepoStub) AssignRoleToUser(_ context.Context, _, _ string) er
 func (emptyUserRoleRepoStub) SetUserRolesTx(_ context.Context, _ *gorm.DB, _ string, _ []string) error {
 	panic("emptyUserRoleRepoStub.SetUserRolesTx not expected")
 }
-func (emptyUserRoleRepoStub) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {
-	panic("emptyUserRoleRepoStub.ListByUser not expected")
-}
 func (emptyUserRoleRepoStub) ListByUserIDs(_ context.Context, _ []string) (map[string][]*domain.Role, error) {
 	return map[string][]*domain.Role{}, nil
 }
@@ -191,21 +188,6 @@ func (r *countingCardRepo) FindByIDs(ctx context.Context, ids []string) (map[str
 	}
 	return r.findByIDs(ctx, ids)
 }
-func (r *countingCardRepo) ListByCardgroup(_ context.Context, _ string) ([]*domain.Card, error) {
-	panic("countingCardRepo.ListByCardgroup not configured")
-}
-func (r *countingCardRepo) ListFrontsByCardgroupTx(_ context.Context, _ *gorm.DB, _ string) ([]string, error) {
-	panic("countingCardRepo.ListFrontsByCardgroupTx not configured")
-}
-func (r *countingCardRepo) FindPageByCardgroup(
-	_ context.Context, _ string,
-	_, _ *repository.CardCursor,
-	_, _ int,
-	_ repository.CardOrderBy, _ repository.SortOrder,
-	_ *string,
-) ([]*domain.Card, int64, error) {
-	panic("countingCardRepo.FindPageByCardgroup not configured")
-}
 func (r *countingCardRepo) FindPageByCardgroupForUser(
 	_ context.Context, _, _ string,
 	_, _ *repository.CardCursor,
@@ -226,9 +208,6 @@ func (r *countingCardRepo) Delete(_ context.Context, _ string) error {
 }
 func (r *countingCardRepo) DeleteByIDsTx(_ context.Context, _ *gorm.DB, _ string, _ []string) (int64, error) {
 	panic("countingCardRepo.DeleteByIDsTx not configured")
-}
-func (r *countingCardRepo) DeleteByCardgroupAndFrontsTx(_ context.Context, _ *gorm.DB, _ string, _ []string) (int64, error) {
-	panic("countingCardRepo.DeleteByCardgroupAndFrontsTx not configured")
 }
 func (r *countingCardRepo) UpsertManyTx(_ context.Context, _ *gorm.DB, _ []*domain.Card) (repository.UpsertManyTxResult, error) {
 	panic("countingCardRepo.UpsertManyTx not configured")
@@ -270,10 +249,6 @@ func (r *countingRepo) Update(ctx context.Context, id string, patch repository.U
 		panic("countingRepo.Update not configured")
 	}
 	return r.update(ctx, id, patch)
-}
-
-func (r *countingRepo) UpdateTx(_ context.Context, _ *gorm.DB, _ string, _ repository.UserUpdate) error {
-	panic("countingRepo.UpdateTx not configured")
 }
 
 func (r *countingRepo) UpdateTxVersioned(_ context.Context, _ *gorm.DB, _ string, _ repository.UserUpdate, _ int64) error {

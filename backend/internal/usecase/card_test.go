@@ -44,7 +44,7 @@ type mockCardRepository struct {
 	// cards.created_at). Setting an entry AFTER a page is fetched is what proves
 	// the emitted cursor came from the page read rather than a later one.
 	findPageDue map[string]time.Time
-	// captured arguments from the most recent FindPageByCardgroup call.
+	// captured arguments from the most recent FindPageByCardgroupForUser call.
 	capturedFindPage struct {
 		cardgroupID string
 		after       *repository.CardCursor
@@ -957,7 +957,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_DueKeyComesFromThePageRead(t
 
 // TestCardUsecase_ListCardsByCardgroupConnection_ResolveCursorHydratesDueField
 // pins down that resolveCardCursor populates the field matching the active
-// orderBy on the *CardCursor passed to FindPageByCardgroup.
+// orderBy on the *CardCursor passed to FindPageByCardgroupForUser.
 func TestCardUsecase_ListCardsByCardgroupConnection_ResolveCursorHydratesDueField(t *testing.T) {
 	t.Parallel()
 

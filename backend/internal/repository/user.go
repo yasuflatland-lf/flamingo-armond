@@ -62,13 +62,6 @@ type UserRepository interface {
 	// expectedVersion sees ErrConcurrentUpdate instead of overwriting the
 	// change. An empty patch reads without writing and leaves version unchanged.
 	Update(ctx context.Context, id string, patch UserUpdate) (*domain.User, error)
-	// UpdateTx applies the patch inside the caller-provided transaction. Unlike
-	// Update, it does not re-fetch the row — callers that need the updated
-	// value should refetch after the transaction commits. A patch with no
-	// non-nil fields returns nil without touching the database. A patch that
-	// targets a missing row returns ErrNotFound so the surrounding transaction
-	// rolls back atomically. A non-empty patch bumps version, as Update does.
-	UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch UserUpdate) error
 	// UpdateTxVersioned applies the patch inside the caller-provided
 	// transaction only when the row's current version matches expectedVersion.
 	// It always issues an UPDATE and bumps version, even for an empty patch.
@@ -192,22 +185,6 @@ func (r *userRepo) Update(ctx context.Context, id string, patch UserUpdate) (*do
 	// Re-fetch so callers see the trigger-refreshed updated_at and the bumped version.
 	return refetchAfterUpdate(res.RowsAffected, ErrNotFound,
 		func() (*domain.User, error) { return r.FindByID(ctx, id) }, "")
-}
-
-func (r *userRepo) UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch UserUpdate) error {
-	updates := userUpdates(patch)
-	if len(updates) == 0 {
-		return nil
-	}
-	updates["version"] = gorm.Expr("version + 1")
-	res := tx.WithContext(ctx).Model(&gormUser{}).Where("id = ?", id).Updates(updates)
-	if res.Error != nil {
-		return eris.Wrap(res.Error, "repository: user: update tx")
-	}
-	if res.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
 }
 
 func (r *userRepo) UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string, patch UserUpdate, expectedVersion int64) error {
