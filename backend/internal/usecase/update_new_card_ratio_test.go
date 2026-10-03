@@ -48,7 +48,7 @@ func TestUpdateNewCardRatio_Unauthenticated(t *testing.T) {
 
 	prefs := &mockNewCardRatioPrefRepo{}
 	users := &mockNewCardRatioUserRepo{}
-	uc := newUpdateNewCardRatioWithDeps(prefs, users, newTestLogger())
+	uc := newUpdateNewCardRatioWithDeps(prefs, users)
 
 	_, err := uc.Set(anonCtx(), 4, 5)
 	assertUnauthenticated(t, err)
@@ -65,7 +65,7 @@ func TestUpdateNewCardRatio_Success(t *testing.T) {
 	want := &domain.User{ID: "u1"}
 	prefs := &mockNewCardRatioPrefRepo{}
 	users := &mockNewCardRatioUserRepo{user: want}
-	uc := newUpdateNewCardRatioWithDeps(prefs, users, newTestLogger())
+	uc := newUpdateNewCardRatioWithDeps(prefs, users)
 
 	got, err := uc.Set(authedCtx("u1"), 6, 10)
 	if err != nil {
@@ -97,7 +97,7 @@ func TestUpdateNewCardRatio_PrefsWriteError(t *testing.T) {
 	boom := errors.New("db unavailable")
 	prefs := &mockNewCardRatioPrefRepo{err: boom}
 	users := &mockNewCardRatioUserRepo{}
-	uc := newUpdateNewCardRatioWithDeps(prefs, users, newTestLogger())
+	uc := newUpdateNewCardRatioWithDeps(prefs, users)
 
 	_, err := uc.Set(authedCtx("u1"), 4, 5)
 	if err == nil {
@@ -119,7 +119,7 @@ func TestUpdateNewCardRatio_PrefsWriteCancelled(t *testing.T) {
 
 	prefs := &mockNewCardRatioPrefRepo{err: context.Canceled}
 	users := &mockNewCardRatioUserRepo{}
-	uc := newUpdateNewCardRatioWithDeps(prefs, users, newTestLogger())
+	uc := newUpdateNewCardRatioWithDeps(prefs, users)
 
 	_, err := uc.Set(authedCtx("u1"), 4, 5)
 	if !errors.Is(err, context.Canceled) {
@@ -135,7 +135,7 @@ func TestUpdateNewCardRatio_RefetchError(t *testing.T) {
 	boom := errors.New("user repo unavailable")
 	prefs := &mockNewCardRatioPrefRepo{}
 	users := &mockNewCardRatioUserRepo{err: boom}
-	uc := newUpdateNewCardRatioWithDeps(prefs, users, newTestLogger())
+	uc := newUpdateNewCardRatioWithDeps(prefs, users)
 
 	_, err := uc.Set(authedCtx("u1"), 4, 5)
 	if err == nil {
@@ -153,7 +153,7 @@ func TestUpdateNewCardRatio_RefetchCancelled(t *testing.T) {
 
 	prefs := &mockNewCardRatioPrefRepo{}
 	users := &mockNewCardRatioUserRepo{err: context.DeadlineExceeded}
-	uc := newUpdateNewCardRatioWithDeps(prefs, users, newTestLogger())
+	uc := newUpdateNewCardRatioWithDeps(prefs, users)
 
 	_, err := uc.Set(authedCtx("u1"), 4, 5)
 	if !errors.Is(err, context.DeadlineExceeded) {
@@ -194,7 +194,7 @@ func TestUpdateNewCardRatio_InvalidRatio_FieldAttribution(t *testing.T) {
 
 			prefs := &mockNewCardRatioPrefRepo{}
 			users := &mockNewCardRatioUserRepo{}
-			uc := newUpdateNewCardRatioWithDeps(prefs, users, newTestLogger())
+			uc := newUpdateNewCardRatioWithDeps(prefs, users)
 
 			_, err := uc.Set(authedCtx("u1"), tc.num, tc.den)
 			assertValidationError(t, err, tc.wantField, "invalid new-card ratio")
@@ -224,7 +224,7 @@ func TestUpdateNewCardRatio_BoundaryAndLowNewShareSucceed(t *testing.T) {
 			t.Parallel()
 			prefs := &mockNewCardRatioPrefRepo{}
 			users := &mockNewCardRatioUserRepo{user: &domain.User{ID: "u1"}}
-			uc := newUpdateNewCardRatioWithDeps(prefs, users, newTestLogger())
+			uc := newUpdateNewCardRatioWithDeps(prefs, users)
 
 			if _, err := uc.Set(authedCtx("u1"), tc.num, tc.den); err != nil {
 				t.Fatalf("Set(%d, %d): unexpected error: %v", tc.num, tc.den, err)

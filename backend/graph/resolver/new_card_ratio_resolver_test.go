@@ -183,7 +183,7 @@ func TestUpdateNewCardRatio_UsecaseValidationErrorMapsToBadUserInput(t *testing.
 func TestUpdateNewCardRatio_NewShareAboveCap_MapsToBadUserInput(t *testing.T) {
 	t.Parallel()
 
-	realUC := usecase.NewUpdateNewCardRatio(nil, nil, newDiscardLogger())
+	realUC := usecase.NewUpdateNewCardRatio(nil, nil)
 	srv := newNewCardRatioSrv(&mockUserRepository{}, realUC)
 	body := `{"query":"mutation { updateNewCardRatio(numerator: 95, denominator: 100) { id } }"}`
 

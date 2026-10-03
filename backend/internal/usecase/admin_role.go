@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 
 	"backend/internal/domain"
 	"backend/internal/repository"
@@ -46,31 +45,24 @@ type adminRoleRepoForCRUD interface {
 type adminRoleUsecase struct {
 	roles     adminRoleRepoForCRUD
 	adminGate *AdminGate
-	logger    *slog.Logger
 }
 
 // NewAdminRole is the production constructor. Tests should prefer
 // newAdminRoleWithDeps to inject narrow stubs.
-func NewAdminRole(roles repository.RoleRepository, adminGate *AdminGate, logger *slog.Logger) AdminRoleUsecase {
+func NewAdminRole(roles repository.RoleRepository, adminGate *AdminGate) AdminRoleUsecase {
 	if adminGate == nil {
 		panic("usecase: admin role: adminGate is required")
 	}
-	if logger == nil {
-		panic("usecase: admin role: logger is required")
-	}
-	return &adminRoleUsecase{roles: roles, adminGate: adminGate, logger: logger}
+	return &adminRoleUsecase{roles: roles, adminGate: adminGate}
 }
 
 // newAdminRoleWithDeps accepts narrow interface types for tests; production
 // code must use NewAdminRole.
-func newAdminRoleWithDeps(roles adminRoleRepoForCRUD, adminGate *AdminGate, logger *slog.Logger) AdminRoleUsecase {
+func newAdminRoleWithDeps(roles adminRoleRepoForCRUD, adminGate *AdminGate) AdminRoleUsecase {
 	if adminGate == nil {
 		panic("usecase: admin role: adminGate is required")
 	}
-	if logger == nil {
-		panic("usecase: admin role: logger is required")
-	}
-	return &adminRoleUsecase{roles: roles, adminGate: adminGate, logger: logger}
+	return &adminRoleUsecase{roles: roles, adminGate: adminGate}
 }
 
 // List returns every role in the system. Admin-only.
