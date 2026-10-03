@@ -659,50 +659,13 @@ func TestStudyStreak_ReturnsUnclampedRunLength(t *testing.T) {
 	require.Equal(t, 366, studyStreak(daysSeen, now))
 }
 
-// TestNormalizedDifficulty pins the difficulty/10 mapping at its boundary
-// values. The FSRS floor of exactly 1.0 must normalize to 0.1, not 1.0: a
-// strict `> 1` guard would skip the division at the floor and report mastered
-// cards as maximally difficult.
+// TestNormalizedDifficulty pins the FSRS floor regression: a difficulty of
+// exactly 1.0 must normalize to 0.1, not 1.0 — a strict `> 1` guard would skip
+// the division at the floor and report mastered cards as maximally difficult.
+// The clamp(d/10, 0, 1) law is TestNormalizedDifficulty_Property_ClampedTenth.
 func TestNormalizedDifficulty(t *testing.T) {
 	t.Parallel()
-
-	cases := []struct {
-		name       string
-		difficulty float64
-		want       float64
-	}{
-		{"fsrs floor maps to one tenth", 1.0, 0.1},
-		{"just above floor", 1.5, 0.15},
-		{"midscale", 5.0, 0.5},
-		{"fsrs ceiling maps to one", 10.0, 1.0},
-		{"zero maps to zero", 0.0, 0.0},
-		{"negative clamps to zero", -3.0, 0.0},
-		{"above ceiling clamps to one", 12.0, 1.0},
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			require.InDelta(t, tc.want, normalizedDifficulty(tc.difficulty), 0.000000001)
-		})
-	}
-}
-
-// TestNormalizedDifficultyMonotonic proves the normalization is non-decreasing
-// as the stored difficulty rises across the full 1..10 FSRS scale, so a harder
-// card never normalizes lower than an easier one.
-func TestNormalizedDifficultyMonotonic(t *testing.T) {
-	t.Parallel()
-
-	prev := normalizedDifficulty(1.0)
-	for d := 1.0; d <= 10.0; d += 0.5 {
-		got := normalizedDifficulty(d)
-		require.GreaterOrEqualf(t, got, prev,
-			"normalizedDifficulty must be non-decreasing: difficulty %.1f gave %.4f after %.4f", d, got, prev)
-		prev = got
-	}
+	require.InDelta(t, 0.1, normalizedDifficulty(1.0), 1e-9)
 }
 
 // swipe builds an on-time review with a learned-band pre-swipe snapshot.

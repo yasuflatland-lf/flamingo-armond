@@ -78,7 +78,7 @@ The live implementation is `(*lexer).recoverLineForUnrecognized` in `backend/int
 
 ## CRLF subtlety
 
-If `isNewLine('\r')` peeks at the next byte to detect a `\r\n` pair but does not consume it, the recovery helper must read the `\n` half explicitly. Otherwise the next `Lex` call sees a stray `\n`, emits a spurious `NEWLINE` token, and shifts subsequent line numbers by one.
+`isNewLine('\r')` peeks at the next byte to detect a `\r\n` pair but does not consume it, so every path that turns a `\r` into a line break must read the `\n` half explicitly: the recovery helper and the `NEWLINE` branch of `(*lexer).Lex`, which a blank `\r\n` line reaches through `skipWhiteSpace`. Otherwise the next `Lex` call sees a stray `\n`, emits a spurious `NEWLINE` token, and shifts subsequent line numbers by one. `TestProcess_BlankCRLFLineCountsOnce` in `backend/internal/textdic/service_test.go` pins the blank-line case, and `TestProcess_Property_LinesInRange` checks that every line number stays inside the document for any mix of `\n` and `\r\n`.
 
 ## Partial nodes on EOF
 
