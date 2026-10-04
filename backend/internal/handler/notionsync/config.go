@@ -17,9 +17,7 @@ type EnvConfig struct {
 
 // varOrder defines the deterministic iteration order for the four required
 // NOTION_* env vars. The order is fixed so that OptionalConfigFromEnv returns
-// a stable missing slice regardless of map-iteration randomness, and so that
-// ConfigFromEnv always reports the first missing var in the same predictable
-// position.
+// a stable missing slice regardless of map-iteration randomness.
 var varOrder = []string{
 	"NOTION_TOKEN",
 	"NOTION_PAGE_IDS",
@@ -61,23 +59,6 @@ func OptionalConfigFromEnv() (cfg EnvConfig, missing []string, err error) {
 			MasterCardgroupName: vals["NOTION_MASTER_CARDGROUP_NAME"],
 		},
 	}, nil, nil
-}
-
-// ConfigFromEnv reads the four required NOTION_* env vars and returns an
-// EnvConfig. All values are required; whitespace-only is treated as missing.
-// This is the strict variant: any missing var produces an error. Callers that
-// want to skip Notion sync gracefully when env is incomplete should use
-// OptionalConfigFromEnv instead.
-func ConfigFromEnv() (EnvConfig, error) {
-	cfg, missing, err := OptionalConfigFromEnv()
-	if err != nil {
-		return EnvConfig{}, err
-	}
-	if len(missing) > 0 {
-		// Match legacy single-var error message (existing tests assert this format).
-		return EnvConfig{}, eris.Errorf("notionsync: %s env var is required", missing[0])
-	}
-	return cfg, nil
 }
 
 // splitCSV splits raw on commas, trims each part, and drops empty entries.
