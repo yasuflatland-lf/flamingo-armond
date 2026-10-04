@@ -82,7 +82,7 @@ func TestNewWordList_EmbeddedData(t *testing.T) {
 	require.False(t, ok)
 
 	// Sanity: a non-trivial number of entries loaded (Oxford + C2 combined).
-	require.Greater(t, wl.Len(), 7000)
+	require.Greater(t, len(wl.levels), 7000)
 }
 
 // Pins that every embedded key is already canonical under NormalizeWord.
@@ -131,7 +131,7 @@ func TestNewWordList_CambridgeC2Data(t *testing.T) {
 
 	// The list must be larger than the combined baseline
 	// (~4949 Oxford + ~2748 C2, zero overlap, ~7697 merged).
-	require.Greater(t, wl.Len(), 7000)
+	require.Greater(t, len(wl.levels), 7000)
 }
 
 func TestNewWordList_C2DoesNotElevateOxfordWord(t *testing.T) {
