@@ -73,12 +73,12 @@ func TestFSRSSnapshotRealignDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// drop_redundant_fk_indexes, drop_user_card_fsrs_last_rating,
-	// drop_swipe_records_user_cardgroup_index, reset_legacy_new_card_ratio,
-	// revoke_client_writes, lower_new_card_ratio_default and
-	// tighten_new_card_ratio_check sit above realign_fsrs_snapshot_columns_to_v4,
-	// so eight steps reach the target.
-	if err := m.Steps(-8); err != nil {
+	// cardgroups_owner_updated_at_index, drop_redundant_fk_indexes,
+	// drop_user_card_fsrs_last_rating, drop_swipe_records_user_cardgroup_index,
+	// reset_legacy_new_card_ratio, revoke_client_writes,
+	// lower_new_card_ratio_default and tighten_new_card_ratio_check sit above
+	// realign_fsrs_snapshot_columns_to_v4, so nine steps reach the target.
+	if err := m.Steps(-9); err != nil {
 		t.Fatalf("migrate down FSRS snapshot realignment: %v", err)
 	}
 	requireColumnExists(t, ctx, sqlDB, "swipe_records", "elapsed_days")
