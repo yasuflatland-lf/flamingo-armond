@@ -40,14 +40,3 @@ export const masterSortOrderSchema = z.string().refine(
   },
   { message: `sort order must be a whole number between ${SORT_ORDER_MIN} and ${SORT_ORDER_MAX}` },
 );
-
-// name is always client-validated; description and sortOrder are optional so the
-// whole-object parse stays valid when a caller supplies only the fields it owns.
-// The form consumes each per-field schema via the standalone exports above (a
-// per-field validator needs a StandardSchema over `string`, which `.optional()`
-// here would widen to `string | undefined`).
-export const masterSchema = z.object({
-  name: masterNameSchema,
-  description: masterDescriptionSchema.optional(),
-  sortOrder: masterSortOrderSchema.optional(),
-});
