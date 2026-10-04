@@ -21,7 +21,6 @@ func TestFSRSSchedulerApplyIsPure(t *testing.T) {
 	require.Equal(t, before, initial)
 	require.NotEqual(t, initial, got)
 	require.Equal(t, now, got.LastReview)
-	require.Equal(t, domain.RatingEasy, got.LastRating)
 }
 
 // TestFSRSScheduler_Apply_InvalidPhasePanics pins the guard in front of the
@@ -266,7 +265,20 @@ func TestFSRSSchedulerApplyGoldenTransitions(t *testing.T) {
 			require.Equal(t, tc.reps, got.Reps)
 			require.Equal(t, tc.lapses, got.Lapses)
 			require.Equal(t, tc.outState, got.Phase)
-			require.Equal(t, tc.rating, got.LastRating)
 		})
 	}
+}
+
+func TestNewFSRSScheduler_KeepsLongTermMode(t *testing.T) {
+	t.Parallel()
+
+	algo := NewFSRSScheduler().algo
+
+	// These assertions defend against the measured silent fallback caused by
+	// RequestRetention = 0, MaximumInterval = 0 or 73000, and a NaN weight.
+	require.False(t, algo.EnableShortTerm)
+	require.Equal(t, 0.9, algo.RequestRetention)
+	require.Equal(t, 36500.0, algo.MaximumInterval)
+	require.Nil(t, algo.LearningSteps)
+	require.Nil(t, algo.RelearningSteps)
 }

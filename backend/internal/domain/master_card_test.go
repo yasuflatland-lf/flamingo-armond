@@ -2,7 +2,6 @@ package domain
 
 import (
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 func TestNewMasterCard(t *testing.T) {
 	t.Parallel()
 
-	const zwjEmoji = "👨‍👩‍👧‍👦"
 	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
 
 	t.Run("valid input constructs a fully-formed master card", func(t *testing.T) {
@@ -29,30 +27,6 @@ func TestNewMasterCard(t *testing.T) {
 		require.False(t, c.CreatedAt.IsZero(), "constructor must stamp CreatedAt")
 		require.Equal(t, c.CreatedAt, c.UpdatedAt, "CreatedAt and UpdatedAt must match at construction")
 	})
-
-	cases := []struct {
-		name        string
-		front       string
-		back        string
-		sentinelErr error
-	}{
-		{"empty front returns ErrCardFrontRequired", "", "back", ErrCardFrontRequired},
-		{"whitespace-only front returns ErrCardFrontRequired", "   ", "back", ErrCardFrontRequired},
-		{"front over CardTextMax returns ErrCardFrontTooLong", strings.Repeat("a", CardTextMax+1), "back", ErrCardFrontTooLong},
-		{"front over CardTextMax with graphemes returns ErrCardFrontTooLong", strings.Repeat(zwjEmoji, CardTextMax+1), "back", ErrCardFrontTooLong},
-		{"empty back returns ErrCardBackRequired", "front", "", ErrCardBackRequired},
-		{"back over CardTextMax returns ErrCardBackTooLong", "front", strings.Repeat("b", CardTextMax+1), ErrCardBackTooLong},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			c, err := NewMasterCard("mcg", tc.front, tc.back, 0, now)
-			require.Nil(t, c, "no aggregate may be constructed from invalid input")
-			require.ErrorIs(t, err, tc.sentinelErr, "got %v", err)
-		})
-	}
 }
 
 // TestNewMasterCard_IDFailure pins the id-generation failure path through the
@@ -109,102 +83,6 @@ func TestMasterCardBelongsToMasterCardgroup(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tc.want, tc.card.BelongsToMasterCardgroup(tc.masterCardgroupID))
-		})
-	}
-}
-
-func TestMasterCardUpdateFront(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name      string
-		initial   MasterCard
-		newFront  CardText
-		wantErr   error
-		wantFront CardText
-		wantBack  CardText
-	}{
-		{
-			name:      "empty CardText rejected with ErrCardFrontRequired",
-			initial:   MasterCard{ID: "c", MasterCardgroupID: "mcg", Front: "front", Back: "back"},
-			newFront:  "",
-			wantErr:   ErrCardFrontRequired,
-			wantFront: "front", // unchanged on error
-			wantBack:  "back",
-		},
-		{
-			name:      "valid CardText updates Front and returns nil",
-			initial:   MasterCard{ID: "c", MasterCardgroupID: "mcg", Front: "front", Back: "back"},
-			newFront:  "new front",
-			wantErr:   nil,
-			wantFront: "new front",
-			wantBack:  "back",
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			card := tc.initial
-			err := card.UpdateFront(tc.newFront)
-
-			if tc.wantErr != nil {
-				require.ErrorIs(t, err, tc.wantErr)
-			} else {
-				require.NoError(t, err)
-			}
-			require.Equal(t, tc.wantFront, card.Front)
-			// Back must remain untouched regardless of outcome.
-			require.Equal(t, tc.wantBack, card.Back)
-		})
-	}
-}
-
-func TestMasterCardUpdateBack(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name      string
-		initial   MasterCard
-		newBack   CardText
-		wantErr   error
-		wantFront CardText
-		wantBack  CardText
-	}{
-		{
-			name:      "empty CardText rejected with ErrCardBackRequired",
-			initial:   MasterCard{ID: "c", MasterCardgroupID: "mcg", Front: "front", Back: "back"},
-			newBack:   "",
-			wantErr:   ErrCardBackRequired,
-			wantFront: "front",
-			wantBack:  "back", // unchanged on error
-		},
-		{
-			name:      "valid CardText updates Back and returns nil",
-			initial:   MasterCard{ID: "c", MasterCardgroupID: "mcg", Front: "front", Back: "back"},
-			newBack:   "new back",
-			wantErr:   nil,
-			wantFront: "front",
-			wantBack:  "new back",
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			card := tc.initial
-			err := card.UpdateBack(tc.newBack)
-
-			if tc.wantErr != nil {
-				require.ErrorIs(t, err, tc.wantErr)
-			} else {
-				require.NoError(t, err)
-			}
-			// Front must remain untouched regardless of outcome.
-			require.Equal(t, tc.wantFront, card.Front)
-			require.Equal(t, tc.wantBack, card.Back)
 		})
 	}
 }

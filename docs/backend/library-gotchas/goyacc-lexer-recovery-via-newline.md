@@ -4,13 +4,7 @@
 
 ## What
 
-`goyacc` grammars commonly include a line-level recovery rule such as:
-
-```yacc
-entries: error NEWLINE { /* discard bad line */ }
-```
-
-`error NEWLINE` is the general goyacc hook for any parse-error recovery — the LALR stack enters error mode whenever the parser encounters a token it cannot shift or reduce in the current state. The `yyerrflag = 3` counter decrements with each accepted token; the parser stays silent until it counts down to zero, so multiple tokens on the same bad line are consumed without redundant error messages.
+The `textdic` grammar has no `error` production. Every token the lexer emits (`WORD`, `DEFINITION`, `NEWLINE`) is accepted by one of the `entry` alternatives, so the parser never enters goyacc's error-recovery mode on non-empty input; the only syntax error left is `$end` on a token-less stream. Recovery from malformed text happens one layer down, in the lexer.
 
 In the `textdic` grammar, all parser-level "expected this, got that" cases the design cares about — a lone WORD without a paired DEFINITION, and a lone DEFINITION without a preceding WORD — are handled by explicit skip productions:
 
@@ -21,7 +15,7 @@ entry: WORD { /* record skip */ }
 
 Those productions match cleanly at the token level and emit a validation message before continuing. Because they are explicit alternatives, the parser never enters error-recovery mode for them.
 
-The distinction matters: explicit skip productions are for expected-but-unwanted rows; `error NEWLINE` is the last-resort recovery for input the parser cannot make sense of even after the lexer has done its best. In `textdic` the lexer-level unrecognised-character path does not reach it either — see [Why the lexer emits NEWLINE](#why-the-lexer-emits-newline) — but the rule stays in the grammar as the standing hook for any token sequence with no explicit production.
+The distinction matters: explicit skip productions are for expected-but-unwanted rows; a goyacc `error` production is the last-resort recovery for input the parser cannot make sense of even after the lexer has done its best. `textdic` has no such rule: the lexer-level unrecognised-character path never produces a token the grammar cannot shift — see [Why the lexer emits NEWLINE](#why-the-lexer-emits-newline).
 
 For the Notion sync behaviour that depends on this grammar design, see [`docs/notion-sync.md` § "Behavior"](../../notion-sync.md#behavior).
 
@@ -31,7 +25,7 @@ When the lexer meets a rune it cannot tokenise it still has to return *some* tok
 
 `textdic` instead consumes the rest of the malformed line and returns `NEWLINE`. Only the bad line is discarded; subsequent lines parse normally and their `ValidationError` entries accumulate alongside any well-formed results.
 
-Note what does *not* happen: the emitted `NEWLINE` does not put the parser into error mode. `backend/internal/textdic/grammar.y:74` declares a blank-line production, `entry: NEWLINE { $$ = node{} }`, so `NEWLINE` is shiftable in the state the parser is in and reduces to an empty entry. Recovery works because the *lexer* has already swallowed the malformed line, not because `error NEWLINE` at `grammar.y:67` fires. Do not reason about this path as though it exercised the error rule: dropping or narrowing the blank-line production would change which mechanism recovers it, and a test that asserts "error recovery fired" here would be asserting the wrong thing.
+Note what does *not* happen: the emitted `NEWLINE` does not put the parser into error mode. `backend/internal/textdic/grammar.y` declares the `entry: NEWLINE { $$ = node{} }` blank-line production, so `NEWLINE` is shiftable in the state the parser is in and reduces to an empty entry. Recovery works because the *lexer* has already swallowed the malformed line; there is no grammar-level error rule to fire. Dropping or narrowing the blank-line production would turn the emitted `NEWLINE` into a hard syntax error, so keep it.
 
 ## Pattern
 
@@ -84,7 +78,7 @@ The live implementation is `(*lexer).recoverLineForUnrecognized` in `backend/int
 
 ## CRLF subtlety
 
-If `isNewLine('\r')` peeks at the next byte to detect a `\r\n` pair but does not consume it, the recovery helper must read the `\n` half explicitly. Otherwise the next `Lex` call sees a stray `\n`, emits a spurious `NEWLINE` token, and shifts subsequent line numbers by one.
+`isNewLine('\r')` peeks at the next byte to detect a `\r\n` pair but does not consume it, so every path that turns a `\r` into a line break must read the `\n` half explicitly: the recovery helper and the `NEWLINE` branch of `(*lexer).Lex`, which a blank `\r\n` line reaches through `skipWhiteSpace`. Otherwise the next `Lex` call sees a stray `\n`, emits a spurious `NEWLINE` token, and shifts subsequent line numbers by one. `TestProcess_BlankCRLFLineCountsOnce` in `backend/internal/textdic/service_test.go` pins the blank-line case, and `TestProcess_Property_LinesInRange` checks that every line number stays inside the document for any mix of `\n` and `\r\n`.
 
 ## Partial nodes on EOF
 

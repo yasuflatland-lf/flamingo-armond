@@ -11,7 +11,7 @@ import { getBackendFieldErrors } from "@/lib/apollo/errors";
 import type { FetchNextPageInput } from "@/lib/pagination/types";
 
 /** The connection arguments a backend cursor-not-found error can be keyed on. */
-const CURSOR_ARGUMENT_FIELDS = ["after", "before"] as const;
+const CURSOR_ARGUMENT_FIELDS = ["after"] as const;
 
 /**
  * True when a rejected page request carries the backend's dead-cursor shape: a

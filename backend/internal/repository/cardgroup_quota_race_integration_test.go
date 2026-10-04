@@ -8,7 +8,6 @@ package repository_test
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -44,7 +43,7 @@ func TestCardgroupCreate_Integration_ConcurrentCreatesRespectQuota(t *testing.T)
 	ctx, cancel := context.WithTimeout(authedCtx, 15*time.Second)
 	defer cancel()
 	cgRepo := repository.NewCardgroupRepository(testDB.GORM)
-	uc := usecase.NewCardgroupUsecase(testDB.GORM, cgRepo, stubParityAdminChecker{}, slog.New(slog.DiscardHandler))
+	uc := usecase.NewCardgroupUsecase(testDB.GORM, cgRepo, stubParityAdminChecker{})
 
 	const workers = 8
 	outcomes := make([]usecase.CreateCardgroupOutcome, workers)
@@ -83,7 +82,7 @@ func TestCardgroupQuota_Integration_ConcurrentCreateAndImportRespectQuota(t *tes
 	ctx, cancel := context.WithTimeout(authedCtx, 15*time.Second)
 	defer cancel()
 	cgRepo := repository.NewCardgroupRepository(testDB.GORM)
-	cgUC := usecase.NewCardgroupUsecase(testDB.GORM, cgRepo, stubParityAdminChecker{}, slog.New(slog.DiscardHandler))
+	cgUC := usecase.NewCardgroupUsecase(testDB.GORM, cgRepo, stubParityAdminChecker{})
 	catalogUC := newMasterCatalogUsecaseForParityTest(t)
 	masterID := seedMasterDeck(t, context.Background(), "Quota Race Master "+uuid.NewString(), []*domain.MasterCard{
 		masterCardFixture("front", "back", 0),

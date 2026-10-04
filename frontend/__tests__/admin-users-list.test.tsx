@@ -9,7 +9,6 @@ import { AdminUsersClient } from "@/app/admin/users/admin-users-client";
 import { ADMIN_USERS_PAGE_SIZE } from "@/app/admin/users/queries";
 import { AdminRolesDocument, AdminUsersDocument } from "@/generated/graphql";
 import { renderWithIntl } from "@/test/render-with-intl";
-import { adminUserFixture, generalUserFixture, userWithoutRolesFixture } from "./fixtures/users";
 
 // ---------------------------------------------------------------------------
 // Next.js stubs
@@ -632,53 +631,6 @@ describe("AdminUsersClient", () => {
 
     // No Retry button — re-issuing the same query would fail again.
     expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
-  });
-
-  // T8: Each user row exposes an Edit button that pushes ?edit=<id> via the router, implementing URL-backed sheet state.
-  test("each user row has an Edit button that pushes ?edit=<id>", async () => {
-    const user = userEvent.setup({ delay: null });
-
-    // Cast shared fixtures to the internal UserNode shape (superset is safe).
-    const adminUserNode = adminUserFixture as unknown as UserNode;
-    const generalUserNode = generalUserFixture as unknown as UserNode;
-    const noroleUserNode = userWithoutRolesFixture as unknown as UserNode;
-    const users: UserNode[] = [adminUserNode, generalUserNode, noroleUserNode];
-
-    const connection = makeConnection(users, false);
-    const cache = new InMemoryCache();
-    cache.writeQuery({
-      query: AdminUsersDocument,
-      variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-      data: { users: connection },
-    });
-    const mocks = [
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-        },
-        result: { data: { users: connection } },
-      },
-      ADMIN_ROLES_MOCK,
-    ];
-
-    renderWithIntl(
-      <MockedProvider mocks={mocks as never} cache={cache}>
-        <AdminUsersClient />
-      </MockedProvider>,
-    );
-
-    // Wait for the first display name to confirm the list rendered.
-    await screen.findByText(adminUserFixture.displayName as string);
-
-    for (const userNode of users) {
-      const row = screen.getByTestId(`admin-user-row-${userNode.id}`);
-      await user.click(screen.getByRole("button", { name: `Edit ${userNode.displayName}` }));
-      expect(row).toBeInTheDocument();
-      expect(mockPush).toHaveBeenLastCalledWith(`/admin/users?edit=${userNode.id}`, {
-        scroll: false,
-      });
-    }
   });
 
   // T9: An empty connection (edges = []) renders the "No users found." empty-state copy and hides the user list container.

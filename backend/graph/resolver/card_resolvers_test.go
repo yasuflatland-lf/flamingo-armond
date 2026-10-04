@@ -3,12 +3,12 @@ package resolver_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
-	"gorm.io/gorm"
 
 	"backend/graph/generated"
 	"backend/graph/resolver"
@@ -51,16 +51,14 @@ func (m *cardMockRepo) FindPracticeCardsForUser(_ context.Context, _ string, _ s
 	m.findPracticeLimit = limit
 	return m.findPracticeRows, m.findPracticeErr
 }
-func (m *cardMockRepo) FindPageByCardgroupForUser(
+func (m *cardMockRepo) FindPageByCardgroup(
 	_ context.Context,
-	_, _ string,
-	_, _ *repository.CardCursor,
-	_, _ int,
-	_ repository.CardOrderBy,
-	_ repository.SortOrder,
+	_ string,
+	_ *repository.CardCursor,
+	_ int,
 	_ *string,
-) ([]*domain.Card, int64, map[string]time.Time, error) {
-	return nil, 0, nil, nil
+) ([]*domain.Card, int64, error) {
+	return nil, 0, nil
 }
 func (m *cardMockRepo) FindByCardgroupAndFront(_ context.Context, _, _ string) (*domain.Card, error) {
 	return nil, nil
@@ -70,8 +68,8 @@ func (m *cardMockRepo) Update(_ context.Context, _ string, _ repository.CardUpda
 	return m.updateResult, m.updateErr
 }
 func (m *cardMockRepo) Delete(_ context.Context, _ string) error { return nil }
-func (m *cardMockRepo) DeleteByIDsTx(
-	_ context.Context, _ *gorm.DB, _ string, _ []string,
+func (m *cardMockRepo) DeleteByIDs(
+	_ context.Context, _ string, _ []string,
 ) (int64, error) {
 	return m.deleteByIDsResult, m.deleteByIDsErr
 }
@@ -113,24 +111,14 @@ func (m *duplicateCardMockRepo) FindByCardgroupAndFront(_ context.Context, _, _ 
 
 // --- construction helpers ---
 
-// cardFakeTx returns a txRunner stub that executes fn with a nil *gorm.DB.
-// Mock repositories ignore the tx argument, so this suffices for tests that
-// exercise the BulkDelete happy path without a real database.
-func cardFakeTx() func(context.Context, func(*gorm.DB) error) error {
-	return func(_ context.Context, fn func(*gorm.DB) error) error {
-		return fn(nil)
-	}
-}
-
 // newCardSrv builds a gqlgen handler backed by a resolver wired with the
-// supplied mocks and an in-process tx runner.
+// supplied mocks.
 func newCardSrv(
 	cardRepo usecase.CardRepository,
 	cgRepo usecase.CardgroupRepositoryForCard,
-	tx func(context.Context, func(*gorm.DB) error) error,
 ) *handler.Server {
-	cardUC := usecase.NewCardUsecaseWithTx(cardRepo, cgRepo, tx, nil, newDiscardLogger())
-	r := resolver.NewResolver(nil, nil, cardUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	cardUC := usecase.NewCardUsecase(cardRepo, cgRepo, newDiscardLogger())
+	r := resolver.NewResolver(nil, nil, cardUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -145,9 +133,8 @@ func newLearnSrv(cardRepo *cardMockRepo, cgRepo *cardMockCGRepo) *handler.Server
 		20,
 		100,
 		nil,
-		newDiscardLogger(),
 	)
-	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, learnUC, nil, nil, nil, nil)
+	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, learnUC, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -174,7 +161,6 @@ func TestResolver_DeleteCards_HappyPath(t *testing.T) {
 	srv := newCardSrv(
 		&cardMockRepo{deleteByIDsResult: 2},
 		&cardMockCGRepo{},
-		cardFakeTx(),
 	)
 
 	// Valid UUIDs: the usecase drops malformed ids before the SQL runs, so a
@@ -202,7 +188,7 @@ func TestResolver_DeleteCards_HappyPath(t *testing.T) {
 func TestResolver_DeleteCards_Anonymous(t *testing.T) {
 	t.Parallel()
 
-	srv := newCardSrv(&cardMockRepo{}, &cardMockCGRepo{}, cardFakeTx())
+	srv := newCardSrv(&cardMockRepo{}, &cardMockCGRepo{})
 
 	body := `{"query":"mutation { deleteCards(ids: [\"c1\",\"c2\"]) }"}`
 	resp := gqlRequest(t, srv, context.Background(), body)
@@ -210,6 +196,26 @@ func TestResolver_DeleteCards_Anonymous(t *testing.T) {
 	code := errCode(t, resp)
 	if code != "UNAUTHENTICATED" {
 		t.Fatalf("expected UNAUTHENTICATED, got %q", code)
+	}
+}
+
+// TestResolver_DeleteCards_RepoError_Internal verifies that a repository
+// failure surfaces as INTERNAL rather than as data.deleteCards == 0.
+func TestResolver_DeleteCards_RepoError_Internal(t *testing.T) {
+	t.Parallel()
+
+	srv := newCardSrv(&cardMockRepo{deleteByIDsErr: errors.New("db died")}, &cardMockCGRepo{})
+
+	// A valid UUID is required: a malformed id short-circuits before the repo.
+	body := `{"query":"mutation { deleteCards(ids: [\"018f0000-0000-7000-8000-000000000001\"]) }"}`
+	resp := gqlRequest(t, srv, authedCtx("u1"), body)
+
+	if code := errCode(t, resp); code != "INTERNAL" {
+		t.Fatalf("expected INTERNAL, got %q; response: %v", code, resp)
+	}
+	data, _ := resp["data"].(map[string]any)
+	if got, ok := data["deleteCards"].(float64); ok {
+		t.Fatalf("expected no numeric data.deleteCards on repo error, got %v", got)
 	}
 }
 
@@ -307,7 +313,7 @@ func TestResolver_CreateCard_DuplicateFront_ReturnsCardDuplicateFrontError(t *te
 			Back:        "existing back",
 		},
 	}
-	srv := newCardSrv(cardRepo, cgRepo, cardFakeTx())
+	srv := newCardSrv(cardRepo, cgRepo)
 
 	mutation := map[string]any{
 		"query": `mutation($input: NewCardInput!) {
@@ -366,8 +372,8 @@ func TestResolver_CreateCard_DuplicateFront_ReturnsCardDuplicateFrontError(t *te
 // newUpdateCardSrv builds a gqlgen Server backed by a CardUsecase wired with
 // the supplied card repo and cardgroup repo for authorization.
 func newUpdateCardSrv(cardRepo usecase.CardRepository, cgRepo usecase.CardgroupRepositoryForCard) *handler.Server {
-	cardUC := usecase.NewCardUsecaseWithTx(cardRepo, cgRepo, cardFakeTx(), nil, newDiscardLogger())
-	r := resolver.NewResolver(nil, nil, cardUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	cardUC := usecase.NewCardUsecase(cardRepo, cgRepo, newDiscardLogger())
+	r := resolver.NewResolver(nil, nil, cardUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -665,7 +671,6 @@ func TestResolver_Card_UnknownAndForeignBothUnauthenticated(t *testing.T) {
 	unknownSrv := newCardSrv(
 		&cardMockRepo{findByIDErr: repository.ErrNotFound},
 		&cardMockCGRepo{},
-		cardFakeTx(),
 	)
 	unknownResp := gqlRequest(t, unknownSrv, authedCtx("u1"), body)
 
@@ -678,7 +683,6 @@ func TestResolver_Card_UnknownAndForeignBothUnauthenticated(t *testing.T) {
 			ID:      domain.CardgroupID("cg1"),
 			OwnerID: "u2",
 		}},
-		cardFakeTx(),
 	)
 	foreignResp := gqlRequest(t, foreignSrv, authedCtx("u1"), body)
 

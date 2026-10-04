@@ -65,7 +65,7 @@ type fakeStatsCardgroupRepo struct {
 	err   error
 }
 
-func (f *fakeStatsCardgroupRepo) CountByOwner(_ context.Context, _ string, _ *string) (int64, error) {
+func (f *fakeStatsCardgroupRepo) CountByOwner(_ context.Context, _ string) (int64, error) {
 	if f.err != nil {
 		return 0, f.err
 	}
@@ -245,10 +245,9 @@ func TestStatsUsecase_MyLearningStats_WindowsReflectComputeWindowedMetrics(t *te
 	t.Parallel()
 	fixedNow := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
 	state := domain.NewFSRSStateForNewCard(fixedNow)
-	state.Phase = domain.FSRSPhaseReview
 	swipes := []*domain.SwipeRecord{
-		{ID: "s1", UserID: "user-1", CardID: "c1", CardgroupID: "cg1", Rating: domain.RatingEasy, ReviewedAt: fixedNow, StateAfter: state},
-		{ID: "s2", UserID: "user-1", CardID: "c2", CardgroupID: "cg1", Rating: domain.RatingAgain, ReviewedAt: fixedNow.AddDate(0, 0, -1), StateAfter: state},
+		{ID: "s1", UserID: "user-1", CardID: "c1", CardgroupID: "cg1", Rating: domain.RatingEasy, ReviewedAt: fixedNow, DifficultyAfter: state.Difficulty},
+		{ID: "s2", UserID: "user-1", CardID: "c2", CardgroupID: "cg1", Rating: domain.RatingAgain, ReviewedAt: fixedNow.AddDate(0, 0, -1), DifficultyAfter: state.Difficulty},
 	}
 	swipeRepo := &fakeStatsSwipeRepo{swipes: swipes}
 	uc := NewStats(&fakeStatsFSRSRepo{totals: map[string]int{}}, swipeRepo, &fakeStatsCardgroupRepo{}, fixedClock{now: fixedNow})
@@ -272,17 +271,16 @@ func TestStatsUsecase_MyLearningStats_StreakCappedAtStatsWindowDays(t *testing.T
 	// learn-day and the earliest one lands exactly on the inclusive cutoff.
 	fixedNow := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
 	state := domain.NewFSRSStateForNewCard(fixedNow)
-	state.Phase = domain.FSRSPhaseReview
 	swipes := make([]*domain.SwipeRecord, 0, statsWindowDays+1)
 	for daysAgo := 0; daysAgo <= statsWindowDays; daysAgo++ {
 		swipes = append(swipes, &domain.SwipeRecord{
-			ID:          fmt.Sprintf("s%d", daysAgo),
-			UserID:      "user-1",
-			CardID:      "c1",
-			CardgroupID: "cg1",
-			Rating:      domain.RatingGood,
-			ReviewedAt:  fixedNow.AddDate(0, 0, -daysAgo),
-			StateAfter:  state,
+			ID:              fmt.Sprintf("s%d", daysAgo),
+			UserID:          "user-1",
+			CardID:          "c1",
+			CardgroupID:     "cg1",
+			Rating:          domain.RatingGood,
+			ReviewedAt:      fixedNow.AddDate(0, 0, -daysAgo),
+			DifficultyAfter: state.Difficulty,
 		})
 	}
 	swipeRepo := &fakeStatsSwipeRepo{swipes: swipes}

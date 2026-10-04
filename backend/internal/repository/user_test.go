@@ -37,7 +37,7 @@ func TestMain(m *testing.M) {
 // needs: every other test dereferences the package-level testDB, so leaving them
 // enabled would nil-panic instead of skipping. Add a new Docker-free test's name
 // here, or it will not run when Docker is unavailable.
-const dockerFreeTests = "^(TestCardRepositorySatisfiesNarrowInterfaces|TestBulkStatementChunk_|TestClassify|TestCursorWhere_|" +
+const dockerFreeTests = "^(TestBulkStatementChunk_|TestClassify|TestCursorWhere_|" +
 	"TestDomainRejectsOverCapEmoji|TestEscapeLikePattern|TestFindRolesByIDs_|TestIncompressibleFront_|" +
 	"TestMasterCardgroupToDomain_|TestOrderClause_|TestPgConstraintViolation|TestRefetchAfterUpdate|TestTextLengthViolationError_|" +
 	"TestToDomainUserPreference_|TestUserCardFSRSToDomain_|TestZWJEmojiAtGraphemeCap_)"
@@ -170,8 +170,8 @@ func TestFindByID_Success(t *testing.T) {
 	if got.DisplayName != nil {
 		t.Fatalf("DisplayName: want nil, got %v", *got.DisplayName)
 	}
-	if got.Bio.IsSet() {
-		t.Fatalf("Bio: want IsSet=false, got Ptr=%v", got.Bio.Ptr())
+	if p := got.Bio.Ptr(); p != nil {
+		t.Fatalf("Bio: want nil, got %q", *p)
 	}
 	if got.AvatarURL != nil {
 		t.Fatalf("AvatarURL: want nil, got %v", *got.AvatarURL)
@@ -265,8 +265,8 @@ func TestUpdate_Success_DisplayNameOnly(t *testing.T) {
 	if got.DisplayName == nil || string(*got.DisplayName) != name {
 		t.Fatalf("DisplayName: got %v, want %q", got.DisplayName, name)
 	}
-	if got.Bio.IsSet() {
-		t.Fatalf("Bio should remain IsSet=false, got Ptr=%v", got.Bio.Ptr())
+	if p := got.Bio.Ptr(); p != nil {
+		t.Fatalf("Bio: want nil, got %q", *p)
 	}
 	if got.AvatarURL != nil {
 		t.Fatalf("AvatarURL should remain nil, got %v", *got.AvatarURL)
@@ -295,8 +295,10 @@ func TestUpdate_PartialBioOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	if !got.Bio.IsSet() || got.Bio.Ptr() == nil || *got.Bio.Ptr() != bio {
-		t.Fatalf("Bio: got Ptr=%v, want %q", got.Bio.Ptr(), bio)
+	if p := got.Bio.Ptr(); p == nil {
+		t.Fatalf("Bio: got nil, want %q", bio)
+	} else if *p != bio {
+		t.Fatalf("Bio: got %q, want %q", *p, bio)
 	}
 	if got.DisplayName == nil || string(*got.DisplayName) != name {
 		t.Fatalf("DisplayName should remain %q, got %v", name, got.DisplayName)
@@ -480,86 +482,6 @@ func TestUpdate_EmptyPatchReturnsCurrentRow(t *testing.T) {
 	}
 	if after.ID != before.ID {
 		t.Errorf("ID mismatch")
-	}
-}
-
-// TestUpdateTx_Success_DisplayNameOnly exercises the happy path of the
-// transactional variant. Unlike Update, UpdateTx does not re-fetch and
-// returns no value — callers refetch after the transaction commits.
-func TestUpdateTx_Success_DisplayNameOnly(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	id := insertAuthUser(t, ctx)
-	repo := repository.NewUserRepository(testDB.GORM)
-
-	name := "AliceTx"
-	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return repo.UpdateTx(ctx, tx, id, repository.UserUpdate{DisplayName: &name})
-	})
-	if err != nil {
-		t.Fatalf("UpdateTx: %v", err)
-	}
-
-	got, err := repo.FindByID(ctx, id)
-	if err != nil {
-		t.Fatalf("FindByID after UpdateTx: %v", err)
-	}
-	if got.DisplayName == nil || string(*got.DisplayName) != name {
-		t.Fatalf("DisplayName: got %v, want %q", got.DisplayName, name)
-	}
-	if got.Version != 1 {
-		t.Fatalf("Version = %d, want 1", got.Version)
-	}
-}
-
-// TestUpdateTx_NotFound asserts that targeting a missing row returns
-// ErrNotFound so a surrounding transaction can roll back atomically.
-func TestUpdateTx_NotFound(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	repo := repository.NewUserRepository(testDB.GORM)
-
-	name := "nobody"
-	missing := uuid.NewString()
-	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return repo.UpdateTx(ctx, tx, missing, repository.UserUpdate{DisplayName: &name})
-	})
-	if !errors.Is(err, repository.ErrNotFound) {
-		t.Fatalf("UpdateTx(missing): want ErrNotFound, got %v", err)
-	}
-}
-
-// TestUpdateTx_EmptyPatchNoOp verifies that a patch with no non-nil fields
-// returns nil without issuing an UPDATE, so neither updated_at nor version
-// advances.
-func TestUpdateTx_EmptyPatchNoOp(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	id := insertAuthUser(t, ctx)
-	repo := repository.NewUserRepository(testDB.GORM)
-
-	before, err := repo.FindByID(ctx, id)
-	if err != nil {
-		t.Fatalf("FindByID (before): %v", err)
-	}
-	beforeUpdated := before.UpdatedAt
-
-	err = testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return repo.UpdateTx(ctx, tx, id, repository.UserUpdate{})
-	})
-	if err != nil {
-		t.Fatalf("UpdateTx (empty patch): %v", err)
-	}
-
-	after, err := repo.FindByID(ctx, id)
-	if err != nil {
-		t.Fatalf("FindByID (after): %v", err)
-	}
-	if !after.UpdatedAt.Equal(beforeUpdated) {
-		t.Errorf("empty patch must not bump updated_at; before=%v after=%v", beforeUpdated, after.UpdatedAt)
-	}
-	if after.Version != before.Version {
-		t.Errorf("empty patch must not bump version; before=%d after=%d", before.Version, after.Version)
 	}
 }
 

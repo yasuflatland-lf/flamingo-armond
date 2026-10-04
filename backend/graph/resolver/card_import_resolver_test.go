@@ -40,8 +40,8 @@ func (m *mockUserRoleRepository) HasRoleTx(_ context.Context, _ *gorm.DB, _ stri
 // newCardImportOnlySrv builds a server with only CardImportUsecase wired; only
 // the validateCardImport resolver is exercised here.
 func newCardImportOnlySrv() *handler.Server {
-	cardImportUC := usecase.NewCardImportUsecaseWithTx(cardImportResolverCardgroupRepo{}, nil, nil, newDiscardLogger())
-	r := resolver.NewResolver(nil, nil, nil, nil, nil, cardImportUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	cardImportUC := usecase.NewCardImportUsecaseWithTx(cardImportResolverCardgroupRepo{}, nil, nil)
+	r := resolver.NewResolver(nil, nil, nil, nil, cardImportUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -158,10 +158,9 @@ func (m *mockCardImportUsecase) Validate(_ context.Context, _ string) (usecase.V
 }
 
 // newImportCardsSrv builds a server with the given CardImportUsecase mock
-// wired. AuthSvc is not needed for the importCards resolver because the
-// usecase mock already encapsulates auth logic.
+// wired.
 func newImportCardsSrv(cardImportUC usecase.CardImportUsecase) *handler.Server {
-	r := resolver.NewResolver(nil, nil, nil, nil, nil, cardImportUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(nil, nil, nil, nil, cardImportUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv

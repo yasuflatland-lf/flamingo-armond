@@ -24,10 +24,9 @@ import (
 // attributable to that column's guard. Every numeric and time column carries a
 // distinct value: the mapper copies same-typed fields across in one struct
 // literal, and equal fixture values would let a transposed pair (for example,
-// created/updated timestamps) satisfy the accept-path assertion.
+// due/last-review timestamps) satisfy the accept-path assertion.
 func validUserCardFSRSRow() gormUserCardFSRS {
 	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
-	good := int(domain.RatingGood)
 	return gormUserCardFSRS{
 		UserID:        "00000000-0000-0000-0000-000000000001",
 		CardID:        "00000000-0000-0000-0000-000000000002",
@@ -38,17 +37,13 @@ func validUserCardFSRSRow() gormUserCardFSRS {
 		Reps:          3,
 		Lapses:        1,
 		LastReview:    now.Add(-48 * time.Hour),
-		LastRating:    &good,
 		ScheduledDays: 5,
 		CreatedAt:     now.Add(-72 * time.Hour),
-		UpdatedAt:     now,
 	}
 }
 
 func TestUserCardFSRSToDomain_RejectsCorruptColumns(t *testing.T) {
 	t.Parallel()
-
-	badRating := 7
 
 	tests := []struct {
 		name    string
@@ -94,11 +89,6 @@ func TestUserCardFSRSToDomain_RejectsCorruptColumns(t *testing.T) {
 			name:    "difficulty above the maximum",
 			mutate:  func(r *gormUserCardFSRS) { r.Difficulty = domain.MaxDifficulty + 0.5 },
 			wantMsg: "repository: invalid difficulty value 10.5 for card 00000000-0000-0000-0000-000000000002",
-		},
-		{
-			name:    "last_rating outside the FSRS range",
-			mutate:  func(r *gormUserCardFSRS) { r.LastRating = &badRating },
-			wantMsg: "repository: invalid last_rating value 7 for card 00000000-0000-0000-0000-000000000002",
 		},
 		{
 			name:    "negative reps",
@@ -158,24 +148,7 @@ func TestUserCardFSRSToDomain_AcceptsValidRow(t *testing.T) {
 			Lapses:        row.Lapses,
 			Phase:         domain.FSRSPhaseReview,
 			LastReview:    row.LastReview,
-			LastRating:    domain.RatingGood,
 		},
 		CreatedAt: row.CreatedAt,
-		UpdatedAt: row.UpdatedAt,
 	}, got)
-}
-
-// TestUserCardFSRSToDomain_NullLastRatingMapsToZero pins the nullable column's
-// mapping: last_rating IS NULL denotes a synthesized state no swipe has rated,
-// which the domain spells as the zero Rating — not a guard violation.
-func TestUserCardFSRSToDomain_NullLastRatingMapsToZero(t *testing.T) {
-	t.Parallel()
-
-	row := validUserCardFSRSRow()
-	row.LastRating = nil
-
-	got, err := userCardFSRSToDomain(row)
-	require.NoError(t, err)
-	require.Equal(t, domain.Rating(0), got.State.LastRating)
-	require.False(t, got.State.LastRating.IsValid())
 }

@@ -36,8 +36,6 @@ vi.mock("@/components/cardgroups/swipeable-row", async () => {
   };
 });
 
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { NextIntlClientProvider } from "next-intl";
 import { masterCardsDefaultVars } from "@/app/admin/masters/[id]/edit/cards/queries";
 import EditMasterPage from "@/app/admin/masters/[id]/edit/page";
@@ -118,14 +116,5 @@ describe("EditMasterPage — broad integration", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Integration Deck" })).toBeInTheDocument();
     expect(screen.getByTestId("master-cards-section")).toBeInTheDocument();
     expect(screen.getByTestId("master-edit-publish")).toBeInTheDocument();
-  });
-
-  it("redirects to / when not authenticated", async () => {
-    vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "anonymous" }));
-    await expect(EditMasterPage({ params: Promise.resolve({ id: ID }) })).rejects.toThrow(
-      "REDIRECT:/",
-    );
-    expect(redirect).toHaveBeenCalledWith("/");
-    expect(gqlFetch).not.toHaveBeenCalled();
   });
 });

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"backend/internal/auth"
@@ -60,7 +59,6 @@ type learnUsecase struct {
 	clock         Clock
 	defaultLimit  int
 	maxLimit      int
-	logger        *slog.Logger
 }
 
 type Clock interface {
@@ -78,11 +76,7 @@ func NewLearnUsecase(
 	ordering *service.OrderingPolicy,
 	defaultLimit, maxLimit int,
 	clock Clock,
-	logger *slog.Logger,
 ) LearnUsecase {
-	if logger == nil {
-		panic("usecase: learn: logger is required")
-	}
 	if cardRepo == nil {
 		panic("usecase: learn: cardRepo must not be nil")
 	}
@@ -115,7 +109,6 @@ func NewLearnUsecase(
 		clock:         clock,
 		defaultLimit:  defaultLimit,
 		maxLimit:      maxLimit,
-		logger:        logger,
 	}
 }
 

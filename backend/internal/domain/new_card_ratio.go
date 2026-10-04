@@ -102,14 +102,12 @@ func mustNewCardRatio(num, den int) NewCardRatio {
 	return r
 }
 
-// NewShare is the new-card share of the ratio (interleave nRatio).
-func (r NewCardRatio) NewShare() int { return r.num }
-
 // ReviewShare is the review-card share of the ratio (interleave rRatio).
 func (r NewCardRatio) ReviewShare() int { return r.den - r.num }
 
 // Numerator / Denominator expose the reduced fraction for persistence and the
-// wire form (numerator = new share, denominator = total).
+// wire form (numerator = new share, denominator = total). Numerator is also the
+// new-card share of the interleave ratio; ReviewShare is the review-card share.
 func (r NewCardRatio) Numerator() int   { return r.num }
 func (r NewCardRatio) Denominator() int { return r.den }
 

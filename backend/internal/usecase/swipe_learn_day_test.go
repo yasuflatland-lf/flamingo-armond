@@ -27,7 +27,7 @@ func newSwipeLearnDayFixture(existing *domain.UserCardFSRS, now time.Time, logge
 	}
 	userFSRSRepo := &mockUserCardFSRSRepository{byCardID: byCardID}
 	swipeRepo := &mockSwipeRecordRepoForSwipe{}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		&mockCardRepository{
 			findResult: &domain.Card{
@@ -66,7 +66,6 @@ func reviewedCardFSRS(lastReview time.Time) *domain.UserCardFSRS {
 			Lapses:        1,
 			Phase:         domain.FSRSPhaseReview,
 			LastReview:    lastReview,
-			LastRating:    domain.RatingGood,
 		},
 	}
 }
