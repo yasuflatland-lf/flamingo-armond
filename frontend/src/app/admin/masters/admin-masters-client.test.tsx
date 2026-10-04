@@ -109,8 +109,6 @@ function connection(
 const BASE_VARS = {
   first: ADMIN_MASTERS_PAGE_SIZE,
   search: null,
-  orderBy: "SORT_ORDER",
-  orderDirection: "ASC",
 };
 
 function listMock(ids: string[], overrides: Record<string, Record<string, unknown>> = {}) {

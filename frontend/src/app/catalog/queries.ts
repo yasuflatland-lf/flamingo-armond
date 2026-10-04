@@ -75,15 +75,11 @@ export const MasterCatalogQuery = graphql(`
     $first: Int
     $after: ID
     $search: String
-    $orderBy: MasterCatalogOrderBy
-    $orderDirection: SortOrder
   ) {
     masterCatalog(
       first: $first
       after: $after
       search: $search
-      orderBy: $orderBy
-      orderDirection: $orderDirection
     ) {
       edges {
         cursor
