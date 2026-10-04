@@ -103,6 +103,11 @@ func (l *lexer) Lex(lval *yySymType) int {
 	if l.isNewLine(r) {
 		// Record the line that this NEWLINE terminates so a syntax error
 		// attributed to it points at the correct source line, then advance.
+		// isNewLine only reports '\r' when the next rune is '\n'; consume it so a
+		// blank CRLF line counts once, as recoverLineForUnrecognized does.
+		if r == '\r' {
+			l.input.ReadRune() //nolint:errcheck
+		}
 		l.tokenLine = l.lineNo
 		l.lineNo++
 		return NEWLINE
