@@ -63,18 +63,6 @@ type gormCard struct {
 	CreatedAt   time.Time `gorm:"column:created_at"`
 	UpdatedAt   time.Time `gorm:"column:updated_at;->"`
 	Position    int       `gorm:"column:position"`
-	// OrderKey carries the value the page query ORDERED BY, projected into the
-	// same result set. It backs no column on `cards`: the `->` tag makes it
-	// read-only so GORM never tries to write or migrate it, and it stays nil on
-	// every query that does not alias a column `order_key`.
-	//
-	// It exists for the DUE ordering, whose key is `COALESCE(ucs.due,
-	// cards.created_at)` over a LEFT JOIN and therefore appears on no card
-	// column. Recovering that value with a second query would read a different
-	// snapshot than the one that ordered the page, so a concurrent review of the
-	// boundary card would mint a cursor keyed to a position the page never used.
-	// Selecting it alongside the row keeps emit and order on one snapshot.
-	OrderKey *time.Time `gorm:"->;column:order_key"`
 }
 
 func (gormCard) TableName() string { return "cards" }
@@ -88,8 +76,6 @@ type CardReadRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Card, error)
 	FindByIDForUpdateTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error)
-	ListByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error)
-	ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, cardgroupID string) ([]string, error)
 	// FindByCardgroupAndFront returns the card identified by the (cardgroup_id,
 	// front) unique key, or ErrNotFound when no such row exists. The front value
 	// is matched exactly; trimming is the caller's responsibility.
@@ -103,31 +89,9 @@ type CardReadRepository interface {
 }
 
 type CardPageRepository interface {
-	FindPageByCardgroup(
-		ctx context.Context,
-		cardgroupID string,
-		after, before *CardCursor,
-		first, last int,
-		orderBy CardOrderBy,
-		dir SortOrder,
-		search *string,
-	) (cards []*domain.Card, totalCount int64, err error)
-	// FindPageByCardgroupForUser additionally returns orderKeys: the value the
-	// query ORDERED BY for each returned row, keyed by card id, taken from the
-	// same result set. The caller mints v2 cursors from it instead of re-reading
-	// the ordering value afterwards — the DUE ordering keys off
-	// COALESCE(user_card_fsrs.due, cards.created_at), which a second query would
-	// resolve against a later snapshot. orderKeys is nil when orderBy is ID,
-	// whose ordering key is the id the cursor already carries.
-	FindPageByCardgroupForUser(
-		ctx context.Context,
-		userID, cardgroupID string,
-		after, before *CardCursor,
-		first, last int,
-		orderBy CardOrderBy,
-		dir SortOrder,
-		search *string,
-	) (cards []*domain.Card, totalCount int64, orderKeys map[string]time.Time, err error)
+	// FindPageByCardgroup returns at most first cards in id ASC order.
+	// A non-blank search filters both the page and totalCount by front/back.
+	FindPageByCardgroup(ctx context.Context, cardgroupID string, after *CardCursor, first int, search *string) ([]*domain.Card, int64, error)
 }
 
 // CardSessionRepository reads a learn/practice session's card pool. Unlike
@@ -149,7 +113,7 @@ type CardWriteRepository interface {
 	Create(ctx context.Context, card *domain.Card) error
 	Update(ctx context.Context, id string, patch CardUpdate) (*domain.Card, error)
 	Delete(ctx context.Context, id string) error
-	// DeleteByIDsTx hard-deletes the cards whose ids are in the list AND whose
+	// DeleteByIDs hard-deletes the cards whose ids are in the list AND whose
 	// cardgroup is owned by ownerID. Returns the number of rows actually deleted
 	// (cards owned by other users are silently skipped at SQL level so a single
 	// foreign id in the list does not abort the batch).
@@ -157,13 +121,7 @@ type CardWriteRepository interface {
 	// Empty ids short-circuits to (0, nil) without touching the DB. With an empty
 	// slice GORM v2 omits the `WHERE id IN (?)` clause altogether, which would
 	// convert this `Delete` into an unbounded mass delete — far worse than a slow scan.
-	DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error)
-	// DeleteByCardgroupAndFrontsTx hard-deletes cards by the scoped (cardgroup_id, front) natural
-	// key; callers must verify the cardgroup is reachable by the calling owner first. Inputs above
-	// bulkStatementChunkRows run as several statements, so tx must be a transaction. Empty fronts
-	// returns (0, nil) without touching the DB: GORM v2 drops an empty `IN ?`, which would delete
-	// every card in the cardgroup (`.claude/rules/go-library-gotchas.md` § GORM empty IN).
-	DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
+	DeleteByIDs(ctx context.Context, ownerID string, ids []string) (int64, error)
 	// UpsertManyTx upserts cards by (cardgroup_id, front), overwriting `back` and `position`;
 	// the database trigger advances updated_at. Returns the per-row split between Inserted
 	// and Updated. Empty input is a no-op. Inputs above bulkStatementChunkRows run as several
@@ -232,29 +190,6 @@ func (r *cardRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*dom
 		out[card.ID] = card
 	}
 	return out, nil
-}
-
-func (r *cardRepo) ListByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error) {
-	var rows []gormCard
-	if err := r.db.WithContext(ctx).
-		Where("cardgroup_id = ?", cardgroupID).
-		Order("created_at ASC, id ASC").
-		Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: card: find by cardgroup")
-	}
-	out := make([]*domain.Card, len(rows))
-	for i := range rows {
-		out[i] = cardToDomain(rows[i])
-	}
-	return out, nil
-}
-
-func (r *cardRepo) ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, cardgroupID string) ([]string, error) {
-	fronts, err := listFrontsByGroupTx(ctx, tx, cardgroupID, "cards", "cardgroup_id")
-	if err != nil {
-		return nil, eris.Wrap(err, "repository: card: list fronts by cardgroup")
-	}
-	return fronts, nil
 }
 
 func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {
@@ -353,6 +288,26 @@ func (r *cardRepo) Delete(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (r *cardRepo) DeleteByIDs(ctx context.Context, ownerID string, ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	// Owner check at SQL: cards.cardgroup_id must reference a cardgroup the
+	// user owns. The subselect is the SOLE ownership gate — the usecase does
+	// no read-side owner check, so foreign-owned ids in the list are silently
+	// filtered out here. Do not remove the cardgroup_id IN (...) clause
+	// without adding an equivalent guard upstream.
+	res := r.db.WithContext(ctx).
+		Where("id IN ? AND cardgroup_id IN (?)", ids,
+			r.db.Model(&gormCardgroup{}).Select("id").Where("owner_id = ?", ownerID),
+		).
+		Delete(&gormCard{})
+	if res.Error != nil {
+		return 0, eris.Wrap(res.Error, "repository: bulk delete cards")
+	}
+	return res.RowsAffected, nil
 }
 
 func cardToRow(card *domain.Card) *gormCard {

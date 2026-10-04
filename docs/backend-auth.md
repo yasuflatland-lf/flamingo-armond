@@ -94,22 +94,21 @@ Field-level resolvers that expose privileged data must perform their own admin-o
 
 ```go
 func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Role, error) {
-    caller := auth.UserFrom(ctx)
-    if caller == nil {
-        return nil, gqlerr.Unauthenticated()
+    loaders, gqlErr := loadersOrInternal(ctx)
+    if gqlErr != nil {
+        return nil, gqlErr
     }
-    if caller.Sub != obj.ID {
-        isAdmin, err := r.AuthSvc.IsAdmin(ctx, caller.Sub)
-        if err != nil { /* propagate context.Canceled, else gqlerr.Internal */ }
-        if !isAdmin {
-            return nil, gqlerr.NewForbidden("forbidden")
-        }
+    rolesThunk := loaders.RoleByUserID.Load(ctx, obj.ID)
+    if gqlErr := requireSelfOrAdmin(ctx, loaders, obj.ID, "resolver: user roles: admin check"); gqlErr != nil {
+        return nil, gqlErr
     }
     // ...
 }
 ```
 
-The "self or admin" check is the right granularity for fields where the owning user has a legitimate read interest in their own data; pure admin-only fields drop the `caller.Sub != obj.ID` branch.
+`requireSelfOrAdmin` (`backend/graph/resolver/helpers.go`) resolves the caller's roles through the `RoleByUserID` DataLoader, so the admin check batches with the page's other role loads; it returns `UNAUTHENTICATED`, `FORBIDDEN`, or `CANCELLED`/`INTERNAL` for a loader error. Admin-only business logic outside field resolvers is decided in the usecase layer through `AdminChecker` / `AdminGate` — see [Inject `AdminChecker` for admin-exempt business logic](backend/library-gotchas/admin-checker-inject-for-admin-exempt-business-logic.md).
+
+The "self or admin" check is the right granularity for fields where the owning user has a legitimate read interest in their own data. A pure admin-only field must not reuse `requireSelfOrAdmin`, because its self short-circuit (`caller.Sub == targetID`) would let the owning user read the field.
 
 ### Self-demotion guard
 

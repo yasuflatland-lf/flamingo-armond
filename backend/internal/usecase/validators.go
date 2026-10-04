@@ -11,28 +11,13 @@ import (
 	"backend/internal/usecase/ucerr"
 )
 
-// validateRelayArgs enforces Relay pagination argument coherence.
-// The Relay spec pairs after with first (forward direction) and before with
-// last (backward direction). The five guards below reject every other
-// combination so callers never receive a silently re-interpreted page boundary.
-// Callers should invoke this before any repository call so invalid arguments
-// are rejected early.
-//
-// Returns a *ucerr.ValidationError on violation; nil otherwise.
-func validateRelayArgs(first, last *int, after, before *string) error {
-	if after != nil && before != nil {
-		return ucerr.NewValidationError("after", "after and before are mutually exclusive")
-	}
-	if first != nil && *first > 0 && before != nil {
-		return ucerr.NewValidationError("before", "before requires last, not first")
-	}
-	if last != nil && *last > 0 && after != nil {
-		return ucerr.NewValidationError("after", "after requires first, not last")
-	}
-	if before != nil && (first == nil || *first <= 0) && (last == nil || *last <= 0) {
-		return ucerr.NewValidationError("before", "before requires last")
-	}
-	if after != nil && (first == nil || *first <= 0) && (last == nil || *last <= 0) {
+// validateRelayArgs rejects an `after` cursor without a positive `first` as
+// BAD_USER_INPUT on "after". The repository trusts its inputs: an omitted first
+// would serve the cursor at a default page size the client never asked for, and
+// a first <= 0 would silently drop it. A request with neither argument is the
+// legitimate first page. Call it before any repository access.
+func validateRelayArgs(first *int, after *string) error {
+	if after != nil && (first == nil || *first <= 0) {
 		return ucerr.NewValidationError("after", "after requires first")
 	}
 	return nil

@@ -381,11 +381,12 @@ func TestRoleRepository_Delete_CascadesUserRoles(t *testing.T) {
 	}
 
 	// The user should now have no roles.
-	roles, err := userRoleRepo.ListByUser(ctx, userID)
+	rolesByUser, err := userRoleRepo.ListByUserIDs(ctx, []string{userID})
 	if err != nil {
-		t.Fatalf("ListByUser after cascaded Delete: %v", err)
+		t.Fatalf("ListByUserIDs after cascaded Delete: %v", err)
 	}
+	roles := rolesByUser[userID]
 	if len(roles) != 0 {
-		t.Fatalf("ListByUser len after cascaded Delete = %d, want 0", len(roles))
+		t.Fatalf("ListByUserIDs len after cascaded Delete = %d, want 0", len(roles))
 	}
 }

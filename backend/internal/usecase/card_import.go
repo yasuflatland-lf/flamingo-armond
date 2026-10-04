@@ -229,11 +229,7 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 		// verbatim.
 		dedupeKey: identityKey,
 		newRow: func(front, back domain.CardText, now time.Time) (*domain.Card, error) {
-			c, err := domain.NewCardFromValidated(domain.CardgroupID(input.CardgroupID), front, back, 0, now)
-			if err != nil {
-				return nil, err
-			}
-			return c, nil
+			return domain.NewCardFromValidated(domain.CardgroupID(input.CardgroupID), front, back, 0, now)
 		},
 		tx: u.tx,
 		upsert: func(ctx context.Context, tx repository.Tx, cards []*domain.Card) (repository.UpsertManyTxResult, error) {
