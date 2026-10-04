@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"log/slog"
 
 	"backend/internal/domain"
 	"backend/internal/repository"
@@ -28,9 +27,8 @@ type updateLearnDisplayModeUsersRepo interface {
 }
 
 type updateLearnDisplayModeUsecase struct {
-	prefs  updateLearnDisplayModePrefsRepo
-	users  updateLearnDisplayModeUsersRepo
-	logger *slog.Logger
+	prefs updateLearnDisplayModePrefsRepo
+	users updateLearnDisplayModeUsersRepo
 }
 
 // NewUpdateLearnDisplayMode is the production constructor. Tests should prefer
@@ -38,24 +36,16 @@ type updateLearnDisplayModeUsecase struct {
 func NewUpdateLearnDisplayMode(
 	prefs repository.UserPreferenceRepository,
 	users repository.UserRepository,
-	logger *slog.Logger,
 ) UpdateLearnDisplayModeUsecase {
-	if logger == nil {
-		panic("usecase: update learn display mode: logger is required")
-	}
-	return &updateLearnDisplayModeUsecase{prefs: prefs, users: users, logger: logger}
+	return &updateLearnDisplayModeUsecase{prefs: prefs, users: users}
 }
 
 // newUpdateLearnDisplayModeWithDeps accepts narrow interfaces for tests.
 func newUpdateLearnDisplayModeWithDeps(
 	prefs updateLearnDisplayModePrefsRepo,
 	users updateLearnDisplayModeUsersRepo,
-	logger *slog.Logger,
 ) UpdateLearnDisplayModeUsecase {
-	if logger == nil {
-		panic("usecase: update learn display mode: logger is required")
-	}
-	return &updateLearnDisplayModeUsecase{prefs: prefs, users: users, logger: logger}
+	return &updateLearnDisplayModeUsecase{prefs: prefs, users: users}
 }
 
 // Set persists mode as the caller's learn display preference and returns the

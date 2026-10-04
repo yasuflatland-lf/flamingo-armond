@@ -94,19 +94,11 @@ union UpdateCardResult =
     UpdateCardSuccess
   | InputValidationError
 
-"""Field to order Cards by in paginated queries. DUE uses the viewer's due state."""
-enum CardOrderBy {
-  ID
-  CREATED_AT
-  UPDATED_AT
-  DUE
-}
-
 """One element in a CardConnection."""
 type CardEdge {
   """
   Opaque, server-encoded cursor for this position. Pass it back verbatim as
-  `after` / `before`; never construct, parse, or derive one from `node.id`.
+  `after`; never construct, parse, or derive one from `node.id`.
   The encoding is a server implementation detail and is not part of the contract.
   """
   cursor: ID!
@@ -157,25 +149,22 @@ extend type Query {
   """
   practiceTodaysCards(cardgroupId: ID!, limit: Int = 100): [Card!]!
   """
-  Paginated cards in a cardgroup. Forward pagination uses (first, after); backward uses (last, before).
+  Paginated cards in a cardgroup. Forward-only cursor pagination (first, after).
   Cursors are opaque, server-encoded values: pass an edge cursor back verbatim and never build
   one from a node id. Default page size is 20; max is 100.
   `first: 0` is a deliberate deviation from the Relay spec for callers that want only
   `totalCount`: no edges are fetched and `hasNextPage` / `hasPreviousPage` are both false
-  even when more rows exist. A negative `first` or `last` is clamped to 0 and therefore
+  even when more rows exist. A negative `first` is clamped to 0 and therefore
   behaves identically.
   Optional case-insensitive substring search on front OR back (ILIKE partial match).
   Nil or empty string skips the search filter.
+  Cards are returned in insertion order (`id ASC`); the ordering is fixed.
   """
   cardsByCardgroupConnection(
     cardgroupId: ID!,
     first: Int,
     after: ID,
-    last: Int,
-    before: ID,
-    search: String,
-    orderBy: CardOrderBy = ID,
-    orderDirection: SortOrder = ASC
+    search: String
   ): CardConnection!
 }
 

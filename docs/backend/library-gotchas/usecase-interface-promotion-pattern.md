@@ -19,18 +19,19 @@ type CardgroupUsecase interface {
     ListCardgroupsByOwnerConnection(ctx context.Context, in CardgroupConnectionInput) (*CardgroupConnectionOutput, error)
 }
 
-// Unexported concrete struct — holds narrow repository interfaces and logger.
+// Unexported concrete struct — holds its narrow dependencies (repository, admin checker, tx runner).
 type cardgroupUsecase struct {
-    repo   CardgroupRepository
-    logger *slog.Logger
+    repo  CardgroupRepository
+    admin AdminChecker
+    tx    txRunner
 }
 
 // Constructor returns the interface, not a pointer to the struct.
-func NewCardgroupUsecase(repo CardgroupRepository, logger *slog.Logger) CardgroupUsecase {
-    if logger == nil {
-        panic("usecase: cardgroup: logger is required")
+func NewCardgroupUsecase(db repository.Tx, repo CardgroupRepository, admin AdminChecker) CardgroupUsecase {
+    if admin == nil {
+        panic("usecase: cardgroup: admin checker is required")
     }
-    return &cardgroupUsecase{repo: repo, logger: logger}
+    return &cardgroupUsecase{repo: repo, admin: admin, tx: newTxRunner(db)}
 }
 ```
 
@@ -72,9 +73,8 @@ The correct pattern is a type assertion back to the concrete struct:
 
 ```go
 // In cardgroup_test.go (package usecase):
-uc := NewCardgroupUsecase(repo, slog.Default())
-ordering := PageOrdering{OrderBy: string(orderBy), Direction: string(dir)}
-got, err := uc.(*cardgroupUsecase).resolveCardgroupCursor(ctx, after, ownerID, orderBy, ordering, "after")
+uc := NewCardgroupUsecase(nil, repo, cgDefaultAdmin())
+got, err := uc.(*cardgroupUsecase).resolveCardgroupCursor(ctx, after, ownerID, "after")
 ```
 
 This is valid because:

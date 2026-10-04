@@ -102,7 +102,6 @@ func TestLearnUsecaseNextDueCards(t *testing.T) {
 		20,
 		100,
 		fixedClock{now: now},
-		newTestLogger(),
 	)
 
 	got, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
@@ -137,7 +136,6 @@ func TestLearnUsecaseNextDueCardsAuthAndCardgroupErrors(t *testing.T) {
 			20,
 			100,
 			fixedClock{now: now},
-			newTestLogger(),
 		)
 		_, err := uc.NextDueCards(anonCtx(), "cg-1", learnIntPtr(5))
 		assertUnauthenticated(t, err)
@@ -153,7 +151,6 @@ func TestLearnUsecaseNextDueCardsAuthAndCardgroupErrors(t *testing.T) {
 			20,
 			100,
 			fixedClock{now: now},
-			newTestLogger(),
 		)
 		_, err := uc.NextDueCards(authedCtx("u-1"), "missing", learnIntPtr(5))
 		assertValidationError(t, err, "cardgroupId", "")
@@ -169,7 +166,6 @@ func TestLearnUsecaseNextDueCardsAuthAndCardgroupErrors(t *testing.T) {
 			20,
 			100,
 			fixedClock{now: now},
-			newTestLogger(),
 		)
 		_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
 		assertUnauthenticated(t, err)
@@ -205,7 +201,6 @@ func TestLearnUsecaseNextDueCardsLimitClampAndEmpty(t *testing.T) {
 				20,
 				100,
 				fixedClock{now: now},
-				newTestLogger(),
 			)
 
 			got, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", tc.in)
@@ -230,7 +225,6 @@ func TestLearnUsecaseNextDueCardsRepoError(t *testing.T) {
 		20,
 		100,
 		fixedClock{now: now},
-		newTestLogger(),
 	)
 
 	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
@@ -250,7 +244,6 @@ func TestLearnUsecaseNextDueCardsCardgroupRepoInternalError(t *testing.T) {
 		20,
 		100,
 		fixedClock{now: now},
-		newTestLogger(),
 	)
 
 	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
@@ -265,25 +258,25 @@ func TestNewLearnUsecase_PanicsOnInvalidDeps(t *testing.T) {
 	t.Run("nil cardRepo", func(t *testing.T) {
 		t.Parallel()
 		require.Panics(t, func() {
-			NewLearnUsecase(nil, cgRepo, notFoundPrefs(), nil, 20, 100, nil, newTestLogger())
+			NewLearnUsecase(nil, cgRepo, notFoundPrefs(), nil, 20, 100, nil)
 		})
 	})
 	t.Run("nil cardgroupRepo", func(t *testing.T) {
 		t.Parallel()
 		require.Panics(t, func() {
-			NewLearnUsecase(cardRepo, nil, notFoundPrefs(), nil, 20, 100, nil, newTestLogger())
+			NewLearnUsecase(cardRepo, nil, notFoundPrefs(), nil, 20, 100, nil)
 		})
 	})
 	t.Run("nil userPrefs", func(t *testing.T) {
 		t.Parallel()
 		require.Panics(t, func() {
-			NewLearnUsecase(cardRepo, cgRepo, nil, nil, 20, 100, nil, newTestLogger())
+			NewLearnUsecase(cardRepo, cgRepo, nil, nil, 20, 100, nil)
 		})
 	})
 	t.Run("defaultLimit greater than maxLimit", func(t *testing.T) {
 		t.Parallel()
 		require.Panics(t, func() {
-			NewLearnUsecase(cardRepo, cgRepo, notFoundPrefs(), nil, 30, 20, nil, newTestLogger())
+			NewLearnUsecase(cardRepo, cgRepo, notFoundPrefs(), nil, 30, 20, nil)
 		})
 	})
 }
@@ -313,7 +306,6 @@ func TestLearnUsecaseNextDueCards_TruncatesToDueLimit(t *testing.T) {
 		20,
 		100,
 		fixedClock{now: now},
-		newTestLogger(),
 	)
 
 	got, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(3))
@@ -347,7 +339,6 @@ func TestLearnUsecaseNextDueCards_HappyPathReviewOnly(t *testing.T) {
 		20,
 		100,
 		fixedClock{now: now},
-		newTestLogger(),
 	)
 
 	got, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(3))
@@ -392,7 +383,6 @@ func TestLearnUsecaseNextDueCards_UsesStoredRatio(t *testing.T) {
 		20,
 		100,
 		fixedClock{now: now},
-		newTestLogger(),
 	)
 
 	got, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(6))
@@ -419,7 +409,6 @@ func TestLearnUsecaseNextDueCards_ErrNotFoundUsesDefaultRatio(t *testing.T) {
 		20,
 		100,
 		fixedClock{now: now},
-		newTestLogger(),
 	)
 
 	got, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(6))
@@ -441,7 +430,6 @@ func newPracticeUsecase(cardRepo *mockLearnCardRepo, cgRepo *mockLearnCardgroupR
 		20,
 		100,
 		fixedClock{now: now},
-		newTestLogger(),
 	)
 }
 
@@ -670,7 +658,6 @@ func TestLearnUsecase_NextDueCards_FindCardgroup_PropagatesCancelled(t *testing.
 		20,
 		100,
 		fixedClock{now: time.Now()},
-		newTestLogger(),
 	)
 	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", nil)
 	assertCancelled(t, err)
@@ -692,7 +679,6 @@ func TestLearnUsecase_NextDueCards_FindDueCards_PropagatesDeadlineExceeded(t *te
 		20,
 		100,
 		fixedClock{now: time.Now()},
-		newTestLogger(),
 	)
 	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", nil)
 	assertCancelled(t, err)
@@ -714,7 +700,6 @@ func TestLearnUsecaseNextDueCards_LoadUserPreferenceInternalError(t *testing.T) 
 		20,
 		100,
 		fixedClock{now: now},
-		newTestLogger(),
 	)
 
 	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
@@ -737,7 +722,6 @@ func TestLearnUsecaseNextDueCards_LoadUserPreferencePropagatesCancelled(t *testi
 		20,
 		100,
 		fixedClock{now: now},
-		newTestLogger(),
 	)
 
 	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
@@ -780,7 +764,6 @@ func TestLearnUsecaseNextDueCards_PassesJSTStartOfDayAsReviewedBefore(t *testing
 				20,
 				100,
 				fixedClock{now: tc.now},
-				newTestLogger(),
 			)
 			_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
 			require.NoError(t, err)

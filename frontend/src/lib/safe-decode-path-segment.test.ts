@@ -1,4 +1,5 @@
 // @vitest-environment node
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { safeDecodePathSegment } from "./safe-decode-path-segment";
 
@@ -11,11 +12,20 @@ describe("safeDecodePathSegment", () => {
     expect(safeDecodePathSegment("abc%XX")).toBeNull();
   });
 
-  it("(c) returns the input unchanged for a plain alphanumeric segment", () => {
-    expect(safeDecodePathSegment("abc-123")).toBe("abc-123");
+  it("inverts encodeURIComponent for any well-formed string (property)", () => {
+    fc.assert(
+      fc.property(fc.string({ unit: "binary" }), (s) => {
+        expect(safeDecodePathSegment(encodeURIComponent(s))).toBe(s);
+      }),
+    );
   });
 
-  it("(d) returns empty string for an empty input", () => {
-    expect(safeDecodePathSegment("")).toBe("");
+  it("returns a segment without '%' unchanged, never throwing (property)", () => {
+    fc.assert(
+      fc.property(fc.string({ unit: "binary" }), (s) => {
+        const plain = s.replaceAll("%", "");
+        expect(safeDecodePathSegment(plain)).toBe(plain);
+      }),
+    );
   });
 });

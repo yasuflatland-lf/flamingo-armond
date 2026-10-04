@@ -156,16 +156,12 @@ func (r *queryResolver) PracticeTodaysCards(ctx context.Context, cardgroupID str
 }
 
 // CardsByCardgroupConnection is the resolver for the cardsByCardgroupConnection field.
-func (r *queryResolver) CardsByCardgroupConnection(ctx context.Context, cardgroupID string, first *int, after *string, last *int, before *string, search *string, orderBy *model.CardOrderBy, orderDirection *model.SortOrder) (*model.CardConnection, error) {
+func (r *queryResolver) CardsByCardgroupConnection(ctx context.Context, cardgroupID string, first *int, after *string, search *string) (*model.CardConnection, error) {
 	out, err := r.CardUC.ListCardsByCardgroupConnection(ctx, usecase.CardConnectionInput{
-		CardgroupID:    cardgroupID,
-		First:          first,
-		Last:           last,
-		After:          after,
-		Before:         before,
-		Search:         search,
-		OrderBy:        toUsecaseOrderBy[model.CardOrderBy, usecase.CardOrderBy](orderBy),
-		OrderDirection: toUsecaseOrderBy[model.SortOrder, usecase.SortOrder](orderDirection),
+		CardgroupID: cardgroupID,
+		First:       first,
+		After:       after,
+		Search:      search,
 	})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)

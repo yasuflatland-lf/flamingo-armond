@@ -12,26 +12,12 @@ import (
 	"backend/internal/domain"
 )
 
-// CardgroupOrderBy is the allowlist of columns that paginated cardgroup
-// queries may sort by. Tuple order is always (orderField, id) so cursors
-// stay deterministic when the order field has duplicate values.
-type CardgroupOrderBy string
-
-const (
-	CardgroupOrderByID        CardgroupOrderBy = "id"
-	CardgroupOrderByCreatedAt CardgroupOrderBy = "created_at"
-	CardgroupOrderByUpdatedAt CardgroupOrderBy = "updated_at"
-	CardgroupOrderByName      CardgroupOrderBy = "name"
-)
-
-// CardgroupCursor carries the cursor entity's id plus the column value
-// matching the active orderBy. The usecase hydrates the relevant column
-// before calling FindPageByOwner; an unset column for the active orderBy
-// is a caller bug.
+// CardgroupCursor carries the cursor entity's id plus its `updated_at`
+// value, the cardgroup connection's fixed ordering column. The usecase
+// hydrates UpdatedAt before calling FindPageByOwner; an unset UpdatedAt is a
+// caller bug.
 type CardgroupCursor struct {
 	ID        string
-	Name      *string
-	CreatedAt *time.Time
 	UpdatedAt *time.Time
 }
 
@@ -82,29 +68,25 @@ type CardgroupRepository interface {
 	FindByName(ctx context.Context, ownerID, name string) (*domain.Cardgroup, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Cardgroup, error)
 	// FindPageByOwner returns a window of cardgroups owned by ownerID ordered
-	// by (orderBy, id) together with the total number of rows matching the same
-	// owner + search filter. Forward paging uses (after, first); backward paging
-	// uses (before, last) and the slice is reversed in memory so the caller
-	// observes the same display order regardless of direction. An optional
-	// case-insensitive substring search filters by name (ILIKE metacharacters in
-	// the search are escaped so they match literally); the returned total honours
-	// that same filter, so it never lies under an active search. The COUNT runs
-	// before the zero-page short-circuit so a caller requesting only the total
-	// still sees a real value.
+	// by (updated_at DESC, id DESC) together with the total number of rows matching the same
+	// owner + search filter. Paging is forward-only: at most `first` rows
+	// strictly after the `after` cursor. An optional case-insensitive substring
+	// search filters by name (ILIKE metacharacters in the search are escaped so
+	// they match literally); the returned total honours that same filter, so it
+	// never lies under an active search. The COUNT runs before the zero-page
+	// short-circuit so a caller requesting only the total still sees a real
+	// value.
 	FindPageByOwner(
 		ctx context.Context,
 		ownerID string,
-		after, before *CardgroupCursor,
-		first, last int,
-		orderBy CardgroupOrderBy,
-		dir SortOrder,
+		after *CardgroupCursor,
+		first int,
 		search *string,
 	) ([]*domain.Cardgroup, int64, error)
-	// CountByOwner returns the total number of cardgroups owned by ownerID
-	// matching the optional search predicate. Used by the filter-less callers
-	// that pass a nil search (the stats dashboard); the paginated connection
-	// reads its filtered total from FindPageByOwner instead.
-	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
+	// CountByOwner returns the total number of cardgroups owned by ownerID.
+	// Used by the filter-less callers (the stats dashboard); the paginated
+	// connection reads its filtered total from FindPageByOwner instead.
+	CountByOwner(ctx context.Context, ownerID string) (int64, error)
 	// CountByOwnerTx counts every cardgroup owned by ownerID on tx, so a caller
 	// holding AcquireUserCardgroupLockTx reads the count on the locked connection.
 	CountByOwnerTx(ctx context.Context, tx *gorm.DB, ownerID string) (int64, error)
@@ -159,10 +141,8 @@ func (r *cardgroupRepo) FindByName(ctx context.Context, ownerID, name string) (*
 }
 
 // FindPageByOwner implements the cursor-paginated cardgroup list scoped to
-// ownerID. Order is (orderBy, id) so cursors stay deterministic even when
-// the primary sort column has duplicates. Backward paging inverts the SQL
-// direction, applies LIMIT, and reverses the slice in memory so the caller
-// sees the same display order as forward paging. The search argument, when
+// ownerID. Order is (updated_at DESC, id DESC) so cursors stay deterministic
+// even when two rows share an updated_at. The search argument, when
 // non-empty after trimming, filters by `name ILIKE %escaped%` with LIKE
 // metacharacters escaped so user-supplied `%` and `_` match literally.
 // totalCount is a COUNT(*) over the SAME filtered base query, so it honours
@@ -170,14 +150,11 @@ func (r *cardgroupRepo) FindByName(ctx context.Context, ownerID, name string) (*
 func (r *cardgroupRepo) FindPageByOwner(
 	ctx context.Context,
 	ownerID string,
-	after, before *CardgroupCursor,
-	first, last int,
-	orderBy CardgroupOrderBy,
-	dir SortOrder,
+	after *CardgroupCursor,
+	first int,
 	search *string,
 ) ([]*domain.Cardgroup, int64, error) {
 	first = ClampPageSize(first)
-	last = ClampPageSize(last)
 
 	// Base query scoped to the owner (and search filter, if active). Both the
 	// COUNT and the page window derive from it so totalCount applies the same
@@ -195,31 +172,23 @@ func (r *cardgroupRepo) FindPageByOwner(
 		return nil, 0, eris.Wrap(err, "repository: cardgroup: count by owner")
 	}
 
-	if first == 0 && last == 0 {
+	if first == 0 {
 		return []*domain.Cardgroup{}, total, nil
 	}
 
-	// Backward paging executes the query with the inverted direction and
-	// reverses the slice afterwards.
-	effectiveDir, limit, cursor, reverse := paginateSetup(dir, first, last, after, before)
-
 	q := base
-	if cursor != nil {
-		clauseSQL, args, err := cardgroupCursorWhere(orderBy, effectiveDir, cursor)
+	if after != nil {
+		clauseSQL, args, err := cardgroupCursorWhere(after)
 		if err != nil {
 			return nil, 0, eris.Wrap(err, "repository: cardgroup: build cursor where")
 		}
 		q = q.Where(clauseSQL, args...)
 	}
-	q = q.Order(cardgroupOrderClause(orderBy, effectiveDir)).Limit(limit)
+	q = q.Order(cardgroupOrderClause()).Limit(first)
 
 	var rows []gormCardgroup
 	if err := q.Find(&rows).Error; err != nil {
 		return nil, 0, eris.Wrap(err, "repository: cardgroup: find page by owner")
-	}
-
-	if reverse {
-		ReverseSlice(rows)
 	}
 
 	out := make([]*domain.Cardgroup, len(rows))
@@ -229,14 +198,11 @@ func (r *cardgroupRepo) FindPageByOwner(
 	return out, total, nil
 }
 
-// CountByOwner returns the total number of cardgroups owned by ownerID
-// matching the optional search predicate. The COUNT scopes by owner_id so
-// a tenant cannot observe other tenants' aggregate sizes.
-func (r *cardgroupRepo) CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error) {
+// CountByOwner returns the total number of cardgroups owned by ownerID.
+// The COUNT scopes by owner_id so a tenant cannot observe other tenants'
+// aggregate sizes.
+func (r *cardgroupRepo) CountByOwner(ctx context.Context, ownerID string) (int64, error) {
 	q := r.db.WithContext(ctx).Model(&gormCardgroup{}).Where("owner_id = ?", ownerID)
-	if pattern, ok := searchLikePattern(search); ok {
-		q = q.Where("name ILIKE ?", pattern)
-	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
 		return 0, eris.Wrap(err, "repository: cardgroup: count by owner")
@@ -253,52 +219,38 @@ func (r *cardgroupRepo) CountByOwnerTx(ctx context.Context, tx *gorm.DB, ownerID
 	return total, nil
 }
 
-// cardgroupCursorSpec describes the cardgroup aggregate's cursor geometry. The
-// columns are UNALIASED (bare `name` / `created_at` / `id`) because
+// cardgroupCursorSpec describes the cardgroup aggregate's cursor geometry: the
+// fixed (updated_at DESC, id DESC) ordering. The columns are UNALIASED because
 // FindPageByOwner queries the cardgroups table without an alias.
-func cardgroupCursorSpec(orderBy CardgroupOrderBy, c *CardgroupCursor) cursorSpec {
+func cardgroupCursorSpec(c *CardgroupCursor) cursorSpec {
 	return cursorSpec{
 		alias:      "",
-		orderCol:   string(orderBy),
-		isIDOrder:  orderBy == CardgroupOrderByID,
-		fieldValue: func() (any, error) { return cardgroupCursorFieldValue(orderBy, c) },
+		orderCol:   "updated_at",
+		isIDOrder:  false,
+		fieldValue: func() (any, error) { return cardgroupCursorFieldValue(c) },
 	}
 }
 
-// cardgroupOrderClause renders the SQL ORDER BY tail. When orderBy is `id`
-// only one column appears; otherwise the secondary `id` keeps the ordering
-// total.
-func cardgroupOrderClause(orderBy CardgroupOrderBy, dir SortOrder) string {
-	return buildOrderClause(cardgroupCursorSpec(orderBy, nil), dir)
+// cardgroupOrderClause renders the SQL ORDER BY tail; the secondary `id` keeps
+// the ordering total.
+func cardgroupOrderClause() string {
+	return buildOrderClause(cardgroupCursorSpec(nil), SortDesc)
 }
 
 // cardgroupCursorWhere builds the tuple-comparison WHERE for the supplied
-// cursor and direction. ASC yields `>`, DESC yields `<`. Returns an error
-// when the cursor lacks the column required by the active orderBy — that
-// is a caller bug, not user-supplied input.
-func cardgroupCursorWhere(orderBy CardgroupOrderBy, dir SortOrder, c *CardgroupCursor) (string, []any, error) {
-	return buildCursorWhere(cardgroupCursorSpec(orderBy, c), dir, c.ID)
+// cursor. Returns an error when the cursor lacks UpdatedAt — that is a caller
+// bug, not user-supplied input.
+func cardgroupCursorWhere(c *CardgroupCursor) (string, []any, error) {
+	return buildCursorWhere(cardgroupCursorSpec(c), SortDesc, c.ID)
 }
 
-// cardgroupCursorFieldValue returns the cursor value for the active
-// orderBy field. The usecase layer hydrates the relevant column before
-// calling FindPageByOwner, so a missing column is a caller bug.
-func cardgroupCursorFieldValue(orderBy CardgroupOrderBy, c *CardgroupCursor) (any, error) {
-	switch orderBy {
-	case CardgroupOrderByName:
-		if c.Name != nil {
-			return *c.Name, nil
-		}
-	case CardgroupOrderByCreatedAt:
-		if c.CreatedAt != nil {
-			return *c.CreatedAt, nil
-		}
-	case CardgroupOrderByUpdatedAt:
-		if c.UpdatedAt != nil {
-			return *c.UpdatedAt, nil
-		}
+// cardgroupCursorFieldValue returns the cursor's updated_at value. The usecase
+// layer hydrates it before calling FindPageByOwner, so a nil is a caller bug.
+func cardgroupCursorFieldValue(c *CardgroupCursor) (any, error) {
+	if c.UpdatedAt != nil {
+		return *c.UpdatedAt, nil
 	}
-	return nil, eris.Errorf("repository: cardgroup: cursor missing %s column", orderBy)
+	return nil, eris.New("repository: cardgroup: cursor missing updated_at column")
 }
 
 // FindByIDs returns a map of id → Cardgroup for all found ids. IDs that do not

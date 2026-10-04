@@ -209,16 +209,20 @@ describe("<AdminUsersClient> sheet", () => {
     const user = userEvent.setup();
 
     renderWithIntl(
-      <MockedProvider mocks={[makeUsersMock(), makeRolesMock()]}>
+      <MockedProvider mocks={[makeUsersMock([USER_1, USER_2]), makeRolesMock()]}>
         <AdminUsersClient />
       </MockedProvider>,
     );
 
     expect(await screen.findByText("Alice")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /edit alice/i }));
-
-    expect(mockPush).toHaveBeenCalledWith("/admin/users?edit=u-1", { scroll: false });
+    for (const [name, id] of [
+      ["alice", "u-1"],
+      ["bob", "u-2"],
+    ] as const) {
+      await user.click(screen.getByRole("button", { name: new RegExp(`edit ${name}`, "i") }));
+      expect(mockPush).toHaveBeenLastCalledWith(`/admin/users?edit=${id}`, { scroll: false });
+    }
   });
 
   it("does not render inline role checkboxes in the user list", async () => {

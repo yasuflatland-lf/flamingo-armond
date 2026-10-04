@@ -18,7 +18,7 @@ import (
 // TestCardRepository_UpsertManyTx covers the four scenarios for UpsertManyTx:
 // pure inserts, mixed insert+update, empty input, and the per-cardgroup
 // uniqueness boundary. The unique index that backs the ON CONFLICT clause is
-// migration 20260503000000_add_cards_upsert_index.
+// uq_cards_cardgroup_front, defined in 20260430080000_initial_schema.
 func TestCardRepository_UpsertManyTx(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -47,8 +47,7 @@ func TestCardRepository_UpsertManyTx(t *testing.T) {
 		require.Equal(t, int64(5), result.Inserted)
 		require.Equal(t, int64(0), result.Updated)
 
-		stored, err := repo.ListByCardgroup(ctx, string(cg.ID))
-		require.NoError(t, err)
+		stored := listCardsByCardgroup(t, ctx, string(cg.ID))
 		require.Len(t, stored, 5)
 	})
 
@@ -98,8 +97,7 @@ func TestCardRepository_UpsertManyTx(t *testing.T) {
 		}
 
 		// Final cardgroup row count: 3 pre-existing + 2 newly inserted.
-		stored, err := repo.ListByCardgroup(ctx, string(cg.ID))
-		require.NoError(t, err)
+		stored := listCardsByCardgroup(t, ctx, string(cg.ID))
 		require.Len(t, stored, 5)
 	})
 
@@ -118,8 +116,7 @@ func TestCardRepository_UpsertManyTx(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, repository.UpsertManyTxResult{}, result)
 
-		stored, err := repo.ListByCardgroup(ctx, string(cg.ID))
-		require.NoError(t, err)
+		stored := listCardsByCardgroup(t, ctx, string(cg.ID))
 		require.Empty(t, stored)
 	})
 
@@ -153,14 +150,12 @@ func TestCardRepository_UpsertManyTx(t *testing.T) {
 		require.Equal(t, int64(1), result.Inserted)
 		require.Equal(t, int64(0), result.Updated)
 
-		storedA, err := repo.ListByCardgroup(ctx, string(cgA.ID))
-		require.NoError(t, err)
+		storedA := listCardsByCardgroup(t, ctx, string(cgA.ID))
 		require.Len(t, storedA, 1)
 		require.Equal(t, domain.CardText("hello"), storedA[0].Front)
 		require.Equal(t, domain.CardText("back-A"), storedA[0].Back)
 
-		storedB, err := repo.ListByCardgroup(ctx, string(cgB.ID))
-		require.NoError(t, err)
+		storedB := listCardsByCardgroup(t, ctx, string(cgB.ID))
 		require.Len(t, storedB, 1)
 		require.Equal(t, domain.CardText("hello"), storedB[0].Front)
 		require.Equal(t, domain.CardText("back-B"), storedB[0].Back)
@@ -339,8 +334,7 @@ func TestCardRepository_FoldFrontCaseToTx(t *testing.T) {
 		require.Equal(t, int64(1), folded)
 		require.Equal(t, repository.UpsertManyTxResult{Updated: 1}, result)
 
-		stored, err := repo.ListByCardgroup(ctx, string(cg.ID))
-		require.NoError(t, err)
+		stored := listCardsByCardgroup(t, ctx, string(cg.ID))
 		require.Len(t, stored, 1)
 		require.Equal(t, original.ID, stored[0].ID)
 		require.Equal(t, domain.CardText("Apple"), stored[0].Front)
@@ -493,8 +487,7 @@ func TestCardRepository_FoldFrontCaseToTx_ConcurrentExactInsert_ReturnsDuplicate
 		t.Fatal("the fold did not finish after the concurrent insert committed")
 	}
 
-	stored, err := repo.ListByCardgroup(ctx, string(cg.ID))
-	require.NoError(t, err)
+	stored := listCardsByCardgroup(t, ctx, string(cg.ID))
 	backs := make(map[domain.CardText]domain.CardText, len(stored))
 	for _, c := range stored {
 		backs[c.Front] = c.Back

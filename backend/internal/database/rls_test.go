@@ -463,11 +463,10 @@ func insertCardSQL() string {
 func insertSwipeSQL() string {
 	return `
         INSERT INTO public.swipe_records (
-            user_id, card_id, cardgroup_id, rating, reviewed_at, due, stability, difficulty,
-            scheduled_days, reps, lapses, state, last_review,
+            user_id, card_id, cardgroup_id, rating, reviewed_at, difficulty,
             due_before, phase_before, stability_before
         )
-        VALUES ($1, $2, $3, 3, $4, $4, 2.5, 5.0, 0, 0, 0, 0, $4, $4, 0, 2.5)
+        VALUES ($1, $2, $3, 3, $4, 5.0, $4, 0, 2.5)
     `
 }
 

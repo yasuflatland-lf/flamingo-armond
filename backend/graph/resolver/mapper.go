@@ -217,20 +217,6 @@ func toRoleModels(ctx context.Context, roles []*domain.Role) []*model.Role {
 	return out
 }
 
-// toUsecaseOrderBy casts a pointer to a model-layer order-by / sort enum into
-// the matching usecase-layer enum, preserving the nil-passes-through contract
-// (an absent argument keeps the usecase default). Both enums share a `~string`
-// underlying type, so the cast is a direct value conversion. Callers supply the
-// type arguments explicitly, e.g.
-// toUsecaseOrderBy[model.CardOrderBy, usecase.CardOrderBy](args.OrderBy).
-func toUsecaseOrderBy[M ~string, U ~string](o *M) *U {
-	if o == nil {
-		return nil
-	}
-	v := U(*o)
-	return &v
-}
-
 // toPerformanceMetricsModel maps the domain-service performance value object to
 // the generated wire model. Used by the learning-stats diagnostic snapshot.
 func toPerformanceMetricsModel(m service.PerformanceMetrics) *model.PerformanceMetrics {

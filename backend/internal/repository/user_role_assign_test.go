@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"backend/internal/domain"
 	"backend/internal/repository"
 )
 
@@ -50,12 +49,13 @@ func TestUserRoleRepository_AssignRoleToUser_HappyPath(t *testing.T) {
 		t.Fatalf("AssignRoleToUser: %v", err)
 	}
 
-	roles, err := repo.ListByUser(ctx, userID)
+	rolesByUser, err := repo.ListByUserIDs(ctx, []string{userID})
 	if err != nil {
-		t.Fatalf("ListByUser: %v", err)
+		t.Fatalf("ListByUserIDs: %v", err)
 	}
+	roles := rolesByUser[userID]
 	if len(roles) != 1 {
-		t.Fatalf("ListByUser len = %d, want 1", len(roles))
+		t.Fatalf("ListByUserIDs len = %d, want 1", len(roles))
 	}
 	if roles[0].ID != admin.ID {
 		t.Fatalf("role ID = %q, want %q", roles[0].ID, admin.ID)
@@ -82,12 +82,13 @@ func TestUserRoleRepository_AssignRoleToUser_Idempotent(t *testing.T) {
 		t.Fatalf("AssignRoleToUser (second, idempotent): %v", err)
 	}
 
-	roles, err := repo.ListByUser(ctx, userID)
+	rolesByUser, err := repo.ListByUserIDs(ctx, []string{userID})
 	if err != nil {
-		t.Fatalf("ListByUser: %v", err)
+		t.Fatalf("ListByUserIDs: %v", err)
 	}
+	roles := rolesByUser[userID]
 	if len(roles) != 1 {
-		t.Fatalf("ListByUser len after double assign = %d, want 1", len(roles))
+		t.Fatalf("ListByUserIDs len after double assign = %d, want 1", len(roles))
 	}
 }
 
@@ -329,61 +330,6 @@ func TestUserRoleRepository_SetUserRolesTx_DuplicateRoleIDsDeDupe(t *testing.T) 
 	}
 }
 
-// ---------------------------------------------------------------------------
-// ListByUser
-// ---------------------------------------------------------------------------
-
-func TestUserRoleRepository_ListByUser_NoRoles(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	userID := insertAuthUser(t, ctx)
-	repo := repository.NewUserRoleRepository(testDB.GORM)
-
-	roles, err := repo.ListByUser(ctx, userID)
-	if err != nil {
-		t.Fatalf("ListByUser: %v", err)
-	}
-	if roles == nil {
-		t.Fatal("ListByUser returned nil, want empty slice")
-	}
-	if len(roles) != 0 {
-		t.Fatalf("ListByUser len = %d, want 0", len(roles))
-	}
-}
-
-func TestUserRoleRepository_ListByUser_OrderedByNameAsc(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	userID := insertAuthUser(t, ctx)
-	repo := repository.NewUserRoleRepository(testDB.GORM)
-
-	// Seed three roles with names that should sort alphabetically.
-	adminID := insertRole(t, ctx, "admin")
-	generalID := insertRole(t, ctx, "general")
-	reviewerID := insertRole(t, ctx, "reviewer")
-
-	for _, roleID := range []string{reviewerID, adminID, generalID} {
-		if err := repo.AssignRoleToUser(ctx, userID, roleID); err != nil {
-			t.Fatalf("AssignRoleToUser(%s): %v", roleID, err)
-		}
-	}
-
-	roles, err := repo.ListByUser(ctx, userID)
-	if err != nil {
-		t.Fatalf("ListByUser: %v", err)
-	}
-	if len(roles) != 3 {
-		t.Fatalf("ListByUser len = %d, want 3", len(roles))
-	}
-
-	want := []domain.RoleName{"admin", "general", "reviewer"}
-	for i, r := range roles {
-		if r.Name != want[i] {
-			t.Errorf("roles[%d].Name = %q, want %q", i, r.Name, want[i])
-		}
-	}
-}
-
 func assertUserRoleIDs(
 	t *testing.T,
 	ctx context.Context,
@@ -392,10 +338,11 @@ func assertUserRoleIDs(
 	want []string,
 ) {
 	t.Helper()
-	roles, err := repo.ListByUser(ctx, userID)
+	rolesByUser, err := repo.ListByUserIDs(ctx, []string{userID})
 	if err != nil {
-		t.Fatalf("ListByUser: %v", err)
+		t.Fatalf("ListByUserIDs: %v", err)
 	}
+	roles := rolesByUser[userID]
 	got := make(map[string]bool, len(roles))
 	for _, role := range roles {
 		got[role.ID] = true
