@@ -53,8 +53,6 @@ func (m *swipeRecordRepo) CreateTx(_ context.Context, _ *gorm.DB, _ *domain.Swip
 
 // userCardFSRSRepo satisfies usecase.UserCardFSRSRepoForSwipe.
 type userCardFSRSRepo struct {
-	findByIDsResult   map[string]*domain.UserCardFSRS
-	findByIDsErr      error
 	findByIDsTxResult map[string]*domain.UserCardFSRS
 	findByIDsTxErr    error
 	upsertTxErr       error
@@ -62,10 +60,6 @@ type userCardFSRSRepo struct {
 
 func (m *userCardFSRSRepo) UpsertTx(_ context.Context, _ *gorm.DB, _ *domain.UserCardFSRS) error {
 	return m.upsertTxErr
-}
-
-func (m *userCardFSRSRepo) FindByUserAndCardIDs(_ context.Context, _ string, _ []string) (map[string]*domain.UserCardFSRS, error) {
-	return m.findByIDsResult, m.findByIDsErr
 }
 
 func (m *userCardFSRSRepo) FindByUserAndCardIDsTx(_ context.Context, _ *gorm.DB, _ string, _ []string) (map[string]*domain.UserCardFSRS, error) {
@@ -101,7 +95,7 @@ func newSwipeSrv(
 		userFSRSRepo,
 		newDiscardLogger(),
 	)
-	r := resolver.NewResolver(nil, nil, nil, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(nil, nil, nil, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -254,7 +248,7 @@ func TestResolver_HandleSwipe_InfrastructureError_ReturnsInternal(t *testing.T) 
 		&userCardFSRSRepo{},
 		newDiscardLogger(),
 	)
-	r := resolver.NewResolver(nil, nil, nil, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(nil, nil, nil, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 

@@ -10,9 +10,9 @@
  * so CardsClient renders from SSR props immediately.
  *
  * Auth is driven by the middleware-forwarded `x-auth-status` header via
- * `readAuthContext(await headers())`. The default mock returns
- * `x-auth-status: authenticated`; individual tests override with
- * `vi.mocked(headers).mockResolvedValueOnce(...)`.
+ * `readAuthContext(await headers())`. The mock always returns
+ * `x-auth-status: authenticated`; the auth-gate matrix is owned by the
+ * co-located src/app/cardgroups/[id]/edit/page.test.tsx.
  *
  * NOT covered here (owned by narrow tests):
  *   - IntersectionObserver pagination / fetchMore  → cards-pagination.test.tsx
@@ -67,8 +67,6 @@ vi.mock("@/lib/apollo/server", () => ({
   gqlFetch: vi.fn(),
 }));
 
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { NextIntlClientProvider } from "next-intl";
 import { cardsDefaultVars } from "@/app/cardgroups/[id]/cards/queries";
 import EditCardgroupPage from "@/app/cardgroups/[id]/edit/page";
@@ -184,17 +182,5 @@ describe("EditCardgroupPage — broad integration (RSC + management screen)", ()
     await renderPage(EMPTY_CONNECTION);
 
     expect(screen.getByText("Add some new cards to get started.")).toBeInTheDocument();
-  });
-
-  it("redirects to /login when no user is authenticated", async () => {
-    vi.mocked(headers).mockResolvedValueOnce(
-      new Headers({ "x-auth-status": "anonymous" }) as never,
-    );
-
-    await expect(EditCardgroupPage({ params: Promise.resolve({ id: CG_ID }) })).rejects.toThrow(
-      "REDIRECT:/login",
-    );
-    expect(redirect).toHaveBeenCalledWith("/login");
-    expect(gqlFetch).not.toHaveBeenCalled();
   });
 });

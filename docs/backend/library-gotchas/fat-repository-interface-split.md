@@ -26,9 +26,9 @@ Separate into two interfaces owned by two files:
 repository/
   role.go       — RoleRepository: 7 CRUD methods
                   FindByID, FindByName, FindByIDs, Create, Update, Delete, ListAll
-  user_role.go  — UserRoleRepository: 6 membership methods
+  user_role.go  — UserRoleRepository: 5 membership methods
                   HasRole, AssignToUser, RevokeFromUser,
-                  ListByUser, ListByUserIDs, CountAdmins
+                  ListByUserIDs, CountAdmins
 ```
 
 Error sentinels (`ErrUserNotFound`, `ErrRoleNotFound`, `ErrRoleDuplicate`) and FK
