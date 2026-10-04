@@ -57,7 +57,6 @@ type UserUpdate struct {
 
 type UserRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.User, error)
-	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.User, error)
 	// Update applies the patch and bumps version so an admin holding a stale
 	// expectedVersion sees ErrConcurrentUpdate instead of overwriting the
 	// change. An empty patch reads without writing and leaves version unchanged.
@@ -149,23 +148,6 @@ func (r *userRepo) FindByID(ctx context.Context, id string) (*domain.User, error
 		return nil, eris.Wrap(err, "repository: user: find by id")
 	}
 	return userToDomain(row), nil
-}
-
-func (r *userRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*domain.User, error) {
-	// GORM turns WHERE id IN () into an unfiltered scan, so short-circuit empty input.
-	if len(ids) == 0 {
-		return map[string]*domain.User{}, nil
-	}
-	var rows []gormUser
-	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: user: find by ids")
-	}
-	out := make(map[string]*domain.User, len(rows))
-	for i := range rows {
-		u := userToDomain(rows[i])
-		out[string(u.ID)] = u
-	}
-	return out, nil
 }
 
 func (r *userRepo) Update(ctx context.Context, id string, patch UserUpdate) (*domain.User, error) {

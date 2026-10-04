@@ -2,11 +2,7 @@
 type Cardgroup {
   id: ID!
   name: String!
-  ownerId: ID!
-  createdAt: Time!
   updatedAt: Time!
-  """The owning user. Resolved via the per-request User DataLoader."""
-  owner: User!
 }
 
 """Input for `createCardgroup`."""

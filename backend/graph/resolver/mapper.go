@@ -39,8 +39,6 @@ func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 	return &model.Cardgroup{
 		ID:        string(cg.ID),
 		Name:      cg.Name.String(),
-		OwnerID:   string(cg.OwnerID),
-		CreatedAt: cg.CreatedAt,
 		UpdatedAt: cg.UpdatedAt,
 	}
 }

@@ -42,11 +42,7 @@ func TestCardLoader_BatchesNCallsIntoOne(t *testing.T) {
 			return out, nil
 		},
 	}
-	emptyUser := &countingRepo{
-		findByIDs: func(_ context.Context, _ []string) (map[string]*domain.User, error) {
-			return map[string]*domain.User{}, nil
-		},
-	}
+	emptyUser := &countingRepo{}
 
 	ids := make([]string, 100)
 	for i := range ids {
@@ -81,11 +77,7 @@ func TestCardLoader_PartialNotFound(t *testing.T) {
 			return out, nil
 		},
 	}
-	emptyUser := &countingRepo{
-		findByIDs: func(_ context.Context, _ []string) (map[string]*domain.User, error) {
-			return map[string]*domain.User{}, nil
-		},
-	}
+	emptyUser := &countingRepo{}
 
 	results, errs := loadAllCards(context.Background(), loader.New(emptyUser, emptyUserRoleRepo(), emptyCardgroupRepo(), cardRepo, emptyUserPreferenceRepo()), []string{"present", "missing"})
 	if errs[0] != nil || results[0] == nil || results[0].ID != "present" {

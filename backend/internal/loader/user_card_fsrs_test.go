@@ -29,11 +29,7 @@ func (r *countingUserCardFSRSRepo) FindByUserAndCardIDs(ctx context.Context, use
 }
 
 func emptyUserRepo() *countingRepo {
-	return &countingRepo{
-		findByIDs: func(_ context.Context, _ []string) (map[string]*domain.User, error) {
-			return map[string]*domain.User{}, nil
-		},
-	}
+	return &countingRepo{}
 }
 
 func loadAllUserCardFSRS(ctx context.Context, l *loader.Loaders, ids []string) ([]*domain.UserCardFSRS, []error) {

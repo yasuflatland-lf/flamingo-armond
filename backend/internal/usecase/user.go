@@ -16,7 +16,6 @@ import (
 )
 
 // UserRepository is the consumer-driven interface used by UserUsecase.
-// FindByIDs is intentionally omitted; it is used only by the loader layer.
 type UserRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.User, error)
 	Update(ctx context.Context, id string, patch repository.UserUpdate) (*domain.User, error)
