@@ -31,7 +31,7 @@ func (m *mockStatsUsecase) MyLearningStats(_ context.Context) (*usecase.Learning
 
 // newStatsSrv builds a gqlgen Server wired to uc; other usecase fields are nil.
 func newStatsSrv(uc usecase.StatsUsecase) *handler.Server {
-	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, uc)
+	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, uc)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv

@@ -49,10 +49,6 @@
     "heading": "Oops! Page Not Found!",
     "message": "It seems like the page you're looking for does not exist."
   },
-  "GlobalError": {
-    "heading": "Something went wrong",
-    "message": "An unexpected error occurred. Please try again."
-  },
   "RootError": {
     "heading": "We couldn't load the app",
     "message": "This can happen when the server is starting up. Please try again in a moment.",
@@ -350,9 +346,6 @@
     "publishEmptyToast": "This deck has no cards and cannot be published.",
     "publishSuccess": "Master published.",
     "unpublishSuccess": "Master unpublished.",
-    "publishSectionHeading": "Publishing",
-    "publishSectionDraftDescription": "Publishing makes this deck visible in the public catalog.",
-    "publishSectionPublishedDescription": "This deck is live in the public catalog. Unpublishing returns it to draft.",
     "editAriaLabel": "Edit {name}",
     "createMasterTitle": "New master",
     "createMaster": "Create",
@@ -364,13 +357,10 @@
     "sortOrderLabel": "Sort order",
     "createSuccess": "Master created.",
     "updateSuccess": "Master updated.",
-    "deleteMasterHeading": "Danger zone",
-    "deleteMasterDescription": "Permanently delete this master deck.",
     "deleteMasterButton": "Delete master",
     "deleteMasterDialogTitle": "Delete this master?",
     "deleteMasterDialogDescription": "This permanently deletes the master deck and its cards. This cannot be undone.",
     "deleteMasterConfirmButton": "Delete master",
-    "deleteMasterDeleting": "Deleting...",
     "deleteMasterSuccess": "Master deleted.",
     "deleteMasterFailed": "Could not delete the master. Please try again.",
     "deckSettingsButton": "Settings",

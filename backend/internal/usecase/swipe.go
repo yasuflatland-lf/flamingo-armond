@@ -29,7 +29,6 @@ type SwipeRecordRepoForSwipe interface {
 
 type UserCardFSRSRepoForSwipe interface {
 	UpsertTx(ctx context.Context, tx repository.Tx, u *domain.UserCardFSRS) error
-	FindByUserAndCardIDs(ctx context.Context, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
 	FindByUserAndCardIDsTx(ctx context.Context, tx repository.Tx, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
 }
 
@@ -158,7 +157,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			if errors.Is(err, repository.ErrNotFound) {
 				return ucerr.NewValidationError("cardId", "card not found")
 			}
-			return wrapSwipeErr(err, "usecase: swipe: find card by id")
+			return wrapInfraErr(err, "usecase: swipe: find card by id")
 		}
 		if !card.BelongsToCardgroup(in.CardgroupID) {
 			return ucerr.NewValidationError("cardId", "card not found")
@@ -168,7 +167,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		now := u.clock.Now().UTC()
 		byCardID, err := u.userFSRSRepo.FindByUserAndCardIDsTx(ctx, tx, user.Sub, []string{card.ID})
 		if err != nil {
-			return wrapSwipeErr(err, "usecase: swipe: find user-card fsrs")
+			return wrapInfraErr(err, "usecase: swipe: find user-card fsrs")
 		}
 		// Repeat-review guard. The learn queue never serves a card twice within
 		// one JST learn day or without FSRS scheduling credit, so a swipe that
@@ -229,14 +228,14 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			return eris.Wrap(err, "usecase: swipe: apply rating")
 		}
 		if err := u.userFSRSRepo.UpsertTx(ctx, tx, current); err != nil {
-			return wrapSwipeErr(err, "usecase: swipe: upsert user-card fsrs")
+			return wrapInfraErr(err, "usecase: swipe: upsert user-card fsrs")
 		}
 		sr, err := u.newSwipeRecord(domain.UserID(user.Sub), card.ID, card.CardgroupID, rating, now, before, current.State)
 		if err != nil {
 			return eris.Wrap(err, "usecase: swipe: new swipe record")
 		}
 		if err := u.swipeRepo.CreateTx(ctx, tx, sr); err != nil {
-			return wrapSwipeErr(err, "usecase: swipe: insert swipe record")
+			return wrapInfraErr(err, "usecase: swipe: insert swipe record")
 		}
 		return nil
 	})
@@ -253,10 +252,4 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		}
 	}
 	return HandleSwipeOutcome{Swipe: &SwipeOutput{CardID: in.CardID}}, nil
-}
-
-// wrapSwipeErr passes a context cancellation through unwrapped and wraps any
-// other error with the caller-supplied chain prefix.
-func wrapSwipeErr(err error, msg string) error {
-	return wrapInfraErr(err, msg)
 }

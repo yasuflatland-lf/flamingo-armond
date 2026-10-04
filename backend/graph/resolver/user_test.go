@@ -68,7 +68,7 @@ func dnPtr(s string) *domain.DisplayName {
 // given mock repository.
 func newServer(mock *mockUserRepository) *handler.Server {
 	uc := usecase.NewUserUsecase(nil, mock, nil, nil, newDiscardLogger())
-	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -393,12 +393,12 @@ func TestResolver_UpdateProfile_NilVariant_ReturnsInternal(t *testing.T) {
 }
 
 // newDeleteMyAccountSrv builds a server whose UserUsecase is wired with the
-// admin-guard dependencies DeleteMyAccount needs: an AuthSvc reporting isAdmin
+// admin-guard dependencies DeleteMyAccount needs: an auth.Service reporting isAdmin
 // for the caller and a roles repo reporting the global admin count.
 func newDeleteMyAccountSrv(repo *mockUserRepository, isAdmin bool, adminCount int64) *handler.Server {
 	authSvc := auth.NewService(&mockUserRoleRepository{isAdmin: isAdmin})
 	uc := usecase.NewUserUsecase(nil, repo, &mockRoleByUserIDRepo{adminCount: adminCount}, authSvc, newDiscardLogger())
-	r := resolver.NewResolver(uc, nil, nil, nil, authSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv

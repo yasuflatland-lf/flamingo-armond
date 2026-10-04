@@ -49,10 +49,6 @@
     "heading": "ページが見つかりません",
     "message": "お探しのページは存在しないようです。"
   },
-  "GlobalError": {
-    "heading": "エラーが発生しました",
-    "message": "予期しないエラーが発生しました。もう一度お試しください。"
-  },
   "RootError": {
     "heading": "アプリを読み込めませんでした",
     "message": "サーバーの起動中に発生することがあります。少し待ってからもう一度お試しください。",
@@ -350,9 +346,6 @@
     "publishEmptyToast": "このデッキにはカードがないため公開できません。",
     "publishSuccess": "マスターを公開しました。",
     "unpublishSuccess": "マスターを非公開にしました。",
-    "publishSectionHeading": "公開",
-    "publishSectionDraftDescription": "公開すると、このデッキが公開カタログに表示されます。",
-    "publishSectionPublishedDescription": "このデッキは公開カタログに表示されています。非公開にすると下書きに戻ります。",
     "editAriaLabel": "{name} を編集",
     "createMasterTitle": "新規マスター",
     "createMaster": "作成",
@@ -364,13 +357,10 @@
     "sortOrderLabel": "並び順",
     "createSuccess": "マスターを作成しました。",
     "updateSuccess": "マスターを更新しました。",
-    "deleteMasterHeading": "危険な操作",
-    "deleteMasterDescription": "このマスターデッキを完全に削除します。",
     "deleteMasterButton": "マスターを削除",
     "deleteMasterDialogTitle": "このマスターを削除しますか？",
     "deleteMasterDialogDescription": "マスターデッキとそのカードを完全に削除します。この操作は取り消せません。",
     "deleteMasterConfirmButton": "マスターを削除",
-    "deleteMasterDeleting": "削除中...",
     "deleteMasterSuccess": "マスターを削除しました。",
     "deleteMasterFailed": "マスターを削除できませんでした。もう一度お試しください。",
     "deckSettingsButton": "設定",

@@ -20,7 +20,6 @@ import (
 
 	"backend/internal/auth"
 	"backend/internal/domain"
-	"backend/internal/repository"
 	"backend/internal/usecase"
 )
 
@@ -101,8 +100,6 @@ func TestMergeMaster_Integration_UnpublishCommitsBeforeTxBody_NoCardsImported(t 
 		t.Fatal("merge did not finish after the unpublish committed")
 	}
 
-	cardRepo := repository.NewCardRepository(testDB.GORM)
-	got, err := cardRepo.ListByCardgroup(ctx, string(destID))
-	require.NoError(t, err)
+	got := listCardsByCardgroup(t, ctx, string(destID))
 	assert.Empty(t, got, "no master cards may be imported into the destination")
 }
