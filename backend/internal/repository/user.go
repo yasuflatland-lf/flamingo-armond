@@ -69,10 +69,8 @@ type UserRepository interface {
 	// version returns ErrConcurrentUpdate.
 	UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string, patch UserUpdate, expectedVersion int64) error
 	// ListPage returns a page of users ordered by created_at DESC with id ASC
-	// as a stable tiebreaker. The cursor is the user UUID. Forward paging uses
-	// `after` (exclusive); backward paging uses `before` (exclusive). `first`
-	// and `last` are mutually exclusive at the usecase layer; this method
-	// accepts both and lets the usecase enforce.
+	// as a stable tiebreaker. The cursor is the user UUID. Paging is
+	// forward-only: at most `first` rows strictly after `after`.
 	//
 	// search is a substring match on display_name (case-insensitive ILIKE).
 	// Whitespace-only input is treated as nil. `%` and `_` literals in the
@@ -85,8 +83,8 @@ type UserRepository interface {
 	// usecase-level +1 fetch trick at the documented maximum.
 	ListPage(
 		ctx context.Context,
-		after, before *string,
-		first, last int,
+		after *string,
+		first int,
 		search *string,
 	) (users []*domain.User, total int64, err error)
 
@@ -287,20 +285,17 @@ func userUpdates(patch UserUpdate) map[string]any {
 
 // ListPage implements the cursor-paginated user list. Order is fixed at
 // (created_at DESC, id ASC) so cursors stay deterministic even when multiple
-// users share a created_at. Backward paging inverts the direction, applies
-// LIMIT, then reverses the slice in memory so the caller sees the same display
-// order as forward paging.
+// users share a created_at.
 func (r *userRepo) ListPage(
 	ctx context.Context,
-	after, before *string,
-	first, last int,
+	after *string,
+	first int,
 	search *string,
 ) ([]*domain.User, int64, error) {
-	if first < 0 || last < 0 {
-		return nil, 0, eris.New("user repo: first/last must be >= 0")
+	if first < 0 {
+		return nil, 0, eris.New("user repo: first must be >= 0")
 	}
 	first = ClampPageSize(first)
-	last = ClampPageSize(last)
 
 	// Normalise search: trim, treat blank as nil, escape ILIKE wildcards so
 	// "%" and "_" supplied by the caller match literally.
@@ -320,11 +315,9 @@ func (r *userRepo) ListPage(
 		return nil, 0, eris.Wrap(err, "repository: user: count")
 	}
 
-	if first == 0 && last == 0 {
+	if first == 0 {
 		return []*domain.User{}, total, nil
 	}
-
-	effectiveDir, limit, cursorID, reverse := paginateSetup(SortDesc, first, last, after, before)
 
 	q := r.db.WithContext(ctx).Model(&gormUser{})
 	if hasSearch {
@@ -332,14 +325,14 @@ func (r *userRepo) ListPage(
 	}
 
 	var cursorRow gormUser
-	if cursorID != nil {
+	if after != nil {
 		// Hydrate the cursor user's created_at so we can build the tuple
 		// comparison. A missing user means the cursor row was deleted between
 		// fetches — surface as ErrCursorNotFound so callers can map to a
 		// BAD_USER_INPUT-shaped error; a cursor (v1 or legacy bare id) whose id
 		// is not a uuid is the same not-found.
 		err := r.db.WithContext(ctx).Select("id", "created_at").
-			Where("id = ?", *cursorID).Take(&cursorRow).Error
+			Where("id = ?", *after).Take(&cursorRow).Error
 		if err != nil {
 			// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
 			if errors.Is(err, gorm.ErrRecordNotFound) || pgInvalidTextRepresentation(err) {
@@ -350,26 +343,19 @@ func (r *userRepo) ListPage(
 	}
 
 	spec := userCursorSpec(cursorRow)
-	if reverse {
-		spec.idDir = InvertDir(spec.idDir)
-	}
-	if cursorID != nil {
-		clauseSQL, args, err := buildCursorWhere(spec, effectiveDir, cursorRow.ID)
+	if after != nil {
+		clauseSQL, args, err := buildCursorWhere(spec, SortDesc, cursorRow.ID)
 		if err != nil {
 			return nil, 0, eris.Wrap(err, "repository: user: build cursor where")
 		}
 		q = q.Where(clauseSQL, args...)
 	}
 
-	q = q.Order(buildOrderClause(spec, effectiveDir)).Limit(limit)
+	q = q.Order(buildOrderClause(spec, SortDesc)).Limit(first)
 
 	var rows []gormUser
 	if err := q.Find(&rows).Error; err != nil {
 		return nil, 0, eris.Wrap(err, "repository: user: list page")
-	}
-
-	if reverse {
-		ReverseSlice(rows)
 	}
 
 	out := make([]*domain.User, len(rows))

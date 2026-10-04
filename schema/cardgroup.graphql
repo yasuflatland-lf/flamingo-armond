@@ -65,7 +65,7 @@ enum CardgroupOrderBy {
 type CardgroupEdge {
   """
   Opaque, server-encoded cursor for resuming pagination at this edge. Pass it back
-  verbatim as `after` / `before`; never construct, parse, or derive one from `node.id`.
+  verbatim as `after`; never construct, parse, or derive one from `node.id`.
   The encoding is a server implementation detail and is not part of the contract.
   """
   cursor: ID!
@@ -84,21 +84,19 @@ extend type Query {
   """Single cardgroup by ID. Returns null for a non-owner or a missing id alike, so existence is not leaked."""
   cardgroup(id: ID!): Cardgroup
   """
-  Paginated cardgroups owned by the authenticated caller. Forward pagination uses
-  (first, after); backward uses (last, before). Cursors are opaque, server-encoded
+  Paginated cardgroups owned by the authenticated caller. Forward-only cursor
+  pagination (first, after). Cursors are opaque, server-encoded
   values: pass an edge cursor back verbatim and never build one from a node id.
   Default page size is 20; max is 100.
   `first: 0` is a deliberate deviation from the Relay spec for callers that want only
   `totalCount`: no edges are fetched and `hasNextPage` / `hasPreviousPage` are both false
-  even when more rows exist. A negative `first` or `last` is clamped to 0 and therefore
+  even when more rows exist. A negative `first` is clamped to 0 and therefore
   behaves identically.
   Optional case-insensitive substring search on name.
   """
   myCardgroupsConnection(
     first: Int,
     after: ID,
-    last: Int,
-    before: ID,
     search: String,
     orderBy: CardgroupOrderBy = UPDATED_AT,
     orderDirection: SortOrder = DESC

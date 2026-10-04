@@ -23,8 +23,8 @@ type CardgroupRepository interface {
 	FindPageByOwner(
 		ctx context.Context,
 		ownerID string,
-		after, before *repository.CardgroupCursor,
-		first, last int,
+		after *repository.CardgroupCursor,
+		first int,
 		orderBy repository.CardgroupOrderBy,
 		dir repository.SortOrder,
 		search *string,
@@ -53,8 +53,8 @@ const (
 // myCardgroupsConnection. Pointer fields preserve "absent" semantics from
 // the schema so the usecase can default unset values explicitly.
 type CardgroupConnectionInput struct {
-	First, Last    *int
-	After, Before  *string // raw GraphQL ID strings (cursor = cardgroup UUID)
+	First          *int
+	After          *string // raw GraphQL ID string (cursor = cardgroup UUID)
 	Search         *string
 	OrderBy        *CardgroupOrderBy
 	OrderDirection *SortOrder
@@ -357,13 +357,11 @@ func (u *cardgroupUsecase) Delete(ctx context.Context, id string) error {
 }
 
 // ListCardgroupsByOwnerConnection paginates the authenticated caller's
-// cardgroups with Relay-style cursors. Forward paging uses (first, after);
-// backward uses (last, before). The five mixed-direction combinations are
-// rejected with BAD_USER_INPUT before the repository is touched so the
-// caller never gets a silently re-interpreted page boundary. Cursors that
-// reference a cardgroup belonging to another owner are also rejected as
-// BAD_USER_INPUT (returning UNAUTHENTICATED would leak existence of other
-// users' cardgroups).
+// cardgroups with forward-only Relay-style cursors (first, after). An `after`
+// without a positive `first` is rejected with BAD_USER_INPUT before the
+// repository is touched (see validateRelayArgs). Cursors that reference a
+// cardgroup belonging to another owner are also rejected as BAD_USER_INPUT
+// (returning UNAUTHENTICATED would leak existence of other users' cardgroups).
 func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 	ctx context.Context, in CardgroupConnectionInput,
 ) (*CardgroupConnectionOutput, error) {
@@ -372,7 +370,7 @@ func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 		return nil, err
 	}
 
-	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveStandardPageSize)
+	first, err := resolveRelayPage(in.First, in.After, resolveStandardPageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -388,20 +386,16 @@ func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 	if err != nil {
 		return nil, err
 	}
-	before, err := u.resolveCardgroupCursor(ctx, in.Before, user.Sub, orderBy, ordering, "before")
-	if err != nil {
-		return nil, err
-	}
 
 	// totalCount comes from FindPageByOwner's COUNT(*) over the same filtered
 	// base query, captured inside the fetch closure so it honours the active
 	// search rather than an unfiltered owner total. assemblePage always invokes
 	// fetch (even for a totalCount-only request), so total is set on every path.
 	var total int64
-	cgs, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
-		func(wantFirst, wantLast int) ([]*domain.Cardgroup, error) {
+	cgs, hasNext, hasPrev, err := assemblePage(first, after != nil,
+		func(want int) ([]*domain.Cardgroup, error) {
 			rows, t, e := u.repo.FindPageByOwner(
-				ctx, user.Sub, after, before, wantFirst, wantLast, orderBy, dir, in.Search,
+				ctx, user.Sub, after, want, orderBy, dir, in.Search,
 			)
 			if e != nil {
 				return nil, wrapInfraErr(e, "usecase: cardgroup: find page by owner")

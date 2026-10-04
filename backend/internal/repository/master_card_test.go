@@ -681,7 +681,7 @@ func TestMasterCardRepository_FindPageByMasterCardgroup_ForwardByPosition(t *tes
 
 	// Page 1: first=2, no cursor → positions 0, 1.
 	got, total, err := repo.FindPageByMasterCardgroup(
-		ctx, mcg.ID, nil, nil, 2, 0, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
+		ctx, mcg.ID, nil, 2, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(5), total)
@@ -693,8 +693,8 @@ func TestMasterCardRepository_FindPageByMasterCardgroup_ForwardByPosition(t *tes
 	pos1 := cards[1].Position
 	got, total, err = repo.FindPageByMasterCardgroup(
 		ctx, mcg.ID,
-		&repository.MasterCardCursor{ID: cards[1].ID, Position: &pos1}, nil,
-		2, 0, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
+		&repository.MasterCardCursor{ID: cards[1].ID, Position: &pos1},
+		2, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(5), total)
@@ -706,8 +706,8 @@ func TestMasterCardRepository_FindPageByMasterCardgroup_ForwardByPosition(t *tes
 	pos3 := cards[3].Position
 	got, total, err = repo.FindPageByMasterCardgroup(
 		ctx, mcg.ID,
-		&repository.MasterCardCursor{ID: cards[3].ID, Position: &pos3}, nil,
-		2, 0, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
+		&repository.MasterCardCursor{ID: cards[3].ID, Position: &pos3},
+		2, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(5), total)
@@ -732,7 +732,7 @@ func TestMasterCardRepository_FindPageByMasterCardgroup_HasNextViaPlusOne(t *tes
 	// want=2 → request 3 (want+1). With 3 rows total the result has 3 rows, so the
 	// trailing extra row signals hasNextPage=true. Order by ID for a stable expectation.
 	page1, total, err := repo.FindPageByMasterCardgroup(
-		ctx, mcg.ID, nil, nil, 3, 0, repository.MasterCardOrderByID, repository.SortAsc, nil,
+		ctx, mcg.ID, nil, 3, repository.MasterCardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), total)
@@ -747,48 +747,13 @@ func TestMasterCardRepository_FindPageByMasterCardgroup_HasNextViaPlusOne(t *tes
 	// remains, so no extra row and hasNextPage=false.
 	page2, _, err := repo.FindPageByMasterCardgroup(
 		ctx, mcg.ID,
-		&repository.MasterCardCursor{ID: sorted[1].ID}, nil,
-		3, 0, repository.MasterCardOrderByID, repository.SortAsc, nil,
+		&repository.MasterCardCursor{ID: sorted[1].ID},
+		3, repository.MasterCardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Len(t, page2, 1, "last page returns fewer than want+1 rows")
 	require.False(t, len(page2) > 2, "no extra row signals hasNextPage=false")
 	require.Equal(t, sorted[2].ID, page2[0].ID)
-}
-
-// TestMasterCardRepository_FindPageByMasterCardgroup_BackwardByPosition verifies
-// backward paging (last/before): the repository inverts the ORDER BY direction,
-// applies LIMIT, then reverses the slice so the returned rows are in forward order
-// with the boundary at the tail.
-func TestMasterCardRepository_FindPageByMasterCardgroup_BackwardByPosition(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	mcg := insertMCGForCardTest(t, ctx, "MCPage-Backward-Group")
-	repo := repository.NewMasterCardRepository(testDB.GORM)
-
-	cards := insertMasterCardsSeq(t, ctx, repo, mcg.ID, "MCPage-Backward", 5)
-
-	// last=2, before=nil → the final two positions in ASC order (3, 4).
-	got, total, err := repo.FindPageByMasterCardgroup(
-		ctx, mcg.ID, nil, nil, 0, 2, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
-	)
-	require.NoError(t, err)
-	require.Equal(t, int64(5), total)
-	require.Len(t, got, 2)
-	require.Equal(t, cards[3].ID, got[0].ID)
-	require.Equal(t, cards[4].ID, got[1].ID)
-
-	// last=2, before=position-3 cursor → positions 1, 2 in ASC order.
-	pos3 := cards[3].Position
-	got, _, err = repo.FindPageByMasterCardgroup(
-		ctx, mcg.ID,
-		nil, &repository.MasterCardCursor{ID: cards[3].ID, Position: &pos3},
-		0, 2, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
-	)
-	require.NoError(t, err)
-	require.Len(t, got, 2)
-	require.Equal(t, cards[1].ID, got[0].ID)
-	require.Equal(t, cards[2].ID, got[1].ID)
 }
 
 // TestMasterCardRepository_FindPageByMasterCardgroup_OrderByCreatedAtDesc verifies
@@ -804,7 +769,7 @@ func TestMasterCardRepository_FindPageByMasterCardgroup_OrderByCreatedAtDesc(t *
 	// DESC: newest created_at first → cards[3], cards[2], cards[1], cards[0].
 
 	got, total, err := repo.FindPageByMasterCardgroup(
-		ctx, mcg.ID, nil, nil, 2, 0, repository.MasterCardOrderByCreatedAt, repository.SortDesc, nil,
+		ctx, mcg.ID, nil, 2, repository.MasterCardOrderByCreatedAt, repository.SortDesc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(4), total)
@@ -814,7 +779,7 @@ func TestMasterCardRepository_FindPageByMasterCardgroup_OrderByCreatedAtDesc(t *
 
 	cur := &repository.MasterCardCursor{ID: cards[2].ID, CreatedAt: &cards[2].CreatedAt}
 	got, _, err = repo.FindPageByMasterCardgroup(
-		ctx, mcg.ID, cur, nil, 2, 0, repository.MasterCardOrderByCreatedAt, repository.SortDesc, nil,
+		ctx, mcg.ID, cur, 2, repository.MasterCardOrderByCreatedAt, repository.SortDesc, nil,
 	)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
@@ -844,7 +809,7 @@ func TestMasterCardRepository_FindPageByMasterCardgroup_Search(t *testing.T) {
 
 	search := "apple"
 	got, total, err := repo.FindPageByMasterCardgroup(
-		ctx, mcg.ID, nil, nil, 10, 0, repository.MasterCardOrderByPosition, repository.SortAsc, &search,
+		ctx, mcg.ID, nil, 10, repository.MasterCardOrderByPosition, repository.SortAsc, &search,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), total, "search totalCount counts only matching rows")
@@ -865,7 +830,7 @@ func TestMasterCardRepository_FindPageByMasterCardgroup_Search(t *testing.T) {
 	// actually contains a '%' — not every row in the group.
 	pct := "%"
 	gotPct, totalPct, err := repo.FindPageByMasterCardgroup(
-		ctx, mcg.ID, nil, nil, 10, 0, repository.MasterCardOrderByPosition, repository.SortAsc, &pct,
+		ctx, mcg.ID, nil, 10, repository.MasterCardOrderByPosition, repository.SortAsc, &pct,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), totalPct, "literal '%%' must match exactly the one row containing it, not all rows")
@@ -875,7 +840,7 @@ func TestMasterCardRepository_FindPageByMasterCardgroup_Search(t *testing.T) {
 	// Search for a bare "_": escaped, matches only the row whose back contains '_'.
 	und := "_"
 	gotUnd, totalUnd, err := repo.FindPageByMasterCardgroup(
-		ctx, mcg.ID, nil, nil, 10, 0, repository.MasterCardOrderByPosition, repository.SortAsc, &und,
+		ctx, mcg.ID, nil, 10, repository.MasterCardOrderByPosition, repository.SortAsc, &und,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), totalUnd, "literal '_' must not act as a single-char wildcard")
@@ -900,7 +865,7 @@ func TestMasterCardRepository_FindPageByMasterCardgroup_EmptySearchTreatedAsNil(
 
 	whitespace := "   "
 	got, total, err := repo.FindPageByMasterCardgroup(
-		ctx, mcg.ID, nil, nil, 100, 0,
+		ctx, mcg.ID, nil, 100,
 		repository.MasterCardOrderByPosition, repository.SortAsc, &whitespace,
 	)
 	require.NoError(t, err)
@@ -924,20 +889,20 @@ func TestMasterCardRepository_FindPageByMasterCardgroup_TotalCountScopedToGroup(
 	insertMasterCardsSeq(t, ctx, repo, mcg2.ID, "MCPage-Scope2", 5)
 
 	_, total1, err := repo.FindPageByMasterCardgroup(
-		ctx, mcg1.ID, nil, nil, 100, 0, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
+		ctx, mcg1.ID, nil, 100, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), total1)
 
 	_, total2, err := repo.FindPageByMasterCardgroup(
-		ctx, mcg2.ID, nil, nil, 100, 0, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
+		ctx, mcg2.ID, nil, 100, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(5), total2)
 }
 
 // TestMasterCardRepository_FindPageByMasterCardgroup_ZeroPageReturnsTotal
-// verifies first=0 && last=0 short-circuits the row fetch but still returns the
+// verifies first=0 short-circuits the row fetch but still returns the
 // real totalCount from the separate COUNT(*), and that the slice is non-nil.
 func TestMasterCardRepository_FindPageByMasterCardgroup_ZeroPageReturnsTotal(t *testing.T) {
 	t.Parallel()
@@ -948,7 +913,7 @@ func TestMasterCardRepository_FindPageByMasterCardgroup_ZeroPageReturnsTotal(t *
 	insertMasterCardsSeq(t, ctx, repo, mcg.ID, "MCPage-ZeroPage", 4)
 
 	cards, total, err := repo.FindPageByMasterCardgroup(
-		ctx, mcg.ID, nil, nil, 0, 0, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
+		ctx, mcg.ID, nil, 0, repository.MasterCardOrderByPosition, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, cards)
@@ -972,14 +937,14 @@ func TestMasterCardRepository_FindPageByMasterCardgroup_PageCapAllowsMaxPlusOne(
 	prefix := "MCPage-PageCap"
 
 	cards101, total101, err := repo.FindPageByMasterCardgroup(
-		ctx, mcg.ID, nil, nil, 101, 0, repository.MasterCardOrderByPosition, repository.SortAsc, &prefix,
+		ctx, mcg.ID, nil, 101, repository.MasterCardOrderByPosition, repository.SortAsc, &prefix,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(101), total101)
 	require.Len(t, cards101, 101, "first=101 returns all rows because PageCap == 101")
 
 	cards100, total100, err := repo.FindPageByMasterCardgroup(
-		ctx, mcg.ID, nil, nil, 100, 0, repository.MasterCardOrderByPosition, repository.SortAsc, &prefix,
+		ctx, mcg.ID, nil, 100, repository.MasterCardOrderByPosition, repository.SortAsc, &prefix,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(101), total100)

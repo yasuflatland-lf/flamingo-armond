@@ -658,7 +658,7 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 	t.Run("hit on front substring", func(t *testing.T) {
 		t.Parallel()
 		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("apple"),
+			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr("apple"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total, "totalCount must reflect search filter")
@@ -671,7 +671,7 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 		t.Parallel()
 		// "dessert" appears in both apple and banana backs.
 		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("dessert"),
+			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr("dessert"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(2), total)
@@ -683,7 +683,7 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 	t.Run("miss: no match", func(t *testing.T) {
 		t.Parallel()
 		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("zzznomatch"),
+			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr("zzznomatch"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(0), total)
@@ -693,7 +693,7 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 	t.Run("nil search returns all cards", func(t *testing.T) {
 		t.Parallel()
 		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, nil,
+			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, nil,
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(5), total)
@@ -707,7 +707,7 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 	t.Run("empty string search returns all cards (defensive)", func(t *testing.T) {
 		t.Parallel()
 		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr(""),
+			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr(""),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(5), total)
@@ -718,7 +718,7 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 		t.Parallel()
 		// "100%" must only match cardCherry whose front contains that literal string.
 		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("100%"),
+			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr("100%"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
@@ -730,7 +730,7 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 		t.Parallel()
 		// "a_b" must only match cardUnderscore, not every two-char prefix (LIKE _ = any single char).
 		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("a_b"),
+			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr("a_b"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
@@ -741,7 +741,7 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 	t.Run("backslash metachar treated literally", func(t *testing.T) {
 		t.Parallel()
 		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr(`back\slash`),
+			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr(`back\slash`),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
@@ -753,7 +753,7 @@ func TestCardRepo_FindPageByCardgroupForUser_Search(t *testing.T) {
 		t.Parallel()
 		// "COLD" appears uppercase in banana's back; search with lowercase must still match.
 		got, total, _, err := repo.FindPageByCardgroupForUser(
-			ctx, ownerID, string(cg.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("cold"),
+			ctx, ownerID, string(cg.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr("cold"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
@@ -837,7 +837,7 @@ func TestCardRepo_FindPageByCardgroupForUser_Search_CrossTenantNonLeak(t *testin
 
 	// Query cgB with a search that matches the shared front.
 	got, total, _, err := repo.FindPageByCardgroupForUser(
-		ctx, ownerID, string(cgB.ID), nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr("shared"),
+		ctx, ownerID, string(cgB.ID), nil, 10, repository.CardOrderByID, repository.SortAsc, strPtr("shared"),
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total, "only cardgroup B's card should match")

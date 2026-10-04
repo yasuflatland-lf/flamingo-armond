@@ -141,18 +141,17 @@ type MasterCardRepository interface {
 	// `.claude/rules/go-library-gotchas.md` § GORM empty IN.
 	DeleteMany(ctx context.Context, ids []string) (int64, error)
 	// FindPageByMasterCardgroup returns a window of master cards for a master
-	// cardgroup ordered by (orderField, id). Forward paging uses after + first;
-	// backward paging uses before + last. The returned totalCount is search-aware:
-	// it reflects every row in the group AND the search filter when one is active,
-	// not just the page. The usecase consumes this totalCount directly. The return
+	// cardgroup ordered by (orderField, id). Paging is forward-only (after +
+	// first). The returned totalCount is search-aware: it reflects every row in
+	// the group AND the search filter when one is active, not just the page. The usecase consumes this totalCount directly. The return
 	// shape mirrors cardRepo.FindPageByCardgroupForUser so the usecase page helpers
 	// (assemblePage / TrimAndDetect) consume it identically — master cards carry no
 	// per-viewer / FSRS state, so there is no userID parameter.
 	FindPageByMasterCardgroup(
 		ctx context.Context,
 		masterCardgroupID string,
-		after, before *MasterCardCursor,
-		first, last int,
+		after *MasterCardCursor,
+		first int,
 		orderBy MasterCardOrderBy,
 		dir SortOrder,
 		search *string,
@@ -221,22 +220,19 @@ func (r *masterCardRepo) FindByID(ctx context.Context, id string) (*domain.Maste
 // FindPageByMasterCardgroup paginates the master cards of a single group with
 // Relay-style cursors. The window is ordered by (orderField, id); when orderBy is
 // ID only `id` appears in the ORDER BY, otherwise `, id <dir>` is appended so the
-// ordering is always total. Backward paging executes the query with the inverted
-// direction and reverses the slice afterwards (direction-flip + ReverseSlice).
-// totalCount comes from a separate COUNT(*) scoped to the group and the optional
-// search filter, computed before the no-rows short-circuit so a first=0 && last=0
-// request still observes the real count.
+// ordering is always total. totalCount comes from a separate COUNT(*) scoped to
+// the group and the optional search filter, computed before the no-rows
+// short-circuit so a first=0 request still observes the real count.
 func (r *masterCardRepo) FindPageByMasterCardgroup(
 	ctx context.Context,
 	masterCardgroupID string,
-	after, before *MasterCardCursor,
-	first, last int,
+	after *MasterCardCursor,
+	first int,
 	orderBy MasterCardOrderBy,
 	dir SortOrder,
 	search *string,
 ) ([]*domain.MasterCard, int64, error) {
 	first = ClampPageSize(first)
-	last = ClampPageSize(last)
 
 	// Base query scoped to the master cardgroup.
 	base := r.db.WithContext(ctx).Model(&gormMasterCard{}).Where("master_cards.master_cardgroup_id = ?", masterCardgroupID)
@@ -257,33 +253,25 @@ func (r *masterCardRepo) FindPageByMasterCardgroup(
 		return nil, 0, eris.Wrap(err, "repository: master card: count page by master cardgroup")
 	}
 
-	if first == 0 && last == 0 {
+	if first == 0 {
 		return []*domain.MasterCard{}, total, nil
 	}
 
-	// Backward paging executes with the inverted direction and reverses the
-	// returned slice so the page boundary stays at the tail.
-	effectiveDir, limit, cur, reverse := paginateSetup(dir, first, last, after, before)
+	q := base.Order(masterCardOrderClause(orderBy, dir))
 
-	q := base.Order(masterCardOrderClause(orderBy, effectiveDir))
-
-	if cur != nil {
-		clauseStr, args, err := masterCardCursorWhere(orderBy, effectiveDir, cur)
+	if after != nil {
+		clauseStr, args, err := masterCardCursorWhere(orderBy, dir, after)
 		if err != nil {
 			return nil, 0, eris.Wrap(err, "repository: master card: build cursor where")
 		}
 		q = q.Where(clauseStr, args...)
 	}
 
-	q = q.Limit(limit)
+	q = q.Limit(first)
 
 	var rows []gormMasterCard
 	if err := q.Find(&rows).Error; err != nil {
 		return nil, 0, eris.Wrap(err, "repository: master card: find page by master cardgroup")
-	}
-
-	if reverse {
-		ReverseSlice(rows)
 	}
 
 	out := make([]*domain.MasterCard, len(rows))

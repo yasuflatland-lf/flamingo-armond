@@ -37,7 +37,7 @@ func (panicMasterCardRepo) FindByID(_ context.Context, _ string) (*domain.Master
 }
 
 func (panicMasterCardRepo) FindPageByMasterCardgroup(
-	_ context.Context, _ string, _, _ *repository.MasterCardCursor, _, _ int,
+	_ context.Context, _ string, _ *repository.MasterCardCursor, _ int,
 	_ repository.MasterCardOrderBy, _ repository.SortOrder, _ *string,
 ) ([]*domain.MasterCard, int64, error) {
 	panic("not used in this test")
@@ -81,9 +81,7 @@ func (panicMasterCardRepo) DeleteMany(_ context.Context, _ []string) (int64, err
 type findPageByMasterCardgroupCall struct {
 	MasterCardgroupID string
 	After             *repository.MasterCardCursor
-	Before            *repository.MasterCardCursor
 	First             int
-	Last              int
 	OrderBy           repository.MasterCardOrderBy
 	Dir               repository.SortOrder
 	Search            *string
@@ -107,8 +105,8 @@ type mockMasterCardReadRepo struct {
 func (m *mockMasterCardReadRepo) FindPageByMasterCardgroup(
 	_ context.Context,
 	masterCardgroupID string,
-	after, before *repository.MasterCardCursor,
-	first, last int,
+	after *repository.MasterCardCursor,
+	first int,
 	orderBy repository.MasterCardOrderBy,
 	dir repository.SortOrder,
 	search *string,
@@ -116,9 +114,7 @@ func (m *mockMasterCardReadRepo) FindPageByMasterCardgroup(
 	m.findPageCalls = append(m.findPageCalls, findPageByMasterCardgroupCall{
 		MasterCardgroupID: masterCardgroupID,
 		After:             after,
-		Before:            before,
 		First:             first,
-		Last:              last,
 		OrderBy:           orderBy,
 		Dir:               dir,
 		Search:            search,
@@ -236,9 +232,6 @@ func TestMasterCard_ListMasterCards_DefaultPageSize(t *testing.T) {
 	if got := mc.findPageCalls[0].First; got != defaultPageSize+1 {
 		t.Fatalf("expected First %d (default %d + 1 fetch), got %d", defaultPageSize+1, defaultPageSize, got)
 	}
-	if got := mc.findPageCalls[0].Last; got != 0 {
-		t.Fatalf("expected Last 0, got %d", got)
-	}
 }
 
 func TestMasterCard_ListMasterCards_PageSizeClampedToMax(t *testing.T) {
@@ -255,6 +248,26 @@ func TestMasterCard_ListMasterCards_PageSizeClampedToMax(t *testing.T) {
 	// Clamp to maxPageSize, then +1 fetch trick.
 	if got := mc.findPageCalls[0].First; got != maxPageSize+1 {
 		t.Fatalf("expected First clamped to %d (+1 fetch), got %d", maxPageSize+1, got)
+	}
+}
+
+// TestMasterCard_ListMasterCards_AfterWithoutFirst pins the resolveRelayPage
+// wiring in listMasterCardsCore: a resolvable after cursor with no first is
+// rejected with BAD_USER_INPUT on "after" before any repository access.
+func TestMasterCard_ListMasterCards_AfterWithoutFirst(t *testing.T) {
+	t.Parallel()
+	mc := &mockMasterCardReadRepo{}
+	uc := newMasterCardUC(t, mc, &mockMasterCardgroupReadRepo{}, true)
+	ob := MasterCardOrderByID
+	after := cursor.Encode("mc-1")
+	_, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
+		MasterCardgroupID: "id-1",
+		After:             &after,
+		OrderBy:           &ob,
+	})
+	assertValidationError(t, err, "after", "after requires first")
+	if len(mc.findPageCalls) != 0 || len(mc.findByIDCalls) != 0 {
+		t.Fatalf("repository must not be touched: page=%d byID=%d", len(mc.findPageCalls), len(mc.findByIDCalls))
 	}
 }
 
@@ -323,10 +336,10 @@ func TestMasterCard_ListMasterCards_OrderByDefault(t *testing.T) {
 
 func TestMasterCard_ListMasterCards_TotalCountOnly(t *testing.T) {
 	t.Parallel()
-	// first==0 && last==0 short-circuit: totalCount must still surface, the row
+	// first==0 short-circuit: totalCount must still surface, the row
 	// fetch returns no edges. totalCount is the search-aware count returned by
 	// FindPageByMasterCardgroup, which the repository computes before its own
-	// no-rows short-circuit (so a (0,0) request still observes the real count).
+	// no-rows short-circuit (so a first=0 request still observes the real count).
 	mc := &mockMasterCardReadRepo{findPageTotal: 17}
 	uc := newMasterCardUC(t, mc, &mockMasterCardgroupReadRepo{}, true)
 	out, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
@@ -469,19 +482,6 @@ func TestMasterCard_ListMasterCards_SearchAwareTotalCount(t *testing.T) {
 	if got == nil || *got != "apple" {
 		t.Fatalf("expected search %q to reach repo, got %v", "apple", got)
 	}
-}
-
-// Mixed-direction (First AND Last both non-nil) is rejected with BAD_USER_INPUT
-// before any repository access (mirrors card.go's BothFirstAndLast rejection).
-func TestMasterCard_ListMasterCards_BothFirstAndLast(t *testing.T) {
-	t.Parallel()
-	uc := newMasterCardUC(t, &mockMasterCardReadRepo{}, &mockMasterCardgroupReadRepo{}, true)
-	_, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
-		MasterCardgroupID: "id-1",
-		First:             intPtr(5),
-		Last:              intPtr(5),
-	})
-	assertValidationError(t, err, "first", "")
 }
 
 // ---------------------------------------------------------------------------
@@ -670,27 +670,6 @@ func TestMasterCard_ListMasterCards_CursorHydratesUpdatedAt(t *testing.T) {
 	}
 	if gotAfter.Position != nil {
 		t.Fatalf("position must be nil for UPDATED_AT cursor, got %v", *gotAfter.Position)
-	}
-}
-
-// A corrupt Before cursor is rejected with a validation error whose Field is
-// "before" — proving that the field label is wired correctly for the before
-// path (the after path is covered by TestMasterCard_ListMasterCards_CursorCorruptRejected).
-func TestMasterCard_ListMasterCards_CursorBeforeFieldLabel(t *testing.T) {
-	t.Parallel()
-	mc := &mockMasterCardReadRepo{}
-	uc := newMasterCardUC(t, mc, &mockMasterCardgroupReadRepo{}, true)
-	ob := MasterCardOrderByPosition
-	before := "v1:!!!not-valid-base64!!!" // v1 prefix + malformed base64 payload
-	_, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
-		MasterCardgroupID: "id-1",
-		Last:              intPtr(5),
-		Before:            &before,
-		OrderBy:           &ob,
-	})
-	assertValidationError(t, err, "before", "invalid cursor")
-	if len(mc.findByIDCalls) != 0 {
-		t.Fatalf("corrupt cursor must be rejected before FindByID, got %d calls", len(mc.findByIDCalls))
 	}
 }
 

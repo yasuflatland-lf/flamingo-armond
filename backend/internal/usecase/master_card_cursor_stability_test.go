@@ -45,17 +45,12 @@ const mcWalkDeckID = "deck-1"
 const mcWalkForeignDeckID = "deck-2"
 
 // masterCardWalkRepo is an in-memory master-card repository supporting exactly
-// the slice of the interface these walks need: forward AND backward paging over
+// the slice of the interface these walks need: forward paging over
 // one deck's rows ordered by (orderKey ASC, id ASC), where orderKey is position
 // or updated_at. Any other ordering is rejected loudly so a future test cannot
 // silently exercise an unimplemented branch. FindByID returns the CURRENT row,
 // which is what makes the v1 re-hydration path observe a mutation made between
 // two page fetches.
-//
-// The backward branch models the repository's direction-flip + reverse: it keeps
-// the rows that sort strictly BEFORE the cursor and returns the ones closest to
-// it, still in ASC order, so the usecase's leading-edge trim
-// (TrimAndDetectBackward) sees the same slice shape SQL would hand it.
 type masterCardWalkRepo struct {
 	panicMasterCardRepo
 
@@ -116,22 +111,11 @@ func mcAfterInAscTuple(rowKey int64, rowID string, curKey int64, curID string) b
 	return rowKey > curKey
 }
 
-// mcBeforeInAscTuple is the mirror predicate for backward paging: it reports
-// whether a row sorts strictly before the cursor under the same total order. It
-// is not !mcAfterInAscTuple — the cursor row itself sorts neither after nor
-// before itself, and both edges must exclude it.
-func mcBeforeInAscTuple(rowKey int64, rowID string, curKey int64, curID string) bool {
-	if rowKey == curKey {
-		return rowID < curID
-	}
-	return rowKey < curKey
-}
-
 func (r *masterCardWalkRepo) FindPageByMasterCardgroup(
 	_ context.Context,
 	masterCardgroupID string,
-	after, before *repository.MasterCardCursor,
-	first, last int,
+	after *repository.MasterCardCursor,
+	first int,
 	orderBy repository.MasterCardOrderBy,
 	dir repository.SortOrder,
 	_ *string,
@@ -179,27 +163,8 @@ func (r *masterCardWalkRepo) FindPageByMasterCardgroup(
 		}
 		scoped = rest
 	}
-	if before != nil {
-		key, err := mcWalkCursorKey(orderBy, before)
-		if err != nil {
-			return nil, 0, err
-		}
-		rest := make([]*domain.MasterCard, 0, len(scoped))
-		for _, c := range scoped {
-			if mcBeforeInAscTuple(keys[c.ID], c.ID, key, before.ID) {
-				rest = append(rest, c)
-			}
-		}
-		scoped = rest
-	}
 	if first > 0 && len(scoped) > first {
 		scoped = scoped[:first]
-	}
-	// Backward paging takes the rows CLOSEST to the before cursor, which are the
-	// trailing ones in ASC order — the in-memory equivalent of the repository's
-	// "invert ORDER BY, LIMIT last+1, reverse" path.
-	if last > 0 && len(scoped) > last {
-		scoped = scoped[len(scoped)-last:]
 	}
 	return scoped, total, nil
 }
@@ -321,21 +286,6 @@ func mcFetchWalkPageOrdered(
 	})
 	if err != nil {
 		t.Fatalf("unexpected error paging: %v", err)
-	}
-	return out
-}
-
-// mcFetchWalkPageBackward runs one backward page of the given size, optionally
-// before a cursor. Passing a nil cursor asks for the tail of the listing.
-func mcFetchWalkPageBackward(t *testing.T, uc MasterCardUsecase, before *string, last int) *MasterCardConnectionOutput {
-	t.Helper()
-	out, err := uc.ListMasterCards(authedCtx("admin1"), MasterCardConnectionInput{
-		MasterCardgroupID: mcWalkDeckID,
-		Last:              &last,
-		Before:            before,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error paging backward: %v", err)
 	}
 	return out
 }
@@ -721,89 +671,14 @@ func TestMasterCardCursorWalk_PublicListing_V2CursorSurvivesReposition(t *testin
 }
 
 // ---------------------------------------------------------------------------
-// Backward paging and tied ordering keys.
-//
-// The forward walks above exercise the trailing-edge trim. Backward paging runs
-// the opposite path — the repository inverts the ORDER BY, takes last+1 rows and
-// reverses them, and the usecase trims the LEADING row — so the v2 decode, the
-// boundary comparison and the trim have to compose correctly on that edge too.
+// Tied ordering keys.
 // ---------------------------------------------------------------------------
 
-// TestMasterCardCursorWalk_BackwardV2_BoundaryRowMovedToTail_NoDuplicate is the
-// backward mirror of S1. Paging backwards from the tail, the leading boundary row
-// of the first backward page is repositioned so its ordering key drops to the
-// bottom of the listing. With the captured key the previous page still starts
-// exactly where the first ended and repeats nothing the caller has already seen.
-func TestMasterCardCursorWalk_BackwardV2_BoundaryRowMovedToTail_NoDuplicate(t *testing.T) {
-	t.Parallel()
-
-	repo := newMasterCardWalkFixture()
-	uc := newMasterCardWalkUsecase(repo)
-
-	// Tail of the listing under (position ASC, id ASC): mc-d, mc-e.
-	page1 := mcFetchWalkPageBackward(t, uc, nil, 2)
-	if got := mcWalkIDs(page1); len(got) != 2 || got[0] != "mc-d" || got[1] != "mc-e" {
-		t.Fatalf("backward page 1 = %v, want [mc-d mc-e]", got)
-	}
-	if !page1.HasPrev {
-		t.Fatal("backward page 1 must report hasPreviousPage: mc-a/mc-b/mc-c are still ahead")
-	}
-	if page1.HasNext {
-		t.Fatal("backward page 1 without a before cursor is the tail; hasNextPage must be false")
-	}
-
-	prev := mcEncodeWalkCursor(page1, page1.StartCur)
-
-	// mc-d — the leading boundary row of the page just served — is repositioned
-	// so it now sorts last. A v1 cursor would re-read it and walk from the bottom.
-	mcSetPosition(t, repo, "mc-d", 99)
-
-	page2 := mcFetchWalkPageBackward(t, uc, &prev, 2)
-	got := mcWalkIDs(page2)
-	if len(got) != 2 || got[0] != "mc-b" || got[1] != "mc-c" {
-		t.Fatalf("backward page 2 = %v, want [mc-b mc-c]", got)
-	}
-	for _, id := range got {
-		if id == "mc-d" || id == "mc-e" {
-			t.Fatalf("backward page 2 repeated %q from page 1: %v", id, got)
-		}
-	}
-	if !page2.HasNext {
-		t.Fatal("a backward page taken before a cursor must report hasNextPage")
-	}
-	if !page2.HasPrev {
-		t.Fatal("mc-a is still ahead of backward page 2; hasPreviousPage must be true")
-	}
-}
-
-// TestMasterCardCursorWalk_BackwardV1Cursor_StillDuplicates pins the defect on
-// the backward edge, the mirror of the forward S1/S2 v1 regressions: an id-only
-// cursor re-reads the repositioned boundary row, finds it now sorts last, and
-// hands back a row the caller already saw.
-func TestMasterCardCursorWalk_BackwardV1Cursor_StillDuplicates(t *testing.T) {
-	t.Parallel()
-
-	repo := newMasterCardWalkFixture()
-	uc := newMasterCardWalkUsecase(repo)
-
-	page1 := mcFetchWalkPageBackward(t, uc, nil, 2)
-	legacy := cursor.Encode(page1.StartCur)
-
-	mcSetPosition(t, repo, "mc-d", 99)
-
-	page2 := mcFetchWalkPageBackward(t, uc, &legacy, 2)
-	got := mcWalkIDs(page2)
-	if len(got) == 0 || got[len(got)-1] != "mc-e" {
-		t.Fatalf("v1 cursor should re-serve mc-e after the boundary row moves to the tail; backward page 2 = %v", got)
-	}
-}
-
-// TestMasterCardCursorWalk_TiedOrderKeys_ForwardAndBackward verifies the id
-// tie-break survives the v2 round trip on both edges. mc-b and mc-c carry the
-// same position, so a bookmark taken at mc-b must still separate it from mc-c —
-// forward must serve mc-c next, and paging back before mc-c must land on mc-b,
-// not skip past the whole tied pair or re-serve it.
-func TestMasterCardCursorWalk_TiedOrderKeys_ForwardAndBackward(t *testing.T) {
+// TestMasterCardCursorWalk_TiedOrderKeys_Forward verifies the id tie-break
+// survives the v2 round trip. mc-b and mc-c carry the same position, so a
+// bookmark taken at mc-b must still separate it from mc-c — the next page must
+// serve mc-c, not skip past the whole tied pair or re-serve it.
+func TestMasterCardCursorWalk_TiedOrderKeys_Forward(t *testing.T) {
 	t.Parallel()
 
 	uc := newMasterCardWalkUsecase(newTiedMasterCardWalkFixture())
@@ -828,25 +703,6 @@ func TestMasterCardCursorWalk_TiedOrderKeys_ForwardAndBackward(t *testing.T) {
 	}
 	if keyB != keyC {
 		t.Fatalf("fixture no longer ties the rows: mc-b=%q, mc-c=%q", keyB, keyC)
-	}
-
-	// Backward: paging before mc-c must return the rows immediately ahead of it,
-	// which means stopping at its tied sibling mc-b rather than jumping the pair.
-	beforeC := cursor.EncodeV2(cursor.Payload{
-		ID:        "mc-c",
-		OrderBy:   page2.Ordering.OrderBy,
-		Direction: page2.Ordering.Direction,
-		OrderKey:  page2.OrderKeys["mc-c"],
-	})
-	back := mcFetchWalkPageBackward(t, uc, &beforeC, 2)
-	if got := mcWalkIDs(back); len(got) != 2 || got[0] != "mc-a" || got[1] != "mc-b" {
-		t.Fatalf("backward page before mc-c = %v, want [mc-a mc-b]", got)
-	}
-	if back.HasPrev {
-		t.Fatal("mc-a is the head of the listing; hasPreviousPage must be false")
-	}
-	if !back.HasNext {
-		t.Fatal("a backward page taken before a cursor must report hasNextPage")
 	}
 }
 

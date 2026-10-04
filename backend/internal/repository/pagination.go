@@ -20,41 +20,6 @@ func ClampPageSize(want int) int {
 	return want
 }
 
-// InvertDir returns the opposite SortOrder. Used by backward pagination to
-// flip the ORDER BY direction before LIMIT.
-func InvertDir(d SortOrder) SortOrder {
-	if d == SortDesc {
-		return SortAsc
-	}
-	return SortDesc
-}
-
-// ReverseSlice reverses xs in place and returns it. Generic over T so card /
-// cardgroup / user pagination all share one implementation.
-func ReverseSlice[T any](xs []T) []T {
-	for i, j := 0, len(xs)-1; i < j; i, j = i+1, j-1 {
-		xs[i], xs[j] = xs[j], xs[i]
-	}
-	return xs
-}
-
-// paginateSetup computes the backward-paging direction-flip preamble shared by
-// every cursor-paginated repository (card / master_card / cardgroup /
-// master_catalog / user). Forward paging (last == 0) returns the requested direction,
-// `first` as the limit, the `after` cursor, and reverse == false. Backward
-// paging (last > 0) inverts the ORDER BY direction, uses `last` as the limit,
-// the `before` cursor, and reverse == true so the caller reverses the fetched
-// slice in memory to restore the natural order. Generic over the per-aggregate
-// cursor type C because the cursor value types differ (int position vs
-// *time.Time). See .claude/rules/pagination.md § "Backward pagination via
-// direction-flip + reverse".
-func paginateSetup[C any](dir SortOrder, first, last int, after, before *C) (effectiveDir SortOrder, limit int, cursor *C, reverse bool) {
-	if last > 0 {
-		return InvertDir(dir), last, before, true
-	}
-	return dir, first, after, false
-}
-
 // cursorTupleWhere builds the portable tuple-comparison WHERE clause shared by
 // every cursor-paginated repository. The expanded form
 // `field op ? OR (field = ? AND <alias>.id op ?)` is dialect-portable (the
@@ -126,24 +91,28 @@ func buildOrderClause(spec cursorSpec, dir SortOrder) string {
 	return spec.orderCol + " " + d + ", " + idCol + " " + idDir
 }
 
+// cursorOp maps a sort direction to the strictly-after comparison operator:
+// ASC yields `>`, DESC yields `<`.
+func cursorOp(dir SortOrder) string {
+	if dir == SortDesc {
+		return "<"
+	}
+	return ">"
+}
+
 // buildCursorWhere builds the tuple-comparison WHERE for a cursorSpec, cursor id,
 // and direction. ASC yields `>`, DESC yields `<`. An id-order spec emits the
 // single `id op ?` form; otherwise it hydrates the cursor field value and
 // delegates to cursorTupleWhere. Returns the cursor-missing error from
 // spec.fieldValue unchanged.
 func buildCursorWhere(spec cursorSpec, dir SortOrder, idVal any) (string, []any, error) {
-	fieldOp := ">"
-	if dir == SortDesc {
-		fieldOp = "<"
-	}
+	fieldOp := cursorOp(dir)
 	if spec.isIDOrder {
 		return spec.idColumn() + " " + fieldOp + " ?", []any{idVal}, nil
 	}
 	idOp := fieldOp
-	if spec.idDir == SortAsc {
-		idOp = ">"
-	} else if spec.idDir == SortDesc {
-		idOp = "<"
+	if spec.idDir != "" {
+		idOp = cursorOp(spec.idDir)
 	}
 	val, err := spec.fieldValue()
 	if err != nil {

@@ -832,11 +832,11 @@ func (c *countingUserRepo) UpdateTxVersioned(ctx context.Context, tx *gorm.DB, i
 // the cursor-paginated user list keeps working.
 func (c *countingUserRepo) ListPage(
 	ctx context.Context,
-	after, before *string,
-	first, last int,
+	after *string,
+	first int,
 	search *string,
 ) ([]*domain.User, int64, error) {
-	return c.inner.ListPage(ctx, after, before, first, last, search)
+	return c.inner.ListPage(ctx, after, first, search)
 }
 
 func (c *countingUserRepo) DeleteAuthUserTx(ctx context.Context, tx *gorm.DB, id string) error {
@@ -2611,7 +2611,7 @@ func (panicQueryResolver) Me(_ context.Context) (*model.User, error) { return ni
 func (panicQueryResolver) Cardgroup(_ context.Context, _ string) (*model.Cardgroup, error) {
 	return nil, nil
 }
-func (panicQueryResolver) MyCardgroupsConnection(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.CardgroupOrderBy, _ *model.SortOrder) (*model.CardgroupConnection, error) {
+func (panicQueryResolver) MyCardgroupsConnection(_ context.Context, _ *int, _ *string, _ *string, _ *model.CardgroupOrderBy, _ *model.SortOrder) (*model.CardgroupConnection, error) {
 	return nil, nil
 }
 func (panicQueryResolver) Card(_ context.Context, _ string) (*model.Card, error) { return nil, nil }
@@ -2621,13 +2621,13 @@ func (panicQueryResolver) LearnNextDueCards(_ context.Context, _ string, _ *int)
 func (panicQueryResolver) PracticeTodaysCards(_ context.Context, _ string, _ *int) ([]*model.Card, error) {
 	return nil, nil
 }
-func (panicQueryResolver) CardsByCardgroupConnection(_ context.Context, _ string, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.CardOrderBy, _ *model.SortOrder) (*model.CardConnection, error) {
+func (panicQueryResolver) CardsByCardgroupConnection(_ context.Context, _ string, _ *int, _ *string, _ *string, _ *model.CardOrderBy, _ *model.SortOrder) (*model.CardConnection, error) {
 	return nil, nil
 }
 func (panicQueryResolver) ValidateCardImport(_ context.Context, _ model.ValidateCardImportInput) (*model.CardImportValidationResult, error) {
 	return nil, nil
 }
-func (panicQueryResolver) Users(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string) (*model.UserConnection, error) {
+func (panicQueryResolver) Users(_ context.Context, _ *int, _ *string, _ *string) (*model.UserConnection, error) {
 	return nil, nil
 }
 func (panicQueryResolver) AdminUser(_ context.Context, _ string) (*model.User, error) {
@@ -2635,19 +2635,19 @@ func (panicQueryResolver) AdminUser(_ context.Context, _ string) (*model.User, e
 }
 func (panicQueryResolver) Roles(_ context.Context) ([]*model.Role, error)        { return nil, nil }
 func (panicQueryResolver) Role(_ context.Context, _ string) (*model.Role, error) { return nil, nil }
-func (panicQueryResolver) MasterCatalog(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.MasterCatalogOrderBy, _ *model.SortOrder) (*model.MasterCatalogConnection, error) {
+func (panicQueryResolver) MasterCatalog(_ context.Context, _ *int, _ *string, _ *string, _ *model.MasterCatalogOrderBy, _ *model.SortOrder) (*model.MasterCatalogConnection, error) {
 	return nil, nil
 }
-func (panicQueryResolver) AdminMasters(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.MasterCatalogOrderBy, _ *model.SortOrder) (*model.MasterCatalogConnection, error) {
+func (panicQueryResolver) AdminMasters(_ context.Context, _ *int, _ *string, _ *string, _ *model.MasterCatalogOrderBy, _ *model.SortOrder) (*model.MasterCatalogConnection, error) {
 	panic("not implemented")
 }
 func (panicQueryResolver) AdminMaster(_ context.Context, _ string) (*model.MasterCardgroup, error) {
 	panic("not implemented")
 }
-func (panicQueryResolver) AdminMasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.MasterCardOrderBy, _ *model.SortOrder) (*model.MasterCardConnection, error) {
+func (panicQueryResolver) AdminMasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *string, _ *model.MasterCardOrderBy, _ *model.SortOrder) (*model.MasterCardConnection, error) {
 	panic("not implemented")
 }
-func (panicQueryResolver) MasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.MasterCardOrderBy, _ *model.SortOrder) (*model.MasterCardConnection, error) {
+func (panicQueryResolver) MasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *string, _ *model.MasterCardOrderBy, _ *model.SortOrder) (*model.MasterCardConnection, error) {
 	panic("not implemented")
 }
 func (panicQueryResolver) MasterCardgroup(_ context.Context, _ string) (*model.MasterCardgroup, error) {
