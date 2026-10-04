@@ -159,11 +159,6 @@
          <index name="idx_swipe_records_cardgroup_id" unique="false">
             <column ascending="true" name="cardgroup_id"/>
          </index>
-         <index name="idx_swipe_records_user_cardgroup" unique="false">
-            <column ascending="true" name="user_id"/>
-            <column ascending="true" name="cardgroup_id"/>
-            <column ascending="false" name="reviewed_at"/>
-         </index>
          <index name="idx_swipe_records_user_reviewed" unique="false">
             <column ascending="true" name="user_id"/>
             <column ascending="false" name="reviewed_at"/>
