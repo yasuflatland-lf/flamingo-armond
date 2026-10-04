@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"github.com/google/uuid"
@@ -119,7 +118,6 @@ type adminUserUsecase struct {
 	userRoles adminUserRoleRepository
 	tx        txRunner
 	adminGate *AdminGate
-	logger    *slog.Logger
 }
 
 // NewAdminUser constructs an AdminUserUsecase. Pass production
@@ -132,15 +130,11 @@ func NewAdminUser(
 	roles repository.RoleRepository,
 	userRoles repository.UserRoleRepository,
 	adminGate *AdminGate,
-	logger *slog.Logger,
 ) AdminUserUsecase {
 	if adminGate == nil {
 		panic("usecase: admin user: adminGate is required")
 	}
-	if logger == nil {
-		panic("usecase: admin user: logger is required")
-	}
-	uc := &adminUserUsecase{users: users, roles: roles, userRoles: userRoles, adminGate: adminGate, logger: logger}
+	uc := &adminUserUsecase{users: users, roles: roles, userRoles: userRoles, adminGate: adminGate}
 	uc.tx = newTxRunner(db)
 	return uc
 }
@@ -153,15 +147,11 @@ func newAdminUserWithDeps(
 	userRoles adminUserRoleRepository,
 	tx txRunner,
 	adminGate *AdminGate,
-	logger *slog.Logger,
 ) AdminUserUsecase {
 	if adminGate == nil {
 		panic("usecase: admin user: adminGate is required")
 	}
-	if logger == nil {
-		panic("usecase: admin user: logger is required")
-	}
-	return &adminUserUsecase{users: users, roles: roles, userRoles: userRoles, tx: tx, adminGate: adminGate, logger: logger}
+	return &adminUserUsecase{users: users, roles: roles, userRoles: userRoles, tx: tx, adminGate: adminGate}
 }
 
 // List paginates the users table with forward-only Relay-style cursors

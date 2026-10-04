@@ -42,7 +42,7 @@ func newMasterCatalogUsecaseForParityTest(t *testing.T) usecase.MasterCatalogUse
 	cgRepo := repository.NewCardgroupRepository(testDB.GORM)
 	deckUC := usecase.NewMasterDeckUsecase(mcgRepo, mcRepo, cardRepo, cgRepo, testDB.GORM, logger)
 	adminGate := usecase.NewAdminGate(stubParityAdminChecker{})
-	return usecase.NewMasterCatalogUsecase(mcgRepo, deckUC, adminGate, logger)
+	return usecase.NewMasterCatalogUsecase(mcgRepo, deckUC, adminGate)
 }
 
 // seedOwnedCardgroupWithCards creates a user-owned cardgroup and inserts the given
@@ -242,7 +242,7 @@ func TestMergeMaster_Integration_OneConnectionPool_Completes(t *testing.T) {
 	mcgRepo := repository.NewMasterCardgroupRepository(db.GORM)
 	deckUC := usecase.NewMasterDeckUsecase(mcgRepo, repository.NewMasterCardRepository(db.GORM),
 		repository.NewCardRepository(db.GORM), repository.NewCardgroupRepository(db.GORM), db.GORM, logger)
-	uc := usecase.NewMasterCatalogUsecase(mcgRepo, deckUC, usecase.NewAdminGate(stubParityAdminChecker{}), logger)
+	uc := usecase.NewMasterCatalogUsecase(mcgRepo, deckUC, usecase.NewAdminGate(stubParityAdminChecker{}))
 
 	mergeCtx, cancel := context.WithTimeout(authedCtx, 10*time.Second)
 	defer cancel()

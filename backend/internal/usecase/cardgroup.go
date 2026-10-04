@@ -5,7 +5,6 @@ package usecase
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"time"
 
 	"backend/internal/auth"
@@ -77,39 +76,32 @@ type CardgroupUsecase interface {
 }
 
 type cardgroupUsecase struct {
-	repo   CardgroupRepository
-	admin  AdminChecker
-	tx     txRunner
-	logger *slog.Logger
+	repo  CardgroupRepository
+	admin AdminChecker
+	tx    txRunner
 }
 
 // NewCardgroupUsecase constructs a CardgroupUsecase backed by the given
 // repository. db backs the transaction runner that scopes the quota lock, count
 // and insert; tests that inject repository fakes may pass nil (see runInTx).
-func NewCardgroupUsecase(db repository.Tx, repo CardgroupRepository, admin AdminChecker, logger *slog.Logger) CardgroupUsecase {
+func NewCardgroupUsecase(db repository.Tx, repo CardgroupRepository, admin AdminChecker) CardgroupUsecase {
 	if admin == nil {
 		panic("usecase: cardgroup: admin checker is required")
 	}
-	if logger == nil {
-		panic("usecase: cardgroup: logger is required")
-	}
-	return &cardgroupUsecase{repo: repo, admin: admin, tx: newTxRunner(db), logger: logger}
+	return &cardgroupUsecase{repo: repo, admin: admin, tx: newTxRunner(db)}
 }
 
 // newCardgroupUsecaseWithTx is the test-time constructor that injects an
 // explicit transaction runner. Production callers must use NewCardgroupUsecase.
-// Panics when the admin checker, the tx runner, or the logger is nil.
-func newCardgroupUsecaseWithTx(tx txRunner, repo CardgroupRepository, admin AdminChecker, logger *slog.Logger) CardgroupUsecase {
+// Panics when the admin checker or the tx runner is nil.
+func newCardgroupUsecaseWithTx(tx txRunner, repo CardgroupRepository, admin AdminChecker) CardgroupUsecase {
 	if tx == nil {
 		panic("usecase: cardgroup: tx runner is required")
 	}
 	if admin == nil {
 		panic("usecase: cardgroup: admin checker is required")
 	}
-	if logger == nil {
-		panic("usecase: cardgroup: logger is required")
-	}
-	return &cardgroupUsecase{repo: repo, admin: admin, tx: tx, logger: logger}
+	return &cardgroupUsecase{repo: repo, admin: admin, tx: tx}
 }
 
 // Cardgroup returns a single cardgroup by id. A missing row and a row owned by

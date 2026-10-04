@@ -236,7 +236,7 @@ func buildAdminUCWithTx(
 	if authChk == nil {
 		authChk = &adminAuthChecker{}
 	}
-	uc := newAdminUserWithDeps(users, roles, userRoles, tx, NewAdminGate(authChk), newTestLogger())
+	uc := newAdminUserWithDeps(users, roles, userRoles, tx, NewAdminGate(authChk))
 	return uc, users, roles, userRoles
 }
 

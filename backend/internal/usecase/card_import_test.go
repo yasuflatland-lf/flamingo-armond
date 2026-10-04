@@ -148,7 +148,7 @@ func TestCardImportUsecase_ValidateHappyPath(t *testing.T) {
 	t.Parallel()
 
 	payload := buildPayload(t, [][2]string{{"apple", jpRunes(3)}})
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil)
 
 	out, err := uc.Validate(authedCtx("user-1"), payload)
 
@@ -173,7 +173,7 @@ func TestCardImportUsecase_ValidateRequiresAuthenticatedUser(t *testing.T) {
 	t.Parallel()
 
 	payload := buildPayload(t, [][2]string{{"apple", jpRunes(3)}})
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil)
 
 	_, err := uc.Validate(anonCtx(), payload)
 
@@ -183,7 +183,7 @@ func TestCardImportUsecase_ValidateRequiresAuthenticatedUser(t *testing.T) {
 func TestCardImportUsecase_ValidateRequiresNonEmptyCallerSub(t *testing.T) {
 	t.Parallel()
 
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil)
 	uc.processCardImport = func(string) ([]textdic.ParsedWord, []textdic.ValidationError, error) {
 		t.Fatal("processCardImport should not be called for empty caller sub")
 		return nil, nil, nil
@@ -199,14 +199,14 @@ func TestCardImportUsecase_ValidatePayloadErrors(t *testing.T) {
 
 	t.Run("empty payload", func(t *testing.T) {
 		t.Parallel()
-		uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+		uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil)
 		_, err := uc.Validate(authedCtx("user-1"), "")
 		assertValidationError(t, err, "payload", "payload must not be empty")
 	})
 
 	t.Run("bad base64", func(t *testing.T) {
 		t.Parallel()
-		uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+		uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil)
 		_, err := uc.Validate(authedCtx("user-1"), "!!!not-base64!!!")
 		assertValidationError(t, err, "payload", "payload must be standard base64-encoded text")
 	})
@@ -215,7 +215,7 @@ func TestCardImportUsecase_ValidatePayloadErrors(t *testing.T) {
 func TestCardImportUsecase_ValidateReturnsParserDiagnostics(t *testing.T) {
 	t.Parallel()
 
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil)
 	payload := base64.StdEncoding.EncodeToString([]byte("orphan"))
 
 	out, err := uc.Validate(authedCtx("user-1"), payload)
@@ -240,7 +240,7 @@ func TestCardImportUsecase_ValidateReturnsParserDiagnostics(t *testing.T) {
 func TestCardImportUsecase_ValidateParserFailure(t *testing.T) {
 	t.Parallel()
 
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil)
 	uc.processCardImport = func(string) ([]textdic.ParsedWord, []textdic.ValidationError, error) {
 		return nil, nil, errors.New("parser boom")
 	}
@@ -271,7 +271,7 @@ func TestCardImportUsecase_OwnerAllInserts(t *testing.T) {
 	repo := &mockDictCardRepo{inserted: n, updated: 0}
 	cgRepo := ownedCardImportCardgroupRepo("user-1")
 	tx, calls := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx)
 
 	out, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -338,7 +338,7 @@ func TestCardImportUsecase_OwnerMixedInsertsAndUpdates(t *testing.T) {
 
 	repo := &mockDictCardRepo{preExisting: preExisting}
 	tx, _ := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx)
 
 	out, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -392,7 +392,7 @@ func TestCardImportUsecase_NonOwnerUnauthenticated(t *testing.T) {
 	repo := &mockDictCardRepo{}
 	cgRepo := ownedCardImportCardgroupRepo("owner-2")
 	tx, calls := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx)
 
 	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -417,7 +417,7 @@ func TestCardImportUsecase_MissingCardgroupBadInput(t *testing.T) {
 	repo := &mockDictCardRepo{}
 	cgRepo := &mockCardImportCardgroupRepo{findErr: repository.ErrNotFound}
 	tx, calls := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx)
 
 	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "missing",
@@ -448,7 +448,7 @@ func TestCardImportUsecase_AnonymousUnauthenticated(t *testing.T) {
 	repo := &mockDictCardRepo{}
 	cgRepo := ownedCardImportCardgroupRepo("user-1")
 	tx, _ := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx)
 
 	_, err := uc.Import(anonCtx(), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -466,7 +466,7 @@ func TestCardImportUsecase_EmptyCallerSubUnauthenticated(t *testing.T) {
 	repo := &mockDictCardRepo{}
 	cgRepo := ownedCardImportCardgroupRepo("user-1")
 	tx, calls := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx)
 
 	_, err := uc.Import(authedCtx(""), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -501,7 +501,7 @@ func TestCardImportUsecase_PayloadOverCapBadInput(t *testing.T) {
 
 	repo := &mockDictCardRepo{}
 	tx, calls := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx)
 
 	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -550,7 +550,7 @@ func TestCardImportUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 	// All three valid rows should survive the lexer errors.
 	repo := &mockDictCardRepo{inserted: 3}
 	tx, _ := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx)
 
 	out, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -609,7 +609,7 @@ func TestCardImportUsecase_OverLengthFrontAbortsAsValidationError(t *testing.T) 
 
 	repo := &mockDictCardRepo{}
 	tx, calls := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx)
 
 	out, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -652,7 +652,7 @@ func TestCardImportUsecase_ValidSkipValidMixedPayload(t *testing.T) {
 
 	repo := &mockDictCardRepo{inserted: 2}
 	tx, _ := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx)
 
 	out, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -694,7 +694,7 @@ func TestCardImportUsecase_SkippedLoneFrontDoesNotReachRepository(t *testing.T) 
 
 	repo := &mockDictCardRepo{}
 	tx, calls := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx)
 
 	out, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -747,7 +747,7 @@ func TestCardImportUsecase_CardgroupLookupErrorBecomesInternal(t *testing.T) {
 	repo := &mockDictCardRepo{}
 	cgRepo := &mockCardImportCardgroupRepo{findErr: errors.New("db died")}
 	tx, calls := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx)
 
 	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -779,7 +779,7 @@ func TestCardImportUsecase_RepoErrorBecomesInternal(t *testing.T) {
 
 	repo := &mockDictCardRepo{returnErr: errors.New("db: boom")}
 	tx, _ := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx)
 
 	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -802,7 +802,7 @@ func TestCardImportUsecase_EmptyCardgroupIDBadInput(t *testing.T) {
 	repo := &mockDictCardRepo{}
 	cgRepo := ownedCardImportCardgroupRepo("user-1")
 	tx, _ := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx)
 
 	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "",
@@ -824,7 +824,7 @@ func TestCardImportUsecase_EmptyPayloadBadInput(t *testing.T) {
 
 	repo := &mockDictCardRepo{}
 	tx, _ := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx)
 
 	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -844,7 +844,7 @@ func TestCardImportUsecase_BadBase64BadInput(t *testing.T) {
 
 	repo := &mockDictCardRepo{}
 	tx, _ := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx)
 
 	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -879,7 +879,7 @@ func TestCardImportUsecase_DuplicateFrontDeduplicatedAndSurfaced(t *testing.T) {
 
 	repo := &mockDictCardRepo{inserted: 1, updated: 0}
 	tx, _ := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx)
 
 	out, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -937,7 +937,7 @@ func TestCardImportUsecase_Import_ContextCancelledDuringUpsert(t *testing.T) {
 
 	repo := &mockDictCardRepo{returnErr: context.Canceled}
 	tx, _ := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx)
 
 	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -965,7 +965,7 @@ func TestCardImportUsecase_Import_CardgroupDeletedValidation(t *testing.T) {
 
 	repo := &mockDictCardRepo{returnErr: repository.ErrCardCardgroupNotFound}
 	tx, _ := dictTxRunner()
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx)
 
 	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
@@ -997,7 +997,7 @@ func TestCardImportUsecase_ValidateDetectsRowCap(t *testing.T) {
 	}
 	payload := buildPayload(t, pairs)
 
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil)
 	out, err := uc.Validate(authedCtx("user-1"), payload)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1035,7 +1035,7 @@ func TestCardImportUsecase_ValidateDetectsOverLengthFront(t *testing.T) {
 	b.WriteString("\n")
 	payload := base64.StdEncoding.EncodeToString([]byte(b.String()))
 
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil)
 	out, err := uc.Validate(authedCtx("user-1"), payload)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1071,7 +1071,7 @@ func TestCardImportUsecase_ValidateDetectsOverLengthBack(t *testing.T) {
 	b.WriteString("\n")
 	payload := base64.StdEncoding.EncodeToString([]byte(b.String()))
 
-	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil)
 	out, err := uc.Validate(authedCtx("user-1"), payload)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

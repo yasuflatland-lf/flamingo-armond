@@ -9,7 +9,6 @@ package usecase
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"strconv"
 
 	"github.com/rotisserie/eris"
@@ -137,7 +136,6 @@ type masterCatalogUsecase struct {
 	repo      MasterCatalogRepository
 	deckUC    masterDeckUsecaseFacade
 	adminGate *AdminGate
-	logger    *slog.Logger
 }
 
 // NewMasterCatalogUsecase constructs a MasterCatalogUsecase backed by the given
@@ -146,9 +144,9 @@ type masterCatalogUsecase struct {
 // SeedDefaultStarters, and MergeMaster; adminGate gates every admin-management
 // method and supplies the ImportMaster quota's admin exemption; the quota itself
 // is enforced inside the copy transaction. The public ListPublishedConnection is
-// gated by authentication only. Panics when repo, deckUC, adminGate, or logger
-// is nil — a nil required dependency is a wiring bug that must fail at startup.
-func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsecaseFacade, adminGate *AdminGate, logger *slog.Logger) MasterCatalogUsecase {
+// gated by authentication only. Panics when repo, deckUC, or adminGate is
+// nil — a nil required dependency is a wiring bug that must fail at startup.
+func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsecaseFacade, adminGate *AdminGate) MasterCatalogUsecase {
 	if repo == nil {
 		panic("usecase: master catalog: repo is required")
 	}
@@ -158,10 +156,7 @@ func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsec
 	if adminGate == nil {
 		panic("usecase: master catalog: adminGate is required")
 	}
-	if logger == nil {
-		panic("usecase: master catalog: logger is required")
-	}
-	return &masterCatalogUsecase{repo: repo, deckUC: deckUC, adminGate: adminGate, logger: logger}
+	return &masterCatalogUsecase{repo: repo, deckUC: deckUC, adminGate: adminGate}
 }
 
 // masterCatalogPageFetch is the repository page-fetch closure shape shared by
