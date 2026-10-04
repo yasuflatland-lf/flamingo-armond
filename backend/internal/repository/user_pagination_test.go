@@ -86,7 +86,7 @@ func TestUserPagination_EmptyTable(t *testing.T) {
 
 	// A unique nonsense search term ensures no other test's user matches.
 	q := "no-such-user-xyz-" + uuid.NewString()
-	users, total, err := repo.ListPage(ctx, nil, nil, 10, 0, &q)
+	users, total, err := repo.ListPage(ctx, nil, 10, &q)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), total)
 	require.NotNil(t, users)
@@ -116,7 +116,7 @@ func TestUserPagination_ForwardPageOne(t *testing.T) {
 	}
 	want := expectedListOrder(users)
 
-	got, total, err := repo.ListPage(ctx, nil, nil, 3, 0, ptrStr(tag))
+	got, total, err := repo.ListPage(ctx, nil, 3, ptrStr(tag))
 	require.NoError(t, err)
 	require.Equal(t, int64(5), total)
 	require.Len(t, got, 3)
@@ -147,7 +147,7 @@ func TestUserPagination_ForwardPageTwo(t *testing.T) {
 	want := expectedListOrder(users)
 
 	// Page 1: first=2 → want[0..1].
-	page1, _, err := repo.ListPage(ctx, nil, nil, 2, 0, ptrStr(tag))
+	page1, _, err := repo.ListPage(ctx, nil, 2, ptrStr(tag))
 	require.NoError(t, err)
 	require.Len(t, page1, 2)
 	require.Equal(t, want[0], string(page1[0].ID))
@@ -155,45 +155,11 @@ func TestUserPagination_ForwardPageTwo(t *testing.T) {
 
 	// Page 2: after = last cursor of page 1, first=2 → want[2..3].
 	cursor := string(page1[1].ID)
-	page2, _, err := repo.ListPage(ctx, &cursor, nil, 2, 0, ptrStr(tag))
+	page2, _, err := repo.ListPage(ctx, &cursor, 2, ptrStr(tag))
 	require.NoError(t, err)
 	require.Len(t, page2, 2)
 	require.Equal(t, want[2], string(page2[0].ID))
 	require.Equal(t, want[3], string(page2[1].ID))
-}
-
-// TestUserPagination_BackwardBeforeCursor verifies that backward pagination
-// returns the rows immediately preceding the cursor in the same display order
-// as forward pagination.
-func TestUserPagination_BackwardBeforeCursor(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	repo := repository.NewUserRepository(testDB.GORM)
-
-	tag := "bwd-" + uuid.NewString()
-	now := time.Now().UTC().Truncate(time.Microsecond)
-	ids := make([]string, 5)
-	for i := 0; i < 5; i++ {
-		ids[i] = insertUserWithName(t, ctx, tag+"-"+uuidShort(),
-			now.Add(time.Duration(i)*time.Hour))
-	}
-
-	users := make([]*domain.User, 5)
-	for i, id := range ids {
-		users[i] = fetchUser(t, ctx, repo, id)
-	}
-	want := expectedListOrder(users)
-	// want order: newest → oldest. want[0]=ids[4], want[4]=ids[0].
-
-	// last=2 before=want[3] should return want[1..2] — the page immediately
-	// before the cursor — in the same display order as forward.
-	cursor := want[3]
-	got, total, err := repo.ListPage(ctx, nil, &cursor, 0, 2, ptrStr(tag))
-	require.NoError(t, err)
-	require.Equal(t, int64(5), total)
-	require.Len(t, got, 2)
-	require.Equal(t, want[1], string(got[0].ID))
-	require.Equal(t, want[2], string(got[1].ID))
 }
 
 // TestUserPagination_SearchSubstring verifies that ILIKE substring match is
@@ -238,7 +204,7 @@ func TestUserPagination_SearchSubstring(t *testing.T) {
 		insertUserWithName(t, ctx, r.body+tag, now.Add(time.Duration(i)*time.Hour))
 	}
 
-	got, total, err := repo.ListPage(ctx, nil, nil, 10, 0, &needle)
+	got, total, err := repo.ListPage(ctx, nil, 10, &needle)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), total)
 	require.Len(t, got, 3)
@@ -280,7 +246,7 @@ func TestUserPagination_SearchEscapesPercentLiteral(t *testing.T) {
 	// Search "<marker>100%": must match only "<marker>100%legit". If `%`
 	// were treated as a wildcard, "<marker>100reasons" would also match.
 	q := marker + "100%"
-	got, total, err := repo.ListPage(ctx, nil, nil, 10, 0, &q)
+	got, total, err := repo.ListPage(ctx, nil, 10, &q)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
 	require.Len(t, got, 1)
@@ -308,7 +274,7 @@ func TestUserPagination_SearchEscapesUnderscoreLiteral(t *testing.T) {
 	// treated as a single-character wildcard, "<marker>admin" would also
 	// match (the underscore covers any single character between "a" and "m").
 	q := marker + "a_min"
-	got, total, err := repo.ListPage(ctx, nil, nil, 10, 0, &q)
+	got, total, err := repo.ListPage(ctx, nil, 10, &q)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
 	require.Len(t, got, 1)
@@ -325,7 +291,7 @@ func TestUserPagination_CursorNotFound(t *testing.T) {
 	repo := repository.NewUserRepository(testDB.GORM)
 
 	missing := uuid.NewString()
-	_, _, err := repo.ListPage(ctx, &missing, nil, 5, 0, nil)
+	_, _, err := repo.ListPage(ctx, &missing, 5, nil)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, repository.ErrCursorNotFound),
 		"expected ErrCursorNotFound, got %v", err)
@@ -337,7 +303,7 @@ func TestUserPagination_MalformedCursorID(t *testing.T) {
 	repo := repository.NewUserRepository(testDB.GORM)
 
 	malformed := "not-a-uuid"
-	_, _, err := repo.ListPage(ctx, &malformed, nil, 5, 0, nil)
+	_, _, err := repo.ListPage(ctx, &malformed, 5, nil)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, repository.ErrCursorNotFound),
 		"expected ErrCursorNotFound, got %v", err)
@@ -359,19 +325,19 @@ func TestUserPagination_PageCapAllowsMaxPlusOne(t *testing.T) {
 
 	// first=101 must return all 101 rows because userPageCap == 101.
 	q := tag
-	cards101, total101, err := repo.ListPage(ctx, nil, nil, 101, 0, &q)
+	cards101, total101, err := repo.ListPage(ctx, nil, 101, &q)
 	require.NoError(t, err)
 	require.Equal(t, int64(101), total101)
 	require.Len(t, cards101, 101)
 
 	// first=100 must be limited to 100 rows.
-	cards100, total100, err := repo.ListPage(ctx, nil, nil, 100, 0, &q)
+	cards100, total100, err := repo.ListPage(ctx, nil, 100, &q)
 	require.NoError(t, err)
 	require.Equal(t, int64(101), total100)
 	require.Len(t, cards100, 100)
 }
 
-// TestUserPagination_ZeroPageReturnsTotal verifies that first==0 && last==0
+// TestUserPagination_ZeroPageReturnsTotal verifies that first==0
 // short-circuits the row fetch but still returns a real totalCount from the
 // separate COUNT(*) query.
 func TestUserPagination_ZeroPageReturnsTotal(t *testing.T) {
@@ -386,24 +352,21 @@ func TestUserPagination_ZeroPageReturnsTotal(t *testing.T) {
 	}
 
 	q := tag
-	users, total, err := repo.ListPage(ctx, nil, nil, 0, 0, &q)
+	users, total, err := repo.ListPage(ctx, nil, 0, &q)
 	require.NoError(t, err)
 	require.NotNil(t, users)
 	require.Empty(t, users)
 	require.Equal(t, int64(5), total)
 }
 
-// TestUserPagination_NegativeFirstOrLast verifies that negative page sizes are
+// TestUserPagination_NegativeFirst verifies that a negative page size is
 // rejected with an error rather than silently coerced to 0.
-func TestUserPagination_NegativeFirstOrLast(t *testing.T) {
+func TestUserPagination_NegativeFirst(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repo := repository.NewUserRepository(testDB.GORM)
 
-	_, _, err := repo.ListPage(ctx, nil, nil, -1, 0, nil)
-	require.Error(t, err)
-
-	_, _, err = repo.ListPage(ctx, nil, nil, 0, -1, nil)
+	_, _, err := repo.ListPage(ctx, nil, -1, nil)
 	require.Error(t, err)
 }
 
@@ -419,7 +382,7 @@ func TestUserPagination_BlankSearchTreatedAsNoFilter(t *testing.T) {
 	insertUserAt(t, ctx, time.Now().UTC().Truncate(time.Microsecond))
 
 	blank := "   "
-	_, total, err := repo.ListPage(ctx, nil, nil, 1, 0, &blank)
+	_, total, err := repo.ListPage(ctx, nil, 1, &blank)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, total, int64(1),
 		"blank search must not zero out totalCount")

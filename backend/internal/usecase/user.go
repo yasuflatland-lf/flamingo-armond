@@ -31,7 +31,6 @@ type UserRepository interface {
 }
 
 type UserRolesRepository interface {
-	ListByUser(ctx context.Context, userID string) ([]*domain.Role, error)
 	// AcquireAdminRoleLockTx serializes admin-count-changing mutations; see
 	// repository.UserRoleRepository for the race it closes.
 	AcquireAdminRoleLockTx(ctx context.Context, tx repository.Tx) error
@@ -41,7 +40,7 @@ type UserRolesRepository interface {
 	CountAdminsTx(ctx context.Context, tx repository.Tx) (int64, error)
 }
 
-// UserUsecase is the authenticated user profile and role-query surface.
+// UserUsecase is the authenticated caller's profile and self-delete surface.
 type UserUsecase interface {
 	// Me returns the authenticated caller's profile. Returns
 	// ucerr.ErrUnauthenticated when no caller is on the context, and also when
