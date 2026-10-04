@@ -131,8 +131,7 @@ func TestMergeCaseFold_PreservesCardIDAndFSRS(t *testing.T) {
 	require.NoError(t, err)
 	requirePreviewMergeParity(t, preview.Added, preview.Updated, merge.Added, merge.Updated)
 
-	stored, err := cardRepo.ListByCardgroup(ctx, string(destID))
-	require.NoError(t, err)
+	stored := listCardsByCardgroup(t, ctx, string(destID))
 	require.Len(t, stored, 1)
 	require.Equal(t, original.ID, stored[0].ID)
 	require.Equal(t, domain.CardText("Apple"), stored[0].Front)
@@ -172,8 +171,7 @@ func TestMergeCaseFold_ExactVariantWins(t *testing.T) {
 	require.Equal(t, int64(0), merge.Added)
 	require.Equal(t, int64(1), merge.Updated)
 
-	stored, err := cardRepo.ListByCardgroup(ctx, string(destID))
-	require.NoError(t, err)
+	stored := listCardsByCardgroup(t, ctx, string(destID))
 	require.Len(t, stored, 2)
 	gotLower, err := cardRepo.FindByID(ctx, lower.ID)
 	require.NoError(t, err)

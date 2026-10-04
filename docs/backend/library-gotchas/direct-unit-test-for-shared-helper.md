@@ -8,7 +8,7 @@ end-to-end; it does not systematically cover `want=0`, `nil`, `len==want`,
 `len==want+1`, and other edge cases. Add a direct unit test table for any
 helper that encodes non-trivial trimming or boundary logic.
 
-## Example: `TrimAndDetect` and `TrimAndDetectBackward`
+## Example: `TrimAndDetect`
 
 ```go
 func TestTrimAndDetect(t *testing.T) {
@@ -48,30 +48,12 @@ func TestTrimAndDetect(t *testing.T) {
 
 ## Directionality assertion for symmetric helpers
 
-When two functions encode opposite directions (`TrimAndDetect` trims the tail;
-`TrimAndDetectBackward` trims the head), add a single case that proves the
-functions differ:
-
-```go
-func TestTrimAndDetect_DirectionDistinction(t *testing.T) {
-    t.Parallel()
-    in := []int{1, 2, 3, 4} // want=3, len==want+1 → hasMore on both
-
-    forward, forwardMore := TrimAndDetect(in, 3)
-    backward, backwardMore := TrimAndDetectBackward(in, 3)
-
-    // forward trims tail → keeps leading elements
-    require.Equal(t, []int{1, 2, 3}, forward)
-    require.True(t, forwardMore)
-
-    // backward trims head → keeps trailing elements
-    require.Equal(t, []int{2, 3, 4}, backward)
-    require.True(t, backwardMore)
-}
-```
-
-This single assertion is load-bearing: it catches a future refactor that
-accidentally makes the two functions identical.
+When two functions encode opposite directions of the same operation (one trims
+the tail of a slice, its sibling trims the head), add a single case that feeds
+both the same input and asserts they return different results. That one
+assertion is load-bearing: it catches a future refactor that accidentally makes
+the two functions identical, which neither function's own table can detect
+because each table checks its function only against itself.
 
 ## Symmetric branch coverage for error-classifying sibling pairs
 
@@ -108,8 +90,8 @@ the gap visible, so the same PR closes it.
    a consistent shape (nil-in → nil-out, or empty-in → empty-out as documented).
 3. **`len == want`** — exact page, no trimming, no `hasMore`.
 4. **`len == want+1`** — the sentinel row is trimmed, `hasMore = true`.
-5. **Symmetric pair** — if the helper has a `Backward` (or `Reverse`) sibling,
-   add one directionality assertion as described above.
+5. **Symmetric pair** — if the helper has an opposite-direction (or reverse)
+   sibling, add one directionality assertion as described above.
 6. **Error-classifying sibling pair** — if the helper has an `Or<X>` / `Or<Y>`
    sibling, map every branch to the corresponding branch in the other and confirm
    each is covered (see "Symmetric branch coverage" above).

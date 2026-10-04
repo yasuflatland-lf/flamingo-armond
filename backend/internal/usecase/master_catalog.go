@@ -28,10 +28,8 @@ type MasterCatalogRepository interface {
 	// --- published read (existing) ---
 	FindPublishedPage(
 		ctx context.Context,
-		after, before *repository.MasterCatalogCursor,
-		first, last int,
-		orderBy repository.MasterCatalogOrderBy,
-		dir repository.SortOrder,
+		after *repository.MasterCatalogCursor,
+		first int,
 		search *string,
 	) ([]*repository.MasterCatalogItem, int64, error)
 	FindPublishedByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
@@ -40,10 +38,8 @@ type MasterCatalogRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 	FindPageAnyStatus(
 		ctx context.Context,
-		after, before *repository.MasterCatalogCursor,
-		first, last int,
-		orderBy repository.MasterCatalogOrderBy,
-		dir repository.SortOrder,
+		after *repository.MasterCatalogCursor,
+		first int,
 		search *string,
 	) ([]*repository.MasterCatalogItem, int64, error)
 	CountCards(ctx context.Context, masterCardgroupID string) (int64, error)
@@ -54,27 +50,19 @@ type MasterCatalogRepository interface {
 	Unpublish(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 }
 
-// MasterCatalogOrderBy mirrors the schema MasterCatalogOrderBy enum but stays
-// in the usecase layer so the repository remains independent of the GraphQL
-// model package. The string values are identical to model.MasterCatalogOrderBy
-// so the resolver can convert with a direct cast.
-type MasterCatalogOrderBy string
-
-const (
-	MasterCatalogOrderBySortOrder MasterCatalogOrderBy = "SORT_ORDER"
-	MasterCatalogOrderByCreatedAt MasterCatalogOrderBy = "CREATED_AT"
-	MasterCatalogOrderByName      MasterCatalogOrderBy = "NAME"
-)
+// masterCatalogOrdering is the one fixed ordering of both catalog connections
+// (masterCatalog and adminMasters), (sort_order ASC, id ASC). The tokens match
+// what earlier v2 cursors embedded for the then-default ordering, so those
+// cursors keep paging.
+var masterCatalogOrdering = PageOrdering{OrderBy: "sort_order", Direction: "ASC"}
 
 // MasterCatalogConnectionInput captures the GraphQL pagination arguments for
 // masterCatalog. Pointer fields preserve "absent" semantics from the schema so
 // the usecase can default unset values explicitly.
 type MasterCatalogConnectionInput struct {
-	First, Last    *int
-	After, Before  *string // raw GraphQL ID strings (cursor = master cardgroup UUID)
-	Search         *string
-	OrderBy        *MasterCatalogOrderBy
-	OrderDirection *SortOrder
+	First  *int
+	After  *string // raw GraphQL ID string (cursor = master cardgroup UUID)
+	Search *string
 }
 
 // MasterCatalogItem is the usecase-level read model for one catalog row.
@@ -87,13 +75,13 @@ type MasterCatalogItem struct {
 // wraps it into a model.MasterCatalogConnection.
 //
 // Ordering and OrderKeys exist so the resolver can emit v2 cursors: the
-// catalog defaults to the admin-mutable SORT_ORDER column, so a cursor that
+// catalog orders by the admin-mutable sort_order column, so a cursor that
 // carried only an id would move whenever an admin re-orders the deck it points
-// at. Ordering is the (orderBy, direction) this page was served under;
-// OrderKeys maps each returned master cardgroup id to the serialized value its
-// ordering column held at serve time. Both are consumed only at the
-// resolver→model boundary — the output itself still carries RAW ids, never
-// pre-encoded cursors.
+// at. Ordering is the fixed (orderBy, direction) this page was served under;
+// OrderKeys maps each returned master cardgroup id to the serialized sort_order
+// it held at serve time. Both are consumed only at the resolver→model
+// boundary — the output itself still carries RAW ids, never pre-encoded
+// cursors.
 type MasterCatalogConnectionOutput struct {
 	Items      []*MasterCatalogItem
 	TotalCount int64
@@ -182,23 +170,19 @@ func NewMasterCatalogUsecase(repo MasterCatalogRepository, deckUC masterDeckUsec
 // visibility filter (catalog-visible vs. all statuses).
 type masterCatalogPageFetch func(
 	ctx context.Context,
-	after, before *repository.MasterCatalogCursor,
-	first, last int,
-	orderBy repository.MasterCatalogOrderBy,
-	dir repository.SortOrder,
+	after *repository.MasterCatalogCursor,
+	first int,
 	search *string,
 ) ([]*repository.MasterCatalogItem, int64, error)
 
 // ListPublishedConnection paginates the published master catalog with
-// Relay-style cursors. Forward paging uses (first, after); backward uses
-// (last, before). The five mixed-direction combinations are rejected with
-// BAD_USER_INPUT before the repository is touched so the caller never gets a
-// silently re-interpreted page boundary. Only PUBLISHED decks that hold at
-// least one card are ever returned — that visibility filter is enforced in the
-// repository SQL and is not a caller-overridable argument, so a published deck
-// whose cards have all been deleted disappears from both the page and its
-// totalCount until a card is restored. Unauthenticated callers receive
-// UNAUTHENTICATED.
+// forward-only Relay-style cursors (first, after). An `after` without a
+// positive `first` is rejected with BAD_USER_INPUT before the repository is
+// touched (see validateRelayArgs). Only PUBLISHED decks that hold at least one
+// card are ever returned — that visibility filter is enforced in the repository
+// SQL and is not a caller-overridable argument, so a published deck whose cards
+// have all been deleted disappears from both the page and its totalCount until
+// a card is restored. Unauthenticated callers receive UNAUTHENTICATED.
 func (u *masterCatalogUsecase) ListPublishedConnection(
 	ctx context.Context, in MasterCatalogConnectionInput,
 ) (*MasterCatalogConnectionOutput, error) {
@@ -235,23 +219,12 @@ func (u *masterCatalogUsecase) listMasterCatalogCore(
 		return nil, err
 	}
 
-	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveStandardPageSize)
+	first, err := resolveRelayPage(in.First, in.After, resolveStandardPageSize)
 	if err != nil {
 		return nil, err
 	}
 
-	orderBy, dir, err := resolveMasterCatalogOrderBy(in.OrderBy, in.OrderDirection)
-	if err != nil {
-		return nil, err
-	}
-
-	ordering := PageOrdering{OrderBy: string(orderBy), Direction: string(dir)}
-
-	after, err := u.resolveMasterCatalogCursor(ctx, in.After, orderBy, ordering, "after", publishedOnly)
-	if err != nil {
-		return nil, err
-	}
-	before, err := u.resolveMasterCatalogCursor(ctx, in.Before, orderBy, ordering, "before", publishedOnly)
+	after, err := u.resolveMasterCatalogCursor(ctx, in.After, "after", publishedOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -265,9 +238,9 @@ func (u *masterCatalogUsecase) listMasterCatalogCore(
 	// filtered base before its zero-page short-circuit, so a totalCount-only
 	// request still observes the real value.
 	var total int64
-	items, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
-		func(wantFirst, wantLast int) ([]*MasterCatalogItem, error) {
-			rows, t, e := fetch(ctx, after, before, wantFirst, wantLast, orderBy, dir, search)
+	items, hasNext, hasPrev, err := assemblePage(first, after != nil,
+		func(want int) ([]*MasterCatalogItem, error) {
+			rows, t, e := fetch(ctx, after, want, search)
 			if e != nil {
 				return nil, eris.Wrap(e, opPrefix)
 			}
@@ -287,11 +260,6 @@ func (u *masterCatalogUsecase) listMasterCatalogCore(
 	// resolver can embed it in the cursor it emits. Capturing it here — rather
 	// than re-reading the row when the cursor comes back — is what makes the
 	// bookmark survive an admin edit to the boundary row.
-	keys, err := masterCatalogOrderKeys(orderBy, items)
-	if err != nil {
-		return nil, err
-	}
-
 	// StartCur / EndCur carry the RAW node id; the resolver's connection layer
 	// applies the cursor encoder once. Encoding here would double-encode.
 	out := &MasterCatalogConnectionOutput{
@@ -299,95 +267,46 @@ func (u *masterCatalogUsecase) listMasterCatalogCore(
 		HasNext:    hasNext,
 		HasPrev:    hasPrev,
 		Items:      items,
-		Ordering:   ordering,
-		OrderKeys:  keys,
+		Ordering:   masterCatalogOrdering,
+		OrderKeys:  masterCatalogOrderKeys(items),
 	}
 	out.StartCur, out.EndCur = firstLastCursor(items, func(it *MasterCatalogItem) string { return it.Cardgroup.ID })
 	return out, nil
 }
 
-// masterCatalogOrderKeys serializes the active ordering column of every row in
-// a served page, keyed by master cardgroup id. An orderBy outside the allowlist
-// is a caller bug and surfaces as INTERNAL, matching masterCatalogOrderKey.
-func masterCatalogOrderKeys(orderBy repository.MasterCatalogOrderBy, items []*MasterCatalogItem) (map[string]string, error) {
+// masterCatalogOrderKeys serializes the sort_order ordering column of every row
+// in a served page, keyed by master cardgroup id.
+func masterCatalogOrderKeys(items []*MasterCatalogItem) map[string]string {
 	keys := make(map[string]string, len(items))
 	for _, it := range items {
 		if it == nil || it.Cardgroup == nil {
 			continue
 		}
-		k, err := masterCatalogOrderKey(orderBy, it.Cardgroup)
-		if err != nil {
-			return nil, err
-		}
-		keys[it.Cardgroup.ID] = k
+		keys[it.Cardgroup.ID] = masterCatalogOrderKey(it.Cardgroup)
 	}
-	return keys, nil
+	return keys
 }
 
-// masterCatalogOrderKey serializes one master cardgroup's ordering column for
-// embedding in a v2 cursor. The default arm mirrors
-// resolveMasterCatalogCursor's: an orderBy the switch does not handle is a
-// caller bug, surfaced as INTERNAL rather than a silently unhydrated cursor.
-func masterCatalogOrderKey(orderBy repository.MasterCatalogOrderBy, mcg *domain.MasterCardgroup) (string, error) {
-	switch orderBy {
-	case repository.MasterCatalogOrderBySortOrder:
-		return strconv.Itoa(mcg.SortOrder), nil
-	case repository.MasterCatalogOrderByCreatedAt:
-		return encodeTimeOrderKey(mcg.CreatedAt), nil
-	case repository.MasterCatalogOrderByName:
-		return mcg.Name.String(), nil
-	default:
-		return "", eris.Errorf("usecase: master catalog: unhandled orderBy %q", orderBy)
+// masterCatalogOrderKey serializes one master cardgroup's sort_order for
+// embedding in a v2 cursor.
+func masterCatalogOrderKey(mcg *domain.MasterCardgroup) string {
+	return strconv.Itoa(mcg.SortOrder)
+}
+
+// applyMasterCatalogOrderKey populates the repository cursor's SortOrder from
+// the value a v2 cursor carried. A key that does not parse returns
+// errCursorKeyMalformed so the caller maps it to BAD_USER_INPUT.
+func applyMasterCatalogOrderKey(c *repository.MasterCatalogCursor, key string) error {
+	n, err := decodeIntOrderKey(key)
+	if err != nil {
+		return err
 	}
-}
-
-// applyMasterCatalogOrderKey populates the repository cursor column the active
-// orderBy needs from the value a v2 cursor carried. A key that does not parse
-// into the column type returns errCursorKeyMalformed so the caller maps it to
-// BAD_USER_INPUT; an unhandled orderBy stays INTERNAL.
-func applyMasterCatalogOrderKey(c *repository.MasterCatalogCursor, orderBy repository.MasterCatalogOrderBy, key string) error {
-	switch orderBy {
-	case repository.MasterCatalogOrderBySortOrder:
-		n, err := decodeIntOrderKey(key)
-		if err != nil {
-			return err
-		}
-		c.SortOrder = &n
-		return nil
-	case repository.MasterCatalogOrderByCreatedAt:
-		t, err := decodeTimeOrderKey(key)
-		if err != nil {
-			return err
-		}
-		c.CreatedAt = &t
-		return nil
-	case repository.MasterCatalogOrderByName:
-		c.Name = &key
-		return nil
-	default:
-		return eris.Errorf("usecase: master catalog: unhandled orderBy %q", orderBy)
-	}
-}
-
-// masterCatalogOrderByColumns is the usecase→repository orderBy allowlist for the master catalog.
-var masterCatalogOrderByColumns = map[MasterCatalogOrderBy]repository.MasterCatalogOrderBy{
-	MasterCatalogOrderBySortOrder: repository.MasterCatalogOrderBySortOrder,
-	MasterCatalogOrderByCreatedAt: repository.MasterCatalogOrderByCreatedAt,
-	MasterCatalogOrderByName:      repository.MasterCatalogOrderByName,
-}
-
-// resolveMasterCatalogOrderBy maps the typed usecase enums to the repository
-// allowlist. Defaults match the schema (SORT_ORDER, ASC) when both inputs are
-// nil. The default switch arm is defense in depth — gqlgen UnmarshalGQL already
-// rejects invalid enum strings upstream.
-func resolveMasterCatalogOrderBy(
-	orderBy *MasterCatalogOrderBy, dir *SortOrder,
-) (repository.MasterCatalogOrderBy, repository.SortOrder, error) {
-	return resolveOrderByColumn(orderBy, dir, masterCatalogOrderByColumns, repository.MasterCatalogOrderBySortOrder, repository.SortAsc)
+	c.SortOrder = &n
+	return nil
 }
 
 // resolveMasterCatalogCursor decodes an opaque cursor string into a
-// *repository.MasterCatalogCursor with the column required by the active orderBy
+// *repository.MasterCatalogCursor with the sort_order ordering column
 // populated. The publishedOnly flag selects the hydration scope: true hydrates
 // via FindPublishedByID (catalog scope — a draft, card-less or unknown id is
 // rejected as cursor-not-found so decks outside the catalog never leak); false
@@ -402,14 +321,11 @@ func resolveMasterCatalogOrderBy(
 // bookmark. A v1 or legacy cursor carries no such value and falls back to
 // re-reading the ordering column off the CURRENT row.
 //
-// Both paths run the scope-selected lookup, and both run it even when the
-// active orderBy needs no hydratable column — a v2 cursor must not bypass the
+// Both paths run the scope-selected lookup — a v2 cursor must not bypass the
 // catalog-scope gate just because it can hydrate itself.
 func (u *masterCatalogUsecase) resolveMasterCatalogCursor(
 	ctx context.Context,
 	cursorStr *string,
-	orderBy repository.MasterCatalogOrderBy,
-	ordering PageOrdering,
 	field string,
 	publishedOnly bool,
 ) (*repository.MasterCatalogCursor, error) {
@@ -420,7 +336,7 @@ func (u *masterCatalogUsecase) resolveMasterCatalogCursor(
 	if !present {
 		return nil, nil
 	}
-	if err := requireCursorOrdering(p, ordering, field); err != nil {
+	if err := requireCursorOrdering(p, masterCatalogOrdering, field); err != nil {
 		return nil, err
 	}
 	fetchByID := u.repo.FindByID
@@ -437,29 +353,15 @@ func (u *masterCatalogUsecase) resolveMasterCatalogCursor(
 
 	c := &repository.MasterCatalogCursor{ID: p.ID}
 	if p.HasOrdering {
-		if err := applyMasterCatalogOrderKey(c, orderBy, p.OrderKey); err != nil {
-			if errors.Is(err, errCursorKeyMalformed) {
-				return nil, ucerr.NewValidationError(field, "invalid cursor")
-			}
-			return nil, err
+		if err := applyMasterCatalogOrderKey(c, p.OrderKey); err != nil {
+			return nil, ucerr.NewValidationError(field, "invalid cursor")
 		}
 		return c, nil
 	}
 
 	// v1 / legacy bare-UUID fallback: re-hydrate from the current row.
-	switch orderBy {
-	case repository.MasterCatalogOrderBySortOrder:
-		so := mcg.SortOrder
-		c.SortOrder = &so
-	case repository.MasterCatalogOrderByCreatedAt:
-		ca := mcg.CreatedAt
-		c.CreatedAt = &ca
-	case repository.MasterCatalogOrderByName:
-		name := mcg.Name.String()
-		c.Name = &name
-	default:
-		return nil, eris.Errorf("usecase: master catalog: unhandled orderBy %q", orderBy)
-	}
+	so := mcg.SortOrder
+	c.SortOrder = &so
 	return c, nil
 }
 

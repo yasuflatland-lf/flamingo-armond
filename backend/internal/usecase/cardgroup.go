@@ -8,8 +8,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/rotisserie/eris"
-
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
@@ -23,10 +21,8 @@ type CardgroupRepository interface {
 	FindPageByOwner(
 		ctx context.Context,
 		ownerID string,
-		after, before *repository.CardgroupCursor,
-		first, last int,
-		orderBy repository.CardgroupOrderBy,
-		dir repository.SortOrder,
+		after *repository.CardgroupCursor,
+		first int,
 		search *string,
 	) ([]*domain.Cardgroup, int64, error)
 	CountByOwnerTx(ctx context.Context, tx repository.Tx, ownerID string) (int64, error)
@@ -36,41 +32,30 @@ type CardgroupRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
-// CardgroupOrderBy mirrors the schema CardgroupOrderBy enum but stays in
-// the usecase layer so the repository remains independent of the GraphQL
-// model package. The string values are identical to model.CardgroupOrderBy
-// so the resolver can convert with a direct cast.
-type CardgroupOrderBy string
-
-const (
-	CardgroupOrderByID        CardgroupOrderBy = "ID"
-	CardgroupOrderByCreatedAt CardgroupOrderBy = "CREATED_AT"
-	CardgroupOrderByUpdatedAt CardgroupOrderBy = "UPDATED_AT"
-	CardgroupOrderByName      CardgroupOrderBy = "NAME"
-)
+// cardgroupOrdering is the cardgroup connection's one fixed ordering,
+// (updated_at DESC, id DESC). The tokens match what earlier v2 cursors embedded
+// for the then-default ordering, so those cursors keep paging.
+var cardgroupOrdering = PageOrdering{OrderBy: "updated_at", Direction: "DESC"}
 
 // CardgroupConnectionInput captures the GraphQL pagination arguments for
 // myCardgroupsConnection. Pointer fields preserve "absent" semantics from
 // the schema so the usecase can default unset values explicitly.
 type CardgroupConnectionInput struct {
-	First, Last    *int
-	After, Before  *string // raw GraphQL ID strings (cursor = cardgroup UUID)
-	Search         *string
-	OrderBy        *CardgroupOrderBy
-	OrderDirection *SortOrder
+	First  *int
+	After  *string // raw GraphQL ID string (cursor = cardgroup UUID)
+	Search *string
 }
 
 // CardgroupConnectionOutput is the usecase-level page result. The resolver
 // wraps it into a model.CardgroupConnection.
 //
 // Ordering and OrderKeys exist so the resolver can emit v2 cursors: the
-// cardgroup listing defaults to the mutable UPDATED_AT column, so a cursor
-// that carried only an id would move whenever the row it points at is edited.
-// Ordering is the (orderBy, direction) this page was served under; OrderKeys
-// maps each returned cardgroup id to the serialized value its ordering column
-// held at serve time (empty string when the ordering key IS the id). Both are
-// consumed only at the resolver→model boundary — the output itself still
-// carries RAW ids, never pre-encoded cursors.
+// cardgroup listing orders by the mutable updated_at column, so a cursor that
+// carried only an id would move whenever the row it points at is edited.
+// Ordering is the fixed (orderBy, direction) this page was served under;
+// OrderKeys maps each returned cardgroup id to the serialized updated_at it
+// held at serve time. Both are consumed only at the resolver→model boundary —
+// the output itself still carries RAW ids, never pre-encoded cursors.
 type CardgroupConnectionOutput struct {
 	Cardgroups []*domain.Cardgroup
 	TotalCount int64
@@ -357,13 +342,11 @@ func (u *cardgroupUsecase) Delete(ctx context.Context, id string) error {
 }
 
 // ListCardgroupsByOwnerConnection paginates the authenticated caller's
-// cardgroups with Relay-style cursors. Forward paging uses (first, after);
-// backward uses (last, before). The five mixed-direction combinations are
-// rejected with BAD_USER_INPUT before the repository is touched so the
-// caller never gets a silently re-interpreted page boundary. Cursors that
-// reference a cardgroup belonging to another owner are also rejected as
-// BAD_USER_INPUT (returning UNAUTHENTICATED would leak existence of other
-// users' cardgroups).
+// cardgroups with forward-only Relay-style cursors (first, after). An `after`
+// without a positive `first` is rejected with BAD_USER_INPUT before the
+// repository is touched (see validateRelayArgs). Cursors that reference a
+// cardgroup belonging to another owner are also rejected as BAD_USER_INPUT
+// (returning UNAUTHENTICATED would leak existence of other users' cardgroups).
 func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 	ctx context.Context, in CardgroupConnectionInput,
 ) (*CardgroupConnectionOutput, error) {
@@ -372,23 +355,12 @@ func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 		return nil, err
 	}
 
-	first, last, err := resolveRelayPage(in.First, in.Last, in.After, in.Before, resolveStandardPageSize)
+	first, err := resolveRelayPage(in.First, in.After, resolveStandardPageSize)
 	if err != nil {
 		return nil, err
 	}
 
-	orderBy, dir, err := resolveCardgroupOrderBy(in.OrderBy, in.OrderDirection)
-	if err != nil {
-		return nil, err
-	}
-
-	ordering := PageOrdering{OrderBy: string(orderBy), Direction: string(dir)}
-
-	after, err := u.resolveCardgroupCursor(ctx, in.After, user.Sub, orderBy, ordering, "after")
-	if err != nil {
-		return nil, err
-	}
-	before, err := u.resolveCardgroupCursor(ctx, in.Before, user.Sub, orderBy, ordering, "before")
+	after, err := u.resolveCardgroupCursor(ctx, in.After, user.Sub, "after")
 	if err != nil {
 		return nil, err
 	}
@@ -398,10 +370,10 @@ func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 	// search rather than an unfiltered owner total. assemblePage always invokes
 	// fetch (even for a totalCount-only request), so total is set on every path.
 	var total int64
-	cgs, hasNext, hasPrev, err := assemblePage(first, last, after != nil, before != nil,
-		func(wantFirst, wantLast int) ([]*domain.Cardgroup, error) {
+	cgs, hasNext, hasPrev, err := assemblePage(first, after != nil,
+		func(want int) ([]*domain.Cardgroup, error) {
 			rows, t, e := u.repo.FindPageByOwner(
-				ctx, user.Sub, after, before, wantFirst, wantLast, orderBy, dir, in.Search,
+				ctx, user.Sub, after, want, in.Search,
 			)
 			if e != nil {
 				return nil, wrapInfraErr(e, "usecase: cardgroup: find page by owner")
@@ -418,111 +390,50 @@ func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 	// resolver can embed it in the cursor it emits. Capturing it here — rather
 	// than re-reading the row when the cursor comes back — is what makes the
 	// bookmark survive an edit to the boundary row.
-	keys, err := cardgroupOrderKeys(orderBy, cgs)
-	if err != nil {
-		return nil, err
-	}
-
 	out := &CardgroupConnectionOutput{
 		TotalCount: total,
 		HasNext:    hasNext,
 		HasPrev:    hasPrev,
 		Cardgroups: cgs,
-		Ordering:   ordering,
-		OrderKeys:  keys,
+		Ordering:   cardgroupOrdering,
+		OrderKeys:  cardgroupOrderKeys(cgs),
 	}
 	out.StartCur, out.EndCur = firstLastCursor(cgs, func(cg *domain.Cardgroup) string { return string(cg.ID) })
 	return out, nil
 }
 
-// cardgroupOrderKeys serializes the active ordering column of every row in a
-// served page, keyed by cardgroup id. An orderBy outside the allowlist is a
-// caller bug and surfaces as INTERNAL, matching cardgroupOrderKey.
-func cardgroupOrderKeys(orderBy repository.CardgroupOrderBy, cgs []*domain.Cardgroup) (map[string]string, error) {
+// cardgroupOrderKeys serializes the updated_at ordering column of every row in
+// a served page, keyed by cardgroup id.
+func cardgroupOrderKeys(cgs []*domain.Cardgroup) map[string]string {
 	keys := make(map[string]string, len(cgs))
 	for _, cg := range cgs {
-		k, err := cardgroupOrderKey(orderBy, cg)
-		if err != nil {
-			return nil, err
-		}
-		keys[string(cg.ID)] = k
+		keys[string(cg.ID)] = cardgroupOrderKey(cg)
 	}
-	return keys, nil
+	return keys
 }
 
-// cardgroupOrderKey serializes one cardgroup's ordering column for embedding
-// in a v2 cursor. Ordering by ID needs no key — the id is already carried by
-// the cursor — so it returns the empty string. The default arm mirrors
-// resolveCardgroupCursor's: an orderBy the switch does not handle is a caller
-// bug, surfaced as INTERNAL rather than a silently unhydrated cursor.
-func cardgroupOrderKey(orderBy repository.CardgroupOrderBy, cg *domain.Cardgroup) (string, error) {
-	switch orderBy {
-	case repository.CardgroupOrderByID:
-		return "", nil
-	case repository.CardgroupOrderByName:
-		return cg.Name.String(), nil
-	case repository.CardgroupOrderByCreatedAt:
-		return encodeTimeOrderKey(cg.CreatedAt), nil
-	case repository.CardgroupOrderByUpdatedAt:
-		return encodeTimeOrderKey(cg.UpdatedAt), nil
-	default:
-		return "", eris.Errorf("usecase: cardgroup: unhandled orderBy %q", orderBy)
+// cardgroupOrderKey serializes one cardgroup's updated_at for embedding in a v2
+// cursor.
+func cardgroupOrderKey(cg *domain.Cardgroup) string {
+	return encodeTimeOrderKey(cg.UpdatedAt)
+}
+
+// applyCardgroupOrderKey populates the repository cursor's UpdatedAt from the
+// value a v2 cursor carried. A key that does not parse returns
+// errCursorKeyMalformed so the caller maps it to BAD_USER_INPUT.
+func applyCardgroupOrderKey(c *repository.CardgroupCursor, key string) error {
+	t, err := decodeTimeOrderKey(key)
+	if err != nil {
+		return err
 	}
-}
-
-// applyCardgroupOrderKey populates the repository cursor column the active
-// orderBy needs from the value a v2 cursor carried. A key that does not parse
-// into the column type returns errCursorKeyMalformed so the caller maps it to
-// BAD_USER_INPUT; an unhandled orderBy stays INTERNAL.
-func applyCardgroupOrderKey(c *repository.CardgroupCursor, orderBy repository.CardgroupOrderBy, key string) error {
-	switch orderBy {
-	case repository.CardgroupOrderByID:
-		// No extra column needed; the id in the cursor is the ordering key.
-		return nil
-	case repository.CardgroupOrderByName:
-		c.Name = &key
-		return nil
-	case repository.CardgroupOrderByCreatedAt:
-		t, err := decodeTimeOrderKey(key)
-		if err != nil {
-			return err
-		}
-		c.CreatedAt = &t
-		return nil
-	case repository.CardgroupOrderByUpdatedAt:
-		t, err := decodeTimeOrderKey(key)
-		if err != nil {
-			return err
-		}
-		c.UpdatedAt = &t
-		return nil
-	default:
-		return eris.Errorf("usecase: cardgroup: unhandled orderBy %q", orderBy)
-	}
-}
-
-// cardgroupOrderByColumns is the usecase→repository orderBy allowlist for cardgroups.
-var cardgroupOrderByColumns = map[CardgroupOrderBy]repository.CardgroupOrderBy{
-	CardgroupOrderByID:        repository.CardgroupOrderByID,
-	CardgroupOrderByCreatedAt: repository.CardgroupOrderByCreatedAt,
-	CardgroupOrderByUpdatedAt: repository.CardgroupOrderByUpdatedAt,
-	CardgroupOrderByName:      repository.CardgroupOrderByName,
-}
-
-// resolveCardgroupOrderBy maps the typed usecase enums to the repository
-// allowlist. Defaults match the schema (UPDATED_AT, DESC) when both inputs
-// are nil. The default switch arm is defense in depth — gqlgen
-// UnmarshalGQL already rejects invalid enum strings upstream.
-func resolveCardgroupOrderBy(
-	orderBy *CardgroupOrderBy, dir *SortOrder,
-) (repository.CardgroupOrderBy, repository.SortOrder, error) {
-	return resolveOrderByColumn(orderBy, dir, cardgroupOrderByColumns, repository.CardgroupOrderByUpdatedAt, repository.SortDesc)
+	c.UpdatedAt = &t
+	return nil
 }
 
 // resolveCardgroupCursor decodes an opaque cursor string into a
-// *repository.CardgroupCursor with the column required by the active orderBy
-// populated. The cursor may be a v2 envelope ("v2:" + base64 JSON), a v1
-// envelope ("v1:" + base64), or a legacy bare UUID; all three are accepted.
+// *repository.CardgroupCursor with the updated_at ordering column populated.
+// The cursor may be a v2 envelope ("v2:" + base64 JSON), a v1 envelope
+// ("v1:" + base64), or a legacy bare UUID; all three are accepted.
 // Returns BAD_USER_INPUT when the cursor cannot be decoded, was taken under a
 // different ordering, carries an ordering-key value that does not parse, the
 // cardgroup cannot be found, or the cardgroup belongs to another owner — the
@@ -535,17 +446,14 @@ func resolveCardgroupOrderBy(
 // skips rows when the ordering column is mutable, and it exists only so
 // cursors persisted by older clients keep paging.
 //
-// Both paths run the same repository lookup and cross-tenant check, and both
-// run it even when orderBy is ID (no extra column to hydrate). Without it, an
-// attacker could probe for the existence of foreign cardgroups by paging past
-// a guessed cursor and observing whether any rows come back — a v2 cursor must
-// not bypass that gate just because it can hydrate itself.
+// Both paths run the same repository lookup and cross-tenant check. Without
+// it, an attacker could probe for the existence of foreign cardgroups by paging
+// past a guessed cursor and observing whether any rows come back — a v2 cursor
+// must not bypass that gate just because it can hydrate itself.
 func (u *cardgroupUsecase) resolveCardgroupCursor(
 	ctx context.Context,
 	cursorStr *string,
 	ownerID string,
-	orderBy repository.CardgroupOrderBy,
-	ordering PageOrdering,
 	field string,
 ) (*repository.CardgroupCursor, error) {
 	p, present, err := decodeCursorOrBadInput(cursorStr, field)
@@ -555,7 +463,7 @@ func (u *cardgroupUsecase) resolveCardgroupCursor(
 	if !present {
 		return nil, nil
 	}
-	if err := requireCursorOrdering(p, ordering, field); err != nil {
+	if err := requireCursorOrdering(p, cardgroupOrdering, field); err != nil {
 		return nil, err
 	}
 	cg, err := u.repo.FindByID(ctx, p.ID)
@@ -571,30 +479,14 @@ func (u *cardgroupUsecase) resolveCardgroupCursor(
 
 	c := &repository.CardgroupCursor{ID: p.ID}
 	if p.HasOrdering {
-		if err := applyCardgroupOrderKey(c, orderBy, p.OrderKey); err != nil {
-			if errors.Is(err, errCursorKeyMalformed) {
-				return nil, ucerr.NewValidationError(field, "invalid cursor")
-			}
-			return nil, err
+		if err := applyCardgroupOrderKey(c, p.OrderKey); err != nil {
+			return nil, ucerr.NewValidationError(field, "invalid cursor")
 		}
 		return c, nil
 	}
 
 	// v1 / legacy bare-UUID fallback: re-hydrate from the current row.
-	switch orderBy {
-	case repository.CardgroupOrderByID:
-		// No extra column needed; ownership-check above is the gate.
-	case repository.CardgroupOrderByName:
-		name := cg.Name.String()
-		c.Name = &name
-	case repository.CardgroupOrderByCreatedAt:
-		ca := cg.CreatedAt
-		c.CreatedAt = &ca
-	case repository.CardgroupOrderByUpdatedAt:
-		ua := cg.UpdatedAt
-		c.UpdatedAt = &ua
-	default:
-		return nil, eris.Errorf("usecase: cardgroup: unhandled orderBy %q", orderBy)
-	}
+	ua := cg.UpdatedAt
+	c.UpdatedAt = &ua
 	return c, nil
 }

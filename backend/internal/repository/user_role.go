@@ -54,11 +54,6 @@ type UserRoleRepository interface {
 	// removes every role assignment for the user.
 	SetUserRolesTx(ctx context.Context, tx *gorm.DB, userID string, roleIDs []string) error
 
-	// ListByUser returns all roles assigned to the given user, ordered by
-	// role name ascending. Returns an empty slice (not nil, not an error) when
-	// the user has no roles.
-	ListByUser(ctx context.Context, userID string) ([]*domain.Role, error)
-
 	// ListByUserIDs returns the roles assigned to each user ID in a single
 	// query. The map key is the user ID; values are roles ordered by
 	// name ASC. Users with no roles are absent from the map (callers
@@ -244,23 +239,6 @@ func (r *userRoleRepo) SetUserRolesTx(ctx context.Context, tx *gorm.DB, userID s
 		return eris.Wrap(err, "repository: user role: set: insert roles")
 	}
 	return nil
-}
-
-func (r *userRoleRepo) ListByUser(ctx context.Context, userID string) ([]*domain.Role, error) {
-	var rows []gormRole
-	if err := r.db.WithContext(ctx).
-		Table("roles").
-		Joins("JOIN user_roles ON user_roles.role_id = roles.id").
-		Where("user_roles.user_id = ?", userID).
-		Order("roles.name ASC").
-		Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: user role: list by user")
-	}
-	out := make([]*domain.Role, len(rows))
-	for i := range rows {
-		out[i] = roleToDomain(rows[i])
-	}
-	return out, nil
 }
 
 func (r *userRoleRepo) ListByUserIDs(ctx context.Context, userIDs []string) (map[string][]*domain.Role, error) {

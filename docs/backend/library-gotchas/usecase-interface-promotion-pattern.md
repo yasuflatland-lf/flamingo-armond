@@ -73,8 +73,7 @@ The correct pattern is a type assertion back to the concrete struct:
 ```go
 // In cardgroup_test.go (package usecase):
 uc := NewCardgroupUsecase(repo, slog.Default())
-ordering := PageOrdering{OrderBy: string(orderBy), Direction: string(dir)}
-got, err := uc.(*cardgroupUsecase).resolveCardgroupCursor(ctx, after, ownerID, orderBy, ordering, "after")
+got, err := uc.(*cardgroupUsecase).resolveCardgroupCursor(ctx, after, ownerID, "after")
 ```
 
 This is valid because:

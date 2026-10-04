@@ -65,7 +65,7 @@ type fakeStatsCardgroupRepo struct {
 	err   error
 }
 
-func (f *fakeStatsCardgroupRepo) CountByOwner(_ context.Context, _ string, _ *string) (int64, error) {
+func (f *fakeStatsCardgroupRepo) CountByOwner(_ context.Context, _ string) (int64, error) {
 	if f.err != nil {
 		return 0, f.err
 	}

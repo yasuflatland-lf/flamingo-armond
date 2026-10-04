@@ -53,8 +53,8 @@ type AdminEditUserOutcome struct {
 type AdminUserUsecase interface {
 	List(
 		ctx context.Context,
-		first, last *int,
-		after, before, search *string,
+		first *int,
+		after, search *string,
 	) (*AdminUserConnection, error)
 	Get(ctx context.Context, id string) (*domain.User, error)
 	EditUser(ctx context.Context, id string, input AdminEditUserInput) (AdminEditUserOutcome, error)
@@ -72,8 +72,8 @@ type adminUserRepository interface {
 	UpdateTxVersioned(ctx context.Context, tx repository.Tx, id string, patch repository.UserUpdate, expectedVersion int64) error
 	ListPage(
 		ctx context.Context,
-		after, before *string,
-		first, last int,
+		after *string,
+		first int,
 		search *string,
 	) ([]*domain.User, int64, error)
 	// DeleteAuthUserTx deletes the target's auth.users row inside the caller's
@@ -164,38 +164,30 @@ func newAdminUserWithDeps(
 	return &adminUserUsecase{users: users, roles: roles, userRoles: userRoles, tx: tx, adminGate: adminGate, logger: logger}
 }
 
-// List paginates the users table with Relay-style cursors. Forward paging
-// uses (first, after); backward uses (last, before). The two are mutually
-// exclusive. Default page size is maxPageSize (100); the same value is the
-// absolute cap for either direction.
+// List paginates the users table with forward-only Relay-style cursors
+// (first, after). Default page size is maxPageSize (100); the same value is
+// the absolute cap.
 //
-// Cursor-direction cross-validation: per the Relay spec, after pairs with
-// first (forward) and before pairs with last (backward). Mixing them or
-// supplying both cursors at once is rejected with BAD_USER_INPUT before the
-// repository is touched, so callers never get a silently re-interpreted
-// page boundary.
+// An `after` without a positive `first` is rejected with BAD_USER_INPUT before
+// the repository is touched (see validateRelayArgs).
 func (u *adminUserUsecase) List(
 	ctx context.Context,
-	first, last *int,
-	after, before, search *string,
+	first *int,
+	after, search *string,
 ) (*AdminUserConnection, error) {
 	if _, err := u.adminGate.Require(ctx, "usecase: admin user: check admin"); err != nil {
 		return nil, err
 	}
 
-	wantFirst, wantLast, err := resolveRelayPage(first, last, after, before, resolveAdminPageSize)
+	wantFirst, err := resolveRelayPage(first, after, resolveAdminPageSize)
 	if err != nil {
 		return nil, err
 	}
 
-	// Decode the opaque inbound cursors to raw user ids before the repository's
+	// Decode the opaque inbound cursor to a raw user id before the repository's
 	// id-based hydration. A malformed v1 cursor is BAD_USER_INPUT; the repository
 	// looks up the cursor row by raw id, so it must never receive the v1 envelope.
 	afterCur, afterPresent, err := decodeCursorOrBadInput(after, "after")
-	if err != nil {
-		return nil, err
-	}
-	beforeCur, beforePresent, err := decodeCursorOrBadInput(before, "before")
 	if err != nil {
 		return nil, err
 	}
@@ -205,31 +197,21 @@ func (u *adminUserUsecase) List(
 	if err := rejectOrderedCursor(afterCur, "after"); err != nil {
 		return nil, err
 	}
-	if err := rejectOrderedCursor(beforeCur, "before"); err != nil {
-		return nil, err
-	}
-	afterID, beforeID := afterCur.ID, beforeCur.ID
-	var afterPtr, beforePtr *string
+	afterID := afterCur.ID
+	var afterPtr *string
 	if afterPresent {
 		afterPtr = &afterID
 	}
-	if beforePresent {
-		beforePtr = &beforeID
-	}
 
 	var total int64
-	// afterPresent/beforePresent are the post-decode cursor presence that
-	// assemblePage expects (a malformed cursor errored out above).
-	users, hasNext, hasPrev, err := assemblePage(wantFirst, wantLast, afterPresent, beforePresent,
-		func(repoFirst, repoLast int) ([]*domain.User, error) {
-			rows, t, e := u.users.ListPage(ctx, afterPtr, beforePtr, repoFirst, repoLast, search)
+	// afterPresent is the post-decode cursor presence that assemblePage expects
+	// (a malformed cursor errored out above).
+	users, hasNext, hasPrev, err := assemblePage(wantFirst, afterPresent,
+		func(repoFirst int) ([]*domain.User, error) {
+			rows, t, e := u.users.ListPage(ctx, afterPtr, repoFirst, search)
 			if e != nil {
 				if errors.Is(e, repository.ErrCursorNotFound) {
-					field := "after"
-					if !afterPresent && beforePresent {
-						field = "before"
-					}
-					return nil, ucerr.NewValidationError(field, "cursor not found")
+					return nil, ucerr.NewValidationError("after", "cursor not found")
 				}
 				return nil, wrapInfraErr(e, "usecase: admin user: list")
 			}

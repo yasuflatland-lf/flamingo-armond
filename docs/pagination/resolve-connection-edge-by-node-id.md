@@ -16,7 +16,7 @@ A Relay-style `Connection` edge carries two distinct identifiers, and they are
   `"v1:" + base64(id)` or, on the connections whose ordering column is mutable,
   `"v2:" + base64(json)` (see [cursor-encoding.md](cursor-encoding.md)).
   Cursor opaqueness is a deliberate Relay invariant: clients treat the cursor as
-  a black box and pass it back unchanged via `after` / `before`. The server may
+  a black box and pass it back unchanged via `after`. The server may
   change the encoding at any time without breaking clients.
 
 Because the cursor is an opaque envelope (`"v1:base64(id)"`, or `"v2:base64(json)"`
