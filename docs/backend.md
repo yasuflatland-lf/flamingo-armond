@@ -86,7 +86,7 @@ These values target a public API on Render. Revisit if the threat model or deplo
 
 ### Test-only exported constructors
 
-Usecases that need an injectable `txRunner` for resolver-level wire tests (e.g., `NewCardUsecaseWithTx`) are exported solely to let `package resolver_test` inject a hand-rolled mock. The trade-off is intentional: `txRunner` is unexported, so callers outside the package cannot misuse the seam; the alternative — moving tests into `package resolver` — gives up the `_test`-package isolation convention. When adding similar usecases, prefer this pattern over exposing production internals to tests via the non-`_test` package.
+Usecases that need an injectable `txRunner` for resolver-level wire tests (e.g., `NewSwipeUsecaseWithTx`) are exported solely to let `package resolver_test` inject a hand-rolled mock. The trade-off is intentional: `txRunner` is unexported, so callers outside the package cannot misuse the seam; the alternative — moving tests into `package resolver` — gives up the `_test`-package isolation convention. When adding similar usecases, prefer this pattern over exposing production internals to tests via the non-`_test` package.
 
 ### Consumer-defined narrow interfaces over re-using the full repository / service interface
 

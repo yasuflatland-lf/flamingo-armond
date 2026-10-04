@@ -55,7 +55,7 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 	}
 	swipeRepo := &mockSwipeRecordRepoForSwipe{}
 	userFSRSRepo := &mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		cardRepo,
 		cardgroupRepo,
@@ -121,7 +121,7 @@ func TestSwipeUsecase_HandleSwipe_RecordsPreRatingPhase(t *testing.T) {
 	}
 	swipeRepo := &mockSwipeRecordRepoForSwipe{}
 	userFSRSRepo := &mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		cardRepo,
 		cardgroupRepo,
@@ -174,7 +174,7 @@ func TestSwipeUsecase_HandleSwipe_NonOwner_Unauthenticated(t *testing.T) {
 	cardgroupRepo := &mockCardgroupRepoForCard{
 		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-2"},
 	}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		&mockCardRepository{},
 		cardgroupRepo,
@@ -212,7 +212,7 @@ func TestSwipeUsecase_HandleSwipe_PropagatesUpsertError(t *testing.T) {
 		byCardID:  map[string]*domain.UserCardFSRS{},
 		upsertErr: upsertErr,
 	}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		cardRepo,
 		cardgroupRepo,
@@ -245,7 +245,7 @@ func TestSwipeUsecase_HandleSwipe_InvalidRating_ValidationVariant(t *testing.T) 
 	cardgroupRepo := &mockCardgroupRepoForCard{
 		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		&mockCardRepository{},
 		cardgroupRepo,
@@ -291,7 +291,7 @@ func TestSwipeUsecase_HandleSwipe_CardNotFound_ValidationVariant(t *testing.T) {
 		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
 	swipeRepo := &mockSwipeRecordRepoForSwipe{}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		cardRepo,
 		cardgroupRepo,
@@ -334,7 +334,7 @@ func TestSwipeUsecase_HandleSwipe_CardgroupNotFound_ValidationVariant(t *testing
 	cardgroupRepo := &mockCardgroupRepoForCard{
 		findErr: repository.ErrNotFound,
 	}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		&mockCardRepository{},
 		cardgroupRepo,
@@ -386,7 +386,7 @@ func TestSwipeUsecase_HandleSwipe_CardCrossCardgroup_ValidationVariant(t *testin
 	cardgroupRepo := &mockCardgroupRepoForCard{
 		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		cardRepo,
 		cardgroupRepo,
