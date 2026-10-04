@@ -42,9 +42,6 @@
          <index name="cards_pkey" unique="true">
             <column ascending="true" name="id"/>
          </index>
-         <index name="idx_cards_cardgroup_id" unique="false">
-            <column ascending="true" name="cardgroup_id"/>
-         </index>
          <index name="uq_cards_cardgroup_front" unique="true">
             <column ascending="true" name="cardgroup_id"/>
             <column ascending="true" name="front"/>
@@ -92,9 +89,6 @@
          <primaryKey column="id" sequenceNumberInPK="1"/>
          <index name="master_cards_pkey" unique="true">
             <column ascending="true" name="id"/>
-         </index>
-         <index name="idx_master_cards_master_cardgroup_id" unique="false">
-            <column ascending="true" name="master_cardgroup_id"/>
          </index>
          <index name="uq_master_cards_cg_front" unique="true">
             <column ascending="true" name="master_cardgroup_id"/>
