@@ -141,13 +141,9 @@ function makeConnection(masters: MasterNode[], hasNextPage: boolean): MasterConn
   };
 }
 
-// The component's useQuery always sends orderBy / orderDirection / first.
-// `as const` narrows the enum literals to MasterCatalogOrderBy / SortOrder so
-// the typed MockedProvider variables accept them.
+// The component's useQuery always sends first.
 const BASE_VARS = {
   first: ADMIN_MASTERS_PAGE_SIZE,
-  orderBy: "SORT_ORDER" as const,
-  orderDirection: "ASC" as const,
 };
 
 // ---------------------------------------------------------------------------

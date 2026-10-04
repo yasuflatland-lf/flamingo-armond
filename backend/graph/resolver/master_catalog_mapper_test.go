@@ -153,16 +153,3 @@ func TestToMasterCatalogConnectionModel_SkipsNilNode(t *testing.T) {
 	require.Len(t, got.Edges, 1)
 	assert.Equal(t, "b", got.Edges[0].Node.ID)
 }
-
-// TestToUsecaseMasterCatalogOrderBy casts the model enum to the usecase enum and
-// passes nil through (absent argument keeps the usecase default).
-func TestToUsecaseMasterCatalogOrderBy(t *testing.T) {
-	t.Parallel()
-
-	assert.Nil(t, toUsecaseOrderBy[model.MasterCatalogOrderBy, usecase.MasterCatalogOrderBy](nil))
-
-	in := model.MasterCatalogOrderByName
-	got := toUsecaseOrderBy[model.MasterCatalogOrderBy, usecase.MasterCatalogOrderBy](&in)
-	require.NotNil(t, got)
-	assert.Equal(t, usecase.MasterCatalogOrderByName, *got)
-}

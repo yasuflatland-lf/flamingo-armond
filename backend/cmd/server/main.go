@@ -183,7 +183,7 @@ func buildResolver(
 			return nil, nil, nil, err
 		}
 	}
-	cardUC := usecase.NewCardUsecase(repos.gorm, repos.card, repos.cardgroup, repos.userCardFSRS, logger)
+	cardUC := usecase.NewCardUsecase(repos.card, repos.cardgroup, logger)
 	// Type the word list as the domain.CEFRWordList port so the dependency
 	// edge the constructor creates is domain_service -> domain (allowed),
 	// rather than attributing the concrete *cefr.WordList type to a
@@ -195,7 +195,7 @@ func buildResolver(
 	masterCardUC := usecase.NewMasterCardUsecase(repos.gorm, repos.masterCard, repos.masterCardgroup, adminGate, logger)
 	statsUC := usecase.NewStats(repos.userCardFSRS, repos.swipeRecord, repos.cardgroup, nil)
 
-	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, updateLearnDisplayModeUC, updateNewCardRatioUC, learnUC, cefrUC, masterCatalogUC, masterCardUC, statsUC)
+	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, updateLearnDisplayModeUC, updateNewCardRatioUC, learnUC, cefrUC, masterCatalogUC, masterCardUC, statsUC)
 	return resolvers, pingHandler, notionSyncHandler, nil
 }
 
