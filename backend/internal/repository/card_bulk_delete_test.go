@@ -6,12 +6,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
 	"backend/internal/repository"
 )
 
-// TestCardRepository_BulkDelete covers DeleteByIDsTx across five scenarios.
+// TestCardRepository_BulkDelete covers DeleteByIDs across five scenarios.
 func TestCardRepository_BulkDelete(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -21,12 +20,7 @@ func TestCardRepository_BulkDelete(t *testing.T) {
 		repo := repository.NewCardRepository(testDB.GORM)
 		ownerID := insertAuthUser(t, ctx)
 
-		var affected int64
-		err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			var txErr error
-			affected, txErr = repo.DeleteByIDsTx(ctx, tx, ownerID, []string{})
-			return txErr
-		})
+		affected, err := repo.DeleteByIDs(ctx, ownerID, []string{})
 		require.NoError(t, err)
 		require.Equal(t, int64(0), affected)
 	})
@@ -42,12 +36,7 @@ func TestCardRepository_BulkDelete(t *testing.T) {
 		require.NoError(t, repo.Create(ctx, card1))
 		require.NoError(t, repo.Create(ctx, card2))
 
-		var affected int64
-		err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			var txErr error
-			affected, txErr = repo.DeleteByIDsTx(ctx, tx, ownerID, []string{card1.ID, card2.ID})
-			return txErr
-		})
+		affected, err := repo.DeleteByIDs(ctx, ownerID, []string{card1.ID, card2.ID})
 		require.NoError(t, err)
 		require.Equal(t, int64(2), affected)
 
@@ -72,12 +61,7 @@ func TestCardRepository_BulkDelete(t *testing.T) {
 		require.NoError(t, repo.Create(ctx, ownCard))
 		require.NoError(t, repo.Create(ctx, foreignCard))
 
-		var affected int64
-		err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			var txErr error
-			affected, txErr = repo.DeleteByIDsTx(ctx, tx, ownerID, []string{ownCard.ID, foreignCard.ID})
-			return txErr
-		})
+		affected, err := repo.DeleteByIDs(ctx, ownerID, []string{ownCard.ID, foreignCard.ID})
 		require.NoError(t, err)
 		require.Equal(t, int64(1), affected)
 
@@ -100,12 +84,7 @@ func TestCardRepository_BulkDelete(t *testing.T) {
 		foreignCard := newCard(foreignCG.ID, "foreign", "back")
 		require.NoError(t, repo.Create(ctx, foreignCard))
 
-		var affected int64
-		err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			var txErr error
-			affected, txErr = repo.DeleteByIDsTx(ctx, tx, ownerID, []string{foreignCard.ID})
-			return txErr
-		})
+		affected, err := repo.DeleteByIDs(ctx, ownerID, []string{foreignCard.ID})
 		require.NoError(t, err)
 		require.Equal(t, int64(0), affected)
 
@@ -125,12 +104,7 @@ func TestCardRepository_BulkDelete(t *testing.T) {
 
 		nonExistentID := uuid.NewString()
 
-		var affected int64
-		err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			var txErr error
-			affected, txErr = repo.DeleteByIDsTx(ctx, tx, ownerID, []string{ownCard.ID, nonExistentID})
-			return txErr
-		})
+		affected, err := repo.DeleteByIDs(ctx, ownerID, []string{ownCard.ID, nonExistentID})
 		require.NoError(t, err)
 		require.Equal(t, int64(1), affected)
 
