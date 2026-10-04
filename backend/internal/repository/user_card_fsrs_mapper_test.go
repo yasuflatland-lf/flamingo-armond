@@ -24,7 +24,7 @@ import (
 // attributable to that column's guard. Every numeric and time column carries a
 // distinct value: the mapper copies same-typed fields across in one struct
 // literal, and equal fixture values would let a transposed pair (for example,
-// created/updated timestamps) satisfy the accept-path assertion.
+// due/last-review timestamps) satisfy the accept-path assertion.
 func validUserCardFSRSRow() gormUserCardFSRS {
 	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
 	return gormUserCardFSRS{
@@ -39,7 +39,6 @@ func validUserCardFSRSRow() gormUserCardFSRS {
 		LastReview:    now.Add(-48 * time.Hour),
 		ScheduledDays: 5,
 		CreatedAt:     now.Add(-72 * time.Hour),
-		UpdatedAt:     now,
 	}
 }
 
@@ -151,6 +150,5 @@ func TestUserCardFSRSToDomain_AcceptsValidRow(t *testing.T) {
 			LastReview:    row.LastReview,
 		},
 		CreatedAt: row.CreatedAt,
-		UpdatedAt: row.UpdatedAt,
 	}, got)
 }
