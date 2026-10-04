@@ -21,11 +21,10 @@ func insertSwipeRecordWithID(t *testing.T, ctx context.Context, sqlDB *sql.DB, i
 	now := time.Now().UTC()
 	if _, err := sqlDB.ExecContext(ctx, `
         INSERT INTO public.swipe_records (
-            id, user_id, card_id, cardgroup_id, rating, reviewed_at, due, stability, difficulty,
-            scheduled_days, reps, lapses, state, last_review,
+            id, user_id, card_id, cardgroup_id, rating, reviewed_at, difficulty,
             due_before, phase_before, stability_before
         )
-        VALUES ($1, $2, $3, $4, 3, $5, $5, 2.5, 5.0, 0, 0, 0, 0, $5, $5, 0, 2.5)
+        VALUES ($1, $2, $3, $4, 3, $5, 5.0, $5, 0, 2.5)
     `, id, userID, cardID, cardgroupID, now); err != nil {
 		t.Fatalf("insert swipe record %s: %v", id, err)
 	}
@@ -116,15 +115,16 @@ func TestSwipeRecordsCardgroupOrphanCleanupRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Thirteen steps reach add_cardgroup_fk_to_swipe_records:
-	// drop_ping_records_updated_at, cardgroups_owner_updated_at_index,
-	// drop_redundant_fk_indexes, drop_user_card_fsrs_last_rating,
-	// drop_swipe_records_user_cardgroup_index, reset_legacy_new_card_ratio,
-	// revoke_client_writes, lower_new_card_ratio_default,
-	// tighten_new_card_ratio_check, realign_fsrs_snapshot_columns_to_v4,
-	// widen_updated_at_triggers_to_insert, and widen_text_length_checks sit
-	// above it. Bump this count when adding migrations after any of them.
-	if err := m.Steps(-13); err != nil {
+	// Fourteen steps reach add_cardgroup_fk_to_swipe_records:
+	// drop_swipe_records_after_state, drop_ping_records_updated_at,
+	// cardgroups_owner_updated_at_index, drop_redundant_fk_indexes,
+	// drop_user_card_fsrs_last_rating, drop_swipe_records_user_cardgroup_index,
+	// reset_legacy_new_card_ratio, revoke_client_writes,
+	// lower_new_card_ratio_default, tighten_new_card_ratio_check,
+	// realign_fsrs_snapshot_columns_to_v4, widen_updated_at_triggers_to_insert,
+	// and widen_text_length_checks sit above it. Bump this count when adding
+	// migrations after any of them.
+	if err := m.Steps(-14); err != nil {
 		t.Fatalf("migrate down cardgroup fk migration: %v", err)
 	}
 	if got := countSwipeRecordsByID(t, ctx, sqlDB, keepID); got != 1 {
