@@ -53,7 +53,7 @@ export const mergeCatalogConnection = makeMergeConnection<MasterCatalogQueryData
 
 /**
  * The `MasterCardgroup` field set shared by the catalog list row
- * ({@link CatalogListItem}), the onboarding chooser tile ({@link CatalogDeckTile}),
+ * ({@link CatalogListItem}), the onboarding chooser tile ({@link OnboardingDeckTile}),
  * and the merge-from-catalog sheet ({@link MergeFromCatalogSheet}).
  * `MasterCatalogQuery` (the /catalog list), `OnboardingStartQuery` (the
  * /onboarding/start chooser), and the merge sheet's inline `MasterCatalog` query
