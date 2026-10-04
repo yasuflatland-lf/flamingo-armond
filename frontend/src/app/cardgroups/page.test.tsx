@@ -42,6 +42,7 @@ vi.mock("./cardgroups-client", () => ({
 }));
 
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { gqlFetch } from "@/lib/apollo/server";
 import { CardgroupsSkeleton } from "./_components/cardgroups-skeleton";
 import CardgroupsPage, { CardgroupsContent } from "./page";
@@ -72,6 +73,7 @@ describe("CardgroupsPage — outer auth + Suspense shell", () => {
     vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "anonymous" }));
 
     await expect(CardgroupsPage()).rejects.toThrow("REDIRECT:/login");
+    expect(redirect).toHaveBeenCalledWith("/login");
   });
 
   it("redirects to /login when x-auth-status is stale", async () => {
@@ -158,9 +160,10 @@ describe("CardgroupsContent", () => {
   it("rethrows non-auth errors so the error boundary handles them", async () => {
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      vi.mocked(gqlFetch).mockRejectedValue(new Error("Network unreachable"));
+      const networkErr = new Error("Network unreachable");
+      vi.mocked(gqlFetch).mockRejectedValue(networkErr);
 
-      await expect(CardgroupsContent()).rejects.toThrow("Network unreachable");
+      await expect(CardgroupsContent()).rejects.toBe(networkErr);
 
       // PII-redacted payload: only `name` is logged, never `message`.
       expect(consoleErrorSpy).toHaveBeenCalledWith(
