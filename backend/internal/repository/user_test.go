@@ -37,7 +37,7 @@ func TestMain(m *testing.M) {
 // needs: every other test dereferences the package-level testDB, so leaving them
 // enabled would nil-panic instead of skipping. Add a new Docker-free test's name
 // here, or it will not run when Docker is unavailable.
-const dockerFreeTests = "^(TestCardRepositorySatisfiesNarrowInterfaces|TestBulkStatementChunk_|TestClassify|TestCursorWhere_|" +
+const dockerFreeTests = "^(TestBulkStatementChunk_|TestClassify|TestCursorWhere_|" +
 	"TestDomainRejectsOverCapEmoji|TestEscapeLikePattern|TestFindRolesByIDs_|TestIncompressibleFront_|" +
 	"TestMasterCardgroupToDomain_|TestOrderClause_|TestPgConstraintViolation|TestRefetchAfterUpdate|TestTextLengthViolationError_|" +
 	"TestToDomainUserPreference_|TestUserCardFSRSToDomain_|TestZWJEmojiAtGraphemeCap_)"
