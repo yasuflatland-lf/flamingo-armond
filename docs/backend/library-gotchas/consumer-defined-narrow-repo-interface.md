@@ -27,7 +27,7 @@ type CardgroupRepoForLearn interface {
 ```
 
 The shared `CardRepository` in `backend/internal/repository/card.go` keeps its full
-surface (`FindByID`, `FindByIDs`, `FindPageByCardgroupForUser`, `FindDueCardsForUser`,
+surface (`FindByID`, `FindByIDs`, `FindPageByCardgroup`, `FindDueCardsForUser`,
 `Create`, `Update`, `Delete`, …). The `LearnUsecase` sees only
 the two methods it calls, so:
 

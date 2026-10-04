@@ -7,13 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// These white-box tests pin the exact SQL strings the per-aggregate cursor
-// shims emit through the shared buildOrderClause / buildCursorWhere engine.
-// They are the DB-free half of the SQL-equivalence regression net: every
-// quirk the generalization had to preserve (card's COALESCE due branch + alias
-// "cards", cardgroup's unaliased id, master_card's alias "master_cards",
-// master_catalog's always-two-column form with alias "mcg") is asserted here so
-// a future change to the generic builders cannot silently alter a clause.
+// These tests pin the SQL strings emitted through the shared cursor builders,
+// including each aggregate's aliases and tie-break columns.
 
 func ptrTime(t time.Time) *time.Time { return &t }
 func ptrInt(i int) *int              { return &i }
@@ -52,58 +47,15 @@ func TestCursorSpec_IDDirection(t *testing.T) {
 
 func TestOrderClause_Card(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
-		orderBy CardOrderBy
-		dir     SortOrder
-		want    string
-	}{
-		{CardOrderByID, SortAsc, "cards.id ASC"},
-		{CardOrderByID, SortDesc, "cards.id DESC"},
-		{CardOrderByCreatedAt, SortAsc, "cards.created_at ASC, cards.id ASC"},
-		{CardOrderByCreatedAt, SortDesc, "cards.created_at DESC, cards.id DESC"},
-		{CardOrderByUpdatedAt, SortAsc, "cards.updated_at ASC, cards.id ASC"},
-		{CardOrderByDue, SortAsc, "COALESCE(ucs.due, cards.created_at) ASC, cards.id ASC"},
-		{CardOrderByDue, SortDesc, "COALESCE(ucs.due, cards.created_at) DESC, cards.id DESC"},
-	}
-	for _, c := range cases {
-		require.Equal(t, c.want, orderClause(c.orderBy, c.dir))
-	}
+	require.Equal(t, "cards.id ASC", orderClause())
 }
 
 func TestCursorWhere_Card(t *testing.T) {
 	t.Parallel()
-	now := time.Now().UTC()
-	cur := &CardCursor{ID: "cid", Due: ptrTime(now), CreatedAt: ptrTime(now), UpdatedAt: ptrTime(now)}
-
-	// id-order emits the single id comparison, no tuple.
-	clause, args, err := cursorWhere(CardOrderByID, SortAsc, cur)
+	clause, args, err := cursorWhere(&CardCursor{ID: "cid"})
 	require.NoError(t, err)
 	require.Equal(t, "cards.id > ?", clause)
 	require.Equal(t, []any{"cid"}, args)
-
-	clause, args, err = cursorWhere(CardOrderByID, SortDesc, cur)
-	require.NoError(t, err)
-	require.Equal(t, "cards.id < ?", clause)
-	require.Equal(t, []any{"cid"}, args)
-
-	// created_at tuple form with alias "cards".
-	clause, args, err = cursorWhere(CardOrderByCreatedAt, SortAsc, cur)
-	require.NoError(t, err)
-	require.Equal(t, "(cards.created_at > ? OR (cards.created_at = ? AND cards.id > ?))", clause)
-	require.Equal(t, []any{now, now, "cid"}, args)
-
-	// Due keeps the COALESCE primary column.
-	clause, args, err = cursorWhere(CardOrderByDue, SortDesc, cur)
-	require.NoError(t, err)
-	require.Equal(t,
-		"(COALESCE(ucs.due, cards.created_at) < ? OR (COALESCE(ucs.due, cards.created_at) = ? AND cards.id < ?))",
-		clause)
-	require.Equal(t, []any{now, now, "cid"}, args)
-
-	// Missing hydrated column is a caller bug surfaced as an error.
-	_, _, err = cursorWhere(CardOrderByCreatedAt, SortAsc, &CardCursor{ID: "cid"})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "repository: card: cursor missing")
 }
 
 func TestOrderClause_Cardgroup(t *testing.T) {

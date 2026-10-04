@@ -7,7 +7,7 @@ A usecase input struct with a `Search *string` field has two representations of 
 Normalize once at the layer that owns the input struct (the usecase, when the input is populated from the resolver). Collapse `nil`, `&""`, and `&"   "` to `nil`; trim leading/trailing whitespace from non-empty strings before storing. The repository then receives a simple invariant: nil means no filter, non-nil means a pre-trimmed, non-empty pattern ready for `escapeLike` + `ILIKE`.
 
 ```go
-// usecase, before calling FindPageByCardgroupForUser:
+// usecase, before calling FindPageByCardgroup:
 search := in.Search
 if search != nil {
     trimmed := strings.TrimSpace(*search)
@@ -24,4 +24,4 @@ if search != nil {
 
 **How to apply:** add the normalization block at the top of any usecase method that accepts an optional filter `*string`. Keep a single defensive "empty-search returns all rows" integration test directly against the repository so the repo's contract is independently verified. The usecase test should enumerate all four input shapes — `nil`, `&""`, `&"   "`, and `&"  apple  "` — and assert the repository received the expected normalized value. This rule pairs with [GORM exact-match `FindBy*` helpers: callers own trimming, repos own nothing](gorm-exact-match-findby-trimming.md): that rule covers trimming for exact-match lookups; this rule covers nullable-filter normalization for substring lookups. Both push normalization to the layer with the strongest knowledge of caller intent.
 
-Reference: `backend/internal/usecase/card.go` `ListCardsByCardgroupConnection`; the simplified repository predicate in `backend/internal/repository/card_pagination.go` `FindPageByCardgroupForUser`.
+Reference: `backend/internal/usecase/card.go` `ListCardsByCardgroupConnection`; the simplified repository predicate in `backend/internal/repository/card_pagination.go` `FindPageByCardgroup`.
