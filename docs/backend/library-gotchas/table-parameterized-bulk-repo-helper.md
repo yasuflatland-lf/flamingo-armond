@@ -6,6 +6,9 @@ When two aggregates share identical bulk SQL semantics — an ON CONFLICT upsert
 a list-fronts query, and a delete-by-fronts — extract package-private helpers
 parameterized by `(tableName, fkColumn string)`. Each aggregate's repository
 passes its own table name and FK column; neither imports the other's domain type.
+`cards` and `master_cards` share the upsert helper; the list-fronts and
+delete-by-fronts helpers currently have a single caller (`masterCardRepo`) and
+stay parameterized so another aggregate can reuse them.
 
 ## Why
 
@@ -46,10 +49,12 @@ tables owns that column, so neither the INSERT column list nor the
 The struct has no domain imports. `GroupID` maps to `fkColumn` at SQL-build
 time; each aggregate's repo fills it from its own domain field.
 
-## The three shared helpers
+## The three table-parameterized helpers
 
 All three live in `backend/internal/repository/bulk_card_tx.go` (package-private, not
-exported):
+exported). `cards` currently calls only `upsertManyTx`; `listFrontsByGroupTx` and
+`deleteByGroupAndFrontsTx` have a single caller (`masterCardRepo`) and stay
+table-parameterized so a second aggregate can reuse them.
 
 ### `upsertManyTx`
 

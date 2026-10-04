@@ -1826,13 +1826,12 @@ func TestAdminUser_EditUser_InfraErrorFromTx(t *testing.T) {
 	}
 }
 
-// TestAdminUser_EditUser_UpdateTxInfraError_PinsUpdateProfileWrap fires the
-// profile branch of the tx callback and asserts that the inner per-sub-op
-// wrap ("update profile") is present in the chain. Without this test, a
-// future regression that drops the inner wrap on UpdateTx would still pass
-// TestAdminUser_EditUser_InfraErrorFromTx because the outer "tx" frame
-// continues to match.
-func TestAdminUser_EditUser_UpdateTxInfraError_PinsUpdateProfileWrap(t *testing.T) {
+// TestAdminUser_EditUser_UpdateTxVersionedInfraError_PinsUpdateProfileWrap
+// fails the UpdateTxVersioned step of the tx callback and asserts that the
+// inner per-sub-op wrap ("update profile") is present in the chain. Without
+// it, dropping that inner wrap would still pass
+// TestAdminUser_EditUser_InfraErrorFromTx via the outer "tx" frame.
+func TestAdminUser_EditUser_UpdateTxVersionedInfraError_PinsUpdateProfileWrap(t *testing.T) {
 	t.Parallel()
 
 	users := &mockAdminUserRepository{
@@ -1851,11 +1850,11 @@ func TestAdminUser_EditUser_UpdateTxInfraError_PinsUpdateProfileWrap(t *testing.
 	assertInternalChain(t, err, "usecase: admin user edit: tx")
 }
 
-// TestAdminUser_EditUser_UpdateTxCancelled pins the inner isContextDone
-// short-circuit on the profile branch of the tx callback. context.Canceled
-// must propagate as bare-identity (not wrapped), per
+// TestAdminUser_EditUser_UpdateTxVersionedCancelled pins the inner
+// isContextDone short-circuit on the UpdateTxVersioned step of the tx callback.
+// context.Canceled must propagate as bare-identity (not wrapped), per
 // pin-unwrapped-context-error-with-identity-check.
-func TestAdminUser_EditUser_UpdateTxCancelled(t *testing.T) {
+func TestAdminUser_EditUser_UpdateTxVersionedCancelled(t *testing.T) {
 	t.Parallel()
 
 	users := &mockAdminUserRepository{
@@ -1872,7 +1871,7 @@ func TestAdminUser_EditUser_UpdateTxCancelled(t *testing.T) {
 	})
 	assertCancelled(t, err)
 	if err != context.Canceled {
-		t.Fatalf("context.Canceled identity (UpdateTx branch): got %T %v", err, err)
+		t.Fatalf("context.Canceled identity (UpdateTxVersioned branch): got %T %v", err, err)
 	}
 }
 

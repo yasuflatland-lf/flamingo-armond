@@ -55,22 +55,11 @@ func (m *mockUserRepository) AuthUserExists(_ context.Context, _ string) (bool, 
 }
 
 type mockUserRolesRepository struct {
-	roles  []*domain.Role
-	err    error
-	calls  int
-	userID string
-
 	adminCount     int64
 	countAdminsErr error
 	lockErr        error
 	lockCalls      int
 	countCalls     int
-}
-
-func (m *mockUserRolesRepository) ListByUser(_ context.Context, userID string) ([]*domain.Role, error) {
-	m.calls++
-	m.userID = userID
-	return m.roles, m.err
 }
 
 // AcquireAdminRoleLockTx records that the guard serialized before counting; the
