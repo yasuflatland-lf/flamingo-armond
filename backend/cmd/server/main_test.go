@@ -767,7 +767,6 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	if userRepo == nil {
 		userRepo = repository.NewUserRepository(db.GORM)
 	}
-	roleRepo := repository.NewRoleRepository(db.GORM)
 	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	cardRepo := repository.NewCardRepository(db.GORM)
@@ -782,12 +781,10 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM, logger)
 	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), mw, loaderDeps{
 		user:           userRepo,
-		role:           roleRepo,
 		userRole:       userRoleRepo,
 		cardgroup:      cardgroupRepo,
 		card:           cardRepo,
 		userPreference: userPreferenceRepo,
-		swipeRecord:    swipeRecordRepo,
 		userCardFSRS:   userCardFSRSRepo,
 	}, ping.New(pingRecordRepo, "test-token"), nil, false)
 
@@ -2002,7 +1999,6 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 	t.Cleanup(db.Close)
 
 	userRepo := repository.NewUserRepository(db.GORM)
-	roleRepo := repository.NewRoleRepository(db.GORM)
 	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	cardRepo := repository.NewCardRepository(db.GORM)
@@ -2021,12 +2017,10 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 		mw,
 		loaderDeps{
 			user:           userRepo,
-			role:           roleRepo,
 			userRole:       userRoleRepo,
 			cardgroup:      cardgroupRepo,
 			card:           cardRepo,
 			userPreference: userPreferenceRepo,
-			swipeRecord:    swipeRecordRepo,
 			userCardFSRS:   userCardFSRSRepo,
 		},
 		ping.New(pingRecordRepo, "test-token"), nil,

@@ -70,8 +70,10 @@ func TestRoleRepository_FindByIDsTx_ReturnsRolesInTx(t *testing.T) {
 	ctx := context.Background()
 	repo := repository.NewRoleRepository(testDB.GORM)
 
-	roleAID := insertRole(t, ctx, "find-ids-tx-a-"+uuid.NewString())
-	roleBID := insertRole(t, ctx, "find-ids-tx-b-"+uuid.NewString())
+	nameA := "find-ids-tx-a-" + uuid.NewString()
+	nameB := "find-ids-tx-b-" + uuid.NewString()
+	roleAID := insertRole(t, ctx, nameA)
+	roleBID := insertRole(t, ctx, nameB)
 	missing := uuid.NewString()
 
 	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -81,15 +83,19 @@ func TestRoleRepository_FindByIDsTx_ReturnsRolesInTx(t *testing.T) {
 		require.NotNil(t, got[roleAID])
 		require.Nil(t, got[missing])
 		require.NotNil(t, got[roleBID])
+		require.Equal(t, roleAID, got[roleAID].ID)
+		require.Equal(t, domain.RoleName(nameA), got[roleAID].Name)
+		require.Equal(t, roleBID, got[roleBID].ID)
+		require.Equal(t, domain.RoleName(nameB), got[roleBID].Name)
 		return nil
 	})
 	require.NoError(t, err)
 }
 
-// TestRoleRepository_FindByIDs_DropsMalformedKeepsValid pins the partial-match
+// TestRoleRepository_FindByIDsTx_DropsMalformedKeepsValid pins the partial-match
 // contract: malformed and urn:uuid: ids are dropped before the IN query, so
 // the canonical id is still returned.
-func TestRoleRepository_FindByIDs_DropsMalformedKeepsValid(t *testing.T) {
+func TestRoleRepository_FindByIDsTx_DropsMalformedKeepsValid(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repo := repository.NewRoleRepository(testDB.GORM)
@@ -97,12 +103,7 @@ func TestRoleRepository_FindByIDs_DropsMalformedKeepsValid(t *testing.T) {
 	roleID := insertRole(t, ctx, "find-ids-mixed-"+uuid.NewString())
 	ids := []string{roleID, "not-a-uuid", "urn:uuid:" + roleID}
 
-	got, err := repo.FindByIDs(ctx, ids)
-	require.NoError(t, err)
-	require.Len(t, got, 1)
-	require.NotNil(t, got[roleID])
-
-	err = testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		got, err := repo.FindByIDsTx(ctx, tx, ids)
 		require.NoError(t, err)
 		require.Len(t, got, 1)

@@ -43,7 +43,7 @@ A subtler form of the same constraint applies when the classifier consumes a par
 Concrete failure mode in `backend/internal/usecase/admin_user.go` (`EditUser` self-edit branch). Before the fix:
 
 ```go
-roles, _ := u.roles.FindByIDs(ctx, roleIDs)  // partial map for unknown IDs
+roles, _ := u.roles.FindByIDsTx(ctx, tx, roleIDs)  // partial map for unknown IDs
 keepsAdmin := false
 for _, roleID := range roleIDs {
     if role, ok := roles[roleID]; ok && role.Name == domain.AdminRoleName {
@@ -59,7 +59,7 @@ if !keepsAdmin {
 When the caller sends an unknown roleId for a self-edit, `roles[id]` is absent, `keepsAdmin` stays `false`, and the caller sees `CannotRevokeOwnAdmin` — a misleading classification of "you cannot revoke your own admin role" when the real issue is "you sent an invalid role ID". The fix is to validate input-integrity before the policy loop:
 
 ```go
-roles, _ := u.roles.FindByIDs(ctx, roleIDs)
+roles, _ := u.roles.FindByIDsTx(ctx, tx, roleIDs)
 if len(roles) != len(roleIDs) {
     return AdminEditUserOutcome{
         Validation: NewInputValidationInfo("roleIds", "role not found"),
@@ -72,4 +72,4 @@ The generalisation: whenever a classifier or policy decision iterates an input s
 
 Two preconditions for the `len`-equality check to be meaningful:
 - The input slice is deduplicated upstream (`normalizeAdminEditRoleIDs` filters duplicates and empty strings before the lookup). If the input can contain duplicates, the map will be shorter even when every ID resolves.
-- The partial-map return convention is documented on the repository method. `FindByIDs` returns a map keyed on found IDs; unknown IDs are absent. Without this contract, the `len` check is a fragile heuristic.
+- The lookup returns a partial map. `FindByIDsTx` delegates to `findRolesByIDs` in `backend/internal/repository/role.go`, which filters out non-canonical IDs before the query and returns only found rows, keyed by their stored IDs. Unknown and malformed IDs are absent from the map. Without this contract, the `len` check is a fragile heuristic.

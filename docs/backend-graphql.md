@@ -79,7 +79,7 @@ gqlgen deletes `graph/model/models_gen.go` at the start of every run before rege
 
 ### Resolver DI seam
 
-`newRouter(resolvers *resolver.Resolver, authMW echo.MiddlewareFunc, userRepo repository.UserRepository, roleRepo repository.RoleRepository) *echo.Echo` is the DI wiring seam. `run(ctx, logger) error` is the lifecycle seam — it constructs the `Resolver`, passes it to `newRouter`, and owns the `http.Server`. Middleware-shaped dependencies (auth, future per-request observability) are passed as `echo.MiddlewareFunc` parameters to `newRouter`; resources required by middleware factories (e.g. `loader.Middleware` needs repositories) are passed as additional `newRouter` arguments rather than hidden inside the middleware closure.
+`newRouter(resolvers *resolver.Resolver, authMW echo.MiddlewareFunc, ld loaderDeps, pingHandler *ping.Handler, notionSyncHandler *notionsync.Handler, introspectionEnabled bool) *echo.Echo` is the DI wiring seam. `run(ctx, logger) error` is the lifecycle seam — it constructs the `Resolver`, passes it to `newRouter`, and owns the `http.Server`. Middleware-shaped dependencies (auth, future per-request observability) are passed as `echo.MiddlewareFunc` parameters to `newRouter`; repositories required by `loader.Middleware` are passed through the `loaderDeps` struct to `newRouter`.
 
 ## GraphQL operations
 
@@ -390,21 +390,19 @@ separate `SELECT` statements. DataLoader collapses those into a single
 `SELECT ... WHERE id = ANY($1)`.
 
 `backend/internal/loader/` exposes a per-request `Loaders` struct. Production
-wiring uses `loader.MiddlewareWithUserCardFSRS(...)`, which adds the
-per-viewer `UserCardFSRS` loader on top of the base `loader.Middleware(...)`
-set. The middleware is registered on the `/query` group after `authMW`:
+wiring uses `loader.Middleware(...)`, which also builds the per-viewer
+`UserCardFSRS` loader from the authenticated viewer. The middleware is
+registered on the `/query` group after `authMW`:
 
 ```go
-q := e.Group("/query", authMW, loader.MiddlewareWithUserCardFSRS(
-    userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo,
-    userPreferenceRepo, swipeRecordRepo, userCardFSRSRepo,
+q := e.Group("/query", authMW, loader.Middleware(
+    userRepo, userRoleRepo, cardgroupRepo, cardRepo,
+    userPreferenceRepo, userCardFSRSRepo,
 ))
 ```
 
-`MiddlewareWithUserCardFSRS` reads the authenticated viewer from the request
-context and builds a `UserCardFSRS` loader scoped to that viewer; the base
-`loader.Middleware(userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, swipeRecordRepo...)`
-exists for wiring that does not need per-viewer FSRS state.
+`Middleware` reads the authenticated viewer from the request context and builds a
+`UserCardFSRS` loader scoped to that viewer.
 
 A fresh `Loaders` instance is created for every request so the per-request
 cache never bleeds across authenticated users. Resolvers pull it out of `ctx`:

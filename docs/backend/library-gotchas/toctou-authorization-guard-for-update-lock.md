@@ -13,17 +13,15 @@ A self-demotion guard for `adminEditUser` must read the names of the submitted r
 The fix is to lock the read rows so the concurrent mutation cannot commit until the guard's transaction commits:
 
 ```go
-q := db.WithContext(ctx).Where("id IN ?", ids)
-if lock {
-    q = q.Clauses(clause.Locking{Strength: "UPDATE"}) // FOR UPDATE
-}
+q := db.WithContext(ctx).Where("id IN ?", ids).
+    Clauses(clause.Locking{Strength: "UPDATE"}) // FOR UPDATE
 ```
 
 `FOR UPDATE` blocks any other transaction that tries to `UPDATE`/`DELETE`/lock the matched rows until this transaction ends. The guard's read and the role-set write are now atomic with respect to a concurrent rename/delete.
 
 **The What:** when a read informs an authorization or branching decision that a subsequent write in the same transaction depends on, lock the read rows (`clause.Locking{Strength: "UPDATE"}`) inside that transaction — do not rely on snapshot isolation alone under `READ COMMITTED`.
 
-Precedent in this repo: `backend/internal/repository/card.go` — `FindByIDForUpdateTx` acquires `clause.Locking{Strength: "UPDATE"}`, proven by `backend/internal/repository/card_test.go` (`TestCardRepository_FindByIDForUpdateTx_LocksRowForUpdate`, which asserts a second `FOR UPDATE NOWAIT` fails). The role analogue is `backend/internal/repository/role.go` — `FindByIDsTx` delegates to `findRolesByIDs(..., lock=true)`. The narrow interface consumed by the usecase (`backend/internal/usecase/admin_user.go`) must also declare the `Tx` variant so the closure can call it; see the shared-helper pattern in [Tx and non-Tx repository methods share a private helper to avoid drift](repo-tx-and-nontx-share-private-helper.md).
+Precedent in this repo: `backend/internal/repository/card.go` — `FindByIDForUpdateTx` acquires `clause.Locking{Strength: "UPDATE"}`, proven by `backend/internal/repository/card_test.go` (`TestCardRepository_FindByIDForUpdateTx_LocksRowForUpdate`, which asserts a second `FOR UPDATE NOWAIT` fails). The role analogue is `backend/internal/repository/role.go` — `FindByIDsTx` delegates to `findRolesByIDs`, which always applies `clause.Locking{Strength: "UPDATE"}`. `role.go` exposes only the transaction variant for this lookup, so `findRolesByIDs` locks unconditionally instead of leaving the lock to its caller. The narrow interface `adminRoleRepository` in `backend/internal/usecase/admin_user.go` declares `FindByIDsTx` so the transaction closure can call it.
 
 **Use `FOR SHARE` when the guard only reads the other aggregate.** `FOR UPDATE` is the right strength when the locking transaction may itself write the locked row. When the guard merely needs the row's state to stay put — a lifecycle flag, an ownership column — `clause.Locking{Strength: "SHARE"}` blocks the concurrent writer just the same while letting sibling guards run in parallel. `backend/internal/repository/master_cardgroup.go` — `FindPublishedByIDTx` takes `FOR SHARE` on the master row so an admin unpublish (which loads it `FOR UPDATE`) cannot commit between the catalog-visibility check and the import that depends on it, while two learners importing the same deck do not serialise against each other. Same proof shape as the card case: `TestMasterCardgroupRepository_FindPublishedByIDTx_LocksRowForShare` asserts a concurrent `FOR UPDATE NOWAIT` fails and a concurrent `FOR SHARE NOWAIT` succeeds. The domain-level write-up is [Collapse "unknown" and "exists-but-hidden" into one not-found](../ddd-patterns/notfound-collapse-non-disclosure.md).
 

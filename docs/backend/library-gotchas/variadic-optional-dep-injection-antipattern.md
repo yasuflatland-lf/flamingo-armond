@@ -69,10 +69,11 @@ rather than surfacing at the call site.
 `learnUC usecase.LearnUsecase` as a required positional parameter; the comment
 "Tests may pass nil for unused dependencies; do not pass nil from production
 wiring" documents the nil-explicit contract. `backend/cmd/server/main.go` —
-`newRouter` accepts `swipeRecordRepo repository.SwipeRecordRepository` as a
-required positional parameter. `backend/internal/loader/loader.go` — `New` and
-`Middleware` accept `swipeRecordRepo repository.SwipeRecordRepository` as a
-required positional parameter; tests that do not exercise the SwipeRecord
-loader pass `nil` explicitly.
+`newRouter` receives the loader repositories as `ld loaderDeps`, a struct whose
+fields are all named, so no repository rides in a variadic tail.
+`backend/internal/loader/loader.go` — `Middleware` and `NewWithUserCardFSRS` accept
+`userCardFSRSRepo userCardFSRSReader` as a required positional parameter.
+`NewWithUserCardFSRS` nil-guards it before building the `UserCardFSRS` loader;
+tests that do not exercise that loader pass `nil` explicitly.
 
 **Sister rule:** [`constructor-panics-for-non-empty-config.md`](constructor-panics-for-non-empty-config.md) — when a dependency is always required (no OFF branch), panic at construction rather than deferring the nil deref to runtime.
