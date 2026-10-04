@@ -4,7 +4,7 @@
 
 ## What
 
-When a package-internal error type must be converted to a public type at a layer boundary, carry a **typed enum field** alongside the human-readable message string. Callers branch on the field; the message string is UI-facing only. The enum's `String()` method must align with the wire format (JSON, GraphQL) so the same value flows through Go, JSON, and GraphQL without intermediate remapping.
+When a package-internal error type must be converted to a public type at a layer boundary, carry a **typed enum field** alongside the human-readable message string. Callers branch on the field; the message string is UI-facing only. Map internal kinds explicitly to public kinds so an unmapped value fails at the boundary.
 
 ```go
 // --- inner layer: textdic package (parser-internal) ---
@@ -20,8 +20,7 @@ const (
     SkipKindUnrecognized
 )
 
-// String returns the SCREAMING_SNAKE value that the outer layer uses as the
-// wire string. Both layers must stay in sync.
+// String returns a readable value for parser diagnostics.
 func (k SkipKind) String() string {
     switch k {
     case SkipKindHard:         return "HARD"
@@ -44,12 +43,11 @@ type ValidationError struct {
 // --- outer layer: usecase package (application boundary) ---
 // backend/internal/usecase/card_import.go
 
-// CardImportErrorKind is a string-typed alias whose values mirror the
-// inner SkipKind.String() output, making it wire-ready for JSON and GraphQL.
+// CardImportErrorKind values are mapped from the inner SkipKind by an explicit
+// switch (cardImportErrorKindFromSkipKind); an unmapped kind is an error at the boundary.
 type CardImportErrorKind string
 
 const (
-    CardImportErrKindUnknown      CardImportErrorKind = "UNKNOWN"
     CardImportErrKindHard         CardImportErrorKind = "HARD"
     CardImportErrKindFrontOnly    CardImportErrorKind = "FRONT_ONLY"
     CardImportErrKindBackOnly     CardImportErrorKind = "BACK_ONLY"
@@ -67,15 +65,15 @@ type CardImportError struct {
 // --- conversion site: card_import.go mapping loop ---
 // backend/internal/usecase/card_import.go
 
-// CardImportErrorKind(e.Kind.String()) casts the inner uint8 enum to the
-// outer string alias in one step. If SkipKind.String() ever returns a value
-// not listed in the constants above, the outer type still carries it
-// correctly and the mismatch surfaces in tests.
 for _, e := range parseErrs {
+    kind, err := cardImportErrorKindFromSkipKind(e.Kind)
+    if err != nil {
+        return nil, err
+    }
     mappedErrs = append(mappedErrs, CardImportError{
         Line:    e.Line,
         Message: e.Message,
-        Kind:    CardImportErrorKind(e.Kind.String()),
+        Kind:    kind,
         Snippet: e.Snippet,
     })
 }
@@ -85,11 +83,11 @@ for _, e := range parseErrs {
 
 A classifier that matches `strings.HasPrefix(e.Message, "skipped:")` works until someone renames the prefix for a UI copy change, a localisation pass, or a grammar improvement. The rename looks harmless in the package that owns the string; it silently flips the classification in every caller that string-matched it. The bug only surfaces when a previously-skip-only sync starts deleting cards — a data-loss failure mode with no compiler signal.
 
-A typed enum field with a wire-aligned `String()` method:
+A typed enum field with an explicit boundary mapping:
 
 - Cannot be broken by renaming the message string.
-- Is explicit at the conversion site (`Kind: e.Kind` in the mapping loop).
-- Marshals directly to the wire (JSON, GraphQL) via `String()`, eliminating a category of remapping bugs.
+- Makes every parser kind explicit at the conversion site.
+- Rejects an unmapped parser kind before it reaches the resolver.
 - Carries the semantic through as many wrapping layers as needed without each layer re-parsing the string.
 
 ## Where the pattern applies

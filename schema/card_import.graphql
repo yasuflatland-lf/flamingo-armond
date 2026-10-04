@@ -16,8 +16,6 @@ type ParsedCard {
 
 """Classifier for a CardImportError. Closed enumeration; branch on this rather than substring-matching `message`."""
 enum CardImportErrorKind {
-  """Programming-error sentinel. Never returned by a healthy server. If a client observes this, file a bug: the server should be panicking or asserting before this value escapes."""
-  UNKNOWN
   """Hard error: payload-level (oversized / empty) or grammar/lexer error not recovered by skip productions."""
   HARD
   """Skipped: a lone WORD line with no DEFINITION attached."""
