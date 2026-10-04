@@ -145,6 +145,14 @@ type CardRepository interface {
 
 type cardRepo struct{ db *gorm.DB }
 
+// *cardRepo implements each narrow interface CardRepository embeds.
+var (
+	_ CardReadRepository    = (*cardRepo)(nil)
+	_ CardPageRepository    = (*cardRepo)(nil)
+	_ CardSessionRepository = (*cardRepo)(nil)
+	_ CardWriteRepository   = (*cardRepo)(nil)
+)
+
 func NewCardRepository(db *gorm.DB) CardRepository { return &cardRepo{db: db} }
 
 func (r *cardRepo) FindByID(ctx context.Context, id string) (*domain.Card, error) {

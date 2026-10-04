@@ -1,27 +1,19 @@
 "use client";
 
+import { Download } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { CSSProperties } from "react";
-import { CatalogImportButton } from "@/app/catalog/_components/catalog-import-button";
 import { CatalogDeckFieldsFragment } from "@/app/catalog/queries";
+import { Button } from "@/components/ui/button";
 import { type FragmentType, useFragment } from "@/generated/fragment-masking";
 import { cn } from "@/lib/utils";
 
-export type CatalogDeckTileProps = {
+export type OnboardingDeckTileProps = {
   /** A masked `CatalogDeckFields` ref — unmasked once via `useFragment` below. */
   node: FragmentType<typeof CatalogDeckFieldsFragment>;
   /** True while this cardgroup's import mutation is in flight. */
   importing: boolean;
-  /** True once this cardgroup has been imported in the current session. */
-  imported: boolean;
   onImport: (id: string) => void;
-  /**
-   * Optional button label overrides. Defaults reproduce the `/catalog` copy
-   * (`Catalog` namespace) so existing call sites are unaffected.
-   */
-  labels?: { action: string; inProgress: string; done: string };
-  /** Optional `data-testid` prefix. Defaults to `"catalog-import"`. */
-  testIdPrefix?: string;
   /** Optional class passthrough on the root `<li>` (e.g. fixed width, entrance animation). */
   className?: string;
   /** Optional inline style passthrough on the root `<li>` (e.g. staggered animation-delay). */
@@ -29,23 +21,20 @@ export type CatalogDeckTileProps = {
 };
 
 /**
- * Presentational tile for one published master cardgroup. The card count sits in
- * the metadata row and the CTA spans the card's full width, so the bottom row
- * never collides in a narrow column. The Import button carries a
- * locale-independent `data-testid` (`catalog-import-{id}`) so e2e — which runs in
- * the ja-JP locale — can target it without depending on translated copy.
+ * Preset-deck tile for the /onboarding/start chooser. Unmasks `CatalogDeckFields` (the same
+ * fragment the /catalog list spreads) and renders the name, description, card count and a
+ * full-width Start CTA. The CTA carries a locale-independent `data-testid`
+ * (`onboarding-deck-{id}`) so tests select it without depending on translated copy.
  */
-export function CatalogDeckTile({
+export function OnboardingDeckTile({
   node,
   importing,
-  imported,
   onImport,
-  labels,
-  testIdPrefix,
   className,
   style,
-}: CatalogDeckTileProps) {
+}: OnboardingDeckTileProps) {
   const t = useTranslations("Catalog");
+  const tStart = useTranslations("OnboardingStart");
   const deck = useFragment(CatalogDeckFieldsFragment, node);
 
   return (
@@ -73,15 +62,19 @@ export function CatalogDeckTile({
         </span>
       </div>
 
-      <CatalogImportButton
-        deck={deck}
-        importing={importing}
-        imported={imported}
-        onImport={onImport}
-        labels={labels}
-        testIdPrefix={testIdPrefix}
+      <Button
+        type="button"
+        variant="brand"
+        onClick={() => onImport(deck.id)}
+        disabled={importing}
+        data-testid={`onboarding-deck-${deck.id}`}
         className="mt-auto w-full"
-      />
+      >
+        <Download aria-hidden="true" className="h-4 w-4" />
+        <span className="break-keep">
+          {importing ? tStart("starting") : tStart("startWithDeck")}
+        </span>
+      </Button>
     </li>
   );
 }

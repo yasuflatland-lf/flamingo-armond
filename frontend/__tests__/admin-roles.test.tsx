@@ -6,7 +6,7 @@
  * (auth-code redirect vs. redacted-log-and-rethrow), and system-role presence
  * in the rendered list.
  *
- * NOT covered here (owned by admin-roles-crud.test.tsx):
+ * NOT covered here (owned by src/app/admin/roles/admin-roles-client.test.tsx):
  *   - Create / update / delete mutation flows.
  *   - System-role Edit/Delete disabled state.
  *   - Mutation error banners and field-level errors.

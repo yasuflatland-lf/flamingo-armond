@@ -24,7 +24,6 @@ vi.mock("next/navigation", () => ({
 // Imports — after vi.mock declarations
 // ---------------------------------------------------------------------------
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import StatsPage from "@/app/stats/page";
 import type { MyLearningStatsQuery } from "@/generated/graphql";
@@ -36,8 +35,9 @@ import { renderWithIntl } from "@/test/render-with-intl";
 // ---------------------------------------------------------------------------
 
 // A populated payload (studied > 0). The broad test only asserts page
-// composition (auth gate + fetch wiring + the rendered "Progress" title);
-// flow-detail assertions live in the co-located stats-client.test.tsx.
+// composition (fetch wiring + the rendered "Progress" title); the auth-gate
+// matrix lives in the co-located src/app/stats/page.test.tsx and flow-detail
+// assertions in stats-client.test.tsx.
 const populatedStats: MyLearningStatsQuery["myLearningStats"] = {
   __typename: "LearningStats",
   ownsAnyDeck: true,
@@ -134,15 +134,5 @@ describe("StatsPage", () => {
 
     expect(screen.getByRole("heading", { name: "Progress" })).toBeInTheDocument();
     expect(redirect).not.toHaveBeenCalled();
-  });
-
-  it("redirects to /login when the caller is unauthenticated", async () => {
-    vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "anonymous" }));
-
-    await expect(StatsPage()).rejects.toThrow("REDIRECT:/login");
-
-    expect(redirect).toHaveBeenCalledWith("/login");
-    // The auth gate short-circuits before any data fetch.
-    expect(gqlFetch).not.toHaveBeenCalled();
   });
 });
