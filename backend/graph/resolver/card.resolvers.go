@@ -137,15 +137,6 @@ func (r *mutationResolver) DeleteCards(ctx context.Context, ids []string) (int, 
 	return int(n), nil
 }
 
-// Card is the resolver for the card field.
-func (r *queryResolver) Card(ctx context.Context, id string) (*model.Card, error) {
-	card, err := r.CardUC.Card(ctx, id)
-	if err != nil {
-		return nil, gqlerr.FromUsecaseError(ctx, err)
-	}
-	return toCardModel(card), nil
-}
-
 // LearnNextDueCards is the resolver for the learnNextDueCards field.
 func (r *queryResolver) LearnNextDueCards(ctx context.Context, cardgroupID string, limit *int) ([]*model.Card, error) {
 	cards, err := r.LearnUC.NextDueCards(ctx, cardgroupID, limit)

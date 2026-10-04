@@ -545,6 +545,18 @@ func TestCardUsecase_Update_DuplicateFront_ValidationError(t *testing.T) {
 	}
 }
 
+func TestCardUsecase_Update_NotFoundMasksExistence(t *testing.T) {
+	t.Parallel()
+
+	uc := NewCardUsecase(&mockCardRepository{findErr: repository.ErrNotFound},
+		&mockCardgroupRepoForCard{},
+		newTestLogger(),
+	)
+
+	_, err := uc.Update(authedCtx("u1"), "missing", UpdateCardInput{})
+	assertUnauthenticated(t, err)
+}
+
 func TestCardUsecase_Delete_NotFoundMasksExistence(t *testing.T) {
 	t.Parallel()
 
@@ -555,75 +567,6 @@ func TestCardUsecase_Delete_NotFoundMasksExistence(t *testing.T) {
 
 	err := uc.Delete(authedCtx("u1"), "missing")
 	assertUnauthenticated(t, err)
-}
-
-// TestCardUsecase_Card_UnknownAndForeignAreIndistinguishable pins the
-// non-disclosure contract on the card read path: probing an unknown card id and
-// probing a card owned by another user must produce identical outcomes, so the
-// query cannot be used as an existence oracle over another user's card ids.
-func TestCardUsecase_Card_UnknownAndForeignAreIndistinguishable(t *testing.T) {
-	t.Parallel()
-
-	unknownUC := NewCardUsecase(&mockCardRepository{findErr: repository.ErrNotFound},
-		&mockCardgroupRepoForCard{},
-		newTestLogger(),
-	)
-	unknownCard, unknownErr := unknownUC.Card(authedCtx("u1"), "missing")
-
-	foreignUC := NewCardUsecase(&mockCardRepository{findResult: &domain.Card{
-		ID:          "card1",
-		CardgroupID: domain.CardgroupID("cg1"),
-	}},
-		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{
-			ID:      domain.CardgroupID("cg1"),
-			OwnerID: "u2",
-		}},
-		newTestLogger(),
-	)
-	foreignCard, foreignErr := foreignUC.Card(authedCtx("u1"), "card1")
-
-	assertUnauthenticated(t, unknownErr)
-	assertUnauthenticated(t, foreignErr)
-	if unknownCard != nil {
-		t.Fatalf("unknown id: expected nil card, got %+v", unknownCard)
-	}
-	if foreignCard != nil {
-		t.Fatalf("foreign card: expected nil card, got %+v", foreignCard)
-	}
-	if unknownErr.Error() != foreignErr.Error() {
-		t.Fatalf("outcomes are distinguishable: unknown=%q foreign=%q",
-			unknownErr.Error(), foreignErr.Error())
-	}
-}
-
-func TestCardUsecase_Card_FindByID_PropagatesCancelled(t *testing.T) {
-	t.Parallel()
-
-	uc := NewCardUsecase(&mockCardRepository{findErr: context.Canceled},
-		&mockCardgroupRepoForCard{},
-		newTestLogger(),
-	)
-
-	card, err := uc.Card(authedCtx("u1"), "card1")
-
-	if card != nil {
-		t.Fatalf("expected nil card, got %+v", card)
-	}
-	assertCancelled(t, err)
-	if err != context.Canceled {
-		t.Fatalf("expected unwrapped context.Canceled, got %T: %v", err, err)
-	}
-}
-
-func TestCardUsecase_RepoErrorsBecomeInternal(t *testing.T) {
-	t.Parallel()
-
-	uc := NewCardUsecase(&mockCardRepository{findErr: errors.New("db died")},
-		&mockCardgroupRepoForCard{},
-		newTestLogger(),
-	)
-	_, err := uc.Card(authedCtx("u1"), "card1")
-	assertInternalChain(t, err, "usecase: card: find by id")
 }
 
 func TestCardUsecase_ListCardsByCardgroupConnection_Anonymous(t *testing.T) {

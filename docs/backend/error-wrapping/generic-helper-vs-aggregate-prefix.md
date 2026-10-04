@@ -85,5 +85,5 @@ Error chain entries are grep anchors. A future contributor seeing
 wrapping happens inside `id.go`, not `swipe_record.go`.
 
 The same grep discipline that motivates the two-segment prefix for usecase files
-(`usecase: card: find by id`) motivates the package-level prefix for generic
+(`usecase: card: update front`) motivates the package-level prefix for generic
 domain helpers: the prefix should name the producing site, not the consuming site.
