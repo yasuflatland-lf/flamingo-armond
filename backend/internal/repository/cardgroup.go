@@ -83,11 +83,10 @@ type CardgroupRepository interface {
 		first int,
 		search *string,
 	) ([]*domain.Cardgroup, int64, error)
-	// CountByOwner returns the total number of cardgroups owned by ownerID
-	// matching the optional search predicate. Used by the filter-less callers
-	// that pass a nil search (the stats dashboard); the paginated connection
-	// reads its filtered total from FindPageByOwner instead.
-	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
+	// CountByOwner returns the total number of cardgroups owned by ownerID.
+	// Used by the filter-less callers (the stats dashboard); the paginated
+	// connection reads its filtered total from FindPageByOwner instead.
+	CountByOwner(ctx context.Context, ownerID string) (int64, error)
 	// CountByOwnerTx counts every cardgroup owned by ownerID on tx, so a caller
 	// holding AcquireUserCardgroupLockTx reads the count on the locked connection.
 	CountByOwnerTx(ctx context.Context, tx *gorm.DB, ownerID string) (int64, error)
@@ -199,14 +198,11 @@ func (r *cardgroupRepo) FindPageByOwner(
 	return out, total, nil
 }
 
-// CountByOwner returns the total number of cardgroups owned by ownerID
-// matching the optional search predicate. The COUNT scopes by owner_id so
-// a tenant cannot observe other tenants' aggregate sizes.
-func (r *cardgroupRepo) CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error) {
+// CountByOwner returns the total number of cardgroups owned by ownerID.
+// The COUNT scopes by owner_id so a tenant cannot observe other tenants'
+// aggregate sizes.
+func (r *cardgroupRepo) CountByOwner(ctx context.Context, ownerID string) (int64, error) {
 	q := r.db.WithContext(ctx).Model(&gormCardgroup{}).Where("owner_id = ?", ownerID)
-	if pattern, ok := searchLikePattern(search); ok {
-		q = q.Where("name ILIKE ?", pattern)
-	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
 		return 0, eris.Wrap(err, "repository: cardgroup: count by owner")
