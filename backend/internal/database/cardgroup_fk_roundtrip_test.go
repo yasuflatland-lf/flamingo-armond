@@ -42,16 +42,18 @@ func TestSwipeRecordsCardgroupFKDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back eight migrations newest-first:
+	// Step back fourteen migrations newest-first:
+	// drop_swipe_records_after_state, drop_ping_records_updated_at,
+	// cardgroups_owner_updated_at_index, drop_redundant_fk_indexes,
+	// drop_user_card_fsrs_last_rating, drop_swipe_records_user_cardgroup_index,
 	// reset_legacy_new_card_ratio, revoke_client_writes,
 	// lower_new_card_ratio_default, tighten_new_card_ratio_check,
-	// realign_fsrs_snapshot_columns_to_v4,
-	// widen_updated_at_triggers_to_insert,
-	// widen_text_length_checks, then add_cardgroup_fk_to_swipe_records (the target).
-	// The Steps(1) below
+	// realign_fsrs_snapshot_columns_to_v4, widen_updated_at_triggers_to_insert,
+	// widen_text_length_checks, then add_cardgroup_fk_to_swipe_records (the
+	// target). The Steps(1) below
 	// re-applies only the cardgroup FK; the t.Cleanup restores the rest. Bump
 	// this count when adding migrations after add_cardgroup_fk_to_swipe_records.
-	if err := m.Steps(-8); err != nil {
+	if err := m.Steps(-14); err != nil {
 		t.Fatalf("migrate down cardgroup fk migration: %v", err)
 	}
 	if _, ok := swipeRecordsCardgroupFKDeleteRule(t, ctx, sqlDB); ok {
@@ -59,11 +61,6 @@ func TestSwipeRecordsCardgroupFKDownUpRoundtrip(t *testing.T) {
 	}
 	if _, ok := swipeRecordsIndexDef(t, ctx, sqlDB, swipeRecordsCardgroupIndexName); ok {
 		t.Fatalf("index %s survived the down migration", swipeRecordsCardgroupIndexName)
-	}
-	// The composite from the column-adding migration must survive: the down path
-	// drops only what its own up path created.
-	if _, ok := swipeRecordsIndexDef(t, ctx, sqlDB, "idx_swipe_records_user_cardgroup"); !ok {
-		t.Fatal("idx_swipe_records_user_cardgroup was dropped by an unrelated down migration")
 	}
 	requireColumnExists(t, ctx, sqlDB, "swipe_records", "cardgroup_id")
 

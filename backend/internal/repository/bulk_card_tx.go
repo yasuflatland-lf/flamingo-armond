@@ -129,34 +129,6 @@ UPDATE cards SET front = t.new_front FROM targets t WHERE cards.id = t.id`)
 	return res.RowsAffected, nil
 }
 
-func (r *cardRepo) DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error) {
-	if len(ids) == 0 {
-		return 0, nil
-	}
-	// Owner check at SQL: cards.cardgroup_id must reference a cardgroup the
-	// user owns. The subselect is the SOLE ownership gate — the usecase does
-	// no read-side owner check, so foreign-owned ids in the list are silently
-	// filtered out here. Do not remove the cardgroup_id IN (...) clause
-	// without adding an equivalent guard upstream.
-	res := tx.WithContext(ctx).
-		Where("id IN ? AND cardgroup_id IN (?)", ids,
-			tx.Model(&gormCardgroup{}).Select("id").Where("owner_id = ?", ownerID),
-		).
-		Delete(&gormCard{})
-	if res.Error != nil {
-		return 0, eris.Wrap(res.Error, "repository: bulk delete cards")
-	}
-	return res.RowsAffected, nil
-}
-
-func (r *cardRepo) DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error) {
-	affected, err := deleteByGroupAndFrontsTx(ctx, tx, cardgroupID, fronts, "cards", "cardgroup_id")
-	if err != nil {
-		return 0, eris.Wrap(err, "repository: card: delete by cardgroup and fronts")
-	}
-	return affected, nil
-}
-
 // upsertCardRow is the domain-agnostic, normalized representation of a card row
 // consumed by upsertManyTx. It mirrors exactly the columns that upsertManyTx
 // writes — (id, <fkColumn>, front, back, created_at, position) — so
@@ -262,8 +234,9 @@ func upsertChunkTx(ctx context.Context, tx *gorm.DB, rows []upsertCardRow, table
 }
 
 // listFrontsByGroupTx returns the sorted distinct-by-row `front` values for
-// the given group, scoped by fkColumn = groupID, ordered front ASC. Shared by
-// cardRepo and the master_card repository. The caller owns the layer-prefix wrap.
+// the given group, scoped by fkColumn = groupID, ordered front ASC. Used by
+// masterCardRepo; kept table-parameterized alongside upsertManyTx. The caller
+// owns the layer-prefix wrap.
 func listFrontsByGroupTx(ctx context.Context, tx *gorm.DB, groupID, tableName, fkColumn string) ([]string, error) {
 	var fronts []string
 	if err := tx.WithContext(ctx).
@@ -278,7 +251,7 @@ func listFrontsByGroupTx(ctx context.Context, tx *gorm.DB, groupID, tableName, f
 
 // deleteByGroupAndFrontsTx hard-deletes rows matching the scoped (fkColumn, front) natural key,
 // one statement per bulkStatementChunkRows fronts on tx, which must be a transaction so a failed
-// chunk rolls back the earlier ones. Shared by cardRepo and masterCardRepo; the caller owns the
+// chunk rolls back the earlier ones. Used by masterCardRepo; the caller owns the
 // layer-prefix wrap. Empty fronts returns (0, nil) without a query: GORM v2 drops an empty `IN ?`,
 // deleting every row in the group (`.claude/rules/go-library-gotchas.md` § GORM empty IN).
 func deleteByGroupAndFrontsTx(ctx context.Context, tx *gorm.DB, groupID string, fronts []string, tableName, fkColumn string) (int64, error) {

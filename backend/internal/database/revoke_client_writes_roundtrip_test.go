@@ -29,9 +29,12 @@ func TestRevokeClientWritesDownUpRoundtrip(t *testing.T) {
 			t.Logf("migrate close: src_err=%v db_err=%v", srcErr, dbErr)
 		}
 	}()
-	// reset_legacy_new_card_ratio sits above revoke_client_writes, so two steps
-	// reach it.
-	if err := m.Steps(-2); err != nil {
+	// drop_swipe_records_after_state, drop_ping_records_updated_at,
+	// cardgroups_owner_updated_at_index, drop_redundant_fk_indexes,
+	// drop_user_card_fsrs_last_rating, drop_swipe_records_user_cardgroup_index
+	// and reset_legacy_new_card_ratio sit above revoke_client_writes, so eight
+	// steps reach it.
+	if err := m.Steps(-8); err != nil {
 		t.Fatalf("migrate down revoke_client_writes: %v", err)
 	}
 	requireAPIWritePrivileges(t, ctx, sqlDB, true)

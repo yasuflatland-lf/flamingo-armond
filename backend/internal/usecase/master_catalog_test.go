@@ -47,26 +47,19 @@ type mockMasterCatalogRepository struct {
 }
 
 type findPublishedPageCall struct {
-	After   *repository.MasterCatalogCursor
-	Before  *repository.MasterCatalogCursor
-	First   int
-	Last    int
-	OrderBy repository.MasterCatalogOrderBy
-	Dir     repository.SortOrder
-	Search  *string
+	After  *repository.MasterCatalogCursor
+	First  int
+	Search *string
 }
 
 func (m *mockMasterCatalogRepository) FindPublishedPage(
 	_ context.Context,
-	after, before *repository.MasterCatalogCursor,
-	first, last int,
-	orderBy repository.MasterCatalogOrderBy,
-	dir repository.SortOrder,
+	after *repository.MasterCatalogCursor,
+	first int,
 	search *string,
 ) ([]*repository.MasterCatalogItem, int64, error) {
 	m.findPageCalls = append(m.findPageCalls, findPublishedPageCall{
-		After: after, Before: before, First: first, Last: last,
-		OrderBy: orderBy, Dir: dir, Search: search,
+		After: after, First: first, Search: search,
 	})
 	if m.findPageErr != nil {
 		return nil, 0, m.findPageErr
@@ -93,15 +86,12 @@ func (m *mockMasterCatalogRepository) FindByID(_ context.Context, id string) (*d
 
 func (m *mockMasterCatalogRepository) FindPageAnyStatus(
 	_ context.Context,
-	after, before *repository.MasterCatalogCursor,
-	first, last int,
-	orderBy repository.MasterCatalogOrderBy,
-	dir repository.SortOrder,
+	after *repository.MasterCatalogCursor,
+	first int,
 	search *string,
 ) ([]*repository.MasterCatalogItem, int64, error) {
 	m.findAdminCalls = append(m.findAdminCalls, findPublishedPageCall{
-		After: after, Before: before, First: first, Last: last,
-		OrderBy: orderBy, Dir: dir, Search: search,
+		After: after, First: first, Search: search,
 	})
 	if m.findAdminErr != nil {
 		return nil, 0, m.findAdminErr
@@ -170,7 +160,7 @@ func TestNewMasterCatalogUsecase_NilRepoPanics(t *testing.T) {
 			t.Fatal("expected panic on nil repo")
 		}
 	}()
-	NewMasterCatalogUsecase(nil, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	NewMasterCatalogUsecase(nil, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 }
 
 func TestNewMasterCatalogUsecase_NilDeckUCPanics(t *testing.T) {
@@ -179,16 +169,7 @@ func TestNewMasterCatalogUsecase_NilDeckUCPanics(t *testing.T) {
 			t.Fatal("expected panic on nil deckUC")
 		}
 	}()
-	NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, nil, newTestAdminGate(true), newTestLogger())
-}
-
-func TestNewMasterCatalogUsecase_NilLoggerPanics(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic on nil logger")
-		}
-	}()
-	NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), nil)
+	NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, nil, newTestAdminGate(true))
 }
 
 // ---------------------------------------------------------------------------
@@ -196,7 +177,7 @@ func TestNewMasterCatalogUsecase_NilLoggerPanics(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestListPublishedConnection_Unauthenticated(t *testing.T) {
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.ListPublishedConnection(context.Background(), MasterCatalogConnectionInput{})
 	if !errors.Is(err, ucerr.ErrUnauthenticated) {
@@ -216,7 +197,7 @@ func TestListPublishedConnection_Forward_TrimsExtraRow_SetsHasNext(t *testing.T)
 			catalogItem("a", 10), catalogItem("b", 20), catalogItem("c", 30),
 		},
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	out, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
 		First: intPtr(2),
@@ -243,7 +224,7 @@ func TestListPublishedConnection_Forward_TrimsExtraRow_SetsHasNext(t *testing.T)
 		t.Fatalf("want cardCount 10 preserved, got %d", out.Items[0].CardCount)
 	}
 
-	// Verify the +1 fetch reached the repo with the default SORT_ORDER/ASC.
+	// Verify the +1 fetch reached the repo under the fixed (sort_order, ASC).
 	if len(repo.findPageCalls) != 1 {
 		t.Fatalf("want 1 FindPublishedPage call, got %d", len(repo.findPageCalls))
 	}
@@ -251,11 +232,8 @@ func TestListPublishedConnection_Forward_TrimsExtraRow_SetsHasNext(t *testing.T)
 	if call.First != 3 {
 		t.Fatalf("want repo first=3 (+1 trick), got %d", call.First)
 	}
-	if call.OrderBy != repository.MasterCatalogOrderBySortOrder {
-		t.Fatalf("want default orderBy sort_order, got %q", call.OrderBy)
-	}
-	if call.Dir != repository.SortAsc {
-		t.Fatalf("want default dir ASC, got %q", call.Dir)
+	if want := (PageOrdering{OrderBy: "sort_order", Direction: "ASC"}); out.Ordering != want {
+		t.Fatalf("want ordering %+v, got %+v", want, out.Ordering)
 	}
 }
 
@@ -264,7 +242,7 @@ func TestListPublishedConnection_Forward_NoExtraRow_NoNextPage(t *testing.T) {
 		findPageTotal:  2,
 		findPageResult: []*repository.MasterCatalogItem{catalogItem("a", 1), catalogItem("b", 2)},
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	out, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(5)})
 	if err != nil {
@@ -279,96 +257,45 @@ func TestListPublishedConnection_Forward_NoExtraRow_NoNextPage(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Backward pagination
+// Relay argument guard
 // ---------------------------------------------------------------------------
 
-func TestListPublishedConnection_Backward_TrimsLeadingRow_SetsHasPrev(t *testing.T) {
-	// Cursor hydration requires a published row for `before`.
-	cur := cursor.Encode("z")
+// TestListPublishedConnection_AfterWithoutFirst pins the resolveRelayPage wiring
+// in listMasterCatalogCore: a resolvable after cursor with no first is rejected
+// with BAD_USER_INPUT on "after" and the page query never runs.
+func TestListPublishedConnection_AfterWithoutFirst(t *testing.T) {
+	t.Parallel()
 	repo := &mockMasterCatalogRepository{
-		findPageTotal: 10,
 		findByIDFn: func(id string) (*domain.MasterCardgroup, error) {
-			return catalogItem(id, 0).Cardgroup, nil
-		},
-		// last=2 → repo asked for 3; repo (already reversed) returns 3 → trim leading.
-		findPageResult: []*repository.MasterCatalogItem{
-			catalogItem("x", 1), catalogItem("y", 2), catalogItem("w", 3),
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Pub"), Status: domain.MasterStatusPublished}, nil
 		},
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
-	out, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
-		Last:   intPtr(2),
-		Before: &cur,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(out.Items) != 2 {
-		t.Fatalf("want 2 items after backward trim, got %d", len(out.Items))
-	}
-	if !out.HasPrev {
-		t.Fatal("want HasPrev=true (extra row trimmed)")
-	}
-	if !out.HasNext {
-		t.Fatal("want HasNext=true (before cursor present)")
-	}
-	// Leading row trimmed: keep the last 2 (y, w).
-	if out.Items[0].Cardgroup.ID != "y" || out.Items[1].Cardgroup.ID != "w" {
-		t.Fatalf("want [y w] after leading trim, got [%s %s]",
-			out.Items[0].Cardgroup.ID, out.Items[1].Cardgroup.ID)
-	}
-
-	call := repo.findPageCalls[0]
-	if call.Last != 3 {
-		t.Fatalf("want repo last=3 (+1 trick), got %d", call.Last)
-	}
-	if call.Before == nil || call.Before.ID != "z" {
-		t.Fatalf("want before cursor id=z hydrated, got %+v", call.Before)
+	after := cursor.Encode("m1")
+	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{After: &after})
+	assertValidationError(t, err, "after", "after requires first")
+	if len(repo.findPageCalls) != 0 {
+		t.Fatalf("page query must not run, got %d calls", len(repo.findPageCalls))
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Order resolution
-// ---------------------------------------------------------------------------
-
-func TestListPublishedConnection_OrderByName_Desc(t *testing.T) {
-	repo := &mockMasterCatalogRepository{findPageTotal: 0, findPageResult: nil}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
-
-	ob := MasterCatalogOrderByName
-	dir := SortOrderDesc
-	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
-		First:          intPtr(3),
-		OrderBy:        &ob,
-		OrderDirection: &dir,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+// TestListAdminConnection_AfterWithoutFirst is the admin-surface twin of
+// TestListPublishedConnection_AfterWithoutFirst (a DRAFT cursor is valid here).
+func TestListAdminConnection_AfterWithoutFirst(t *testing.T) {
+	t.Parallel()
+	repo := &mockMasterCatalogRepository{
+		findByIDFn: func(id string) (*domain.MasterCardgroup, error) {
+			return &domain.MasterCardgroup{ID: id, Name: domain.CardgroupName("Draft"), Status: domain.MasterStatusDraft}, nil
+		},
 	}
-	call := repo.findPageCalls[0]
-	if call.OrderBy != repository.MasterCatalogOrderByName {
-		t.Fatalf("want repo orderBy name, got %q", call.OrderBy)
-	}
-	if call.Dir != repository.SortDesc {
-		t.Fatalf("want repo dir DESC, got %q", call.Dir)
-	}
-}
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
-// ---------------------------------------------------------------------------
-// Page-size validation
-// ---------------------------------------------------------------------------
-
-func TestListPublishedConnection_FirstAndLast_Rejected(t *testing.T) {
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
-
-	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
-		First: intPtr(2),
-		Last:  intPtr(2),
-	})
-	var ve *ucerr.ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("want ValidationError, got %v", err)
+	after := cursor.Encode("m1")
+	_, err := uc.ListAdminConnection(authedCtx("admin1"), MasterCatalogConnectionInput{After: &after})
+	assertValidationError(t, err, "after", "after requires first")
+	if len(repo.findAdminCalls) != 0 {
+		t.Fatalf("page query must not run, got %d calls", len(repo.findAdminCalls))
 	}
 }
 
@@ -381,7 +308,7 @@ func TestListPublishedConnection_TotalCountOnlyRequest(t *testing.T) {
 		findPageTotal:  42,
 		findPageResult: []*repository.MasterCatalogItem{},
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	// first=0 → no rows fetched, but the page method still runs once: assemblePage
 	// always calls the fetch closure, and findCatalogPage counts before its zero-page
@@ -404,7 +331,7 @@ func TestListPublishedConnection_TotalCountOnlyRequest(t *testing.T) {
 
 func TestListPublishedConnection_InvalidCursor(t *testing.T) {
 	repo := &mockMasterCatalogRepository{findPageTotal: 0}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	bad := "%%%not-a-cursor"
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
@@ -430,7 +357,7 @@ func TestListPublishedConnection_CursorNotPublished(t *testing.T) {
 			return nil, repository.ErrNotFound
 		},
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
 		First: intPtr(2),
@@ -448,7 +375,7 @@ func TestListPublishedConnection_CursorNotPublished(t *testing.T) {
 
 func TestListPublishedConnection_FindPageError_Wrapped(t *testing.T) {
 	repo := &mockMasterCatalogRepository{findPageTotal: 1, findPageErr: eris.New("db down")}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(2)})
 	if err == nil {
@@ -472,7 +399,7 @@ func TestListPublishedConnection_FindPageError_Wrapped(t *testing.T) {
 func TestListPublishedConnection_SearchNormalizedToNil(t *testing.T) {
 	t.Parallel()
 	repo := &mockMasterCatalogRepository{}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	blank := "   "
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
@@ -490,7 +417,7 @@ func TestListPublishedConnection_SearchNormalizedToNil(t *testing.T) {
 func TestListPublishedConnection_SearchTrimmed(t *testing.T) {
 	t.Parallel()
 	repo := &mockMasterCatalogRepository{}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	raw := "  hello  "
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
@@ -508,7 +435,7 @@ func TestListPublishedConnection_SearchTrimmed(t *testing.T) {
 func TestListAdminConnection_SearchNormalizedToNil(t *testing.T) {
 	t.Parallel()
 	repo := &mockMasterCatalogRepository{}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	blank := "   "
 	_, err := uc.ListAdminConnection(authedCtx("admin1"), MasterCatalogConnectionInput{
@@ -526,7 +453,7 @@ func TestListAdminConnection_SearchNormalizedToNil(t *testing.T) {
 func TestListAdminConnection_SearchTrimmed(t *testing.T) {
 	t.Parallel()
 	repo := &mockMasterCatalogRepository{}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	raw := "  hello  "
 	_, err := uc.ListAdminConnection(authedCtx("admin1"), MasterCatalogConnectionInput{
@@ -563,7 +490,7 @@ func TestListPublishedConnection_CursorRejectsDraftViaPublishedScope(t *testing.
 			return nil, repository.ErrNotFound
 		},
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
 		First: intPtr(2),
@@ -594,63 +521,44 @@ func TestListAdminConnection_CursorAcceptsDraftViaFindByID(t *testing.T) {
 			return nil, repository.ErrNotFound
 		},
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.ListAdminConnection(authedCtx("admin1"), MasterCatalogConnectionInput{
-		Last:   intPtr(2),
-		Before: &cur,
+		First: intPtr(2),
+		After: &cur,
 	})
 	if err != nil {
 		t.Fatalf("admin cursor must hydrate a draft via FindByID, got %v", err)
 	}
-	if repo.findAdminCalls[0].Before == nil || repo.findAdminCalls[0].Before.ID != "draft-id" {
-		t.Fatalf("want before cursor id=draft-id hydrated, got %+v", repo.findAdminCalls[0].Before)
+	if repo.findAdminCalls[0].After == nil || repo.findAdminCalls[0].After.ID != "draft-id" {
+		t.Fatalf("want after cursor id=draft-id hydrated, got %+v", repo.findAdminCalls[0].After)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Order resolver direct unit coverage
+// Fixed ordering
 // ---------------------------------------------------------------------------
 
-func TestResolveMasterCatalogOrderBy_Defaults(t *testing.T) {
-	field, dir, err := resolveMasterCatalogOrderBy(nil, nil)
+// TestMasterCatalog_FixedOrdering_SortOrderAsc verifies both catalog
+// connections serve every page under the fixed (sort_order, ASC) ordering.
+func TestMasterCatalog_FixedOrdering_SortOrderAsc(t *testing.T) {
+	want := PageOrdering{OrderBy: "sort_order", Direction: "ASC"}
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
+
+	pub, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(3)})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if field != repository.MasterCatalogOrderBySortOrder {
-		t.Fatalf("want default sort_order, got %q", field)
+	if pub.Ordering != want {
+		t.Fatalf("published ordering: want %+v, got %+v", want, pub.Ordering)
 	}
-	if dir != repository.SortAsc {
-		t.Fatalf("want default ASC, got %q", dir)
-	}
-}
 
-func TestResolveMasterCatalogOrderBy_Invalid(t *testing.T) {
-	bad := MasterCatalogOrderBy("BOGUS")
-	_, _, err := resolveMasterCatalogOrderBy(&bad, nil)
-	var ve *ucerr.ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("want ValidationError for bogus orderBy, got %v", err)
-	}
-}
-
-func TestResolveMasterCatalogPageSize_ClampsAtMax(t *testing.T) {
-	first, _, err := resolveStandardPageSize(intPtr(1000), nil)
+	admin, err := uc.ListAdminConnection(authedCtx("admin1"), MasterCatalogConnectionInput{First: intPtr(3)})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if first != maxPageSize {
-		t.Fatalf("want clamp to %d, got %d", maxPageSize, first)
-	}
-}
-
-func TestResolveMasterCatalogPageSize_DefaultWhenAbsent(t *testing.T) {
-	first, last, err := resolveStandardPageSize(nil, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if first != defaultPageSize || last != 0 {
-		t.Fatalf("want default first=%d last=0, got first=%d last=%d", defaultPageSize, first, last)
+	if admin.Ordering != want {
+		t.Fatalf("admin ordering: want %+v, got %+v", want, admin.Ordering)
 	}
 }
 
@@ -703,7 +611,7 @@ func (m *mockCopyMasterToUserUC) PreviewMergeMasterIntoCardgroup(_ context.Conte
 }
 
 func TestImportMaster_Unauthenticated(t *testing.T) {
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.ImportMaster(context.Background(), "m1")
 	if !errors.Is(err, ucerr.ErrUnauthenticated) {
@@ -719,7 +627,7 @@ func TestImportMaster_UnknownOrDraft_ReturnsNotFoundOutcome(t *testing.T) {
 		t.Fatal("copy must not run when the master is not published")
 		return CopyMasterToUserResult{}, nil
 	}}
-	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true))
 
 	out, err := uc.ImportMaster(authedCtx("u1"), "missing")
 	if err != nil {
@@ -746,7 +654,7 @@ func TestImportMaster_MasterUnpublishedMidFlight_ReturnsNotFoundOutcome(t *testi
 	copyUC := &mockCopyMasterToUserUC{fn: func(context.Context, string, string, bool) (CopyMasterToUserResult, error) {
 		return CopyMasterToUserResult{}, repository.ErrNotFound
 	}}
-	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true))
 
 	out, err := uc.ImportMaster(authedCtx("u1"), "m1")
 	if err != nil {
@@ -772,7 +680,7 @@ func TestImportMaster_Published_CopiesAndReturnsCardgroup(t *testing.T) {
 		gotMaster, gotOwner = masterID, ownerID
 		return CopyMasterToUserResult{Cardgroup: want}, nil
 	}}
-	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true))
 
 	out, err := uc.ImportMaster(authedCtx("u1"), "m1")
 	if err != nil {
@@ -805,7 +713,7 @@ func TestImportMaster_NonAdminAtLimit_ReturnsLimitOutcome(t *testing.T) {
 		gotEnforce = enforceQuota
 		return CopyMasterToUserResult{LimitReached: want}, nil
 	}}
-	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(false), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(false))
 
 	out, err := uc.ImportMaster(authedCtx("u1"), "m1")
 	if err != nil {
@@ -835,7 +743,7 @@ func TestImportMaster_NonAdminAtLimit_UnknownMaster_ReturnsNotFound(t *testing.T
 		t.Fatal("copy (and therefore the quota) must not run for an unknown master")
 		return CopyMasterToUserResult{}, nil
 	}}
-	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(false), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(false))
 
 	out, err := uc.ImportMaster(authedCtx("u1"), "missing")
 	if err != nil {
@@ -867,7 +775,7 @@ func TestImportMaster_AdminAtLimit_Succeeds(t *testing.T) {
 		gotEnforce = enforceQuota
 		return CopyMasterToUserResult{Cardgroup: want}, nil
 	}}
-	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true))
 
 	out, err := uc.ImportMaster(authedCtx("admin-1"), "m1")
 	if err != nil {
@@ -897,7 +805,7 @@ func TestImportMaster_IsAdminError_Wrapped(t *testing.T) {
 		t.Fatal("copy must not run when the admin check fails")
 		return CopyMasterToUserResult{}, nil
 	}}
-	uc := NewMasterCatalogUsecase(repo, copyUC, NewAdminGate(&mockAdminChecker{err: errors.New("auth down")}), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, copyUC, NewAdminGate(&mockAdminChecker{err: errors.New("auth down")}))
 
 	_, err := uc.ImportMaster(authedCtx("u1"), "m1")
 	assertInternalChain(t, err, "usecase: master catalog: import: check admin")
@@ -916,7 +824,7 @@ func TestImportMaster_IsAdminCancelled_IdentityPreserved(t *testing.T) {
 		t.Fatal("copy must not run when the admin check is cancelled")
 		return CopyMasterToUserResult{}, nil
 	}}
-	uc := NewMasterCatalogUsecase(repo, copyUC, NewAdminGate(&mockAdminChecker{err: context.Canceled}), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, copyUC, NewAdminGate(&mockAdminChecker{err: context.Canceled}))
 
 	_, err := uc.ImportMaster(authedCtx("u1"), "m1")
 	if err != context.Canceled {
@@ -933,7 +841,7 @@ func TestImportMaster_CopyError_Wrapped(t *testing.T) {
 	copyUC := &mockCopyMasterToUserUC{fn: func(context.Context, string, string, bool) (CopyMasterToUserResult, error) {
 		return CopyMasterToUserResult{}, eris.New("boom")
 	}}
-	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true))
 
 	_, err := uc.ImportMaster(authedCtx("u1"), "m1")
 	assertInternalChain(t, err, "usecase: master catalog: import: copy master to user")
@@ -955,7 +863,7 @@ func TestImportMaster_DeletedOwner_ReturnsUnauthenticated(t *testing.T) {
 	copyUC := &mockCopyMasterToUserUC{fn: func(context.Context, string, string, bool) (CopyMasterToUserResult, error) {
 		return CopyMasterToUserResult{}, eris.Wrap(repository.ErrCardgroupOwnerNotFound, "usecase: master deck: copy master to user")
 	}}
-	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true))
 
 	out, err := uc.ImportMaster(authedCtx("deleted-user"), "m1")
 
@@ -973,7 +881,7 @@ func TestSeedDefaultStarters_DeletedOwner_ReturnsUnauthenticated(t *testing.T) {
 	deck := &mockCopyMasterToUserUC{
 		seedErr: eris.Wrap(repository.ErrCardgroupOwnerNotFound, "usecase: master deck: seed for new user"),
 	}
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, deck, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, deck, newTestAdminGate(true))
 
 	_, err := uc.SeedDefaultStarters(authedCtx("deleted-user"))
 
@@ -993,7 +901,7 @@ func TestImportMaster_VerifyPublishedError_Wrapped(t *testing.T) {
 		t.Fatal("copy must not run when the published-check fails")
 		return CopyMasterToUserResult{}, nil
 	}}
-	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true))
 
 	_, err := uc.ImportMaster(authedCtx("u1"), "m1")
 	assertInternalChain(t, err, "usecase: master catalog: import: verify published")
@@ -1008,7 +916,7 @@ func TestImportMaster_FindPublishedByID_ContextCancelled_PassesThrough(t *testin
 			return nil, context.Canceled
 		},
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.ImportMaster(authedCtx("u1"), "m1")
 	assertCancelled(t, err)
@@ -1027,7 +935,7 @@ func TestImportMaster_CopyMasterToUser_ContextCancelled_PassesThrough(t *testing
 	copyUC := &mockCopyMasterToUserUC{fn: func(context.Context, string, string, bool) (CopyMasterToUserResult, error) {
 		return CopyMasterToUserResult{}, context.Canceled
 	}}
-	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, copyUC, newTestAdminGate(true))
 
 	_, err := uc.ImportMaster(authedCtx("u1"), "m1")
 	assertCancelled(t, err)
@@ -1041,7 +949,7 @@ func TestImportMaster_CopyMasterToUser_ContextCancelled_PassesThrough(t *testing
 // ---------------------------------------------------------------------------
 
 func TestFindPublishedMaster_Unauthenticated(t *testing.T) {
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.FindPublishedMaster(context.Background(), "m1")
 	if !errors.Is(err, ucerr.ErrUnauthenticated) {
@@ -1056,7 +964,7 @@ func TestFindPublishedMaster_DraftOrUnknown_ReturnsNil(t *testing.T) {
 	repo := &mockMasterCatalogRepository{
 		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, repository.ErrNotFound },
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	got, err := uc.FindPublishedMaster(authedCtx("u1"), "missing")
 	if err != nil {
@@ -1079,7 +987,7 @@ func TestFindPublishedMaster_Success(t *testing.T) {
 		// Non-zero so a dropped CountCards hydration fails the assertion below.
 		countCardsRes: 7,
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	got, err := uc.FindPublishedMaster(authedCtx("u1"), "m1")
 	if err != nil {
@@ -1099,7 +1007,7 @@ func TestFindPublishedMaster_InfraError_Wrapped(t *testing.T) {
 	repo := &mockMasterCatalogRepository{
 		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, eris.New("db down") },
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.FindPublishedMaster(authedCtx("u1"), "m1")
 	assertInternalChain(t, err, "usecase: master catalog: find published master")
@@ -1112,7 +1020,7 @@ func TestFindPublishedMaster_ContextCancelled_PassesThrough(t *testing.T) {
 	repo := &mockMasterCatalogRepository{
 		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, context.Canceled },
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.FindPublishedMaster(authedCtx("u1"), "m1")
 	assertCancelled(t, err)
@@ -1129,7 +1037,7 @@ func TestFindPublishedMaster_CountCardsInfraError_Wrapped(t *testing.T) {
 		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) { return deck, nil },
 		countCardsErr:       eris.New("count down"),
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.FindPublishedMaster(authedCtx("u1"), "m1")
 	assertInternalChain(t, err, "usecase: master catalog: find published master: count cards")
@@ -1143,7 +1051,7 @@ func TestFindPublishedMaster_CountCards_PropagatesCancelled(t *testing.T) {
 		findPublishedByIDFn: func(string) (*domain.MasterCardgroup, error) { return deck, nil },
 		countCardsErr:       context.Canceled,
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.FindPublishedMaster(authedCtx("u1"), "m1")
 	assertCancelled(t, err)
@@ -1152,40 +1060,12 @@ func TestFindPublishedMaster_CountCards_PropagatesCancelled(t *testing.T) {
 	}
 }
 
-func TestListPublishedConnection_AfterWithLast_Rejected(t *testing.T) {
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
-
-	after := "v1:abc"
-	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
-		Last:  intPtr(2),
-		After: &after,
-	})
-	var ve *ucerr.ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("want ValidationError for after+last, got %v", err)
-	}
-}
-
-func TestListAdminConnection_AfterWithLast_Rejected(t *testing.T) {
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
-
-	after := "v1:abc"
-	_, err := uc.ListAdminConnection(authedCtx("u1"), MasterCatalogConnectionInput{
-		Last:  intPtr(2),
-		After: &after,
-	})
-	var ve *ucerr.ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("want ValidationError for after+last, got %v", err)
-	}
-}
-
 // ---------------------------------------------------------------------------
 // SeedDefaultStarters
 // ---------------------------------------------------------------------------
 
 func TestSeedDefaultStarters_Unauthenticated_ReturnsErrUnauthenticated(t *testing.T) {
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 	_, err := uc.SeedDefaultStarters(context.Background())
 	if !errors.Is(err, ucerr.ErrUnauthenticated) {
 		t.Fatalf("expected ErrUnauthenticated, got %v", err)
@@ -1195,7 +1075,7 @@ func TestSeedDefaultStarters_Unauthenticated_ReturnsErrUnauthenticated(t *testin
 func TestSeedDefaultStarters_HappyPath_ReturnsSeededCardgroups(t *testing.T) {
 	want := []*domain.Cardgroup{{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1", Name: domain.CardgroupName("Starter")}}
 	deck := &mockCopyMasterToUserUC{seedResult: want}
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, deck, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, deck, newTestAdminGate(true))
 	got, err := uc.SeedDefaultStarters(authedCtx("user-1"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1207,7 +1087,7 @@ func TestSeedDefaultStarters_HappyPath_ReturnsSeededCardgroups(t *testing.T) {
 
 func TestSeedDefaultStarters_NoDefaults_ReturnsEmpty(t *testing.T) {
 	deck := &mockCopyMasterToUserUC{seedResult: nil}
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, deck, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, deck, newTestAdminGate(true))
 	got, err := uc.SeedDefaultStarters(authedCtx("user-1"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1219,7 +1099,7 @@ func TestSeedDefaultStarters_NoDefaults_ReturnsEmpty(t *testing.T) {
 
 func TestSeedDefaultStarters_InfraError_WrapsChain(t *testing.T) {
 	deck := &mockCopyMasterToUserUC{seedErr: eris.New("db down")}
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, deck, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, deck, newTestAdminGate(true))
 	_, err := uc.SeedDefaultStarters(authedCtx("user-1"))
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -1229,7 +1109,7 @@ func TestSeedDefaultStarters_InfraError_WrapsChain(t *testing.T) {
 
 func TestSeedDefaultStarters_ContextCancelled_PassesThrough(t *testing.T) {
 	deck := &mockCopyMasterToUserUC{seedErr: context.Canceled}
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, deck, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, deck, newTestAdminGate(true))
 	_, err := uc.SeedDefaultStarters(authedCtx("user-1"))
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
@@ -1249,7 +1129,6 @@ func TestMasterCatalogUsecase_MergeMaster_DraftMaster_NotFound(t *testing.T) {
 		&mockMasterCatalogRepository{},
 		&mockCopyMasterToUserUC{},
 		newTestAdminGate(true),
-		newTestLogger(),
 	)
 	out, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
 	if err != nil {
@@ -1278,7 +1157,7 @@ func TestMasterCatalogUsecase_MergeMaster_Success_PassesCounts(t *testing.T) {
 	deck := &mockCopyMasterToUserUC{
 		mergeResult: &MergeMasterResult{Cardgroup: cg, Added: 5, Updated: 2},
 	}
-	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true))
 
 	out, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
 	if err != nil {
@@ -1307,7 +1186,6 @@ func TestMasterCatalogUsecase_MergeMaster_Unauthenticated(t *testing.T) {
 		&mockMasterCatalogRepository{},
 		&mockCopyMasterToUserUC{},
 		newTestAdminGate(true),
-		newTestLogger(),
 	)
 	// context.Background() carries no auth user.
 	_, err := uc.MergeMaster(context.Background(), "master-id", "cg-id")
@@ -1331,7 +1209,7 @@ func TestMasterCatalogUsecase_MergeMaster_WrappedValidationError_StillClassifies
 	deck := &mockCopyMasterToUserUC{
 		mergeErr: ucerr.NewValidationError("cardgroupId", "cardgroup not found"),
 	}
-	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true))
 
 	_, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
 	if err == nil {
@@ -1361,7 +1239,7 @@ func TestMasterCatalogUsecase_MergeMaster_WrappedUnauthenticated_StillClassifies
 	deck := &mockCopyMasterToUserUC{
 		mergeErr: ucerr.ErrUnauthenticated,
 	}
-	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true))
 
 	_, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
 	if !errors.Is(err, ucerr.ErrUnauthenticated) {
@@ -1383,7 +1261,7 @@ func TestMasterCatalogUsecase_MergeMaster_VerifyPublishedError_Wrapped(t *testin
 		t.Fatal("merge delegate must not run when the published-check fails")
 		return nil, nil
 	}}
-	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true))
 
 	_, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
 	assertInternalChain(t, err, "usecase: master catalog: merge: verify published")
@@ -1399,7 +1277,7 @@ func TestMasterCatalogUsecase_MergeMaster_DelegateError_Wrapped(t *testing.T) {
 		},
 	}
 	deck := &mockCopyMasterToUserUC{mergeErr: errors.New("db down")}
-	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true))
 
 	_, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
 	assertInternalChain(t, err, "usecase: master catalog: merge: merge master into cardgroup")
@@ -1418,7 +1296,7 @@ func TestMasterCatalogUsecase_MergeMaster_MasterUnpublishedMidFlight_ReturnsNotF
 		},
 	}
 	deck := &mockCopyMasterToUserUC{mergeErr: repository.ErrNotFound}
-	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true))
 
 	out, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
 	if err != nil {
@@ -1469,7 +1347,7 @@ func TestMasterCatalogUsecase_MergeMaster_UnpublishCommitsAfterGate_NoCardsImpor
 		stubTxRunner,
 		newTestLogger(),
 	)
-	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true))
 
 	out, err := uc.MergeMaster(authedCtx(ownerID), masterID, destID)
 	if err != nil {
@@ -1520,7 +1398,7 @@ func TestMasterCatalogUsecase_PreviewMergeMaster_UnpublishCommitsAfterGate_Retur
 		stubTxRunner,
 		newTestLogger(),
 	)
-	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true))
 
 	out, err := uc.PreviewMergeMaster(authedCtx(ownerID), masterID, destID)
 	if err != nil {
@@ -1569,7 +1447,7 @@ func TestMasterCatalogUsecase_MergeMaster_DestVanishedAfterCommit_NotNotFoundOut
 		stubTxRunner,
 		newTestLogger(),
 	)
-	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true))
 
 	out, err := uc.MergeMaster(authedCtx(ownerID), masterID, destID)
 	if out.NotFound {
@@ -1588,7 +1466,7 @@ func TestMasterCatalogUsecase_MergeMaster_VerifyPublished_ContextCancelled_Passe
 			return nil, context.Canceled
 		},
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
 	assertCancelled(t, err)
@@ -1606,7 +1484,7 @@ func TestMasterCatalogUsecase_MergeMaster_Delegate_ContextCancelled_PassesThroug
 		},
 	}
 	deck := &mockCopyMasterToUserUC{mergeErr: context.Canceled}
-	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true))
 
 	_, err := uc.MergeMaster(authedCtx("u1"), "master-id", "cg-id")
 	assertCancelled(t, err)
@@ -1619,7 +1497,7 @@ func TestMasterCatalogUsecase_MergeMaster_Delegate_ContextCancelled_PassesThroug
 
 func TestPreviewMergeMaster_UnauthenticatedCaller(t *testing.T) {
 	t.Parallel()
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.PreviewMergeMaster(context.Background(), "m1", "cg-1")
 	if !errors.Is(err, ucerr.ErrUnauthenticated) {
@@ -1637,7 +1515,7 @@ func TestMasterCatalog_EmptySubCaller_RejectedAsUnauthenticated(t *testing.T) {
 	// A non-nil authenticated user carrying an empty Sub — the exact case
 	// requireCallerSub guards and the old nil-only check missed.
 	ctx := auth.ContextWithUser(context.Background(), &auth.AuthUser{Sub: ""})
-	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(&mockMasterCatalogRepository{}, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	t.Run("ImportMaster", func(t *testing.T) {
 		t.Parallel()
@@ -1664,7 +1542,7 @@ func TestPreviewMergeMaster_NotFoundWhenMasterUnpublished(t *testing.T) {
 	// not an error — the non-disclosure gate collapses unknown + draft into one signal.
 	t.Parallel()
 	repo := &mockMasterCatalogRepository{} // default: returns repository.ErrNotFound
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	out, err := uc.PreviewMergeMaster(authedCtx("u1"), "m1", "cg-1")
 	if err != nil {
@@ -1687,7 +1565,7 @@ func TestPreviewMergeMaster_HappyPathDelegatesToDeckUC(t *testing.T) {
 	deck := &mockCopyMasterToUserUC{
 		previewOut: PreviewMergeResult{Added: 3, Updated: 1},
 	}
-	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, deck, newTestAdminGate(true))
 
 	out, err := uc.PreviewMergeMaster(authedCtx("u1"), "master-id", "cg-id")
 	if err != nil {
@@ -1715,7 +1593,7 @@ func TestListPublishedConnection_CursorFindByIDCancelled(t *testing.T) {
 	repo := &mockMasterCatalogRepository{
 		findByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, context.Canceled },
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
 		First: intPtr(5),
@@ -1743,7 +1621,7 @@ func TestListPublishedConnection_V2Cursor_UsesEmbeddedOrderKey(t *testing.T) {
 
 	cur := cursor.EncodeV2(cursor.Payload{
 		ID:        "cur-1",
-		OrderBy:   string(repository.MasterCatalogOrderBySortOrder),
+		OrderBy:   "sort_order",
 		Direction: string(repository.SortAsc),
 		OrderKey:  "7",
 	})
@@ -1754,7 +1632,7 @@ func TestListPublishedConnection_V2Cursor_UsesEmbeddedOrderKey(t *testing.T) {
 			return mcg, nil
 		},
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
 		First: intPtr(2),
@@ -1786,11 +1664,11 @@ func TestListPublishedConnection_V2Cursor_OrderingMismatch_BadUserInput(t *testi
 
 	cases := map[string]cursor.Payload{
 		"different column": {
-			ID: "cur-1", OrderBy: string(repository.MasterCatalogOrderByName),
+			ID: "cur-1", OrderBy: "name",
 			Direction: string(repository.SortAsc), OrderKey: "Deck cur-1",
 		},
 		"different direction": {
-			ID: "cur-1", OrderBy: string(repository.MasterCatalogOrderBySortOrder),
+			ID: "cur-1", OrderBy: "sort_order",
 			Direction: string(repository.SortDesc), OrderKey: "7",
 		},
 	}
@@ -1802,7 +1680,7 @@ func TestListPublishedConnection_V2Cursor_OrderingMismatch_BadUserInput(t *testi
 			repo := &mockMasterCatalogRepository{
 				findByIDFn: func(id string) (*domain.MasterCardgroup, error) { return catalogItem(id, 0).Cardgroup, nil },
 			}
-			uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+			uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 			_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
 				First: intPtr(2),
@@ -1823,14 +1701,14 @@ func TestListPublishedConnection_V2Cursor_MalformedOrderKey_BadUserInput(t *test
 
 	cur := cursor.EncodeV2(cursor.Payload{
 		ID:        "cur-1",
-		OrderBy:   string(repository.MasterCatalogOrderBySortOrder),
+		OrderBy:   "sort_order",
 		Direction: string(repository.SortAsc),
 		OrderKey:  "not-an-int",
 	})
 	repo := &mockMasterCatalogRepository{
 		findByIDFn: func(id string) (*domain.MasterCardgroup, error) { return catalogItem(id, 0).Cardgroup, nil },
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
 		First: intPtr(2),
@@ -1848,14 +1726,14 @@ func TestListPublishedConnection_V2Cursor_DraftScopeStillEnforced(t *testing.T) 
 
 	cur := cursor.EncodeV2(cursor.Payload{
 		ID:        "draft-id",
-		OrderBy:   string(repository.MasterCatalogOrderBySortOrder),
+		OrderBy:   "sort_order",
 		Direction: string(repository.SortAsc),
 		OrderKey:  "7",
 	})
 	repo := &mockMasterCatalogRepository{
 		findByIDFn: func(string) (*domain.MasterCardgroup, error) { return nil, repository.ErrNotFound },
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	_, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{
 		First: intPtr(2),
@@ -1878,14 +1756,14 @@ func TestListPublishedConnection_CarriesOrderingAndOrderKeys(t *testing.T) {
 		findPageTotal:  2,
 		findPageResult: []*repository.MasterCatalogItem{first, second},
 	}
-	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true), newTestLogger())
+	uc := NewMasterCatalogUsecase(repo, &mockCopyMasterToUserUC{}, newTestAdminGate(true))
 
 	out, err := uc.ListPublishedConnection(authedCtx("u1"), MasterCatalogConnectionInput{First: intPtr(5)})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	want := PageOrdering{
-		OrderBy:   string(repository.MasterCatalogOrderBySortOrder),
+		OrderBy:   "sort_order",
 		Direction: string(repository.SortAsc),
 	}
 	if out.Ordering != want {
@@ -1896,74 +1774,31 @@ func TestListPublishedConnection_CarriesOrderingAndOrderKeys(t *testing.T) {
 	}
 }
 
-// TestMasterCatalogOrderKeyCodec covers both halves of the ordering-key codec
-// for every column in the allowlist plus the impossible default arms, which
-// must stay INTERNAL rather than degrade to BAD_USER_INPUT.
+// TestMasterCatalogOrderKeyCodec covers both halves of the ordering-key codec:
+// sort_order serializes to a key that decodes back into the cursor, and a
+// malformed key is errCursorKeyMalformed rather than an INTERNAL fault.
 func TestMasterCatalogOrderKeyCodec(t *testing.T) {
 	t.Parallel()
 
-	when := time.Date(2026, 7, 20, 4, 5, 6, 789012000, time.UTC)
-	mcg := &domain.MasterCardgroup{
-		ID:        "m1",
-		Name:      domain.CardgroupName("Deck m1"),
-		SortOrder: -4,
-		CreatedAt: when,
+	mcg := &domain.MasterCardgroup{ID: "m1", Name: domain.CardgroupName("Deck m1"), SortOrder: -4}
+
+	gotKey := masterCatalogOrderKey(mcg)
+	if gotKey != "-4" {
+		t.Fatalf("key = %q, want %q", gotKey, "-4")
+	}
+	if keys := masterCatalogOrderKeys([]*MasterCatalogItem{{Cardgroup: mcg}}); keys["m1"] != "-4" {
+		t.Fatalf("OrderKeys = %v, want m1=-4", keys)
+	}
+	c := &repository.MasterCatalogCursor{ID: "m1"}
+	if err := applyMasterCatalogOrderKey(c, gotKey); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.SortOrder == nil || *c.SortOrder != -4 {
+		t.Fatalf("want SortOrder=-4, got %+v", c)
 	}
 
-	for _, tc := range []struct {
-		orderBy repository.MasterCatalogOrderBy
-		wantKey string
-		check   func(t *testing.T, c *repository.MasterCatalogCursor)
-	}{
-		{
-			orderBy: repository.MasterCatalogOrderBySortOrder,
-			wantKey: "-4",
-			check: func(t *testing.T, c *repository.MasterCatalogCursor) {
-				if c.SortOrder == nil || *c.SortOrder != -4 {
-					t.Fatalf("want SortOrder=-4, got %+v", c)
-				}
-			},
-		},
-		{
-			orderBy: repository.MasterCatalogOrderByCreatedAt,
-			wantKey: when.Format(time.RFC3339Nano),
-			check: func(t *testing.T, c *repository.MasterCatalogCursor) {
-				if c.CreatedAt == nil || !c.CreatedAt.Equal(when) {
-					t.Fatalf("want CreatedAt=%v, got %+v", when, c)
-				}
-			},
-		},
-		{
-			orderBy: repository.MasterCatalogOrderByName,
-			wantKey: "Deck m1",
-			check: func(t *testing.T, c *repository.MasterCatalogCursor) {
-				if c.Name == nil || *c.Name != "Deck m1" {
-					t.Fatalf("want Name=Deck m1, got %+v", c)
-				}
-			},
-		},
-	} {
-		t.Run(string(tc.orderBy), func(t *testing.T) {
-			t.Parallel()
-
-			gotKey, err := masterCatalogOrderKey(tc.orderBy, mcg)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if gotKey != tc.wantKey {
-				t.Fatalf("key = %q, want %q", gotKey, tc.wantKey)
-			}
-			c := &repository.MasterCatalogCursor{ID: "m1"}
-			if err := applyMasterCatalogOrderKey(c, tc.orderBy, gotKey); err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			tc.check(t, c)
-		})
+	err := applyMasterCatalogOrderKey(&repository.MasterCatalogCursor{}, "not-an-int")
+	if !errors.Is(err, errCursorKeyMalformed) {
+		t.Fatalf("want errCursorKeyMalformed, got %v", err)
 	}
-
-	_, err := masterCatalogOrderKeys(repository.MasterCatalogOrderBy("not_a_real_column"), []*MasterCatalogItem{{Cardgroup: mcg}})
-	assertInternalChain(t, err, "usecase: master catalog: unhandled orderBy")
-
-	err = applyMasterCatalogOrderKey(&repository.MasterCatalogCursor{}, repository.MasterCatalogOrderBy("not_a_real_column"), "")
-	assertInternalChain(t, err, "usecase: master catalog: unhandled orderBy")
 }

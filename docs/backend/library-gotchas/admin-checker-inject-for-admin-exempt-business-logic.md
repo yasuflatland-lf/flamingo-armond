@@ -57,18 +57,17 @@ the checker is nil:
 
 ```go
 type cardgroupUsecase struct {
-    repo   CardgroupRepository
-    admin  AdminChecker
-    tx     txRunner
-    logger *slog.Logger
+    repo  CardgroupRepository
+    admin AdminChecker
+    tx    txRunner
 }
 
-func NewCardgroupUsecase(db repository.Tx, repo CardgroupRepository, admin AdminChecker, logger *slog.Logger) CardgroupUsecase {
+func NewCardgroupUsecase(db repository.Tx, repo CardgroupRepository, admin AdminChecker) CardgroupUsecase {
     if admin == nil {
         panic("usecase: cardgroup: admin checker is required")
     }
     // ...
-    return &cardgroupUsecase{repo: repo, admin: admin, tx: newTxRunner(db), logger: logger}
+    return &cardgroupUsecase{repo: repo, admin: admin, tx: newTxRunner(db)}
 }
 ```
 

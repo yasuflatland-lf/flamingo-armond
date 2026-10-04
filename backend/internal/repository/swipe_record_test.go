@@ -29,8 +29,7 @@ func TestSwipeRecordRepository_CreateTxAndFind(t *testing.T) {
 	stateBefore.Stability = 6.6
 	stateBefore.Due = reviewedAt.Add(3 * 24 * time.Hour)
 	state := domain.NewFSRSStateForNewCard(reviewedAt)
-	state.Reps = 1
-	sr, err := domain.NewSwipeRecord(domain.UserID(ownerID), card.ID, cg.ID, domain.RatingEasy, reviewedAt, stateBefore, state)
+	sr, err := domain.NewSwipeRecord(domain.UserID(ownerID), card.ID, cg.ID, domain.RatingEasy, reviewedAt, stateBefore, state.Difficulty)
 	require.NoError(t, err)
 
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -41,7 +40,6 @@ func TestSwipeRecordRepository_CreateTxAndFind(t *testing.T) {
 		ID              string
 		CardgroupID     string
 		Rating          int
-		Reps            int
 		PhaseBefore     int16
 		StabilityBefore float64
 		DueBefore       time.Time
@@ -52,7 +50,6 @@ func TestSwipeRecordRepository_CreateTxAndFind(t *testing.T) {
 	require.Equal(t, sr.ID, rows[0].ID)
 	require.Equal(t, string(cg.ID), rows[0].CardgroupID)
 	require.Equal(t, int(domain.RatingEasy), rows[0].Rating)
-	require.Equal(t, int(state.Reps), rows[0].Reps)
 	require.Equal(t, int16(domain.FSRSPhaseReview), rows[0].PhaseBefore)
 	require.InDelta(t, 6.6, rows[0].StabilityBefore, 0.000000001)
 	require.True(t, stateBefore.Due.Equal(rows[0].DueBefore))
@@ -63,47 +60,12 @@ func TestSwipeRecordRepository_CreateTxAndFind(t *testing.T) {
 	require.Equal(t, sr.ID, records[0].ID)
 	require.Equal(t, cg.ID, records[0].CardgroupID)
 	require.Equal(t, domain.RatingEasy, records[0].Rating)
-	require.Equal(t, state.Reps, records[0].StateAfter.Reps)
+	require.Equal(t, state.Difficulty, records[0].DifficultyAfter)
+	// The pre-swipe snapshot survives the CreateTx -> read roundtrip.
 	require.Equal(t, domain.FSRSPhaseReview, records[0].PhaseBefore)
 	require.InDelta(t, 6.6, records[0].StabilityBefore, 0.000000001)
 	require.True(t, stateBefore.Due.Equal(records[0].DueBefore))
 
-	history, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cg.ID))
-	require.NoError(t, err)
-	require.Len(t, history, 1)
-	require.Equal(t, sr.ID, history[0].ID)
-	require.Equal(t, cg.ID, history[0].CardgroupID)
-}
-
-func TestSwipeRecordRepository_FindByUserAndCardgroup_UsesDenormalizedCardgroup(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	cgAtSwipe := insertCardgroup(t, ctx, ownerID)
-	cgCurrent := insertCardgroup(t, ctx, ownerID)
-	cardRepo := repository.NewCardRepository(testDB.GORM)
-	swipeRepo := repository.NewSwipeRecordRepository(testDB.GORM)
-
-	card := newCard(cgCurrent.ID, "front denormalized", "back")
-	require.NoError(t, cardRepo.Create(ctx, card))
-	reviewedAt := time.Now().UTC().Truncate(time.Microsecond)
-	state := domain.NewFSRSStateForNewCard(reviewedAt)
-	sr, err := domain.NewSwipeRecord(domain.UserID(ownerID), card.ID, cgAtSwipe.ID, domain.RatingGood, reviewedAt, state, state)
-	require.NoError(t, err)
-
-	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return swipeRepo.CreateTx(ctx, tx, sr)
-	}))
-
-	historyAtSwipe, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cgAtSwipe.ID))
-	require.NoError(t, err)
-	require.Len(t, historyAtSwipe, 1)
-	require.Equal(t, sr.ID, historyAtSwipe[0].ID)
-	require.Equal(t, cgAtSwipe.ID, historyAtSwipe[0].CardgroupID)
-
-	historyCurrent, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cgCurrent.ID))
-	require.NoError(t, err)
-	require.Empty(t, historyCurrent)
 }
 
 // TestSwipeRecordRepository_ListByUserSince_InclusiveBoundaryAndScopes proves
@@ -134,13 +96,13 @@ func TestSwipeRecordRepository_ListByUserSince_InclusiveBoundaryAndScopes(t *tes
 
 	seed := func(id, userID, cardID string, cardgroupID domain.CardgroupID, reviewedAt time.Time) *domain.SwipeRecord {
 		return &domain.SwipeRecord{
-			ID:          id,
-			UserID:      domain.UserID(userID),
-			CardID:      cardID,
-			CardgroupID: cardgroupID,
-			Rating:      domain.RatingEasy,
-			ReviewedAt:  reviewedAt,
-			StateAfter:  domain.NewFSRSStateForNewCard(reviewedAt),
+			ID:              id,
+			UserID:          domain.UserID(userID),
+			CardID:          cardID,
+			CardgroupID:     cardgroupID,
+			Rating:          domain.RatingEasy,
+			ReviewedAt:      reviewedAt,
+			DifficultyAfter: domain.NewCardDifficulty,
 		}
 	}
 
@@ -180,68 +142,11 @@ func TestSwipeRecordRepository_ListByUserSince_InclusiveBoundaryAndScopes(t *tes
 	require.NotContains(t, ids, idOtherAtSince, "another user's swipe is excluded")
 }
 
-// TestSwipeRecordRepository_OutOfRangeState_ReturnsError proves the reconstitution
-// guard in swipeRecordToDomain rejects a corrupt enum value instead of silently
-// miscounting it in the performance metrics, per
-// docs/backend/library-gotchas/gorm-enum-cast-isvalid.md. A row whose `state`
-// column holds an out-of-range FSRSPhase (99) must surface a non-nil error from
-// every read path, not reconstitute a SwipeRecord carrying an invalid Phase.
-//
-// The `rating` column is not exercised here because a persisted out-of-range
-// rating is impossible: the swipe_records schema enforces
-// `CHECK (rating BETWEEN 1 AND 4)`, so the rating-side IsValid() guard is
-// defense-in-depth against future schema drift or a manual SQL edit, not a
-// condition a persisted row can reach today.
-func TestSwipeRecordRepository_OutOfRangeState_ReturnsError(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	cg := insertCardgroup(t, ctx, ownerID)
-	cardRepo := repository.NewCardRepository(testDB.GORM)
-	swipeRepo := repository.NewSwipeRecordRepository(testDB.GORM)
-
-	card := newCard(cg.ID, "out of range state", "back")
-	require.NoError(t, cardRepo.Create(ctx, card))
-
-	reviewedAt := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
-	state := domain.NewFSRSStateForNewCard(reviewedAt)
-	state.Phase = domain.FSRSPhase(99) // out of range; no DB CHECK on the state column
-	corrupt := &domain.SwipeRecord{
-		ID:          "00000000-0000-0000-0000-0000000000c1",
-		UserID:      domain.UserID(ownerID),
-		CardID:      card.ID,
-		CardgroupID: cg.ID,
-		Rating:      domain.RatingEasy,
-		ReviewedAt:  reviewedAt,
-		StateAfter:  state,
-	}
-	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return swipeRepo.CreateTx(ctx, tx, corrupt)
-	}))
-
-	reads := map[string]func() error{
-		"FindByUserAndCardgroup": func() error {
-			_, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, string(cg.ID))
-			return err
-		},
-		"ListByUserSince": func() error {
-			_, err := swipeRepo.ListByUserSince(ctx, ownerID, reviewedAt.Add(-time.Hour))
-			return err
-		},
-	}
-	for name, read := range reads {
-		t.Run(name, func(t *testing.T) {
-			err := read()
-			require.Error(t, err, "an out-of-range FSRSPhase must propagate as an error, not a silent success")
-			require.Contains(t, err.Error(), "invalid FSRSPhase value 99")
-		})
-	}
-}
-
 // TestSwipeRecordRepository_OutOfRangePhaseBefore_ReturnsError proves a
-// phase_before value outside domain.FSRSPhase.IsValid surfaces a
-// repository error rather than reconstituting a SwipeRecord with an invalid
-// snapshot phase.
+// phase_before value outside domain.FSRSPhase.IsValid surfaces a repository
+// error from ListByUserSince rather than reconstituting an invalid snapshot.
+// ListByUserSince feeds /stats: a silently dropped row there would compute the
+// metrics over a partial window with no error.
 func TestSwipeRecordRepository_OutOfRangePhaseBefore_ReturnsError(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -255,15 +160,14 @@ func TestSwipeRecordRepository_OutOfRangePhaseBefore_ReturnsError(t *testing.T) 
 
 	reviewedAt := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	const rowID = "00000000-0000-0000-0000-0000000000d2"
-	// state stays valid (FSRSPhaseNew); only phase_before is corrupt (99).
+	// only phase_before is corrupt (99).
 	require.NoError(t, testDB.GORM.WithContext(ctx).Exec(
 		`INSERT INTO swipe_records
 		   (id, user_id, card_id, cardgroup_id, rating, reviewed_at,
-		    due, stability, difficulty, scheduled_days, reps, lapses, state,
-		    last_review, phase_before, stability_before, due_before)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		    difficulty, phase_before, stability_before, due_before)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		rowID, ownerID, card.ID, string(cg.ID), int(domain.RatingGood), reviewedAt,
-		reviewedAt, 2.5, 5.0, 0, 0, 0, int(domain.FSRSPhaseNew), reviewedAt, 99, 2.5, reviewedAt,
+		5.0, 99, 2.5, reviewedAt,
 	).Error)
 
 	_, err := swipeRepo.ListByUserSince(ctx, ownerID, reviewedAt.Add(-time.Microsecond))
@@ -299,7 +203,7 @@ func TestSwipeRecordRepository_OnDeleteCardgroup_CascadesSwipeRecords(t *testing
 	require.NoError(t, cardRepo.Create(ctx, card))
 	reviewedAt := time.Now().UTC().Truncate(time.Microsecond)
 	state := domain.NewFSRSStateForNewCard(reviewedAt)
-	sr, err := domain.NewSwipeRecord(domain.UserID(ownerID), card.ID, cgAtSwipe.ID, domain.RatingGood, reviewedAt, state, state)
+	sr, err := domain.NewSwipeRecord(domain.UserID(ownerID), card.ID, cgAtSwipe.ID, domain.RatingGood, reviewedAt, state, state.Difficulty)
 	require.NoError(t, err)
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return swipeRepo.CreateTx(ctx, tx, sr)

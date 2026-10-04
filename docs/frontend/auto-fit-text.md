@@ -76,9 +76,10 @@ jsdom reports `clientWidth`/`scrollWidth` as `0` and provides **no**
 `ResizeObserver`. That shapes the test split:
 
 - **Layout math → a pure function.** `computeFitFontSize` takes explicit width
-  numbers and is unit-tested directly (`use-fit-text.test.ts`) — fits,
-  exact-boundary, proportional shrink, floor-to-whole-pixel, clamp-to-`minPx`,
-  and the unmeasured (`0`-width) guard. No DOM needed.
+  numbers and is unit-tested directly (`use-fit-text.test.ts`) — a property
+  for the `[minPx, maxPx]` bounds, monotonicity in the text width and the fit
+  itself, plus pins for the exact boundary, floor-to-whole-pixel,
+  clamp-to-`minPx`, and the unmeasured (`0`-width) guard. No DOM needed.
 - **Hook control flow → testable in jsdom anyway.** Attach the hook's ref to a
   real element via a tiny `Harness` component and exercise (`use-fit-text.dom.test.tsx`):
   - the `typeof ResizeObserver === "undefined"` guard (jsdom default) — no throw, returns `maxPx`;

@@ -45,20 +45,18 @@ func TestFSRSSnapshotRealignDownUpRoundtrip(t *testing.T) {
 	if _, err := sqlDB.ExecContext(ctx, `
 		INSERT INTO public.user_card_fsrs (
 			user_id, card_id, state, due, stability, difficulty,
-			reps, lapses, last_review, last_rating, scheduled_days
+			reps, lapses, last_review, scheduled_days
 		)
-		VALUES ($1, $2, 2, $3, 7.0, 5.0, 2, 0, $3, 3, 7)
+		VALUES ($1, $2, 2, $3, 7.0, 5.0, 2, 0, $3, 7)
 	`, userID, cardID, now); err != nil {
 		t.Fatalf("seed user_card_fsrs row: %v", err)
 	}
 	if _, err := sqlDB.ExecContext(ctx, `
 		INSERT INTO public.swipe_records (
 			id, user_id, card_id, cardgroup_id, rating, reviewed_at,
-			due, stability, difficulty, scheduled_days, reps, lapses, state,
-			last_review, phase_before, stability_before, due_before
+			difficulty, phase_before, stability_before, due_before
 		)
-		VALUES ($1, $2, $3, $4, 3, $5, $5, 8.0, 4.5, 8, 3, 0, 2,
-			$5, 2, 7.0, $5)
+		VALUES ($1, $2, $3, $4, 3, $5, 4.5, 2, 7.0, $5)
 	`, swipeID, userID, cardID, cardgroupID, now); err != nil {
 		t.Fatalf("seed swipe_records row: %v", err)
 	}
@@ -73,10 +71,13 @@ func TestFSRSSnapshotRealignDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
+	// drop_swipe_records_after_state, drop_ping_records_updated_at,
+	// cardgroups_owner_updated_at_index, drop_redundant_fk_indexes,
+	// drop_user_card_fsrs_last_rating, drop_swipe_records_user_cardgroup_index,
 	// reset_legacy_new_card_ratio, revoke_client_writes,
 	// lower_new_card_ratio_default and tighten_new_card_ratio_check sit above
-	// realign_fsrs_snapshot_columns_to_v4, so five steps reach the target.
-	if err := m.Steps(-5); err != nil {
+	// realign_fsrs_snapshot_columns_to_v4, so eleven steps reach the target.
+	if err := m.Steps(-11); err != nil {
 		t.Fatalf("migrate down FSRS snapshot realignment: %v", err)
 	}
 	requireColumnExists(t, ctx, sqlDB, "swipe_records", "elapsed_days")

@@ -46,7 +46,7 @@ func TestUpdateLearnDisplayMode_Unauthenticated(t *testing.T) {
 
 	prefs := &mockLearnModePrefRepo{}
 	users := &mockLearnModeUserRepo{}
-	uc := newUpdateLearnDisplayModeWithDeps(prefs, users, newTestLogger())
+	uc := newUpdateLearnDisplayModeWithDeps(prefs, users)
 
 	_, err := uc.Set(anonCtx(), domain.LearnDisplayFlipToReveal)
 	assertUnauthenticated(t, err)
@@ -61,7 +61,7 @@ func TestUpdateLearnDisplayMode_Success(t *testing.T) {
 	want := &domain.User{ID: "u1"}
 	prefs := &mockLearnModePrefRepo{}
 	users := &mockLearnModeUserRepo{user: want}
-	uc := newUpdateLearnDisplayModeWithDeps(prefs, users, newTestLogger())
+	uc := newUpdateLearnDisplayModeWithDeps(prefs, users)
 
 	got, err := uc.Set(authedCtx("u1"), domain.LearnDisplayFlipToReveal)
 	if err != nil {
@@ -93,7 +93,7 @@ func TestUpdateLearnDisplayMode_PrefsWriteError(t *testing.T) {
 	boom := errors.New("db unavailable")
 	prefs := &mockLearnModePrefRepo{err: boom}
 	users := &mockLearnModeUserRepo{}
-	uc := newUpdateLearnDisplayModeWithDeps(prefs, users, newTestLogger())
+	uc := newUpdateLearnDisplayModeWithDeps(prefs, users)
 
 	_, err := uc.Set(authedCtx("u1"), domain.LearnDisplayFlipToReveal)
 	if err == nil {
@@ -115,7 +115,7 @@ func TestUpdateLearnDisplayMode_PrefsWriteCancelled(t *testing.T) {
 
 	prefs := &mockLearnModePrefRepo{err: context.Canceled}
 	users := &mockLearnModeUserRepo{}
-	uc := newUpdateLearnDisplayModeWithDeps(prefs, users, newTestLogger())
+	uc := newUpdateLearnDisplayModeWithDeps(prefs, users)
 
 	_, err := uc.Set(authedCtx("u1"), domain.LearnDisplayFlipToReveal)
 	if !errors.Is(err, context.Canceled) {
@@ -131,7 +131,7 @@ func TestUpdateLearnDisplayMode_RefetchError(t *testing.T) {
 	boom := errors.New("user repo unavailable")
 	prefs := &mockLearnModePrefRepo{}
 	users := &mockLearnModeUserRepo{err: boom}
-	uc := newUpdateLearnDisplayModeWithDeps(prefs, users, newTestLogger())
+	uc := newUpdateLearnDisplayModeWithDeps(prefs, users)
 
 	_, err := uc.Set(authedCtx("u1"), domain.LearnDisplayFlipToReveal)
 	if err == nil {
@@ -149,7 +149,7 @@ func TestUpdateLearnDisplayMode_RefetchCancelled(t *testing.T) {
 
 	prefs := &mockLearnModePrefRepo{}
 	users := &mockLearnModeUserRepo{err: context.DeadlineExceeded}
-	uc := newUpdateLearnDisplayModeWithDeps(prefs, users, newTestLogger())
+	uc := newUpdateLearnDisplayModeWithDeps(prefs, users)
 
 	_, err := uc.Set(authedCtx("u1"), domain.LearnDisplayFlipToReveal)
 	if !errors.Is(err, context.DeadlineExceeded) {

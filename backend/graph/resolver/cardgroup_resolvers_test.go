@@ -26,7 +26,7 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockCardgroupRepoForResolver struct {
-	// FindByID is exercised when a resolver test passes after/before cursors.
+	// FindByID is exercised when a resolver test passes an after cursor.
 	findByIDResult *domain.Cardgroup
 	findByIDErr    error
 
@@ -56,10 +56,8 @@ func (m *mockCardgroupRepoForResolver) FindByID(_ context.Context, _ string) (*d
 func (m *mockCardgroupRepoForResolver) FindPageByOwner(
 	_ context.Context,
 	_ string,
-	_, _ *repository.CardgroupCursor,
-	_, _ int,
-	_ repository.CardgroupOrderBy,
-	_ repository.SortOrder,
+	_ *repository.CardgroupCursor,
+	_ int,
 	_ *string,
 ) ([]*domain.Cardgroup, int64, error) {
 	return m.findPageResult, m.findPageTotal, m.findPageErr
@@ -109,8 +107,8 @@ func newCardgroupSrv(repo usecase.CardgroupRepository) *handler.Server {
 // to supply a custom AdminChecker stub. Use this when a test needs to exercise
 // the cardgroup-limit code path (isAdmin: false).
 func newCardgroupSrvWithAdmin(repo usecase.CardgroupRepository, admin usecase.AdminChecker) *handler.Server {
-	cgUC := usecase.NewCardgroupUsecase(nil, repo, admin, newDiscardLogger())
-	r := resolver.NewResolver(nil, cgUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	cgUC := usecase.NewCardgroupUsecase(nil, repo, admin)
+	r := resolver.NewResolver(nil, cgUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -170,7 +168,7 @@ func TestResolver_MyCardgroupsConnection_Authenticated_DelegatesToUsecase(t *tes
 		want := cursor.Payload{
 			ID:          wantID,
 			HasOrdering: true,
-			OrderBy:     string(repository.CardgroupOrderByUpdatedAt),
+			OrderBy:     "updated_at",
 			Direction:   string(repository.SortDesc),
 			OrderKey:    time.Time{}.UTC().Format(time.RFC3339Nano),
 		}
@@ -219,13 +217,13 @@ func TestResolver_MyCardgroupsConnection_Unauthenticated_ReturnsUnauthenticated(
 
 // TestResolver_MyCardgroupsConnection_UsecaseError_PropagatesBadUserInput
 // verifies the resolver propagates a typed GraphQL error from the usecase
-// rather than swallowing it. Triggering it: pass after AND before so the
+// rather than swallowing it. Triggering it: pass after without first so the
 // usecase rejects with BAD_USER_INPUT before reaching the repository.
 func TestResolver_MyCardgroupsConnection_UsecaseError_PropagatesBadUserInput(t *testing.T) {
 	t.Parallel()
 
 	srv := newCardgroupSrv(&mockCardgroupRepoForResolver{})
-	body := `{"query":"{ myCardgroupsConnection(first: 2, after: \"cg-a\", before: \"cg-b\") { totalCount } }"}`
+	body := `{"query":"{ myCardgroupsConnection(after: \"cg-a\") { totalCount } }"}`
 	resp := gqlRequest(t, srv, authedCtx("u1"), body)
 
 	ext := errExtensions(t, resp)
@@ -305,18 +303,15 @@ func TestResolver_Cardgroup_ForeignOwned_IdenticalToNotFound(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// helpers.go — toCardgroupConnectionModel / toUsecaseOrderBy
+// connection.go — toCardgroupConnectionModel
 // ---------------------------------------------------------------------------
 //
-// These helpers live in package resolver but are package-private. The tests
-// below exercise them indirectly via the MyCardgroupsConnection resolver:
+// This helper lives in package resolver but is package-private. The tests
+// below exercise it indirectly via the MyCardgroupsConnection resolver:
 //
 // - toCardgroupConnectionModel non-empty path: covered by
 //   TestResolver_MyCardgroupsConnection_Authenticated_DelegatesToUsecase.
-// - toUsecaseOrderBy with an explicit CardgroupOrderBy value: covered by
-//   TestResolver_MyCardgroupsConnection_OrderByName_PassesThrough below.
-// - toUsecaseOrderBy with nil (default UPDATED_AT) and the empty
-//   connection branch: exercised by the empty-result test below.
+// - the empty connection branch: exercised by the empty-result test below.
 
 // TestResolver_MyCardgroupsConnection_Empty_ReturnsEmptyEdges verifies that an
 // empty page result returns edges: [] with no startCursor/endCursor. This
@@ -355,69 +350,6 @@ func TestResolver_MyCardgroupsConnection_Empty_ReturnsEmptyEdges(t *testing.T) {
 	if pageInfo["endCursor"] != nil {
 		t.Fatalf("expected endCursor=nil for empty connection, got %v", pageInfo["endCursor"])
 	}
-}
-
-// TestResolver_MyCardgroupsConnection_OrderByName_PassesThrough verifies that
-// the schema-level orderBy=NAME enum is translated by toUsecaseOrderBy
-// and reaches the repository as the corresponding usecase enum. The mock
-// captures the orderBy passed to FindPageByOwner.
-func TestResolver_MyCardgroupsConnection_OrderByName_PassesThrough(t *testing.T) {
-	t.Parallel()
-
-	cgs := []*domain.Cardgroup{
-		{ID: domain.CardgroupID("cg-a"), OwnerID: "u1", Name: "Apple"},
-	}
-	captureRepo := &capturingCardgroupRepo{
-		mockCardgroupRepoForResolver: mockCardgroupRepoForResolver{
-			findPageResult: cgs,
-			countResult:    1,
-		},
-	}
-	srv := newCardgroupSrv(captureRepo)
-	body := `{"query":"{ myCardgroupsConnection(first: 5, orderBy: NAME, orderDirection: ASC) { totalCount edges { cursor } } }"}`
-	resp := gqlRequest(t, srv, authedCtx("u1"), body)
-
-	if errs, hasErrs := resp["errors"]; hasErrs {
-		t.Fatalf("unexpected errors: %v", errs)
-	}
-
-	if captureRepo.findPageOrderBy != repository.CardgroupOrderByName {
-		t.Fatalf("expected repository.CardgroupOrderByName at the repo seam, got %q", captureRepo.findPageOrderBy)
-	}
-	if captureRepo.findPageDir != repository.SortAsc {
-		t.Fatalf("expected SortAsc at the repo seam, got %q", captureRepo.findPageDir)
-	}
-}
-
-// capturingCardgroupRepo extends mockCardgroupRepoForResolver to capture the
-// arguments FindPageByOwner is called with. Used by tests that need to
-// assert on the orderBy/direction translation done by helpers.go.
-type capturingCardgroupRepo struct {
-	mockCardgroupRepoForResolver
-	findPageOrderBy repository.CardgroupOrderBy
-	findPageDir     repository.SortOrder
-	findPageFirst   int
-	findPageLast    int
-	findPageAfter   *repository.CardgroupCursor
-	findPageBefore  *repository.CardgroupCursor
-}
-
-func (c *capturingCardgroupRepo) FindPageByOwner(
-	_ context.Context,
-	_ string,
-	after, before *repository.CardgroupCursor,
-	first, last int,
-	orderBy repository.CardgroupOrderBy,
-	dir repository.SortOrder,
-	_ *string,
-) ([]*domain.Cardgroup, int64, error) {
-	c.findPageOrderBy = orderBy
-	c.findPageDir = dir
-	c.findPageFirst = first
-	c.findPageLast = last
-	c.findPageAfter = after
-	c.findPageBefore = before
-	return c.findPageResult, c.findPageTotal, c.findPageErr
 }
 
 // ---------------------------------------------------------------------------

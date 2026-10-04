@@ -114,7 +114,7 @@ func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, loaderDeps{}, ping.New(nil, "test-token"), nil, serverConfigFromEnv(slog.Default()).introspectionEnabled))
+	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, loaderDeps{}, ping.New(nil, "test-token"), nil, serverConfigFromEnv(slog.Default()).introspectionEnabled))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -762,12 +762,12 @@ func newGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Server, *datab
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	logger := slog.New(slog.DiscardHandler)
 	userUC := usecase.NewUserUsecase(nil, userRepo, userRoleRepo, nil, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(db.GORM, cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
-	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(db.GORM, cardgroupRepo, stubAdminChecker{isAdmin: true})
+	cardUC := usecase.NewCardUsecase(cardRepo, cardgroupRepo, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM, logger)
-	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), mw, loaderDeps{
+	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), mw, loaderDeps{
 		user:           userRepo,
 		userRole:       userRoleRepo,
 		cardgroup:      cardgroupRepo,
@@ -985,7 +985,7 @@ func TestComplexityLimit_Rejects(t *testing.T) {
 
 func newIntrospectionTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newGraphQLServer(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), serverConfigFromEnv(slog.Default()).introspectionEnabled))
+	ts := httptest.NewServer(newGraphQLServer(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), serverConfigFromEnv(slog.Default()).introspectionEnabled))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -1852,13 +1852,13 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 	logger := slog.New(slog.DiscardHandler)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM, logger)
 	userUC := usecase.NewUserUsecase(nil, userRepo, userRoleRepo, nil, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(db.GORM, cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
-	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(db.GORM, cardgroupRepo, stubAdminChecker{isAdmin: true})
+	cardUC := usecase.NewCardUsecase(cardRepo, cardgroupRepo, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
-	lastViewedUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
+	lastViewedUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	e := newRouter(
-		resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, lastViewedUC, nil, nil, nil, nil, nil, nil, nil),
+		resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, lastViewedUC, nil, nil, nil, nil, nil, nil, nil),
 		mw,
 		loaderDeps{
 			user:           userRepo,
@@ -2213,9 +2213,6 @@ func (panicUserRoleRepo) AssignRoleToUser(_ context.Context, _, _ string) error 
 func (panicUserRoleRepo) SetUserRolesTx(_ context.Context, _ *gorm.DB, _ string, _ []string) error {
 	panic("not used in this test")
 }
-func (panicUserRoleRepo) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {
-	panic("not used in this test")
-}
 func (panicUserRoleRepo) ListByUserIDs(_ context.Context, _ []string) (map[string][]*domain.Role, error) {
 	panic("not used in this test")
 }
@@ -2453,7 +2450,7 @@ func (panicQueryResolver) Me(_ context.Context) (*model.User, error) { return ni
 func (panicQueryResolver) Cardgroup(_ context.Context, _ string) (*model.Cardgroup, error) {
 	return nil, nil
 }
-func (panicQueryResolver) MyCardgroupsConnection(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.CardgroupOrderBy, _ *model.SortOrder) (*model.CardgroupConnection, error) {
+func (panicQueryResolver) MyCardgroupsConnection(_ context.Context, _ *int, _ *string, _ *string) (*model.CardgroupConnection, error) {
 	return nil, nil
 }
 func (panicQueryResolver) Card(_ context.Context, _ string) (*model.Card, error) { return nil, nil }
@@ -2463,13 +2460,13 @@ func (panicQueryResolver) LearnNextDueCards(_ context.Context, _ string, _ *int)
 func (panicQueryResolver) PracticeTodaysCards(_ context.Context, _ string, _ *int) ([]*model.Card, error) {
 	return nil, nil
 }
-func (panicQueryResolver) CardsByCardgroupConnection(_ context.Context, _ string, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.CardOrderBy, _ *model.SortOrder) (*model.CardConnection, error) {
+func (panicQueryResolver) CardsByCardgroupConnection(_ context.Context, _ string, _ *int, _ *string, _ *string) (*model.CardConnection, error) {
 	return nil, nil
 }
 func (panicQueryResolver) ValidateCardImport(_ context.Context, _ model.ValidateCardImportInput) (*model.CardImportValidationResult, error) {
 	return nil, nil
 }
-func (panicQueryResolver) Users(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string) (*model.UserConnection, error) {
+func (panicQueryResolver) Users(_ context.Context, _ *int, _ *string, _ *string) (*model.UserConnection, error) {
 	return nil, nil
 }
 func (panicQueryResolver) AdminUser(_ context.Context, _ string) (*model.User, error) {
@@ -2477,19 +2474,19 @@ func (panicQueryResolver) AdminUser(_ context.Context, _ string) (*model.User, e
 }
 func (panicQueryResolver) Roles(_ context.Context) ([]*model.Role, error)        { return nil, nil }
 func (panicQueryResolver) Role(_ context.Context, _ string) (*model.Role, error) { return nil, nil }
-func (panicQueryResolver) MasterCatalog(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.MasterCatalogOrderBy, _ *model.SortOrder) (*model.MasterCatalogConnection, error) {
+func (panicQueryResolver) MasterCatalog(_ context.Context, _ *int, _ *string, _ *string) (*model.MasterCatalogConnection, error) {
 	return nil, nil
 }
-func (panicQueryResolver) AdminMasters(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.MasterCatalogOrderBy, _ *model.SortOrder) (*model.MasterCatalogConnection, error) {
+func (panicQueryResolver) AdminMasters(_ context.Context, _ *int, _ *string, _ *string) (*model.MasterCatalogConnection, error) {
 	panic("not implemented")
 }
 func (panicQueryResolver) AdminMaster(_ context.Context, _ string) (*model.MasterCardgroup, error) {
 	panic("not implemented")
 }
-func (panicQueryResolver) AdminMasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.MasterCardOrderBy, _ *model.SortOrder) (*model.MasterCardConnection, error) {
+func (panicQueryResolver) AdminMasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *string) (*model.MasterCardConnection, error) {
 	panic("not implemented")
 }
-func (panicQueryResolver) MasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.MasterCardOrderBy, _ *model.SortOrder) (*model.MasterCardConnection, error) {
+func (panicQueryResolver) MasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *string) (*model.MasterCardConnection, error) {
 	panic("not implemented")
 }
 func (panicQueryResolver) MasterCardgroup(_ context.Context, _ string) (*model.MasterCardgroup, error) {
@@ -2510,7 +2507,7 @@ type panicResolverRoot struct {
 }
 
 func newPanicResolverRoot() *panicResolverRoot {
-	return &panicResolverRoot{inner: resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)}
+	return &panicResolverRoot{inner: resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)}
 }
 
 func (p *panicResolverRoot) Card() generated.CardResolver         { return p.inner.Card() }

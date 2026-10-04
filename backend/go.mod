@@ -31,6 +31,7 @@ require (
 	golang.org/x/time v0.16.0
 	gorm.io/driver/postgres v1.6.3
 	gorm.io/gorm v1.31.2
+	pgregory.net/rapid v1.3.0
 )
 
 require (

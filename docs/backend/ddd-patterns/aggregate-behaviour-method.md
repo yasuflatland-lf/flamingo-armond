@@ -73,14 +73,12 @@ func (u *UserCardFSRS) ApplyRating(scheduler FSRSScheduler, rating Rating, now t
         return eris.Errorf("user_card_fsrs: invalid rating %d", rating)
     }
     u.State = scheduler.Apply(u.State, rating, now)
-    u.UpdatedAt = now
     return nil
 }
 ```
 
-The usecase passes the concrete scheduler; the aggregate updates its own fields.
-`UpdatedAt` is always stamped, and the aggregate's invariants are maintained in
-one place.
+The usecase passes the concrete scheduler; the aggregate updates its own state,
+and the aggregate's invariants are maintained in one place.
 
 #### The scheduler clamps a backward-reading clock
 
@@ -99,17 +97,13 @@ non-negative, at the cost of treating a backward-skewed review as if it happened
 at the instant of the previous one. Any reimplementation of the `ApplyRating`
 path must reproduce it.
 
-**A clamped apply leaves `State.LastReview > UpdatedAt` in the in-memory
-aggregate.** `ApplyRating` stamps `u.UpdatedAt = now` with the *unclamped*
-argument while the state it stores back carries the *clamped* `LastReview`, so
-the loaded aggregate holds the inversion for the rest of the request. It does not
-travel to the row: `updated_at` is database-owned, so the repository never sends
-the aggregate's value and the `trg_user_card_fsrs_set_updated_at`
-BEFORE INSERT OR UPDATE trigger assigns `now()` on either upsert branch.
-The persisted `updated_at` is therefore the database clock, never the skewed
-aggregate value. The inversion is tolerated rather than normalised because
-nothing reads that ordering: the queue predicates compare `last_review` and `due`
-against learn-day boundaries, never against `updated_at`.
+**A clamped apply cannot skew `user_card_fsrs.updated_at`.** The aggregate
+carries no `UpdatedAt` field: `updated_at` is database-owned, and the
+`trg_user_card_fsrs_set_updated_at` BEFORE INSERT OR UPDATE trigger assigns
+`now()` on either upsert branch, so the persisted value is the database clock,
+never the request's `now`. No request path reads it back; the queue predicates
+compare `last_review` and `due` against learn-day boundaries, never against
+`updated_at`. It stays as an audit column that the `cmd/seed` dump selects.
 
 ### Single-field aggregate mutation (`Cardgroup.Rename`, `Card.UpdateFront`/`UpdateBack`) (issues #212, #213)
 
@@ -185,10 +179,9 @@ bypasses the parser, which is a programmer error that classifies as `INTERNAL`, 
 `ErrCardgroupNameRequired`.
 
 **`UpdatedAt` is intentionally not stamped by the aggregate methods.** Persistence
-(GORM `AutoUpdateTime` on the `UpdatedAt` field) is the canonical source of the
-modification timestamp. Stamping `c.UpdatedAt = time.Now()` inside a behaviour
-method would couple the aggregate to a clock seam and introduce a second
-source-of-truth for the timestamp. Compare `UserCardFSRS.ApplyRating` above, which
-does stamp `UpdatedAt` — that case owns the full state-transition including the
-timestamp because the FSRS algorithm dictates the exact moment the card state
-changes; the simpler rename/field-update cases have no such requirement.
+is the canonical source of the modification timestamp: each table's
+`trg_<table>_set_updated_at` BEFORE INSERT OR UPDATE trigger assigns `now()`, and
+the gorm row field is read-only (`->`). Stamping `c.UpdatedAt = time.Now()` inside
+a behaviour method would couple the aggregate to a clock seam and introduce a
+second source-of-truth for the timestamp. `UserCardFSRS.ApplyRating` above follows
+the same rule more strictly: its aggregate carries no `UpdatedAt` field at all.

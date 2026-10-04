@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"strings"
 
 	"github.com/rotisserie/eris"
@@ -71,7 +72,7 @@ type v2Body struct {
 // Encode wraps a raw entity ID in the v1 opaque cursor envelope.
 // The encoded form is "v1:" + RawURLBase64(id) — padding-free and URL-safe.
 // Clients must treat the result as an opaque string and pass it back unchanged
-// as an after/before pagination argument.
+// as the `after` pagination argument.
 //
 // Use Encode for connections whose ordering key is immutable (the admin-users
 // listing orders by created_at, for example). Connections that order by a
@@ -156,7 +157,8 @@ func decodeV2Body(raw []byte) (v2Body, error) {
 	if err := dec.Decode(&body); err != nil {
 		return v2Body{}, eris.Wrap(err, "cursor: invalid v2 json payload")
 	}
-	if dec.More() {
+	// dec.More reports false before a stray '}' or ']', so require EOF instead.
+	if _, err := dec.Token(); err != io.EOF {
 		return v2Body{}, eris.New("cursor: trailing data after v2 json payload")
 	}
 	for _, f := range []struct {
