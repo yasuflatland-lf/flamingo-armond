@@ -7,8 +7,8 @@ package repository
 // coverage of the guard at all. These pin the reject side and, crucially, the
 // exact message each rejection produces: the message is the only signal an
 // operator gets when a row edited outside the application reaches a read, so a
-// silently reworded or dropped guard would leave a corrupt column to flow into
-// the GraphQL Floats it feeds and break JSON marshalling of the whole response.
+// dropped guard could defer failure to a scheduler panic or a silently wrapped
+// counter on a later swipe instead of a failed read.
 
 import (
 	"testing"

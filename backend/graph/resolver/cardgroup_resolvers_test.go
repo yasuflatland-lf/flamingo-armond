@@ -316,7 +316,7 @@ func TestResolver_Cardgroup_ForeignOwned_IdenticalToNotFound(t *testing.T) {
 // TestResolver_MyCardgroupsConnection_Empty_ReturnsEmptyEdges verifies that an
 // empty page result returns edges: [] with no startCursor/endCursor. This
 // exercises the toCardgroupConnectionModel branch where len(out.Cardgroups)==0
-// so StartCur/EndCur stay empty and nilIfEmpty maps them to JSON null.
+// so StartCur/EndCur stay empty and encodeBoundaryCursor maps them to JSON null.
 func TestResolver_MyCardgroupsConnection_Empty_ReturnsEmptyEdges(t *testing.T) {
 	t.Parallel()
 

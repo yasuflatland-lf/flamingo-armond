@@ -98,7 +98,6 @@ func toCardModel(card *domain.Card) *model.Card {
 		Back:        string(card.Back),
 		CardgroupID: string(card.CardgroupID),
 		CreatedAt:   card.CreatedAt,
-		UpdatedAt:   card.UpdatedAt,
 	}
 }
 
@@ -122,14 +121,8 @@ func toUserCardStateModel(ucs *domain.UserCardFSRS) *model.UserCardState {
 		return nil
 	}
 	return &model.UserCardState{
-		Due:           ucs.State.Due,
-		Stability:     ucs.State.Stability,
-		Difficulty:    ucs.State.Difficulty,
-		State:         int(ucs.State.Phase),
-		Reps:          ucs.State.Reps,
-		Lapses:        ucs.State.Lapses,
-		LastReview:    ucs.State.LastReview,
-		ScheduledDays: ucs.State.ScheduledDays,
+		Due:   ucs.State.Due,
+		State: int(ucs.State.Phase),
 	}
 }
 
