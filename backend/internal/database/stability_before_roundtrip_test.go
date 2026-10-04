@@ -36,8 +36,9 @@ func TestStabilityBeforeDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back nine migrations newest-first:
-	// reset_legacy_new_card_ratio, revoke_client_writes,
+	// Step back ten migrations newest-first:
+	// drop_swipe_records_user_cardgroup_index, reset_legacy_new_card_ratio,
+	// revoke_client_writes,
 	// lower_new_card_ratio_default, tighten_new_card_ratio_check,
 	// realign_fsrs_snapshot_columns_to_v4,
 	// widen_updated_at_triggers_to_insert,
@@ -46,7 +47,7 @@ func TestStabilityBeforeDownUpRoundtrip(t *testing.T) {
 	// re-applies only stability_before; the
 	// t.Cleanup restores the rest. Bump this count when adding migrations after
 	// add_stability_before_to_swipe_records.
-	if err := m.Steps(-9); err != nil {
+	if err := m.Steps(-10); err != nil {
 		t.Fatalf("migrate down stability_before migration: %v", err)
 	}
 	requireColumnMissing(t, ctx, sqlDB, "swipe_records", "stability_before")
