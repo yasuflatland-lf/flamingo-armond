@@ -268,3 +268,17 @@ func TestFSRSSchedulerApplyGoldenTransitions(t *testing.T) {
 		})
 	}
 }
+
+func TestNewFSRSScheduler_KeepsLongTermMode(t *testing.T) {
+	t.Parallel()
+
+	algo := NewFSRSScheduler().algo
+
+	// These assertions defend against the measured silent fallback caused by
+	// RequestRetention = 0, MaximumInterval = 0 or 73000, and a NaN weight.
+	require.False(t, algo.EnableShortTerm)
+	require.Equal(t, 0.9, algo.RequestRetention)
+	require.Equal(t, 36500.0, algo.MaximumInterval)
+	require.Nil(t, algo.LearningSteps)
+	require.Nil(t, algo.RelearningSteps)
+}

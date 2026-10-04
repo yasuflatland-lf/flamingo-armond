@@ -96,6 +96,19 @@ When a usecase only needs one or two methods of a repository or service, declare
 
 To catch wire-format regressions that usecase-layer unit tests miss (e.g., `Int` codec changes, `extensions.code` shape), build a `handler.NewServer` against a `Resolver` whose UC fields point at hand-rolled mocks. The harness pattern is in `backend/graph/resolver/user_test.go`; `backend/graph/resolver/card_resolvers_test.go` is the second example. These tests verify that gqlgen correctly hydrates a generated input model AND that the resolver maps domain sentinels to the expected GraphQL error shape.
 
+### Property-based tests (rapid)
+
+Laws are tested with `pgregory.net/rapid` (MPL-2.0, test-only import); named regression pins stay as examples.
+
+- **Files**: a property lives in `<subject>_property_test.go` next to `<subject>_test.go`, in the same package as that subject's existing tests. Pins and worked examples stay in `<subject>_test.go`.
+- **Names**: `Test<Subject>_Property_<Law>`, so `go test -run Property` selects them. Go native fuzz targets are `Fuzz<Func>`.
+- **Shape**: call `t.Parallel()` on the outer test and write the law inside `rapid.Check(t, func(t *rapid.T) { ... })` with testify `require`.
+- **Checks**: rapid's default of 100 per property; run deeper with `RAPID_CHECKS=1000 go test ./... -run Property`. Use the environment variable, not `-rapid.checks`: packages that do not import rapid reject the flag.
+- **Finite domains**: when the whole domain fits in a loop (for example `ParseNewCardRatio` over `[-5,120]^2`), enumerate it instead of sampling.
+- **Failures**: the seed is random per run. A failure prints `-rapid.seed=<N>` and a fail file under `testdata/rapid/`, which is gitignored. Turn the shrunk counterexample into a named pin in `<subject>_test.go`.
+- **Generators**: a generator used by two or more files of a package lives in that package's `gen_property_test.go`. There is no cross-package generator package.
+- **Non-ASCII**: write non-ASCII runes in generator alphabets as `\u` escapes so the CJK gate stays clean.
+
 ## Logging
 
 `log/slog` with a `JSONHandler` on `os.Stderr`. `slog.SetDefault` registers the process-wide default, and `e.Logger = logger` shares the same logger with Echo so request logs and application logs use a single format.
