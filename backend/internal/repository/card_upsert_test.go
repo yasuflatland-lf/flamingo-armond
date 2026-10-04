@@ -18,7 +18,7 @@ import (
 // TestCardRepository_UpsertManyTx covers the four scenarios for UpsertManyTx:
 // pure inserts, mixed insert+update, empty input, and the per-cardgroup
 // uniqueness boundary. The unique index that backs the ON CONFLICT clause is
-// migration 20260503000000_add_cards_upsert_index.
+// uq_cards_cardgroup_front, defined in 20260430080000_initial_schema.
 func TestCardRepository_UpsertManyTx(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
