@@ -11,9 +11,6 @@ type MasterCard {
   updatedAt: Time!
 }
 
-"""Sort key for an `adminMasterCardsConnection` page."""
-enum MasterCardOrderBy { ID  POSITION  CREATED_AT  UPDATED_AT }
-
 """A Relay edge pairing an opaque cursor with a `MasterCard` node."""
 type MasterCardEdge { cursor: ID!  node: MasterCard! }
 
@@ -33,10 +30,11 @@ extend type Query {
   behaves identically. Being admin-gated does not put this connection on the `users`
   page-size contract: out-of-range values are clamped here, never rejected.
   Optional case-insensitive substring search on front OR back.
+  Ordered by `position` ascending.
   """
   adminMasterCardsConnection(
     masterCardgroupId: ID!, first: Int, after: ID,
-    search: String, orderBy: MasterCardOrderBy = POSITION, orderDirection: SortOrder = ASC
+    search: String
   ): MasterCardConnection!
   """
   Public paginated cards in a PUBLISHED master deck, for any authenticated caller.
@@ -51,10 +49,11 @@ extend type Query {
   A DRAFT, card-less or unknown deck is rejected as BAD_USER_INPUT
   on `masterCardgroupId` (non-disclosure gate: draft existence and emptiness are
   never revealed). Anonymous callers receive UNAUTHENTICATED.
+  Ordered by `position` ascending.
   """
   masterCardsConnection(
     masterCardgroupId: ID!, first: Int, after: ID,
-    search: String, orderBy: MasterCardOrderBy = POSITION, orderDirection: SortOrder = ASC
+    search: String
   ): MasterCardConnection!
   """
   A single catalog-visible master deck by id, for any authenticated caller. Returns

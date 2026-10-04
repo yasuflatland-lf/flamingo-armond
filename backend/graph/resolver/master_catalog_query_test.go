@@ -133,22 +133,16 @@ func TestQueryResolver_MasterCatalog_Success(t *testing.T) {
 	qr := &queryResolver{&Resolver{MasterCatalogUC: stub}}
 
 	first := 10
-	orderBy := model.MasterCatalogOrderByName
-	dir := model.SortOrderDesc
-	conn, err := qr.MasterCatalog(context.Background(), &first, nil, nil, &orderBy, &dir)
+	conn, err := qr.MasterCatalog(context.Background(), &first, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, conn.Edges, 1)
 	assert.Equal(t, "x", conn.Edges[0].Node.ID)
 	assert.Equal(t, 5, conn.Edges[0].Node.CardCount)
 	assert.Equal(t, 1, conn.TotalCount)
 
-	// The resolver casts the model enums to the usecase enums before the call.
+	// The resolver passes the arguments through to the usecase input.
 	require.NotNil(t, stub.gotInput.First)
 	assert.Equal(t, 10, *stub.gotInput.First)
-	require.NotNil(t, stub.gotInput.OrderBy)
-	assert.Equal(t, usecase.MasterCatalogOrderByName, *stub.gotInput.OrderBy)
-	require.NotNil(t, stub.gotInput.OrderDirection)
-	assert.Equal(t, usecase.SortOrderDesc, *stub.gotInput.OrderDirection)
 }
 
 // TestQueryResolver_MasterCatalog_WrapsUsecaseError verifies the mandatory
@@ -169,7 +163,7 @@ func TestQueryResolver_MasterCatalog_WrapsUsecaseError(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			qr := &queryResolver{&Resolver{MasterCatalogUC: &stubMasterCatalogUC{err: tc.err}}}
-			_, err := qr.MasterCatalog(context.Background(), nil, nil, nil, nil, nil)
+			_, err := qr.MasterCatalog(context.Background(), nil, nil, nil)
 			require.Error(t, err)
 			assert.True(t, gqlerrtest.IsCode(err, tc.want), "want wire code %s", tc.want)
 		})

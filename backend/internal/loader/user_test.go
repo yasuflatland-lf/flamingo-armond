@@ -158,8 +158,6 @@ func (r *countingCardgroupRepo) FindPageByOwner(
 	_ string,
 	_ *repository.CardgroupCursor,
 	_ int,
-	_ repository.CardgroupOrderBy,
-	_ repository.SortOrder,
 	_ *string,
 ) ([]*domain.Cardgroup, int64, error) {
 	panic("countingCardgroupRepo.FindPageByOwner not configured")

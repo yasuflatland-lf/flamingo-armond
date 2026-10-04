@@ -37,15 +37,15 @@ v2:<RawURLBase64(JSON{"i":id,"o":orderBy,"d":direction,"k":orderKey})>
 
 ## Which connections emit which envelope
 
-| Connection | Default ordering key | Envelope |
+| Connection | Fixed ordering | Envelope |
 | --- | --- | --- |
-| `myCardgroupsConnection` | `updated_at` (mutable) | v2 |
-| `masterCatalog` / admin master catalog | `sort_order` (admin-mutable) | v2 |
-| cards by cardgroup | `id` (immutable) | v2 |
-| master cards | `position` (admin-mutable) | v2 |
-| admin users | `created_at` (immutable) | v1 |
+| `myCardgroupsConnection` | `updated_at DESC` (mutable) | v2 |
+| `masterCatalog` / admin master catalog | `sort_order ASC` (admin-mutable) | v2 |
+| cards by cardgroup | `id ASC` (immutable) | v2 |
+| master cards | `position ASC` (admin-mutable) | v2 |
+| admin users | `created_at DESC` (immutable) | v1 |
 
-Cards are fixed at `(id, ASC)`. The other columns are defaults when the client sends no `orderBy`; for example, `resolveMasterCardOrderBy` defaults to `(POSITION, ASC)`. Non-ID orderings append `id` as a tiebreaker.
+Each connection has one fixed ordering; the column named is that ordering. Non-ID orderings append `id` as a tiebreaker.
 
 `admin users` is the only connection left on v1, and it is safe by construction: `created_at` is never updated after insert. Every other connection emits v2, including the card connection, whose key is immutable, so that all four share one encoder.
 
@@ -59,7 +59,7 @@ Guaranteed once a connection is on v2:
 
 Not guaranteed — these are inherent to cursor pagination over a mutable column, and no envelope format fixes them:
 
-- **A row deleted at the page boundary.** Under hydrating orderings, and on connections that decline the [`orderBy: ID` shortcut](../../.claude/rules/pagination.md#server-side-design), its cursor no longer resolves and the request is rejected as `cursor not found`. On `card` / `master-card` under `orderBy: ID`, the cursor is accepted and the request serves the correct next page.
+- **A row deleted at the page boundary.** On the hydrating connections, which decline the [`id`-order shortcut](../../.claude/rules/pagination.md#server-side-design), its cursor no longer resolves and the request is rejected as `cursor not found`. On the card connection (fixed `id` order), the cursor is accepted and the request serves the correct next page.
 - **A row whose ordering key crosses the bookmark.** An unseen row edited so it sorts above the cursor has moved into a region already served and is skipped; the boundary row edited so it sorts below the cursor has moved into the region not yet served and is met again. The edit moved the row across the bookmark, not the bookmark across the rows.
 - **`totalCount` drift.** The count is a separate query and reflects the moment it ran.
 
@@ -81,7 +81,7 @@ Where that call sits differs by envelope. The four v2 connections each own a per
 The v2 connections check ordering before using the decoded boundary:
 
 1. `requireCursorOrdering` rejects a cursor taken under a different column or direction (`BAD_USER_INPUT`).
-2. For hydrating orderings, `applyCardgroupOrderKey` / `applyMasterCatalogOrderKey` / `applyMasterCardOrderKey` populates the repository cursor column from the embedded value. A value that does not parse into the column's type is `BAD_USER_INPUT`; an `orderBy` the helper does not handle is a caller bug and stays `INTERNAL`.
+2. On the hydrating connections, `applyCardgroupOrderKey` / `applyMasterCatalogOrderKey` / `applyMasterCardOrderKey` populates the repository cursor column from the embedded value. A value that does not parse into the column's type is `BAD_USER_INPUT`.
 
 The v1 connection runs the symmetric guard instead: `rejectOrderedCursor` refuses any inbound cursor that carries ordering metadata, since a v2 cursor cannot have been issued by the admin-users connection (`BAD_USER_INPUT`).
 
