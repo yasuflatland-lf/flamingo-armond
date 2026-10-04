@@ -44,9 +44,8 @@ sibling queries the screen still owns.
 ### 3. Preserve the exact cache-key variables
 
 Build the hook's `variables` from the screen's existing base-vars object via
-`useMemo`, including aggregate-specific fields (`orderBy: "SORT_ORDER"`,
-`orderDirection: "ASC"` for masters; bare `{ first, search }` for users). A
-re-spelled key splits the cache from the screen's own mutation cache writes —
+`useMemo`. A re-spelled key splits the cache from the screen's own mutation
+cache writes —
 e.g. the masters create handler reads/writes the `search: null` variant, so the
 list query's key must match it exactly. See
 [`variables-shape-must-match.md`](variables-shape-must-match.md).

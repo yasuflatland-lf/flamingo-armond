@@ -28,7 +28,7 @@ func TestSwipeUsecase_HandleSwipe_FindCardByIDError_PinsChain(t *testing.T) {
 	cardgroupRepo := &mockCardgroupRepoForCard{
 		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		cardRepo,
 		cardgroupRepo,
@@ -69,7 +69,7 @@ func TestSwipeUsecase_HandleSwipe_FindUserCardFSRSError_PinsChain(t *testing.T) 
 		byCardID: map[string]*domain.UserCardFSRS{},
 		findErr:  infraErr,
 	}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		cardRepo,
 		cardgroupRepo,
@@ -109,7 +109,7 @@ func TestSwipeUsecase_HandleSwipe_ApplyRatingError_PinsChain(t *testing.T) {
 	userFSRSRepo := &mockUserCardFSRSRepository{
 		byCardID: map[string]*domain.UserCardFSRS{},
 	}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		cardRepo,
 		cardgroupRepo,
@@ -152,7 +152,7 @@ func TestSwipeUsecase_HandleSwipe_NewSwipeRecordError_PinsChain(t *testing.T) {
 	userFSRSRepo := &mockUserCardFSRSRepository{
 		byCardID: map[string]*domain.UserCardFSRS{},
 	}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		cardRepo,
 		cardgroupRepo,
@@ -198,7 +198,7 @@ func TestSwipeUsecase_HandleSwipe_InsertSwipeRecordError_PinsChain(t *testing.T)
 	userFSRSRepo := &mockUserCardFSRSRepository{
 		byCardID: map[string]*domain.UserCardFSRS{},
 	}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		cardRepo,
 		cardgroupRepo,
@@ -229,7 +229,7 @@ func TestSwipeUsecase_HandleSwipe_FindCardByID_PropagatesCancelled(t *testing.T)
 	cardgroupRepo := &mockCardgroupRepoForCard{
 		findResult: &domain.Cardgroup{ID: domain.CardgroupID("cg-1"), OwnerID: "user-1"},
 	}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		cardRepo,
 		cardgroupRepo,
@@ -269,7 +269,7 @@ func TestSwipeUsecase_HandleSwipe_FindUserCardFSRS_PropagatesCancelled(t *testin
 		byCardID: map[string]*domain.UserCardFSRS{},
 		findErr:  context.Canceled,
 	}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		cardRepo,
 		cardgroupRepo,
@@ -308,7 +308,7 @@ func TestSwipeUsecase_HandleSwipe_UpsertUserCardFSRS_PropagatesCancelled(t *test
 		byCardID:  map[string]*domain.UserCardFSRS{},
 		upsertErr: context.Canceled,
 	}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		cardRepo,
 		cardgroupRepo,
@@ -349,7 +349,7 @@ func TestSwipeUsecase_HandleSwipe_InsertSwipeRecord_PropagatesCancelled(t *testi
 	userFSRSRepo := &mockUserCardFSRSRepository{
 		byCardID: map[string]*domain.UserCardFSRS{},
 	}
-	tx, _ := fakeTxRunner()
+	tx := fakeTxRunner()
 	uc := NewSwipeUsecaseWithTx(
 		cardRepo,
 		cardgroupRepo,

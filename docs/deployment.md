@@ -277,6 +277,14 @@ Production deploys are managed by Vercel's native Git integration, configured du
 
 Vercel runs its own build pipeline, distinct from the repository's `pnpm build` script. Vercel selects a Node version according to the project's dashboard settings — if that differs from the version pinned in `mise.toml` at the repo root, the build may behave differently from local. Open the Vercel project's **Settings → General → Node.js Version** and set it to match `mise.toml`. This is a one-time operator step that cannot be automated — Vercel project settings live in the dashboard and have no API surface exposed in the repository.
 
+#### Skipping builds when no frontend input changed
+
+`frontend/vercel.json` sets an `ignoreCommand` so Vercel skips a deployment when nothing the frontend build reads has changed. Without it, every push to any branch builds the frontend: `pnpm-workspace.yaml` lists only `frontend`, and Vercel's built-in monorepo skipping treats a change outside the workspace definition (`backend/`, `docs/`, `playbooks/`, ...) as a global change that deploys every project. Hobby teams get 10 GB of Deployment Storage, and deployments count against it.
+
+The command diffs `HEAD` against `VERCEL_GIT_PREVIOUS_SHA` (the last successful deployment of the same branch) over `frontend/`, `schema/` (`prebuild` runs GraphQL codegen from `../schema/*.graphql`), the root `package.json`, `pnpm-lock.yaml`, and `pnpm-workspace.yaml`. Vercel expects the command to exit with 0 (skip the build) or 1 (build), and any other exit code fails the deployment. The command is therefore wrapped in an `if` that exits 0 only when the diff is verified empty and exits 1 in every other case. Two such cases occur in practice: an empty `VERCEL_GIT_PREVIOUS_SHA` (a branch's first deployment), and a previous SHA missing from Vercel's shallow clone (`git clone --depth=10`), as after a rebase and force-push. A bare `git diff` exits 128 with `fatal: bad object` there, and the deployment ends in ERROR.
+
+Add a path to the command whenever the frontend build starts reading a file outside `frontend/`. A path missing from the list means a change to that file alone does not produce a deployment.
+
 #### Disabling Git integration
 
 If the Git integration ever needs to be turned off (e.g. to switch back to a CLI-driven deploy path), open the Vercel project → **Settings → Git → Disconnect**. Without the integration, no production deploys fire on pushes to `main`; replace it with an Actions-based path before disconnecting.
