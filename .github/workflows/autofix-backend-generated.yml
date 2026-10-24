@@ -86,21 +86,21 @@ jobs:
 
       - name: Mint GitHub App installation token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: ${{ vars.AUTOFIX_APP_CLIENT_ID }}
           private-key: ${{ secrets.AUTOFIX_APP_PRIVATE_KEY }}
           # owner/repositories omitted: the token is scoped to this repository only.
 
       - name: Checkout PR branch
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.head_ref }}
           # App token so the auto-commit re-triggers the required backend CI on the new SHA.
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Set up mise (Go from backend/mise.toml)
-        uses: jdx/mise-action@v5
+        uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
           working_directory: backend
 
