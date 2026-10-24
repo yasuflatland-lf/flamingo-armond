@@ -41,10 +41,10 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up mise (Node + pnpm from mise.toml)
-        uses: jdx/mise-action@v5
+        uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
 
       - name: Resolve pnpm store path
         id: pnpm-store
@@ -52,7 +52,7 @@ jobs:
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: ${{ runner.os }}-pnpm-site-${{ hashFiles('site/pnpm-lock.yaml') }}
@@ -79,10 +79,10 @@ jobs:
     permissions:
       contents: write          # github-pages-deploy-action needs push access to the gh-pages branch
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up mise (Node + pnpm from mise.toml)
-        uses: jdx/mise-action@v5
+        uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
 
       - name: Resolve pnpm store path
         id: pnpm-store
@@ -90,7 +90,7 @@ jobs:
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: ${{ runner.os }}-pnpm-site-${{ hashFiles('site/pnpm-lock.yaml') }}
@@ -123,7 +123,7 @@ jobs:
           test -f site/dist/.nojekyll || { echo "::error::site/dist/.nojekyll missing - keep it under site/public/." >&2; exit 1; }
 
       - name: Publish site/dist to gh-pages root
-        uses: JamesIves/github-pages-deploy-action@v4
+        uses: JamesIves/github-pages-deploy-action@fa24774553152dd7873cd16ebd8d959b010c5445 # v4.9.0
         with:
           branch: gh-pages
           folder: site/dist
