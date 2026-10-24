@@ -27,10 +27,10 @@ jobs:
         working-directory: backend
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up mise (Go from backend/mise.toml)
-        uses: jdx/mise-action@v5
+        uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
           working_directory: backend
 
@@ -45,7 +45,7 @@ jobs:
           echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
 
       - name: Cache Go build and module cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ${{ steps.go-cache.outputs.build }}
@@ -156,7 +156,7 @@ jobs:
           rm coverage.html.out
 
       - name: Upload coverage artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: backend-coverage
           path: |
@@ -166,7 +166,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         id: codecov
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         continue-on-error: true
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
