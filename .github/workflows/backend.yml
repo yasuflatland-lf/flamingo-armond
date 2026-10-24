@@ -21,7 +21,7 @@ concurrency:
 jobs:
   test:
     name: Build & test
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     defaults:
       run:
         working-directory: backend
@@ -30,7 +30,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up mise (Go from backend/mise.toml)
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@v5
         with:
           working_directory: backend
 
@@ -182,7 +182,7 @@ jobs:
     name: Deploy to Render
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Trigger Render deploy hook
         env:
