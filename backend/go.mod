@@ -3,7 +3,7 @@ module backend
 go 1.27.3
 
 require (
-	github.com/99designs/gqlgen v0.17.95
+	github.com/99designs/gqlgen v0.17.98
 	github.com/MicahParks/keyfunc/v3 v3.8.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/golang-migrate/migrate/v4 v4.20.1
@@ -13,7 +13,7 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/joho/godotenv v1.5.1
 	github.com/jomei/notionapi v1.13.3
-	github.com/labstack/echo/v5 v5.4.0
+	github.com/labstack/echo/v5 v5.4.2
 	github.com/open-spaced-repetition/go-fsrs/v4 v4.0.0
 	github.com/ravilushqa/otelgqlgen v0.19.0
 	github.com/rivo/uniseg v0.4.7
@@ -21,7 +21,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
-	github.com/vektah/gqlparser/v2 v2.5.63
+	github.com/vektah/gqlparser/v2 v2.5.64
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.72.0
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.47.0
