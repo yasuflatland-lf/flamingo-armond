@@ -18,9 +18,9 @@
 # `frontend/.env.local` is loaded natively by Next.js from its own CWD.
 
 [tools]
-node = "24.22.0"
+node = "26.13.0"
 pnpm = "11.28.6"
-supabase = "2.121.0"
+supabase = "3.0.0"
 python = "3.15.0"
 pipx = "latest"
 "pipx:ansible-core" = "2.21.5"
