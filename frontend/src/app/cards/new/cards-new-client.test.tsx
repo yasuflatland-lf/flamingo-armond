@@ -458,6 +458,17 @@ describe("<CardsNewClient> — navigate-on-success", () => {
     expect(mockPush).toHaveBeenCalledWith("/cardgroups/cg-9/cards");
   });
 
+  it("Cancel button ignores a ?return= that resolves off-origin once the URL parser strips tab/LF/CR", async () => {
+    mockSearchParamsValue = "return=%2F%09%2Fevil.com";
+    const user = userEvent.setup();
+    renderClient({ initialCardgroupId: CG_ID });
+
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith(`/cardgroups/${CG_ID}/cards`);
+  });
+
   it("does NOT render a Cancel button when currentId is null", () => {
     renderClient({
       initialCardgroupId: null,
@@ -823,6 +834,17 @@ describe("<CardsNewClient> — CardgroupPickerSheet prop wiring", () => {
     );
   });
 
+  it("onSelect re-encodes the canonical sanitized return path, not the raw ?return= value", () => {
+    mockSearchParamsValue = "cardgroup=cg-1&return=/a/../learn/abc";
+    renderClient({ initialCardgroupId: CG_ID, forcePickerOpen: false });
+
+    capturedPickerProps?.onSelect("cg-2");
+
+    expect(mockReplace).toHaveBeenCalledWith("/cards/new?cardgroup=cg-2&return=%2Flearn%2Fabc", {
+      scroll: false,
+    });
+  });
+
   it("passes open=true to CardgroupPickerSheet when forcePickerOpen is true", () => {
     renderClient({ initialCardgroupId: null, forcePickerOpen: true });
 
@@ -854,6 +876,21 @@ describe("<CardsNewClient> — ?return= navigation", () => {
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith("/learn/abc");
     });
+  });
+
+  it("pushes the canonical sanitized form, not the raw ?return= value", async () => {
+    mockSearchParamsValue = `cardgroup=${CG_ID}&return=/a/../learn/abc`;
+
+    renderClient({
+      mocks: [makeCreateMock({ front: "Hello", back: "Hola" }), makePersistMock()],
+    });
+
+    await fillAndSubmit("Hello", "Hola");
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/learn/abc");
+    });
+    expect(mockPush).not.toHaveBeenCalledWith("/a/../learn/abc");
   });
 
   it("falls back to /cardgroups/<id>/cards when no ?return= param is present", async () => {

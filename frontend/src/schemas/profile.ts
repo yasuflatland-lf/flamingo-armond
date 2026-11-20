@@ -1,8 +1,10 @@
 import { z } from "zod";
+import { toLowerLikeGo, trimLikeGo } from "./go-text";
 import { graphemeCount } from "./grapheme";
 
 // Mirrors UpdateProfileInput in schema/schema.graphql; bio: undefined = unchanged, "" = explicit clear.
 // UAX #29 grapheme cluster counting keeps FE and BE length rules in sync.
+// Native JS trimming and lowercasing differ from domain.ParseDisplayName / domain.ParseBio; use ./go-text.
 const DISPLAY_NAME_MAX = 50;
 const BIO_MAX = 500;
 
@@ -28,19 +30,19 @@ const reservedDisplayNames = new Set([
 
 const displayName = z
   .string()
-  .trim()
+  .overwrite(trimLikeGo)
   .refine((s) => graphemeCount(s) >= 1, { message: "Display name is required" })
   .refine((s) => graphemeCount(s) <= DISPLAY_NAME_MAX, {
     message: `Display name must be ${DISPLAY_NAME_MAX} characters or fewer`,
   })
-  .refine((s) => !reservedDisplayNames.has(s.toLowerCase()), {
+  .refine((s) => !reservedDisplayNames.has(toLowerLikeGo(s)), {
     message: "Display name is reserved",
   });
 
 const bio = z
   .string()
   .optional()
-  .refine((s) => s === undefined || graphemeCount(s) <= BIO_MAX, {
+  .refine((s) => s === undefined || graphemeCount(trimLikeGo(s)) <= BIO_MAX, {
     message: `Bio must be ${BIO_MAX} characters or fewer`,
   });
 

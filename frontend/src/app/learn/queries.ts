@@ -50,11 +50,6 @@ export const HandleSwipeMutation = graphql(`
   mutation HandleSwipe($input: HandleSwipeInput!) {
     handleSwipe(input: $input) {
       __typename
-      ... on HandleSwipeSuccess {
-        response {
-          performanceMode
-        }
-      }
       ... on InputValidationError {
         field
         message

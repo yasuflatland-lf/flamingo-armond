@@ -58,13 +58,17 @@ on the right axes:
 
 ## Worked example
 
-`CatalogListItem` (`frontend/src/app/catalog/catalog-list-item.tsx`) is a sibling
-of `CatalogDeckTile` (`frontend/src/app/catalog/catalog-card.tsx`). Both unmask the
-`CatalogDeckFields` fragment (`frontend/src/app/catalog/queries.ts`) and accept
-`{ node, importing, imported, onImport, labels?, testIdPrefix? }`.
-`CatalogListItem` renders the `/catalog` list row (mirroring `AdminMasterRow`);
-`CatalogDeckTile` keeps its fixed-width tile layout for the `/onboarding/start`
-deck chooser. The `/catalog` migration from a card grid to a list changed only
-the catalog call site and the new sibling — `CatalogDeckTile` and `/onboarding/start`
-were never touched. The Import `<Button>` block is duplicated between the two on
-purpose; a reviewer accepted that as the cost of leaving the shared tile intact.
+`CatalogListItem` (`frontend/src/app/catalog/catalog-list-item.tsx`) and
+`OnboardingDeckTile` (`frontend/src/app/onboarding/start/_components/onboarding-deck-tile.tsx`)
+are siblings: both unmask the `CatalogDeckFields` fragment
+(`frontend/src/app/catalog/queries.ts`) and read the same `name` / `description` /
+`cardCount`. `CatalogListItem` is the navigation-only `/catalog` list row (one
+`Link`, no nested control — Import lives on the deck-detail page).
+`OnboardingDeckTile` keeps the fixed-width tile layout with a full-width Start CTA
+for the `/onboarding/start` chooser. When `/catalog` moved from a card grid to a
+list, the tile was left in place and the row was added as a sibling; the tile later
+moved under `onboarding/start/` once the catalog stopped rendering it. Neither
+component takes a layout-variant prop. The row later dropped the action half of the
+contract (`importing` / `onImport`) when Import moved to `/catalog/[id]`, so the pair
+now illustrates only the shared-fragment half; the action-prop and duplicated-control
+bullets under "What" describe the original split.

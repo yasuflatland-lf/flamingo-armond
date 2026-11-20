@@ -11,28 +11,13 @@ import (
 	"backend/internal/usecase/ucerr"
 )
 
-// validateRelayArgs enforces Relay pagination argument coherence.
-// The Relay spec pairs after with first (forward direction) and before with
-// last (backward direction). The five guards below reject every other
-// combination so callers never receive a silently re-interpreted page boundary.
-// Callers should invoke this before any repository call so invalid arguments
-// are rejected early.
-//
-// Returns a *ucerr.ValidationError on violation; nil otherwise.
-func validateRelayArgs(first, last *int, after, before *string) error {
-	if after != nil && before != nil {
-		return ucerr.NewValidationError("after", "after and before are mutually exclusive")
-	}
-	if first != nil && *first > 0 && before != nil {
-		return ucerr.NewValidationError("before", "before requires last, not first")
-	}
-	if last != nil && *last > 0 && after != nil {
-		return ucerr.NewValidationError("after", "after requires first, not last")
-	}
-	if before != nil && (first == nil || *first <= 0) && (last == nil || *last <= 0) {
-		return ucerr.NewValidationError("before", "before requires last")
-	}
-	if after != nil && (first == nil || *first <= 0) && (last == nil || *last <= 0) {
+// validateRelayArgs rejects an `after` cursor without a positive `first` as
+// BAD_USER_INPUT on "after". The repository trusts its inputs: an omitted first
+// would serve the cursor at a default page size the client never asked for, and
+// a first <= 0 would silently drop it. A request with neither argument is the
+// legitimate first page. Call it before any repository access.
+func validateRelayArgs(first *int, after *string) error {
+	if after != nil && (first == nil || *first <= 0) {
 		return ucerr.NewValidationError("after", "after requires first")
 	}
 	return nil
@@ -82,14 +67,14 @@ func translateCardErr(err error) error {
 }
 
 // translateTextLengthViolation maps a *repository.TextLengthViolationError -- the
-// database-side CHECK backstop on a "<table>_<column>_length" constraint
-// (SQLSTATE 23514) -- to a field-scoped BAD_USER_INPUT validation error keyed on
-// the column the constraint guards ("front", "back", "name").
+// database-side backstop for a text-length CHECK (SQLSTATE 23514) or a front too
+// large for its unique index (SQLSTATE 54000) -- to a field-scoped BAD_USER_INPUT
+// validation error keyed on the guarded column ("front", "back", "name").
 //
 // It returns nil when err is not a text-length violation, so callers use it as a
 // pre-filter before their existing eris.Wrap. The domain layer enforces the
-// user-visible cap in grapheme clusters and the database bound is a wide
-// multiple of it, so this path fires only for pathological combining-mark input;
+// user-visible cap in grapheme clusters and the database bounds sit above it for
+// realistic input, so this path fires only for pathological input;
 // classifying it as BAD_USER_INPUT rather than INTERNAL means the learner sees a
 // length message instead of an unexplained failure.
 func translateTextLengthViolation(err error) error {

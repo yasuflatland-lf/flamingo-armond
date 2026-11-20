@@ -34,11 +34,9 @@ export const AdminUsersQuery = graphql(`
   query AdminUsers(
     $first: Int
     $after: ID
-    $last: Int
-    $before: ID
     $search: String
   ) {
-    users(first: $first, after: $after, last: $last, before: $before, search: $search) {
+    users(first: $first, after: $after, search: $search) {
       edges {
         cursor
         node {

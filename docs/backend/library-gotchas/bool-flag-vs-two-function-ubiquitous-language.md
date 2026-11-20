@@ -135,19 +135,14 @@ query whose error path is identical in both cases. The smell is specifically
 
 ## Analogous pattern in this codebase
 
-`TrimAndDetect[T]` and `TrimAndDetectBackward[T]` encode direction via two
-function names rather than a `reverse bool` flag. The separation makes the
-pagination helper's directionality self-documenting at every call site. See
-[`.claude/rules/pagination.md`](../../../.claude/rules/pagination.md) for the
-`+1` fetch trick those helpers support.
-
 `clampLimit` and `clampPracticeLimit` (`backend/internal/usecase/learn.go`)
 clamp two different request limits whose **default differs because the semantic
 unit differs**. `clampLimit` serves the learn queue, where the unit is a *page*
 of due cards: a missing limit falls back to `defaultLimit` (20). `clampPracticeLimit`
-serves the practice pool, where the unit is the *whole set* of cards reviewed
-today: a missing limit falls back to the cap (`maxLimit`, 100), because "the
-pool is the unit" — paging a replay set makes no sense. An `isPractice bool` on
+serves the practice pool, where the unit is the *whole* pool (every card
+`NextDueCards` withholds by `last_review`): a missing limit falls back to the
+cap (`maxLimit`, 100), because "the pool is the unit" — paging a replay set
+makes no sense. An `isPractice bool` on
 a single `clamp(limit, isPractice)` would hide the default-20-vs-default-cap
 asymmetry behind the flag, forcing callers to remember which side gets which
 default. Two named methods keep the asymmetry visible at every call site

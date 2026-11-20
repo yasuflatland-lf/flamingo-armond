@@ -72,6 +72,28 @@ describe("useRoleMutations.createRole", () => {
     expect(outcome).toEqual({ status: "success" });
   });
 
+  it("maps U+0130 to i like Go strings.ToLower before mutating", async () => {
+    // The mock only matches Go's "admin"; JS's "admi\u0307n" would fail.
+    const mocks: MockedResponse[] = [
+      {
+        request: { query: AdminCreateRoleMutation, variables: { name: "admin" } },
+        result: {
+          data: {
+            createRole: { __typename: "CreateRoleSuccess", role: roleNode("r-1", "admin") },
+          },
+        },
+      },
+    ];
+    const { result } = render(mocks);
+
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.createRole({ name: "ADM\u0130N" });
+    });
+
+    expect(outcome).toEqual({ status: "success" });
+  });
+
   it("returns validation on InputValidationError", async () => {
     const mocks: MockedResponse[] = [
       {
@@ -176,6 +198,28 @@ describe("useRoleMutations.updateRole", () => {
     let outcome: unknown;
     await act(async () => {
       outcome = await result.current.updateRole("r-1", { name: "Reviewer" });
+    });
+
+    expect(outcome).toEqual({ status: "success" });
+  });
+
+  it("maps U+0130 to i like Go strings.ToLower before mutating", async () => {
+    // The mock only matches Go's "admin"; JS's "admi\u0307n" would fail.
+    const mocks: MockedResponse[] = [
+      {
+        request: { query: AdminUpdateRoleMutation, variables: { id: "r-1", name: "admin" } },
+        result: {
+          data: {
+            updateRole: { __typename: "UpdateRoleSuccess", role: roleNode("r-1", "admin") },
+          },
+        },
+      },
+    ];
+    const { result } = render(mocks);
+
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.updateRole("r-1", { name: "ADM\u0130N" });
     });
 
     expect(outcome).toEqual({ status: "success" });

@@ -5,73 +5,46 @@
 A shared helper that is exercised only through integration tests leaves its
 boundary conditions unpinned. The integration test proves the system works
 end-to-end; it does not systematically cover `want=0`, `nil`, `len==want`,
-`len==want+1`, and other edge cases. Add a direct unit test table for any
-helper that encodes non-trivial trimming or boundary logic.
+`len==want+1`, and other edge cases. Add a direct unit test for any helper
+that encodes non-trivial trimming or boundary logic. When the contract is a
+closed-form law, write it as a property
+(see [`docs/backend.md` § "Property-based tests (rapid)"](../../backend.md#property-based-tests-rapid))
+whose generator reaches every edge in the checklist below.
 
-## Example: `TrimAndDetect` and `TrimAndDetectBackward`
+## Example: `TrimAndDetect`
 
 ```go
-func TestTrimAndDetect(t *testing.T) {
+func TestTrimAndDetect_Property_TrimsOnlyOverflow(t *testing.T) {
     t.Parallel()
-    tests := []struct {
-        name     string
-        in       []int
-        want     int
-        expected []int
-        hasMore  bool
-    }{
-        // want=0: bypass all trimming, no hasMore signal
-        {name: "want=0", in: []int{1, 2, 3}, want: 0, expected: []int{1, 2, 3}, hasMore: false},
-        // fewer rows than requested: no trim needed
-        {name: "len < want", in: []int{1, 2}, want: 5, expected: []int{1, 2}, hasMore: false},
-        // exact page: no trim, no hasMore
-        {name: "len == want", in: []int{1, 2, 3}, want: 3, expected: []int{1, 2, 3}, hasMore: false},
-        // +1 row: trim sentinel, hasMore=true
-        {name: "len == want+1", in: []int{1, 2, 3, 4}, want: 3, expected: []int{1, 2, 3}, hasMore: true},
-        // more than +1: still hasMore=true, trim to want
-        {name: "len > want+1", in: []int{1, 2, 3, 4, 5}, want: 3, expected: []int{1, 2, 3}, hasMore: true},
-        // empty slice: no-op
-        {name: "empty", in: []int{}, want: 3, expected: []int{}, hasMore: false},
-        // nil slice: no-op, preserves nil
-        {name: "nil", in: []int(nil), want: 3, expected: []int(nil), hasMore: false},
-    }
-    for _, tc := range tests {
-        t.Run(tc.name, func(t *testing.T) {
-            t.Parallel()
-            got, hasMore := TrimAndDetect(tc.in, tc.want)
-            require.Equal(t, tc.expected, got)
-            require.Equal(t, tc.hasMore, hasMore)
-        })
-    }
+    rapid.Check(t, func(t *rapid.T) {
+        items := rapid.SliceOfN(rapid.Int(), 0, 30).Draw(t, "items")
+        if rapid.IntRange(0, 9).Draw(t, "nil") == 0 {             // nil one draw in ten
+            items = nil
+        }
+        want := rapid.IntRange(-3, 35).Draw(t, "want")                // covers want<=0, len<want, len==want, len==want+1
+        got, more := TrimAndDetect(items, want)
+        if want > 0 && len(items) > want {
+            require.True(t, more)
+            require.Equal(t, items[:want], got)
+            return
+        }
+        require.False(t, more)
+        require.Equal(t, items == nil, got == nil)
+        require.Equal(t, items, got)
+    })
 }
 ```
+
+The full test is in `backend/internal/usecase/page_property_test.go`.
 
 ## Directionality assertion for symmetric helpers
 
-When two functions encode opposite directions (`TrimAndDetect` trims the tail;
-`TrimAndDetectBackward` trims the head), add a single case that proves the
-functions differ:
-
-```go
-func TestTrimAndDetect_DirectionDistinction(t *testing.T) {
-    t.Parallel()
-    in := []int{1, 2, 3, 4} // want=3, len==want+1 → hasMore on both
-
-    forward, forwardMore := TrimAndDetect(in, 3)
-    backward, backwardMore := TrimAndDetectBackward(in, 3)
-
-    // forward trims tail → keeps leading elements
-    require.Equal(t, []int{1, 2, 3}, forward)
-    require.True(t, forwardMore)
-
-    // backward trims head → keeps trailing elements
-    require.Equal(t, []int{2, 3, 4}, backward)
-    require.True(t, backwardMore)
-}
-```
-
-This single assertion is load-bearing: it catches a future refactor that
-accidentally makes the two functions identical.
+When two functions encode opposite directions of the same operation (one trims
+the tail of a slice, its sibling trims the head), add a single case that feeds
+both the same input and asserts they return different results. That one
+assertion is load-bearing: it catches a future refactor that accidentally makes
+the two functions identical, which neither function's own table can detect
+because each table checks its function only against itself.
 
 ## Symmetric branch coverage for error-classifying sibling pairs
 
@@ -108,8 +81,8 @@ the gap visible, so the same PR closes it.
    a consistent shape (nil-in → nil-out, or empty-in → empty-out as documented).
 3. **`len == want`** — exact page, no trimming, no `hasMore`.
 4. **`len == want+1`** — the sentinel row is trimmed, `hasMore = true`.
-5. **Symmetric pair** — if the helper has a `Backward` (or `Reverse`) sibling,
-   add one directionality assertion as described above.
+5. **Symmetric pair** — if the helper has an opposite-direction (or reverse)
+   sibling, add one directionality assertion as described above.
 6. **Error-classifying sibling pair** — if the helper has an `Or<X>` / `Or<Y>`
    sibling, map every branch to the corresponding branch in the other and confirm
    each is covered (see "Symmetric branch coverage" above).
@@ -121,5 +94,5 @@ only through the values a single test scenario happens to produce. The `want=0`
 bypass or the `nil`-input no-op may never be triggered by the integration suite.
 A regression there goes undetected until a production caller hits the edge case.
 
-The direct unit test is fast, deterministic, and documents the full contract in
+The direct unit test is fast and documents the full contract in
 one place that a reader can scan without tracing through the system.

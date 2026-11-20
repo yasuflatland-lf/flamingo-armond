@@ -108,16 +108,12 @@ func (r *queryResolver) AdminMaster(ctx context.Context, id string) (*model.Mast
 }
 
 // AdminMasterCardsConnection is the resolver for the adminMasterCardsConnection field.
-func (r *queryResolver) AdminMasterCardsConnection(ctx context.Context, masterCardgroupID string, first *int, after *string, last *int, before *string, search *string, orderBy *model.MasterCardOrderBy, orderDirection *model.SortOrder) (*model.MasterCardConnection, error) {
+func (r *queryResolver) AdminMasterCardsConnection(ctx context.Context, masterCardgroupID string, first *int, after *string, search *string) (*model.MasterCardConnection, error) {
 	out, err := r.MasterCardUC.ListMasterCards(ctx, usecase.MasterCardConnectionInput{
 		MasterCardgroupID: masterCardgroupID,
 		First:             first,
-		Last:              last,
 		After:             after,
-		Before:            before,
 		Search:            search,
-		OrderBy:           toUsecaseOrderBy[model.MasterCardOrderBy, usecase.MasterCardOrderBy](orderBy),
-		OrderDirection:    toUsecaseOrderBy[model.SortOrder, usecase.SortOrder](orderDirection),
 	})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
@@ -126,16 +122,12 @@ func (r *queryResolver) AdminMasterCardsConnection(ctx context.Context, masterCa
 }
 
 // MasterCardsConnection is the resolver for the masterCardsConnection field.
-func (r *queryResolver) MasterCardsConnection(ctx context.Context, masterCardgroupID string, first *int, after *string, last *int, before *string, search *string, orderBy *model.MasterCardOrderBy, orderDirection *model.SortOrder) (*model.MasterCardConnection, error) {
+func (r *queryResolver) MasterCardsConnection(ctx context.Context, masterCardgroupID string, first *int, after *string, search *string) (*model.MasterCardConnection, error) {
 	out, err := r.MasterCardUC.ListPublicMasterCards(ctx, usecase.MasterCardConnectionInput{
 		MasterCardgroupID: masterCardgroupID,
 		First:             first,
-		Last:              last,
 		After:             after,
-		Before:            before,
 		Search:            search,
-		OrderBy:           toUsecaseOrderBy[model.MasterCardOrderBy, usecase.MasterCardOrderBy](orderBy),
-		OrderDirection:    toUsecaseOrderBy[model.SortOrder, usecase.SortOrder](orderDirection),
 	})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)

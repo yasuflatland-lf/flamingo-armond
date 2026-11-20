@@ -39,6 +39,10 @@ after the lib baseline is understood.
   mutant, the fastest mode the vitest runner supports.
 - `incremental: true` — local reruns only re-test changed files; the cache lives
   in the gitignored `frontend/reports/mutation/`.
+- fast-check properties run with the fixed seed from
+  `src/__test-setup__/fast-check.ts` (loaded through the reused
+  `vitest.config.ts`), so a mutant's killed/survived verdict does not depend on
+  the random inputs of one run.
 
 ## Running it
 

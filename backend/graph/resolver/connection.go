@@ -99,9 +99,8 @@ func toCardConnectionModel(ctx context.Context, out *usecase.CardConnectionOutpu
 	if out == nil {
 		return &model.CardConnection{Edges: []*model.CardEdge{}, PageInfo: &model.PageInfo{}}
 	}
-	// The card listing's DEFAULT ordering key is the immutable ID, but its opt-in
-	// DUE / UPDATED_AT orderings both move, so its cursors must carry the
-	// ordering-key value captured at serve time.
+	// Cards are fixed at (id ASC), so the key is immutable and OrderKeys is empty;
+	// the connection stays on v2 so all four ordered connections share one encoder.
 	enc := orderedCursorEncoder(out.Ordering, out.OrderKeys)
 	edges := buildEdges(ctx, out.Cards, "toCardConnectionModel", enc,
 		toCardModel,
@@ -120,7 +119,7 @@ func toCardgroupConnectionModel(ctx context.Context, out *usecase.CardgroupConne
 	if out == nil {
 		return &model.CardgroupConnection{Edges: []*model.CardgroupEdge{}, PageInfo: &model.PageInfo{}}
 	}
-	// The cardgroup listing defaults to the mutable UPDATED_AT column, so its
+	// The cardgroup listing orders by the mutable updated_at column, so its
 	// cursors must carry the ordering-key value captured at serve time.
 	enc := orderedCursorEncoder(out.Ordering, out.OrderKeys)
 	edges := buildEdges(ctx, out.Cardgroups, "toCardgroupConnectionModel", enc,
@@ -142,7 +141,7 @@ func toMasterCatalogConnectionModel(ctx context.Context, out *usecase.MasterCata
 	if out == nil {
 		return &model.MasterCatalogConnection{Edges: []*model.MasterCatalogEdge{}, PageInfo: &model.PageInfo{}}
 	}
-	// The catalog defaults to the admin-mutable SORT_ORDER column, so its
+	// The catalog orders by the admin-mutable sort_order column, so its
 	// cursors must carry the ordering-key value captured at serve time.
 	enc := orderedCursorEncoder(out.Ordering, out.OrderKeys)
 	edges := buildEdges(ctx, out.Items, "toMasterCatalogConnectionModel", enc,
@@ -164,7 +163,7 @@ func toMasterCardConnectionModel(ctx context.Context, out *usecase.MasterCardCon
 	if out == nil {
 		return &model.MasterCardConnection{Edges: []*model.MasterCardEdge{}, PageInfo: &model.PageInfo{}}
 	}
-	// The master-card listing defaults to the admin-mutable POSITION column, so
+	// The master-card listing orders by the admin-mutable position column, so
 	// its cursors must carry the ordering-key value captured at serve time.
 	enc := orderedCursorEncoder(out.Ordering, out.OrderKeys)
 	edges := buildEdges(ctx, out.Cards, "toMasterCardConnectionModel", enc,

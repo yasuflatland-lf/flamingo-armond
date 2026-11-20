@@ -70,8 +70,10 @@ func TestRoleRepository_FindByIDsTx_ReturnsRolesInTx(t *testing.T) {
 	ctx := context.Background()
 	repo := repository.NewRoleRepository(testDB.GORM)
 
-	roleAID := insertRole(t, ctx, "find-ids-tx-a-"+uuid.NewString())
-	roleBID := insertRole(t, ctx, "find-ids-tx-b-"+uuid.NewString())
+	nameA := "find-ids-tx-a-" + uuid.NewString()
+	nameB := "find-ids-tx-b-" + uuid.NewString()
+	roleAID := insertRole(t, ctx, nameA)
+	roleBID := insertRole(t, ctx, nameB)
 	missing := uuid.NewString()
 
 	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -81,6 +83,31 @@ func TestRoleRepository_FindByIDsTx_ReturnsRolesInTx(t *testing.T) {
 		require.NotNil(t, got[roleAID])
 		require.Nil(t, got[missing])
 		require.NotNil(t, got[roleBID])
+		require.Equal(t, roleAID, got[roleAID].ID)
+		require.Equal(t, domain.RoleName(nameA), got[roleAID].Name)
+		require.Equal(t, roleBID, got[roleBID].ID)
+		require.Equal(t, domain.RoleName(nameB), got[roleBID].Name)
+		return nil
+	})
+	require.NoError(t, err)
+}
+
+// TestRoleRepository_FindByIDsTx_DropsMalformedKeepsValid pins the partial-match
+// contract: malformed and urn:uuid: ids are dropped before the IN query, so
+// the canonical id is still returned.
+func TestRoleRepository_FindByIDsTx_DropsMalformedKeepsValid(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewRoleRepository(testDB.GORM)
+
+	roleID := insertRole(t, ctx, "find-ids-mixed-"+uuid.NewString())
+	ids := []string{roleID, "not-a-uuid", "urn:uuid:" + roleID}
+
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		got, err := repo.FindByIDsTx(ctx, tx, ids)
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		require.NotNil(t, got[roleID])
 		return nil
 	})
 	require.NoError(t, err)
@@ -355,11 +382,12 @@ func TestRoleRepository_Delete_CascadesUserRoles(t *testing.T) {
 	}
 
 	// The user should now have no roles.
-	roles, err := userRoleRepo.ListByUser(ctx, userID)
+	rolesByUser, err := userRoleRepo.ListByUserIDs(ctx, []string{userID})
 	if err != nil {
-		t.Fatalf("ListByUser after cascaded Delete: %v", err)
+		t.Fatalf("ListByUserIDs after cascaded Delete: %v", err)
 	}
+	roles := rolesByUser[userID]
 	if len(roles) != 0 {
-		t.Fatalf("ListByUser len after cascaded Delete = %d, want 0", len(roles))
+		t.Fatalf("ListByUserIDs len after cascaded Delete = %d, want 0", len(roles))
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -37,7 +36,6 @@ func TestCardShape(t *testing.T) {
 func TestNewCard(t *testing.T) {
 	t.Parallel()
 
-	const zwjEmoji = "👨‍👩‍👧‍👦"
 	now := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
 
 	t.Run("valid input constructs a fully-formed card", func(t *testing.T) {
@@ -53,37 +51,6 @@ func TestNewCard(t *testing.T) {
 		require.Equal(t, now, c.CreatedAt)
 		require.Equal(t, now, c.UpdatedAt)
 	})
-
-	t.Run("valid at max grapheme length", func(t *testing.T) {
-		t.Parallel()
-
-		c, err := NewCard("cg", strings.Repeat(zwjEmoji, 500), strings.Repeat("b", 500), 0, now)
-		require.NoError(t, err)
-		require.Equal(t, CardText(strings.Repeat(zwjEmoji, 500)), c.Front)
-	})
-
-	cases := []struct {
-		name        string
-		front       string
-		back        string
-		sentinelErr error
-	}{
-		{"front required", "", "back", ErrCardFrontRequired},
-		{"front whitespace only treated as required", "   ", "back", ErrCardFrontRequired},
-		{"back required", "front", "  ", ErrCardBackRequired},
-		{"front too long", strings.Repeat("a", CardTextMax+1), "back", ErrCardFrontTooLong},
-		{"back too long with graphemes", "front", strings.Repeat(zwjEmoji, CardTextMax+1), ErrCardBackTooLong},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			c, err := NewCard("cg", tc.front, tc.back, 0, now)
-			require.Nil(t, c, "no aggregate may be constructed from invalid input")
-			require.ErrorIs(t, err, tc.sentinelErr, "got %v", err)
-		})
-	}
 }
 
 func TestNewCardUsesProvidedTime(t *testing.T) {
@@ -267,102 +234,6 @@ func TestRatingFromSwipe(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tc.want, got)
-		})
-	}
-}
-
-func TestCardUpdateFront(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name      string
-		initial   Card
-		newFront  CardText
-		wantErr   error
-		wantFront CardText
-		wantBack  CardText
-	}{
-		{
-			name:      "empty CardText rejected with ErrCardFrontRequired",
-			initial:   Card{ID: "c", CardgroupID: CardgroupID("cg"), Front: "front", Back: "back"},
-			newFront:  "",
-			wantErr:   ErrCardFrontRequired,
-			wantFront: "front", // unchanged on error
-			wantBack:  "back",
-		},
-		{
-			name:      "valid CardText updates Front and returns nil",
-			initial:   Card{ID: "c", CardgroupID: CardgroupID("cg"), Front: "front", Back: "back"},
-			newFront:  "new front",
-			wantErr:   nil,
-			wantFront: "new front",
-			wantBack:  "back",
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			card := tc.initial
-			err := card.UpdateFront(tc.newFront)
-
-			if tc.wantErr != nil {
-				require.ErrorIs(t, err, tc.wantErr)
-			} else {
-				require.NoError(t, err)
-			}
-			require.Equal(t, tc.wantFront, card.Front)
-			// Back must remain untouched regardless of outcome.
-			require.Equal(t, tc.wantBack, card.Back)
-		})
-	}
-}
-
-func TestCardUpdateBack(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name      string
-		initial   Card
-		newBack   CardText
-		wantErr   error
-		wantFront CardText
-		wantBack  CardText
-	}{
-		{
-			name:      "empty CardText rejected with ErrCardBackRequired",
-			initial:   Card{ID: "c", CardgroupID: CardgroupID("cg"), Front: "front", Back: "back"},
-			newBack:   "",
-			wantErr:   ErrCardBackRequired,
-			wantFront: "front",
-			wantBack:  "back", // unchanged on error
-		},
-		{
-			name:      "valid CardText updates Back and returns nil",
-			initial:   Card{ID: "c", CardgroupID: CardgroupID("cg"), Front: "front", Back: "back"},
-			newBack:   "new back",
-			wantErr:   nil,
-			wantFront: "front",
-			wantBack:  "new back",
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			card := tc.initial
-			err := card.UpdateBack(tc.newBack)
-
-			if tc.wantErr != nil {
-				require.ErrorIs(t, err, tc.wantErr)
-			} else {
-				require.NoError(t, err)
-			}
-			// Front must remain untouched regardless of outcome.
-			require.Equal(t, tc.wantFront, card.Front)
-			require.Equal(t, tc.wantBack, card.Back)
 		})
 	}
 }

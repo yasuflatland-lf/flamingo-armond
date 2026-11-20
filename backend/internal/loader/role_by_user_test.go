@@ -37,10 +37,6 @@ func (s *roleBatchRepoStub) SetUserRolesTx(_ context.Context, _ *gorm.DB, _ stri
 	panic("roleBatchRepoStub.SetUserRolesTx not configured")
 }
 
-func (s *roleBatchRepoStub) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {
-	panic("roleBatchRepoStub.ListByUser not configured")
-}
-
 func (s *roleBatchRepoStub) ListByUserIDs(ctx context.Context, userIDs []string) (map[string][]*domain.Role, error) {
 	if s.listByUserIDs == nil {
 		panic("roleBatchRepoStub.ListByUserIDs not configured")
@@ -65,17 +61,11 @@ var _ repository.UserRoleRepository = (*roleBatchRepoStub)(nil)
 
 func newLoadersForRoleByUser(userRoleRepo repository.UserRoleRepository) *loader.Loaders {
 	return loader.New(
-		&countingRepo{
-			findByIDs: func(_ context.Context, _ []string) (map[string]*domain.User, error) {
-				return map[string]*domain.User{}, nil
-			},
-		},
-		emptyRoleRepo(),
+		&countingRepo{},
 		userRoleRepo,
 		emptyCardgroupRepo(),
 		emptyCardRepo(),
 		emptyUserPreferenceRepo(),
-		nil,
 	)
 }
 

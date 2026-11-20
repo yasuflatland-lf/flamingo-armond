@@ -39,7 +39,7 @@ vi.mock("./use-seed-default-starters", () => ({
 }));
 
 // Each cardgroup carries a top-level `id` (read for React keys + per-cardgroup `importing`
-// state) plus a masked `CatalogDeckFields` ref the chooser hands to `CatalogDeckTile`
+// state) plus a masked `CatalogDeckFields` ref the chooser hands to `OnboardingDeckTile`
 // — mirroring the `OnboardingStartQuery` node shape. `makeFragmentData` is
 // identity at runtime, so the card's `useFragment` still sees every field.
 const M1_FIELDS = {

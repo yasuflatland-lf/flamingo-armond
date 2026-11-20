@@ -65,9 +65,8 @@ These values target a public API on Render. Revisit if the threat model or deplo
 | `NOTION_SYNC_TOKEN` | no\* | — | Bearer token for `POST /internal/notion-sync`. |
 | `NOTION_MAX_ATTEMPTS` | no | `5` | Retry attempt cap for Notion 429/5xx responses. Must be positive when set. |
 | `NOTION_MAX_ELAPSED` | no | `20s` | Maximum cumulative Notion retry wait per request. Kept below the server's 30s `WriteTimeout`; must be a positive Go duration when set. |
-| `SUPER_USER_EMAILS` | no | *(empty)* | Comma-separated trusted email addresses promoted to `admin` on first authenticated request. See `docs/backend-auth.md` § "Bootstrap admin". |
 
-`PORT`, `SHUTDOWN_TIMEOUT`, `NOTION_MAX_ATTEMPTS`, `NOTION_MAX_ELAPSED`, and `SUPER_USER_EMAILS` are optional with safe defaults. The three `SUPABASE_JWT_*` variables, `SUPABASE_DB_URL`, and `PING_TOKEN` are strictly required — the server refuses to start if any is missing.
+`PORT`, `SHUTDOWN_TIMEOUT`, `NOTION_MAX_ATTEMPTS`, and `NOTION_MAX_ELAPSED` are optional with safe defaults. The three `SUPABASE_JWT_*` variables, `SUPABASE_DB_URL`, and `PING_TOKEN` are strictly required — the server refuses to start if any is missing.
 
 \* **Optional as a group.** When any of the four `NOTION_*` sync vars (`NOTION_TOKEN`, `NOTION_PAGE_IDS`, `NOTION_MASTER_CARDGROUP_NAME`, `NOTION_SYNC_TOKEN`) is absent or whitespace-only, the `POST /internal/notion-sync` route is disabled and the server still starts — a single `WARN` log line is emitted listing the missing var names (via `OptionalConfigFromEnv` in `run()`). The exception: when the group is otherwise present, `NOTION_PAGE_IDS` must contain at least one non-whitespace ID — a comma/whitespace-only value fails startup.
 
@@ -87,7 +86,7 @@ These values target a public API on Render. Revisit if the threat model or deplo
 
 ### Test-only exported constructors
 
-Usecases that need an injectable `txRunner` for resolver-level wire tests (e.g., `NewCardUsecaseWithTx`) are exported solely to let `package resolver_test` inject a hand-rolled mock. The trade-off is intentional: `txRunner` is unexported, so callers outside the package cannot misuse the seam; the alternative — moving tests into `package resolver` — gives up the `_test`-package isolation convention. When adding similar usecases, prefer this pattern over exposing production internals to tests via the non-`_test` package.
+Usecases that need an injectable `txRunner` for resolver-level wire tests (e.g., `NewSwipeUsecaseWithTx`) are exported solely to let `package resolver_test` inject a hand-rolled mock. The trade-off is intentional: `txRunner` is unexported, so callers outside the package cannot misuse the seam; the alternative — moving tests into `package resolver` — gives up the `_test`-package isolation convention. When adding similar usecases, prefer this pattern over exposing production internals to tests via the non-`_test` package.
 
 ### Consumer-defined narrow interfaces over re-using the full repository / service interface
 
@@ -96,6 +95,19 @@ When a usecase only needs one or two methods of a repository or service, declare
 ### Resolver-level wire tests
 
 To catch wire-format regressions that usecase-layer unit tests miss (e.g., `Int` codec changes, `extensions.code` shape), build a `handler.NewServer` against a `Resolver` whose UC fields point at hand-rolled mocks. The harness pattern is in `backend/graph/resolver/user_test.go`; `backend/graph/resolver/card_resolvers_test.go` is the second example. These tests verify that gqlgen correctly hydrates a generated input model AND that the resolver maps domain sentinels to the expected GraphQL error shape.
+
+### Property-based tests (rapid)
+
+Laws are tested with `pgregory.net/rapid` (MPL-2.0, test-only import); named regression pins stay as examples.
+
+- **Files**: a property lives in `<subject>_property_test.go` next to `<subject>_test.go`, in the same package as that subject's existing tests. Pins and worked examples stay in `<subject>_test.go`.
+- **Names**: `Test<Subject>_Property_<Law>`, so `go test -run Property` selects them. Go native fuzz targets are `Fuzz<Func>`.
+- **Shape**: call `t.Parallel()` on the outer test and write the law inside `rapid.Check(t, func(t *rapid.T) { ... })` with testify `require`.
+- **Checks**: rapid's default of 100 per property; run deeper with `RAPID_CHECKS=1000 go test ./... -run Property`. Use the environment variable, not `-rapid.checks`: packages that do not import rapid reject the flag.
+- **Finite domains**: when the whole domain fits in a loop (for example `ParseNewCardRatio` over `[-5,120]^2`), enumerate it instead of sampling.
+- **Failures**: the seed is random per run. A failure prints `-rapid.seed=<N>` and a fail file under `testdata/rapid/`, which is gitignored. Turn the shrunk counterexample into a named pin in `<subject>_test.go`.
+- **Generators**: a generator used by two or more files of a package lives in that package's `gen_property_test.go`. There is no cross-package generator package.
+- **Non-ASCII**: write non-ASCII runes in generator alphabets as `\u` escapes so the CJK gate stays clean.
 
 ## Logging
 
@@ -107,7 +119,7 @@ Library-quirk rules (Echo v5 signatures, GORM empty-`IN` behaviour, JWT algorith
 
 ### Role repository sentinels
 
-`repository.RoleRepository` exposes the full CRUD surface (`Create`, `Update`, `Delete`, `FindByID`, `FindByName`, `FindByIDs`, `ListAll`) plus the user-role join helpers (`AssignToUser`, `RevokeFromUser`, `ListByUser`, `ListByUserIDs`). Three sentinels classify the failure modes:
+`repository.RoleRepository` exposes the full CRUD surface (`Create`, `Update`, `Delete`, `FindByID`, `FindByName`, `ListAll`), while `repository.UserRoleRepository` carries the user-role join helpers (`AssignRoleToUser`, `SetUserRolesTx`, `ListByUserIDs`). Three sentinels classify the failure modes:
 
 - `ErrUserNotFound` — joined with `ErrNotFound` (so legacy `errors.Is(_, ErrNotFound)` callers keep working).
 - `ErrRoleNotFound` — joined with `ErrNotFound` for the same reason.
@@ -123,21 +135,22 @@ A repository `Update` that receives a no-op patch (all fields nil or unchanged) 
 
 ### Context cancellation propagation
 
-When a resolver calls a downstream service (DB, JWKS, role lookup) and the caller's context is cancelled, the returned error wraps `context.Canceled` or `context.DeadlineExceeded`. **Forward those errors as-is** rather than wrapping them with `gqlerr.Internal` — wrapping them logs an ERROR line and emits an `INTERNAL` envelope for what is actually a client-driven cancellation (browser closed, navigation away, deadline hit). The pattern for blocking auth calls is:
+When a resolver calls a downstream service (DB, JWKS, role lookup) and the caller's context is cancelled, the returned error wraps `context.Canceled` or `context.DeadlineExceeded`. **Forward those errors as-is** rather than wrapping them with `gqlerr.Internal` — wrapping them logs an ERROR line and emits an `INTERNAL` envelope for what is actually a client-driven cancellation (browser closed, navigation away, deadline hit). Blocking admin checks live in the usecase layer (see [Inject `AdminChecker` for admin-exempt business logic](backend/library-gotchas/admin-checker-inject-for-admin-exempt-business-logic.md)); `AdminGate.Require` in `backend/internal/usecase/admin_gate.go` shows the pattern:
 
 ```go
-isAdmin, err := r.AuthSvc.IsAdmin(ctx, caller.Sub)
+isAdmin, err := g.checker.IsAdmin(ctx, caller.Sub)
 if err != nil {
-    if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-        return nil, err
+    if isContextDone(err) || errors.Is(err, ucerr.ErrUnauthenticated) {
+        return "", err
     }
-    return nil, gqlerr.Internal(ctx, err)
+    // ...
+    return "", eris.Wrap(err, callerPrefix)
 }
 ```
 
-Applies to every resolver that performs a blocking external call. Without this guard, `slog.ErrorContext` and any downstream alerting (Sentry, dashboards) get polluted by client cancellations that are not server bugs.
+Applies to every resolver or usecase that performs a blocking external call. At the resolver layer, `classifyLoaderErr` in `backend/graph/resolver/helpers.go` is the equivalent form: it maps `context.Canceled` / `context.DeadlineExceeded` to `gqlerr.Cancelled` and wraps only the remaining errors with `gqlerr.Internal`. Without this guard, `slog.ErrorContext` and any downstream alerting (Sentry, dashboards) get polluted by client cancellations that are not server bugs.
 
-The same rule extends to **usecases that wrap a `db.Transaction` or call an injected service** (e.g. `CardgroupOwnershipFinder.FindByID`, `CardRepository.UpsertManyTx`). When a usecase is the layer that catches the error, return `context.Canceled` / `context.DeadlineExceeded` as-is and wrap only the genuine residual errors with the usecase's `eris` prefix. `cardImportUsecase.Import` applies this at both the ownership lookup and transaction-runner boundaries: owner lookup context errors pass through from `authorizeCardgroupOrBadInput`, and transaction errors pass through when `isContextDone(err)` matches.
+**Usecases that wrap a `db.Transaction` or call an injected service** (e.g. `CardgroupOwnershipFinder.FindByID`, `CardRepository.UpsertManyTx`) follow the same rule. When a usecase is the layer that catches the error, return `context.Canceled` / `context.DeadlineExceeded` as-is and wrap only the genuine residual errors with the usecase's `eris` prefix. `cardImportUsecase.Import` applies this at both the ownership lookup and transaction-runner boundaries: owner lookup context errors pass through from `authorizeCardgroupOrBadInput`, and transaction errors pass through when `isContextDone(err)` matches.
 
 ### Legacy ports: revisit boundaries before re-translating
 

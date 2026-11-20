@@ -18,21 +18,11 @@ type masterRLSFixture struct {
 	cardID       string // master_cards row seeded via the privileged connection
 }
 
-// TestMasterTablesRLS_AdminOnly proves the admin-only RLS posture on
-// master_cardgroups and master_cards:
-//
-//   - A non-admin authenticated caller sees ZERO rows on SELECT and is DENIED on
-//     INSERT, even though a row WAS seeded (via the privileged connection) that
-//     would be visible if RLS were broken — the anti-false-green guarantee.
-//   - An admin authenticated caller (granted the seeded admin role) can SELECT
-//     the seeded rows and INSERT new ones.
-//
-// The harness mirrors rls_test.go exactly: openAuthenticatedPool opens the
-// non-privileged "authenticated" role connection, setClaims wires the jwt `sub`
-// claim into request.jwt.claims (which auth.uid() reads), queryCountAs asserts
-// SELECT visibility, execOKAs asserts an allowed write, and execDeniedAs asserts
-// a denied write. Seeding uses sqlDBForTest (the migrate/owner connection, which
-// bypasses RLS).
+// TestMasterTablesRLS_AdminOnly checks admin-only reads and write policies.
+// openAuthenticatedPool opens the non-privileged "authenticated" login for SELECT
+// visibility; execOKAs / execDeniedAs run on the policy-probe pool, which re-grants
+// writes inside a rolled-back transaction because the API roles hold none since
+// 20260927000001_revoke_client_writes. Owner-seeded rows prevent empty-table passes.
 func TestMasterTablesRLS_AdminOnly(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
@@ -42,6 +32,9 @@ func TestMasterTablesRLS_AdminOnly(t *testing.T) {
 
 	authPool := openAuthenticatedPool(t, ctx)
 	defer authPool.Close()
+
+	probePool := openPolicyProbePool(t, ctx)
+	defer probePool.Close()
 
 	t.Run("master_cardgroups", func(t *testing.T) {
 		// Anti-false-green: the privileged connection seeded fx.groupID, so a
@@ -53,10 +46,10 @@ func TestMasterTablesRLS_AdminOnly(t *testing.T) {
 			`SELECT count(*) FROM public.master_cardgroups WHERE id = $1`, fx.groupID), 1)
 
 		// Non-admin INSERT is denied by the WITH CHECK clause.
-		execDeniedAs(t, ctx, authPool, fx.nonAdminUser,
+		execDeniedAs(t, ctx, probePool, fx.nonAdminUser,
 			`INSERT INTO public.master_cardgroups (name) VALUES ($1)`, "non-admin blocked group")
 		// Admin INSERT is allowed.
-		assertRows(t, execOKAs(t, ctx, authPool, fx.adminUser,
+		assertRows(t, execOKAs(t, ctx, probePool, fx.adminUser,
 			`INSERT INTO public.master_cardgroups (name) VALUES ($1)`, "admin created group"), 1)
 	})
 
@@ -69,10 +62,10 @@ func TestMasterTablesRLS_AdminOnly(t *testing.T) {
 			`SELECT count(*) FROM public.master_cards WHERE id = $1`, fx.cardID), 1)
 
 		// Non-admin INSERT is denied by the WITH CHECK clause.
-		execDeniedAs(t, ctx, authPool, fx.nonAdminUser, insertMasterCardSQL(),
+		execDeniedAs(t, ctx, probePool, fx.nonAdminUser, insertMasterCardSQL(),
 			uuid.NewString(), fx.groupID, "non-admin blocked card front", "Back")
 		// Admin INSERT is allowed.
-		assertRows(t, execOKAs(t, ctx, authPool, fx.adminUser, insertMasterCardSQL(),
+		assertRows(t, execOKAs(t, ctx, probePool, fx.adminUser, insertMasterCardSQL(),
 			uuid.NewString(), fx.groupID, "admin created card front", "Back"), 1)
 	})
 }

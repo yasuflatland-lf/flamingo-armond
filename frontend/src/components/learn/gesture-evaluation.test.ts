@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {
   DIRECTION_LOCK_PX,
@@ -16,38 +17,144 @@ const base = {
   yDir: 0,
 };
 
+/** Travel in px, biased onto every threshold edge. */
+const px = fc.oneof(
+  fc.integer({ min: -500, max: 500 }),
+  // 96 is a literal, not an import: DOWN_COMMIT_PY is module-private.
+  fc
+    .constantFrom(
+      ...[DIRECTION_LOCK_PX, HORIZONTAL_FLICK_MIN_PX, 96, HORIZONTAL_COMMIT_PX].flatMap((v) => [
+        v,
+        v + 1,
+      ]),
+    )
+    .chain((v) => fc.constantFrom(v, -v)),
+);
+// Not fc.double: it samples bit patterns, so ~92% of draws sit below 1e-6 and
+// 100 runs never reach the 0.35 / 0.9 thresholds.
+const speed = fc.oneof(
+  fc.integer({ min: 0, max: 300 }).map((n) => n / 100),
+  fc.constantFrom(0.35, 0.36, HORIZONTAL_COMMIT_VX, HORIZONTAL_COMMIT_VX + 0.01),
+);
+const unit = fc.oneof(
+  fc.integer({ min: -100, max: 100 }).map((n) => n / 100),
+  fc.constantFrom(0.9, 0.91),
+);
+const gesture = fc.record({
+  active: fc.boolean(),
+  mx: px,
+  my: px,
+  vx: speed,
+  vy: speed,
+  yDir: unit,
+});
+// Not the shared `gesture`: a released horizontal swipe that also lands on a
+// commit edge with vx near the flick threshold is too rare for 100 runs.
+const horizontalGesture = fc.record({
+  active: fc.constant(false),
+  mx: fc
+    .oneof(
+      fc.integer({ min: DIRECTION_LOCK_PX + 1, max: 300 }),
+      fc.constantFrom(
+        HORIZONTAL_FLICK_MIN_PX,
+        HORIZONTAL_FLICK_MIN_PX + 1,
+        HORIZONTAL_COMMIT_PX,
+        HORIZONTAL_COMMIT_PX + 1,
+      ),
+    )
+    .chain((v) => fc.constantFrom(v, -v)),
+  my: fc.integer({ min: -DIRECTION_LOCK_PX, max: DIRECTION_LOCK_PX }),
+  vx: speed,
+  vy: speed,
+  yDir: unit,
+});
+// Not the shared `gesture`: a released down swipe inside (14, 96] with vy or
+// yDir near its threshold is too rare for 100 runs.
+const downGesture = fc.record({
+  active: fc.constant(false),
+  mx: fc.integer({ min: -DIRECTION_LOCK_PX, max: DIRECTION_LOCK_PX }),
+  my: fc.oneof(fc.integer({ min: DIRECTION_LOCK_PX + 1, max: 200 }), fc.constantFrom(96, 97)),
+  vx: speed,
+  vy: speed,
+  yDir: unit,
+});
+
+describe("evaluateSwipeGesture — laws (property)", () => {
+  it("reports no direction, zero progress and no commit inside the lock threshold", () => {
+    const inside = fc.integer({ min: -DIRECTION_LOCK_PX, max: DIRECTION_LOCK_PX });
+    fc.assert(
+      fc.property(
+        gesture,
+        inside,
+        // Not [-14, 14]: the negative tail pins that an upward drag never locks
+        // (there is no up direction).
+        fc.integer({ min: -500, max: DIRECTION_LOCK_PX }),
+        (g, mx, my) => {
+          const r = evaluateSwipeGesture({ ...g, mx, my });
+          return r.direction === null && r.progress === 0 && !r.shouldSwipe;
+        },
+      ),
+    );
+  });
+
+  it("keeps progress in [0, 1] and never commits while active or without a direction", () => {
+    fc.assert(
+      fc.property(gesture, (g) => {
+        const r = evaluateSwipeGesture(g);
+        const noCommit = g.active || r.direction === null;
+        return r.progress >= 0 && r.progress <= 1 && !(noCommit && r.shouldSwipe);
+      }),
+    );
+  });
+
+  it("is mirror-symmetric: mx -> -mx swaps left and right with the same progress and commit", () => {
+    const flip = { left: "right", right: "left", down: "down" } as const;
+    fc.assert(
+      fc.property(gesture, (g) => {
+        const a = evaluateSwipeGesture(g);
+        const b = evaluateSwipeGesture({ ...g, mx: -g.mx });
+        return (
+          (a.direction === null ? null : flip[a.direction]) === b.direction &&
+          a.progress === b.progress &&
+          a.shouldSwipe === b.shouldSwipe
+        );
+      }),
+    );
+  });
+
+  it("commits a released horizontal swipe iff travel > COMMIT_PX or a flick (travel > FLICK_MIN_PX and vx > COMMIT_VX)", () => {
+    fc.assert(
+      fc.property(horizontalGesture, (g) => {
+        const r = evaluateSwipeGesture(g);
+        if (r.direction !== "left" && r.direction !== "right") return false;
+        const x = Math.abs(g.mx);
+        const flick = x > HORIZONTAL_FLICK_MIN_PX && g.vx > HORIZONTAL_COMMIT_VX;
+        return r.shouldSwipe === (x > HORIZONTAL_COMMIT_PX || flick);
+      }),
+    );
+  });
+
+  it("commits a released down swipe iff travel > 96px, vy > 0.35 or yDir > 0.9", () => {
+    fc.assert(
+      fc.property(downGesture, (g) => {
+        const r = evaluateSwipeGesture(g);
+        if (r.direction !== "down") return false;
+        return r.shouldSwipe === (Math.abs(g.my) > 96 || g.vy > 0.35 || g.yDir > 0.9);
+      }),
+    );
+  });
+});
+
 describe("evaluateSwipeGesture — direction locking (jitter suppression)", () => {
-  it("does not lock a direction for sub-threshold horizontal movement (5px)", () => {
-    const r = evaluateSwipeGesture({ ...base, mx: 5 });
-    expect(r.direction).toBeNull();
-    expect(r.progress).toBe(0);
-  });
-
-  it("does not lock a direction at the legacy 8px threshold", () => {
-    const r = evaluateSwipeGesture({ ...base, mx: 10 });
-    expect(r.direction).toBeNull();
-    expect(r.progress).toBe(0);
-  });
-
   it("locks 'right' once movement exceeds DIRECTION_LOCK_PX", () => {
     const r = evaluateSwipeGesture({ ...base, mx: DIRECTION_LOCK_PX + 2 });
     expect(r.direction).toBe("right");
     expect(r.progress).toBeGreaterThan(0);
   });
 
-  it("locks 'left' for negative mx above the lock threshold", () => {
-    const r = evaluateSwipeGesture({ ...base, mx: -(DIRECTION_LOCK_PX + 2) });
-    expect(r.direction).toBe("left");
-  });
-
   it("locks 'down' for positive my above the lock threshold", () => {
     const r = evaluateSwipeGesture({ ...base, my: DIRECTION_LOCK_PX + 2 });
     expect(r.direction).toBe("down");
-  });
-
-  it("does not lock 'down' for sub-threshold my", () => {
-    const r = evaluateSwipeGesture({ ...base, my: 10 });
-    expect(r.direction).toBeNull();
   });
 
   it("DIRECTION_LOCK_PX is at least 12 (jitter suppression)", () => {
@@ -56,23 +163,6 @@ describe("evaluateSwipeGesture — direction locking (jitter suppression)", () =
 });
 
 describe("evaluateSwipeGesture — horizontal commit threshold (premature commit suppression)", () => {
-  it("does NOT commit a horizontal swipe at 100px with low velocity", () => {
-    const r = evaluateSwipeGesture({ ...base, active: false, mx: 100, vx: 0.2 });
-    expect(r.shouldSwipe).toBe(false);
-  });
-
-  it("does NOT commit a horizontal swipe at 100px with the legacy velocity (0.5)", () => {
-    // Previously vx > 0.45 was enough to commit at any distance — this is the
-    // accidental-flick failure mode the user reported.
-    const r = evaluateSwipeGesture({ ...base, active: false, mx: 100, vx: 0.5 });
-    expect(r.shouldSwipe).toBe(false);
-  });
-
-  it("does NOT commit a horizontal swipe at the legacy 120px distance threshold", () => {
-    const r = evaluateSwipeGesture({ ...base, active: false, mx: 120, vx: 0 });
-    expect(r.shouldSwipe).toBe(false);
-  });
-
   it("commits a horizontal swipe at HORIZONTAL_COMMIT_PX", () => {
     const r = evaluateSwipeGesture({
       ...base,
@@ -82,17 +172,6 @@ describe("evaluateSwipeGesture — horizontal commit threshold (premature commit
     });
     expect(r.shouldSwipe).toBe(true);
     expect(r.direction).toBe("right");
-  });
-
-  it("commits a left swipe at -HORIZONTAL_COMMIT_PX", () => {
-    const r = evaluateSwipeGesture({
-      ...base,
-      active: false,
-      mx: -(HORIZONTAL_COMMIT_PX + 1),
-      vx: 0,
-    });
-    expect(r.shouldSwipe).toBe(true);
-    expect(r.direction).toBe("left");
   });
 
   it("HORIZONTAL_COMMIT_PX is at least 150 (longer swipe required)", () => {
@@ -137,31 +216,5 @@ describe("evaluateSwipeGesture — vertical (down) commit unchanged", () => {
     const r = evaluateSwipeGesture({ ...base, active: false, my: 100, vy: 0 });
     expect(r.shouldSwipe).toBe(true);
     expect(r.direction).toBe("down");
-  });
-
-  it("commits a down swipe via the velocity path", () => {
-    const r = evaluateSwipeGesture({ ...base, active: false, my: 60, vy: 0.5 });
-    expect(r.shouldSwipe).toBe(true);
-    expect(r.direction).toBe("down");
-  });
-
-  it("does not commit a down swipe with insufficient motion", () => {
-    const r = evaluateSwipeGesture({ ...base, active: false, my: 30, vy: 0.1 });
-    expect(r.shouldSwipe).toBe(false);
-  });
-});
-
-describe("evaluateSwipeGesture — shouldSwipe is false while active (mid-drag)", () => {
-  it("never commits while the gesture is still active, even past commit distance", () => {
-    const r = evaluateSwipeGesture({
-      ...base,
-      active: true,
-      mx: HORIZONTAL_COMMIT_PX + 100,
-      vx: 5,
-    });
-    expect(r.shouldSwipe).toBe(false);
-    // …but direction/progress are still reported so the overlay paints.
-    expect(r.direction).toBe("right");
-    expect(r.progress).toBeGreaterThan(0);
   });
 });

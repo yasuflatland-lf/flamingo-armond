@@ -10,7 +10,6 @@ import { headers } from "next/headers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CARDGROUPS_DEFAULT_VARS } from "@/app/cardgroups/queries";
 import { CreateCardgroupDocument, MyCardgroupsConnectionDocument } from "@/generated/graphql";
-import { sanitizeReturnTo } from "@/lib/sanitize-return-to";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { NewCardgroupClient } from "./new-cardgroup-client";
 import NewCardgroupPage from "./page";
@@ -167,11 +166,12 @@ describe("<NewCardgroupPage> (client)", () => {
     await user.click(screen.getByRole("button", { name: /create/i }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("cardgroup-new-validation-error")).toBeInTheDocument();
+      expect(screen.getByText("name already exists")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("cardgroup-new-validation-error")).toHaveTextContent(
-      "name already exists",
-    );
+    // Rendered once, as the inline field error — not duplicated in a page banner.
+    expect(screen.getAllByText("name already exists")).toHaveLength(1);
+    const fieldRow = screen.getByRole("textbox").parentElement as HTMLElement;
+    expect(within(fieldRow).getByText("name already exists")).toBeInTheDocument();
     // No navigation: the error variant is data, not a success.
     expect(mockPush).not.toHaveBeenCalled();
     expect(mockRefresh).not.toHaveBeenCalled();
@@ -213,9 +213,9 @@ describe("<NewCardgroupPage> (client)", () => {
     await user.type(screen.getByRole("textbox"), "Bad Name");
     await user.click(screen.getByRole("button", { name: /create/i }));
 
-    // Wait for the validation error banner to appear (mutation completed).
+    // Wait for the inline validation error to appear (mutation completed).
     await waitFor(() => {
-      expect(screen.getByTestId("cardgroup-new-validation-error")).toBeInTheDocument();
+      expect(screen.getByText("name already exists")).toBeInTheDocument();
     });
 
     // The MyCardgroupsConnection must NOT have been written to the cache —
@@ -299,7 +299,7 @@ describe("<NewCardgroupPage> (client)", () => {
     }
   });
 
-  it("generic transport rejection — warns and shows no auth/validation banner", async () => {
+  it("generic transport rejection — warns and shows no auth banner", async () => {
     const user = userEvent.setup();
 
     const networkError = new Error("network down");
@@ -325,7 +325,6 @@ describe("<NewCardgroupPage> (client)", () => {
       expect(mockPush).not.toHaveBeenCalled();
       expect(mockRefresh).not.toHaveBeenCalled();
       expect(screen.queryByTestId("cardgroup-new-auth-error")).not.toBeInTheDocument();
-      expect(screen.queryByTestId("cardgroup-new-validation-error")).not.toBeInTheDocument();
       expect(
         screen.queryByTestId("cardgroup-new-unexpected-payload-error"),
       ).not.toBeInTheDocument();
@@ -376,7 +375,6 @@ describe("<NewCardgroupPage> (client)", () => {
       expect(screen.getByTestId("cardgroup-new-unexpected-payload-error")).toHaveTextContent(
         /something went wrong/i,
       );
-      expect(screen.queryByTestId("cardgroup-new-validation-error")).not.toBeInTheDocument();
 
       expect(mockPush).not.toHaveBeenCalled();
       expect(mockRefresh).not.toHaveBeenCalled();
@@ -427,7 +425,6 @@ describe("<NewCardgroupPage> (client)", () => {
     expect(mockPush).not.toHaveBeenCalled();
     expect(mockRefresh).not.toHaveBeenCalled();
     // Limit branch returns early — no generic warn must fire.
-    expect(screen.queryByTestId("cardgroup-new-validation-error")).not.toBeInTheDocument();
     expect(screen.queryByTestId("cardgroup-new-unexpected-payload-error")).not.toBeInTheDocument();
   });
 
@@ -638,42 +635,17 @@ describe("authentication boundary", () => {
   });
 });
 
-describe("sanitizeReturnTo", () => {
-  it("allows internal paths starting with /", () => {
-    expect(sanitizeReturnTo("/cards/new")).toBe("/cards/new");
-  });
+describe("returnTo sanitisation at the page boundary", () => {
+  it.each([
+    ["/cards/new", "/cards/new"],
+    ["/\t/evil.com", null],
+    ["//evil.com", null],
+    [["/a", "//evil.com"], null],
+  ])("hands searchParams.returnTo %j to NewCardgroupClient as %j", async (raw, expected) => {
+    const element = await NewCardgroupPage({
+      searchParams: Promise.resolve({ returnTo: raw as unknown as string }),
+    });
 
-  it("allows internal paths with query string", () => {
-    expect(sanitizeReturnTo("/cards/new?foo=1")).toBe("/cards/new?foo=1");
-  });
-
-  it("rejects protocol-relative URLs starting with //", () => {
-    expect(sanitizeReturnTo("//evil.com")).toBeNull();
-  });
-
-  it("rejects https:// URLs", () => {
-    expect(sanitizeReturnTo("https://evil.com")).toBeNull();
-  });
-
-  it("rejects bare hostnames without leading slash", () => {
-    expect(sanitizeReturnTo("evil.com")).toBeNull();
-  });
-
-  it("rejects undefined", () => {
-    expect(sanitizeReturnTo(undefined)).toBeNull();
-  });
-
-  it("rejects empty string", () => {
-    expect(sanitizeReturnTo("")).toBeNull();
-  });
-
-  it("rejects backslash-bypass /\\evil.com", () => {
-    expect(sanitizeReturnTo("/\\evil.com")).toBeNull();
-  });
-
-  it("rejects backslash-bypass /\\\\evil.com", () => {
-    // double-escaped to land "/\\evil.com" as the runtime string -- verify the helper
-    // when called with the raw form a browser may emit
-    expect(sanitizeReturnTo("/\\\\evil.com")).toBeNull();
+    expect(element.props.returnTo).toBe(expected);
   });
 });

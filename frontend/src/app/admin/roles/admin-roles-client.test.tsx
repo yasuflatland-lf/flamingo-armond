@@ -171,6 +171,7 @@ describe("AdminRolesClient", () => {
     renderRoles([CUSTOM_ROLE]);
 
     const btn = screen.getByTestId("admin-roles-new-btn");
+    expect(btn.tagName).toBe("BUTTON");
     expect(btn.className).toContain("hidden");
     expect(btn.className).toContain("md:inline-flex");
   });
@@ -218,20 +219,29 @@ describe("AdminRolesClient", () => {
     expect(screen.queryByRole("button", { name: /admin/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /general/i })).toBeNull();
     expect(screen.getAllByText("System role")).toHaveLength(SYSTEM_ROLES.length);
+    for (const role of SYSTEM_ROLES) {
+      expect(
+        within(screen.getByTestId(`admin-role-row-${role.id}`)).queryByRole("link"),
+      ).toBeNull();
+    }
   });
 
   it("removes a custom role from the list when delete succeeds", async () => {
     const user = userEvent.setup();
     vi.useFakeTimers({ shouldAdvanceTime: true });
 
+    const deleteResult = vi.fn(() => ({ data: { deleteRole: true } }));
     const mocks = [
       {
         request: { query: AdminDeleteRoleDocument, variables: { id: CUSTOM_ROLE.id } },
-        result: { data: { deleteRole: true } },
+        result: deleteResult,
+        // Not the default of 1: MockLink would turn a second fire into "No more
+        // mocked responses" and never reach deleteResult, hiding a double commit.
+        maxUsageCount: 2,
       },
     ];
 
-    renderRoles([CUSTOM_ROLE], mocks);
+    renderRoles([ADMIN_ROLE, CUSTOM_ROLE], mocks);
 
     // Regression pin: the role row passes no className, so the mobile tap
     // guard must arrive from HoverRevealDeleteButton's base — without it an
@@ -241,6 +251,7 @@ describe("AdminRolesClient", () => {
     const deleteBtn = screen.getByTestId(`admin-role-delete-btn-${CUSTOM_ROLE.id}`);
     expect(deleteBtn.className).toContain("pointer-events-none");
     expect(deleteBtn.className).toContain("motion-reduce:pointer-events-auto");
+    expect(deleteBtn).not.toBeDisabled();
 
     await user.click(deleteBtn);
 
@@ -250,7 +261,14 @@ describe("AdminRolesClient", () => {
 
     vi.advanceTimersByTime(5100);
     vi.useRealTimers();
-    await waitFor(() => {});
+    await waitFor(() => expect(deleteResult).toHaveBeenCalledTimes(1));
+    // Settle past MockLink's 20-49 ms response delay so a second fire or a
+    // rollback through onCommitFailed would be visible below.
+    await act(() => new Promise((r) => setTimeout(r, 100)));
+    expect(deleteResult).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("admin-roles-error")).toBeNull();
+    expect(screen.queryByTestId(`admin-role-row-${CUSTOM_ROLE.id}`)).toBeNull();
+    expect(screen.getByTestId(`admin-role-row-${ADMIN_ROLE.id}`)).toBeInTheDocument();
   });
 });
 

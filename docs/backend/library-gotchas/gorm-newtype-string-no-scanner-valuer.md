@@ -99,7 +99,6 @@ The accessor was renamed to `Ptr()` and the `Value` slot was left free:
 ```go
 // backend/internal/domain/bio.go
 func (b Bio) Ptr() *string { ... }
-func (b Bio) IsSet() bool  { return b.value != nil }
 ```
 
 The lesson: when designing a struct VO whose underlying value is a pointer

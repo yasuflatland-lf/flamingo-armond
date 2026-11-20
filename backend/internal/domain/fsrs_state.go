@@ -52,7 +52,7 @@ const (
 // admitting such a row only defers the failure to the next swipe. NaN and the
 // infinities fail every ordered comparison silently — an unchecked NaN stability
 // falls through both ClassifyMastery comparisons and is reported as the Learned
-// tier, and it breaks JSON marshalling of the GraphQL Float it feeds.
+// tier, and it fails both comparisons of the TopStruggling stability tie-break.
 func IsValidStability(s float64) bool {
 	return s >= MinStability && s <= MaxStability
 }
@@ -74,9 +74,6 @@ type FSRSState struct {
 	Lapses        int
 	Phase         FSRSPhase
 	LastReview    time.Time
-	// LastRating is the rating of the swipe that produced this state; the zero
-	// value denotes a synthesized new-card state that no swipe has rated yet.
-	LastRating Rating
 }
 
 // NewCardStability and NewCardDifficulty are the placeholder scheduling values a

@@ -7,8 +7,10 @@
 // and detail shapes here makes the protocol compiler-enforced — a typo'd event
 // name or detail field becomes a type error rather than a silent runtime no-op.
 
+// Not exported — consumers read `detail.active` / `detail.visible` via the
+// WindowEventMap-inferred type, so exporting it would trip knip's unused-export check.
 /** `flamingo:search-state` payload: page -> header (active dot + aria-expanded). */
-export interface SearchStateDetail {
+interface SearchStateDetail {
   /** A non-empty filter is applied. */
   active: boolean;
   /** The takeover bar is open. */

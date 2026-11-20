@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -40,9 +41,7 @@ type mockAdminUserRepository struct {
 	listErr        error
 	listCalls      int
 	lastListAfter  *string
-	lastListBefore *string
 	lastListFirst  int
-	lastListLast   int
 	lastListSearch *string
 
 	// DeleteAuthUserTx
@@ -79,15 +78,13 @@ func (m *mockAdminUserRepository) UpdateTxVersioned(_ context.Context, _ *gorm.D
 
 func (m *mockAdminUserRepository) ListPage(
 	_ context.Context,
-	after, before *string,
-	first, last int,
+	after *string,
+	first int,
 	search *string,
 ) ([]*domain.User, int64, error) {
 	m.listCalls++
 	m.lastListAfter = after
-	m.lastListBefore = before
 	m.lastListFirst = first
-	m.lastListLast = last
 	m.lastListSearch = search
 	if m.listErr != nil {
 		return nil, 0, m.listErr
@@ -239,7 +236,7 @@ func buildAdminUCWithTx(
 	if authChk == nil {
 		authChk = &adminAuthChecker{}
 	}
-	uc := newAdminUserWithDeps(users, roles, userRoles, tx, NewAdminGate(authChk), newTestLogger())
+	uc := newAdminUserWithDeps(users, roles, userRoles, tx, NewAdminGate(authChk))
 	return uc, users, roles, userRoles
 }
 
@@ -280,7 +277,7 @@ func TestAdminUser_NonAdminForbidden(t *testing.T) {
 		{
 			name: "List",
 			call: func(uc AdminUserUsecase) error {
-				_, err := uc.List(adminCallerCtx("u1"), nil, nil, nil, nil, nil)
+				_, err := uc.List(adminCallerCtx("u1"), nil, nil, nil)
 				return err
 			},
 		},
@@ -356,6 +353,32 @@ func TestAdminUserUsecase_DeleteUser(t *testing.T) {
 		}
 	})
 
+	t.Run("self-deletion with a differently-spelled own id is forbidden", func(t *testing.T) {
+		t.Parallel()
+		const selfUUID = "0190a3c4-7d2e-7b1a-9c3f-4e5d6a7b8c9d"
+		users := &mockAdminUserRepository{}
+		userRoles := &mockAdminUserRoleRepository{}
+		uc, _, _, _ := buildAdminUC(users, nil, userRoles, &adminAuthChecker{admins: map[string]bool{selfUUID: true}})
+
+		for _, spelling := range []string{
+			strings.ToUpper(selfUUID),
+			strings.ReplaceAll(selfUUID, "-", ""),
+			"0190-a3c4-7d2e-7b1a-9c3f-4e5d-6a7b-8c9d",
+			"{0190a3c47d2e7b1a9c3f4e5d6a7b8c9d}",
+			"0190a3c47d2e-7b1a-9c3f-4e5d6a7b8c9d",
+			"{0190a3c4-7d2e-7b1a-9c3f-4e5d6a7b8c9d}",
+		} {
+			err := uc.DeleteUser(adminCallerCtx(selfUUID), spelling)
+			assertForbidden(t, err, "cannot delete your own account from the admin panel; use deleteMyAccount")
+		}
+		if userRoles.hasRoleCalls != 0 {
+			t.Fatalf("HasRole must not run on self-deletion, got %d calls", userRoles.hasRoleCalls)
+		}
+		if users.deleteAuthCalls != 0 {
+			t.Fatalf("DeleteAuthUserTx must not run on self-deletion, got %d calls", users.deleteAuthCalls)
+		}
+	})
+
 	t.Run("last admin is forbidden", func(t *testing.T) {
 		t.Parallel()
 		users := &mockAdminUserRepository{}
@@ -421,6 +444,20 @@ func TestAdminUserUsecase_DeleteUser(t *testing.T) {
 		assertValidationError(t, err, "id", "user not found")
 	})
 
+	t.Run("has-role not-found maps to the missing-target validation error", func(t *testing.T) {
+		t.Parallel()
+		users := &mockAdminUserRepository{}
+		userRoles := &mockAdminUserRoleRepository{hasRoleErr: repository.ErrUserNotFound}
+		uc, _, _, _ := buildAdminUC(users, nil, userRoles, adminCaller())
+
+		err := uc.DeleteUser(adminCallerCtx(caller), "target")
+
+		assertValidationError(t, err, "id", "user not found")
+		if users.deleteAuthCalls != 0 {
+			t.Fatalf("DeleteAuthUserTx must not run when the target is missing, got %d calls", users.deleteAuthCalls)
+		}
+	})
+
 	t.Run("infrastructure error wraps as internal chain", func(t *testing.T) {
 		t.Parallel()
 		users := &mockAdminUserRepository{deleteAuthErr: errors.New("boom")}
@@ -462,7 +499,7 @@ func TestAdminUser_List_Page1(t *testing.T) {
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
-	out, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil)
+	out, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -494,9 +531,6 @@ func TestAdminUser_List_Page1(t *testing.T) {
 	if users.lastListFirst != maxPageSize+1 {
 		t.Fatalf("repo first arg = %d, want %d", users.lastListFirst, maxPageSize+1)
 	}
-	if users.lastListLast != 0 {
-		t.Fatalf("repo last arg = %d, want 0", users.lastListLast)
-	}
 }
 
 // TestAdminUser_List_ForwardPage2 covers a forward (after) page that came
@@ -518,7 +552,7 @@ func TestAdminUser_List_ForwardPage2(t *testing.T) {
 	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	after := "u-1"
-	out, err := uc.List(adminCallerCtx("admin-1"), intPtr(2), nil, &after, nil, nil)
+	out, err := uc.List(adminCallerCtx("admin-1"), intPtr(2), &after, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -542,48 +576,6 @@ func TestAdminUser_List_ForwardPage2(t *testing.T) {
 	}
 }
 
-// TestAdminUser_List_Backward covers a backward (last+before) page in display
-// order. The repository returns rows already reversed; the usecase trims the
-// extra leading row and flips HasPreviousPage.
-func TestAdminUser_List_Backward(t *testing.T) {
-	t.Parallel()
-
-	// last=2 → repo asked for 3; repo returns 3 rows in display order.
-	// The leading extra row is trimmed and HasPreviousPage flips on.
-	page := []*domain.User{
-		{ID: domain.UserID("u-prev")}, // extra leading row, will be trimmed
-		{ID: domain.UserID("u-x")},
-		{ID: domain.UserID("u-y")},
-	}
-	users := &mockAdminUserRepository{listResult: page, listTotal: 10}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
-
-	before := "u-z"
-	out, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(2), nil, &before, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(out.Users) != 2 {
-		t.Fatalf("len(Users) = %d, want 2 (leading row trimmed)", len(out.Users))
-	}
-	if string(out.Users[0].ID) != "u-x" || string(out.Users[1].ID) != "u-y" {
-		t.Fatalf("users = %v, want [u-x, u-y]", out.Users)
-	}
-	if !out.HasPrev {
-		t.Fatal("HasPrev = false, want true (extra leading row)")
-	}
-	if !out.HasNext {
-		t.Fatal("HasNext = false, want true (before cursor supplied)")
-	}
-	if users.lastListLast != 3 {
-		t.Fatalf("repo last arg = %d, want 3 (2+1)", users.lastListLast)
-	}
-	if users.lastListBefore == nil || *users.lastListBefore != "u-z" {
-		t.Fatalf("repo before arg = %v, want u-z", users.lastListBefore)
-	}
-}
-
 // TestAdminUser_List_BadCursor_After covers the cursor-not-found branch: a bare
 // (decodable) after cursor passes cursor.Decode, reaches the repository, which
 // surfaces ErrCursorNotFound; the usecase translates it to BAD_USER_INPUT keyed
@@ -597,22 +589,8 @@ func TestAdminUser_List_BadCursor_After(t *testing.T) {
 	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	stale := "00000000-0000-0000-0000-000000000000"
-	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), nil, &stale, nil, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), &stale, nil)
 	assertValidationError(t, err, "after", "cursor not found")
-}
-
-// TestAdminUser_List_BadCursor_Before mirrors the after case but for the
-// backward-paging cursor field.
-func TestAdminUser_List_BadCursor_Before(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{listErr: repository.ErrCursorNotFound}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
-
-	stale := "00000000-0000-0000-0000-000000000000"
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(5), nil, &stale, nil)
-	assertValidationError(t, err, "before", "cursor not found")
 }
 
 // TestAdminUser_List_MalformedCursor_After covers the decode-failure branch: a
@@ -629,25 +607,8 @@ func TestAdminUser_List_MalformedCursor_After(t *testing.T) {
 	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	after := "v1:!!!not-valid-base64!!!" // v1 prefix + malformed base64 payload
-	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), nil, &after, nil, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), &after, nil)
 	assertValidationError(t, err, "after", "invalid cursor")
-	if users.listCalls != 0 {
-		t.Fatalf("malformed cursor must be rejected before ListPage, got %d calls", users.listCalls)
-	}
-}
-
-// TestAdminUser_List_MalformedCursor_Before mirrors the after case for the
-// backward-paging cursor field.
-func TestAdminUser_List_MalformedCursor_Before(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
-
-	before := "v1:!!!not-valid-base64!!!" // v1 prefix + malformed base64 payload
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(5), nil, &before, nil)
-	assertValidationError(t, err, "before", "invalid cursor")
 	if users.listCalls != 0 {
 		t.Fatalf("malformed cursor must be rejected before ListPage, got %d calls", users.listCalls)
 	}
@@ -662,58 +623,25 @@ func TestAdminUser_List_MalformedCursor_Before(t *testing.T) {
 func TestAdminUser_List_V2Cursor_Rejected(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
-		name  string
-		field string
-	}{
-		{name: "after", field: "after"},
-		{name: "before", field: "before"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			users := &mockAdminUserRepository{}
-			authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-			uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
-
-			cur := cursor.EncodeV2(cursor.Payload{
-				ID:        "00000000-0000-0000-0000-000000000000",
-				OrderBy:   "sort_order",
-				Direction: "ASC",
-				OrderKey:  "1",
-			})
-
-			var err error
-			if tc.field == "after" {
-				_, err = uc.List(adminCallerCtx("admin-1"), intPtr(5), nil, &cur, nil, nil)
-			} else {
-				_, err = uc.List(adminCallerCtx("admin-1"), nil, intPtr(5), nil, &cur, nil)
-			}
-			assertValidationError(t, err, tc.field, "cursor does not match the requested ordering")
-			if users.listCalls != 0 {
-				t.Fatalf("v2 cursor must be rejected before ListPage, got %d calls", users.listCalls)
-			}
-		})
-	}
-}
-
-// TestAdminUser_List_BothFirstAndLast covers the mutual-exclusion check on
-// pagination args. Supplying both first and last is BAD_USER_INPUT.
-func TestAdminUser_List_BothFirstAndLast(t *testing.T) {
-	t.Parallel()
-
 	users := &mockAdminUserRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
-	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), intPtr(5), nil, nil, nil)
-	assertValidationError(t, err, "first", "")
+	cur := cursor.EncodeV2(cursor.Payload{
+		ID:        "00000000-0000-0000-0000-000000000000",
+		OrderBy:   "sort_order",
+		Direction: "ASC",
+		OrderKey:  "1",
+	})
+
+	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), &cur, nil)
+	assertValidationError(t, err, "after", "cursor does not match the requested ordering")
 	if users.listCalls != 0 {
-		t.Fatalf("expected no repo call, got %d", users.listCalls)
+		t.Fatalf("v2 cursor must be rejected before ListPage, got %d calls", users.listCalls)
 	}
 }
 
-// TestAdminUser_List_FirstNegative rejects negative first/last per the
+// TestAdminUser_List_FirstNegative rejects a negative first per the
 // resolveAdminPageSize contract.
 func TestAdminUser_List_FirstNegative(t *testing.T) {
 	t.Parallel()
@@ -722,7 +650,7 @@ func TestAdminUser_List_FirstNegative(t *testing.T) {
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
-	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(-1), nil, nil, nil, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(-1), nil, nil)
 	assertValidationError(t, err, "first", "")
 }
 
@@ -734,84 +662,54 @@ func TestAdminUser_List_FirstOverCap(t *testing.T) {
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
-	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(maxPageSize+1), nil, nil, nil, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(maxPageSize+1), nil, nil)
 	assertValidationError(t, err, "first", "")
 }
 
-// TestAdminUser_List_AfterAndBeforeMutuallyExclusive verifies that supplying
-// both cursor sides is rejected before the repository is reached.
-func TestAdminUser_List_AfterAndBeforeMutuallyExclusive(t *testing.T) {
+// TestAdminUser_List_FirstZero_TotalCountOnly pins the lower accepted boundary
+// of resolveAdminPageSize: first=0 is a totalCount-only request, not an error.
+func TestAdminUser_List_FirstZero_TotalCountOnly(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{listTotal: 7}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
+
+	out, err := uc.List(adminCallerCtx("admin-1"), intPtr(0), nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if users.listCalls != 1 || users.lastListFirst != 0 {
+		t.Fatalf("want one ListPage call with first=0, got calls=%d first=%d", users.listCalls, users.lastListFirst)
+	}
+	if len(out.Users) != 0 || out.TotalCount != 7 {
+		t.Fatalf("want empty page with TotalCount=7, got len=%d total=%d", len(out.Users), out.TotalCount)
+	}
+	if out.HasNext || out.HasPrev {
+		t.Fatalf("want HasNext=false HasPrev=false, got %v %v", out.HasNext, out.HasPrev)
+	}
+}
+
+// TestAdminUser_List_FirstAtCap pins the upper accepted boundary of
+// resolveAdminPageSize: first=maxPageSize is served (asking the repo for +1).
+func TestAdminUser_List_FirstAtCap(t *testing.T) {
 	t.Parallel()
 
 	users := &mockAdminUserRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
-	after := "u-a"
-	before := "u-b"
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, &after, &before, nil)
-	assertValidationError(t, err, "after", "")
-	if users.listCalls != 0 {
-		t.Fatalf("expected no repo call on cross-cursor rejection, got %d", users.listCalls)
+	if _, err := uc.List(adminCallerCtx("admin-1"), intPtr(maxPageSize), nil, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if users.lastListFirst != maxPageSize+1 {
+		t.Fatalf("want repo first=%d, got %d", maxPageSize+1, users.lastListFirst)
 	}
 }
 
-// TestAdminUser_List_FirstWithBefore rejects pairing forward count with the
-// backward cursor — the page boundary would otherwise be ambiguous.
-func TestAdminUser_List_FirstWithBefore(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
-
-	before := "u-b"
-	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), nil, nil, &before, nil)
-	assertValidationError(t, err, "before", "")
-	if users.listCalls != 0 {
-		t.Fatalf("expected no repo call, got %d", users.listCalls)
-	}
-}
-
-// TestAdminUser_List_LastWithAfter rejects pairing backward count with the
-// forward cursor.
-func TestAdminUser_List_LastWithAfter(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
-
-	after := "u-a"
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(5), &after, nil, nil)
-	assertValidationError(t, err, "after", "")
-	if users.listCalls != 0 {
-		t.Fatalf("expected no repo call, got %d", users.listCalls)
-	}
-}
-
-// TestAdminUser_List_BeforeWithoutLast rejects supplying a before cursor with
-// no companion last value. Without last, the server cannot determine page size
-// or direction, so the request is ambiguous and must be rejected.
-func TestAdminUser_List_BeforeWithoutLast(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
-
-	before := "u-b"
-	// No first, no last — only before.
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, &before, nil)
-	assertValidationError(t, err, "before", "")
-	if users.listCalls != 0 {
-		t.Fatalf("expected no repo call on before-without-last, got %d", users.listCalls)
-	}
-}
-
-// TestAdminUser_List_AfterWithoutFirst rejects supplying an after cursor with
-// no companion first value. Without first, the server cannot determine page
-// size or direction, so the request must be rejected.
+// TestAdminUser_List_AfterWithoutFirst rejects an after cursor with no positive
+// first: validateRelayArgs refuses to serve the cursor at a default page size
+// the client never asked for, and the repository is never reached.
 func TestAdminUser_List_AfterWithoutFirst(t *testing.T) {
 	t.Parallel()
 
@@ -820,9 +718,9 @@ func TestAdminUser_List_AfterWithoutFirst(t *testing.T) {
 	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	after := "u-a"
-	// No first, no last — only after.
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, &after, nil, nil)
-	assertValidationError(t, err, "after", "")
+	// No first — only after.
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, &after, nil)
+	assertValidationError(t, err, "after", "after requires first")
 	if users.listCalls != 0 {
 		t.Fatalf("expected no repo call on after-without-first, got %d", users.listCalls)
 	}
@@ -1100,8 +998,178 @@ func TestAdminUser_EditUser_CannotRevokeOwnAdmin(t *testing.T) {
 	}
 }
 
+// TestAdminUser_EditUser_CannotRevokeOwnAdmin_DifferentlySpelledOwnID pins that
+// the self-demotion guard compares uuid values: Postgres resolves an upper-case,
+// every-4-hyphen or braced hyphen-less spelling of the caller's id to its row.
+func TestAdminUser_EditUser_CannotRevokeOwnAdmin_DifferentlySpelledOwnID(t *testing.T) {
+	t.Parallel()
+
+	const selfUUID = "0190a3c4-7d2e-7b1a-9c3f-4e5d6a7b8c9d"
+	for _, spelling := range []string{
+		strings.ToUpper(selfUUID),
+		"0190-a3c4-7d2e-7b1a-9c3f-4e5d-6a7b-8c9d",
+		"{0190a3c47d2e7b1a9c3f4e5d6a7b8c9d}",
+	} {
+		t.Run(spelling, func(t *testing.T) {
+			t.Parallel()
+			users := &mockAdminUserRepository{users: map[string]*domain.User{selfUUID: {ID: selfUUID}}}
+			roles := &mockAdminRoleRepository{
+				roles: map[string]*domain.Role{
+					"r-general": {ID: "r-general", Name: "general"},
+				},
+			}
+			userRoles := &mockAdminUserRoleRepository{}
+			authChk := &adminAuthChecker{admins: map[string]bool{selfUUID: true}}
+			uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
+
+			outcome, err := uc.EditUser(adminCallerCtx(selfUUID), spelling, AdminEditUserInput{
+				RoleIDs: []string{"r-general"},
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			assertAdminEditUserOutcomeXOR(t, outcome)
+			if !outcome.CannotRevokeOwnAdmin {
+				t.Fatalf("CannotRevokeOwnAdmin = false, want true")
+			}
+			if userRoles.setCalls != 0 {
+				t.Fatalf("SetUserRolesTx calls = %d, want 0", userRoles.setCalls)
+			}
+		})
+	}
+}
+
+// TestAdminUser_EditUser_Self_UnknownRoleID_DifferentlySpelledOwnID pins that
+// a differently-spelled own id gets roleIds validation before self-demotion.
+func TestAdminUser_EditUser_Self_UnknownRoleID_DifferentlySpelledOwnID(t *testing.T) {
+	t.Parallel()
+
+	const selfUUID = "0190a3c4-7d2e-7b1a-9c3f-4e5d6a7b8c9d"
+	for _, spelling := range []string{
+		strings.ToUpper(selfUUID),
+		"0190-a3c4-7d2e-7b1a-9c3f-4e5d-6a7b-8c9d",
+		"{0190a3c47d2e7b1a9c3f4e5d6a7b8c9d}",
+	} {
+		t.Run(spelling, func(t *testing.T) {
+			t.Parallel()
+			users := &mockAdminUserRepository{users: map[string]*domain.User{selfUUID: {ID: selfUUID}}}
+			roles := &mockAdminRoleRepository{
+				roles: map[string]*domain.Role{
+					"r-admin": {ID: "r-admin", Name: domain.AdminRoleName},
+				},
+			}
+			userRoles := &mockAdminUserRoleRepository{}
+			authChk := &adminAuthChecker{admins: map[string]bool{selfUUID: true}}
+			uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
+
+			outcome, err := uc.EditUser(adminCallerCtx(selfUUID), spelling, AdminEditUserInput{
+				RoleIDs: []string{"r-unknown"},
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			assertAdminEditUserOutcomeXOR(t, outcome)
+			want := InputValidationInfo{Field: "roleIds", Message: "role not found"}
+			if outcome.Validation == nil || *outcome.Validation != want {
+				t.Fatalf("Validation = %+v, want %+v", outcome.Validation, want)
+			}
+			if outcome.CannotRevokeOwnAdmin {
+				t.Fatal("CannotRevokeOwnAdmin = true, want false")
+			}
+			if userRoles.setCalls != 0 {
+				t.Fatalf("SetUserRolesTx calls = %d, want 0", userRoles.setCalls)
+			}
+		})
+	}
+}
+
+// TestParsePgUUID pins the Postgres uuid_in grammar that sameUserID relies on.
+func TestParsePgUUID(t *testing.T) {
+	t.Parallel()
+
+	const canonical = "0190a3c4-7d2e-7b1a-9c3f-4e5d6a7b8c9d"
+	accept := []string{
+		canonical,
+		strings.ToUpper(canonical),
+		"0190a3c47d2e7b1a9c3f4e5d6a7b8c9d",
+		"{" + canonical + "}",
+		"{0190a3c47d2e7b1a9c3f4e5d6a7b8c9d}",
+		"0190-a3c4-7d2e-7b1a-9c3f-4e5d-6a7b-8c9d",
+		"0190a3c47d2e-7b1a-9c3f-4e5d6a7b8c9d",
+	}
+	for _, in := range accept {
+		got, ok := parsePgUUID(in)
+		if !ok || got.String() != canonical {
+			t.Errorf("parsePgUUID(%q) = (%v, %v), want (%s, true)", in, got, ok, canonical)
+		}
+	}
+	reject := []string{
+		"0-190a3c47d2e7b1a9c3f4e5d6a7b8c9d",
+		"{0190a3c47d2e7b1a9c3f4e5d6a7b8c9d",
+		"0190a3c47d2e7b1a9c3f4e5d6a7b8c9d}",
+		"0190a3c4--7d2e-7b1a-9c3f-4e5d6a7b8c9d",
+		"0190a3c47d2e7b1a9c3f4e5d6a7b8c9d-",
+		"01-90a3c47d2e7b1a9c3f4e5d6a7b8c9d",
+		"0190a3-c47d2e7b1a9c3f4e5d6a7b8c9d",
+		"urn:uuid:" + canonical,
+		" " + canonical,
+		"0190a3c47d2e7b1a9c3f4e5d6a7b8c9",
+		"0190a3c47d2e7b1a9c3f4e5d6a7b8c9d0",
+		"g190a3c47d2e7b1a9c3f4e5d6a7b8c9d",
+		"",
+	}
+	for _, in := range reject {
+		if got, ok := parsePgUUID(in); ok {
+			t.Errorf("parsePgUUID(%q) = (%v, true), want rejection", in, got)
+		}
+	}
+}
+
+func TestNormalizeAdminEditRoleIDs_CanonicalisesUUIDs(t *testing.T) {
+	t.Parallel()
+
+	const upper = "0190A3C4-7D2E-7B1A-9C3F-4E5D6A7B8C9D"
+	const lower = "0190a3c4-7d2e-7b1a-9c3f-4e5d6a7b8c9d"
+	tests := []struct {
+		name    string
+		in      []string
+		want    []string
+		wantErr *InputValidationInfo
+	}{
+		{name: "two spellings of one uuid are duplicates", in: []string{upper, lower}, wantErr: &InputValidationInfo{Field: "roleIds", Message: "role IDs must be unique"}},
+		{name: "a re-spelling after the canonical form is a duplicate", in: []string{lower, upper}, wantErr: &InputValidationInfo{Field: "roleIds", Message: "role IDs must be unique"}},
+		{name: "a postgres-only re-spelling after the canonical form is a duplicate", in: []string{lower, "{0190a3c47d2e7b1a9c3f4e5d6a7b8c9d}"}, wantErr: &InputValidationInfo{Field: "roleIds", Message: "role IDs must be unique"}},
+		{name: "38-char spelling without braces passes through", in: []string{"x" + lower + "y"}, want: []string{"x" + lower + "y"}},
+		{name: "upper-case uuid is lower-cased", in: []string{upper}, want: []string{lower}},
+		{name: "urn:uuid spelling is canonicalised", in: []string{"urn:uuid:" + upper}, want: []string{lower}},
+		{name: "urn:uuid spelling duplicates its canonical form", in: []string{"urn:uuid:" + lower, lower}, wantErr: &InputValidationInfo{Field: "roleIds", Message: "role IDs must be unique"}},
+		{name: "non-uuid id passes through", in: []string{"r-general"}, want: []string{"r-general"}},
+		{name: "postgres-only spelling duplicates its canonical form", in: []string{"0190-a3c4-7d2e-7b1a-9c3f-4e5d-6a7b-8c9d", lower}, wantErr: &InputValidationInfo{Field: "roleIds", Message: "role IDs must be unique"}},
+		{name: "postgres-only spelling is canonicalised", in: []string{"{0190a3c47d2e7b1a9c3f4e5d6a7b8c9d}"}, want: []string{lower}},
+		{name: "spelling postgres rejects passes through", in: []string{"0-190a3c47d2e7b1a9c3f4e5d6a7b8c9d"}, want: []string{"0-190a3c47d2e7b1a9c3f4e5d6a7b8c9d"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, info := normalizeAdminEditRoleIDs(tt.in)
+			if tt.wantErr != nil {
+				if info == nil || *info != *tt.wantErr {
+					t.Fatalf("validation = %+v, want %+v", info, tt.wantErr)
+				}
+				return
+			}
+			if info != nil {
+				t.Fatalf("unexpected validation: %+v", info)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Fatalf("normalizeAdminEditRoleIDs(%v) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestAdminUser_EditUser_Self_NoRolesSubmitted_CannotRevokeOwnAdmin covers the
-// zero-roleIDs sub-path of the self-demotion guard: when callerID == id and the
+// zero-roleIDs sub-path of the self-demotion guard: when sameUserID(callerID, id) and the
 // submitted final role set is empty, FindByIDsTx is skipped (len(roleIDs) == 0),
 // keepsAdmin stays false, and the guard captures its outcome and returns nil
 // from the tx closure before any write. The guard outcome is returned without
@@ -1295,6 +1363,39 @@ func TestAdminUser_EditUser_DemoteOther_KeepingAdminSkipsGuard(t *testing.T) {
 	if userRoles.hasRoleCalls != 0 || userRoles.countCalls != 0 {
 		t.Fatalf("hasRole=%d count=%d, want neither when the submitted set keeps admin",
 			userRoles.hasRoleCalls, userRoles.countCalls)
+	}
+}
+
+// TestAdminUser_EditUser_DemoteOther_TargetNotFoundAtMembershipRead pins that a
+// target the membership read reports missing (a malformed id) is a validation
+// failure on "id", not an internal error, and that no write follows it.
+func TestAdminUser_EditUser_DemoteOther_TargetNotFoundAtMembershipRead(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	roles := &mockAdminRoleRepository{
+		roles: map[string]*domain.Role{
+			"r-general": {ID: "r-general", Name: "general"},
+		},
+	}
+	userRoles := &mockAdminUserRoleRepository{hasRoleErr: repository.ErrUserNotFound}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
+
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "not-a-uuid", AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
+	if err != nil {
+		t.Fatalf("EditUser: unexpected error: %v", err)
+	}
+	assertAdminEditUserOutcomeXOR(t, outcome)
+	want := InputValidationInfo{Field: "id", Message: "user not found"}
+	if outcome.Validation == nil || *outcome.Validation != want {
+		t.Fatalf("Validation = %+v, want %+v", outcome.Validation, want)
+	}
+	if users.updateTxCalls != 0 || userRoles.setCalls != 0 {
+		t.Fatalf("update=%d set=%d, want no write after the membership read fails",
+			users.updateTxCalls, userRoles.setCalls)
 	}
 }
 
@@ -1582,13 +1683,12 @@ func TestAdminUser_EditUser_InfraErrorFromTx(t *testing.T) {
 	}
 }
 
-// TestAdminUser_EditUser_UpdateTxInfraError_PinsUpdateProfileWrap fires the
-// profile branch of the tx callback and asserts that the inner per-sub-op
-// wrap ("update profile") is present in the chain. Without this test, a
-// future regression that drops the inner wrap on UpdateTx would still pass
-// TestAdminUser_EditUser_InfraErrorFromTx because the outer "tx" frame
-// continues to match.
-func TestAdminUser_EditUser_UpdateTxInfraError_PinsUpdateProfileWrap(t *testing.T) {
+// TestAdminUser_EditUser_UpdateTxVersionedInfraError_PinsUpdateProfileWrap
+// fails the UpdateTxVersioned step of the tx callback and asserts that the
+// inner per-sub-op wrap ("update profile") is present in the chain. Without
+// it, dropping that inner wrap would still pass
+// TestAdminUser_EditUser_InfraErrorFromTx via the outer "tx" frame.
+func TestAdminUser_EditUser_UpdateTxVersionedInfraError_PinsUpdateProfileWrap(t *testing.T) {
 	t.Parallel()
 
 	users := &mockAdminUserRepository{
@@ -1607,11 +1707,11 @@ func TestAdminUser_EditUser_UpdateTxInfraError_PinsUpdateProfileWrap(t *testing.
 	assertInternalChain(t, err, "usecase: admin user edit: tx")
 }
 
-// TestAdminUser_EditUser_UpdateTxCancelled pins the inner isContextDone
-// short-circuit on the profile branch of the tx callback. context.Canceled
-// must propagate as bare-identity (not wrapped), per
+// TestAdminUser_EditUser_UpdateTxVersionedCancelled pins the inner
+// isContextDone short-circuit on the UpdateTxVersioned step of the tx callback.
+// context.Canceled must propagate as bare-identity (not wrapped), per
 // pin-unwrapped-context-error-with-identity-check.
-func TestAdminUser_EditUser_UpdateTxCancelled(t *testing.T) {
+func TestAdminUser_EditUser_UpdateTxVersionedCancelled(t *testing.T) {
 	t.Parallel()
 
 	users := &mockAdminUserRepository{
@@ -1628,7 +1728,7 @@ func TestAdminUser_EditUser_UpdateTxCancelled(t *testing.T) {
 	})
 	assertCancelled(t, err)
 	if err != context.Canceled {
-		t.Fatalf("context.Canceled identity (UpdateTx branch): got %T %v", err, err)
+		t.Fatalf("context.Canceled identity (UpdateTxVersioned branch): got %T %v", err, err)
 	}
 }
 
@@ -1743,7 +1843,7 @@ func TestAdminUser_EditUser_UserNotFoundValidation(t *testing.T) {
 }
 
 // TestAdminUser_EditUser_Self_FindByIDsInfraError pins the self-edit lookup
-// branch: when callerID == id and roleIDs is non-empty, FindByIDsTx is invoked
+// branch: when sameUserID(callerID, id) and roleIDs is non-empty, FindByIDsTx is invoked
 // at the front of the transaction (FOR UPDATE lock). A non-cancellation infra
 // error must surface as INTERNAL with the documented wrap prefix.
 func TestAdminUser_EditUser_Self_FindByIDsInfraError(t *testing.T) {
@@ -1965,7 +2065,7 @@ func TestAdminUser_List_CancelledFromAdminCheck(t *testing.T) {
 	users := &mockAdminUserRepository{}
 	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil)
 	assertCancelled(t, err)
 	if users.listCalls != 0 {
 		t.Fatalf("expected no repo call after cancellation, got %d", users.listCalls)
@@ -1981,7 +2081,7 @@ func TestAdminUser_List_CancelledFromRepo(t *testing.T) {
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil)
 	assertCancelled(t, err)
 }
 
@@ -1999,7 +2099,7 @@ func TestAdminUser_AnonymousUnauthenticated(t *testing.T) {
 	users := &mockAdminUserRepository{}
 	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
-	_, err := uc.List(anonCtx(), nil, nil, nil, nil, nil)
+	_, err := uc.List(anonCtx(), nil, nil, nil)
 	assertUnauthenticated(t, err)
 	if authChk.calls != 0 {
 		t.Fatalf("expected 0 IsAdmin calls for anonymous caller, got %d", authChk.calls)
@@ -2015,7 +2115,7 @@ func TestAdminUser_IsAdminInternalError(t *testing.T) {
 	users := &mockAdminUserRepository{}
 	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil)
 	assertInternalChain(t, err, "usecase: admin user: check admin")
 }
 

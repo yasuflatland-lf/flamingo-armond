@@ -6,7 +6,7 @@ The backend exposes `POST /internal/notion-sync` for GitHub Actions or another t
 
 Required:
 
-- `NOTION_TOKEN`: Notion integration token.
+- `NOTION_TOKEN`: Notion integration token. The backend only reads page content; it never writes to Notion.
 - `NOTION_PAGE_IDS`: comma-separated page IDs.
 - `NOTION_MASTER_CARDGROUP_NAME`: destination master cardgroup name. The backend creates it when absent.
 - `NOTION_SYNC_TOKEN`: shared bearer token used by the scheduler.
@@ -130,31 +130,13 @@ After running `sync-notion-secrets` or `setup-prod-postapply`, confirm the value
 2. **GitHub secrets** — `gh secret list --repo <owner>/<repo>` should show `NOTION_SYNC_URL` and `NOTION_SYNC_TOKEN`.
 3. **Trigger a test run** — `gh workflow run notion-sync.yml` (requires `workflow_dispatch` enabled) and check the Actions log for a `2xx` response from the backend.
 
-## Manual card write-back to Notion
-
-When a user creates or updates a card via GraphQL and the save succeeds, the backend appends a plain-text paragraph of the form `front back` (space-separated) to the bottom of the first page listed in `NOTION_PAGE_IDS`.
-
-**Trigger conditions:**
-
-- `createCard` mutation completes with a new card — not a duplicate.
-- `updateCard` mutation completes with an updated card.
-- The duplicate path (`outcome.Duplicate != nil`) skips the write-back entirely because the card already exists in the database.
-
-**Configuration:** No new environment variables. The write-back reuses `NOTION_TOKEN` (for API authentication) and the first entry of `NOTION_PAGE_IDS` as the target page. When any of the four `NOTION_*` variables is absent, `notionSyncDisabled` is true, the Notion `CardWritebacker` adapter is not wired, and write-back is silently disabled. This covers local development and CI environments without Notion credentials.
-
-**Failure handling:** Any Notion API error (non-2xx response, network timeout, context expiry) emits `slog.Warn` with `card_id`, `cardgroup_id`, and `page_id` as structured fields. Card create/update is unaffected — the mutation returns successfully regardless of the write-back outcome.
-
-**Lifecycle:** The write-back runs in a detached goroutine using `context.Background()` with a 15-second `WithTimeout`. The request context is cancelled the moment the GraphQL handler returns; deriving the goroutine context from it would abort any in-flight Notion API call immediately. See [`docs/backend/library-gotchas/fire-and-forget-goroutine-detached-context.md`](backend/library-gotchas/fire-and-forget-goroutine-detached-context.md) for the general pattern.
-
-**Acknowledged edge case:** A card that exists in Notion but has not yet been synced to the database will produce a duplicate paragraph in Notion when manually created. The duplicate paragraph persists after the next `notion-sync` run because that run upserts the database row (a no-op) but does not deduplicate Notion page content. This is accepted as a low-frequency, low-severity situation.
-
 ## Behavior
 
 The backend fetches every configured page, renders supported blocks to plain text, parses the existing text dictionary format, then upserts master cards into the destination master cardgroup (resolved by name via `MasterCardgroupRepository.EnsureByName`). Each card is assigned a `position` equal to its zero-based index in the deduped, document-order row list (page order, then line order within a page). `position` is an internal sync-metadata field with no GraphQL field. On upsert conflict, `back` and `position` are overwritten and the database trigger advances `updated_at`, so re-syncing reflects the latest Notion document order for surviving master cards. Cards whose `front` no longer appears in Notion are deleted from the master cardgroup. The master catalog is admin-only and never directly owned by an end user; per-user copies are created downstream from the published master deck.
 
 Front matching on this path is case-**insensitive** (`master_cards.front` is `citext`), while a learner's own `cards.front` is plain `text` and remains case-sensitive for ordinary writes and imports. Catalog merge is the explicit reconciliation boundary: one matching user card is renamed in place to the catalog's stored casing before upsert, preserving progress through its card id. A case-only Notion edit (`drive` → `Drive`) still does not rewrite the master row's stored case because the catalog upsert omits `front`. The storage asymmetry, merge boundary, and migration hazards are recorded in [`docs/backend/ddd-patterns/catalog-user-deck-front-case-asymmetry.md` § "Merge reconciliation — one case variant follows the catalog casing"](backend/ddd-patterns/catalog-user-deck-front-case-asymmetry.md#merge-reconciliation--one-case-variant-follows-the-catalog-casing).
 
-The upsert carries no equality predicate — [`backend/internal/repository/bulk_card_tx.go`](../backend/internal/repository/bulk_card_tx.go) emits `DO UPDATE SET back = EXCLUDED.back, updated_at = now(), position = EXCLUDED.position` — so every conflicting row is rewritten even when nothing about it changed. Two consequences are easy to misread. First, the response's `inserted` / `updated` tallies (also carried by the `notion sync complete` log line) are **not** change detection: they partition rows by whether the row already existed, not by whether anything differs, so re-syncing a byte-identical Notion page reports every surviving row as updated. Second, `updated_at` is refreshed on every row of every sync, so `UPDATED_AT` ordering (`MasterCardOrderBy.UPDATED_AT`) carries no information for synced master decks — order by `POSITION` instead.
+The upsert carries no equality predicate — [`backend/internal/repository/bulk_card_tx.go`](../backend/internal/repository/bulk_card_tx.go) emits `DO UPDATE SET back = EXCLUDED.back, updated_at = now(), position = EXCLUDED.position` — so every conflicting row is rewritten even when nothing about it changed. Two consequences are easy to misread. First, the response's `inserted` / `updated` tallies (also carried by the `notion sync complete` log line) are **not** change detection: they partition rows by whether the row already existed, not by whether anything differs, so re-syncing a byte-identical Notion page reports every surviving row as updated. Second, `updated_at` is refreshed on every row of every sync, so it carries no information about when a synced master deck's card was last changed (the master-card listing is ordered by `position`, never by `updated_at`).
 
 `MasterCardgroupRepository.EnsureByName` commits in its own transaction, before the transaction that upserts and prunes the cards is opened. A first sync for a deck name that fails anywhere after that call therefore leaves a master cardgroup row behind with zero cards — including the `422` raised when every parsed row fails domain construction, which returns before the card transaction is ever opened. The row is created unpublished, so it is `DRAFT` and reachable only through the admin catalog — no learner sees it — and the next successful sync for the same name heals it by upserting the cards into that same row. An empty deck appearing after a failed run is this side effect, not a separate defect.
 

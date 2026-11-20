@@ -43,10 +43,10 @@ The INSERT-own assertion then targets `userC`, where the `ON CONFLICT` branch ca
 // INSERT-own: User C (no pre-existing row) can insert a row for themselves.
 // userA/userB already have rows from the fixture setup above, so we use userC
 // to avoid the ON CONFLICT DO NOTHING returning 0 rows affected.
-assertRows(t, execOKAs(t, ctx, authPool, fx.userC, insertUserPreferencesSQL(), fx.userC), 1)
+assertRows(t, execOKAs(t, ctx, probePool, fx.userC, insertUserPreferencesSQL(), fx.userC), 1)
 
 // INSERT-other denied: User C cannot insert a row with User A's user_id.
-execDeniedAs(t, ctx, authPool, fx.userC, insertUserPreferencesSQL(), fx.userA)
+execDeniedAs(t, ctx, probePool, fx.userC, insertUserPreferencesSQL(), fx.userA)
 ```
 
 ## Why this is per-aggregate, not a universal RLS pattern
@@ -57,4 +57,4 @@ Audit every RLS test that asserts an `INSERT-own` outcome on such a table: if th
 
 ## Reference
 
-`backend/internal/database/rls_test.go` reserves `userC` for `user_preferences` INSERT-own assertions and uses `userA` / `userB` for SELECT, UPDATE, DELETE policy tests (where the pre-existing rows are required). The matching policy declarations live in `backend/internal/database/migrations/20260516120000_extract_user_preferences.up.sql` — four policies (`select_own_or_admin`, `insert_own_or_admin`, `update_own_or_admin`, `delete_own_or_admin`).
+`backend/internal/database/rls_test.go` reserves `userC` for `user_preferences` INSERT-own assertions and uses `userA` / `userB` for SELECT, UPDATE, DELETE policy tests (where the pre-existing rows are required). The matching policy declarations live in `backend/internal/database/migrations/20260430080000_initial_schema.up.sql` — four policies (`user_preferences_select_own_or_admin`, `user_preferences_insert_own_or_admin`, `user_preferences_update_own_or_admin`, `user_preferences_delete_own_or_admin`). The write assertions run on the policy-probe pool, which re-grants the API write privileges inside a rolled-back transaction because migration `20260927000001_revoke_client_writes` withholds them from `authenticated`.

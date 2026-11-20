@@ -21,10 +21,8 @@ type gormUserCardFSRS struct {
 	Reps          int       `gorm:"column:reps"`
 	Lapses        int       `gorm:"column:lapses"`
 	LastReview    time.Time `gorm:"column:last_review"`
-	LastRating    *int      `gorm:"column:last_rating"`
 	ScheduledDays int       `gorm:"column:scheduled_days"`
 	CreatedAt     time.Time `gorm:"column:created_at"`
-	UpdatedAt     time.Time `gorm:"column:updated_at;->"`
 }
 
 func (gormUserCardFSRS) TableName() string { return "user_card_fsrs" }
@@ -62,13 +60,11 @@ func (r *userCardFSRSRepo) UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.
 			"reps":           u.State.Reps,
 			"lapses":         u.State.Lapses,
 			"last_review":    u.State.LastReview,
-			"last_rating":    userCardFSRSLastRating(u.State),
 			"scheduled_days": u.State.ScheduledDays,
 		}),
-	}, clause.Returning{Columns: []clause.Column{{Name: "updated_at"}}}).Create(row).Error; err != nil {
+	}).Create(row).Error; err != nil {
 		return eris.Wrap(err, "repository: user card fsrs: upsert")
 	}
-	u.UpdatedAt = row.UpdatedAt
 	return nil
 }
 
@@ -80,8 +76,8 @@ func (r *userCardFSRSRepo) UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.
 // guards used by FindByUserAndCardIDs. Stability is the load-bearing one on this
 // path: domain.ClassifyMastery is fed exclusively from this projection, and a
 // NaN stability falls through both of its comparisons and is reported as the
-// Learned mastery tier, besides breaking JSON marshalling of the GraphQL Float
-// StrugglingCard.stability feeds. FSRSStat carries no difficulty column, so
+// Learned mastery tier; it also makes service.TopStruggling's stability tie-break
+// input-order dependent. FSRSStat carries no difficulty column, so
 // there is nothing to check for it here.
 func (r *userCardFSRSRepo) ListFSRSStatesByUser(ctx context.Context, userID string) ([]domain.FSRSStat, error) {
 	var rows []domain.FSRSStat
@@ -192,28 +188,18 @@ func userCardFSRSToRow(u *domain.UserCardFSRS) *gormUserCardFSRS {
 		Reps:          u.State.Reps,
 		Lapses:        u.State.Lapses,
 		LastReview:    u.State.LastReview,
-		LastRating:    userCardFSRSLastRating(u.State),
 		ScheduledDays: u.State.ScheduledDays,
 		CreatedAt:     u.CreatedAt,
-		UpdatedAt:     u.UpdatedAt,
 	}
-}
-
-func userCardFSRSLastRating(state domain.FSRSState) *int {
-	if !state.LastRating.IsValid() {
-		return nil
-	}
-	rating := int(state.LastRating)
-	return &rating
 }
 
 // userCardFSRSToDomain reconstitutes a persisted row into the domain aggregate.
 // Every column that the domain constrains is re-checked here rather than trusted:
 // the table carries no CHECK constraints, so a row edited outside the application
 // is the one way an out-of-range value can reach the domain. Rejecting is
-// deliberate — a corrupted stability or difficulty would otherwise reach the
-// UserCardState GraphQL Floats it feeds and break JSON marshalling of the whole
-// response, which is harder to diagnose than a failed read. Reps and Lapses are
+// deliberate — non-finite or below-floor stability or difficulty on a non-New
+// card would otherwise make go-fsrs reject the next swipe. FSRSScheduler.Apply
+// panics far from the corrupt row, making diagnosis harder. Reps and Lapses are
 // also checked because the scheduler widens them to uint64, where a negative
 // persisted value becomes an enormous unsigned count; ScheduledDays is checked
 // because it is never negative by construction. The sibling
@@ -230,18 +216,11 @@ func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
 	if !domain.IsValidDifficulty(row.Difficulty) {
 		return nil, eris.Errorf("repository: invalid difficulty value %v for card %s", row.Difficulty, row.CardID)
 	}
-	lastRating := domain.Rating(0)
-	if row.LastRating != nil {
-		lastRating = domain.Rating(*row.LastRating)
-		if !lastRating.IsValid() {
-			return nil, eris.Errorf("repository: invalid last_rating value %d for card %s", *row.LastRating, row.CardID)
-		}
-	}
 	// Reps and Lapses are unvalidated by the table (no CHECK constraints) and are
 	// widened to uint64 on the way into go-fsrs, where a negative value becomes an
 	// enormous unsigned count that the scheduler's own Reps++ then wraps to 0 —
-	// silently destroying the counter with no error. ScheduledDays feeds the
-	// GraphQL Int and the statistics, and is never negative by construction.
+	// silently destroying the counter with no error. ScheduledDays is widened to
+	// uint64 the same way and is never negative by construction.
 	if row.Reps < 0 || row.Lapses < 0 || row.ScheduledDays < 0 {
 		return nil, eris.Errorf("repository: negative counter for card %s (reps=%d lapses=%d scheduled_days=%d)",
 			row.CardID, row.Reps, row.Lapses, row.ScheduledDays)
@@ -258,9 +237,7 @@ func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
 			Lapses:        row.Lapses,
 			Phase:         state,
 			LastReview:    row.LastReview,
-			LastRating:    lastRating,
 		},
 		CreatedAt: row.CreatedAt,
-		UpdatedAt: row.UpdatedAt,
 	}, nil
 }

@@ -3,6 +3,7 @@
 import { useLazyQuery, useMutation } from "@apollo/client/react";
 import { useCallback } from "react";
 import { classifyAndLogAuthOutcome, type MutationAuthKind } from "@/lib/apollo/errors";
+import { toLowerLikeGo, trimLikeGo } from "@/schemas/go-text";
 import {
   AdminCreateRoleMutation,
   AdminDeleteRoleMutation,
@@ -27,9 +28,9 @@ export type UpdateRoleOutcome =
   | { status: "unexpected" }
   | { status: "rejected" };
 
-/** Normalize a role name the way the backend expects: trimmed, lower-cased. */
+/** Normalize a role name like roleSchema and Go ParseRoleName: TrimSpace, then per-code-point ToLower. */
 function normalizeName(name: string): string {
-  return name.trim().toLowerCase();
+  return toLowerLikeGo(trimLikeGo(name));
 }
 
 /**

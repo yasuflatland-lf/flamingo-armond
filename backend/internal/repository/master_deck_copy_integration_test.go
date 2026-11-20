@@ -101,7 +101,8 @@ func TestCopyMasterToUser_Integration_CopiesDeckWithNoFSRSState(t *testing.T) {
 	})
 
 	uc := newMasterDeckUsecaseForTest(t)
-	cg, err := uc.CopyMasterToUser(ctx, masterID, ownerID)
+	copyRes, err := uc.CopyMasterToUser(ctx, masterID, ownerID, false)
+	cg := copyRes.Cardgroup
 	require.NoError(t, err)
 	require.NotNil(t, cg)
 
@@ -118,12 +119,10 @@ func TestCopyMasterToUser_Integration_CopiesDeckWithNoFSRSState(t *testing.T) {
 	assert.Equal(t, domain.CardgroupName("Integration Starter"), persisted.Name)
 
 	// The cards landed in public.cards: reparented, fresh ids, content preserved.
-	cardRepo := repository.NewCardRepository(testDB.GORM)
-	got, err := cardRepo.ListByCardgroup(ctx, string(cg.ID))
-	require.NoError(t, err)
+	got := listCardsByCardgroup(t, ctx, string(cg.ID))
 	require.Len(t, got, 3)
 
-	byFront := map[domain.CardText]*domain.Card{}
+	byFront := map[domain.CardText]*cardReadbackRow{}
 	for _, c := range got {
 		assert.Equal(t, cg.ID, c.CardgroupID, "card reparented to the new cardgroup")
 		assert.NotEmpty(t, c.ID)
@@ -165,7 +164,8 @@ func TestCopyMasterToUser_Integration_RollsBackOnMissingMaster(t *testing.T) {
 	ownerID := insertAuthUser(t, ctx)
 
 	uc := newMasterDeckUsecaseForTest(t)
-	cg, err := uc.CopyMasterToUser(ctx, uuid.NewString(), ownerID)
+	copyRes, err := uc.CopyMasterToUser(ctx, uuid.NewString(), ownerID, false)
+	cg := copyRes.Cardgroup
 	require.Error(t, err)
 	assert.Nil(t, cg)
 

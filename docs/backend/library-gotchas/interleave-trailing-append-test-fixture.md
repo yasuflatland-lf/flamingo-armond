@@ -35,19 +35,19 @@ To cover both trailing paths, two distinct fixtures are required:
 
 | Fixture | Cards | Path exercised |
 |---|---|---|
-| `1 new + 7 review` | new bucket empties on slot 1, review bucket has trailing surplus | trailing-review append |
-| `10 new + 2 review` | review bucket empties on slot 8, then new bucket has trailing surplus | trailing-new append |
+| `1 new + 7 review` | new bucket empties on slot 2, review bucket has trailing surplus | trailing-review append |
+| `10 new + 2 review` | review bucket empties on slot 6, then new bucket has trailing surplus | trailing-new append |
 
 ```go
-// Trailing-review: 1N + 7R at 4:1 → slot 1 goes to new-0 and empties the new
-// bucket; the main loop exits and trailing emits rev-0..rev-6.
+// Trailing-review: 1N + 7R at 4:1 → slot 1 is review (cap), slot 2 takes new-0
+// and empties the new bucket; the main loop exits and trailing emits rev-1..rev-6.
 in := []domain.DueCard{
     dueCard("rev-0", ..., t0), ..., dueCard("rev-6", ..., t6),
     dueCard("new-0", ..., t100),
 }
 
-// Trailing-new: 10N + 2R at 4:1 → slots 3 and 8 go to the review bucket and
-// empty it; the main loop exits and trailing emits new-6..new-9.
+// Trailing-new: 10N + 2R at 4:1 → slots 1 and 6 go to the review bucket and
+// empty it; the main loop exits and trailing emits new-4..new-9.
 in := []domain.DueCard{
     dueCard("rev-0", ..., t0), dueCard("rev-1", ..., t1),
     dueCard("new-0", ..., t100), ..., dueCard("new-9", ..., t109),

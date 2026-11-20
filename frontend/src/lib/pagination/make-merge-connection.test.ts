@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { makeMergeConnection } from "./make-merge-connection";
 
@@ -31,30 +32,33 @@ function page(edges: Edge[], pageInfo: PageInfo, totalCount: number): Result {
 describe("makeMergeConnection", () => {
   const merge = makeMergeConnection<Result>("items");
 
-  it("concatenates the incoming page's edges after the cached ones", () => {
-    const prev = page([edge("a"), edge("b")], { hasNextPage: true, endCursor: "b" }, 4);
-    const more = page([edge("c"), edge("d")], { hasNextPage: false, endCursor: "d" }, 4);
-
-    expect(merge(prev, more).items.edges.map((e) => e.node.id)).toEqual(["a", "b", "c", "d"]);
-  });
-
-  it("keeps the incoming page's pageInfo and totalCount", () => {
-    const prev = page([edge("a")], { hasNextPage: true, endCursor: "a" }, 3);
-    const more = page([edge("b")], { hasNextPage: false, endCursor: "b" }, 2);
-
-    const merged = merge(prev, more);
-    expect(merged.items.pageInfo).toEqual({ hasNextPage: false, endCursor: "b" });
-    expect(merged.items.totalCount).toBe(2);
-    expect(merged.items.__typename).toBe("ItemConnection");
-  });
-
-  it("does not mutate either input", () => {
-    const prev = page([edge("a")], { hasNextPage: true, endCursor: "a" }, 2);
-    const more = page([edge("b")], { hasNextPage: false, endCursor: "b" }, 2);
-
-    merge(prev, more);
-    expect(prev.items.edges).toHaveLength(1);
-    expect(more.items.edges).toHaveLength(1);
+  it("concatenates prev ++ more edges, takes pageInfo and totalCount from more, and leaves both inputs untouched (property)", () => {
+    const pageArb = fc.record({
+      ids: fc.array(fc.uuid(), { maxLength: 5 }),
+      hasNextPage: fc.boolean(),
+      totalCount: fc.nat(50),
+    });
+    fc.assert(
+      fc.property(pageArb, pageArb, (a, b) => {
+        const prev = page(
+          a.ids.map(edge),
+          { hasNextPage: a.hasNextPage, endCursor: a.ids.at(-1) ?? null },
+          a.totalCount,
+        );
+        const more = page(
+          b.ids.map(edge),
+          { hasNextPage: b.hasNextPage, endCursor: b.ids.at(-1) ?? null },
+          b.totalCount,
+        );
+        const snapshot = JSON.stringify([prev, more]);
+        const merged = merge(prev, more);
+        expect(merged.items.edges).toEqual([...prev.items.edges, ...more.items.edges]);
+        expect(merged.items.pageInfo).toBe(more.items.pageInfo);
+        expect(merged.items.totalCount).toBe(more.items.totalCount);
+        expect(merged.items.__typename).toBe("ItemConnection");
+        expect(JSON.stringify([prev, more])).toBe(snapshot);
+      }),
+    );
   });
 
   it("carries sibling top-level fields of the incoming result through", () => {

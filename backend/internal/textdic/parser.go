@@ -70,7 +70,7 @@ const yyEofCode = 1
 const yyErrCode = 2
 const yyInitialStackSize = 16
 
-//line internal/textdic/grammar.y:77
+//line internal/textdic/grammar.y:76
 
 // The goyacc-generated parser uses package-level state (yyParserImpl,
 // currentParser), so concurrent calls must be serialised. parserExecMutex
@@ -151,38 +151,34 @@ var yyExca = [...]int8{
 
 const yyPrivate = 57344
 
-const yyLast = 13
+const yyLast = 8
 
 var yyAct = [...]int8{
-	4, 9, 5, 6, 7, 5, 6, 7, 10, 3,
-	1, 2, 8,
+	4, 5, 6, 8, 3, 1, 2, 7,
 }
 
 var yyPact = [...]int16{
-	-2, -32768, 1, -32768, -5, 3, -32768, -32768, -32768, -32768,
-	-32768,
+	-4, -32768, -4, -32768, -2, -32768, -32768, -32768, -32768,
 }
 
 var yyPgo = [...]int8{
-	0, 9, 11, 10,
+	0, 4, 6, 5,
 }
 
 var yyR1 = [...]int8{
-	0, 3, 2, 2, 2, 1, 1, 1, 1,
+	0, 3, 2, 2, 1, 1, 1, 1,
 }
 
 var yyR2 = [...]int8{
-	0, 1, 2, 1, 2, 2, 1, 1, 1,
+	0, 1, 2, 1, 2, 1, 1, 1,
 }
 
 var yyChk = [...]int16{
-	-32768, -3, -2, -1, 2, 4, 5, 6, -1, 6,
-	5,
+	-32768, -3, -2, -1, 4, 5, 6, -1, 5,
 }
 
 var yyDef = [...]int8{
-	0, -2, 1, 3, 0, 6, 7, 8, 2, 4,
-	5,
+	0, -2, 1, 3, 5, 6, 7, 2, 4,
 }
 
 var yyTok1 = [...]int8{
@@ -563,32 +559,27 @@ yydefault:
 		}
 	case 4:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line internal/textdic/grammar.y:67
-		{
-		}
-	case 5:
-		yyDollar = yyS[yypt-2 : yypt+1]
-//line internal/textdic/grammar.y:71
+//line internal/textdic/grammar.y:70
 		{
 			yyVAL.node = node{Word: yyDollar[1].str, Definition: yyDollar[2].str, Line: yyDollar[1].line}
+		}
+	case 5:
+		yyDollar = yyS[yypt-1 : yypt+1]
+//line internal/textdic/grammar.y:71
+		{
+			yyVAL.node = node{}
+			currentParser.recordSkip(yyDollar[1].line, SkipKindFrontOnly, yyDollar[1].str, "skipped: front-only line (no definition)")
 		}
 	case 6:
 		yyDollar = yyS[yypt-1 : yypt+1]
 //line internal/textdic/grammar.y:72
 		{
 			yyVAL.node = node{}
-			currentParser.recordSkip(yyDollar[1].line, SkipKindFrontOnly, yyDollar[1].str, "skipped: front-only line (no definition)")
+			currentParser.recordSkip(yyDollar[1].line, SkipKindBackOnly, yyDollar[1].str, "skipped: back-only line (no front)")
 		}
 	case 7:
 		yyDollar = yyS[yypt-1 : yypt+1]
 //line internal/textdic/grammar.y:73
-		{
-			yyVAL.node = node{}
-			currentParser.recordSkip(yyDollar[1].line, SkipKindBackOnly, yyDollar[1].str, "skipped: back-only line (no front)")
-		}
-	case 8:
-		yyDollar = yyS[yypt-1 : yypt+1]
-//line internal/textdic/grammar.y:74
 		{
 			yyVAL.node = node{}
 		}

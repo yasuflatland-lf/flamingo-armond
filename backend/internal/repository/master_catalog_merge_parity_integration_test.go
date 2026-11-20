@@ -17,6 +17,7 @@ import (
 	"gorm.io/gorm"
 
 	"backend/internal/auth"
+	"backend/internal/database"
 	"backend/internal/domain"
 	"backend/internal/repository"
 	"backend/internal/usecase"
@@ -41,7 +42,7 @@ func newMasterCatalogUsecaseForParityTest(t *testing.T) usecase.MasterCatalogUse
 	cgRepo := repository.NewCardgroupRepository(testDB.GORM)
 	deckUC := usecase.NewMasterDeckUsecase(mcgRepo, mcRepo, cardRepo, cgRepo, testDB.GORM, logger)
 	adminGate := usecase.NewAdminGate(stubParityAdminChecker{})
-	return usecase.NewMasterCatalogUsecase(mcgRepo, deckUC, cgRepo, adminGate, logger)
+	return usecase.NewMasterCatalogUsecase(mcgRepo, deckUC, adminGate)
 }
 
 // seedOwnedCardgroupWithCards creates a user-owned cardgroup and inserts the given
@@ -70,9 +71,8 @@ func seedOwnedCardgroupWithCards(
 
 func authenticatedContext(ctx context.Context, ownerID string) context.Context {
 	return auth.ContextWithUser(ctx, &auth.AuthUser{
-		Sub:           ownerID,
-		Email:         ownerID + "@test.example",
-		EmailVerified: true,
+		Sub:   ownerID,
+		Email: ownerID + "@test.example",
 	})
 }
 
@@ -113,7 +113,6 @@ func TestMergeCaseFold_PreservesCardIDAndFSRS(t *testing.T) {
 		Lapses:        1,
 		Phase:         domain.FSRSPhaseReview,
 		LastReview:    studiedAt,
-		LastRating:    domain.RatingGood,
 	}
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return fsrsRepo.UpsertTx(ctx, tx, state)
@@ -131,8 +130,7 @@ func TestMergeCaseFold_PreservesCardIDAndFSRS(t *testing.T) {
 	require.NoError(t, err)
 	requirePreviewMergeParity(t, preview.Added, preview.Updated, merge.Added, merge.Updated)
 
-	stored, err := cardRepo.ListByCardgroup(ctx, string(destID))
-	require.NoError(t, err)
+	stored := listCardsByCardgroup(t, ctx, string(destID))
 	require.Len(t, stored, 1)
 	require.Equal(t, original.ID, stored[0].ID)
 	require.Equal(t, domain.CardText("Apple"), stored[0].Front)
@@ -172,8 +170,7 @@ func TestMergeCaseFold_ExactVariantWins(t *testing.T) {
 	require.Equal(t, int64(0), merge.Added)
 	require.Equal(t, int64(1), merge.Updated)
 
-	stored, err := cardRepo.ListByCardgroup(ctx, string(destID))
-	require.NoError(t, err)
+	stored := listCardsByCardgroup(t, ctx, string(destID))
 	require.Len(t, stored, 2)
 	gotLower, err := cardRepo.FindByID(ctx, lower.ID)
 	require.NoError(t, err)
@@ -222,4 +219,34 @@ func TestMergeCaseFold_OldestVariantWins(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, domain.CardText("apple"), gotNewer.Front)
 	require.Equal(t, domain.CardText("newer-back"), gotNewer.Back)
+}
+
+// TestMergeMaster_Integration_OneConnectionPool_Completes pins that the merge
+// transaction issues every read on its own connection. A pooled read inside it
+// waits for a second connection while holding the first, so enough concurrent
+// merges exhaust the pool; a one-connection pool makes that hang deterministic.
+func TestMergeMaster_Integration_OneConnectionPool_Completes(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	authedCtx := authenticatedContext(ctx, ownerID)
+	masterID := seedMasterDeck(t, authedCtx, "Pool Master "+uuid.NewString(), []*domain.MasterCard{
+		masterCardFixture("front", "back", 0),
+	})
+	destID := seedOwnedCardgroupWithCards(t, ctx, ownerID, "Pool Deck "+uuid.NewString(), nil)
+
+	db, err := database.Open(ctx, database.Config{URL: testDSN, MaxConns: 1})
+	require.NoError(t, err)
+	t.Cleanup(db.Close)
+	logger := slog.New(slog.DiscardHandler)
+	mcgRepo := repository.NewMasterCardgroupRepository(db.GORM)
+	deckUC := usecase.NewMasterDeckUsecase(mcgRepo, repository.NewMasterCardRepository(db.GORM),
+		repository.NewCardRepository(db.GORM), repository.NewCardgroupRepository(db.GORM), db.GORM, logger)
+	uc := usecase.NewMasterCatalogUsecase(mcgRepo, deckUC, usecase.NewAdminGate(stubParityAdminChecker{}))
+
+	mergeCtx, cancel := context.WithTimeout(authedCtx, 10*time.Second)
+	defer cancel()
+	merge, err := uc.MergeMaster(mergeCtx, masterID, string(destID))
+	require.NoError(t, err)
+	require.Equal(t, int64(1), merge.Added)
 }

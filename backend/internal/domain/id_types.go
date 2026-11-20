@@ -7,9 +7,9 @@ package domain
 // newtype with NO Parse constructor: an ID carries no domain-authored invariant
 // (UUID validity is guaranteed at generation by NewID and by the uuid DB
 // column), so the type's only job is compile-time ID-space tagging to prevent
-// passing a UserID where a CardgroupID is expected. A malformed id must collapse
-// to not-found at the lookup, never surface as a validation error. Construct via
-// a direct cast at boundaries: domain.CardgroupID(s).
+// passing a UserID where a CardgroupID is expected. A malformed id must reach
+// the lookup and get that operation's not-found outcome, never a separate
+// format error. Construct via a direct cast at boundaries: domain.CardgroupID(s).
 //
 // The compile-time tag protects more than the domain structs and aggregate
 // methods. It also types the authorization-path helper signatures

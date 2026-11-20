@@ -39,8 +39,6 @@ func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 	return &model.Cardgroup{
 		ID:        string(cg.ID),
 		Name:      cg.Name.String(),
-		OwnerID:   string(cg.OwnerID),
-		CreatedAt: cg.CreatedAt,
 		UpdatedAt: cg.UpdatedAt,
 	}
 }
@@ -100,7 +98,6 @@ func toCardModel(card *domain.Card) *model.Card {
 		Back:        string(card.Back),
 		CardgroupID: string(card.CardgroupID),
 		CreatedAt:   card.CreatedAt,
-		UpdatedAt:   card.UpdatedAt,
 	}
 }
 
@@ -124,14 +121,8 @@ func toUserCardStateModel(ucs *domain.UserCardFSRS) *model.UserCardState {
 		return nil
 	}
 	return &model.UserCardState{
-		Due:           ucs.State.Due,
-		Stability:     ucs.State.Stability,
-		Difficulty:    ucs.State.Difficulty,
-		State:         int(ucs.State.Phase),
-		Reps:          ucs.State.Reps,
-		Lapses:        ucs.State.Lapses,
-		LastReview:    ucs.State.LastReview,
-		ScheduledDays: ucs.State.ScheduledDays,
+		Due:   ucs.State.Due,
+		State: int(ucs.State.Phase),
 	}
 }
 
@@ -219,55 +210,8 @@ func toRoleModels(ctx context.Context, roles []*domain.Role) []*model.Role {
 	return out
 }
 
-// toUsecaseOrderBy casts a pointer to a model-layer order-by / sort enum into
-// the matching usecase-layer enum, preserving the nil-passes-through contract
-// (an absent argument keeps the usecase default). Both enums share a `~string`
-// underlying type, so the cast is a direct value conversion. Callers supply the
-// type arguments explicitly, e.g.
-// toUsecaseOrderBy[model.CardOrderBy, usecase.CardOrderBy](args.OrderBy).
-func toUsecaseOrderBy[M ~string, U ~string](o *M) *U {
-	if o == nil {
-		return nil
-	}
-	v := U(*o)
-	return &v
-}
-
-func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
-	if out == nil {
-		return nil
-	}
-	return &model.SwipeResponse{
-		PerformanceMode: toSwipePerformanceModeModel(out.PerformanceMode),
-		Metrics:         toPerformanceMetricsModel(out.Metrics),
-	}
-}
-
-// toSwipePerformanceModeModel maps the usecase's int-encoded performance mode
-// (service.PerformanceMode, 0..4) to the generated wire enum. The int always
-// comes from service.ModeFromMetrics, which returns a clamped in-range value,
-// so the default arm is unreachable; it maps to DEFAULT as a fail-safe to keep
-// the non-null field serializable.
-func toSwipePerformanceModeModel(mode int) model.SwipePerformanceMode {
-	switch service.PerformanceMode(mode) {
-	case service.ModeDifficult:
-		return model.SwipePerformanceModeDifficult
-	case service.ModeDefault:
-		return model.SwipePerformanceModeDefault
-	case service.ModeGood:
-		return model.SwipePerformanceModeGood
-	case service.ModeEasy:
-		return model.SwipePerformanceModeEasy
-	case service.ModeMastered:
-		return model.SwipePerformanceModeMastered
-	default:
-		return model.SwipePerformanceModeDefault
-	}
-}
-
 // toPerformanceMetricsModel maps the domain-service performance value object to
-// the generated wire model. Shared by the swipe response and the learning-stats
-// diagnostic snapshot.
+// the generated wire model. Used by the learning-stats diagnostic snapshot.
 func toPerformanceMetricsModel(m service.PerformanceMetrics) *model.PerformanceMetrics {
 	return &model.PerformanceMetrics{
 		SuccessRate:      m.SuccessRate,

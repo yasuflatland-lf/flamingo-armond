@@ -18,8 +18,9 @@ included.
 ## Worked example
 
 `findPracticeCardsOn` (`backend/internal/repository/card_due.go`) selects the
-FSRS-safe practice pool — cards the user already reviewed at or after the
-start-of-day boundary:
+FSRS-safe practice pool — cards whose `last_review` is at or after `reviewedAfter`
+(callers pass `LearnWindow.PracticeReviewedAfter()`, the earlier of the JST
+learn-day start and the UTC date start):
 
 ```go
 rows, err := dueRowsOn(db, userID,
@@ -33,9 +34,9 @@ rows, err := dueRowsOn(db, userID,
 `ucs` is the `user_card_fsrs` row joined via `LEFT JOIN`. A never-reviewed card
 has no FSRS row, so `ucs.last_review` is NULL and `NULL >= ?` is `UNKNOWN` — the
 row is excluded. That is exactly the intended behavior: a card that has never
-been reviewed cannot have been "reviewed today", so it must not enter the
-practice pool. The exclusion is deliberate, **not** a missing `IS NOT NULL`
-guard.
+been reviewed cannot have a `last_review` inside the practice window, so it must
+not enter the practice pool. The exclusion is deliberate, **not** a missing
+`IS NOT NULL` guard.
 
 ## Document the deliberate exclusion in code
 

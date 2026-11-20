@@ -14,10 +14,13 @@ The repository selects and orders two independent windows: reviews by descending
 FSRS retrievability, and never-seen cards newest-added first. `OrderingPolicy.Apply`
 preserves both orders and interleaves at the user's `NewCardRatio` by largest
 remainder. The default 1/5 ratio gives 4 new and 16 review cards in a full-pool
-20-card session. Half-card ties favor new; when reviews exist, one- and two-card
-sessions contain no new card, and the first new slot is 3. This remains inside
-the `denominator - numerator` bound of slot 4. When a pool empties, the other
-supplies the remainder. The usecase truncates to the requested session limit.
+20-card session. Half-card ties favor new; every k-card prefix is also capped
+at `floor(4k/5)` new cards while reviews remain, so the review share never drops
+below 20% and slot 1 is always a review (the cap forces it for every ratio at or
+above 1/2). Under the 1/5 default, when at least two reviews are due, one- and
+two-card sessions contain no new card, and the first new slot is 3. This remains
+inside the `denominator - numerator` bound of slot 4. When a pool empties, the
+other supplies the remainder. The usecase truncates to the requested session limit.
 
 ## Mechanics
 
@@ -47,9 +50,18 @@ ties. A reviewed card leaves the never-seen window.
   `ucs.last_review < window.CreditReviewedBefore`.
 - `DueBefore` is `EndOfLearnDay`, the exclusive next JST midnight. Every review
   due later today is eligible; one due at or after midnight is excluded. This
-  day-granular bound avoids a recurring time-of-day delay.
+  day-granular bound avoids a recurring time-of-day delay. The retention
+  statistic uses the same bound: `isOnTimeRecall` counts a recall as on time
+  when it lands before `EndOfLearnDay` of the pre-swipe due, so a review recorded
+  on its due day is never reported late. The swipe instant decides: a card
+  fetched before JST midnight and swiped after it is late.
+  `domain.DueBeforeEndOfLearnDay(due, now)` is the Go form of the
+  `ucs.due < DueBefore` comparison; the swipe path ignores a rating for an
+  existing FSRS row that fails it.
 - `ReviewedBefore` is `StartOfLearnDay`. The strict bound excludes cards already
-  reviewed in today's JST learn day and complements `ReviewedWithinLearnDay`.
+  reviewed in today's JST learn day. Together with `CreditReviewedBefore`, its
+  complement is the swipe replay guard (`ReviewedWithinLearnDay || !EarnsSchedulingCredit`)
+  and the practice pool (`last_review >= PracticeReviewedAfter()`).
 - `CreditReviewedBefore` is UTC midnight of now's UTC date. The strict bound
   prevents a repeat earning zero scheduling credit under `EarnsSchedulingCredit`.
   Before 09:00 JST this is the tighter bound; afterward the JST cutoff is tighter.
@@ -80,6 +92,7 @@ and desired retention 0.8. Its reported results were:
 - [FSRS review sort-order simulation](https://github.com/open-spaced-repetition/review-sort-order-comparison), `notebook.ipynb` results table.
 - [Improving sort orders](https://forums.ankiweb.net/t/improving-sort-orders/50081).
 - `github.com/open-spaced-repetition/go-fsrs/v4@v4.0.0`: `ForgettingCurve`, `decayAndFactor`, `dateDiffRaw`, `constrainStability`.
-- `backend/internal/domain/learn_day.go`: `NewLearnWindow`, `CreditReviewedBefore`.
+- `backend/internal/domain/learn_day.go`: `NewLearnWindow`, `CreditReviewedBefore`, `PracticeReviewedAfter`.
 - `backend/internal/repository/card_due.go`: `findDueCardsOn`.
 - `backend/internal/domain/service/due_card_ordering.go`: `Apply`, `partition`, `interleave`.
+- `backend/internal/domain/service/user_performance.go`: `isOnTimeRecall`.

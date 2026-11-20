@@ -4,7 +4,9 @@ import type { ReactNode, RefObject } from "react";
 import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { SearchTakeoverBar } from "@/components/search/search-takeover-bar";
+import { QueryErrorBanner, type QueryErrorBannerCopy } from "@/components/ui/query-error-banner";
 import type { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
+import type { QueryErrorKind } from "@/lib/apollo/errors";
 
 interface PaginatedPublicListScreenProps {
   /**
@@ -34,6 +36,12 @@ interface PaginatedPublicListScreenProps {
   countLabel: ReactNode;
   /** Optional CTA cluster on the header's trailing edge (cardgroups' "New" button). */
   primaryActions?: ReactNode;
+  /** Discriminated query-error kind; null while healthy. */
+  queryErrorKind: QueryErrorKind | null;
+  /** Resolved copy for the three-branch query-error banner. */
+  errorCopy: QueryErrorBannerCopy;
+  /** Re-issues the list query (the hook's `refetch`) for the banner Retry. */
+  onRetry: () => void;
   /** True on the very first load (`loading` with no edges yet, outside `fetchMore`). */
   initialLoading: boolean;
   /** Localized "loading…" copy for the first-load `<p>`. */
@@ -64,8 +72,9 @@ interface PaginatedPublicListScreenProps {
     loadingMoreLabel: string;
   };
   /**
-   * testid namespace shared across the first-load line (`{prefix}-loading`) and
-   * the footer sentinel/error/loading-more ids. The empty / empty-search nodes
+   * testid namespace shared across the first-load line (`{prefix}-loading`), the
+   * query-error banner (`{prefix}-query-error`), and the footer
+   * sentinel/error/loading-more ids. The empty / empty-search nodes
    * carry their own ids, since those already differ structurally per screen.
    */
   testIdPrefix: string;
@@ -77,8 +86,8 @@ interface PaginatedPublicListScreenProps {
  * Shared scaffold for the public paginated list screens (cardgroups, catalog).
  * It owns the chrome both screens repeated near-identically — the mobile
  * header-takeover search bar, the desktop search toolbar slot, the
- * loading / empty / empty-search three-branch gate, and the infinite-scroll
- * footer — so a fix to any of those lands in one place.
+ * loading / empty / empty-search three-branch gate, the query-error banner, and
+ * the infinite-scroll footer — so a fix to any of those lands in one place.
  *
  * Each screen keeps its own `useConnectionPagination` call, its row rendering,
  * and its EXACT per-screen copy and behavior: the empty / empty-search nodes and
@@ -86,9 +95,10 @@ interface PaginatedPublicListScreenProps {
  * `children`. Only the surrounding chrome moves here.
  *
  * The admin sibling is `PaginatedAdminListScreen`; the two are kept separate
- * because the admin screens carry a query-error banner and a single flat
- * empty-state, while the public screens carry the three-branch trio and no
- * query-error banner.
+ * because the admin screens carry a single flat empty-state and a skeleton gate,
+ * while the public screens carry the loading / empty / empty-search trio. Both
+ * render the shared `QueryErrorBanner` and suppress their empty branches while a
+ * query error is present.
  */
 export function PaginatedPublicListScreen({
   search,
@@ -97,6 +107,9 @@ export function PaginatedPublicListScreen({
   count,
   countLabel,
   primaryActions,
+  queryErrorKind,
+  errorCopy,
+  onRetry,
   initialLoading,
   loadingLabel,
   isEmpty,
@@ -108,6 +121,7 @@ export function PaginatedPublicListScreen({
   children,
 }: PaginatedPublicListScreenProps) {
   const { search: searchInstance, placeholder, ariaLabel } = search;
+  const showEmptyBranch = !initialLoading && !queryErrorKind && isEmpty;
 
   return (
     <>
@@ -133,9 +147,16 @@ export function PaginatedPublicListScreen({
           </p>
         )}
 
-        {!initialLoading && isEmpty && !hasSearch && emptyState}
+        <QueryErrorBanner
+          kind={queryErrorKind}
+          onRetry={onRetry}
+          testId={`${testIdPrefix}-query-error`}
+          copy={errorCopy}
+        />
 
-        {!initialLoading && isEmpty && hasSearch && emptySearchState}
+        {showEmptyBranch && !hasSearch && emptyState}
+
+        {showEmptyBranch && hasSearch && emptySearchState}
 
         {children}
 

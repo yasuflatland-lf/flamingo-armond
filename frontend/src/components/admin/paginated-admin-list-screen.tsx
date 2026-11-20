@@ -2,9 +2,9 @@
 
 import type { ReactNode, RefObject } from "react";
 import { AdminListSearch } from "@/components/admin/admin-list-search";
-import { AdminQueryErrorBanner } from "@/components/admin/admin-query-error-banner";
 import { ConnectionListFooter } from "@/components/layout/connection-list-footer";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
+import { QueryErrorBanner, type QueryErrorBannerCopy } from "@/components/ui/query-error-banner";
 import type { useHeaderTakeoverSearch } from "@/hooks/use-header-takeover-search";
 import type { QueryErrorKind } from "@/lib/apollo/errors";
 
@@ -30,12 +30,7 @@ interface PaginatedAdminListScreenProps {
   /** Discriminated query-error kind; null while healthy. */
   queryErrorKind: QueryErrorKind | null;
   /** Resolved copy for the three-branch query-error banner. */
-  errorCopy: {
-    viewForbidden: string;
-    sessionExpired: string;
-    signInAgain: string;
-    retry: string;
-  };
+  errorCopy: QueryErrorBannerCopy;
   /** Re-issues the list query (the hook's `refetch`) for the banner Retry. */
   onRetry: () => void;
   /** Optional class merge for the query-error banner (the users screen passes "mb-4"). */
@@ -121,7 +116,7 @@ export function PaginatedAdminListScreen({
         fires post-mount. FORBIDDEN renders without Retry since re-issuing the
         same query would fail again. See .claude/rules/frontend-rsc-error-handling.md.
       */}
-      <AdminQueryErrorBanner
+      <QueryErrorBanner
         kind={queryErrorKind}
         onRetry={onRetry}
         testId={`${testIdPrefix}-query-error`}

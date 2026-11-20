@@ -38,7 +38,10 @@ deterministically without consulting any external state.
 ## What
 
 The shared form accepts both props and resolves them at the field-error
-render site:
+render site during the migration window. The example below shows the shape
+`CardgroupForm` had while `createCardgroup` was promoted and `updateCardgroup`
+remained on the allowlist; step 5 of
+[How to apply](#how-to-apply) describes how that window closed.
 
 ```tsx
 type CardgroupFormProps = {
@@ -96,8 +99,8 @@ if (payload?.__typename === "InputValidationError") {
 <CardgroupForm mode="create" submit={handleSubmit} validationError={validationError} />
 ```
 
-The unpromoted caller (e.g. the edit page that consumes `updateCardgroup`,
-still on the allowlist) keeps the legacy `error` prop and does not pass
+The unpromoted caller (in that window, the rename form that consumed
+`updateCardgroup`) kept the legacy `error` prop and did not pass
 `validationError`:
 
 ```tsx
@@ -130,6 +133,13 @@ shared with one or more unpromoted callers:
    At that point the form has a single error pathway and the migration window
    closes.
 
+`CardgroupForm` has completed step 5: `createCardgroup` and `updateCardgroup`
+both return outcome unions (`CreateCardgroupResult` / `UpdateCardgroupResult`
+in `schema/cardgroup.graphql`) and neither is in
+`backend/cmd/schema-lint/allowlist.txt`, so the form takes only
+`validationError` and resolves the `name` field error as
+`validationError?.field === "name" ? validationError.message : undefined`.
+
 ## Testing both paths
 
 The shared form's test file must cover three field-error cases so a future
@@ -145,7 +155,9 @@ change cannot quietly break either caller:
   form field → form renders the parsed field error (the legacy
   unpromoted-caller path).
 
-Reference: `frontend/src/components/cardgroups/cardgroup-form.test.tsx`
-covers all three cases as a regression suite against the partial-migration
-window introduced by promoting `createCardgroup` while `updateCardgroup`
-remains on the allowlist.
+`frontend/src/components/cardgroups/cardgroup-form.test.tsx` covered all three
+cases while `updateCardgroup` was on the allowlist. Once the form completed
+step 5, the `error` prop and its parsed-field fallback were removed, so the
+file now pins the two arms of the remaining ternary:
+`validationError.field === "name"` renders the typed server message, and any
+other field renders nothing under the name input.

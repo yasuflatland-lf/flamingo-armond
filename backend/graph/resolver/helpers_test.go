@@ -92,34 +92,28 @@ func TestToRoleModels_Empty(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestToCardConnectionModel_Cursors verifies that toCardConnectionModel wraps
-// each edge cursor and both PageInfo cursors in the v2 opaque envelope ("v2:"),
-// carrying the page's ordering plus the per-row ordering-key value the usecase
-// captured at serve time. The card listing's DEFAULT ordering key is the
-// immutable id, but its opt-in DUE / UPDATED_AT orderings both move, so an
-// id-only v1 cursor would shift whenever the row it points at is edited or
-// reviewed.
+// each edge cursor and both PageInfo cursors in the v2 opaque envelope ("v2:")
+// with the only shape the card usecase produces: cards are fixed at id ASC, so
+// OrderKeys is empty and every cursor carries an empty key. The connection is
+// kept on v2 so all four ordered connections share one encoder.
 func TestToCardConnectionModel_Cursors(t *testing.T) {
 	t.Parallel()
 
 	c1 := &domain.Card{ID: "c1", Front: "Q1", Back: "A1", CardgroupID: domain.CardgroupID("cg1")}
 	c2 := &domain.Card{ID: "c2", Front: "Q2", Back: "A2", CardgroupID: domain.CardgroupID("cg1")}
 	out := &usecase.CardConnectionOutput{
-		Cards:    []*domain.Card{c1, c2},
-		StartCur: "c1",
-		EndCur:   "c2",
-		HasNext:  true,
-		HasPrev:  false,
-		Ordering: usecase.PageOrdering{OrderBy: "due", Direction: "ASC"},
-		OrderKeys: map[string]string{
-			"c1": "2026-07-20T00:00:00Z",
-			"c2": "2026-07-20T01:00:00Z",
-		},
+		Cards:     []*domain.Card{c1, c2},
+		StartCur:  "c1",
+		EndCur:    "c2",
+		HasNext:   true,
+		HasPrev:   false,
+		Ordering:  usecase.PageOrdering{OrderBy: "id", Direction: "ASC"},
+		OrderKeys: map[string]string{},
 	}
 
 	conn := toCardConnectionModel(context.Background(), out)
 
 	assert.Len(t, conn.Edges, 2)
-	wantKeys := []string{"2026-07-20T00:00:00Z", "2026-07-20T01:00:00Z"}
 	for i, edge := range conn.Edges {
 		assert.True(t, strings.HasPrefix(edge.Cursor, "v2:"),
 			"edges[%d].Cursor should start with \"v2:\", got %q", i, edge.Cursor)
@@ -128,10 +122,10 @@ func TestToCardConnectionModel_Cursors(t *testing.T) {
 		assert.Equal(t, cursor.Payload{
 			ID:          edge.Node.ID,
 			HasOrdering: true,
-			OrderBy:     "due",
+			OrderBy:     "id",
 			Direction:   "ASC",
-			OrderKey:    wantKeys[i],
-		}, decoded, "edges[%d].Cursor must carry the captured ordering key", i)
+			OrderKey:    "",
+		}, decoded, "edges[%d].Cursor must be a v2 (id, ASC) cursor with an empty key", i)
 	}
 	require.NotNil(t, conn.PageInfo.StartCursor)
 	require.NotNil(t, conn.PageInfo.EndCursor)

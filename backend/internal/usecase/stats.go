@@ -47,7 +47,7 @@ type statsSwipeRepo interface {
 // aggregate needs to answer "does the caller own any deck?" — a count > 0 over
 // the caller's cardgroups, independent of whether those decks hold any cards.
 type statsCardgroupRepo interface {
-	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
+	CountByOwner(ctx context.Context, ownerID string) (int64, error)
 }
 
 type statsUsecase struct {
@@ -119,7 +119,7 @@ func (u *statsUsecase) MyLearningStats(ctx context.Context) (*LearningStatsResul
 
 	// Cheap ownership existence check: count > 0 means the caller owns at least
 	// one cardgroup, even if all its decks are empty (which totals/Decks omit).
-	count, err := u.cardgroupRepo.CountByOwner(ctx, caller.Sub, nil)
+	count, err := u.cardgroupRepo.CountByOwner(ctx, caller.Sub)
 	if err != nil {
 		return nil, eris.Wrap(err, "usecase: stats: count cardgroups by owner")
 	}
@@ -148,4 +148,14 @@ func capStreak(m service.PerformanceMetrics) service.PerformanceMetrics {
 		m.StudyStreak = statsWindowDays
 	}
 	return m
+}
+
+func swipeRecordsByValue(swipes []*domain.SwipeRecord) []domain.SwipeRecord {
+	out := make([]domain.SwipeRecord, 0, len(swipes))
+	for _, swipe := range swipes {
+		if swipe != nil {
+			out = append(out, *swipe)
+		}
+	}
+	return out
 }

@@ -41,13 +41,14 @@ The difference is that an ID carries **no domain-authored invariant**:
   `uuid` type. The domain is *not* the authority on UUID format — a `Parse` that
   re-validated the format would duplicate a guarantee the generator and the DB
   column already enforce.
-- **A format `Parse` would mis-classify the error.** Turning a malformed
-  client-supplied id into a `BAD_USER_INPUT` validation error is wrong: a stale
-  or malformed id must **collapse to not-found** at the lookup, not surface as a
-  validation error. Emitting a validation error here would also break the
-  non-disclosure-collapse gate (see
-  [`notfound-collapse-non-disclosure.md`](./notfound-collapse-non-disclosure.md)),
-  which requires unknown and hidden ids to be indistinguishable.
+- **A format `Parse` would mis-classify the error.** A malformed client-supplied
+  id must reach the lookup and get the same outcome as a well-formed id that
+  matches no row (`cardgroupRepo.FindByID` maps SQLSTATE `22P02` to
+  `repository.ErrNotFound`), not a separate format error. A distinct format
+  error would give callers one more response shape to tell ids apart, and on
+  the operations that apply the non-disclosure-collapse gate (see
+  [`notfound-collapse-non-disclosure.md`](./notfound-collapse-non-disclosure.md))
+  unknown and hidden ids must stay indistinguishable.
 - **A `Parse` would contradict the opaque-handle contract.** Clients treat ids
   (and cursors) as opaque handles they pass back unchanged; the server may
   change the encoding without breaking them. A domain-side format check freezes
@@ -65,6 +66,11 @@ mechanisms already in place:
    [`zero-value-docstring-on-string-newtypes.md`](./zero-value-docstring-on-string-newtypes.md)):
    the type doc states the zero value `""` is invalid and that ids are
    constructed by a direct cast at boundaries.
+
+Comparing client-supplied ids for identity (the admin self guards, role-id
+deduplication) is where spelling matters; `usecase.sameUserID` and
+`usecase.canonicalUUIDKey` compare parsed uuid values there, still without a
+domain parser.
 
 ## Scope boundary — type only the authz-confusable pair
 

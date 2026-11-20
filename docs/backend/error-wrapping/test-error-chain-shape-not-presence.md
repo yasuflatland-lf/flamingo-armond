@@ -18,7 +18,7 @@ if root != nil {
 }
 ```
 
-Test stubs that produce errors must also use `eris.New(...)` (not `errors.New(...)`) so the assertion exercises the same code path production hits. Pattern in `backend/internal/auth/superuser_test.go` (`M7_IsAdminError`, `M8_AssignToUserError`).
+Test stubs that produce errors must also use `eris.New(...)` (not `errors.New(...)`) so the assertion exercises the same code path production hits. Pattern in `backend/cmd/server/main_test.go` (`TestWarnIfNoAdmin_WarnOnCountError`).
 
 **A single `eris.New` stub is not enough to prove production's `eris.Wrap` is load-bearing.** A test where the stub always returns an eris-wrapped error passes the `error_chain.root.stack` assertion whether or not production wraps the error — because the stub's own eris chain provides the root. Add a sibling test that stubs the *actual* stdlib sentinel (e.g. `repository.ErrNotFound`, a plain `errors.New` value) and still asserts the rich shape. Only that test will fail if someone removes the production `eris.Wrap` call at the log site. Reference: `backend/internal/usecase/card_test.go` (`TestCardUsecase_Create_DuplicateLookupRace_RowVanished`) — the documented race where the duplicate row vanishes before the follow-up SELECT returns `repository.ErrNotFound`, and the test proves that the usecase's `eris.Wrap(lookupErr, ...)` is what makes the chain rich.
 
@@ -39,11 +39,9 @@ Concrete: `EditUser` in `backend/internal/usecase/admin_user.go` wraps each sub-
 
 ```go
 err = u.tx(ctx, func(tx *gorm.DB) error {
-    if profilePatch {
-        if err := u.users.UpdateTx(...); err != nil {
-            if isContextDone(err) { return err }
-            return eris.Wrap(err, "usecase: admin user edit: update profile")
-        }
+    if err := u.users.UpdateTxVersioned(...); err != nil {
+        if isContextDone(err) { return err }
+        return eris.Wrap(err, "usecase: admin user edit: update profile")
     }
     if err := u.userRoles.SetUserRolesTx(...); err != nil {
         if isContextDone(err) { return err }
@@ -68,6 +66,6 @@ assertInternalChain(t, err, "usecase: admin user edit: tx")
 assertInternalChain(t, err, "usecase: admin user edit: replace roles")
 ```
 
-And a sibling test exercises the OTHER sub-op (`TestAdminUser_EditUser_UpdateTxInfraError_PinsUpdateProfileWrap`) so each per-sub-op wrap has its own pin. Without both pins, only one of the two inner wraps can drift before any test goes red.
+And a sibling test exercises the OTHER sub-op (`TestAdminUser_EditUser_UpdateTxVersionedInfraError_PinsUpdateProfileWrap`) so each per-sub-op wrap has its own pin. Without both pins, only one of the two inner wraps can drift before any test goes red.
 
 The principle generalises: any production wrap that exists primarily to annotate the chain (not to convert sentinel identity, not to add a stack frame at the originating call site) needs its own substring pin. Nested wraps that share an outer frame cannot rely on the outer frame's pin for coverage.

@@ -12,25 +12,12 @@ import (
 	"backend/internal/domain"
 )
 
-// MasterCatalogOrderBy is the allowlist of columns the published master catalog
-// may sort by. Tuple order is always (orderField, id) so cursors stay
-// deterministic when the order field has duplicate values.
-type MasterCatalogOrderBy string
-
-const (
-	MasterCatalogOrderBySortOrder MasterCatalogOrderBy = "sort_order"
-	MasterCatalogOrderByCreatedAt MasterCatalogOrderBy = "created_at"
-	MasterCatalogOrderByName      MasterCatalogOrderBy = "name"
-)
-
-// MasterCatalogCursor carries the cursor entity's id plus the column value
-// matching the active orderBy. The usecase hydrates the relevant column before
-// calling FindPublishedPage; an unset column for the active orderBy is a caller
-// bug.
+// MasterCatalogCursor carries the cursor entity's id plus its `sort_order`
+// value, the catalog's fixed ordering column. The usecase hydrates SortOrder
+// before calling FindPublishedPage / FindPageAnyStatus; an unset SortOrder is a
+// caller bug.
 type MasterCatalogCursor struct {
 	ID        string
-	Name      *string
-	CreatedAt *time.Time
 	SortOrder *int
 }
 
@@ -94,30 +81,26 @@ type MasterCardgroupRepository interface {
 	Create(ctx context.Context, m *domain.MasterCardgroup) error
 	Update(ctx context.Context, id string, patch MasterCardgroupUpdate) (*domain.MasterCardgroup, error)
 	Delete(ctx context.Context, id string) error
-	// ListPublishedDefaultStarters returns the published, NON-EMPTY default
-	// starter decks. A starter whose cards have all been deleted is skipped so
-	// the new-user seed never creates an empty cardgroup.
-	ListPublishedDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error)
+	// ListPublishedDefaultStartersTx returns the published, NON-EMPTY default
+	// starter decks on tx, so a holder of the per-owner cardgroup lock needs no
+	// second pooled connection. Starters whose cards have all been deleted are skipped.
+	ListPublishedDefaultStartersTx(ctx context.Context, tx *gorm.DB) ([]*domain.MasterCardgroup, error)
 	// FindPublishedPage returns a window of PUBLISHED, NON-EMPTY master
-	// cardgroups ordered by (orderBy, id), each bundled with its card count,
+	// cardgroups ordered by (sort_order ASC, id ASC), each bundled with its card count,
 	// plus the search-aware total of all matching rows. Catalog visibility is
 	// the conjunction `status = published AND at least one master card exists`;
 	// it is enforced in SQL and is never caller-overridable, so a published deck
 	// whose cards have all been deleted is absent from the list and from the
-	// total alike. Forward paging uses (after, first);
-	// backward paging uses (before, last) and the slice is reversed in memory so
-	// the caller observes the same display order regardless of direction. An
-	// optional case-insensitive substring search filters by name (ILIKE
-	// metacharacters in the search are escaped so they match literally). The
-	// returned total applies the same visibility + search filter as the page
-	// query and is computed before the zero-page short-circuit, so a
-	// totalCount-only request still observes the real count.
+	// total alike. Paging is forward-only (after, first). An optional
+	// case-insensitive substring search filters by name (ILIKE metacharacters
+	// in the search are escaped so they match literally). The returned total
+	// applies the same visibility + search filter as the page query and is
+	// computed before the zero-page short-circuit, so a totalCount-only request
+	// still observes the real count.
 	FindPublishedPage(
 		ctx context.Context,
-		after, before *MasterCatalogCursor,
-		first, last int,
-		orderBy MasterCatalogOrderBy,
-		dir SortOrder,
+		after *MasterCatalogCursor,
+		first int,
 		search *string,
 	) ([]*MasterCatalogItem, int64, error)
 	// CountCards returns the number of master cards belonging to the given
@@ -152,10 +135,8 @@ type MasterCardgroupRepository interface {
 	// FindPublishedPage.
 	FindPageAnyStatus(
 		ctx context.Context,
-		after, before *MasterCatalogCursor,
-		first, last int,
-		orderBy MasterCatalogOrderBy,
-		dir SortOrder,
+		after *MasterCatalogCursor,
+		first int,
 		search *string,
 	) ([]*MasterCatalogItem, int64, error)
 	// Publish atomically sets the master cardgroup status to published and
@@ -322,14 +303,14 @@ func (r *masterCardgroupRepo) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// ListPublishedDefaultStarters returns all published, NON-EMPTY master cardgroups
-// flagged as default starters, ordered by (sort_order, id) so the starter set is
-// deterministic. A starter whose cards have all been deleted is skipped, so the
-// new-user seed never hands out an empty deck. Returns an empty slice when none
-// are found.
-func (r *masterCardgroupRepo) ListPublishedDefaultStarters(ctx context.Context) ([]*domain.MasterCardgroup, error) {
+// ListPublishedDefaultStartersTx returns all published, NON-EMPTY master cardgroups
+// flagged as default starters, on tx, ordered by (sort_order, id) so the set is
+// deterministic. An emptied starter is skipped, so the seed never hands out an empty
+// deck. Reading on tx keeps the seed, which holds the per-owner cardgroup lock, off
+// a second pooled connection. Returns an empty slice when none are found.
+func (r *masterCardgroupRepo) ListPublishedDefaultStartersTx(ctx context.Context, tx *gorm.DB) ([]*domain.MasterCardgroup, error) {
 	var rows []gormMasterCardgroup
-	if err := r.db.WithContext(ctx).
+	if err := tx.WithContext(ctx).
 		Where("status = ? AND is_default_starter", string(domain.MasterStatusPublished)).
 		Where(masterCardsExistPredicate("master_cardgroups")).
 		Order("sort_order, id").
@@ -412,7 +393,7 @@ func (r *masterCardgroupRepo) Unpublish(ctx context.Context, id string) (*domain
 // two divergent Updates(map) statements. op is the caller-supplied verb embedded
 // in the wrap prefix so the error chain attributes to publish vs. unpublish.
 func (r *masterCardgroupRepo) applyStatusTransition(
-	ctx context.Context, id, op string, transition func(*domain.MasterCardgroup) error,
+	ctx context.Context, id, op string, transition func(*domain.MasterCardgroup),
 ) (*domain.MasterCardgroup, error) {
 	var out *domain.MasterCardgroup
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -428,9 +409,7 @@ func (r *masterCardgroupRepo) applyStatusTransition(
 		if err != nil {
 			return err
 		}
-		if err := transition(m); err != nil {
-			return eris.Wrap(err, "repository: master cardgroup: "+op+": apply")
-		}
+		transition(m)
 		res := tx.Model(&gormMasterCardgroup{}).Where("id = ?", id).
 			Updates(map[string]any{"status": string(m.Status), "version": m.Version})
 		if res.Error != nil {

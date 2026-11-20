@@ -7,10 +7,14 @@ import { ErrorBanner } from "@/components/ui/error-banner";
 import { DirtyStateBridge } from "@/lib/forms/dirty-state-bridge";
 import { FormField } from "@/lib/forms/form-field";
 import { submitFormHandler, wrapSubmit } from "@/lib/forms/submit-handler";
+import { trimLikeGo } from "@/schemas/go-text";
 import { masterDescriptionSchema, masterNameSchema, masterSortOrderSchema } from "@/schemas/master";
 import type { AdminMasterListItem } from "./admin-master-row";
 
-/** Values emitted by the form. Empty optional strings collapse to null. */
+/**
+ * Values emitted by the form. Empty optional strings collapse to null, except a
+ * cleared stored description, which is "" because null leaves it unchanged.
+ */
 export type MasterFormValues = {
   name: string;
   description: string | null;
@@ -27,9 +31,11 @@ type Props = {
   onDirtyChange?: (dirty: boolean) => void;
 };
 
-function emptyToNull(s: string): string | null {
-  const trimmed = s.trim();
-  return trimmed.length === 0 ? null : trimmed;
+// null means "unchanged" on update, so a cleared stored description must send "".
+function descriptionInput(s: string, stored: string | null | undefined): string | null {
+  const trimmed = trimLikeGo(s);
+  if (trimmed.length > 0) return trimmed;
+  return stored ? "" : null;
 }
 
 export function AdminMasterForm({
@@ -54,11 +60,11 @@ export function AdminMasterForm({
       sortOrder: master?.sortOrder != null ? String(master.sortOrder) : "",
     },
     onSubmit: async ({ value }) => {
-      const sortOrderRaw = value.sortOrder.trim();
+      const sortOrderRaw = trimLikeGo(value.sortOrder);
       const parsedSortOrder = Number(sortOrderRaw);
       const values: MasterFormValues = {
-        name: value.name.trim(),
-        description: emptyToNull(value.description),
+        name: trimLikeGo(value.name),
+        description: descriptionInput(value.description, master?.description),
         isDefaultStarter: value.isDefaultStarter,
         // The sortOrder field validator blocks submit on a non-integer; guard the
         // conversion too so NaN / Infinity can never reach the mutation.

@@ -39,6 +39,8 @@ modes:
 Derive the inline type from the generated mutation type using
 `Extract<Union, { __typename: "Variant" }>` plus indexed access:
 
+The example keeps the swipe payload's earlier `response { performanceMode metrics }` shape. `HandleSwipeSuccess` now carries only `cardId` and the swipe path sends no `optimisticResponse`, but the `Extract<...>` derivation applies unchanged to any union variant.
+
 ```ts
 import type {
   HandleSwipeMutation as HandleSwipeMutationType,

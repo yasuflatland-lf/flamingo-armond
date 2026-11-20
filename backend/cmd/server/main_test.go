@@ -19,8 +19,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -116,7 +114,7 @@ func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil, nil), loaderDeps{}, ping.New(nil, "test-token"), nil, serverConfigFromEnv(slog.Default()).introspectionEnabled))
+	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, loaderDeps{}, ping.New(nil, "test-token"), nil, serverConfigFromEnv(slog.Default()).introspectionEnabled))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -283,20 +281,16 @@ func TestBuildResolver_NotionEnabledRetryConfigError(t *testing.T) {
 // TestBuildNotionIntegration_RetryConfigError drives the extracted helper's only
 // error path directly: a malformed NOTION_MAX_ATTEMPTS makes
 // notion.RetryConfigFromEnv fail, so buildNotionIntegration must return that error
-// unchanged and nil for both the card observer and the sync handler. The error
-// path returns before any DB-backed wiring, so no testcontainer Postgres is
-// needed, mirroring the fake-driven bootstrapSuperUserPromoter unit tests.
+// unchanged and a nil sync handler. The error path returns before any DB-backed
+// wiring, so no testcontainer Postgres is needed.
 func TestBuildNotionIntegration_RetryConfigError(t *testing.T) {
 	t.Setenv("NOTION_MAX_ATTEMPTS", "not-a-number")
 
-	observer, handler, err := buildNotionIntegration(
+	handler, err := buildNotionIntegration(
 		&appRepos{}, notionsync.EnvConfig{}, slog.New(slog.DiscardHandler),
 	)
 	if err == nil {
 		t.Fatal("expected error from invalid NOTION_MAX_ATTEMPTS, got nil")
-	}
-	if observer != nil {
-		t.Errorf("expected nil card observer on error, got %v", observer)
 	}
 	if handler != nil {
 		t.Errorf("expected nil notion sync handler on error, got %v", handler)
@@ -426,6 +420,72 @@ func TestRun_NotionSyncDisabledWhenEnvMissing(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("run did not return within timeout after context cancel")
 	}
+}
+
+// TestRun_WarnsAtBootWhenNoAdminExists pins the warnIfNoAdmin call inside
+// run(). The helper returns nothing, so deleting the call still compiles and
+// the helper's own unit tests stay green; only run()'s log output notices.
+func TestRun_WarnsAtBootWhenNoAdminExists(t *testing.T) {
+	db, err := database.Open(t.Context(), database.Config{URL: testDBURL})
+	if err != nil {
+		t.Fatalf("db open: %v", err)
+	}
+	adminCount, err := repository.NewUserRoleRepository(db.GORM).CountAdmins(t.Context())
+	db.Close()
+	if err != nil {
+		t.Fatalf("CountAdmins: %v", err)
+	}
+	if adminCount != 0 {
+		t.Skipf("pre-condition: %d admin role-holder(s) already exist; the boot WARN would not fire", adminCount)
+	}
+
+	tsJWKS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"keys": []}`))
+	}))
+	defer tsJWKS.Close()
+
+	t.Setenv("SUPABASE_JWKS_URL", tsJWKS.URL)
+	t.Setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
+	t.Setenv("SUPABASE_JWT_ISSUER", "http://issuer.test")
+	t.Setenv("SUPABASE_DB_URL", testDBURL)
+	t.Setenv("PING_TOKEN", "test-token")
+	unsetNotionSyncEnv(t)
+
+	port := freePort(t)
+	t.Setenv("PORT", port)
+	t.Setenv("SHUTDOWN_TIMEOUT", "2s")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- run(ctx, logger)
+	}()
+
+	waitHealthy(t, port, 3*time.Second)
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("run returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not return within timeout after context cancel")
+	}
+
+	const wantMsg = "admin bootstrap: no admin role-holder exists"
+	for _, rec := range decodeLogRecords(t, &buf) {
+		if rec["msg"] == wantMsg {
+			return
+		}
+	}
+	t.Fatalf("run() did not log %q at boot; output: %s", wantMsg, buf.String())
 }
 
 func TestRun_FailsWhenJWKSURLMissing(t *testing.T) {
@@ -675,14 +735,6 @@ func (f *jwtFixture) sign(t *testing.T, sub string) string {
 // the opened DB so callers can insert auth.users rows directly.
 func newGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Server, *database.DB) {
 	t.Helper()
-	return newGraphQLTestServerWithUserRepo(t, f, nil)
-}
-
-// newGraphQLTestServerWithUserRepo builds the same chain as newGraphQLTestServer
-// but lets the caller swap the User repository (for instrumented test doubles).
-// A nil userRepo means "use the default GORM-backed repository".
-func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repository.UserRepository) (*httptest.Server, *database.DB) {
-	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
@@ -702,10 +754,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	}
 	t.Cleanup(db.Close)
 
-	if userRepo == nil {
-		userRepo = repository.NewUserRepository(db.GORM)
-	}
-	roleRepo := repository.NewRoleRepository(db.GORM)
+	userRepo := repository.NewUserRepository(db.GORM)
 	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	cardRepo := repository.NewCardRepository(db.GORM)
@@ -713,83 +762,23 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	logger := slog.New(slog.DiscardHandler)
 	userUC := usecase.NewUserUsecase(nil, userRepo, userRoleRepo, nil, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
-	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, nil, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(db.GORM, cardgroupRepo, stubAdminChecker{isAdmin: true})
+	cardUC := usecase.NewCardUsecase(cardRepo, cardgroupRepo, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM, logger)
-	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil, nil), loaderDeps{
+	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), mw, loaderDeps{
 		user:           userRepo,
-		role:           roleRepo,
 		userRole:       userRoleRepo,
 		cardgroup:      cardgroupRepo,
 		card:           cardRepo,
 		userPreference: userPreferenceRepo,
-		swipeRecord:    swipeRecordRepo,
 		userCardFSRS:   userCardFSRSRepo,
 	}, ping.New(pingRecordRepo, "test-token"), nil, false)
 
 	ts := httptest.NewServer(e)
 	t.Cleanup(ts.Close)
 	return ts, db
-}
-
-// countingUserRepo wraps a real UserRepository and counts calls to each method.
-// It is used by TestGraphQL_Cardgroup_OwnerLoader_NoNPlus1 to assert that the
-// DataLoader batches all owner look-ups into a single FindByIDs call rather
-// than issuing one FindByID per cardgroup.
-type countingUserRepo struct {
-	inner        repository.UserRepository
-	findByID     atomic.Int32
-	findByIDs    atomic.Int32
-	mu           sync.Mutex
-	receivedKeys [][]string
-}
-
-func (c *countingUserRepo) FindByID(ctx context.Context, id string) (*domain.User, error) {
-	c.findByID.Add(1)
-	return c.inner.FindByID(ctx, id)
-}
-
-func (c *countingUserRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*domain.User, error) {
-	c.findByIDs.Add(1)
-	c.mu.Lock()
-	c.receivedKeys = append(c.receivedKeys, append([]string(nil), ids...))
-	c.mu.Unlock()
-	return c.inner.FindByIDs(ctx, ids)
-}
-
-func (c *countingUserRepo) Update(ctx context.Context, id string, patch repository.UserUpdate) (*domain.User, error) {
-	return c.inner.Update(ctx, id, patch)
-}
-func (c *countingUserRepo) UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch repository.UserUpdate) error {
-	return c.inner.UpdateTx(ctx, tx, id, patch)
-}
-func (c *countingUserRepo) UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string, patch repository.UserUpdate, expectedVersion int64) error {
-	return c.inner.UpdateTxVersioned(ctx, tx, id, patch, expectedVersion)
-}
-
-// ListPage forwards to the inner repository so any future test that exercises
-// the cursor-paginated user list keeps working.
-func (c *countingUserRepo) ListPage(
-	ctx context.Context,
-	after, before *string,
-	first, last int,
-	search *string,
-) ([]*domain.User, int64, error) {
-	return c.inner.ListPage(ctx, after, before, first, last, search)
-}
-
-func (c *countingUserRepo) DeleteAuthUserTx(ctx context.Context, tx *gorm.DB, id string) error {
-	return c.inner.DeleteAuthUserTx(ctx, tx, id)
-}
-
-func (c *countingUserRepo) AuthUserExists(ctx context.Context, id string) (bool, error) {
-	return c.inner.AuthUserExists(ctx, id)
-}
-
-func (c *countingUserRepo) LastSignInByUserIDs(ctx context.Context, ids []string) (map[string]*time.Time, error) {
-	return c.inner.LastSignInByUserIDs(ctx, ids)
 }
 
 // insertAuthUser inserts a row into auth.users so the handle_new_user trigger
@@ -996,7 +985,7 @@ func TestComplexityLimit_Rejects(t *testing.T) {
 
 func newIntrospectionTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newGraphQLServer(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), serverConfigFromEnv(slog.Default()).introspectionEnabled))
+	ts := httptest.NewServer(newGraphQLServer(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), serverConfigFromEnv(slog.Default()).introspectionEnabled))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -1362,6 +1351,9 @@ func TestGraphQL_PropagatesTraceparent(t *testing.T) {
 	}
 }
 
+// TestLoader_Middleware_DoesNotBreakQuery selects me.lastSignInAt so the
+// request resolves LastSignInByUserID through the real router's
+// loader.Middleware, pinning that the router forwards its user repository.
 func TestLoader_Middleware_DoesNotBreakQuery(t *testing.T) {
 	f := newJWTFixture(t)
 	ts, _ := newGraphQLTestServer(t, f)
@@ -1369,7 +1361,7 @@ func TestLoader_Middleware_DoesNotBreakQuery(t *testing.T) {
 	userID := insertAuthUser(t, context.Background())
 	tok := f.sign(t, userID)
 
-	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ me { id } }"}`, tok)
+	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ me { id lastSignInAt } }"}`, tok)
 
 	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
 		t.Fatalf("unexpected errors (loader middleware may have broken request): %v", errs)
@@ -1382,6 +1374,9 @@ func TestLoader_Middleware_DoesNotBreakQuery(t *testing.T) {
 	if me["id"] != userID {
 		t.Fatalf("expected me.id=%q, got %v", userID, me["id"])
 	}
+	if _, ok := me["lastSignInAt"]; !ok {
+		t.Fatalf("expected data.me.lastSignInAt key (null is fine), got %v", me)
+	}
 }
 
 // createTestCardgroup calls the createCardgroup mutation and returns the new cardgroup id.
@@ -1389,7 +1384,7 @@ func TestLoader_Middleware_DoesNotBreakQuery(t *testing.T) {
 // Uses the CreateCardgroupResult union selection set; validates __typename before extracting the id.
 func createTestCardgroup(t *testing.T, srvURL, bearer, name string) string {
 	t.Helper()
-	gqlQuery := fmt.Sprintf(`mutation { createCardgroup(input: {name: %s}) { __typename ... on CreateCardgroupSuccess { cardgroup { id name ownerId } } ... on InputValidationError { field message } } }`, gqlStringLit(name))
+	gqlQuery := fmt.Sprintf(`mutation { createCardgroup(input: {name: %s}) { __typename ... on CreateCardgroupSuccess { cardgroup { id name } } ... on InputValidationError { field message } } }`, gqlStringLit(name))
 	body, err := json.Marshal(map[string]string{"query": gqlQuery})
 	if err != nil {
 		t.Fatalf("json.Marshal body: %v", err)
@@ -1515,7 +1510,7 @@ func TestGraphQL_CreateCardgroup_Then_MyCardgroupsConnection(t *testing.T) {
 
 	cgID := createTestCardgroup(t, ts.URL, tok, "Vocab 1")
 
-	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroupsConnection(first: 100) { edges { node { id name ownerId } } totalCount } }"}`, tok)
+	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroupsConnection(first: 100) { edges { node { id name } } totalCount } }"}`, tok)
 	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
 		t.Fatalf("myCardgroupsConnection errors: %v", errs)
 	}
@@ -1531,9 +1526,6 @@ func TestGraphQL_CreateCardgroup_Then_MyCardgroupsConnection(t *testing.T) {
 	}
 	if cg["name"] != "Vocab 1" {
 		t.Fatalf("expected name=Vocab 1, got %v", cg["name"])
-	}
-	if cg["ownerId"] != sub {
-		t.Fatalf("expected ownerId=%q, got %v", sub, cg["ownerId"])
 	}
 	if got := conn["totalCount"].(float64); got != 1 {
 		t.Fatalf("expected totalCount=1, got %v", got)
@@ -1756,97 +1748,6 @@ func TestGraphQL_Cardgroup_NonOwner_ReturnsNullNoError(t *testing.T) {
 	}
 }
 
-func TestGraphQL_Cardgroup_OwnerLoaderResolves(t *testing.T) {
-	f := newJWTFixture(t)
-	ts, _ := newGraphQLTestServer(t, f)
-	ctx := context.Background()
-	sub := insertAuthUser(t, ctx)
-	tok := f.sign(t, sub)
-
-	createTestCardgroup(t, ts.URL, tok, "Loader Test")
-
-	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroupsConnection(first: 100) { edges { node { id name owner { id displayName } } } totalCount } }"}`, tok)
-	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
-		t.Fatalf("myCardgroupsConnection with owner errors: %v", errs)
-	}
-	conn, _ := resp["data"].(map[string]any)["myCardgroupsConnection"].(map[string]any)
-	list, _ := conn["edges"].([]any)
-	if len(list) == 0 {
-		t.Fatalf("expected at least one cardgroup; resp=%v", resp)
-	}
-	if got := conn["totalCount"].(float64); got != 1 {
-		t.Fatalf("expected totalCount=1, got %v", got)
-	}
-	for i, item := range list {
-		cg, _ := item.(map[string]any)["node"].(map[string]any)
-		owner, _ := cg["owner"].(map[string]any)
-		if owner == nil {
-			t.Fatalf("cardgroup[%d]: owner is nil; cg=%v", i, cg)
-		}
-		if owner["id"] != sub {
-			t.Fatalf("cardgroup[%d]: owner.id=%v, want %q", i, owner["id"], sub)
-		}
-	}
-}
-
-func TestGraphQL_Cardgroup_OwnerLoader_NoNPlus1(t *testing.T) {
-	f := newJWTFixture(t)
-	ctx := context.Background()
-	sub := insertAuthUser(t, ctx)
-	tok := f.sign(t, sub)
-
-	// Wrap the real repo in a counter so we can assert batching behaviour.
-	realDB, err := database.Open(ctx, database.Config{URL: testDBURL})
-	if err != nil {
-		t.Fatalf("db open for counter: %v", err)
-	}
-	t.Cleanup(realDB.Close)
-	counter := &countingUserRepo{inner: repository.NewUserRepository(realDB.GORM)}
-
-	ts, _ := newGraphQLTestServerWithUserRepo(t, f, counter)
-
-	const n = 100
-	for i := range n {
-		createTestCardgroup(t, ts.URL, tok, fmt.Sprintf("Batch Group %d", i+1))
-	}
-
-	resp := postGraphQL(t, ts.URL+"/query",
-		`{"query":"query BatchOwner { myCardgroupsConnection(first: 100) { edges { node { id owner { id displayName } } } totalCount } }"}`, tok)
-	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
-		t.Fatalf("myCardgroupsConnection batch errors: %v", errs)
-	}
-	conn, _ := resp["data"].(map[string]any)["myCardgroupsConnection"].(map[string]any)
-	list, _ := conn["edges"].([]any)
-	if len(list) != n {
-		t.Fatalf("expected %d cardgroups, got %d", n, len(list))
-	}
-	if got := conn["totalCount"].(float64); got != float64(n) {
-		t.Fatalf("expected totalCount=%d, got %v", n, got)
-	}
-	for i, item := range list {
-		cg, _ := item.(map[string]any)["node"].(map[string]any)
-		owner, _ := cg["owner"].(map[string]any)
-		if owner == nil {
-			t.Fatalf("cardgroup[%d]: owner is nil", i)
-		}
-		if owner["id"] != sub {
-			t.Fatalf("cardgroup[%d]: owner.id=%v, want %q", i, owner["id"], sub)
-		}
-	}
-
-	// Assert batching: the DataLoader must call FindByIDs exactly once (all 100
-	// cardgroups share the same owner ID, which the loader deduplicates), and
-	// must never fall back to the per-item FindByID path.
-	if got := counter.findByID.Load(); got != 0 {
-		t.Errorf("FindByID called %d times; want 0 (loader must not use per-item path)", got)
-	}
-	if got := counter.findByIDs.Load(); got != 1 {
-		t.Errorf("FindByIDs called %d times; want exactly 1 (single batched call)", got)
-	}
-	t.Logf("N+1 check: FindByID=%d FindByIDs=%d (keys per call: %v)",
-		counter.findByID.Load(), counter.findByIDs.Load(), counter.receivedKeys)
-}
-
 // TestGraphQL_CreateCardgroup_NameTooShort verifies that an empty name is
 // surfaced as the InputValidationError union variant — returned as data, not
 // as a GraphQL protocol error. Validation failures travel through the data
@@ -1943,7 +1844,6 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 	t.Cleanup(db.Close)
 
 	userRepo := repository.NewUserRepository(db.GORM)
-	roleRepo := repository.NewRoleRepository(db.GORM)
 	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	cardRepo := repository.NewCardRepository(db.GORM)
@@ -1952,23 +1852,20 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 	logger := slog.New(slog.DiscardHandler)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM, logger)
 	userUC := usecase.NewUserUsecase(nil, userRepo, userRoleRepo, nil, logger)
-	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, stubAdminChecker{isAdmin: true}, logger)
-	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, nil, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(db.GORM, cardgroupRepo, stubAdminChecker{isAdmin: true})
+	cardUC := usecase.NewCardUsecase(cardRepo, cardgroupRepo, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
-	lastViewedUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
+	lastViewedUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	e := newRouter(
-		resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, lastViewedUC, nil, nil, nil, nil, nil, nil, nil),
+		resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, lastViewedUC, nil, nil, nil, nil, nil, nil, nil),
 		mw,
-		auth.NewSuperUserPromoter(nil, "", nil, nil, nil),
 		loaderDeps{
 			user:           userRepo,
-			role:           roleRepo,
 			userRole:       userRoleRepo,
 			cardgroup:      cardgroupRepo,
 			card:           cardRepo,
 			userPreference: userPreferenceRepo,
-			swipeRecord:    swipeRecordRepo,
 			userCardFSRS:   userCardFSRSRepo,
 		},
 		ping.New(pingRecordRepo, "test-token"), nil,
@@ -2117,12 +2014,7 @@ func TestGraphQL_HandleSwipe_HappyPath(t *testing.T) {
 	gqlQuery := fmt.Sprintf(`mutation {
 		handleSwipe(input: {cardId: %s, cardgroupId: %s, rating: 4}) {
 			__typename
-			... on HandleSwipeSuccess {
-				response {
-					performanceMode
-					metrics { reviewCount successRate }
-				}
-			}
+			... on HandleSwipeSuccess { cardId }
 			... on InputValidationError { field message }
 		}
 	}`, gqlStringLit(firstID), gqlStringLit(cgID))
@@ -2141,19 +2033,8 @@ func TestGraphQL_HandleSwipe_HappyPath(t *testing.T) {
 	if payload["__typename"] != "HandleSwipeSuccess" {
 		t.Fatalf("expected HandleSwipeSuccess, got %v; resp=%v", payload["__typename"], resp)
 	}
-	swipeResp, _ := payload["response"].(map[string]any)
-	if swipeResp == nil {
-		t.Fatalf("expected handleSwipe.response; resp=%v", resp)
-	}
-	if swipeResp["performanceMode"] != "DEFAULT" {
-		t.Fatalf("performanceMode=%v, want DEFAULT", swipeResp["performanceMode"])
-	}
-	metrics, _ := swipeResp["metrics"].(map[string]any)
-	if metrics["reviewCount"] != float64(1) {
-		t.Fatalf("metrics.reviewCount=%v, want 1", metrics["reviewCount"])
-	}
-	if metrics["successRate"] != float64(1) {
-		t.Fatalf("metrics.successRate=%v, want 1", metrics["successRate"])
+	if payload["cardId"] != firstID {
+		t.Fatalf("cardId=%v, want %s", payload["cardId"], firstID)
 	}
 
 	var swipeCount int64
@@ -2268,10 +2149,6 @@ func (f failingSwipeRepo) CreateTx(context.Context, *gorm.DB, *domain.SwipeRecor
 	return f.err
 }
 
-func (f failingSwipeRepo) ListRecentByUser(context.Context, string, int) ([]*domain.SwipeRecord, error) {
-	return nil, f.err
-}
-
 func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
 	f := newJWTFixture(t)
 	ts, db := newGraphQLTestServer(t, f)
@@ -2319,37 +2196,6 @@ func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
 	}
 }
 
-// panicRoleRepo is an embed base that satisfies repository.RoleRepository
-// (CRUD only, 7 methods) with every method panicking. Concrete stubs embed
-// this and override only the methods their test exercises; any unexpected
-// call fails loudly.
-type panicRoleRepo struct{}
-
-func (panicRoleRepo) FindByID(_ context.Context, _ string) (*domain.Role, error) {
-	panic("not used in this test")
-}
-func (panicRoleRepo) FindByName(_ context.Context, _ domain.RoleName) (*domain.Role, error) {
-	panic("not used in this test")
-}
-func (panicRoleRepo) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Role, error) {
-	panic("not used in this test")
-}
-func (panicRoleRepo) FindByIDsTx(_ context.Context, _ *gorm.DB, _ []string) (map[string]*domain.Role, error) {
-	panic("not used in this test")
-}
-func (panicRoleRepo) Create(_ context.Context, _ string) (*domain.Role, error) {
-	panic("not used in this test")
-}
-func (panicRoleRepo) Update(_ context.Context, _, _ string) (*domain.Role, error) {
-	panic("not used in this test")
-}
-func (panicRoleRepo) Delete(_ context.Context, _ string) error {
-	panic("not used in this test")
-}
-func (panicRoleRepo) ListAll(_ context.Context) ([]*domain.Role, error) {
-	panic("not used in this test")
-}
-
 // panicUserRoleRepo is an embed base that satisfies repository.UserRoleRepository
 // with every method panicking. Concrete stubs embed this and override only the
 // methods their test exercises; any unexpected call fails loudly.
@@ -2365,9 +2211,6 @@ func (panicUserRoleRepo) AssignRoleToUser(_ context.Context, _, _ string) error 
 	panic("not used in this test")
 }
 func (panicUserRoleRepo) SetUserRolesTx(_ context.Context, _ *gorm.DB, _ string, _ []string) error {
-	panic("not used in this test")
-}
-func (panicUserRoleRepo) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {
 	panic("not used in this test")
 }
 func (panicUserRoleRepo) ListByUserIDs(_ context.Context, _ []string) (map[string][]*domain.Role, error) {
@@ -2394,23 +2237,9 @@ func (f failingCountRepo) CountAdmins(_ context.Context) (int64, error) {
 	return 0, f.err
 }
 
-// findByNameRepo satisfies repository.RoleRepository with FindByName returning
-// a configurable (role, error) pair. CountAdmins panics via the embedded
-// panicRoleRepo — the non-empty-emails branch in bootstrapSuperUserPromoter
-// never calls CountAdmins, only FindByName.
-type findByNameRepo struct {
-	panicRoleRepo
-	role *domain.Role
-	err  error
-}
-
-func (f findByNameRepo) FindByName(_ context.Context, _ domain.RoleName) (*domain.Role, error) {
-	return f.role, f.err
-}
-
 // existingAdminRepo satisfies repository.UserRoleRepository with CountAdmins
-// returning a fixed count. Used by deterministic tests for the Branch E path
-// (admin role-holders already exist → no WARN emitted).
+// returning a fixed count. Used by the deterministic tests for the zero-admin
+// branch (count 0 → WARN) and the admin-exists branch (count > 0 → no WARN).
 type existingAdminRepo struct {
 	panicUserRoleRepo
 	count int64
@@ -2438,10 +2267,9 @@ func decodeLogRecords(t *testing.T, buf *bytes.Buffer) []map[string]any {
 	return records
 }
 
-// TestBootstrapSuperUserPromoter_WarnsWhenNoEscapeHatch covers the WARN log
-// path: SUPER_USER_EMAILS empty AND zero admin role-holders in the DB must
-// emit a single WARN with admin_count=0.
-func TestBootstrapSuperUserPromoter_WarnsWhenNoEscapeHatch(t *testing.T) {
+// TestWarnIfNoAdmin_WarnsWhenNoAdminExists covers the WARN log path: zero
+// admin role-holders in the DB must emit a single WARN with admin_count=0.
+func TestWarnIfNoAdmin_WarnsWhenNoAdminExists(t *testing.T) {
 	// Do not run in parallel — this test opens a DB connection and logs to a
 	// local buffer; parallel would risk DB-state interference from other tests
 	// that insert user_roles rows.
@@ -2454,7 +2282,6 @@ func TestBootstrapSuperUserPromoter_WarnsWhenNoEscapeHatch(t *testing.T) {
 	}
 	defer db.Close()
 
-	roleRepo := repository.NewRoleRepository(db.GORM)
 	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
 
 	// Confirm there are no admin role-holders in this test DB state so the
@@ -2472,18 +2299,12 @@ func TestBootstrapSuperUserPromoter_WarnsWhenNoEscapeHatch(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	promoter, err := bootstrapSuperUserPromoter(ctx, logger, nil, roleRepo, userRoleRepo, "")
-	if err != nil {
-		t.Fatalf("bootstrapSuperUserPromoter returned unexpected error: %v", err)
-	}
-	if promoter == nil {
-		t.Fatal("bootstrapSuperUserPromoter returned nil promoter")
-	}
+	warnIfNoAdmin(ctx, logger, userRoleRepo)
 
 	records := decodeLogRecords(t, &buf)
 
 	// Locate the expected WARN record.
-	const wantMsg = "super-user bootstrap: no admin configured and no admin role-holder exists"
+	const wantMsg = "admin bootstrap: no admin role-holder exists"
 	var found map[string]any
 	for _, rec := range records {
 		if rec["msg"] == wantMsg {
@@ -2507,10 +2328,10 @@ func TestBootstrapSuperUserPromoter_WarnsWhenNoEscapeHatch(t *testing.T) {
 	}
 }
 
-// TestBootstrapSuperUserPromoter_WarnOnCountError verifies that a DB failure
-// in CountAdmins is non-fatal: bootstrapSuperUserPromoter returns a
-// pass-through promoter and emits a structured WARN with error_chain.root.stack.
-func TestBootstrapSuperUserPromoter_WarnOnCountError(t *testing.T) {
+// TestWarnIfNoAdmin_WarnOnCountError verifies that a DB failure in
+// CountAdmins is non-fatal: warnIfNoAdmin emits a structured WARN with
+// error_chain.root.stack and returns.
+func TestWarnIfNoAdmin_WarnOnCountError(t *testing.T) {
 	ctx := t.Context()
 
 	// Use a stub that returns an eris error so the structural error_chain
@@ -2527,18 +2348,12 @@ func TestBootstrapSuperUserPromoter_WarnOnCountError(t *testing.T) {
 		func(_ context.Context) string { return "" },
 	))
 
-	promoter, err := bootstrapSuperUserPromoter(ctx, logger, nil, panicRoleRepo{}, stub, "")
-	if err != nil {
-		t.Fatalf("bootstrapSuperUserPromoter returned unexpected error: %v", err)
-	}
-	if promoter == nil {
-		t.Fatal("bootstrapSuperUserPromoter returned nil promoter")
-	}
+	warnIfNoAdmin(ctx, logger, stub)
 
 	records := decodeLogRecords(t, &buf)
 
 	// 1. The "admin count check failed" WARN must be present.
-	const wantCountErrMsg = "super-user bootstrap: admin count check failed"
+	const wantCountErrMsg = "admin bootstrap: admin count check failed"
 	var countErrRec map[string]any
 	for _, rec := range records {
 		if rec["msg"] == wantCountErrMsg {
@@ -2571,116 +2386,54 @@ func TestBootstrapSuperUserPromoter_WarnOnCountError(t *testing.T) {
 		}
 	}
 
-	// 4. The "no admin configured" WARN must NOT appear — the count failed,
+	// 4. The "no admin role-holder" WARN must NOT appear — the count failed,
 	//    so we never learned whether adminCount == 0.
-	const wantNoEscapeMsg = "super-user bootstrap: no admin configured and no admin role-holder exists"
+	const wantNoAdminMsg = "admin bootstrap: no admin role-holder exists"
 	for _, rec := range records {
-		if rec["msg"] == wantNoEscapeMsg {
-			t.Errorf("unexpected log line %q: should only appear when count succeeds with 0", wantNoEscapeMsg)
+		if rec["msg"] == wantNoAdminMsg {
+			t.Errorf("unexpected log line %q: should only appear when count succeeds with 0", wantNoAdminMsg)
 		}
 	}
 }
 
-// userRoleStub satisfies repository.UserRoleRepository. HasRole always returns
-// (false, nil) — sufficient for constructing auth.NewService in tests that only
-// need to verify promoter construction, not per-request role checks.
-type userRoleStub struct{ panicUserRoleRepo }
+// TestWarnIfNoAdmin_WarnOnStdlibCountError proves the eris.Wrap at the log
+// site is load-bearing: a plain errors.New from the counter has no stack, so
+// error_chain.root.stack is present only because warnIfNoAdmin wraps it.
+func TestWarnIfNoAdmin_WarnOnStdlibCountError(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-func (userRoleStub) HasRole(_ context.Context, _ string, _ domain.RoleName) (bool, error) {
-	return false, nil
+	warnIfNoAdmin(t.Context(), logger, failingCountRepo{err: errors.New("plain stdlib failure")})
+
+	records := decodeLogRecords(t, &buf)
+	if len(records) != 1 {
+		t.Fatalf("want exactly 1 log record, got %d: %s", len(records), buf.String())
+	}
+	chain, _ := records[0]["error_chain"].(map[string]any)
+	root, _ := chain["root"].(map[string]any)
+	if stack, _ := root["stack"].([]any); len(stack) == 0 {
+		t.Errorf("error_chain.root.stack must be non-empty for a stdlib counter error; got error_chain=%v", records[0]["error_chain"])
+	}
 }
 
-// TestBootstrapSuperUserPromoter_FindByNameError covers Branch A: when
-// SUPER_USER_EMAILS is non-empty but the admin role lookup (FindByName) fails,
-// bootstrapSuperUserPromoter must propagate the error and return nil.
-func TestBootstrapSuperUserPromoter_FindByNameError(t *testing.T) {
-	ctx := t.Context()
-
-	roleErr := eris.New("repository: simulated FindByName failure")
-	stub := findByNameRepo{err: roleErr}
-
-	authSvc := auth.NewService(userRoleStub{})
-
+// TestWarnIfNoAdmin_WarnsWhenCountIsZero drives the zero-admin branch with a
+// stub, so it never skips, and pins the admin_count attribute the docs quote.
+func TestWarnIfNoAdmin_WarnsWhenCountIsZero(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, stub, panicUserRoleRepo{}, "you@example.com")
-
-	if err == nil {
-		t.Fatal("expected non-nil error when FindByName fails, got nil")
-	}
-	if !errors.Is(err, roleErr) {
-		t.Errorf("expected wrapped sentinel errors.Is(err, roleErr) to be true; err=%v", err)
-	}
-	if promoter != nil {
-		t.Errorf("expected nil promoter on error, got %v", promoter)
-	}
-
-	// No log output is expected for this fatal-error path.
-	records := decodeLogRecords(t, &buf)
-	for _, rec := range records {
-		if rec["level"] == "WARN" {
-			t.Errorf("unexpected WARN log on FindByName-error path: %v", rec)
-		}
-	}
-}
-
-// TestBootstrapSuperUserPromoter_NonEmptyEmailsHappyPath covers Branch B:
-// when SUPER_USER_EMAILS is non-empty and FindByName succeeds, the function
-// must return a non-nil active promoter and emit a single INFO log with
-// msg="super-user bootstrap enabled" and email_count matching the parsed set.
-func TestBootstrapSuperUserPromoter_NonEmptyEmailsHappyPath(t *testing.T) {
-	ctx := t.Context()
-
-	adminRole := &domain.Role{ID: "role-uuid-123", Name: "admin"}
-	stub := findByNameRepo{role: adminRole}
-
-	authSvc := auth.NewService(userRoleStub{})
-
-	// Capture all log output so we can assert INFO and absence of WARN.
-	var buf bytes.Buffer
-	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-
-	const emailsEnv = "alice@example.com,bob@example.com"
-	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, stub, panicUserRoleRepo{}, emailsEnv)
-
-	if err != nil {
-		t.Fatalf("bootstrapSuperUserPromoter returned unexpected error: %v", err)
-	}
-	if promoter == nil {
-		t.Fatal("expected non-nil promoter, got nil")
-	}
+	warnIfNoAdmin(t.Context(), logger, existingAdminRepo{count: 0})
 
 	records := decodeLogRecords(t, &buf)
-
-	// Locate the INFO "super-user bootstrap enabled" record.
-	const wantMsg = "super-user bootstrap enabled"
-	var infoRec map[string]any
-	for _, rec := range records {
-		if rec["msg"] == wantMsg {
-			infoRec = rec
-			break
-		}
+	if len(records) != 1 {
+		t.Fatalf("want exactly 1 log record, got %d: %s", len(records), buf.String())
 	}
-	if infoRec == nil {
-		t.Fatalf("expected INFO log line %q not found in output: %s", wantMsg, buf.String())
+	rec := records[0]
+	if rec["level"] != "WARN" || rec["msg"] != "admin bootstrap: no admin role-holder exists" {
+		t.Errorf("want WARN %q, got level=%v msg=%v", "admin bootstrap: no admin role-holder exists", rec["level"], rec["msg"])
 	}
-
-	if got, _ := infoRec["level"].(string); got != "INFO" {
-		t.Errorf("want level=INFO, got %q", got)
-	}
-
-	// ParseSuperUserSet("alice@example.com,bob@example.com") should produce 2 entries.
-	wantCount := float64(len(auth.ParseSuperUserSet(emailsEnv)))
-	if got, _ := infoRec["email_count"].(float64); got != wantCount {
-		t.Errorf("want email_count=%.0f, got %.0f", wantCount, got)
-	}
-
-	// No WARN log must appear on the happy path.
-	for _, rec := range records {
-		if rec["level"] == "WARN" {
-			t.Errorf("unexpected WARN log on happy path: %v", rec)
-		}
+	if got, ok := rec["admin_count"].(float64); !ok || got != 0 {
+		t.Errorf("want admin_count=0 present, got %v (present=%v)", rec["admin_count"], ok)
 	}
 }
 
@@ -2697,23 +2450,22 @@ func (panicQueryResolver) Me(_ context.Context) (*model.User, error) { return ni
 func (panicQueryResolver) Cardgroup(_ context.Context, _ string) (*model.Cardgroup, error) {
 	return nil, nil
 }
-func (panicQueryResolver) MyCardgroupsConnection(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.CardgroupOrderBy, _ *model.SortOrder) (*model.CardgroupConnection, error) {
+func (panicQueryResolver) MyCardgroupsConnection(_ context.Context, _ *int, _ *string, _ *string) (*model.CardgroupConnection, error) {
 	return nil, nil
 }
-func (panicQueryResolver) Card(_ context.Context, _ string) (*model.Card, error) { return nil, nil }
 func (panicQueryResolver) LearnNextDueCards(_ context.Context, _ string, _ *int) ([]*model.Card, error) {
 	return nil, nil
 }
 func (panicQueryResolver) PracticeTodaysCards(_ context.Context, _ string, _ *int) ([]*model.Card, error) {
 	return nil, nil
 }
-func (panicQueryResolver) CardsByCardgroupConnection(_ context.Context, _ string, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.CardOrderBy, _ *model.SortOrder) (*model.CardConnection, error) {
+func (panicQueryResolver) CardsByCardgroupConnection(_ context.Context, _ string, _ *int, _ *string, _ *string) (*model.CardConnection, error) {
 	return nil, nil
 }
 func (panicQueryResolver) ValidateCardImport(_ context.Context, _ model.ValidateCardImportInput) (*model.CardImportValidationResult, error) {
 	return nil, nil
 }
-func (panicQueryResolver) Users(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string) (*model.UserConnection, error) {
+func (panicQueryResolver) Users(_ context.Context, _ *int, _ *string, _ *string) (*model.UserConnection, error) {
 	return nil, nil
 }
 func (panicQueryResolver) AdminUser(_ context.Context, _ string) (*model.User, error) {
@@ -2721,19 +2473,19 @@ func (panicQueryResolver) AdminUser(_ context.Context, _ string) (*model.User, e
 }
 func (panicQueryResolver) Roles(_ context.Context) ([]*model.Role, error)        { return nil, nil }
 func (panicQueryResolver) Role(_ context.Context, _ string) (*model.Role, error) { return nil, nil }
-func (panicQueryResolver) MasterCatalog(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.MasterCatalogOrderBy, _ *model.SortOrder) (*model.MasterCatalogConnection, error) {
+func (panicQueryResolver) MasterCatalog(_ context.Context, _ *int, _ *string, _ *string) (*model.MasterCatalogConnection, error) {
 	return nil, nil
 }
-func (panicQueryResolver) AdminMasters(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.MasterCatalogOrderBy, _ *model.SortOrder) (*model.MasterCatalogConnection, error) {
+func (panicQueryResolver) AdminMasters(_ context.Context, _ *int, _ *string, _ *string) (*model.MasterCatalogConnection, error) {
 	panic("not implemented")
 }
 func (panicQueryResolver) AdminMaster(_ context.Context, _ string) (*model.MasterCardgroup, error) {
 	panic("not implemented")
 }
-func (panicQueryResolver) AdminMasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.MasterCardOrderBy, _ *model.SortOrder) (*model.MasterCardConnection, error) {
+func (panicQueryResolver) AdminMasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *string) (*model.MasterCardConnection, error) {
 	panic("not implemented")
 }
-func (panicQueryResolver) MasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.MasterCardOrderBy, _ *model.SortOrder) (*model.MasterCardConnection, error) {
+func (panicQueryResolver) MasterCardsConnection(_ context.Context, _ string, _ *int, _ *string, _ *string) (*model.MasterCardConnection, error) {
 	panic("not implemented")
 }
 func (panicQueryResolver) MasterCardgroup(_ context.Context, _ string) (*model.MasterCardgroup, error) {
@@ -2754,14 +2506,13 @@ type panicResolverRoot struct {
 }
 
 func newPanicResolverRoot() *panicResolverRoot {
-	return &panicResolverRoot{inner: resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)}
+	return &panicResolverRoot{inner: resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)}
 }
 
-func (p *panicResolverRoot) Card() generated.CardResolver           { return p.inner.Card() }
-func (p *panicResolverRoot) Cardgroup() generated.CardgroupResolver { return p.inner.Cardgroup() }
-func (p *panicResolverRoot) Mutation() generated.MutationResolver   { return p.inner.Mutation() }
-func (p *panicResolverRoot) Query() generated.QueryResolver         { return panicQueryResolver{} }
-func (p *panicResolverRoot) User() generated.UserResolver           { return p.inner.User() }
+func (p *panicResolverRoot) Card() generated.CardResolver         { return p.inner.Card() }
+func (p *panicResolverRoot) Mutation() generated.MutationResolver { return p.inner.Mutation() }
+func (p *panicResolverRoot) Query() generated.QueryResolver       { return panicQueryResolver{} }
+func (p *panicResolverRoot) User() generated.UserResolver         { return p.inner.User() }
 
 // newPanicGraphQLServer builds a gqlgen handler.Server wired with
 // panicResolverRoot so that { health } panics. The server uses the shared
@@ -2844,11 +2595,9 @@ func TestGraphQL_ContentType_POST(t *testing.T) {
 	}
 }
 
-// TestBootstrapSuperUserPromoter_NoWarnWhenAdminExists covers Branch E:
-// when SUPER_USER_EMAILS is empty AND at least one admin role-holder already
-// exists, bootstrapSuperUserPromoter must return a pass-through promoter
-// without emitting any log lines.
-func TestBootstrapSuperUserPromoter_NoWarnWhenAdminExists(t *testing.T) {
+// TestWarnIfNoAdmin_NoWarnWhenAdminExists covers the admin-exists branch:
+// when at least one admin role-holder exists, warnIfNoAdmin emits no log lines.
+func TestWarnIfNoAdmin_NoWarnWhenAdminExists(t *testing.T) {
 	ctx := t.Context()
 
 	// Stub returns count=1 (at least one admin already exists).
@@ -2857,14 +2606,7 @@ func TestBootstrapSuperUserPromoter_NoWarnWhenAdminExists(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	promoter, err := bootstrapSuperUserPromoter(ctx, logger, nil, panicRoleRepo{}, stub, "")
-
-	if err != nil {
-		t.Fatalf("bootstrapSuperUserPromoter returned unexpected error: %v", err)
-	}
-	if promoter == nil {
-		t.Fatal("expected non-nil pass-through promoter, got nil")
-	}
+	warnIfNoAdmin(ctx, logger, stub)
 
 	records := decodeLogRecords(t, &buf)
 	if len(records) != 0 {

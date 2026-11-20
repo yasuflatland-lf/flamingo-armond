@@ -8,13 +8,13 @@ import (
 
 // SwipeRecord is an immutable domain event. Append-only; never updated.
 type SwipeRecord struct {
-	ID          string
-	UserID      UserID
-	CardID      string
-	CardgroupID CardgroupID
-	Rating      Rating
-	ReviewedAt  time.Time
-	StateAfter  FSRSState
+	ID              string
+	UserID          UserID
+	CardID          string
+	CardgroupID     CardgroupID
+	Rating          Rating
+	ReviewedAt      time.Time
+	DifficultyAfter float64
 	// PhaseBefore, StabilityBefore and DueBefore are the pre-swipe snapshot: the
 	// phase and stability the card held going in, and the due instant the review is
 	// judged against. All three are NOT NULL columns -- the nullable era ended with
@@ -24,12 +24,12 @@ type SwipeRecord struct {
 	DueBefore       time.Time
 }
 
-// NewSwipeRecord creates a swipe event with a fresh UUID v7. stateBefore is the
-// scheduling state captured immediately before the rating was applied; the
-// pre-swipe snapshot is populated from it so the metrics layer can distinguish,
-// for example, a Learning->Easy graduation from a genuine review of an
-// already-learned card. stateAfter is the state the swipe advanced the card to.
-func NewSwipeRecord(userID UserID, cardID string, cardgroupID CardgroupID, rating Rating, reviewedAt time.Time, stateBefore, stateAfter FSRSState) (*SwipeRecord, error) {
+// NewSwipeRecord creates a swipe event with a fresh UUID v7. The pre-swipe snapshot
+// comes from stateBefore, the state just before the rating was applied, so the metrics
+// layer can tell a Learning->Easy graduation from a review of an already-learned card.
+// difficultyAfter is the difficulty the swipe advanced the card to; it feeds the /stats
+// average and is the only post-swipe value the log keeps.
+func NewSwipeRecord(userID UserID, cardID string, cardgroupID CardgroupID, rating Rating, reviewedAt time.Time, stateBefore FSRSState, difficultyAfter float64) (*SwipeRecord, error) {
 	if cardgroupID == "" {
 		return nil, eris.New("swipe record: cardgroupID is required")
 	}
@@ -44,7 +44,7 @@ func NewSwipeRecord(userID UserID, cardID string, cardgroupID CardgroupID, ratin
 		CardgroupID:     cardgroupID,
 		Rating:          rating,
 		ReviewedAt:      reviewedAt,
-		StateAfter:      stateAfter,
+		DifficultyAfter: difficultyAfter,
 		PhaseBefore:     stateBefore.Phase,
 		StabilityBefore: stateBefore.Stability,
 		DueBefore:       stateBefore.Due,

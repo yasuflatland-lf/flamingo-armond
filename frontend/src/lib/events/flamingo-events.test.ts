@@ -5,9 +5,10 @@ import {
   type AddMasterCardDetail,
   dispatchFlamingo,
   FLAMINGO_EVENT,
-  type SearchStateDetail,
   subscribeFlamingo,
 } from "./flamingo-events";
+
+type SearchStateDetail = WindowEventMap["flamingo:search-state"]["detail"];
 
 // Listeners registered per-test, torn down in afterEach so a failing assertion
 // never leaks a handler into the next test.

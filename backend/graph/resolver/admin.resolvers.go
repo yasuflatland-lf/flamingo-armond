@@ -105,8 +105,8 @@ func (r *mutationResolver) AdminDeleteUser(ctx context.Context, id string) (bool
 }
 
 // Users is the resolver for the users field.
-func (r *queryResolver) Users(ctx context.Context, first *int, after *string, last *int, before *string, search *string) (*model.UserConnection, error) {
-	uc, err := r.AdminUserUC.List(ctx, first, last, after, before, search)
+func (r *queryResolver) Users(ctx context.Context, first *int, after *string, search *string) (*model.UserConnection, error) {
+	uc, err := r.AdminUserUC.List(ctx, first, after, search)
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}

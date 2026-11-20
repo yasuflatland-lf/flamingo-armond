@@ -81,11 +81,11 @@ func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, window domain.Learn
 	return out, nil
 }
 
-// findPracticeCardsOn fetches the FSRS-safe practice pool: cards the user
-// already reviewed at or after the boundary (the same domain.StartOfLearnDay cutoff the
-// learn window uses). This is the INVERSE window of findDueCardsOn's review
-// window — practice consults last_review but not due, and uses >= where learn
-// uses <. random() gives a fresh arrangement per practice round.
+// findPracticeCardsOn fetches the FSRS-safe practice pool: cards whose last_review is
+// at or after reviewedAfter. Callers pass LearnWindow.PracticeReviewedAfter(), the
+// earlier of the two review-window last_review bounds, so practice is the exact
+// complement of findDueCardsOn's last_review guards (due is not consulted).
+// random() gives a fresh arrangement per practice round.
 //
 // NULL last_review (never-reviewed cards) can never satisfy `>=`, so no
 // `IS NOT NULL` guard is needed.

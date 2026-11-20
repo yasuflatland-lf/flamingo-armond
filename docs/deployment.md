@@ -211,7 +211,7 @@ Dynamic env vars (declared with `sync: false` in `render.yaml`; Blueprint create
 | `SUPABASE_JWT_ISSUER` | `https://<project-ref>.supabase.co/auth/v1` | Phase 6. |
 | `PING_TOKEN` | Auto-generated 32-byte hex token consumed by the readiness-ping workflow (see [Keep-alive ping workflow](#keep-alive-ping-workflow)). | Phase 6 (`postapply.yml`). |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint, or empty for no-op tracing. | Operator (manual, persisted across Blueprint syncs because of `sync: false`). |
-| `SUPER_USER_EMAILS` | Comma-separated email allowlist for first-admin bootstrap. Empty = feature OFF. | Operator (manual, persisted across Blueprint syncs because of `sync: false`). |
+| `SUPER_USER_EMAILS` | Not read by the backend; any value here has no effect. The admin seed reads it from the operator's root `.env`, not from Render — see [Bootstrap admin (production)](#bootstrap-admin-production). | Phase 6 (`postapply.yml`) copies the operator's shell value when non-empty; the backend ignores it. |
 
 When the Blueprint apply wizard prompts for the `sync: false` placeholders, leave them blank and click Save. Re-running `make setup-prod-postapply` reconciles the Supabase-derived three from the state file via the Render API, then triggers the first deploy.
 
@@ -221,17 +221,14 @@ When `render.yaml` itself changes (e.g. you bump `buildCommand`), reapply via **
 
 #### Bootstrap admin (production)
 
-Run this procedure only on the very first admin bootstrap for a fresh environment, or when an existing environment has lost its last admin and admin-only GraphQL mutations are unreachable. Day-to-day admin grants and revocations go through the Admin Users UI backed by the GraphQL `adminEditUser` mutation and do not require any change to `SUPER_USER_EMAILS`.
+Run this procedure on the very first admin bootstrap for a fresh environment, or when an environment has lost its last admin and admin-only GraphQL mutations are unreachable. Day-to-day admin grants and revocations go through the Admin Users UI backed by the GraphQL `adminEditUser` mutation.
 
-1. Confirm `render.yaml` declares `SUPER_USER_EMAILS` with `sync: false` under the `flamingo-backend` service. If it does not, land that change on `main` first.
-2. In the Render dashboard, open **Blueprints → flamingo-armond → Manual Sync** so the `sync: false` placeholder for `SUPER_USER_EMAILS` shows up on the service's environment page.
-3. In the Render dashboard, open **flamingo-backend → Environment**, find `SUPER_USER_EMAILS`, and set its value to the comma-separated list of email addresses to bootstrap (e.g. `alice@example.com,bob@example.com`). Keep the list short — every entry is a standing auto-promotion path that grants admin to anyone who can complete Google OAuth as that verified email.
-4. Save. Render auto-redeploys the service when an environment variable changes; no Manual Deploy click is needed.
-5. Once the new instance is live, tail the service logs and confirm a JSON line with `"msg":"super-user bootstrap enabled"` and `"email_count":N` appears exactly once, where `N` matches the number of comma-separated entries you set. If `N` does not match, the value was mistyped — common causes are a trailing comma, duplicate addresses that collapse to one entry, or two entries that differ only in case. Fix it in step 3 and let the redeploy roll.
-6. Have each listed user sign in to the production frontend via Google OAuth. The promotion is best-effort and runs on the first authenticated request the backend sees from each verified email; loading any page that issues a GraphQL `me` query is sufficient.
-7. For each promoted account, confirm a JSON line with `"msg":"superuser: promoted to admin"` and a `"user_id"` field carrying that user's Supabase `sub` appears exactly once in the backend logs. From this point onward the user can use the Admin Users UI, backed by `adminEditUser`, to manage other admins.
+1. Have each future admin sign in to the production frontend once via Google OAuth, so their `auth.users` row exists.
+2. In the root `.env`, set `SUPER_USER_EMAILS` to the comma-separated list of addresses (e.g. `alice@example.com,bob@example.com`). mise exports it to the shell.
+3. Run `make seed-admin-prod`. It reads `supabase_db_url` from `.setup-prod.state.yml` and inserts the `admin` role for each address with `ON CONFLICT DO NOTHING`. It prints `OK: granted admin role to <address>` or `no-op (not yet signed in or already admin): <address>` per entry.
+4. Each promoted user signs out and back in so the JWT carries `app_metadata.role = "admin"`.
 
-Removing an email from `SUPER_USER_EMAILS` does **not** revoke a previously granted admin role — an admin must update the user's final role set through `adminEditUser`. See [`docs/backend-auth.md` § "Bootstrap admin via `SUPER_USER_EMAILS`"](backend-auth.md#bootstrap-admin-via-super_user_emails) for the design rationale (security gate on `email_verified=true`, no automatic revocation).
+`make setup-prod-postapply` runs the same grant, so a first bring-up whose operator had already signed in and set `SUPER_USER_EMAILS` needs only step 4. Removing an address from `SUPER_USER_EMAILS` does **not** revoke a role — demote through `adminEditUser`. See [`docs/backend-auth.md` § "Bootstrap admin via `SUPER_USER_EMAILS`"](backend-auth.md#bootstrap-admin-via-super_user_emails).
 
 ### Step 3 — Vercel
 
@@ -244,6 +241,7 @@ Set these env vars (scopes given for the manual path; `make setup-prod` Phase 4 
 | `BACKEND_URL` | Production / Preview | Render service URL from Step 2. |
 | `NEXT_PUBLIC_SUPABASE_URL` | All | `https://<project-ref>.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | All | Publishable key from Step 1.3. |
+| `NEXT_PUBLIC_SITE_URL` | Production | Canonical site origin, no trailing slash (e.g. the Vercel production URL from this step, or a custom domain). Required in production — `frontend/src/env.ts` throws at build time when unset. Leave it unset on Preview: those builds fall back to the deployment's own `https://<VERCEL_URL>`, and a registered value would take precedence over that fallback. |
 | `ONBOARDING_GATE_SECRET` | Production / Preview | HMAC key (≥ 32 chars) for the middleware onboarding gate's fast-path cookie. Generate with `openssl rand -hex 32`; use a distinct value per environment. Optional — unset only costs a backend display-name lookup per gated navigation. See [`frontend/onboarding-gate.md` § "Signed fast-path cookie"](./frontend/onboarding-gate.md#signed-fast-path-cookie). |
 
 Under the automated path the first build (kicked off when the import wizard's **Deploy** button is clicked) **will fail** because env is not yet present — this is expected. Phase 6 (postapply) triggers a fresh deploy via `POST /v13/deployments` after Phase 4 has registered env, and the second build succeeds.
@@ -278,6 +276,14 @@ Production deploys are managed by Vercel's native Git integration, configured du
 #### Build environment mismatch risk
 
 Vercel runs its own build pipeline, distinct from the repository's `pnpm build` script. Vercel selects a Node version according to the project's dashboard settings — if that differs from the version pinned in `mise.toml` at the repo root, the build may behave differently from local. Open the Vercel project's **Settings → General → Node.js Version** and set it to match `mise.toml`. This is a one-time operator step that cannot be automated — Vercel project settings live in the dashboard and have no API surface exposed in the repository.
+
+#### Skipping builds when no frontend input changed
+
+`frontend/vercel.json` sets an `ignoreCommand` so Vercel skips a deployment when nothing the frontend build reads has changed. Without it, every push to any branch builds the frontend: `pnpm-workspace.yaml` lists only `frontend`, and Vercel's built-in monorepo skipping treats a change outside the workspace definition (`backend/`, `docs/`, `playbooks/`, ...) as a global change that deploys every project. Hobby teams get 10 GB of Deployment Storage, and deployments count against it.
+
+The command diffs `HEAD` against `VERCEL_GIT_PREVIOUS_SHA` (the last successful deployment of the same branch) over `frontend/`, `schema/` (`prebuild` runs GraphQL codegen from `../schema/*.graphql`), the root `package.json`, `pnpm-lock.yaml`, and `pnpm-workspace.yaml`. Vercel expects the command to exit with 0 (skip the build) or 1 (build), and any other exit code fails the deployment. The command is therefore wrapped in an `if` that exits 0 only when the diff is verified empty and exits 1 in every other case. Two such cases occur in practice: an empty `VERCEL_GIT_PREVIOUS_SHA` (a branch's first deployment), and a previous SHA missing from Vercel's shallow clone (`git clone --depth=10`), as after a rebase and force-push. A bare `git diff` exits 128 with `fatal: bad object` there, and the deployment ends in ERROR.
+
+Add a path to the command whenever the frontend build starts reading a file outside `frontend/`. A path missing from the list means a change to that file alone does not produce a deployment.
 
 #### Disabling Git integration
 

@@ -2,7 +2,7 @@
 type User {
   """Matches auth.users.id (UUID v4)."""
   id: ID!
-  """Optimistic-concurrency token; pass as `AdminEditUserInput.expectedVersion`. A mismatch yields `ConcurrentUpdateError`."""
+  """Optimistic-concurrency token. Every profile write (self-service `updateProfile` or `adminEditUser`) increments it; pass the value you read as `AdminEditUserInput.expectedVersion`, and a mismatch yields `ConcurrentUpdateError`."""
   version: Int!
   displayName: String
   bio: String

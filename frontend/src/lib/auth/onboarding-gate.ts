@@ -22,7 +22,8 @@ export const ONBOARDING_ENTRY_PATH = "/onboarding";
  * - `/_next` — framework assets and RSC payload fetches.
  * - `/terms`, `/privacy` — public legal pages, readable in any account state.
  *
- * The middleware matcher already excludes `/api`, `/auth/callback` and `/_next`.
+ * The middleware matcher already excludes `/api`, `/auth/callback`,
+ * `/auth/verify-session` and `/_next`.
  * That overlap is deliberate: matcher and gate are two independent lists, and
  * the gate must stay correct if the matcher widens.
  */

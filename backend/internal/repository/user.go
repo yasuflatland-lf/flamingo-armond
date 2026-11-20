@@ -57,15 +57,10 @@ type UserUpdate struct {
 
 type UserRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.User, error)
-	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.User, error)
+	// Update applies the patch and bumps version so an admin holding a stale
+	// expectedVersion sees ErrConcurrentUpdate instead of overwriting the
+	// change. An empty patch reads without writing and leaves version unchanged.
 	Update(ctx context.Context, id string, patch UserUpdate) (*domain.User, error)
-	// UpdateTx applies the patch inside the caller-provided transaction. Unlike
-	// Update, it does not re-fetch the row — callers that need the updated
-	// value should refetch after the transaction commits. A patch with no
-	// non-nil fields returns nil without touching the database. A patch that
-	// targets a missing row returns ErrNotFound so the surrounding transaction
-	// rolls back atomically.
-	UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch UserUpdate) error
 	// UpdateTxVersioned applies the patch inside the caller-provided
 	// transaction only when the row's current version matches expectedVersion.
 	// It always issues an UPDATE and bumps version, even for an empty patch.
@@ -73,10 +68,8 @@ type UserRepository interface {
 	// version returns ErrConcurrentUpdate.
 	UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string, patch UserUpdate, expectedVersion int64) error
 	// ListPage returns a page of users ordered by created_at DESC with id ASC
-	// as a stable tiebreaker. The cursor is the user UUID. Forward paging uses
-	// `after` (exclusive); backward paging uses `before` (exclusive). `first`
-	// and `last` are mutually exclusive at the usecase layer; this method
-	// accepts both and lets the usecase enforce.
+	// as a stable tiebreaker. The cursor is the user UUID. Paging is
+	// forward-only: at most `first` rows strictly after `after`.
 	//
 	// search is a substring match on display_name (case-insensitive ILIKE).
 	// Whitespace-only input is treated as nil. `%` and `_` literals in the
@@ -89,8 +82,8 @@ type UserRepository interface {
 	// usecase-level +1 fetch trick at the documented maximum.
 	ListPage(
 		ctx context.Context,
-		after, before *string,
-		first, last int,
+		after *string,
+		first int,
 		search *string,
 	) (users []*domain.User, total int64, err error)
 
@@ -148,29 +141,13 @@ func (r *userRepo) FindByID(ctx context.Context, id string) (*domain.User, error
 	var row gormUser
 	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if errors.Is(err, gorm.ErrRecordNotFound) || pgInvalidTextRepresentation(err) {
 			return nil, ErrNotFound
 		}
 		return nil, eris.Wrap(err, "repository: user: find by id")
 	}
 	return userToDomain(row), nil
-}
-
-func (r *userRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*domain.User, error) {
-	// GORM turns WHERE id IN () into an unfiltered scan, so short-circuit empty input.
-	if len(ids) == 0 {
-		return map[string]*domain.User{}, nil
-	}
-	var rows []gormUser
-	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: user: find by ids")
-	}
-	out := make(map[string]*domain.User, len(rows))
-	for i := range rows {
-		u := userToDomain(rows[i])
-		out[string(u.ID)] = u
-	}
-	return out, nil
 }
 
 func (r *userRepo) Update(ctx context.Context, id string, patch UserUpdate) (*domain.User, error) {
@@ -179,29 +156,15 @@ func (r *userRepo) Update(ctx context.Context, id string, patch UserUpdate) (*do
 		// No-op patch: return current value rather than touching DB.
 		return r.FindByID(ctx, id)
 	}
+	updates["version"] = gorm.Expr("version + 1")
 
 	res := r.db.WithContext(ctx).Model(&gormUser{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
 		return nil, eris.Wrap(res.Error, "repository: user: update")
 	}
-	// Re-fetch so callers see the trigger-refreshed updated_at.
+	// Re-fetch so callers see the trigger-refreshed updated_at and the bumped version.
 	return refetchAfterUpdate(res.RowsAffected, ErrNotFound,
 		func() (*domain.User, error) { return r.FindByID(ctx, id) }, "")
-}
-
-func (r *userRepo) UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch UserUpdate) error {
-	updates := userUpdates(patch)
-	if len(updates) == 0 {
-		return nil
-	}
-	res := tx.WithContext(ctx).Model(&gormUser{}).Where("id = ?", id).Updates(updates)
-	if res.Error != nil {
-		return eris.Wrap(res.Error, "repository: user: update tx")
-	}
-	if res.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
 }
 
 func (r *userRepo) UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string, patch UserUpdate, expectedVersion int64) error {
@@ -213,6 +176,10 @@ func (r *userRepo) UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string
 		Where("id = ? AND version = ?", id, expectedVersion).
 		Updates(updates)
 	if res.Error != nil {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if pgInvalidTextRepresentation(res.Error) {
+			return ErrNotFound
+		}
 		return eris.Wrap(res.Error, "repository: user: update tx versioned")
 	}
 	if res.RowsAffected > 0 {
@@ -239,6 +206,10 @@ func (r *userRepo) DeleteAuthUserTx(ctx context.Context, tx *gorm.DB, id string)
 	}
 	res := tx.WithContext(ctx).Exec("DELETE FROM auth.users WHERE id = ?", id)
 	if res.Error != nil {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if pgInvalidTextRepresentation(res.Error) {
+			return ErrNotFound
+		}
 		return eris.Wrap(res.Error, "repository: user: delete auth user")
 	}
 	if res.RowsAffected == 0 {
@@ -296,20 +267,17 @@ func userUpdates(patch UserUpdate) map[string]any {
 
 // ListPage implements the cursor-paginated user list. Order is fixed at
 // (created_at DESC, id ASC) so cursors stay deterministic even when multiple
-// users share a created_at. Backward paging inverts the direction, applies
-// LIMIT, then reverses the slice in memory so the caller sees the same display
-// order as forward paging.
+// users share a created_at.
 func (r *userRepo) ListPage(
 	ctx context.Context,
-	after, before *string,
-	first, last int,
+	after *string,
+	first int,
 	search *string,
 ) ([]*domain.User, int64, error) {
-	if first < 0 || last < 0 {
-		return nil, 0, eris.New("user repo: first/last must be >= 0")
+	if first < 0 {
+		return nil, 0, eris.New("user repo: first must be >= 0")
 	}
 	first = ClampPageSize(first)
-	last = ClampPageSize(last)
 
 	// Normalise search: trim, treat blank as nil, escape ILIKE wildcards so
 	// "%" and "_" supplied by the caller match literally.
@@ -329,11 +297,9 @@ func (r *userRepo) ListPage(
 		return nil, 0, eris.Wrap(err, "repository: user: count")
 	}
 
-	if first == 0 && last == 0 {
+	if first == 0 {
 		return []*domain.User{}, total, nil
 	}
-
-	effectiveDir, limit, cursorID, reverse := paginateSetup(SortDesc, first, last, after, before)
 
 	q := r.db.WithContext(ctx).Model(&gormUser{})
 	if hasSearch {
@@ -341,15 +307,17 @@ func (r *userRepo) ListPage(
 	}
 
 	var cursorRow gormUser
-	if cursorID != nil {
+	if after != nil {
 		// Hydrate the cursor user's created_at so we can build the tuple
 		// comparison. A missing user means the cursor row was deleted between
 		// fetches — surface as ErrCursorNotFound so callers can map to a
-		// BAD_USER_INPUT-shaped error.
+		// BAD_USER_INPUT-shaped error; a cursor (v1 or legacy bare id) whose id
+		// is not a uuid is the same not-found.
 		err := r.db.WithContext(ctx).Select("id", "created_at").
-			Where("id = ?", *cursorID).Take(&cursorRow).Error
+			Where("id = ?", *after).Take(&cursorRow).Error
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+			if errors.Is(err, gorm.ErrRecordNotFound) || pgInvalidTextRepresentation(err) {
 				return nil, 0, ErrCursorNotFound
 			}
 			return nil, 0, eris.Wrap(err, "repository: user: hydrate cursor")
@@ -357,26 +325,19 @@ func (r *userRepo) ListPage(
 	}
 
 	spec := userCursorSpec(cursorRow)
-	if reverse {
-		spec.idDir = InvertDir(spec.idDir)
-	}
-	if cursorID != nil {
-		clauseSQL, args, err := buildCursorWhere(spec, effectiveDir, cursorRow.ID)
+	if after != nil {
+		clauseSQL, args, err := buildCursorWhere(spec, SortDesc, cursorRow.ID)
 		if err != nil {
 			return nil, 0, eris.Wrap(err, "repository: user: build cursor where")
 		}
 		q = q.Where(clauseSQL, args...)
 	}
 
-	q = q.Order(buildOrderClause(spec, effectiveDir)).Limit(limit)
+	q = q.Order(buildOrderClause(spec, SortDesc)).Limit(first)
 
 	var rows []gormUser
 	if err := q.Find(&rows).Error; err != nil {
 		return nil, 0, eris.Wrap(err, "repository: user: list page")
-	}
-
-	if reverse {
-		ReverseSlice(rows)
 	}
 
 	out := make([]*domain.User, len(rows))
@@ -401,7 +362,7 @@ func userToDomain(g gormUser) *domain.User {
 	// The gormUser DisplayName field is *string (DB column type); the domain
 	// DisplayName is a string newtype, so (*domain.DisplayName)(g.DisplayName)
 	// is a straight pointer cast across the same underlying type. Bio is the
-	// trinary VO; BioFromPtr maps a NULL column to Bio{} (IsSet=false) and a
+	// trinary VO; BioFromPtr maps a NULL column to Bio{} (Ptr() returns nil) and a
 	// text column to a set Bio whose Ptr() returns a defensive copy with the same string value.
 	return &domain.User{
 		ID:          domain.UserID(g.ID),

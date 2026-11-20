@@ -13,19 +13,9 @@ import { ErrorBanner } from "@/components/ui/error-banner";
 import { Textarea } from "@/components/ui/textarea";
 import type { CardImportErrorKind } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
+// `payload` in ValidateCardImportInput / ImportCardsInput / ImportMasterCardsInput is base64 text.
+import { encodeUtf8Base64 } from "@/lib/encode-utf8-base64";
 import { cn } from "@/lib/utils";
-
-/**
- * Encode a UTF-8 string to base64 using the standard alphabet (with padding).
- * Matches the server contract for `payload` in `ValidateCardImportInput`,
- * `ImportCardsInput`, and `ImportMasterCardsInput`: base64-encoded text, one
- * tab-separated front/back pair per line.
- */
-function encodePayload(text: string): string {
-  // encodeURIComponent escapes all non-ASCII bytes; unescape maps them back to
-  // a byte string so that btoa sees only ASCII characters.
-  return btoa(unescape(encodeURIComponent(text)));
-}
 
 type ValidationResult = {
   valid: boolean;
@@ -326,8 +316,8 @@ export function BatchImportWizard(props: {
     setValidationResult(null);
     setValidatedPayload(null);
     setImportResult(null);
-    const payload = encodePayload(payloadText);
     try {
+      const payload = encodeUtf8Base64(payloadText);
       const result = await runValidate({ variables: { input: { payload } } });
       if (result.data?.validateCardImport) {
         setValidationResult(result.data.validateCardImport);
@@ -345,8 +335,8 @@ export function BatchImportWizard(props: {
   async function handleImport() {
     setBannerError("");
     setImportResult(null);
-    const payload = encodePayload(payloadText);
     try {
+      const payload = encodeUtf8Base64(payloadText);
       const data = await onImport(payload);
       if (!data) {
         setBannerError(t("unexpectedError"));

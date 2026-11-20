@@ -71,12 +71,11 @@ representative tests, not every cancellation test:
 | Test | Pinned shape | Why it is representative |
 |---|---|---|
 | `TestSwipeUsecase_HandleSwipe_FindCardByID_PropagatesCancelled` (`swipe_error_test.go`) | In-tx path | Error originates inside the `txRunner` closure |
-| `TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesDeadlineExceeded` (`swipe_error_test.go`) | Post-tx path | Error originates after the tx commits |
 | `TestLearnUsecase_NextDueCards_FindCardgroup_PropagatesCancelled` (`learn_test.go`) | Separate usecase | Confirms the contract holds across usecase boundaries, not just one |
 
 Each test exercises a structurally distinct code path that could regress
 independently. Pinning identity on all cancellation tests would be redundant
-without strengthening coverage; pinning on these three covers the orthogonal
+without strengthening coverage; pinning on these two covers the orthogonal
 seams where a wrap could plausibly leak in.
 
 ## Self-check
@@ -97,7 +96,7 @@ shape is:
 
 ```go
 err = u.tx(ctx, func(tx *gorm.DB) error {
-    if err := u.users.UpdateTx(ctx, tx, id, patch); err != nil {
+    if err := u.users.UpdateTxVersioned(ctx, tx, id, patch, input.ExpectedVersion); err != nil {
         if isContextDone(err) {
             return err  // bare identity preserved through tx
         }
@@ -122,7 +121,7 @@ if err != nil {
 Two independent guarantees combine here:
 
 - **Identity preservation across the tx layer.** Without the inner
-  `isContextDone` check, a cancellation that fires inside `UpdateTx` would
+  `isContextDone` check, a cancellation that fires inside `UpdateTxVersioned` would
   surface to the outer `if err != nil` branch as
   `eris.Wrap(context.Canceled, "...update profile")`. `errors.Is` still
   detects the cancellation, but the value returned to the resolver is no
@@ -138,8 +137,8 @@ Pin the contract with two tests per sub-op:
 
 | Test | Asserts |
 |---|---|
-| `TestAdminUser_EditUser_UpdateTxCancelled` | `context.Canceled` identity (`err == context.Canceled`) on the profile branch |
-| `TestAdminUser_EditUser_CancelledFromRoleSet` | Same identity on the roles branch |
+| `TestAdminUser_EditUser_UpdateTxVersionedCancelled` | `context.Canceled` identity (`err == context.Canceled`) on the update-profile step |
+| `TestAdminUser_EditUser_CancelledFromRoleSet` | Same identity on the replace-roles step |
 
 A single cancellation test that only checks chain shape (`assertCancelled`)
 passes even when the inner wrap snuck in. The dual-assertion pattern from
@@ -157,19 +156,18 @@ silently double-wraps a `context.Canceled` / `context.DeadlineExceeded` from
 the second call, breaking the bare-identity contract for that path even though
 the chain still satisfies `errors.Is`.
 
-Worked example: `checkCardgroupLimit` (`backend/internal/usecase/cardgroup.go`)
-calls `admin.IsAdmin` then `counter.CountByOwner`. Both error branches guard
-context errors via `isContextDone`. An asymmetric version that guarded only the
-`IsAdmin` branch shipped briefly and was caught in review — the
-`CountByOwner`-cancelled path returned a wrapped error that failed an
-`err == context.Canceled` identity check at the caller. The fix mirrored the
-guard onto the second branch.
+Worked example: `lockCardgroupQuotaTx` (`backend/internal/usecase/cardgroup.go`)
+calls `AcquireUserCardgroupLockTx` then `CountByOwnerTx`. Both error branches
+guard context errors via `wrapInfraErr` (which checks `isContextDone` first). An
+asymmetric version of its predecessor that guarded only the first branch shipped
+briefly and was caught in review — the count-cancelled path returned a wrapped
+error that failed an `err == context.Canceled` identity check at the caller. The
+fix mirrored the guard onto the second branch.
 
 Pin the contract with identity tests on each branch:
-`TestCheckCardgroupLimit_CountCancelled_IdentityPreserved` and
-`_CountDeadlineExceeded_IdentityPreserved` assert `err == context.Canceled` /
-`context.DeadlineExceeded` (bare identity) for the count path, complementing
-the `IsAdmin`-branch tests.
+`TestLockCardgroupQuotaTx_ContextErrors_IdentityPreserved` asserts
+`err == context.Canceled` / `context.DeadlineExceeded` (bare identity) for the
+lock-cancelled, count-cancelled and count-deadline-exceeded paths.
 
 ## Delegating to another usecase: the delegate's bare sentinel must survive the outer wrap
 

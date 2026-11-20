@@ -137,12 +137,6 @@ export function ProfileForm({
         ) : null}
       </div>
 
-      {/* Hidden sentinel used by tests to observe formState.isSubmitSuccessful */}
-      <form.Subscribe selector={(state) => state.isSubmitSuccessful}>
-        {(isSubmitSuccessful) => (
-          <span data-testid="is-submit-successful" data-value={String(isSubmitSuccessful)} hidden />
-        )}
-      </form.Subscribe>
       <form.Subscribe selector={(state) => state.isDirty}>
         {(dirty) => <DirtyStateBridge dirty={dirty} onDirtyChange={onDirtyChange} />}
       </form.Subscribe>

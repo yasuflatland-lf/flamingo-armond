@@ -49,7 +49,7 @@ the deck. An unpublish (or a delete of the deck's last card) landing in that win
 would import an out-of-catalog deck if the
 transaction re-read the master through the any-status `FindByID`. The write paths
 therefore re-probe through the **same** catalog-scoped visibility filter
-(`copyMasterToUserTx`, and a fetch before `ListByMasterCardgroup` in
+(`copyMasterToUserTx`, and a fetch before `ListByMasterCardgroupTx` in
 `MergeMasterIntoCardgroup`); the resulting `ErrNotFound` is mapped by `ImportMaster` /
 `MergeMaster` to the same `NotFound` outcome as a pre-gate unknown/draft/empty deck.
 
@@ -63,7 +63,10 @@ closed by different mechanisms:
   rather than from a separate probe: both write paths return `repository.ErrNotFound`
   when `len(cards) == 0` on the enumeration they are about to copy. That holds however
   the reads interleave with a concurrent last-card delete, and it needs no lock and no
-  transaction-scoped repository method.
+  transaction-scoped repository method. Both write paths still read that enumeration
+  through `ListByMasterCardgroupTx` for a different reason: a pooled read inside a write
+  transaction holds its connection while waiting for a second one, so enough concurrent
+  writers starve the connection pool.
 - **Unpublish** — the probe runs on the **transaction connection** and takes a
   **`FOR SHARE` lock on the master row**. `FindPublishedByIDTx` is the tx-scoped sibling
   of `FindPublishedByID`; both delegate to one private helper so the visibility filter

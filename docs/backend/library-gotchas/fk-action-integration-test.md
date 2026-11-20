@@ -60,4 +60,4 @@ The migration test (covered separately in [Migration down/up roundtrip test](mig
 
 ## Reference
 
-`backend/internal/repository/user_preference_test.go` carries both `TestUserPreferenceRepository_OnDeleteUser_CascadesPreferenceRow` (parent-user delete cascades the preference row) and `TestUserPreferenceRepository_OnDeleteCardgroup_SetsNull` (cardgroup delete nulls the `last_viewed_cardgroup_id` column). The migration that declares both FK actions is `20260516120000_extract_user_preferences.up.sql`.
+`backend/internal/repository/user_preference_test.go` carries both `TestUserPreferenceRepository_OnDeleteUser_CascadesPreferenceRow` (parent-user delete cascades the preference row) and `TestUserPreferenceRepository_OnDeleteCardgroup_SetsNull` (cardgroup delete nulls the `last_viewed_cardgroup_id` column). The migration that declares both FK actions is `20260430080000_initial_schema.up.sql`.

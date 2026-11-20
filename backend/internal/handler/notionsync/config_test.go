@@ -28,94 +28,6 @@ func setNotionEnv(t *testing.T, overrides map[string]string) {
 	}
 }
 
-func TestConfigFromEnv(t *testing.T) {
-	t.Run("happy path: all vars set, multi-page CSV", func(t *testing.T) {
-		setNotionEnv(t, map[string]string{
-			"NOTION_PAGE_IDS": "page-1, page-2 ,page-3",
-		})
-		cfg, err := ConfigFromEnv()
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if cfg.NotionToken != "tok-123" {
-			t.Errorf("NotionToken = %q, want %q", cfg.NotionToken, "tok-123")
-		}
-		if cfg.HandlerConfig.Token != "sync-tok" {
-			t.Errorf("HandlerConfig.Token = %q, want %q", cfg.HandlerConfig.Token, "sync-tok")
-		}
-		wantPageIDs := []string{"page-1", "page-2", "page-3"}
-		if len(cfg.HandlerConfig.PageIDs) != len(wantPageIDs) {
-			t.Fatalf("PageIDs len = %d, want %d", len(cfg.HandlerConfig.PageIDs), len(wantPageIDs))
-		}
-		for i, want := range wantPageIDs {
-			if cfg.HandlerConfig.PageIDs[i] != want {
-				t.Errorf("PageIDs[%d] = %q, want %q", i, cfg.HandlerConfig.PageIDs[i], want)
-			}
-		}
-		if cfg.HandlerConfig.MasterCardgroupName != "My Cards" {
-			t.Errorf("MasterCardgroupName = %q, want %q", cfg.HandlerConfig.MasterCardgroupName, "My Cards")
-		}
-	})
-
-	missingVarCases := []struct {
-		name    string
-		missing string
-	}{
-		{"missing NOTION_TOKEN", "NOTION_TOKEN"},
-		{"missing NOTION_PAGE_IDS", "NOTION_PAGE_IDS"},
-		{"missing NOTION_MASTER_CARDGROUP_NAME", "NOTION_MASTER_CARDGROUP_NAME"},
-		{"missing NOTION_SYNC_TOKEN", "NOTION_SYNC_TOKEN"},
-	}
-	for _, tc := range missingVarCases {
-		t.Run(tc.name, func(t *testing.T) {
-			setNotionEnv(t, map[string]string{tc.missing: ""})
-			_, err := ConfigFromEnv()
-			if err == nil {
-				t.Fatal("expected error, got nil")
-			}
-			if !strings.Contains(err.Error(), tc.missing) {
-				t.Errorf("error %q does not mention missing var %q", err.Error(), tc.missing)
-			}
-		})
-	}
-
-	t.Run("whitespace-only NOTION_TOKEN treated as missing", func(t *testing.T) {
-		setNotionEnv(t, map[string]string{"NOTION_TOKEN": "   "})
-		_, err := ConfigFromEnv()
-		if err == nil {
-			t.Fatal("expected error, got nil")
-		}
-		if !strings.Contains(err.Error(), "NOTION_TOKEN") {
-			t.Errorf("error %q does not mention NOTION_TOKEN", err.Error())
-		}
-		if !strings.Contains(err.Error(), "is required") {
-			t.Errorf("error %q does not contain 'is required'", err.Error())
-		}
-	})
-
-	t.Run("NOTION_PAGE_IDS is commas and whitespace only", func(t *testing.T) {
-		setNotionEnv(t, map[string]string{"NOTION_PAGE_IDS": ",,, "})
-		_, err := ConfigFromEnv()
-		if err == nil {
-			t.Fatal("expected error, got nil")
-		}
-		if !strings.Contains(err.Error(), "must contain at least one page id") {
-			t.Errorf("error %q does not contain expected message", err.Error())
-		}
-	})
-
-	t.Run("NOTION_MASTER_CARDGROUP_NAME with whitespace is trimmed", func(t *testing.T) {
-		setNotionEnv(t, map[string]string{"NOTION_MASTER_CARDGROUP_NAME": "  Master Deck  "})
-		cfg, err := ConfigFromEnv()
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if cfg.HandlerConfig.MasterCardgroupName != "Master Deck" {
-			t.Errorf("MasterCardgroupName = %q, want %q", cfg.HandlerConfig.MasterCardgroupName, "Master Deck")
-		}
-	})
-}
-
 func TestOptionalConfigFromEnv(t *testing.T) {
 	t.Run("all vars set: cfg fully populated, missing nil, err nil", func(t *testing.T) {
 		setNotionEnv(t, nil)
@@ -214,6 +126,35 @@ func TestOptionalConfigFromEnv(t *testing.T) {
 		}
 		if cfg.NotionToken != "tok-123" {
 			t.Errorf("NotionToken = %q, want %q", cfg.NotionToken, "tok-123")
+		}
+	})
+
+	t.Run("NOTION_MASTER_CARDGROUP_NAME with whitespace is trimmed", func(t *testing.T) {
+		setNotionEnv(t, map[string]string{"NOTION_MASTER_CARDGROUP_NAME": "  Master Deck  "})
+		cfg, missing, err := OptionalConfigFromEnv()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(missing) != 0 {
+			t.Fatalf("missing = %v, want empty", missing)
+		}
+		if cfg.HandlerConfig.MasterCardgroupName != "Master Deck" {
+			t.Errorf("MasterCardgroupName = %q, want %q", cfg.HandlerConfig.MasterCardgroupName, "Master Deck")
+		}
+	})
+
+	t.Run("NOTION_PAGE_IDS entries with surrounding whitespace are trimmed", func(t *testing.T) {
+		setNotionEnv(t, map[string]string{"NOTION_PAGE_IDS": "page-1, page-2 ,page-3"})
+		cfg, missing, err := OptionalConfigFromEnv()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(missing) != 0 {
+			t.Fatalf("missing = %v, want empty", missing)
+		}
+		want := []string{"page-1", "page-2", "page-3"}
+		if !reflect.DeepEqual(cfg.HandlerConfig.PageIDs, want) {
+			t.Errorf("PageIDs = %v, want %v", cfg.HandlerConfig.PageIDs, want)
 		}
 	})
 }

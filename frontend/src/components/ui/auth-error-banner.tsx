@@ -6,7 +6,7 @@ import { ErrorBanner } from "@/components/ui/error-banner";
  * own i18n namespace: the consuming screens span the Admin / Cardgroups / Catalog
  * / OnboardingStart next-intl namespaces, so the banner takes resolved strings
  * rather than a namespace-bound `t`, keeping it a pure presentational leaf with
- * no i18n coupling. This mirrors AdminQueryErrorBanner (the query-path sibling).
+ * no i18n coupling. This mirrors QueryErrorBanner (the query-path sibling).
  */
 type AuthErrorBannerProps = {
   /** data-testid the consuming screen's tests select on. */

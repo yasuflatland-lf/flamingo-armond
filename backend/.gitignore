@@ -7,3 +7,6 @@ coverage.html
 
 # JetBrains IDE
 .idea/
+
+# rapid fail files (reproduce with the -rapid.seed printed on failure)
+**/testdata/rapid/

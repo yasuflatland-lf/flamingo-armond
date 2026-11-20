@@ -26,10 +26,12 @@ mutation-conflict reload (admin users' `reloadEditedUser` after a
 (`refetch: useQuery.Result<TData, TVars>["refetch"]`, returned straight from the
 owned `useQuery`); take it from the hook return. Re-adding a
 `useQuery(SameDocument, …)` purely to obtain `refetch` double-subscribes to the
-same document and can split the cache. The SSR-seeded screens (cards /
-cardgroups / catalog) ignore `refetch`; only the two admin screens consume it,
-which is why it was added to the hook in the admin migration, not the original
-extraction.
+same document and can split the cache. Admin users / masters, cardgroups,
+catalog, and catalog deck detail consume `refetch` for query-error Retry;
+admin users also use it for mutation-conflict reload. The cardgroup cards and
+admin master cards screens do not use it. The admin screens were its first
+consumers, so it was added to the hook during the admin migration rather than
+the original extraction.
 
 ### 2. Keep the screen's OTHER query hooks
 
@@ -42,9 +44,8 @@ sibling queries the screen still owns.
 ### 3. Preserve the exact cache-key variables
 
 Build the hook's `variables` from the screen's existing base-vars object via
-`useMemo`, including aggregate-specific fields (`orderBy: "SORT_ORDER"`,
-`orderDirection: "ASC"` for masters; bare `{ first, search }` for users). A
-re-spelled key splits the cache from the screen's own mutation cache writes —
+`useMemo`. A re-spelled key splits the cache from the screen's own mutation
+cache writes —
 e.g. the masters create handler reads/writes the `search: null` variant, so the
 list query's key must match it exactly. See
 [`variables-shape-must-match.md`](variables-shape-must-match.md).

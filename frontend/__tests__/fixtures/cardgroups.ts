@@ -5,24 +5,11 @@
  * so snapshot assertions remain stable across runs.
  */
 
-import {
-  type Card,
-  type CardConnection,
-  type CardEdge,
-  type Cardgroup,
-  LearnDisplayMode,
-  type PageInfo,
-} from "@/generated/base-types";
+import type { Card, CardConnection, CardEdge, Cardgroup, PageInfo } from "@/generated/base-types";
 
 const userCardState = (due: string) => ({
   __typename: "UserCardState" as const,
   due,
-  difficulty: 0.3,
-  lapses: 0,
-  lastReview: "2026-01-15T00:00:00Z",
-  reps: 1,
-  scheduledDays: 0,
-  stability: 1.0,
   state: 0,
 });
 
@@ -30,28 +17,11 @@ const userCardState = (due: string) => ({
 // Cardgroup fixture
 // ---------------------------------------------------------------------------
 
-/** A single cardgroup owned by the admin user fixture. */
+/** A single baseline cardgroup. */
 const cardgroupFixture: Cardgroup = {
   __typename: "Cardgroup",
   id: "cardgroup-001",
   name: "Test Cardgroup",
-  ownerId: "user-admin-1",
-  // owner is a resolved field; omit here as fixtures target flat data payloads.
-  // Tests that need the nested owner object should use makeCardgroup with an override.
-  owner: {
-    __typename: "User",
-    id: "user-admin-1",
-    version: 0,
-    displayName: "Admin User",
-    bio: null,
-    avatarUrl: null,
-    lastSignInAt: null,
-    lastViewedCardgroup: null,
-    learnDisplayMode: LearnDisplayMode.FlipToReveal,
-    newCardRatio: { __typename: "NewCardRatio", numerator: 4, denominator: 5 },
-    roles: [],
-  },
-  createdAt: "2026-01-15T00:00:00Z",
   updatedAt: "2026-01-15T00:00:00Z",
 };
 
@@ -73,7 +43,6 @@ export const cardsFixture: Card[] = [
     cardgroupId: "cardgroup-001",
     cardgroup: cardgroupFixture,
     createdAt: "2026-01-15T00:00:00Z",
-    updatedAt: "2026-01-15T00:00:00Z",
     userCardState: userCardState("2026-02-01T00:00:00Z"),
   },
   {
@@ -85,7 +54,6 @@ export const cardsFixture: Card[] = [
     cardgroupId: "cardgroup-001",
     cardgroup: cardgroupFixture,
     createdAt: "2026-01-15T01:00:00Z",
-    updatedAt: "2026-01-15T01:00:00Z",
     userCardState: userCardState("2026-02-02T00:00:00Z"),
   },
   {
@@ -97,7 +65,6 @@ export const cardsFixture: Card[] = [
     cardgroupId: "cardgroup-001",
     cardgroup: cardgroupFixture,
     createdAt: "2026-01-15T02:00:00Z",
-    updatedAt: "2026-01-15T02:00:00Z",
     userCardState: userCardState("2026-02-03T00:00:00Z"),
   },
   {
@@ -109,7 +76,6 @@ export const cardsFixture: Card[] = [
     cardgroupId: "cardgroup-001",
     cardgroup: cardgroupFixture,
     createdAt: "2026-01-15T03:00:00Z",
-    updatedAt: "2026-01-15T03:00:00Z",
     userCardState: userCardState("2026-02-04T00:00:00Z"),
   },
   {
@@ -121,7 +87,6 @@ export const cardsFixture: Card[] = [
     cardgroupId: "cardgroup-001",
     cardgroup: cardgroupFixture,
     createdAt: "2026-01-15T04:00:00Z",
-    updatedAt: "2026-01-15T04:00:00Z",
     userCardState: userCardState("2026-02-05T00:00:00Z"),
   },
 ];

@@ -63,10 +63,20 @@ updated, and `"apple"` remains as an independent user card. If no exact row exis
 both `"APPLE"` and `"apple"` do, only the deterministic oldest row is renamed and updated.
 Merge does not attempt to reconcile the remaining variants.
 
+The fold's `NOT EXISTS` guard sees only rows visible to its statement snapshot. If the
+learner creates the exact catalog front in another tab while the merge runs, the rename
+collides with that row on `uq_cards_cardgroup_front` once it commits; `FoldFrontCaseToTx`
+classifies the `23505` as `ErrCardDuplicateFront` and the merge returns `BAD_USER_INPUT` on
+`cardgroupId` ("cardgroup changed during the merge; try again"). The transaction rolls back,
+and a retry sees the committed row, skips the rename and updates that row instead.
+
 `PreviewMergeMasterIntoCardgroup` uses `CardRepository.CountMatchingFrontsFold`, which
 counts distinct `LOWER(front)` values against lowered catalog fronts. Multiple stored case
 variants therefore predict one update, matching the one-row fold and subsequent upsert.
 For an unchanged source and destination, preview `Added`/`Updated` equals the merge tally.
+A catalog deck has no card cap, so the count deduplicates the lowered fronts and runs one
+statement per `bulkStatementChunkRows` (5,000) of them, keeping a deck of 65,535 or more
+cards under pgx's bind-parameter cap without counting a front twice.
 
 ## Consequence 2 — a case-only admin rename never reaches learners
 
@@ -80,10 +90,10 @@ Nothing observable changes. Two independent mechanisms hold the old casing in pl
 
 - **The upsert never rewrites `front`.** The multi-row statement built in
   `upsertManyTx` ends with
-  `ON CONFLICT (<fk>, front) DO UPDATE SET back = EXCLUDED.back, updated_at = now(), position = EXCLUDED.position`.
+  `ON CONFLICT (<fk>, front) DO UPDATE SET back = EXCLUDED.back, position = EXCLUDED.position`.
   `front` is absent from the `DO UPDATE SET` list, so the citext conflict matches the
-  stored `"drive"` row and updates only `back` / `updated_at` / `position`. The stored
-  case stays `"drive"`.
+  stored `"drive"` row and updates only `back` / `position` (the database trigger advances
+  `updated_at`). The stored case stays `"drive"`.
 - **The prune deliberately protects the old-cased row.** `frontsToDelete` compares
   through `frontMatchKey`, so the stored `"drive"` matches the incoming `"Drive"` and is
   not classified as stale. Without that case-folded comparison the row *would* be pruned
@@ -121,9 +131,13 @@ learner-visible reconciliation policy first.
 
 ### Hazard 2 — the multi-row upsert needs a case-folded dedup key
 
-`upsertManyTx` emits a **single** multi-row `INSERT ... ON CONFLICT ... DO UPDATE`. Under
-citext, two case-variant fronts in the same batch collapse onto one conflict target and
-Postgres raises `21000`, `ON CONFLICT DO UPDATE command cannot affect row a second time`.
+`upsertManyTx` emits one multi-row `INSERT ... ON CONFLICT ... DO UPDATE` per
+`bulkStatementChunkRows` (5,000) rows; a text-payload import or a Notion sync, capped at
+`cardImportParsedRowCap` = 5,000 rows, is always one statement, while copying a whole
+catalog deck into a learner's deck is not capped. Under citext, two case-variant fronts in
+the same statement collapse onto one conflict target and Postgres raises `21000`,
+`ON CONFLICT DO UPDATE command cannot affect row a second time`; in two different chunks
+the later one would instead silently update the earlier row.
 
 The catalog pipeline already carries the guard — its `dedupeByKey` step keys on
 `frontMatchKey` for exactly this reason. The user-deck import pipeline has the *seam* but

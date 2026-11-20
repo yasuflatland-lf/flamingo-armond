@@ -11,7 +11,6 @@ import (
 type gormPingRecord struct {
 	ID        string    `gorm:"column:id;primaryKey;type:uuid;default:gen_random_uuid()"`
 	CreatedAt time.Time `gorm:"column:created_at"`
-	UpdatedAt time.Time `gorm:"column:updated_at"`
 }
 
 func (gormPingRecord) TableName() string { return "ping_records" }
@@ -37,7 +36,7 @@ func (r *pingRecordRepo) Count(ctx context.Context) (int64, error) {
 	return n, nil
 }
 
-// Create inserts a single ping record; the DB supplies id and timestamps.
+// Create inserts a single ping record; the DB supplies id and GORM sets created_at from the app clock.
 func (r *pingRecordRepo) Create(ctx context.Context) error {
 	if err := r.db.WithContext(ctx).Create(&gormPingRecord{}).Error; err != nil {
 		return eris.Wrap(err, "repository: ping_record create")

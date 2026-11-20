@@ -35,6 +35,14 @@ function renderShell(overrides: Partial<ShellProps> = {}) {
     title: "Demo title",
     count: 7,
     countLabel: "7 total",
+    queryErrorKind: null,
+    errorCopy: {
+      viewForbidden: "No permission",
+      sessionExpired: "Session expired.",
+      signInAgain: "Sign in again",
+      retry: "Retry",
+    },
+    onRetry: vi.fn(),
     initialLoading: false,
     loadingLabel: "Loading…",
     isEmpty: false,
@@ -121,6 +129,24 @@ describe("<PaginatedPublicListScreen>", () => {
     expect(sentinelRef.current).toBe(sentinel);
     // fetchMoreError drives the prefixed error banner.
     expect(screen.getByTestId("demo-fetch-more-error")).toHaveTextContent("boom");
+  });
+
+  it("renders the query-error banner and suppresses the empty state when a query error is present", () => {
+    renderShell({
+      isEmpty: true,
+      hasSearch: false,
+      queryErrorKind: { kind: "banner", message: "boom" },
+    });
+
+    expect(screen.getByTestId("demo-query-error")).toHaveTextContent("boom");
+    expect(screen.queryByTestId("demo-empty")).toBeNull();
+  });
+
+  it("suppresses the no-match state when a query error is present", () => {
+    renderShell({ isEmpty: true, hasSearch: true, queryErrorKind: { kind: "unauthenticated" } });
+
+    expect(screen.getByTestId("demo-query-error")).toBeInTheDocument();
+    expect(screen.queryByTestId("demo-empty-search")).toBeNull();
   });
 
   it("keeps the mobile takeover bar closed while search.searchOpen is false", () => {

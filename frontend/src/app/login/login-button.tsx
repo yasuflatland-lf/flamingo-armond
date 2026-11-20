@@ -52,6 +52,7 @@ export function LoginButton() {
     // (tight negative for Latin, near-zero for Japanese so kana stays legible)
     // for a premium primary CTA. The flex-column card stretches it to full width.
     <Button
+      data-testid="login-google-button"
       onClick={handleSignIn}
       type="button"
       variant="brand"

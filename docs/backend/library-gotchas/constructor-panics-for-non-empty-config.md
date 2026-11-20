@@ -5,14 +5,11 @@
 When a constructor accepts a feature-flag-shaped configuration plus the dependencies that are required *only* when the flag is non-empty, returning an error is awkward (every caller has to plumb an extra error through `run()`) and a silent half-configured struct is a per-request nil-deref hazard. Panic at construction is the right level of force: the misconfiguration is an operator-visible programming error, not a runtime input, and `run()` has not yet started the HTTP server when it fires — Echo's `Recover` middleware is not in the path, so the panic crashes the process at boot.
 
 ```go
-func NewSuperUserPromoter(emails map[string]struct{}, adminRoleID string,
-    checker adminChecker, assigner roleAssigner) *SuperUserPromoter {
-    if len(emails) > 0 {
-        if checker == nil      { panic("auth: ... checker must not be nil when emails is non-empty") }
-        if assigner == nil     { panic("auth: ... assigner must not be nil when emails is non-empty") }
-        if adminRoleID == ""   { panic("auth: ... adminRoleID must not be empty when emails is non-empty") }
+func NewAllowlistGate(allowed map[string]struct{}, checker adminChecker) *allowlistGate {
+    if len(allowed) > 0 && checker == nil {
+        panic("auth: ... checker must not be nil when allowed is non-empty")
     }
-    // empty-emails path: nil deps are intentional; Middleware() returns a pass-through.
+    // empty-allowed path: a nil checker is intentional; Middleware() returns a pass-through.
 }
 ```
 
@@ -24,7 +21,7 @@ A subtler case sits between the two above: a constructor dependency that every c
 
 The deciding question is the same as the OFF-branch case: *is there a runtime branch where nil is the intended, correct configuration?* For a config-flag OFF branch the answer is yes (nil deps are deliberate; the feature is disabled). For a dep that is merely unused by some methods the answer is no — nil never means "configured correctly", only "this subset of methods will crash". Guard it at construction.
 
-Worked example: `usecase.NewMasterCatalogUsecase(repo, copyUC, logger)` (`backend/internal/usecase/master_catalog.go`). `copyUC` (`CopyMasterToUserUsecase`) is exercised only by `ImportMaster`; the pre-existing `ListPublishedConnection` never touches it, and its tests legitimately pass a placeholder. An initial implementation panicked only on a nil `logger` and accepted nil `repo`/`copyUC` silently, deferring a nil-interface panic to the first `ImportMaster` call. Three independent review agents flagged it; the fix panics on all three deps at construction. Test code exercising only `ListPublishedConnection` now passes a non-nil placeholder stub rather than `nil`, which also self-documents that the dep is required.
+Worked example: `usecase.NewMasterCatalogUsecase(repo, deckUC, adminGate)` (`backend/internal/usecase/master_catalog.go`). `deckUC` (the `masterDeckUsecaseFacade` deck facade) is exercised only by `ImportMaster`, `MergeMaster`, `PreviewMergeMaster`, and `SeedDefaultStarters`; the public `ListPublishedConnection` never touches it, and its tests legitimately pass a placeholder. An initial implementation panicked on none of its deps and accepted a nil `repo` or deck facade silently, deferring a nil-interface panic to the first call that used it. Three independent review agents flagged it; the fix panics on every dep at construction. Test code exercising only `ListPublishedConnection` now passes a non-nil placeholder stub rather than `nil`, which also self-documents that the dep is required.
 
 ## Asymmetric guards: panic only when the wire consequence is unrecoverable
 

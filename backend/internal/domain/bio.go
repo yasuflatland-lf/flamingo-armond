@@ -10,9 +10,9 @@ var ErrBioTooLong = eris.Errorf("user: bio exceeds %d characters", BioMax)
 // Bio is the user profile bio: a trinary text value object bounded at BioMax
 // graphemes. It supports nil (no change), pointer-to-"" (explicit clear), or
 // pointer-to-non-empty (set). It embeds the shared trinaryText so the trim +
-// grapheme-cap + trinary rule and the Ptr()/IsSet() accessors are single-sourced
+// grapheme-cap + trinary rule and the Ptr() accessor are single-sourced
 // with Description; see trinary_text.go. The zero value Bio{} is the no-value case
-// (IsSet()=false).
+// (Ptr() returns nil).
 type Bio struct {
 	trinaryText
 }
@@ -27,7 +27,7 @@ func ParseBio(s *string) (Bio, error) {
 	return Bio{t}, err
 }
 
-// BioFromPtr maps a nullable text column to a Bio: nil → Bio{} (IsSet()=false,
+// BioFromPtr maps a nullable text column to a Bio: nil → Bio{} (Ptr() returns nil,
 // NULL column); a non-nil pointer — including pointer-to-empty — maps to a set
 // Bio whose Ptr() returns a defensive copy with the same string value.
 // Used by repository readers to bridge a nullable text column into the typed

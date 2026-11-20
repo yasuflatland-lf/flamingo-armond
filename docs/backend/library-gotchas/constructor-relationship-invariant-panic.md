@@ -20,11 +20,7 @@ func NewLearnUsecase(
     ordering      *service.OrderingPolicy,
     defaultLimit, maxLimit int,
     clock Clock,
-    logger *slog.Logger,
 ) LearnUsecase {
-    if logger == nil {
-        panic("usecase: learn: logger is required")
-    }
     if cardRepo == nil {
         panic("usecase: learn: cardRepo must not be nil")
     }
@@ -54,7 +50,7 @@ func NewLearnUsecase(
 }
 ```
 
-**Optional vs. required dep split.** `cardRepo`, `cardgroupRepo`, `userPrefs`, and `logger`
+**Optional vs. required dep split.** `cardRepo`, `cardgroupRepo`, and `userPrefs`
 are required: nil indicates a wiring bug and must panic at boot. `ordering`
 and `clock` are optional: a missing value is recoverable because the
 constructor knows the canonical default (`NewOrderingPolicy()` is stateless,

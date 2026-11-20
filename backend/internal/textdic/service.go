@@ -36,8 +36,9 @@ const (
 	SkipKindUnrecognized                 // unrecognized character
 )
 
-// String returns the wire-aligned string representation, matching the
-// GraphQL CardImportErrorKind enum literals.
+// String returns a readable value for parser diagnostics and logs. It is not
+// the wire format: usecase maps SkipKind to CardImportErrorKind via
+// cardImportErrorKindFromSkipKind.
 func (k SkipKind) String() string {
 	switch k {
 	case SkipKindHard:

@@ -63,8 +63,10 @@ export function DeleteAccountSection() {
       }
       // The account no longer exists; clear the Supabase session and leave the
       // app. A signOut failure is non-fatal — the account is gone regardless, so
-      // log it and redirect anyway (the middleware treats the next request as
-      // anonymous once the cookie is cleared or the user row is missing).
+      // log it and redirect anyway. If signOut fails before it clears local state
+      // (e.g. the session cannot be loaded) the cookie survives, and /login forwards
+      // the still-signed-in browser to /auth/verify-session, which signs it out once
+      // the backend rejects the deleted account.
       const supabase = createSupabaseBrowserClient();
       const { error } = await supabase.auth.signOut();
       if (error) {

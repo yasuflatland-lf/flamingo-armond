@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -12,19 +13,22 @@ import (
 	"backend/internal/domain"
 )
 
-// ErrCardDuplicateFront is returned by Create and Update when the write collides
-// with the (cardgroup_id, front) unique index. Standalone — do NOT join with
+// cardsFrontIndex is the unique (cardgroup_id, front) index on public.cards.
+const cardsFrontIndex = "uq_cards_cardgroup_front"
+
+// ErrCardDuplicateFront is returned by Create, Update and FoldFrontCaseToTx when the
+// write collides with the (cardgroup_id, front) unique index. Standalone — do NOT join with
 // ErrNotFound; the row was found, which is precisely the failure (see
 // docs/backend/error-wrapping/standalone-sentinels-not-every-joins-errnotfound.md).
 var ErrCardDuplicateFront = errors.New("repository: card with same front exists in cardgroup")
 
 // classifyCardDuplicateFront maps a Postgres unique violation on the
 // (cardgroup_id, front) index to ErrCardDuplicateFront, and returns nil for any
-// other error. Both write paths — INSERT (Create) and UPDATE (Update) — can hit
-// the same constraint, so they share this classifier rather than each spelling
-// out the code/constraint pair.
+// other error. Every write path that can collide — INSERT (Create), UPDATE (Update)
+// and the merge case fold (FoldFrontCaseToTx) — can hit the same constraint, so they
+// share this classifier rather than each spelling out the code/constraint pair.
 func classifyCardDuplicateFront(err error) error {
-	if pgConstraintViolation(err, "23505", "uq_cards_cardgroup_front") {
+	if pgConstraintViolation(err, "23505", cardsFrontIndex) {
 		return ErrCardDuplicateFront
 	}
 	return nil
@@ -59,18 +63,6 @@ type gormCard struct {
 	CreatedAt   time.Time `gorm:"column:created_at"`
 	UpdatedAt   time.Time `gorm:"column:updated_at;->"`
 	Position    int       `gorm:"column:position"`
-	// OrderKey carries the value the page query ORDERED BY, projected into the
-	// same result set. It backs no column on `cards`: the `->` tag makes it
-	// read-only so GORM never tries to write or migrate it, and it stays nil on
-	// every query that does not alias a column `order_key`.
-	//
-	// It exists for the DUE ordering, whose key is `COALESCE(ucs.due,
-	// cards.created_at)` over a LEFT JOIN and therefore appears on no card
-	// column. Recovering that value with a second query would read a different
-	// snapshot than the one that ordered the page, so a concurrent review of the
-	// boundary card would mint a cursor keyed to a position the page never used.
-	// Selecting it alongside the row keeps emit and order on one snapshot.
-	OrderKey *time.Time `gorm:"->;column:order_key"`
 }
 
 func (gormCard) TableName() string { return "cards" }
@@ -84,8 +76,6 @@ type CardReadRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Card, error)
 	FindByIDForUpdateTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error)
-	ListByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error)
-	ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, cardgroupID string) ([]string, error)
 	// FindByCardgroupAndFront returns the card identified by the (cardgroup_id,
 	// front) unique key, or ErrNotFound when no such row exists. The front value
 	// is matched exactly; trimming is the caller's responsibility.
@@ -93,35 +83,15 @@ type CardReadRepository interface {
 	// CountMatchingFrontsFold returns the number of distinct case-folded fronts
 	// in the cardgroup that match the caller-supplied lowercase fronts. It counts
 	// multiple stored case variants once. Empty fronts returns 0 without a query.
+	// Inputs above bulkStatementChunkRows distinct fronts run as several pooled
+	// statements, each on its own snapshot.
 	CountMatchingFrontsFold(ctx context.Context, cardgroupID string, loweredFronts []string) (int64, error)
 }
 
 type CardPageRepository interface {
-	FindPageByCardgroup(
-		ctx context.Context,
-		cardgroupID string,
-		after, before *CardCursor,
-		first, last int,
-		orderBy CardOrderBy,
-		dir SortOrder,
-		search *string,
-	) (cards []*domain.Card, totalCount int64, err error)
-	// FindPageByCardgroupForUser additionally returns orderKeys: the value the
-	// query ORDERED BY for each returned row, keyed by card id, taken from the
-	// same result set. The caller mints v2 cursors from it instead of re-reading
-	// the ordering value afterwards — the DUE ordering keys off
-	// COALESCE(user_card_fsrs.due, cards.created_at), which a second query would
-	// resolve against a later snapshot. orderKeys is nil when orderBy is ID,
-	// whose ordering key is the id the cursor already carries.
-	FindPageByCardgroupForUser(
-		ctx context.Context,
-		userID, cardgroupID string,
-		after, before *CardCursor,
-		first, last int,
-		orderBy CardOrderBy,
-		dir SortOrder,
-		search *string,
-	) (cards []*domain.Card, totalCount int64, orderKeys map[string]time.Time, err error)
+	// FindPageByCardgroup returns at most first cards in id ASC order.
+	// A non-blank search filters both the page and totalCount by front/back.
+	FindPageByCardgroup(ctx context.Context, cardgroupID string, after *CardCursor, first int, search *string) ([]*domain.Card, int64, error)
 }
 
 // CardSessionRepository reads a learn/practice session's card pool. Unlike
@@ -131,10 +101,11 @@ type CardSessionRepository interface {
 	// FindDueCardsForUser returns review cards due before window.DueBefore,
 	// highest FSRS retrievability first, then never-seen cards newest-added first.
 	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, window domain.LearnWindow, limit int) ([]domain.DueCard, error)
-	// FindPracticeCardsForUser returns the FSRS-safe practice pool: cards the
-	// user already reviewed at or after reviewedAfter (the start-of-day cutoff).
-	// This is the inverse window of FindDueCardsForUser's review window — it
-	// consults last_review but not due, and never advances FSRS scheduling.
+	// FindPracticeCardsForUser returns the FSRS-safe practice pool: cards whose
+	// last_review is at or after reviewedAfter. Callers pass
+	// LearnWindow.PracticeReviewedAfter(), so practice is the exact complement of
+	// FindDueCardsForUser's last_review guards (due is not consulted); it never
+	// advances FSRS scheduling.
 	FindPracticeCardsForUser(ctx context.Context, userID, cardgroupID string, reviewedAfter time.Time, limit int) ([]domain.DueCard, error)
 }
 
@@ -142,7 +113,7 @@ type CardWriteRepository interface {
 	Create(ctx context.Context, card *domain.Card) error
 	Update(ctx context.Context, id string, patch CardUpdate) (*domain.Card, error)
 	Delete(ctx context.Context, id string) error
-	// DeleteByIDsTx hard-deletes the cards whose ids are in the list AND whose
+	// DeleteByIDs hard-deletes the cards whose ids are in the list AND whose
 	// cardgroup is owned by ownerID. Returns the number of rows actually deleted
 	// (cards owned by other users are silently skipped at SQL level so a single
 	// foreign id in the list does not abort the batch).
@@ -150,25 +121,18 @@ type CardWriteRepository interface {
 	// Empty ids short-circuits to (0, nil) without touching the DB. With an empty
 	// slice GORM v2 omits the `WHERE id IN (?)` clause altogether, which would
 	// convert this `Delete` into an unbounded mass delete — far worse than a slow scan.
-	DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error)
-	// DeleteByCardgroupAndFrontsTx hard-deletes cards by the scoped
-	// (cardgroup_id, front) natural key. Scoping is by cardgroup_id only —
-	// callers must verify the cardgroup is reachable by the calling owner
-	// before invoking this method.
-	//
-	// Empty fronts short-circuits to (0, nil) without touching the DB. With an
-	// empty slice GORM v2 omits the `WHERE front IN (?)` clause altogether,
-	// which would convert this `Delete` into a delete-all-cards-in-cardgroup.
-	// See `.claude/rules/go-library-gotchas.md` § GORM empty IN.
-	DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
-	// UpsertManyTx upserts cards by (cardgroup_id, front). Existing rows have
-	// their `back` and `position` columns overwritten, while the database trigger
-	// advances updated_at. Returns the per-row split between Inserted and Updated.
-	// Empty input is a no-op.
+	DeleteByIDs(ctx context.Context, ownerID string, ids []string) (int64, error)
+	// UpsertManyTx upserts cards by (cardgroup_id, front), overwriting `back` and `position`;
+	// the database trigger advances updated_at. Returns the per-row split between Inserted
+	// and Updated. Empty input is a no-op. Inputs above bulkStatementChunkRows run as several
+	// statements; tx must be a transaction so a later-chunk failure rolls back the earlier chunks.
 	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (UpsertManyTxResult, error)
 	// FoldFrontCaseToTx renames one case-insensitive match per incoming front to
 	// the incoming casing so a following UpsertManyTx updates it. Empty fronts
-	// returns 0 without touching the database.
+	// returns 0 without touching the database. Inputs above bulkStatementChunkRows
+	// run as several statements; tx must be a transaction so a later-chunk failure
+	// rolls back the earlier chunks. A concurrent insert of the exact front returns
+	// ErrCardDuplicateFront.
 	FoldFrontCaseToTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
 }
 
@@ -180,6 +144,14 @@ type CardRepository interface {
 }
 
 type cardRepo struct{ db *gorm.DB }
+
+// *cardRepo implements each narrow interface CardRepository embeds.
+var (
+	_ CardReadRepository    = (*cardRepo)(nil)
+	_ CardPageRepository    = (*cardRepo)(nil)
+	_ CardSessionRepository = (*cardRepo)(nil)
+	_ CardWriteRepository   = (*cardRepo)(nil)
+)
 
 func NewCardRepository(db *gorm.DB) CardRepository { return &cardRepo{db: db} }
 
@@ -220,29 +192,6 @@ func (r *cardRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*dom
 	return out, nil
 }
 
-func (r *cardRepo) ListByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error) {
-	var rows []gormCard
-	if err := r.db.WithContext(ctx).
-		Where("cardgroup_id = ?", cardgroupID).
-		Order("created_at ASC, id ASC").
-		Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: card: find by cardgroup")
-	}
-	out := make([]*domain.Card, len(rows))
-	for i := range rows {
-		out[i] = cardToDomain(rows[i])
-	}
-	return out, nil
-}
-
-func (r *cardRepo) ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, cardgroupID string) ([]string, error) {
-	fronts, err := listFrontsByGroupTx(ctx, tx, cardgroupID, "cards", "cardgroup_id")
-	if err != nil {
-		return nil, eris.Wrap(err, "repository: card: list fronts by cardgroup")
-	}
-	return fronts, nil
-}
-
 func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {
 	row := cardToRow(card)
 	if err := r.db.WithContext(ctx).
@@ -255,6 +204,9 @@ func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {
 			return classified
 		}
 		if classified := classifyTextLengthViolation(err); classified != nil {
+			return classified
+		}
+		if classified := classifyFrontIndexRowTooLarge(err, cardsFrontIndex); classified != nil {
 			return classified
 		}
 		return eris.Wrap(err, "repository: card: create")
@@ -281,15 +233,21 @@ func (r *cardRepo) CountMatchingFrontsFold(ctx context.Context, cardgroupID stri
 	if len(loweredFronts) == 0 {
 		return 0, nil
 	}
-	var count int64
-	if err := r.db.WithContext(ctx).Raw(
-		`SELECT COUNT(DISTINCT LOWER(front)) FROM cards
-		 WHERE cardgroup_id = ? AND LOWER(front) IN ?`,
-		cardgroupID, loweredFronts,
-	).Scan(&count).Error; err != nil {
-		return 0, eris.Wrap(err, "repository: card: count matching fronts fold")
+	var total int64
+	// Not chunked on the raw input: a front repeated in two chunks would be counted twice.
+	distinct := slices.Compact(slices.Sorted(slices.Values(loweredFronts)))
+	for chunk := range slices.Chunk(distinct, bulkStatementChunkRows) {
+		var count int64
+		if err := r.db.WithContext(ctx).Raw(
+			`SELECT COUNT(DISTINCT LOWER(front)) FROM cards
+			 WHERE cardgroup_id = ? AND LOWER(front) IN ?`,
+			cardgroupID, chunk,
+		).Scan(&count).Error; err != nil {
+			return 0, eris.Wrap(err, "repository: card: count matching fronts fold")
+		}
+		total += count
 	}
-	return count, nil
+	return total, nil
 }
 
 func (r *cardRepo) Update(ctx context.Context, id string, patch CardUpdate) (*domain.Card, error) {
@@ -312,6 +270,9 @@ func (r *cardRepo) Update(ctx context.Context, id string, patch CardUpdate) (*do
 		if classified := classifyTextLengthViolation(res.Error); classified != nil {
 			return nil, classified
 		}
+		if classified := classifyFrontIndexRowTooLarge(res.Error, cardsFrontIndex); classified != nil {
+			return nil, classified
+		}
 		return nil, eris.Wrap(res.Error, "repository: card: update")
 	}
 	return refetchAfterUpdate(res.RowsAffected, ErrNotFound,
@@ -327,6 +288,26 @@ func (r *cardRepo) Delete(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (r *cardRepo) DeleteByIDs(ctx context.Context, ownerID string, ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	// Owner check at SQL: cards.cardgroup_id must reference a cardgroup the
+	// user owns. The subselect is the SOLE ownership gate — the usecase does
+	// no read-side owner check, so foreign-owned ids in the list are silently
+	// filtered out here. Do not remove the cardgroup_id IN (...) clause
+	// without adding an equivalent guard upstream.
+	res := r.db.WithContext(ctx).
+		Where("id IN ? AND cardgroup_id IN (?)", ids,
+			r.db.Model(&gormCardgroup{}).Select("id").Where("owner_id = ?", ownerID),
+		).
+		Delete(&gormCard{})
+	if res.Error != nil {
+		return 0, eris.Wrap(res.Error, "repository: bulk delete cards")
+	}
+	return res.RowsAffected, nil
 }
 
 func cardToRow(card *domain.Card) *gormCard {

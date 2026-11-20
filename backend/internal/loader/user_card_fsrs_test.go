@@ -29,11 +29,7 @@ func (r *countingUserCardFSRSRepo) FindByUserAndCardIDs(ctx context.Context, use
 }
 
 func emptyUserRepo() *countingRepo {
-	return &countingRepo{
-		findByIDs: func(_ context.Context, _ []string) (map[string]*domain.User, error) {
-			return map[string]*domain.User{}, nil
-		},
-	}
+	return &countingRepo{}
 }
 
 func loadAllUserCardFSRS(ctx context.Context, l *loader.Loaders, ids []string) ([]*domain.UserCardFSRS, []error) {
@@ -78,7 +74,7 @@ func TestUserCardFSRSLoader_BatchesNCallsIntoOne(t *testing.T) {
 		ids[i] = fmt.Sprintf("card-%03d", i)
 	}
 	results, errs := loadAllUserCardFSRS(context.Background(), loader.NewWithUserCardFSRS(
-		emptyUserRepo(), emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo(), nil, ucsRepo, viewerID,
+		emptyUserRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo(), ucsRepo, viewerID,
 	), ids)
 
 	for i, err := range errs {
@@ -117,7 +113,7 @@ func TestUserCardFSRSLoader_MissingRowsReturnNilData(t *testing.T) {
 	}
 
 	results, errs := loadAllUserCardFSRS(context.Background(), loader.NewWithUserCardFSRS(
-		emptyUserRepo(), emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo(), nil, ucsRepo, "user-1",
+		emptyUserRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo(), ucsRepo, "user-1",
 	), []string{"present", "missing"})
 	if errs[0] != nil || results[0] == nil || results[0].CardID != "present" {
 		t.Fatalf("present: result=%+v err=%v", results[0], errs[0])

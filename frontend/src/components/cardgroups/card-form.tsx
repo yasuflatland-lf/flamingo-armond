@@ -11,7 +11,7 @@ import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/error
 import { DirtyStateBridge } from "@/lib/forms/dirty-state-bridge";
 import { FormField } from "@/lib/forms/form-field";
 import { submitFormHandler, wrapSubmit } from "@/lib/forms/submit-handler";
-import { newCardSchema, updateCardSchema } from "@/schemas/card";
+import { cardSchema } from "@/schemas/card";
 
 type Mode = "create" | "edit";
 
@@ -51,7 +51,7 @@ export function CardForm({
   const t = useTranslations("Cards");
   const tCommon = useTranslations("Common");
   const resolvedLabel = submitLabel ?? (mode === "create" ? t("add") : tCommon("save"));
-  const schema = mode === "create" ? newCardSchema.omit({ cardgroupId: true }) : updateCardSchema;
+  const schema = cardSchema;
   const frontSchema = schema.shape.front;
   const backSchema = schema.shape.back;
 

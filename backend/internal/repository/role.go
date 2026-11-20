@@ -42,7 +42,6 @@ type RoleRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Role, error)
 
 	FindByName(ctx context.Context, name domain.RoleName) (*domain.Role, error)
-	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Role, error)
 
 	// FindByIDsTx returns the roles for ids inside the supplied transaction,
 	// locking the matched rows FOR UPDATE so a concurrent rename/delete of any
@@ -81,7 +80,8 @@ func (r *roleRepo) FindByID(ctx context.Context, id string) (*domain.Role, error
 	var row gormRole
 	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if errors.Is(err, gorm.ErrRecordNotFound) || pgInvalidTextRepresentation(err) {
 			return nil, ErrRoleNotFound
 		}
 		return nil, eris.Wrap(err, "repository: find role by id")
@@ -101,29 +101,32 @@ func (r *roleRepo) FindByName(ctx context.Context, name domain.RoleName) (*domai
 	return roleToDomain(row), nil
 }
 
-func (r *roleRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Role, error) {
-	return findRolesByIDs(ctx, r.db, ids, false)
-}
-
 func (r *roleRepo) FindByIDsTx(ctx context.Context, tx *gorm.DB, ids []string) (map[string]*domain.Role, error) {
 	if tx == nil {
 		return nil, eris.New("repository: find roles by ids tx is nil")
 	}
-	return findRolesByIDs(ctx, tx, ids, true)
+	return findRolesByIDs(ctx, tx, ids)
 }
 
-// findRolesByIDs is shared by FindByIDs (pool, no lock) and FindByIDsTx
-// (transaction, FOR UPDATE). lock=true acquires a row lock on the matched
-// rows so no other transaction can rename or delete them before the caller's
-// write commits.
-func findRolesByIDs(ctx context.Context, db *gorm.DB, ids []string, lock bool) (map[string]*domain.Role, error) {
-	if len(ids) == 0 {
+// findRolesByIDs backs FindByIDsTx: it acquires a FOR UPDATE row lock on the
+// matched rows so no other transaction can rename or delete them before the
+// caller's write commits. Only 8-4-4-4-12 ids are queried and the result is keyed
+// by the stored lower-case id, so callers forwarding client ids must canonicalise.
+func findRolesByIDs(ctx context.Context, db *gorm.DB, ids []string) (map[string]*domain.Role, error) {
+	// Not classifying 22P02 instead: one malformed id would fail the whole IN
+	// query and lose the partial-match result for the well-formed ones.
+	canonicalIDs := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if isCanonicalUUID(id) {
+			canonicalIDs = append(canonicalIDs, id)
+		}
+	}
+	// Not checking emptiness before the filter: an all-malformed list would still
+	// issue a query.
+	if len(canonicalIDs) == 0 {
 		return map[string]*domain.Role{}, nil
 	}
-	q := db.WithContext(ctx).Where("id IN ?", ids)
-	if lock {
-		q = q.Clauses(clause.Locking{Strength: "UPDATE"})
-	}
+	q := db.WithContext(ctx).Where("id IN ?", canonicalIDs).Clauses(clause.Locking{Strength: "UPDATE"})
 	var rows []gormRole
 	if err := q.Find(&rows).Error; err != nil {
 		return nil, eris.Wrap(err, "repository: find roles by ids")
@@ -165,6 +168,10 @@ func (r *roleRepo) Update(ctx context.Context, id, name string) (*domain.Role, e
 		if classified := classifyRoleNameDuplicate(res.Error); classified != nil {
 			return nil, classified
 		}
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if pgInvalidTextRepresentation(res.Error) {
+			return nil, ErrRoleNotFound
+		}
 		return nil, eris.Wrap(res.Error, "repository: role: update")
 	}
 	return refetchAfterUpdate(res.RowsAffected, ErrRoleNotFound,
@@ -175,6 +182,10 @@ func (r *roleRepo) Update(ctx context.Context, id, name string) (*domain.Role, e
 func (r *roleRepo) Delete(ctx context.Context, id string) error {
 	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&gormRole{})
 	if result.Error != nil {
+		// Do not apply SQLSTATE 22P02 where another client-controlled bind could fail; id is the only one here.
+		if pgInvalidTextRepresentation(result.Error) {
+			return ErrRoleNotFound
+		}
 		return eris.Wrap(result.Error, "repository: role: delete")
 	}
 	if result.RowsAffected == 0 {

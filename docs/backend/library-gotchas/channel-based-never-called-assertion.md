@@ -8,17 +8,19 @@ This is deterministic: any rogue goroutine produces an immediate `t.Fatal`. A `t
 
 ## Stub skeleton
 
+The stub below is a hypothetical notifier, not a production type.
+
 ```go
-type stubNotionWriter struct {
+type stubNotifier struct {
     mu     sync.Mutex
-    calls  []writeCall
+    calls  []notifyCall
     err    error
     called chan struct{} // nil in tests that do not need synchronization
 }
 
-func (s *stubNotionWriter) AppendParagraph(_ context.Context, pageID, text string) error {
+func (s *stubNotifier) Notify(_ context.Context, payload string) error {
     s.mu.Lock()
-    s.calls = append(s.calls, writeCall{pageID, text})
+    s.calls = append(s.calls, notifyCall{payload})
     s.mu.Unlock()
     if s.called != nil {
         close(s.called) // safe: each test initializes a fresh channel
@@ -30,13 +32,13 @@ func (s *stubNotionWriter) AppendParagraph(_ context.Context, pageID, text strin
 ## Negative assertion (must NOT be called)
 
 ```go
-stub := &stubNotionWriter{called: make(chan struct{})}
+stub := &stubNotifier{called: make(chan struct{})}
 
 // ... exercise the code under test ...
 
 select {
 case <-stub.called:
-    t.Fatal("write-back should not be invoked")
+    t.Fatal("notifier should not be invoked")
 case <-time.After(50 * time.Millisecond):
     // ok: no call observed within the window
 }
@@ -47,7 +49,7 @@ case <-time.After(50 * time.Millisecond):
 The same `chan struct{}` does double duty for the positive case — block until the goroutine fires or the timeout expires:
 
 ```go
-stub := &stubNotionWriter{called: make(chan struct{})}
+stub := &stubNotifier{called: make(chan struct{})}
 
 // ... exercise the code under test ...
 
@@ -55,12 +57,12 @@ select {
 case <-stub.called:
     // ok: method was called
 case <-time.After(2 * time.Second):
-    t.Fatal("expected AppendParagraph call within timeout")
+    t.Fatal("expected Notify call within timeout")
 }
 ```
 
 ## Close-once safety
 
-The `if s.called != nil { close(s.called) }` guard tolerates stubs constructed without a channel (e.g. a no-writeback test that only checks the outcome struct). Initialize the channel only in tests that exercise the goroutine path; leave it `nil` elsewhere.
+The `if s.called != nil { close(s.called) }` guard tolerates stubs constructed without a channel (e.g. a test that never expects a notification and only checks the outcome struct). Initialize the channel only in tests that exercise the goroutine path; leave it `nil` elsewhere.
 
-A channel must never be closed more than once. Because each test constructs a fresh `stubNotionWriter` with a fresh channel, and `AppendParagraph` is called at most once per test scenario, the close-once invariant holds. If the stub needs to count multiple calls, replace the `close` with a `select { case s.called <- struct{}{}: default: }` non-blocking send and read the count after the assertion window.
+A channel must never be closed more than once. Because each test constructs a fresh `stubNotifier` with a fresh channel, and `Notify` is called at most once per test scenario, the close-once invariant holds. If the stub needs to count multiple calls, replace the `close` with a `select { case s.called <- struct{}{}: default: }` non-blocking send and read the count after the assertion window.

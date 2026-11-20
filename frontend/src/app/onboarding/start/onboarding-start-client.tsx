@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type CSSProperties, useCallback, useState } from "react";
-import { CatalogDeckTile } from "@/app/catalog/catalog-card";
 import type { CatalogDeckFieldsFragment } from "@/app/catalog/queries";
 import { useImportMaster } from "@/app/catalog/use-import-master";
 import { OnboardingShell } from "@/components/onboarding/onboarding-shell";
@@ -12,11 +11,12 @@ import { AuthErrorBanner } from "@/components/ui/auth-error-banner";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import type { FragmentType } from "@/generated/fragment-masking";
+import { OnboardingDeckTile } from "./_components/onboarding-deck-tile";
 import { useSeedDefaultStarters } from "./use-seed-default-starters";
 
 // `id` is read at this level (React keys, per-cardgroup `importing` state); the
-// rest of the fields travel as a masked `CatalogDeckFields` ref that `CatalogDeckTile`
-// unmasks — the same fragment the /catalog gallery feeds it.
+// rest of the fields travel as a masked `CatalogDeckFields` ref that `OnboardingDeckTile`
+// unmasks — the same fragment the /catalog list row (`CatalogListItem`) unmasks.
 type MasterCardgroupNode = { id: string } & FragmentType<typeof CatalogDeckFieldsFragment>;
 
 interface OnboardingStartClientProps {
@@ -161,18 +161,11 @@ export function OnboardingStartClient({ cardgroups }: OnboardingStartClientProps
               data-testid="onboarding-deck-list"
             >
               {cardgroups.map((node, index) => (
-                <CatalogDeckTile
+                <OnboardingDeckTile
                   key={node.id}
                   node={node}
                   importing={importingId === node.id}
-                  imported={false}
                   onImport={handleStart}
-                  labels={{
-                    action: t("startWithDeck"),
-                    inProgress: t("starting"),
-                    done: t("imported"),
-                  }}
-                  testIdPrefix="onboarding-deck"
                   className="w-[17rem] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-500"
                   style={{ animationDelay: `${Math.min(index, 5) * 70}ms` } satisfies CSSProperties}
                 />

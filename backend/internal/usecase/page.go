@@ -8,32 +8,12 @@ import (
 	"time"
 
 	"backend/internal/cursor"
-	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
 )
 
-// resolveSortDir maps the typed usecase SortOrder enum to the repository sort
-// direction, defaulting to def when dir is nil. The default switch arm is
-// defense in depth — gqlgen UnmarshalGQL already rejects invalid enum strings
-// upstream. Shared by every aggregate's resolve*OrderBy; only the per-aggregate
-// default direction (def) differs.
-func resolveSortDir(dir *SortOrder, def repository.SortOrder) (repository.SortOrder, error) {
-	if dir == nil {
-		return def, nil
-	}
-	switch *dir {
-	case SortOrderAsc:
-		return repository.SortAsc, nil
-	case SortOrderDesc:
-		return repository.SortDesc, nil
-	default:
-		return "", ucerr.NewValidationError("orderDirection", "invalid")
-	}
-}
-
-// resolveStandardPageSize clamps first/last to [0, maxPageSize] and rejects
-// passing both. Defaults first=defaultPageSize (20) when neither is provided,
-// matching the schema's documented default. maxPageSize/defaultPageSize are the
+// resolveStandardPageSize clamps first to [0, maxPageSize]. Defaults
+// first=defaultPageSize (20) when it is omitted, matching the schema's
+// documented default. maxPageSize/defaultPageSize are the
 // package-wide page-size caps (declared in card.go) shared by the card,
 // cardgroup, master-catalog and master-card connection resolvers; the
 // repository-level cap (repository.PageCap = maxPageSize + 1) is one greater so
@@ -42,70 +22,42 @@ func resolveSortDir(dir *SortOrder, def repository.SortOrder) (repository.SortOr
 // connections use this resolver too. The admin user list is the sole opt-out
 // (resolveAdminPageSize defaults to maxPageSize and rejects rather than clamps
 // out-of-range values).
-func resolveStandardPageSize(first, last *int) (int, int, error) {
-	if first != nil && last != nil {
-		return 0, 0, ucerr.NewValidationError("first", "specify either first or last, not both")
+func resolveStandardPageSize(first *int) (int, error) {
+	if first == nil {
+		return defaultPageSize, nil
 	}
-	if first == nil && last == nil {
-		return defaultPageSize, 0, nil
+	if *first < 0 {
+		return 0, nil
 	}
-	clamp := func(v int) int {
-		if v < 0 {
-			return 0
-		}
-		if v > maxPageSize {
-			return maxPageSize
-		}
-		return v
+	if *first > maxPageSize {
+		return maxPageSize, nil
 	}
-	if first != nil {
-		return clamp(*first), 0, nil
-	}
-	return 0, clamp(*last), nil
+	return *first, nil
 }
 
-// resolveAdminPageSize enforces the (first XOR last) constraint and rejects
-// (rather than clamps) a value outside [0, maxPageSize]. When both are nil,
-// defaults to (maxPageSize, 0) — unlike resolveStandardPageSize (which defaults
-// to defaultPageSize=20) — so single-page admin views stay simple. The admin
-// user list is its only caller; every other connection, admin-gated or not,
-// uses resolveStandardPageSize. maxPageSize is the package-wide cap shared with
-// resolveStandardPageSize.
-func resolveAdminPageSize(first, last *int) (int, int, error) {
-	if first != nil && last != nil {
-		return 0, 0, ucerr.NewValidationError("first", "specify either first or last")
+// resolveAdminPageSize rejects (rather than clamps) a first outside
+// [0, maxPageSize]. When first is nil it defaults to maxPageSize — unlike
+// resolveStandardPageSize (which defaults to defaultPageSize=20) — so
+// single-page admin views stay simple. The admin user list is its only caller;
+// every other connection, admin-gated or not, uses resolveStandardPageSize.
+// maxPageSize is the package-wide cap shared with resolveStandardPageSize.
+func resolveAdminPageSize(first *int) (int, error) {
+	if first == nil {
+		return maxPageSize, nil
 	}
-	if first == nil && last == nil {
-		return maxPageSize, 0, nil
+	if *first < 0 {
+		return 0, ucerr.NewValidationError("first", "first must be >= 0")
 	}
-	check := func(field string, v int) error {
-		if v < 0 {
-			return ucerr.NewValidationError(field, fmt.Sprintf("%s must be >= 0", field))
-		}
-		if v > maxPageSize {
-			return ucerr.NewValidationError(field, fmt.Sprintf("%s must be <= %d", field, maxPageSize))
-		}
-		return nil
+	if *first > maxPageSize {
+		return 0, ucerr.NewValidationError("first", fmt.Sprintf("first must be <= %d", maxPageSize))
 	}
-	if first != nil {
-		if err := check("first", *first); err != nil {
-			return 0, 0, err
-		}
-		return *first, 0, nil
-	}
-	if err := check("last", *last); err != nil {
-		return 0, 0, err
-	}
-	return 0, *last, nil
+	return *first, nil
 }
 
 // TrimAndDetect trims one trailing item from items when len(items) > want and
-// returns (trimmed, true) so the caller can set hasNextPage / hasPreviousPage.
+// returns (trimmed, true) so the caller can set hasNextPage.
 // Used after the repository's "+1 fetch" trick for forward pagination: ask for
 // want+1 rows, pass the returned slice in, get back (page, hasMore).
-//
-// For backward pagination, use TrimAndDetectBackward — it trims the leading
-// (not trailing) element when len > want.
 func TrimAndDetect[T any](items []T, want int) (out []T, hasMore bool) {
 	if want > 0 && len(items) > want {
 		return items[:want], true
@@ -113,69 +65,49 @@ func TrimAndDetect[T any](items []T, want int) (out []T, hasMore bool) {
 	return items, false
 }
 
-// TrimAndDetectBackward trims one leading item when len(items) > want and
-// returns (trimmed, true). Used by backward pagination where the repository
-// already reversed the slice; the extra row sits at the head, not the tail.
-func TrimAndDetectBackward[T any](items []T, want int) (out []T, hasMore bool) {
-	if want > 0 && len(items) > want {
-		return items[len(items)-want:], true
-	}
-	return items, false
-}
-
 // resolveRelayPage validates Relay argument coherence, then clamps the page
 // size via the per-aggregate clamp closure. Bundling validation with the
 // mandatory page-size step makes validateRelayArgs structurally impossible to
-// skip — every connection method needs the (first, last) return — while keeping
-// validation ahead of cursor resolution, so a mixed-direction combo is reported
-// before a malformed-cursor decode error (preserving error precedence).
+// skip — every connection method needs the page-size return — while keeping
+// validation ahead of cursor resolution, so an `after` without `first` is
+// reported before a malformed-cursor decode error (preserving error precedence).
 func resolveRelayPage(
-	first, last *int,
-	after, before *string,
-	clamp func(first, last *int) (int, int, error),
-) (pageFirst, pageLast int, err error) {
-	if err := validateRelayArgs(first, last, after, before); err != nil {
-		return 0, 0, err
+	first *int,
+	after *string,
+	clamp func(first *int) (int, error),
+) (int, error) {
+	if err := validateRelayArgs(first, after); err != nil {
+		return 0, err
 	}
-	return clamp(first, last)
+	return clamp(first)
 }
 
 // assemblePage performs the Relay "+1 fetch" trick shared by every connection
-// list method: it inflates the requested page size by one, calls fetch, then
-// trims the extra row and reports hasNext/hasPrev. Forward paging (first>0)
-// trims the trailing row and derives hasPrev from hasAfter; backward paging
-// (last>0) trims the leading row and derives hasNext from hasBefore. A
-// total-count-only request (first==0 && last==0) calls fetch with (0,0), trims
-// nothing, and reports both flags false.
+// list method: it inflates the requested page size by one, calls fetch, trims
+// the trailing extra row to derive hasNext, and derives hasPrev from hasAfter.
+// A total-count-only request (first==0) calls fetch with 0, trims nothing, and
+// reports both flags false.
 //
-// hasAfter/hasBefore MUST be the post-decode cursor presence — i.e. pass
-// (resolvedAfter != nil) / (resolvedBefore != nil) using the value returned
-// by the per-aggregate resolve*Cursor step, NOT the raw request *string. They
-// supply the "other" page-edge flag the +1 trim cannot derive: forward paging
-// sets hasPrev from hasAfter, backward paging sets hasNext from hasBefore.
+// hasAfter MUST be the post-decode cursor presence — i.e. pass
+// (resolvedAfter != nil) using the value returned by the per-aggregate
+// resolve*Cursor step, NOT the raw request *string. It supplies the
+// hasPreviousPage flag the +1 trim cannot derive.
 func assemblePage[T any](
-	first, last int,
-	hasAfter, hasBefore bool,
-	fetch func(wantFirst, wantLast int) ([]T, error),
+	first int,
+	hasAfter bool,
+	fetch func(want int) ([]T, error),
 ) (items []T, hasNext, hasPrev bool, err error) {
-	wantFirst, wantLast := first, last
-	if wantFirst > 0 {
-		wantFirst++
+	want := first
+	if want > 0 {
+		want++
 	}
-	if wantLast > 0 {
-		wantLast++
-	}
-	items, err = fetch(wantFirst, wantLast)
+	items, err = fetch(want)
 	if err != nil {
 		return nil, false, false, err
 	}
-	switch {
-	case first > 0:
+	if first > 0 {
 		items, hasNext = TrimAndDetect(items, first)
 		hasPrev = hasAfter
-	case last > 0:
-		items, hasPrev = TrimAndDetectBackward(items, last)
-		hasNext = hasBefore
 	}
 	return items, hasNext, hasPrev, nil
 }
@@ -214,10 +146,12 @@ type PageOrdering struct {
 }
 
 // requireCursorOrdering rejects a v2 cursor whose embedded ordering disagrees
-// with the ordering the current request resolved to. Serving such a cursor
-// would compare the stored ordering-key value against a different column (or
-// the same column in the opposite direction) and silently return a wrong page,
-// so it is a BAD_USER_INPUT — the same shape as "cursor not found".
+// with the connection's fixed ordering. With one ordering per connection, a
+// mismatch means a bookmark an older client took under an ordering the server
+// no longer serves. Serving such a cursor would compare the stored
+// ordering-key value against a different column (or the same column in the
+// opposite direction) and silently return a wrong page, so it is a
+// BAD_USER_INPUT — the same shape as "cursor not found".
 //
 // v1 envelopes and legacy bare ids carry no ordering and pass through: they
 // fall back to the re-hydration path, which is ordering-agnostic by
@@ -253,12 +187,10 @@ func rejectOrderedCursor(p cursor.Payload, field string) error {
 }
 
 // errCursorKeyMalformed marks a v2 ordering-key value that does not parse back
-// into the column type the active orderBy needs. Every apply*OrderKey helper
+// into the type of the connection's ordering column. Every apply*OrderKey helper
 // returns it in place of the underlying parse failure so the caller can map it
 // to BAD_USER_INPUT; the parse cause is deliberately dropped because no caller
-// surfaces it (each one answers with a fresh ucerr validation error). Any other
-// error from those helpers is an internal caller bug (an orderBy the helper
-// does not handle) and must stay INTERNAL.
+// surfaces it (each one answers with a fresh ucerr validation error).
 var errCursorKeyMalformed = errors.New("usecase: malformed cursor ordering key")
 
 // encodeTimeOrderKey serializes a timestamp ordering key. RFC3339 with
@@ -290,37 +222,6 @@ func decodeIntOrderKey(s string) (int, error) {
 		return 0, errCursorKeyMalformed
 	}
 	return n, nil
-}
-
-// resolveOrderByColumn maps the typed usecase orderBy enum to the repository
-// column via the supplied allowlist, defaulting to def when orderBy is nil, and
-// delegates the direction half to the shared resolveSortDir. An orderBy outside
-// the allowlist returns a BAD_USER_INPUT validation error; the default arm is
-// defense in depth — gqlgen UnmarshalGQL already rejects invalid enum strings
-// upstream. Each aggregate's resolve*OrderBy is a thin wrapper supplying its
-// own map + (default column, default direction).
-func resolveOrderByColumn[K comparable, V any](
-	orderBy *K,
-	dir *SortOrder,
-	allow map[K]V,
-	def V,
-	defDir repository.SortOrder,
-) (V, repository.SortOrder, error) {
-	field := def
-	if orderBy != nil {
-		col, ok := allow[*orderBy]
-		if !ok {
-			var zero V
-			return zero, "", ucerr.NewValidationError("orderBy", "invalid")
-		}
-		field = col
-	}
-	d, err := resolveSortDir(dir, defDir)
-	if err != nil {
-		var zero V
-		return zero, "", err
-	}
-	return field, d, nil
 }
 
 // firstLastCursor returns the id() of the first and last rows, or "","" when the

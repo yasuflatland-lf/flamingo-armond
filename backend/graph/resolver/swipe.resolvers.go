@@ -34,5 +34,5 @@ func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.HandleSw
 	if outcome.Swipe == nil {
 		return nil, newNoVariantSetError(ctx, "HandleSwipeOutcome")
 	}
-	return model.HandleSwipeSuccess{Response: toSwipeResponseModel(outcome.Swipe)}, nil
+	return model.HandleSwipeSuccess{CardID: outcome.Swipe.CardID}, nil
 }

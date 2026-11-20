@@ -32,6 +32,10 @@ func TestCEFRClassifier_Classify(t *testing.T) {
 		"give up": domain.CEFRB2, // multi-word entry
 		"give":    domain.CEFRA1,
 		"up":      domain.CEFRA1,
+		// Whole-phrase C2 outranks the per-token max (B2), so a spacing miss shows up as B2.
+		"artificial intelligence": domain.CEFRC2,
+		"artificial":              domain.CEFRB2,
+		"intelligence":            domain.CEFRB1,
 	}
 	c := NewCEFRClassifier(words)
 
@@ -48,6 +52,9 @@ func TestCEFRClassifier_Classify(t *testing.T) {
 		{"no substring match (cat in cathedral)", "cathedral", domain.CEFRUnknown, false},
 		{"unknown front", "zzqq", domain.CEFRUnknown, false},
 		{"empty front", "", domain.CEFRUnknown, false},
+		{"multi-word key with double space", "artificial  intelligence", domain.CEFRC2, true},
+		{"multi-word key with tab", "artificial\tintelligence", domain.CEFRC2, true},
+		{"multi-word key with NBSP", "artificial\u00a0intelligence", domain.CEFRC2, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

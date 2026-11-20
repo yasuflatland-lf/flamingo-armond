@@ -308,13 +308,7 @@ function makeSwipeMock(rating: 1 | 2 | 4) {
         called = true;
         return {
           data: {
-            handleSwipe: {
-              __typename: "HandleSwipeSuccess" as const,
-              response: {
-                __typename: "SwipeResponse" as const,
-                performanceMode: "DIFFICULT",
-              },
-            },
+            handleSwipe: { __typename: "HandleSwipeSuccess" as const },
           },
         };
       },
@@ -545,13 +539,7 @@ describe("<LearnClient>", () => {
         },
         result: {
           data: {
-            handleSwipe: {
-              __typename: "HandleSwipeSuccess" as const,
-              response: {
-                __typename: "SwipeResponse" as const,
-                performanceMode: "DIFFICULT",
-              },
-            },
+            handleSwipe: { __typename: "HandleSwipeSuccess" as const },
           },
         },
       };
@@ -581,13 +569,7 @@ describe("<LearnClient>", () => {
         request,
         result: {
           data: {
-            handleSwipe: {
-              __typename: "HandleSwipeSuccess" as const,
-              response: {
-                __typename: "SwipeResponse" as const,
-                performanceMode: "DIFFICULT",
-              },
-            },
+            handleSwipe: { __typename: "HandleSwipeSuccess" as const },
           },
         },
       };
@@ -629,13 +611,7 @@ describe("<LearnClient>", () => {
         },
         result: {
           data: {
-            handleSwipe: {
-              __typename: "HandleSwipeSuccess" as const,
-              response: {
-                __typename: "SwipeResponse" as const,
-                performanceMode: "DIFFICULT",
-              },
-            },
+            handleSwipe: { __typename: "HandleSwipeSuccess" as const },
           },
         },
       };
@@ -1209,13 +1185,7 @@ describe("<LearnClient> onSwipe identity stability", () => {
       },
       result: {
         data: {
-          handleSwipe: {
-            __typename: "HandleSwipeSuccess" as const,
-            response: {
-              __typename: "SwipeResponse" as const,
-              performanceMode: "DIFFICULT",
-            },
-          },
+          handleSwipe: { __typename: "HandleSwipeSuccess" as const },
         },
       },
     };
@@ -1334,13 +1304,7 @@ function makeSwipeSuccessMock(cardId: string) {
         called = true;
         return {
           data: {
-            handleSwipe: {
-              __typename: "HandleSwipeSuccess" as const,
-              response: {
-                __typename: "SwipeResponse" as const,
-                performanceMode: "DIFFICULT",
-              },
-            },
+            handleSwipe: { __typename: "HandleSwipeSuccess" as const },
           },
         };
       },
@@ -1388,13 +1352,7 @@ describe("<LearnClient> queue prefetch", () => {
       },
       result: {
         data: {
-          handleSwipe: {
-            __typename: "HandleSwipeSuccess" as const,
-            response: {
-              __typename: "SwipeResponse" as const,
-              performanceMode: "DIFFICULT",
-            },
-          },
+          handleSwipe: { __typename: "HandleSwipeSuccess" as const },
         },
       },
     };
@@ -1513,13 +1471,7 @@ describe("<LearnClient> queue prefetch", () => {
       },
       result: {
         data: {
-          handleSwipe: {
-            __typename: "HandleSwipeSuccess" as const,
-            response: {
-              __typename: "SwipeResponse" as const,
-              performanceMode: "DIFFICULT",
-            },
-          },
+          handleSwipe: { __typename: "HandleSwipeSuccess" as const },
         },
       },
     };
@@ -1604,13 +1556,7 @@ describe("<LearnClient> queue prefetch", () => {
       delay: 80,
       result: {
         data: {
-          handleSwipe: {
-            __typename: "HandleSwipeSuccess" as const,
-            response: {
-              __typename: "SwipeResponse" as const,
-              performanceMode: "DIFFICULT",
-            },
-          },
+          handleSwipe: { __typename: "HandleSwipeSuccess" as const },
         },
       },
     };
@@ -1661,13 +1607,7 @@ describe("<LearnClient> queue prefetch", () => {
       },
       result: {
         data: {
-          handleSwipe: {
-            __typename: "HandleSwipeSuccess" as const,
-            response: {
-              __typename: "SwipeResponse" as const,
-              performanceMode: "DIFFICULT",
-            },
-          },
+          handleSwipe: { __typename: "HandleSwipeSuccess" as const },
         },
       },
     };

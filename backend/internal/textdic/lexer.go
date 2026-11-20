@@ -103,6 +103,11 @@ func (l *lexer) Lex(lval *yySymType) int {
 	if l.isNewLine(r) {
 		// Record the line that this NEWLINE terminates so a syntax error
 		// attributed to it points at the correct source line, then advance.
+		// isNewLine only reports '\r' when the next rune is '\n'; consume it so a
+		// blank CRLF line counts once, as recoverLineForUnrecognized does.
+		if r == '\r' {
+			l.input.ReadRune() //nolint:errcheck
+		}
 		l.tokenLine = l.lineNo
 		l.lineNo++
 		return NEWLINE
@@ -186,7 +191,7 @@ func (l *lexer) lexDefinition(lval *yySymType) int {
 // returns the snippet text together with the token to emit: NEWLINE on both
 // exits, so the grammar's blank-line production `entry: NEWLINE` shifts it and
 // the parser never enters error mode — the malformed line is recovered here in
-// the lexer, not by the `entries: error NEWLINE` rule. At EOF the next Lex call
+// the lexer; the grammar has no `error` production. At EOF the next Lex call
 // returns 0 on its own. The returned snippet does NOT include the trailing
 // newline character.
 func (l *lexer) recoverLineForUnrecognized(first rune) (string, int) {

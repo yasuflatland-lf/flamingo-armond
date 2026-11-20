@@ -269,7 +269,7 @@ func (u *MasterNotionSyncUsecase) Sync(ctx context.Context, input SyncToMasterIn
 // the no-persistence short-circuit. UNRECOGNIZED is intentionally hard-failed
 // because it signals malformed payload the user likely didn't intend, and
 // silently dropping it would mask real corruption. DUPLICATE and HARD are
-// obviously hard. UNKNOWN indicates a bug and also falls into the hard branch.
+// obviously hard.
 func allCardImportErrorsSkipped(errs []CardImportError) bool {
 	for _, e := range errs {
 		if !e.Kind.IsSoftSkip() {
@@ -333,10 +333,14 @@ func parseNotionPages(ctx context.Context, logger *slog.Logger, pages []notion.P
 			})
 		}
 		for _, e := range parseErrs {
+			kind, err := cardImportErrorKindFromSkipKind(e.Kind)
+			if err != nil {
+				return nil, nil, 0, err
+			}
 			errs = append(errs, CardImportError{
 				Line:    e.Line,
 				Message: e.Message,
-				Kind:    CardImportErrorKind(e.Kind.String()),
+				Kind:    kind,
 				Snippet: e.Snippet,
 			})
 		}

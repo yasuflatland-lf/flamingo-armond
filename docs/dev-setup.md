@@ -157,12 +157,7 @@ Sync logic lives in `playbooks/setup.yml` as declarative Ansible tasks. To wire 
 
 ### First admin (local Supabase)
 
-Two complementary paths grant the `admin` role to any email listed in `SUPER_USER_EMAILS`. Both are sanctioned; pick whichever fits the situation.
-
-- **Middleware auto-promotion** (zero-touch). On any authenticated `/query` request, the post-auth middleware grants `admin` to a matching user **when the JWT carries `email_verified=true`**. Subsequent requests short-circuit on the cached role.
-- **`make sync-env` seed task** (idempotent INSERT). The setup playbook runs `INSERT INTO public.user_roles ... ON CONFLICT DO NOTHING` for every email in `SUPER_USER_EMAILS` that already has an `auth.users` row. Use this when the middleware path has not fired — typically because the current browser session's JWT predates the email confirmation, or the user signed up but has not yet issued a GraphQL request.
-
-Both paths require `public.roles` to exist, which means the backend must have run migrations at least once (i.e. `make dev` / `make dev-backend` started successfully).
+The backend never grants the `admin` role on its own. The `make sync-env` seed task (also part of `make setup`) runs `INSERT INTO public.user_roles ... ON CONFLICT DO NOTHING` for every email in `SUPER_USER_EMAILS` (read from `backend/.env.local`) that already has an `auth.users` row. It requires `public.roles` to exist, which means the backend must have run migrations at least once (i.e. `make dev` / `make dev-backend` started successfully).
 
 #### Steps
 
@@ -170,25 +165,14 @@ Both paths require `public.roles` to exist, which means the backend must have ru
    ```
    SUPER_USER_EMAILS=you@example.com
    ```
-   Comma-separate multiple emails. Whitespace and case are normalised by the backend.
-2. Restart the backend (`make dev-backend` or the `backend` panel in `make dev`). On startup, look for the JSON log line confirming the bootstrap is armed:
-   ```
-   {"level":"INFO","msg":"super-user bootstrap enabled","email_count":1}
-   ```
-   If `email_count` is `0`, your edit did not take effect — re-check the file path and restart.
-3. Sign in at `http://127.0.0.1:3000/login` with one of the listed accounts. The Admin pill appears in the global header and `/admin/*` routes become reachable.
+   Comma-separate multiple emails.
+2. Sign in at `http://127.0.0.1:3000/login` with each listed account once, so its `auth.users` row exists.
+3. Run `make sync-env`. The seed task prints one line per address; an address that has not signed in yet is skipped, so re-run after its first sign-in. The seed runs only while `backend/.env.local` starts with the `# managed-by: sync-env` marker line; for a user-owned file (marker deleted or hand-made file), it is skipped entirely and prints only the generic `user-owned (no marker); skipping` notice, so run `make seed-admin EMAIL=you@example.com` for each address instead.
+4. Sign out and sign back in (or wait for a token refresh) so the JWT carries the new role. The Admin pill appears in the global header and `/admin/*` routes become reachable.
 
-**If the Admin pill does not appear** after sign-in, the middleware did not promote — almost always because the active session's JWT was issued before email confirmation (so `email_verified` is `false` in the token). Run:
+**After `make db-reset`:** the local database is recreated empty, including `auth.users` and every app table. Restart the backend so its migrations re-create the schema (including `public.roles`), sign in again with each listed account, then run `make sync-env`.
 
-```bash
-make sync-env
-```
-
-The playbook's seed-admin task INSERTs the `(user_id, admin_role_id)` row directly. After that, sign out and sign back in (or wait for a token refresh) so the next request carries the new role. The task is idempotent — running it when the user is already admin is a no-op.
-
-**After `make db-reset`:** `public.user_roles` is wiped. The middleware re-promotes on the next authenticated request from a JWT with `email_verified=true`; otherwise run `make sync-env` once the backend has been restarted (migrations must have re-created `public.roles`).
-
-**Manual SQL fallback** (only if `make sync-env` is unavailable and you are debugging — e.g. the Authorization-header propagation gap, or you need an admin without a successful login round-trip):
+**Manual SQL fallback** (only if neither `make sync-env` nor `make seed-admin` can run; like them, it needs an existing `auth.users` row, so sign in once first):
 
 ```bash
 psql "$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')" <<'SQL'

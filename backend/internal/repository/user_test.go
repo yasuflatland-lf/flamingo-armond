@@ -37,9 +37,9 @@ func TestMain(m *testing.M) {
 // needs: every other test dereferences the package-level testDB, so leaving them
 // enabled would nil-panic instead of skipping. Add a new Docker-free test's name
 // here, or it will not run when Docker is unavailable.
-const dockerFreeTests = "^(TestCardRepositorySatisfiesNarrowInterfaces|TestClassify|TestCursorWhere_|" +
-	"TestDomainRejectsOverCapEmoji|TestEscapeLikePattern|TestMasterCardgroupToDomain_|TestOrderClause_|" +
-	"TestPgConstraintViolation|TestRefetchAfterUpdate|TestTextLengthViolationError_|" +
+const dockerFreeTests = "^(TestBulkStatementChunk_|TestClassify|TestCursorWhere_|" +
+	"TestDomainRejectsOverCapEmoji|TestEscapeLikePattern|TestFindRolesByIDs_|TestIncompressibleFront_|" +
+	"TestMasterCardgroupToDomain_|TestOrderClause_|TestPgConstraintViolation|TestRefetchAfterUpdate|TestTextLengthViolationError_|" +
 	"TestToDomainUserPreference_|TestUserCardFSRSToDomain_|TestZWJEmojiAtGraphemeCap_)"
 
 func runTests(m *testing.M) int {
@@ -170,8 +170,8 @@ func TestFindByID_Success(t *testing.T) {
 	if got.DisplayName != nil {
 		t.Fatalf("DisplayName: want nil, got %v", *got.DisplayName)
 	}
-	if got.Bio.IsSet() {
-		t.Fatalf("Bio: want IsSet=false, got Ptr=%v", got.Bio.Ptr())
+	if p := got.Bio.Ptr(); p != nil {
+		t.Fatalf("Bio: want nil, got %q", *p)
 	}
 	if got.AvatarURL != nil {
 		t.Fatalf("AvatarURL: want nil, got %v", *got.AvatarURL)
@@ -265,8 +265,8 @@ func TestUpdate_Success_DisplayNameOnly(t *testing.T) {
 	if got.DisplayName == nil || string(*got.DisplayName) != name {
 		t.Fatalf("DisplayName: got %v, want %q", got.DisplayName, name)
 	}
-	if got.Bio.IsSet() {
-		t.Fatalf("Bio should remain IsSet=false, got Ptr=%v", got.Bio.Ptr())
+	if p := got.Bio.Ptr(); p != nil {
+		t.Fatalf("Bio: want nil, got %q", *p)
 	}
 	if got.AvatarURL != nil {
 		t.Fatalf("AvatarURL should remain nil, got %v", *got.AvatarURL)
@@ -295,8 +295,10 @@ func TestUpdate_PartialBioOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	if !got.Bio.IsSet() || got.Bio.Ptr() == nil || *got.Bio.Ptr() != bio {
-		t.Fatalf("Bio: got Ptr=%v, want %q", got.Bio.Ptr(), bio)
+	if p := got.Bio.Ptr(); p == nil {
+		t.Fatalf("Bio: got nil, want %q", bio)
+	} else if *p != bio {
+		t.Fatalf("Bio: got %q, want %q", *p, bio)
 	}
 	if got.DisplayName == nil || string(*got.DisplayName) != name {
 		t.Fatalf("DisplayName should remain %q, got %v", name, got.DisplayName)
@@ -483,83 +485,6 @@ func TestUpdate_EmptyPatchReturnsCurrentRow(t *testing.T) {
 	}
 }
 
-// TestUpdateTx_Success_DisplayNameOnly exercises the happy path of the
-// transactional variant. Unlike Update, UpdateTx does not re-fetch and
-// returns no value — callers refetch after the transaction commits.
-func TestUpdateTx_Success_DisplayNameOnly(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	id := insertAuthUser(t, ctx)
-	repo := repository.NewUserRepository(testDB.GORM)
-
-	name := "AliceTx"
-	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return repo.UpdateTx(ctx, tx, id, repository.UserUpdate{DisplayName: &name})
-	})
-	if err != nil {
-		t.Fatalf("UpdateTx: %v", err)
-	}
-
-	got, err := repo.FindByID(ctx, id)
-	if err != nil {
-		t.Fatalf("FindByID after UpdateTx: %v", err)
-	}
-	if got.DisplayName == nil || string(*got.DisplayName) != name {
-		t.Fatalf("DisplayName: got %v, want %q", got.DisplayName, name)
-	}
-}
-
-// TestUpdateTx_NotFound asserts that targeting a missing row returns
-// ErrNotFound so the surrounding transaction can roll back atomically.
-// This is load-bearing for adminUserUsecase.EditUser which classifies the
-// sentinel into an InputValidationError on field=id.
-func TestUpdateTx_NotFound(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	repo := repository.NewUserRepository(testDB.GORM)
-
-	name := "nobody"
-	missing := uuid.NewString()
-	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return repo.UpdateTx(ctx, tx, missing, repository.UserUpdate{DisplayName: &name})
-	})
-	if !errors.Is(err, repository.ErrNotFound) {
-		t.Fatalf("UpdateTx(missing): want ErrNotFound, got %v", err)
-	}
-}
-
-// TestUpdateTx_EmptyPatchNoOp verifies that a patch with no non-nil fields
-// returns nil without touching the database (no UPDATE issued). This matches
-// adminUserUsecase.EditUser's profile-omitted branch where UpdateTx must not
-// be called or, if called defensively, must be a no-op.
-func TestUpdateTx_EmptyPatchNoOp(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	id := insertAuthUser(t, ctx)
-	repo := repository.NewUserRepository(testDB.GORM)
-
-	before, err := repo.FindByID(ctx, id)
-	if err != nil {
-		t.Fatalf("FindByID (before): %v", err)
-	}
-	beforeUpdated := before.UpdatedAt
-
-	err = testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return repo.UpdateTx(ctx, tx, id, repository.UserUpdate{})
-	})
-	if err != nil {
-		t.Fatalf("UpdateTx (empty patch): %v", err)
-	}
-
-	after, err := repo.FindByID(ctx, id)
-	if err != nil {
-		t.Fatalf("FindByID (after): %v", err)
-	}
-	if !after.UpdatedAt.Equal(beforeUpdated) {
-		t.Errorf("empty patch must not bump updated_at; before=%v after=%v", beforeUpdated, after.UpdatedAt)
-	}
-}
-
 func TestUpdateTxVersioned_EmptyPatchIncrementsVersion(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -643,96 +568,101 @@ func TestUpdateTxVersioned_NotFound(t *testing.T) {
 	}
 }
 
-// insertNAuthUsers inserts n auth users and returns their ids.
-func insertNAuthUsers(t *testing.T, ctx context.Context, n int) []string {
-	t.Helper()
-	ids := make([]string, n)
-	for i := range ids {
-		ids[i] = insertAuthUser(t, ctx)
-	}
-	return ids
-}
-
-func TestFindByIDs_AllFound(t *testing.T) {
+func TestUserRepository_Update_BumpsVersion(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-
-	ids := insertNAuthUsers(t, ctx, 4)
-	query := ids[:3]
-
+	id := insertAuthUser(t, ctx)
 	repo := repository.NewUserRepository(testDB.GORM)
-	got, err := repo.FindByIDs(ctx, query)
+
+	before, err := repo.FindByID(ctx, id)
 	if err != nil {
-		t.Fatalf("FindByIDs: %v", err)
+		t.Fatalf("FindByID (before): %v", err)
 	}
-	if len(got) != 3 {
-		t.Fatalf("map size: got %d, want 3", len(got))
+	if before.Version != 0 {
+		t.Fatalf("initial Version = %d, want 0", before.Version)
 	}
-	for _, id := range query {
-		p, ok := got[id]
-		if !ok {
-			t.Fatalf("missing id %q in result", id)
-		}
-		if string(p.ID) != id {
-			t.Fatalf("user ID mismatch: got %q, want %q", p.ID, id)
-		}
+
+	first := "first"
+	got, err := repo.Update(ctx, id, repository.UserUpdate{DisplayName: &first})
+	if err != nil {
+		t.Fatalf("Update (first): %v", err)
 	}
-	if _, ok := got[ids[3]]; ok {
-		t.Fatalf("unexpected id %q present in result", ids[3])
+	if got.Version != 1 {
+		t.Fatalf("Version after first Update = %d, want 1", got.Version)
+	}
+
+	second := "second"
+	got, err = repo.Update(ctx, id, repository.UserUpdate{DisplayName: &second})
+	if err != nil {
+		t.Fatalf("Update (second): %v", err)
+	}
+	if got.Version != 2 {
+		t.Fatalf("Version after second Update = %d, want 2", got.Version)
+	}
+
+	reread, err := repo.FindByID(ctx, id)
+	if err != nil {
+		t.Fatalf("FindByID (after): %v", err)
+	}
+	if reread.Version != 2 {
+		t.Fatalf("re-read Version = %d, want 2", reread.Version)
 	}
 }
 
-func TestFindByIDs_PartialMissing(t *testing.T) {
+func TestUserRepository_Update_EmptyPatch_KeepsVersion(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-
-	ids := insertNAuthUsers(t, ctx, 3)
-	missing := "00000000-0000-0000-0000-000000000001"
-	query := append(ids, missing)
-
+	id := insertAuthUser(t, ctx)
 	repo := repository.NewUserRepository(testDB.GORM)
-	got, err := repo.FindByIDs(ctx, query)
+
+	got, err := repo.Update(ctx, id, repository.UserUpdate{})
 	if err != nil {
-		t.Fatalf("FindByIDs: %v", err)
+		t.Fatalf("Update (empty patch): %v", err)
 	}
-	if len(got) != 3 {
-		t.Fatalf("map size: got %d, want 3", len(got))
-	}
-	for _, id := range ids {
-		if _, ok := got[id]; !ok {
-			t.Fatalf("missing expected id %q in result", id)
-		}
-	}
-	if _, ok := got[missing]; ok {
-		t.Fatalf("missing id %q should not appear in result", missing)
+	if got.Version != 0 {
+		t.Fatalf("Version after empty patch = %d, want 0", got.Version)
 	}
 }
 
-func TestFindByIDs_EmptySlice(t *testing.T) {
+// TestUserRepository_SelfUpdateInvalidatesStaleAdminVersion pins that a
+// self-service Update between an admin's read and save makes the admin's
+// stale expectedVersion fail instead of overwriting the user's change.
+func TestUserRepository_SelfUpdateInvalidatesStaleAdminVersion(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-
+	id := insertAuthUser(t, ctx)
 	repo := repository.NewUserRepository(testDB.GORM)
-	got, err := repo.FindByIDs(ctx, []string{})
+
+	before, err := repo.FindByID(ctx, id)
 	if err != nil {
-		t.Fatalf("FindByIDs(empty): %v", err)
+		t.Fatalf("FindByID (before): %v", err)
 	}
-	if len(got) != 0 {
-		t.Fatalf("expected empty map, got %d entries", len(got))
+	if before.Version != 0 {
+		t.Fatalf("initial Version = %d, want 0", before.Version)
 	}
-}
 
-func TestFindByIDs_DBError(t *testing.T) {
-	t.Parallel()
+	self := "self"
+	if _, err := repo.Update(ctx, id, repository.UserUpdate{DisplayName: &self}); err != nil {
+		t.Fatalf("Update (self): %v", err)
+	}
 
-	// A pre-cancelled context forces the underlying driver to fail.
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	stale := "admin-stale"
+	err = testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.UpdateTxVersioned(ctx, tx, id, repository.UserUpdate{DisplayName: &stale}, before.Version)
+	})
+	if !errors.Is(err, repository.ErrConcurrentUpdate) {
+		t.Fatalf("UpdateTxVersioned (stale admin): want ErrConcurrentUpdate, got %v", err)
+	}
 
-	repo := repository.NewUserRepository(testDB.GORM)
-	_, err := repo.FindByIDs(ctx, []string{"00000000-0000-0000-0000-000000000002"})
-	if err == nil {
-		t.Fatal("expected error for cancelled context, got nil")
+	got, err := repo.FindByID(ctx, id)
+	if err != nil {
+		t.Fatalf("FindByID (after): %v", err)
+	}
+	if got.DisplayName == nil || string(*got.DisplayName) != self {
+		t.Fatalf("DisplayName = %v, want %q", got.DisplayName, self)
+	}
+	if got.Version != 1 {
+		t.Fatalf("Version = %d, want 1", got.Version)
 	}
 }
 
@@ -750,25 +680,6 @@ func TestRoleRepository_FindByName_SeededAdmin(t *testing.T) {
 	}
 	if got.Name != "admin" {
 		t.Fatalf("role name = %q, want admin", got.Name)
-	}
-}
-
-func TestRoleRepository_FindByIDs(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	repo := repository.NewRoleRepository(testDB.GORM)
-	admin, err := repo.FindByName(ctx, "admin")
-	if err != nil {
-		t.Fatalf("FindByName(admin): %v", err)
-	}
-
-	got, err := repo.FindByIDs(ctx, []string{admin.ID})
-	if err != nil {
-		t.Fatalf("FindByIDs: %v", err)
-	}
-	if got[admin.ID] == nil || got[admin.ID].Name != "admin" {
-		t.Fatalf("FindByIDs missing admin role: %+v", got)
 	}
 }
 

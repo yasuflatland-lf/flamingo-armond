@@ -50,12 +50,11 @@ func findOwnedCardgroup(
 	return cg, nil
 }
 
-// authorizeCardgroupOrBadInput verifies that userID owns the cardgroup identified
-// by id, treating a not-found cardgroup as a validation error against the caller-
-// supplied input. Use at the boundary where id originates from untrusted user
-// input (mutation arguments, list filters) and a stale id is a recoverable
-// caller mistake rather than a security event. Delegates to findOwnedCardgroup
-// and discards the loaded entity.
+// authorizeCardgroupOrBadInput checks that userID owns cardgroup id for ids taken
+// from untrusted input, where a stale id is a recoverable caller mistake: missing
+// is a validation error, foreign is ucerr.ErrUnauthenticated. The two stay
+// distinguishable, so existence hiding relies on unguessable UUIDv7 ids (62
+// random bits). Delegates to findOwnedCardgroup and discards the loaded entity.
 func authorizeCardgroupOrBadInput(
 	ctx context.Context,
 	repo CardgroupOwnershipFinder,

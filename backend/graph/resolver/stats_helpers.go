@@ -58,9 +58,8 @@ func toLearningStatsModel(ctx context.Context, res *usecase.LearningStatsResult)
 			return nil, classifyLoaderErr(ctx, err, "resolver: stats: struggling card")
 		}
 		struggling = append(struggling, &model.StrugglingCard{
-			Card:      toCardModel(card),
-			Lapses:    sc.Lapses,
-			Stability: sc.Stability,
+			Card:   toCardModel(card),
+			Lapses: sc.Lapses,
 		})
 	}
 

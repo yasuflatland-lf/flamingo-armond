@@ -73,7 +73,6 @@ func TestUserCardFSRS_ApplyRating_HappyPath(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, outState, u.State)
-	require.Equal(t, t1, u.UpdatedAt)
 	require.Equal(t, RatingGood, stub.gotRating)
 	require.Equal(t, t1, stub.gotNow)
 }
@@ -99,13 +98,11 @@ func TestUserCardFSRS_ApplyRating_InvalidRating(t *testing.T) {
 			stub := &stubScheduler{}
 			u := NewUserCardFSRSForNewCard("u1", "c1", t0)
 			snapshotState := u.State
-			snapshotUpdatedAt := u.UpdatedAt
 
 			err := u.ApplyRating(stub, tc.rating, t1)
 
 			require.Error(t, err)
 			require.Equal(t, snapshotState, u.State)
-			require.Equal(t, snapshotUpdatedAt, u.UpdatedAt)
 			require.Equal(t, 0, stub.called)
 		})
 	}

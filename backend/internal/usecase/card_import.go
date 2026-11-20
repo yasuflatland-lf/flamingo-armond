@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -48,7 +47,6 @@ type ImportCardsInput struct {
 type CardImportErrorKind string
 
 const (
-	CardImportErrKindUnknown      CardImportErrorKind = "UNKNOWN" // programming-error sentinel
 	CardImportErrKindHard         CardImportErrorKind = "HARD"
 	CardImportErrKindFrontOnly    CardImportErrorKind = "FRONT_ONLY"
 	CardImportErrKindBackOnly     CardImportErrorKind = "BACK_ONLY"
@@ -117,36 +115,29 @@ type cardImportUsecase struct {
 	cardRepo          CardImportCardRepository
 	tx                txRunner
 	processCardImport func(string) ([]textdic.ParsedWord, []textdic.ValidationError, error)
-	logger            *slog.Logger
 }
 
 // NewCardImportUsecase constructs a CardImportUsecase. db is the database handle
 // used to open transactions; production must pass a non-nil db — with a nil db,
 // runInTx hands the import closure a nil handle, which panics inside GORM at the
-// first Import. Panics on nil cardgroupRepo or logger; cardRepo and db stay
+// first Import. Panics on nil cardgroupRepo; cardRepo and db stay
 // unguarded because tests without a database use NewCardImportUsecaseWithTx.
-func NewCardImportUsecase(cardgroupRepo CardgroupOwnershipFinder, cardRepo CardImportCardRepository, db repository.Tx, logger *slog.Logger) *cardImportUsecase {
+func NewCardImportUsecase(cardgroupRepo CardgroupOwnershipFinder, cardRepo CardImportCardRepository, db repository.Tx) *cardImportUsecase {
 	if cardgroupRepo == nil {
 		panic("usecase: card import: cardgroupRepo is required")
 	}
-	if logger == nil {
-		panic("usecase: card import: logger is required")
-	}
-	uc := &cardImportUsecase{cardgroupRepo: cardgroupRepo, cardRepo: cardRepo, processCardImport: textdic.Process, logger: logger}
+	uc := &cardImportUsecase{cardgroupRepo: cardgroupRepo, cardRepo: cardRepo, processCardImport: textdic.Process}
 	uc.tx = newTxRunner(db)
 	return uc
 }
 
 // NewCardImportUsecaseWithTx is the test-time constructor that injects an
 // explicit transaction runner. Production callers must use NewCardImportUsecase.
-func NewCardImportUsecaseWithTx(cardgroupRepo CardgroupOwnershipFinder, cardRepo CardImportCardRepository, tx txRunner, logger *slog.Logger) *cardImportUsecase {
+func NewCardImportUsecaseWithTx(cardgroupRepo CardgroupOwnershipFinder, cardRepo CardImportCardRepository, tx txRunner) *cardImportUsecase {
 	if cardgroupRepo == nil {
 		panic("usecase: card import: cardgroupRepo is required")
 	}
-	if logger == nil {
-		panic("usecase: card import: logger is required")
-	}
-	return &cardImportUsecase{cardgroupRepo: cardgroupRepo, cardRepo: cardRepo, tx: tx, processCardImport: textdic.Process, logger: logger}
+	return &cardImportUsecase{cardgroupRepo: cardgroupRepo, cardRepo: cardRepo, tx: tx, processCardImport: textdic.Process}
 }
 
 func (u *cardImportUsecase) Validate(ctx context.Context, payload string) (ValidateCardImportOutcome, error) {
@@ -177,7 +168,10 @@ func (u *cardImportUsecase) Validate(ctx context.Context, payload string) (Valid
 		return ValidateCardImportOutcome{}, eris.Wrap(perr, "usecase: card import validate: parse")
 	}
 
-	errs := cardImportErrorsFromTextdic(parseErrs)
+	errs, err := cardImportErrorsFromTextdic(parseErrs)
+	if err != nil {
+		return ValidateCardImportOutcome{}, err
+	}
 	_, caps := validateImportRows(words)
 	for _, v := range caps {
 		errs = append(errs, CardImportError{Line: v.Line, Message: v.Message, Kind: CardImportErrKindHard})
@@ -229,11 +223,7 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 		// verbatim.
 		dedupeKey: identityKey,
 		newRow: func(front, back domain.CardText, now time.Time) (*domain.Card, error) {
-			c, err := domain.NewCardFromValidated(domain.CardgroupID(input.CardgroupID), front, back, 0, now)
-			if err != nil {
-				return nil, err
-			}
-			return c, nil
+			return domain.NewCardFromValidated(domain.CardgroupID(input.CardgroupID), front, back, 0, now)
 		},
 		tx: u.tx,
 		upsert: func(ctx context.Context, tx repository.Tx, cards []*domain.Card) (repository.UpsertManyTxResult, error) {
@@ -247,17 +237,40 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 	return ImportCardsOutput(res), nil
 }
 
-func cardImportErrorsFromTextdic(errs []textdic.ValidationError) []CardImportError {
+// cardImportErrorKindFromSkipKind maps a textdic diagnostic kind onto the
+// application-boundary kind. Every parser-produced kind has a case; the zero
+// value (SkipKindUnknown) and any future kind without a case return an error
+// so a missed mapping fails at the boundary, not in the resolver.
+func cardImportErrorKindFromSkipKind(k textdic.SkipKind) (CardImportErrorKind, error) {
+	switch k {
+	case textdic.SkipKindHard:
+		return CardImportErrKindHard, nil
+	case textdic.SkipKindFrontOnly:
+		return CardImportErrKindFrontOnly, nil
+	case textdic.SkipKindBackOnly:
+		return CardImportErrKindBackOnly, nil
+	case textdic.SkipKindUnrecognized:
+		return CardImportErrKindUnrecognized, nil
+	default:
+		return "", eris.Errorf("usecase: card import: unmapped textdic skip kind %d (%s)", k, k)
+	}
+}
+
+func cardImportErrorsFromTextdic(errs []textdic.ValidationError) ([]CardImportError, error) {
 	out := make([]CardImportError, 0, len(errs))
 	for _, e := range errs {
+		kind, err := cardImportErrorKindFromSkipKind(e.Kind)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, CardImportError{
 			Line:    e.Line,
 			Message: e.Message,
-			Kind:    CardImportErrorKind(e.Kind.String()),
+			Kind:    kind,
 			Snippet: e.Snippet,
 		})
 	}
-	return out
+	return out, nil
 }
 
 // capViolation is the internal result of validateImportRows. Each consumer maps it

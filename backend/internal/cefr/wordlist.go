@@ -26,10 +26,6 @@ func (w *WordList) Lookup(normalizedWord string) (domain.CEFRLevel, bool) {
 	return level, ok
 }
 
-// Len reports the number of distinct keys loaded. Used by tests and sanity
-// checks.
-func (w *WordList) Len() int { return len(w.levels) }
-
 // NewWordList parses all embedded word lists (Oxford 3000, Oxford 5000, and
 // Cambridge EVP C2) and merges them into one lookup table; on a duplicate key
 // the harder level wins. It panics if any embedded file is missing, malformed,

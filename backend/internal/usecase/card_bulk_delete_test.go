@@ -3,32 +3,20 @@ package usecase
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
-
-// fakeTxRunner returns a txRunner that invokes fn with a nil *gorm.DB. The
-// repository under test is the mock, which ignores tx anyway, so this is
-// sufficient to exercise BulkDelete without a real database.
-func fakeTxRunner() (txRunner, *int) {
-	calls := 0
-	return func(_ context.Context, fn func(tx *gorm.DB) error) error {
-		calls++
-		return fn(nil)
-	}, &calls
-}
 
 func TestCardUsecase_BulkDelete_EmptyIDs(t *testing.T) {
 	t.Parallel()
 	cardRepo := &mockCardRepository{}
 	cgRepo := &mockCardgroupRepoForCard{}
-	tx, calls := fakeTxRunner()
-	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: newTestLogger()}
+	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, logger: newTestLogger()}
 
 	n, err := uc.BulkDelete(authedCtx("u1"), nil)
 	if err != nil {
@@ -37,11 +25,8 @@ func TestCardUsecase_BulkDelete_EmptyIDs(t *testing.T) {
 	if n != 0 {
 		t.Fatalf("expected 0 deleted, got %d", n)
 	}
-	if *calls != 0 {
-		t.Fatalf("expected 0 tx invocations, got %d", *calls)
-	}
 	if cardRepo.deleteByIDsCalls != 0 {
-		t.Fatalf("expected 0 DeleteByIDsTx invocations, got %d", cardRepo.deleteByIDsCalls)
+		t.Fatalf("expected 0 DeleteByIDs invocations, got %d", cardRepo.deleteByIDsCalls)
 	}
 }
 
@@ -49,13 +34,12 @@ func TestCardUsecase_BulkDelete_Anonymous(t *testing.T) {
 	t.Parallel()
 	cardRepo := &mockCardRepository{}
 	cgRepo := &mockCardgroupRepoForCard{}
-	tx, _ := fakeTxRunner()
-	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: newTestLogger()}
+	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, logger: newTestLogger()}
 
 	_, err := uc.BulkDelete(anonCtx(), []string{"c1", "c2"})
 	assertUnauthenticated(t, err)
 	if cardRepo.deleteByIDsCalls != 0 {
-		t.Fatalf("expected 0 DeleteByIDsTx invocations on anonymous, got %d", cardRepo.deleteByIDsCalls)
+		t.Fatalf("expected 0 DeleteByIDs invocations on anonymous, got %d", cardRepo.deleteByIDsCalls)
 	}
 }
 
@@ -73,8 +57,7 @@ func TestCardUsecase_BulkDelete_AllOwn(t *testing.T) {
 		deleteByIDsResult: 3,
 	}
 	cgRepo := &mockCardgroupRepoForCard{}
-	tx, calls := fakeTxRunner()
-	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: newTestLogger()}
+	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, logger: newTestLogger()}
 
 	n, err := uc.BulkDelete(authedCtx("u1"), []string{uuid.NewString(), uuid.NewString(), uuid.NewString()})
 	if err != nil {
@@ -83,29 +66,28 @@ func TestCardUsecase_BulkDelete_AllOwn(t *testing.T) {
 	if n != 3 {
 		t.Fatalf("expected 3 deleted, got %d", n)
 	}
-	if *calls != 1 {
-		t.Fatalf("expected 1 tx invocation, got %d", *calls)
+	if cardRepo.deleteByIDsCalls != 1 {
+		t.Fatalf("expected 1 DeleteByIDs invocation, got %d", cardRepo.deleteByIDsCalls)
 	}
 	if cardRepo.capturedDeleteOwn != "u1" {
-		t.Fatalf("expected DeleteByIDsTx to receive owner=u1, got %q", cardRepo.capturedDeleteOwn)
+		t.Fatalf("expected DeleteByIDs to receive owner=u1, got %q", cardRepo.capturedDeleteOwn)
 	}
 	if len(cardRepo.capturedDeleteIDs) != 3 {
-		t.Fatalf("expected 3 ids passed to DeleteByIDsTx, got %d", len(cardRepo.capturedDeleteIDs))
+		t.Fatalf("expected 3 ids passed to DeleteByIDs, got %d", len(cardRepo.capturedDeleteIDs))
 	}
 }
 
 // TestCardUsecase_BulkDelete_SilentlySkipsForeign verifies that mixing own and
 // foreign ids does NOT cause the call to fail. The SQL subselect in
-// DeleteByIDsTx handles ownership filtering; the usecase passes all ids through
+// DeleteByIDs handles ownership filtering; the usecase passes all ids through
 // and returns the count of rows actually deleted (own ones only).
 func TestCardUsecase_BulkDelete_SilentlySkipsForeign(t *testing.T) {
 	t.Parallel()
-	// DeleteByIDsTx receives all ids but the SQL subselect filters to own cards
+	// DeleteByIDs receives all ids but the SQL subselect filters to own cards
 	// only, returning 1 (the count of own cards deleted).
 	cardRepo := &mockCardRepository{deleteByIDsResult: 1}
 	cgRepo := &mockCardgroupRepoForCard{}
-	tx, calls := fakeTxRunner()
-	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: newTestLogger()}
+	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, logger: newTestLogger()}
 
 	n, err := uc.BulkDelete(authedCtx("u1"), []string{uuid.NewString(), uuid.NewString()})
 	if err != nil {
@@ -114,13 +96,13 @@ func TestCardUsecase_BulkDelete_SilentlySkipsForeign(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("expected 1 deleted (own card only), got %d", n)
 	}
-	if *calls != 1 {
-		t.Fatalf("expected 1 tx invocation, got %d", *calls)
+	if cardRepo.deleteByIDsCalls != 1 {
+		t.Fatalf("expected 1 DeleteByIDs invocation, got %d", cardRepo.deleteByIDsCalls)
 	}
 	// Both ids must be forwarded to the repository so the SQL subselect can
 	// decide which ones to delete.
 	if len(cardRepo.capturedDeleteIDs) != 2 {
-		t.Fatalf("expected 2 ids forwarded to DeleteByIDsTx, got %d", len(cardRepo.capturedDeleteIDs))
+		t.Fatalf("expected 2 ids forwarded to DeleteByIDs, got %d", len(cardRepo.capturedDeleteIDs))
 	}
 }
 
@@ -135,8 +117,7 @@ func TestCardUsecase_BulkDelete_PartialMatchSucceeds(t *testing.T) {
 	// subselect filtering out 3 foreign-owned cards.
 	cardRepo := &mockCardRepository{deleteByIDsResult: 2}
 	cgRepo := &mockCardgroupRepoForCard{}
-	tx, calls := fakeTxRunner()
-	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: newTestLogger()}
+	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, logger: newTestLogger()}
 
 	ids := []string{uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()}
 	n, err := uc.BulkDelete(authedCtx("u1"), ids)
@@ -146,8 +127,8 @@ func TestCardUsecase_BulkDelete_PartialMatchSucceeds(t *testing.T) {
 	if n != 2 {
 		t.Fatalf("expected 2 deleted, got %d", n)
 	}
-	if *calls != 1 {
-		t.Fatalf("expected 1 tx invocation, got %d", *calls)
+	if cardRepo.deleteByIDsCalls != 1 {
+		t.Fatalf("expected 1 DeleteByIDs invocation, got %d", cardRepo.deleteByIDsCalls)
 	}
 }
 
@@ -162,10 +143,9 @@ func TestCardUsecase_BulkDelete_DropsMalformedIDs(t *testing.T) {
 	t.Parallel()
 	cardRepo := &mockCardRepository{deleteByIDsResult: 2}
 	cgRepo := &mockCardgroupRepoForCard{}
-	tx, calls := fakeTxRunner()
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: logger}
+	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, logger: logger}
 
 	valid1 := uuid.NewString()
 	valid2 := uuid.NewString()
@@ -176,8 +156,8 @@ func TestCardUsecase_BulkDelete_DropsMalformedIDs(t *testing.T) {
 	if n != 2 {
 		t.Fatalf("expected 2 deleted, got %d", n)
 	}
-	if *calls != 1 {
-		t.Fatalf("expected 1 tx invocation, got %d", *calls)
+	if cardRepo.deleteByIDsCalls != 1 {
+		t.Fatalf("expected 1 DeleteByIDs invocation, got %d", cardRepo.deleteByIDsCalls)
 	}
 	if len(cardRepo.capturedDeleteIDs) != 2 ||
 		cardRepo.capturedDeleteIDs[0] != valid1 || cardRepo.capturedDeleteIDs[1] != valid2 {
@@ -192,14 +172,12 @@ func TestCardUsecase_BulkDelete_DropsMalformedIDs(t *testing.T) {
 }
 
 // TestCardUsecase_BulkDelete_AllMalformedIDs verifies an all-malformed batch
-// short-circuits to (0, nil) without opening a transaction or touching the
-// repository.
+// short-circuits to (0, nil) without touching the repository.
 func TestCardUsecase_BulkDelete_AllMalformedIDs(t *testing.T) {
 	t.Parallel()
 	cardRepo := &mockCardRepository{}
 	cgRepo := &mockCardgroupRepoForCard{}
-	tx, calls := fakeTxRunner()
-	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: newTestLogger()}
+	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, logger: newTestLogger()}
 
 	n, err := uc.BulkDelete(authedCtx("u1"), []string{"not-a-uuid", "also-junk"})
 	if err != nil {
@@ -208,11 +186,45 @@ func TestCardUsecase_BulkDelete_AllMalformedIDs(t *testing.T) {
 	if n != 0 {
 		t.Fatalf("expected 0 deleted, got %d", n)
 	}
-	if *calls != 0 {
-		t.Fatalf("expected 0 tx invocations, got %d", *calls)
-	}
 	if cardRepo.deleteByIDsCalls != 0 {
-		t.Fatalf("expected 0 DeleteByIDsTx invocations, got %d", cardRepo.deleteByIDsCalls)
+		t.Fatalf("expected 0 DeleteByIDs invocations, got %d", cardRepo.deleteByIDsCalls)
+	}
+}
+
+// TestCardUsecase_BulkDelete_RepoError_IsInternal pins that a DeleteByIDs
+// failure surfaces as an internal-class error instead of a silent (0, nil).
+func TestCardUsecase_BulkDelete_RepoError_IsInternal(t *testing.T) {
+	t.Parallel()
+	cardRepo := &mockCardRepository{deleteByIDsErr: errors.New("db: connection reset")}
+	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: &mockCardgroupRepoForCard{}, logger: newTestLogger()}
+
+	n, err := uc.BulkDelete(authedCtx("u1"), []string{uuid.NewString()})
+	if n != 0 {
+		t.Fatalf("expected 0 deleted on repo error, got %d", n)
+	}
+	assertInternalChain(t, err, "usecase: card: bulk delete")
+	if cardRepo.deleteByIDsCalls != 1 {
+		t.Fatalf("expected 1 DeleteByIDs invocation, got %d", cardRepo.deleteByIDsCalls)
+	}
+}
+
+// TestCardUsecase_BulkDelete_RepoCancelled_PassesThroughUnwrapped pins that a
+// cancelled DeleteByIDs returns context.Canceled by identity, not re-wrapped.
+func TestCardUsecase_BulkDelete_RepoCancelled_PassesThroughUnwrapped(t *testing.T) {
+	t.Parallel()
+	cardRepo := &mockCardRepository{deleteByIDsErr: context.Canceled}
+	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: &mockCardgroupRepoForCard{}, logger: newTestLogger()}
+
+	n, err := uc.BulkDelete(authedCtx("u1"), []string{uuid.NewString()})
+	if n != 0 {
+		t.Fatalf("expected 0 deleted on cancellation, got %d", n)
+	}
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("expected unwrapped context.Canceled, got %T: %v", err, err)
+	}
+	if cardRepo.deleteByIDsCalls != 1 {
+		t.Fatalf("expected 1 DeleteByIDs invocation, got %d", cardRepo.deleteByIDsCalls)
 	}
 }
 
@@ -226,12 +238,11 @@ func TestCardUsecase_BulkDelete_RejectsTooManyIDs(t *testing.T) {
 	}
 	cardRepo := &mockCardRepository{}
 	cgRepo := &mockCardgroupRepoForCard{}
-	tx, calls := fakeTxRunner()
-	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: newTestLogger()}
+	uc := &cardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, logger: newTestLogger()}
 
 	_, err := uc.BulkDelete(authedCtx("u1"), ids)
 	assertValidationError(t, err, "ids", "")
-	if *calls != 0 {
-		t.Fatalf("expected 0 tx invocations, got %d", *calls)
+	if cardRepo.deleteByIDsCalls != 0 {
+		t.Fatalf("expected 0 DeleteByIDs invocations, got %d", cardRepo.deleteByIDsCalls)
 	}
 }

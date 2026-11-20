@@ -63,9 +63,8 @@ vi.mock("@/app/cardgroups/cardgroups-client", () => ({
 // Imports — after vi.mock declarations
 // ---------------------------------------------------------------------------
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import CardgroupsPage, { CardgroupsContent } from "@/app/cardgroups/page";
+import { CardgroupsContent } from "@/app/cardgroups/page";
 import { gqlFetch } from "@/lib/apollo/server";
 import { makeCardgroup } from "./fixtures/cardgroups";
 
@@ -96,10 +95,6 @@ function makeConnection(items: { id: string; name: string; updatedAt: string }[]
 
 function mockGqlFetch(data: unknown): void {
   vi.mocked(gqlFetch).mockResolvedValue(data as never);
-}
-
-function mockGqlFetchError(err: Error): void {
-  vi.mocked(gqlFetch).mockRejectedValue(err);
 }
 
 // ---------------------------------------------------------------------------
@@ -147,27 +142,6 @@ describe("CardgroupsPage", () => {
     render(tree as React.ReactElement);
 
     expect(screen.getByTestId("empty-connection")).toBeInTheDocument();
-
-    expect(redirect).not.toHaveBeenCalled();
-  });
-
-  it("redirects to /login when no user is signed in", async () => {
-    vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "anonymous" }));
-
-    await expect(CardgroupsPage()).rejects.toThrow("REDIRECT:/login");
-
-    expect(redirect).toHaveBeenCalledWith("/login");
-    // gqlFetch must not be reached when the auth gate already failed.
-    expect(gqlFetch).not.toHaveBeenCalled();
-  });
-
-  it("rethrows a non-auth gqlFetch error so the error boundary handles it", async () => {
-    // gqlFetch is called inside CardgroupsContent (not in the outer CardgroupsPage
-    // shell which only runs the auth check and returns a Suspense boundary).
-    const networkErr = new Error("network failure");
-    mockGqlFetchError(networkErr);
-
-    await expect(CardgroupsContent()).rejects.toBe(networkErr);
 
     expect(redirect).not.toHaveBeenCalled();
   });

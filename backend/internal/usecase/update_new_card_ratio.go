@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"errors"
-	"log/slog"
 
 	"github.com/rotisserie/eris"
 
@@ -33,9 +32,8 @@ type updateNewCardRatioUsersRepo interface {
 }
 
 type updateNewCardRatioUsecase struct {
-	prefs  updateNewCardRatioPrefsRepo
-	users  updateNewCardRatioUsersRepo
-	logger *slog.Logger
+	prefs updateNewCardRatioPrefsRepo
+	users updateNewCardRatioUsersRepo
 }
 
 // NewUpdateNewCardRatio is the production constructor. Tests should prefer
@@ -43,24 +41,16 @@ type updateNewCardRatioUsecase struct {
 func NewUpdateNewCardRatio(
 	prefs repository.UserPreferenceRepository,
 	users repository.UserRepository,
-	logger *slog.Logger,
 ) UpdateNewCardRatioUsecase {
-	if logger == nil {
-		panic("usecase: update new card ratio: logger is required")
-	}
-	return &updateNewCardRatioUsecase{prefs: prefs, users: users, logger: logger}
+	return &updateNewCardRatioUsecase{prefs: prefs, users: users}
 }
 
 // newUpdateNewCardRatioWithDeps accepts narrow interfaces for tests.
 func newUpdateNewCardRatioWithDeps(
 	prefs updateNewCardRatioPrefsRepo,
 	users updateNewCardRatioUsersRepo,
-	logger *slog.Logger,
 ) UpdateNewCardRatioUsecase {
-	if logger == nil {
-		panic("usecase: update new card ratio: logger is required")
-	}
-	return &updateNewCardRatioUsecase{prefs: prefs, users: users, logger: logger}
+	return &updateNewCardRatioUsecase{prefs: prefs, users: users}
 }
 
 // Set validates numerator/denominator, persists the reduced ratio as the

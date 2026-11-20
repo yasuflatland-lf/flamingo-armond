@@ -42,7 +42,7 @@ func newNewCardRatioSrv(
 	updateUC usecase.UpdateNewCardRatioUsecase,
 ) *handler.Server {
 	userUC := usecase.NewUserUsecase(nil, userMock, nil, nil, newDiscardLogger())
-	r := resolver.NewResolver(userUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, updateUC, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(userUC, nil, nil, nil, nil, nil, nil, nil, nil, updateUC, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -183,7 +183,7 @@ func TestUpdateNewCardRatio_UsecaseValidationErrorMapsToBadUserInput(t *testing.
 func TestUpdateNewCardRatio_NewShareAboveCap_MapsToBadUserInput(t *testing.T) {
 	t.Parallel()
 
-	realUC := usecase.NewUpdateNewCardRatio(nil, nil, newDiscardLogger())
+	realUC := usecase.NewUpdateNewCardRatio(nil, nil)
 	srv := newNewCardRatioSrv(&mockUserRepository{}, realUC)
 	body := `{"query":"mutation { updateNewCardRatio(numerator: 95, denominator: 100) { id } }"}`
 

@@ -44,8 +44,6 @@ func parseTrinaryText(s *string, max int, tooLongErr error) (trinaryText, error)
     return trinaryText{value: &trimmed}, nil
 }
 
-func (t trinaryText) IsSet() bool { return t.value != nil }
-
 func (t trinaryText) Ptr() *string {
     if t.value == nil {
         return nil
@@ -56,7 +54,7 @@ func (t trinaryText) Ptr() *string {
 ```
 
 `Bio` and `Description` are distinct exported types that embed `trinaryText`, so
-`IsSet()`/`Ptr()` and the trim + grapheme-cap + trinary rule are shared. Each field
+`Ptr()` and the trim + grapheme-cap + trinary rule are shared. Each field
 keeps its own cap constant and too-long sentinel; the `Parse*` and `*FromPtr` entry
 points stay stable so consumers do not churn:
 
@@ -76,12 +74,11 @@ func BioFromPtr(p *string) Bio { return Bio{trinaryTextFromPtr(p)} }
 // DescriptionMax / ErrDescriptionTooLong to the same parseTrinaryText body.
 ```
 
-- `ParseBio(nil)` → `Bio{}` (no change): `IsSet()` returns `false`.
-- `ParseBio(&"")` or `ParseBio(&"   ")` → explicit clear: `IsSet()` returns `true`,
-  `Ptr()` returns a pointer to `""`. Whitespace-only inputs are collapsed to the
+- `ParseBio(nil)` → `Bio{}` (no change): `Ptr()` returns `nil`.
+- `ParseBio(&"")` or `ParseBio(&"   ")` → explicit clear: `Ptr()` returns a
+  pointer to `""`. Whitespace-only inputs are collapsed to the
   explicit-clear case after trimming.
-- `ParseBio(&"hello")` → set: `IsSet()` returns `true`, `Ptr()` returns a pointer
-  to `"hello"`.
+- `ParseBio(&"hello")` → set: `Ptr()` returns a pointer to `"hello"`.
 
 `Ptr()` returns a copy of the pointer's target so external mutation of the
 returned pointer does not alter the value object's internal state.

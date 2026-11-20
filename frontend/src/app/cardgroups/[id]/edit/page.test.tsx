@@ -33,6 +33,7 @@ vi.mock("./cardgroup-management-client", () => ({
 }));
 
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { gqlFetch } from "@/lib/apollo/server";
 import EditCardgroupPage from "./page";
 
@@ -63,9 +64,12 @@ const connectionResult = {
 
 describe("EditCardgroupPage", () => {
   it("redirects to /login when unauthenticated", async () => {
+    vi.mocked(gqlFetch).mockClear();
     vi.mocked(headers).mockResolvedValue(new Headers({ "x-auth-status": "anonymous" }) as never);
 
     await expect(EditCardgroupPage(makeParams("cg-1"))).rejects.toThrow("REDIRECT:/login");
+    expect(redirect).toHaveBeenCalledWith("/login");
+    expect(gqlFetch).not.toHaveBeenCalled();
   });
 
   it("redirects to /cardgroups when cardgroup is null", async () => {

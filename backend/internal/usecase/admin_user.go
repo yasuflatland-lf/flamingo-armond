@@ -2,9 +2,12 @@ package usecase
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"log/slog"
+	"strings"
+
+	"github.com/google/uuid"
 
 	"backend/internal/domain"
 	"backend/internal/repository"
@@ -49,8 +52,8 @@ type AdminEditUserOutcome struct {
 type AdminUserUsecase interface {
 	List(
 		ctx context.Context,
-		first, last *int,
-		after, before, search *string,
+		first *int,
+		after, search *string,
 	) (*AdminUserConnection, error)
 	Get(ctx context.Context, id string) (*domain.User, error)
 	EditUser(ctx context.Context, id string, input AdminEditUserInput) (AdminEditUserOutcome, error)
@@ -68,8 +71,8 @@ type adminUserRepository interface {
 	UpdateTxVersioned(ctx context.Context, tx repository.Tx, id string, patch repository.UserUpdate, expectedVersion int64) error
 	ListPage(
 		ctx context.Context,
-		after, before *string,
-		first, last int,
+		after *string,
+		first int,
 		search *string,
 	) ([]*domain.User, int64, error)
 	// DeleteAuthUserTx deletes the target's auth.users row inside the caller's
@@ -115,7 +118,6 @@ type adminUserUsecase struct {
 	userRoles adminUserRoleRepository
 	tx        txRunner
 	adminGate *AdminGate
-	logger    *slog.Logger
 }
 
 // NewAdminUser constructs an AdminUserUsecase. Pass production
@@ -128,15 +130,11 @@ func NewAdminUser(
 	roles repository.RoleRepository,
 	userRoles repository.UserRoleRepository,
 	adminGate *AdminGate,
-	logger *slog.Logger,
 ) AdminUserUsecase {
 	if adminGate == nil {
 		panic("usecase: admin user: adminGate is required")
 	}
-	if logger == nil {
-		panic("usecase: admin user: logger is required")
-	}
-	uc := &adminUserUsecase{users: users, roles: roles, userRoles: userRoles, adminGate: adminGate, logger: logger}
+	uc := &adminUserUsecase{users: users, roles: roles, userRoles: userRoles, adminGate: adminGate}
 	uc.tx = newTxRunner(db)
 	return uc
 }
@@ -149,49 +147,37 @@ func newAdminUserWithDeps(
 	userRoles adminUserRoleRepository,
 	tx txRunner,
 	adminGate *AdminGate,
-	logger *slog.Logger,
 ) AdminUserUsecase {
 	if adminGate == nil {
 		panic("usecase: admin user: adminGate is required")
 	}
-	if logger == nil {
-		panic("usecase: admin user: logger is required")
-	}
-	return &adminUserUsecase{users: users, roles: roles, userRoles: userRoles, tx: tx, adminGate: adminGate, logger: logger}
+	return &adminUserUsecase{users: users, roles: roles, userRoles: userRoles, tx: tx, adminGate: adminGate}
 }
 
-// List paginates the users table with Relay-style cursors. Forward paging
-// uses (first, after); backward uses (last, before). The two are mutually
-// exclusive. Default page size is maxPageSize (100); the same value is the
-// absolute cap for either direction.
+// List paginates the users table with forward-only Relay-style cursors
+// (first, after). Default page size is maxPageSize (100); the same value is
+// the absolute cap.
 //
-// Cursor-direction cross-validation: per the Relay spec, after pairs with
-// first (forward) and before pairs with last (backward). Mixing them or
-// supplying both cursors at once is rejected with BAD_USER_INPUT before the
-// repository is touched, so callers never get a silently re-interpreted
-// page boundary.
+// An `after` without a positive `first` is rejected with BAD_USER_INPUT before
+// the repository is touched (see validateRelayArgs).
 func (u *adminUserUsecase) List(
 	ctx context.Context,
-	first, last *int,
-	after, before, search *string,
+	first *int,
+	after, search *string,
 ) (*AdminUserConnection, error) {
 	if _, err := u.adminGate.Require(ctx, "usecase: admin user: check admin"); err != nil {
 		return nil, err
 	}
 
-	wantFirst, wantLast, err := resolveRelayPage(first, last, after, before, resolveAdminPageSize)
+	wantFirst, err := resolveRelayPage(first, after, resolveAdminPageSize)
 	if err != nil {
 		return nil, err
 	}
 
-	// Decode the opaque inbound cursors to raw user ids before the repository's
+	// Decode the opaque inbound cursor to a raw user id before the repository's
 	// id-based hydration. A malformed v1 cursor is BAD_USER_INPUT; the repository
 	// looks up the cursor row by raw id, so it must never receive the v1 envelope.
 	afterCur, afterPresent, err := decodeCursorOrBadInput(after, "after")
-	if err != nil {
-		return nil, err
-	}
-	beforeCur, beforePresent, err := decodeCursorOrBadInput(before, "before")
 	if err != nil {
 		return nil, err
 	}
@@ -201,31 +187,21 @@ func (u *adminUserUsecase) List(
 	if err := rejectOrderedCursor(afterCur, "after"); err != nil {
 		return nil, err
 	}
-	if err := rejectOrderedCursor(beforeCur, "before"); err != nil {
-		return nil, err
-	}
-	afterID, beforeID := afterCur.ID, beforeCur.ID
-	var afterPtr, beforePtr *string
+	afterID := afterCur.ID
+	var afterPtr *string
 	if afterPresent {
 		afterPtr = &afterID
 	}
-	if beforePresent {
-		beforePtr = &beforeID
-	}
 
 	var total int64
-	// afterPresent/beforePresent are the post-decode cursor presence that
-	// assemblePage expects (a malformed cursor errored out above).
-	users, hasNext, hasPrev, err := assemblePage(wantFirst, wantLast, afterPresent, beforePresent,
-		func(repoFirst, repoLast int) ([]*domain.User, error) {
-			rows, t, e := u.users.ListPage(ctx, afterPtr, beforePtr, repoFirst, repoLast, search)
+	// afterPresent is the post-decode cursor presence that assemblePage expects
+	// (a malformed cursor errored out above).
+	users, hasNext, hasPrev, err := assemblePage(wantFirst, afterPresent,
+		func(repoFirst int) ([]*domain.User, error) {
+			rows, t, e := u.users.ListPage(ctx, afterPtr, repoFirst, search)
 			if e != nil {
 				if errors.Is(e, repository.ErrCursorNotFound) {
-					field := "after"
-					if !afterPresent && beforePresent {
-						field = "before"
-					}
-					return nil, ucerr.NewValidationError(field, "cursor not found")
+					return nil, ucerr.NewValidationError("after", "cursor not found")
 				}
 				return nil, wrapInfraErr(e, "usecase: admin user: list")
 			}
@@ -288,7 +264,8 @@ func (u *adminUserUsecase) Get(ctx context.Context, id string) (*domain.User, er
 // is no write to roll back, so no control-flow sentinel is needed; the post-tx
 // code returns the captured outcome before inspecting the transaction error.
 // The last-admin guard is surfaced the same way through guardErr, which carries
-// a forbidden error rather than an outcome field.
+// a forbidden error rather than an outcome field. The own-row check compares
+// the uuid value, not its spelling.
 func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminEditUserInput) (AdminEditUserOutcome, error) {
 	callerID, err := u.adminGate.Require(ctx, "usecase: admin user: check admin")
 	if err != nil {
@@ -334,7 +311,7 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 			// but only after passing the keepsAdmin check on the partial map.
 			// Other targets keep the downstream rejection so the relative
 			// precedence of the id and roleIds validation errors is unchanged.
-			if callerID == id && len(roles) != len(roleIDs) {
+			if sameUserID(callerID, id) && len(roles) != len(roleIDs) {
 				earlyOutcome = &AdminEditUserOutcome{Validation: NewInputValidationInfo("roleIds", "role not found")}
 				return nil
 			}
@@ -345,7 +322,7 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 			keepsAdmin = set.ContainsAdmin()
 		}
 		if !keepsAdmin {
-			if callerID == id {
+			if sameUserID(callerID, id) {
 				earlyOutcome = &AdminEditUserOutcome{CannotRevokeOwnAdmin: true}
 				return nil
 			}
@@ -420,7 +397,7 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 //  1. Admin gate: non-admin / unauthenticated callers are rejected.
 //  2. Self-deletion block: an admin cannot delete their own account from the
 //     admin surface (they must use DeleteMyAccount), preventing an accidental
-//     lockout.
+//     lockout; the comparison is on the uuid value, not its spelling.
 //  3. Last-admin guard: when the target holds the admin role and is the only
 //     admin, the deletion is refused so the system is never left without an
 //     admin. The membership read, the count and the delete share one
@@ -434,7 +411,7 @@ func (u *adminUserUsecase) DeleteUser(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	if callerID == id {
+	if sameUserID(callerID, id) {
 		return ucerr.NewForbiddenError("cannot delete your own account from the admin panel; use deleteMyAccount")
 	}
 
@@ -448,6 +425,9 @@ func (u *adminUserUsecase) DeleteUser(ctx context.Context, id string) error {
 		}
 		isAdmin, herr := u.userRoles.HasRoleTx(ctx, tx, id, domain.AdminRoleName)
 		if herr != nil {
+			if errors.Is(herr, repository.ErrNotFound) {
+				return ucerr.NewValidationError("id", "user not found")
+			}
 			return wrapInfraErr(herr, "usecase: admin user: delete: check admin role")
 		}
 		if gerr := guardNotLastAdmin(
@@ -469,6 +449,56 @@ func (u *adminUserUsecase) DeleteUser(ctx context.Context, id string) error {
 		}
 		return nil
 	})
+}
+
+// sameUserID reports whether a and b name the same user row. Postgres compares
+// uuid values, so both are keyed by canonicalUUIDKey (every uuid_in spelling, plus
+// urn:uuid:, which only over-matches); other ids fall back to exact equality.
+func sameUserID(a, b string) bool {
+	return canonicalUUIDKey(a) == canonicalUUIDKey(b)
+}
+
+// canonicalUUIDKey returns the canonical lower-case form of s when Postgres
+// (parsePgUUID) or google/uuid Validate accepts it, and s unchanged otherwise.
+func canonicalUUIDKey(s string) string {
+	// Not uuid.Parse alone: it rejects Postgres-only spellings (39-char, braced
+	// hyphen-less) that still select the same row.
+	if u, ok := parsePgUUID(s); ok {
+		return u.String()
+	}
+	// Not dropping the uuid.Parse fallback: the repository accepts only canonical
+	// ids, so a urn:uuid: spelling would appear missing and escape the duplicate check.
+	// Not uuid.Parse unguarded: its 38-char case never checks the braces.
+	if u, err := uuid.Parse(s); err == nil && uuid.Validate(s) == nil {
+		return u.String()
+	}
+	return s
+}
+
+// parsePgUUID mirrors Postgres uuid_in: an optional matched {} pair around 32 hex
+// digits, with one optional '-' after each group of 4 digits except the last.
+func parsePgUUID(s string) (uuid.UUID, bool) {
+	src, braced := strings.CutPrefix(s, "{")
+	if braced {
+		var closed bool
+		if src, closed = strings.CutSuffix(src, "}"); !closed {
+			return uuid.UUID{}, false
+		}
+	}
+	var u uuid.UUID
+	for i := range u {
+		if len(src) < 2 {
+			return uuid.UUID{}, false
+		}
+		if _, err := hex.Decode(u[i:i+1], []byte(src[:2])); err != nil {
+			return uuid.UUID{}, false
+		}
+		src = src[2:]
+		if len(src) > 0 && src[0] == '-' && i%2 == 1 && i < len(u)-1 {
+			src = src[1:]
+		}
+	}
+	return u, src == ""
 }
 
 func mapAdminEditMutationError(err error) (*InputValidationInfo, error) {
@@ -496,11 +526,12 @@ func normalizeAdminEditRoleIDs(roleIDs []string) ([]string, *InputValidationInfo
 		if roleID == "" {
 			return nil, NewInputValidationInfo("roleIds", "role ID is required")
 		}
-		if seen[roleID] {
+		key := canonicalUUIDKey(roleID)
+		if seen[key] {
 			return nil, NewInputValidationInfo("roleIds", "role IDs must be unique")
 		}
-		seen[roleID] = true
-		out = append(out, roleID)
+		seen[key] = true
+		out = append(out, key)
 	}
 	return out, nil
 }

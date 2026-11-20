@@ -39,6 +39,7 @@ vi.mock("next-intl/server", () => ({
 }));
 
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { createTranslator } from "next-intl";
 import { getLocale } from "next-intl/server";
 import enMessages from "../../../messages/en.json";
@@ -47,20 +48,67 @@ import LoginPage from "./page";
 describe("LoginPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // A reason=session_invalid visit never reads headers(), so an unconsumed
+    // mockResolvedValueOnce would otherwise leak into the next test.
+    vi.mocked(headers).mockReset();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  // HomePage is the single post-login decision point; /login hands the routing
-  // decision back to it rather than short-circuiting to an app surface.
-  it("authenticated user: redirects to / (HomePage)", async () => {
+  // /login does not hand a signed-in visitor straight back to HomePage: the
+  // backend re-checks the session first, so a locally-valid token the backend
+  // rejects cannot loop / <-> /login.
+  it("authenticated user: redirects to /auth/verify-session", async () => {
     vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "authenticated" }));
 
-    // Anchored: the bare string "REDIRECT:/" is a substring of "REDIRECT:/cardgroups",
-    // so a plain toThrow would still pass against a redirect to any app surface.
-    await expect(LoginPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(/^REDIRECT:\/$/);
+    // Anchored so a redirect to any other path (e.g. `/`) fails the match.
+    await expect(LoginPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+      /^REDIRECT:\/auth\/verify-session$/,
+    );
+  });
+
+  it("authenticated user with reason=session_invalid: renders the login form (no redirect)", async () => {
+    vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "authenticated" }));
+
+    const jsx = await LoginPage({ searchParams: Promise.resolve({ reason: "session_invalid" }) });
+    render(jsx);
+
+    expect(redirect).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { level: 1, name: /sign in/i })).toBeInTheDocument();
+    expect(screen.getByTestId("login-session-invalid").textContent).toBe(
+      enMessages.Login.sessionInvalid,
+    );
+    // role=status, not alert: the notice describes a state rather than announcing a failure.
+    expect(screen.getByRole("status")).toHaveAttribute("data-testid", "login-session-invalid");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("anonymous user with reason=session_invalid: renders the session-invalid notice", async () => {
+    const jsx = await LoginPage({ searchParams: Promise.resolve({ reason: "session_invalid" }) });
+    render(jsx);
+
+    expect(redirect).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { level: 1, name: /sign in/i })).toBeInTheDocument();
+    expect(screen.getByTestId("login-session-invalid").textContent).toBe(
+      enMessages.Login.sessionInvalid,
+    );
+  });
+
+  it("unknown reason value: authenticated user is still redirected", async () => {
+    vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "authenticated" }));
+
+    await expect(LoginPage({ searchParams: Promise.resolve({ reason: "other" }) })).rejects.toThrow(
+      /^REDIRECT:\/auth\/verify-session$/,
+    );
+  });
+
+  it("no reason: session-invalid notice is absent", async () => {
+    const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
+    render(jsx);
+
+    expect(screen.queryByTestId("login-session-invalid")).toBeNull();
   });
 
   it("anonymous user: renders the Sign in heading", async () => {

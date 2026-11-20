@@ -32,12 +32,6 @@ type InputValidationError implements UserError {
   message: String!
 }
 
-"""Sort order for paginated queries."""
-enum SortOrder {
-  ASC
-  DESC
-}
-
 """Relay PageInfo describing whether more pages exist on either side and the boundary cursors."""
 type PageInfo {
   hasNextPage: Boolean!

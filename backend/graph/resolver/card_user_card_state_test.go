@@ -31,7 +31,7 @@ func TestCardResolver_UserCardState_UnseenCard(t *testing.T) {
 	cr := &cardResolver{&Resolver{}}
 
 	loaders := loader.NewWithUserCardFSRS(
-		nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil,
 		emptyUserCardFSRSReader{},
 		"viewer-1",
 	)
@@ -57,7 +57,7 @@ func TestCardResolver_UserCardState_PassThroughExistingState(t *testing.T) {
 	cr := &cardResolver{&Resolver{}}
 
 	loaders := loader.NewWithUserCardFSRS(
-		nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil,
 		seededUserCardFSRSReader{state: existing},
 		"viewer-1",
 	)

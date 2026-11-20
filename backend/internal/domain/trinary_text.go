@@ -43,7 +43,7 @@ func parseTrinaryText(s *string, max int, tooLongErr error) (trinaryText, error)
 }
 
 // trinaryTextFromPtr maps a nullable text column to a trinaryText: nil → the
-// no-value case (IsSet()=false, NULL column); a non-nil pointer — including
+// no-value case (Ptr() returns nil, NULL column); a non-nil pointer — including
 // pointer-to-empty — maps to a set value whose Ptr() returns a defensive copy with
 // the same string value. Used by repository readers to bridge a nullable text
 // column into the typed domain field.
@@ -69,9 +69,3 @@ func (t trinaryText) Ptr() *string {
 	s := *t.value
 	return &s
 }
-
-// IsSet reports whether the value carries a payload (its internal pointer is
-// non-nil). Returns false for a nil-input parse (patch-context: no change) and for
-// a nil-pointer read (read-context: NULL column / zero value). Returns true for any
-// other construction, including an explicit empty string.
-func (t trinaryText) IsSet() bool { return t.value != nil }

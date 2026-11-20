@@ -10,21 +10,13 @@ import (
 	"backend/internal/usecase"
 )
 
-func nilIfEmpty(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
-}
-
 func cardImportKindOrPanic(ctx context.Context, raw string) model.CardImportErrorKind {
-	if raw == "" || raw == string(model.CardImportErrorKindUnknown) {
-		slog.ErrorContext(ctx, "card import: UNKNOWN/empty Kind escaped to resolver - programmer bug",
-			"raw", raw,
-		)
-		panic(eris.Errorf("card import: UNKNOWN/empty Kind escaped to resolver: %q", raw))
+	k := model.CardImportErrorKind(raw)
+	if !k.IsValid() {
+		slog.ErrorContext(ctx, "card import: invalid Kind escaped to resolver - programmer bug", "raw", raw)
+		panic(eris.Errorf("card import: invalid Kind escaped to resolver: %q", raw))
 	}
-	return model.CardImportErrorKind(raw)
+	return k
 }
 
 func toCardImportValidationResultModel(ctx context.Context, out usecase.ValidateCardImportOutcome) *model.CardImportValidationResult {
@@ -46,9 +38,6 @@ func toCardImportErrors(ctx context.Context, errs []usecase.CardImportError) []*
 			Line:    e.Line,
 			Message: e.Message,
 			Kind:    cardImportKindOrPanic(ctx, string(e.Kind)),
-			Snippet: nilIfEmpty(e.Snippet),
-			Front:   nilIfEmpty(e.Front),
-			Back:    nilIfEmpty(e.Back),
 		})
 	}
 	return out

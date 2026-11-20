@@ -12,7 +12,6 @@ type UserCardFSRS struct {
 	CardID    string
 	State     FSRSState
 	CreatedAt time.Time
-	UpdatedAt time.Time
 }
 
 // FSRSScheduler is the consumer-defined interface for the FSRS scheduler.
@@ -30,7 +29,6 @@ func NewUserCardFSRSForNewCard(userID UserID, cardID string, now time.Time) *Use
 		CardID:    cardID,
 		State:     NewFSRSStateForNewCard(now),
 		CreatedAt: now,
-		UpdatedAt: now,
 	}
 }
 
@@ -46,14 +44,12 @@ func UserCardFSRSOrNew(ucs *UserCardFSRS, userID UserID, cardID string, createdA
 	return NewUserCardFSRSForNewCard(userID, cardID, createdAt)
 }
 
-// ApplyRating recomputes the scheduling state via the provided scheduler and
-// stamps UpdatedAt with now. An invalid rating leaves the aggregate
-// unchanged and returns an error.
+// ApplyRating recomputes the scheduling state via the provided scheduler.
+// An invalid rating leaves the aggregate unchanged and returns an error.
 func (u *UserCardFSRS) ApplyRating(scheduler FSRSScheduler, rating Rating, now time.Time) error {
 	if !rating.IsValid() {
 		return eris.Errorf("user_card_fsrs: invalid rating %d", rating)
 	}
 	u.State = scheduler.Apply(u.State, rating, now)
-	u.UpdatedAt = now
 	return nil
 }
