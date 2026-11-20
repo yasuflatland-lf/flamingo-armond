@@ -117,3 +117,4 @@ supabase/.temp/
 /.setup-prod-archive/
 .playwright-mcp/
 *~
+test-report.junit.xml
