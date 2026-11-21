@@ -12,6 +12,7 @@
   "internalChecksFilter": "strict",
   "rangeStrategy": "bump",
   "platformAutomerge": true,
+  "rebaseWhen": "behind-base-branch",
   "prHourlyLimit": 4,
   "prConcurrentLimit": 10,
   "packageRules": [
