@@ -6,6 +6,17 @@ import enMessages from "../../messages/en.json";
 
 type IntlMessages = typeof enMessages;
 
+function Wrapper(
+  { locale, messages }: { locale: Locale; messages: IntlMessages },
+  { children }: { children: ReactNode },
+) {
+  return (
+    <NextIntlClientProvider locale={locale} messages={messages} timeZone="UTC">
+      {children}
+    </NextIntlClientProvider>
+  );
+}
+
 /**
  * Renders a component inside NextIntlClientProvider with the English catalog so
  * `t(...)` resolves to the original English copy. Existing string assertions
@@ -19,12 +30,5 @@ export function renderWithIntl(
     ...options
   }: { locale?: Locale; messages?: IntlMessages } & Omit<RenderOptions, "wrapper"> = {},
 ) {
-  function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <NextIntlClientProvider locale={locale} messages={messages} timeZone="UTC">
-        {children}
-      </NextIntlClientProvider>
-    );
-  }
-  return render(ui, { wrapper: Wrapper, ...options });
+  return render(ui, { wrapper: Wrapper.bind(null, { locale, messages }), ...options });
 }

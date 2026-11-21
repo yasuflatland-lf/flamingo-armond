@@ -4,7 +4,7 @@ import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
+import { type ComponentProps, useState } from "react";
 import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
 
 // Call-through spy on the encoder: every call runs the real implementation until
@@ -669,6 +669,28 @@ describe("BatchImportWizard preview cap", () => {
   });
 });
 
+function Harness({
+  resultA,
+  resultB,
+}: {
+  resultA: ComponentProps<typeof ValidateResult>["result"];
+  resultB: ComponentProps<typeof ValidateResult>["result"];
+}) {
+  const [tick, setTick] = useState(0);
+  const [useB, setUseB] = useState(false);
+  return (
+    <>
+      <button type="button" data-testid="bump" onClick={() => setTick((t) => t + 1)}>
+        {tick}
+      </button>
+      <button type="button" data-testid="swap" onClick={() => setUseB(true)}>
+        swap
+      </button>
+      <ValidateResult result={useB ? resultB : resultA} />
+    </>
+  );
+}
+
 describe("BatchImportWizard result-table memoization", () => {
   // Structural guard: the result tables are React.memo components, so a stable
   // `result` / `errors` prop bails out of the wizard's per-keystroke re-renders.
@@ -697,24 +719,8 @@ describe("BatchImportWizard result-table memoization", () => {
       errors: [],
     };
 
-    function Harness() {
-      const [tick, setTick] = useState(0);
-      const [useB, setUseB] = useState(false);
-      return (
-        <>
-          <button type="button" data-testid="bump" onClick={() => setTick((t) => t + 1)}>
-            {tick}
-          </button>
-          <button type="button" data-testid="swap" onClick={() => setUseB(true)}>
-            swap
-          </button>
-          <ValidateResult result={useB ? resultB : resultA} />
-        </>
-      );
-    }
-
     intlProbe.calls = 0;
-    renderWithIntl(<Harness />);
+    renderWithIntl(<Harness resultA={resultA} resultB={resultB} />);
     const baseline = intlProbe.calls;
     expect(baseline).toBeGreaterThan(0);
 

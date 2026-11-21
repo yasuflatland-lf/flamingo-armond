@@ -42,16 +42,18 @@ const baseSeed = {
   },
 };
 
+function Wrapper(extraMocks: object[], { children }: { children: ReactNode }) {
+  return (
+    <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
+      <MockedProvider mocks={[baseSeed, ...extraMocks] as never}>
+        <UndoDeleteProvider>{children}</UndoDeleteProvider>
+      </MockedProvider>
+    </NextIntlClientProvider>
+  );
+}
+
 function makeWrapper(extraMocks: object[]) {
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
-        <MockedProvider mocks={[baseSeed, ...extraMocks] as never}>
-          <UndoDeleteProvider>{children}</UndoDeleteProvider>
-        </MockedProvider>
-      </NextIntlClientProvider>
-    );
-  };
+  return Wrapper.bind(null, extraMocks);
 }
 
 describe("useMasterCardMutations", () => {
