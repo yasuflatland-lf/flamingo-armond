@@ -23,10 +23,10 @@ in `site/`, then deploys the build output (`site/dist/`) to the **root** of the
 `gh-pages` branch on every push to `main` that touches `site/**`. The ER chart
 (`er-chart.yml`) publishes to `gh-pages/er-chart`, so both share one Pages site:
 
-| Path | Served at | Source |
-|---|---|---|
-| `/` | <https://yasuflatland-lf.github.io/flamingo-armond/> | `site/dist/` (built from this folder) |
-| `/er-chart/` | <https://yasuflatland-lf.github.io/flamingo-armond/er-chart/> | `er-chart.yml` |
+| Path         | Served at                                                     | Source                                |
+| ------------ | ------------------------------------------------------------- | ------------------------------------- |
+| `/`          | <https://yasuflatland-lf.github.io/flamingo-armond/>          | `site/dist/` (built from this folder) |
+| `/er-chart/` | <https://yasuflatland-lf.github.io/flamingo-armond/er-chart/> | `er-chart.yml`                        |
 
 The landing workflow's `clean-exclude` preserves `er-chart/` when it refreshes the
 root, so the two never clobber each other. `vite.config.js` sets `base: './'` so
@@ -63,9 +63,11 @@ site/
   `site/dist`.
 - **Videos are remuxed, not re-encoded.** Source recordings are QuickTime-brand
   H.264. They are remuxed losslessly to ISO MP4 (`isom`) with `+faststart`:
+
   ```bash
   ffmpeg -i source.mov -c copy -movflags +faststart -f mp4 site/public/videos/<name>.mp4
   ```
+
   `+faststart` moves the `moov` atom to the front so the browser can start
   playback before the whole file downloads. The `isom` brand (vs the original
   `qt`) is required for Firefox to decode the file when served as `video/mp4`.
