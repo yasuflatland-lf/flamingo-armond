@@ -331,6 +331,18 @@ afterEach(() => {
 // Tests
 // ---------------------------------------------------------------------------
 
+function Harness({ initialConn }: { initialConn: ReturnType<typeof connection> }) {
+  return (
+    <CardsClient
+      cardgroupId={CG_ID}
+      cardgroupName="Test Cardgroup"
+      initialEdges={initialConn.edges}
+      initialPageInfo={initialConn.pageInfo}
+      initialTotalCount={initialConn.totalCount}
+    />
+  );
+}
+
 describe("<CardsClient>", () => {
   it("renders existing cards", () => {
     renderClient([]);
@@ -814,22 +826,10 @@ describe("<CardsClient>", () => {
 
     const initialConn = connection([CARD_1, CARD_2]);
 
-    function Harness() {
-      return (
-        <CardsClient
-          cardgroupId={CG_ID}
-          cardgroupName="Test Cardgroup"
-          initialEdges={initialConn.edges}
-          initialPageInfo={initialConn.pageInfo}
-          initialTotalCount={initialConn.totalCount}
-        />
-      );
-    }
-
     const { rerender } = renderWithIntl(
       <MockedProvider mocks={[deleteMock] as never} cache={cache}>
         <UndoDeleteProvider>
-          <Harness />
+          <Harness initialConn={initialConn} />
         </UndoDeleteProvider>
       </MockedProvider>,
     );
@@ -849,7 +849,7 @@ describe("<CardsClient>", () => {
     rerender(
       <MockedProvider mocks={[deleteMock] as never} cache={cache}>
         <UndoDeleteProvider>
-          <Harness />
+          <Harness initialConn={initialConn} />
         </UndoDeleteProvider>
       </MockedProvider>,
     );
