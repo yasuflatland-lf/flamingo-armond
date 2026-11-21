@@ -4,7 +4,7 @@ import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
+import { type ComponentProps, useState } from "react";
 import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
 
 // Call-through spy on the encoder: every call runs the real implementation until
@@ -669,7 +669,13 @@ describe("BatchImportWizard preview cap", () => {
   });
 });
 
-function Harness({ resultA, resultB }: { resultA: ImportResult; resultB: ImportResult }) {
+function Harness({
+  resultA,
+  resultB,
+}: {
+  resultA: ComponentProps<typeof ValidateResult>["result"];
+  resultB: ComponentProps<typeof ValidateResult>["result"];
+}) {
   const [tick, setTick] = useState(0);
   const [useB, setUseB] = useState(false);
   return (
