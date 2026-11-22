@@ -55,7 +55,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.7",
+    "@biomejs/biome": "2.6.8",
     "@formatjs/icu-messageformat-parser": "^3.5.17",
     "@graphql-codegen/cli": "^8.0.0",
     "@graphql-codegen/client-preset": "^7.0.0",
