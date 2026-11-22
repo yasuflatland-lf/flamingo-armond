@@ -181,8 +181,7 @@ jobs:
       - name: Ensure canonical roles
         run: |
           supabase db query \
-            "insert into public.roles (name) values ('admin'), ('general') on conflict (name) do nothing;" \
-            --local
+            "insert into public.roles (name) values ('admin'), ('general') on conflict (name) do nothing;"
 
       - name: Run Playwright
         run: pnpm --filter frontend test:e2e
